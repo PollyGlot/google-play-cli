@@ -18,7 +18,7 @@ jobs:
     name: Docs sanity
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Smoke-check: every ADR / doc referenced from key files actually exists.
       - name: Verify doc cross-references
@@ -50,7 +50,7 @@ jobs:
     name: Go build & test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Skip if no go.mod yet
         id: gomod
         run: |
@@ -61,7 +61,7 @@ jobs:
             echo "::notice::go.mod not present yet — skipping Go build/test."
           fi
       - if: steps.gomod.outputs.present == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22'
           cache: true
