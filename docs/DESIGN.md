@@ -1,0 +1,220 @@
+# Design conventions — gplay
+
+Living reference for the CLI design decisions that didn't rise to ADR-level
+(reversible, or "the obvious thing once you know the constraint") but that we
+still want to be consistent about across commands.
+
+For deeper rationale on three particular choices, see:
+
+- [ADR-0001 — Credential storage](./adr/0001-credential-storage.md)
+- [ADR-0002 — Safe production defaults](./adr/0002-safe-production-defaults.md)
+- [ADR-0003 — `--output json` is API pass-through](./adr/0003-json-passthrough.md)
+
+---
+
+## 1. Authentication
+
+### Credential resolution precedence
+
+In order, first match wins:
+
+1. `--service-account <path-or-json>` flag on the command
+2. `--account <name>` flag (selects a stored Account)
+3. `GPLAY_SERVICE_ACCOUNT` env var (path or inline JSON)
+4. `GPLAY_ACCOUNT` env var (name of a stored Account)
+5. The Account marked **active** in `~/.gplay/config.json` (or `$XDG_CONFIG_HOME/gplay/config.json`)
+
+If nothing resolves: exit code `10` with a message pointing at `gplay auth login`
+and the env var docs.
+
+### `gplay auth doctor`
+
+Runs these checks in order, stopping on the first hard failure:
+
+1. Service account JSON present, readable, well-formed (required fields:
+   `client_email`, `private_key`, `token_uri`).
+2. OAuth2 access token can be minted (RSA-signed JWT exchange succeeds).
+3. Token bears the `androidpublisher` scope.
+4. For every package in the local registry (or the one passed via
+   `--package`): call `edits.insert` then `edits.delete` round-trip. Catches the
+   common case "SA created but not invited on the app in Play Console".
+
+Output: one `✅`/`❌` line per check, with an action hint on failure.
+
+---
+
+## 2. Package targeting
+
+### Project pinning
+
+`gplay init --package com.example.myapp` writes `.gplay/project.json` at the
+repo root. Any subsequent command run inside that tree (we walk up from cwd
+looking for `.gplay/`) defaults its target to that package — so `--package`
+becomes optional.
+
+`--package` always overrides.
+
+### `.gplay/` contents
+
+- `project.json` — package pinning. **Commit this.**
+- `edit-<package>.json` — open explicit Edit ID (see `CONTEXT.md` → Edit).
+  **Gitignore this** — it's transient and per-developer.
+
+---
+
+## 3. Release commands
+
+### Status defaults (see ADR-0002)
+
+| Target track | Default status | Default userFraction |
+|---|---|---|
+| `production` | `draft` | — |
+| `internal` / `alpha` / `beta` / closed | `completed` | `1.0` |
+
+Explicit overrides: `--complete`, `--staged <fraction>`, `--draft`.
+
+### `--track` is passthrough
+
+Any string is accepted. The four standard tracks (`internal`, `alpha`, `beta`,
+`production`) are documented but not enforced — closed-test tracks with
+custom names work out of the box.
+
+### Release notes
+
+Two flags, mutually exclusive:
+
+- `--release-notes "<text>"` — single text applied to the app's
+  `defaultLanguage`.
+- `--release-notes-dir <dir>` — one file per locale (`en-US.txt`, `fr-FR.txt`,
+  ...). Optional `default.txt` is used as fallback for locales without a
+  dedicated file.
+
+### Targeting a release
+
+- `releases upload <aab>` → versionCode is read from the AAB; never a flag.
+- `releases promote/rollout/halt/resume/complete --track <X>` → targets the
+  **latest** release on the track. Override with `--version-code N` or
+  `--release-name <name>`. If two releases coexist on the track (e.g.
+  `inProgress` + `halted`) and no flag is passed, refuse with exit code `60`
+  rather than guess.
+
+### Rollout state machine
+
+Each transition is its own verb:
+
+- `gplay releases rollout --to <fraction>` — set userFraction (status becomes
+  `inProgress` if it wasn't already)
+- `gplay releases halt`
+- `gplay releases resume`
+- `gplay releases complete` — userFraction → 1.0, status → `completed`
+
+---
+
+## 4. Edit lifecycle
+
+### Implicit edits (default)
+
+`begin → upload/patch → commit` is wrapped inside each write command. On any
+failure after `begin`, the Edit is **auto-discarded** before the error
+propagates. Pass `--keep-edit-on-failure` to bypass cleanup when debugging.
+
+### Explicit edits
+
+`gplay edits begin / commit / discard`. The Edit ID is persisted to
+`.gplay/edit-<package>.json` so subsequent write commands in the same cwd
+reuse it. No auto-discard in this mode — explicit `commit` or `discard` is
+required.
+
+---
+
+## 5. Reviews
+
+- API hard limit: **only the last 7 days** are exposed. Surfaced in `--help`
+  and as a stderr warning when the result set hits the window edge.
+- Auto-pagination is on by default; `--limit N` caps the result count, default
+  is no cap.
+- `--stars` (e.g. `1`, `1-2`, `1,3,5`) is a **client-side** filter — the API
+  has no server-side rating filter.
+- Long-history retrieval (CSV reports in the GCS bucket) is in `BACKLOG.md`.
+
+---
+
+## 6. Apps registry (workaround for missing `apps.list` endpoint)
+
+The Google Play Developer API has no `apps.list`, so `gplay apps list` reads a
+**local registry**:
+
+- Populated by `gplay init --package X` (auto-adds) or `gplay apps add X`
+- Stored in `~/.gplay/config.json` alongside Accounts
+- `gplay apps info --package X` still hits the live API (via `edits.details`
+  etc.) — only enumeration is local
+
+Backlog: real discovery via Cloud Resource Manager + IAM (see `BACKLOG.md`).
+
+---
+
+## 7. Output
+
+### Modes
+
+- TTY → `table` (default)
+- Pipe / non-TTY → `json` (default)
+- Override: `--output table|json|markdown`
+
+### `--output json` is API pass-through (ADR-0003)
+
+The JSON output mirrors the Google Play Developer API's native response
+shape, including its per-endpoint envelope (`{"reviews":[...]}`,
+`{"tracks":[...]}`, etc.). Exception: `apps list` (no API source) uses
+`{"apps":[...]}`.
+
+### `--output table`
+
+Columns are chosen for readability — not pass-through. Each command's
+default columns are documented in its `--help`. `--columns col1,col2,...`
+lets the caller override.
+
+### Errors
+
+Errors are **never** pass-through. Shape on stderr:
+
+```json
+{"error":{"code":"<symbolic>","message":"<human>","details":{...}}}
+```
+
+The upstream API payload, if any, is preserved inside `details`.
+
+---
+
+## 8. Verbosity and logging
+
+- **stdout** carries data only (the requested output).
+- **stderr** carries logs, progress, warnings, errors. Always.
+- `-v` / `--verbose` → info level on stderr (flow steps, edit ID, deduced
+  versionCode, ...).
+- `-vv` → debug level (HTTP method + URL, headers, truncated bodies).
+- `-q` / `--quiet` → only errors on stderr.
+- Progress bars (e.g. AAB upload) are active **only in TTY** and disabled by
+  `--quiet`.
+- Color is auto in TTY, disabled in pipes, disabled if `NO_COLOR` env or
+  `--no-color` is set.
+
+---
+
+## 9. Exit codes
+
+| Code | Meaning | Retry-safe? |
+|---|---|---|
+| `0` | Success | — |
+| `1` | Generic error (fallback when nothing more specific fits) | No |
+| `2` | CLI misuse (unknown flag, bad value, missing required arg) | No |
+| `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
+| `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
+| `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
+| `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
+| `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
+| `50` | Network (timeout, DNS, refused) | **Yes** |
+| `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
+
+Documented in `gplay help exit-codes` (or equivalent) and in `docs/CI_CD.md`
+when that exists.

@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose a new command, flag, or behavior
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: please check [`docs/BACKLOG.md`](../docs/BACKLOG.md).
+        Many features are explicitly deferred — your request may already be tracked there, in which case a 👍 on the existing item is the right signal.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not the proposed solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Command name, flags, expected output. The more specific the better.
+      render: shell
+      placeholder: "gplay <new-command> --flag value"
+    validations:
+      required: true
+  - type: textarea
+    id: api
+    attributes:
+      label: Underlying Google Play API endpoint(s)
+      description: Link to the relevant `developers.google.com/android-publisher/api-ref/rest` page(s).
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: Is this in the MVP scope or backlog territory?
+      options:
+        - MVP-aligned (auth, apps, releases, tracks, reviews)
+        - Backlog item (vitals, IAP, subs, metadata, images, ...)
+        - Not sure
+    validations:
+      required: true

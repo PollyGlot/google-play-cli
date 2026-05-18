@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel in-flight runs on the same ref to save minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Docs sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Smoke-check: every ADR / doc referenced from key files actually exists.
+      - name: Verify doc cross-references
+        run: |
+          set -euo pipefail
+          missing=0
+          for f in \
+            CLAUDE.md \
+            AGENTS.md \
+            CONTEXT.md \
+            CONTRIBUTING.md \
+            LICENSE \
+            docs/DESIGN.md \
+            docs/BACKLOG.md \
+            docs/CI_CD.md \
+            docs/adr/0001-credential-storage.md \
+            docs/adr/0002-safe-production-defaults.md \
+            docs/adr/0003-json-passthrough.md
+          do
+            if [ ! -f "$f" ]; then
+              echo "::error file=$f::missing required file"
+              missing=$((missing+1))
+            fi
+          done
+          exit $missing
+
+  # Placeholder — activated once go.mod exists. Until then the job exits early.
+  go:
+    name: Go build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if no go.mod yet
+        id: gomod
+        run: |
+          if [ -f go.mod ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::go.mod not present yet — skipping Go build/test."
+          fi
+      - if: steps.gomod.outputs.present == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+      - if: steps.gomod.outputs.present == 'true'
+        run: go vet ./...
+      - if: steps.gomod.outputs.present == 'true'
+        run: go test ./...

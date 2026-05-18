@@ -1,0 +1,32 @@
+# Build output
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Go
+vendor/
+*.prof
+coverage.txt
+coverage.html
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# gplay-local state (transient, per-developer)
+.gplay/edit-*.json
+
+# Secrets — never commit
+*.json.bak
+service_account*.json
+service-account*.json
+!service_account.example.json
+
+# Goreleaser snapshots
+goreleaser.snapshot/

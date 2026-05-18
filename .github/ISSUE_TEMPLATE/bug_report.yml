@@ -1,0 +1,61 @@
+name: Bug report
+description: Something isn't working as documented
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        Please search existing issues first — your report may already be tracked.
+  - type: input
+    id: version
+    attributes:
+      label: gplay version
+      description: Output of `gplay --version`
+      placeholder: "gplay v0.1.0 (abc123, 2026-05-19)"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / arch
+      placeholder: "macOS 14.4 / arm64"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      description: Full invocation. Redact secrets and package names if needed.
+      render: shell
+      placeholder: "gplay releases upload app.aab --package com.example.myapp --track internal"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full stderr output, exit code, and any stack trace.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce (optional)
+      placeholder: "1. ... \n2. ... \n3. ..."
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
+        - label: I redacted any service-account JSON, tokens, or other secrets from the output.
+          required: true
