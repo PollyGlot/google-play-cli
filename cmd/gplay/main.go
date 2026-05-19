@@ -1,8 +1,19 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+
+	"github.com/spf13/cobra"
+
+	"github.com/PollyGlot/google-play-cli/commands/auth/login"
+	"github.com/PollyGlot/google-play-cli/commands/auth/status"
+	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
+	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
+	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 )
 
 // Build-time variables injected by GoReleaser via -ldflags.
@@ -13,17 +24,102 @@ var (
 )
 
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "--version", "-v", "version":
-			fmt.Printf("gplay %s (%s, %s)\n", version, commit, date)
-			return
-		}
+	configDir, err := defaultConfigDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gplay: %v\n", err)
+		os.Exit(1)
+	}
+	rootOpts := rootOptions{
+		ConfigPath:   filepath.Join(configDir, "config.json"),
+		KeystoreRoot: filepath.Join(configDir, "accounts"),
 	}
 
-	fmt.Println("gplay — Google Play Developer CLI")
-	fmt.Println()
-	fmt.Println("This is a placeholder binary. Real commands are under construction.")
-	fmt.Println("See https://github.com/PollyGlot/google-play-cli for status and design docs.")
-	os.Exit(0)
+	if err := newRootCmd(rootOpts).Execute(); err != nil {
+		os.Exit(exitCode(err))
+	}
+}
+
+type rootOptions struct {
+	ConfigPath   string
+	KeystoreRoot string
+}
+
+func newRootCmd(opts rootOptions) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "gplay",
+		Short: "Google Play Developer CLI",
+		Long: `gplay — fast, lightweight CLI for the Google Play Developer API.
+
+Reads service-account credentials, mints OAuth2 tokens, and drives the
+publishing surface (releases, tracks, reviews, vitals). Designed to
+replace Fastlane on Android CI pipelines.`,
+		SilenceUsage:  true,
+		SilenceErrors: false,
+	}
+
+	auth := &cobra.Command{
+		Use:   "auth",
+		Short: "Manage gplay credentials",
+	}
+	auth.AddCommand(login.NewCommand(login.Options{
+		ConfigPath:   opts.ConfigPath,
+		KeystoreRoot: opts.KeystoreRoot,
+	}))
+	auth.AddCommand(status.NewCommand(status.Options{
+		ConfigPath:   opts.ConfigPath,
+		KeystoreRoot: opts.KeystoreRoot,
+	}))
+	root.AddCommand(auth)
+
+	root.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print gplay version",
+		Run: func(cmd *cobra.Command, _ []string) {
+			fmt.Fprintf(cmd.OutOrStdout(), "gplay %s (%s, %s)\n", version, commit, date)
+		},
+	})
+
+	return root
+}
+
+// defaultConfigDir returns the canonical gplay config directory per the PRD:
+//
+//   - Linux:        $XDG_CONFIG_HOME/gplay (or ~/.config/gplay)
+//   - macOS, Win:   ~/.gplay (deliberately NOT os.UserConfigDir's
+//     ~/Library/Application Support or %AppData% — gplay sits next to
+//     other dotfile-style dev tooling)
+func defaultConfigDir() (string, error) {
+	if runtime.GOOS == "linux" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(dir, "gplay"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".gplay"), nil
+}
+
+// exitCode maps the typed errors raised by the auth modules to the semantic
+// exit codes documented in docs/DESIGN.md §9.
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	var mfe *serviceaccount.MissingFieldError
+	if errors.As(err, &mfe) {
+		return 10
+	}
+	var ae *token.AuthError
+	if errors.As(err, &ae) {
+		return 10
+	}
+	if errors.Is(err, resolver.ErrNoActive) {
+		return 10
+	}
+	return 1
 }
