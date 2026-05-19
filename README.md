@@ -12,9 +12,6 @@ A fast, lightweight, scriptable CLI for the **Google Play Developer API**.
 Replace Fastlane/Ruby on Android CI pipelines and enable autonomous app
 administration from your terminal, IDE, or AI agent.
 
-Inspired by [`asc`](https://github.com/rorkai/App-Store-Connect-CLI) (the App
-Store Connect CLI by rorkai). Same philosophy, applied to the Play side.
-
 > **Status: pre-1.0.** The MVP surface is being implemented. Expect breaking
 > changes. See [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally
 > out of scope today.
@@ -94,8 +91,9 @@ the decisions are pinned in place so contributors and agents converge:
 ## Skills repo (planned)
 
 Agent skills that drive `gplay` from natural-language prompts will live in a
-companion repo: `PollyGlot/google-play-cli-skills`. Same pattern as
-[`asc skills`](https://github.com/rorkai/app-store-connect-cli-skills).
+companion repo: `PollyGlot/google-play-cli-skills`. Each skill is a folder
+with a `SKILL.md` file that documents the intent, the gplay commands it
+runs, and the safety rails it enforces.
 
 ## Contributing
 

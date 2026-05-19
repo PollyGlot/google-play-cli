@@ -18,7 +18,7 @@ Tout ce qui suit est **hors MVP**.
 
 ### Listings textuels — `edits.listings`
 Titre, description courte, description longue, vidéo YouTube, par locale.
-**Pourquoi plus tard :** remplace `fastlane supply` côté texte, utile mais pas bloquant pour un CI qui ne fait qu'uploader des builds. Souvent piloté par un repo séparé (PollyGlot fait ça via `asc metadata` côté iOS — équivalent Android à venir).
+**Pourquoi plus tard :** remplace `fastlane supply` côté texte, utile mais pas bloquant pour un CI qui ne fait qu'uploader des builds. Souvent piloté par un repo de metadata canonique séparé du repo de code, à concevoir une fois le MVP stable.
 
 ### Images de store — `edits.images`
 Icône, feature graphic, screenshots phone/tablet/TV/Wear/Chromebook, promo graphics.
@@ -62,11 +62,11 @@ Créer des tracks closed nommés (`qa-team`, `external-beta`...) et y gérer la 
 
 ### IAP one-shot — `inappproducts`
 CRUD des produits in-app non-abonnement.
-**Pourquoi plus tard :** gros sous-domaine. Côté iOS, équivalent est `asc iap` — pattern à porter une fois MVP stable.
+**Pourquoi plus tard :** gros sous-domaine (CRUD complet + pricing par territoire). Sera un module à part entière post-MVP.
 
 ### Subscriptions v2 — `monetization.subscriptions` + `basePlans` + `offers`
 Abonnements, base plans, offers, pricing par territoire.
-**Pourquoi plus tard :** API très récente et complexe (3 niveaux imbriqués). Gros morceau à part entière, mérite son propre module et probablement sa propre paire de skills `gplay-subscription-management` + sync RevenueCat (parité avec `asc-revenuecat-catalog-sync`).
+**Pourquoi plus tard :** API très récente et complexe (3 niveaux imbriqués). Gros morceau à part entière, mérite son propre module et probablement sa propre paire de skills `gplay-subscription-management` + un skill de synchronisation avec RevenueCat.
 
 ### Vérification d'achats — `purchases.products` / `purchases.subscriptionsv2` / `purchases.voidedpurchases`
 Validation côté serveur des tokens de purchase.
@@ -157,5 +157,5 @@ Mapping détaillé `fastlane supply` ↔ `gplay`, options par options, avec exem
 **Pourquoi plus tard :** patterns identiques modulo l'injection de secrets. Ajouter les exemples concrets quand un user d'un provider donné en a besoin.
 
 ### Snapshot Discovery doc offline (`docs/discovery/androidpublisher_v3.json`)
-Google publie un Discovery doc machine-readable pour l'API. Le checker en local accélère le lookup d'endpoints pour les agents.
-**Pourquoi plus tard :** marginal au MVP. Utile dès qu'on commence à étendre la couverture API. Pattern hérité d'asc qui fait la même chose avec OpenAPI Apple.
+Google publie un Discovery doc machine-readable pour l'API. L'embarquer dans le repo accélère le lookup d'endpoints pour les agents (validation de flags, génération de skeleton, etc.) sans hit réseau.
+**Pourquoi plus tard :** marginal au MVP. Utile dès qu'on commence à étendre la couverture API et que les agents font du code-gen contre le schéma.

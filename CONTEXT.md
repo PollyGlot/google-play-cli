@@ -5,7 +5,7 @@ Glossary of canonical terms for this project. Implementation details belong else
 ## Terms
 
 ### gplay
-The binary name of this CLI. Short, descriptive, parity with `asc` (Apple's equivalent). Distinct from the existing TypeScript alternative `gpc` by yasserstudio and from `gpc` (GNU Pascal Compiler).
+The binary name of this CLI. Short, easy to type in CI scripts. Distinct from the existing TypeScript alternative `gpc` by yasserstudio and from `gpc` (GNU Pascal Compiler).
 
 ### Edit
 A transactional unit on the Google Play Developer API. An edit is opened on a specific package, accumulates changes (metadata, listings, releases, tracks), and is committed atomically. Edits expire after ~24h and are exclusive per app (only one open at a time).

@@ -91,8 +91,11 @@ make install-hooks   # Local pre-commit hook
 
 Tests must not make outbound network calls except in `test-e2e`. The mock
 pattern is `http.Client{Transport: testRoundTripper(...)}` injected via
-`option.WithHTTPClient(...)` when constructing the Google Play client. See
-asc's `internal/asc/client_core_transport_test.go` for the canonical idiom.
+`option.WithHTTPClient(...)` when constructing the Google Play client. A
+`testRoundTripper` is a function type implementing `http.RoundTripper`:
+each test wires up the function that returns the synthetic response it
+needs. No mock generation, no wrapper interface — just the standard Go
+HTTP transport boundary.
 
 ## Adding a new command
 
@@ -130,5 +133,5 @@ all API calls. For live exploratory runs (not in CI), point at a throwaway
 Google Cloud project + a throwaway Play Console app, and never mutate
 production apps with the test service account.
 
-Once an "ASC Test"–style throwaway app exists for `gplay`, document its
-package name here.
+Once a throwaway test app exists for `gplay`, document its package name
+here so contributors and agents know what's safe to mutate.
