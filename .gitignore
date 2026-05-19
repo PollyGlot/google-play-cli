@@ -11,10 +11,13 @@ vendor/
 coverage.txt
 coverage.html
 
-# Editor / OS
+# Editor / OS / agents
 .DS_Store
 .idea/
 .vscode/
+.claude/
+.cursor/
+.aider*
 *.swp
 *.swo
 *~

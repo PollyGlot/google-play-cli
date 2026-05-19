@@ -1,6 +1,8 @@
 <!--
-Thanks for the contribution. A short description goes a long way.
-For anything bigger than a typo, an issue should exist first — link it below.
+Thanks for the contribution!
+Before opening:
+  - Read AGENTS.md and docs/DESIGN.md if you're touching a CLI convention.
+  - For anything bigger than a typo, an issue should exist first — link it below.
 -->
 
 ## Summary
@@ -9,26 +11,29 @@ For anything bigger than a typo, an issue should exist first — link it below.
 
 -
 
-## Related issue
+## Linked issue
 
-<!-- "Closes #123" / "Refs #123" — or "n/a" for trivial PRs. -->
+<!-- "Closes #123" / "Refs #123" — or "n/a" for trivial PRs (typos, docs). -->
 
-## Type of change
+## Test plan
 
-- [ ] Bug fix (non-breaking)
-- [ ] New feature (non-breaking)
-- [ ] Breaking change
-- [ ] Docs / chore / refactor (no behavior change)
+<!--
+How did you verify this works?
+For CLI changes, include the actual command you ran and the relevant output:
+
+```
+$ gplay releases upload app.aab --track internal --release-notes-dir ./whatsnew
+✓ uploaded versionCode 142
+✓ track 'internal' updated
+```
+
+If there's no obvious way to test (refactor, docs), say so.
+-->
 
 ## Checklist
 
-- [ ] I read [`AGENTS.md`](../AGENTS.md) and confirmed this PR follows the conventions in [`docs/DESIGN.md`](../docs/DESIGN.md).
-- [ ] If this introduces a new canonical term, I updated [`CONTEXT.md`](../CONTEXT.md).
-- [ ] If this makes an irreversible / surprising decision, I added an ADR under [`docs/adr/`](../docs/adr/).
-- [ ] If this defers work, I added an entry to [`docs/BACKLOG.md`](../docs/BACKLOG.md).
-- [ ] `make format` && `make lint` && `make test` pass locally.
-- [ ] `--help` output for changed commands is up to date.
-
-## Notes for reviewers
-
-<!-- Anything worth pointing at: tricky edge cases, intentional non-goals, ... -->
+- [ ] CI is green (`make format && make lint && make test`).
+- [ ] Behavior change is reflected in `--help` text and (if cross-command) in [`docs/DESIGN.md`](../blob/main/docs/DESIGN.md).
+- [ ] New canonical term → added to [`CONTEXT.md`](../blob/main/CONTEXT.md).
+- [ ] Irreversible / surprising decision → ADR added under [`docs/adr/`](../blob/main/docs/adr/).
+- [ ] Deferred work → noted in [`docs/BACKLOG.md`](../blob/main/docs/BACKLOG.md).

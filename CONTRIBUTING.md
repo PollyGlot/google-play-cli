@@ -43,12 +43,40 @@ Branch naming, loose convention:
 
 ## Commit messages
 
-Conventional Commits style is preferred but not strictly enforced (yet):
+[Conventional Commits](https://www.conventionalcommits.org/) style is
+**recommended but not enforced**. PR titles follow the same convention
+— GitHub squash-merges them onto `main`, so a clean title becomes a clean
+log entry and feeds the auto-generated release notes (`gh release ...
+--generate-notes`).
+
+Prefixes we use:
+
+| Prefix | When |
+|---|---|
+| `feat:` | New user-facing functionality, command, or flag |
+| `fix:` | Bug fix that changes user-facing behavior |
+| `docs:` | README, ADRs, AGENTS.md, glossary, comments-only changes |
+| `refactor:` | Internal restructuring with no behavior change |
+| `test:` | Tests added or improved |
+| `chore:` | Tooling, CI, dependencies, release plumbing |
+| `perf:` | Performance change |
+| `build:` | Build system or distribution (`.goreleaser.yaml`, `Makefile`) |
+
+Optional scope in parentheses points at the affected area, matching the
+`area:*` labels: `feat(releases): ...`, `fix(auth): ...`.
+
+A `!` after the type (or a `BREAKING CHANGE:` footer) marks a
+backwards-incompatible change — those PRs also get the `breaking-change`
+label.
+
+Examples:
 
 ```
-feat: add --staged flag to releases promote
-fix: handle malformed AAB upload with exit code 20
+feat(releases): add --staged flag to releases promote
+fix(auth): surface missing androidpublisher scope with exit code 10
 docs: clarify safe-defaults rule on production track
+chore(ci): bump golangci-lint to v6
+feat(tracks)!: rename --percentage to --rollout in releases promote
 ```
 
 ## What goes where

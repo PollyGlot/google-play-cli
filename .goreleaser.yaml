@@ -1,0 +1,82 @@
+# GoReleaser configuration for gplay.
+# See https://goreleaser.com for full docs. Local snapshot: `make release-snapshot`.
+
+version: 2
+
+project_name: gplay
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gplay
+    main: ./cmd/gplay
+    binary: gplay
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: gplay
+    formats: [tar.gz]
+    name_template: "gplay_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - CONTEXT.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github-native
+
+release:
+  github:
+    owner: PollyGlot
+    name: google-play-cli
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
+  header: |
+    ## gplay {{.Tag}}
+
+    Install:
+    ```bash
+    brew install PollyGlot/tap/gplay
+    # or
+    curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
+    ```
+
+brews:
+  - name: gplay
+    repository:
+      owner: PollyGlot
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/PollyGlot/google-play-cli"
+    description: "Fast, lightweight CLI for the Google Play Developer API."
+    license: "MIT"
+    test: |
+      system "#{bin}/gplay", "version"
+    install: |
+      bin.install "gplay"

@@ -1,12 +1,18 @@
 name: Bug report
 description: Something isn't working as documented
-labels: ["bug", "triage"]
+title: "bug: "
+labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for taking the time to report a bug.
-        Please search existing issues first — your report may already be tracked.
+
+        **Before filing:**
+        - Search [existing issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue).
+        - Run `gplay auth doctor --package <your.package>` — the most common "it doesn't work" cause is a service account that wasn't granted access to the app in Play Console.
+        - Cross-check [`docs/BACKLOG.md`](../blob/main/docs/BACKLOG.md) — many features are intentionally out of MVP scope.
+
   - type: input
     id: version
     attributes:
@@ -15,41 +21,82 @@ body:
       placeholder: "gplay v0.1.0 (abc123, 2026-05-19)"
     validations:
       required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install gplay?
+      options:
+        - Homebrew (brew install)
+        - install.sh script
+        - go install
+        - Built from source
+        - GitHub Releases binary (manual download)
+    validations:
+      required: true
+
   - type: input
-    id: os
+    id: platform
     attributes:
       label: OS / arch
       placeholder: "macOS 14.4 / arm64"
     validations:
       required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - auth (service account / login / doctor)
+        - apps (list / info / registry)
+        - releases (upload / promote / rollout / halt / resume / complete)
+        - tracks
+        - reviews
+        - other / not sure
+    validations:
+      required: true
+
   - type: textarea
     id: command
     attributes:
       label: Command you ran
-      description: Full invocation. Redact secrets and package names if needed.
+      description: Full invocation. **Redact secrets** (service account JSON, tokens) and any sensitive package names.
       render: shell
       placeholder: "gplay releases upload app.aab --package com.example.myapp --track internal"
     validations:
       required: true
+
   - type: textarea
     id: expected
     attributes:
       label: Expected behavior
     validations:
       required: true
+
   - type: textarea
     id: actual
     attributes:
       label: Actual behavior
-      description: Include the full stderr output, exit code, and any stack trace.
+      description: Include the **full stderr output**, the exit code, and any stack trace.
       render: shell
     validations:
       required: true
+
+  - type: textarea
+    id: debug
+    attributes:
+      label: Debug output (recommended)
+      description: Re-run the command with `-vv` and paste the output here. Redact secrets.
+      render: shell
+      placeholder: "gplay <command> -vv ..."
+
   - type: textarea
     id: reproduce
     attributes:
-      label: Steps to reproduce (optional)
-      placeholder: "1. ... \n2. ... \n3. ..."
+      label: Steps to reproduce (optional but helpful)
+      placeholder: "1. ...\n2. ...\n3. ..."
+
   - type: checkboxes
     id: terms
     attributes:
@@ -57,5 +104,5 @@ body:
       options:
         - label: I searched existing issues and this isn't a duplicate.
           required: true
-        - label: I redacted any service-account JSON, tokens, or other secrets from the output.
+        - label: I redacted any service-account JSON, OAuth tokens, or other secrets from the output above.
           required: true

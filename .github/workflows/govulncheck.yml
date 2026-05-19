@@ -1,0 +1,32 @@
+name: govulncheck
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'  # Weekly, Monday 04:17 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: '1.22'
+          go-package: './...'

@@ -5,23 +5,55 @@ on:
   push:
     branches: [main]
 
-# Cancel in-flight runs on the same ref to save minutes.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  build:
+    name: Build, lint, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: gofmt
+        run: |
+          diff <(gofmt -d .) <(echo -n) || (echo '::error::run "make format" to fix formatting'; exit 1)
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+      - name: test
+        run: go test -race ./...
+
+      - name: build
+        run: go build ./cmd/gplay
+
   docs:
     name: Docs sanity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      # Smoke-check: every ADR / doc referenced from key files actually exists.
-      - name: Verify doc cross-references
+      - name: Verify required files exist
         run: |
           set -euo pipefail
           missing=0
@@ -30,7 +62,10 @@ jobs:
             AGENTS.md \
             CONTEXT.md \
             CONTRIBUTING.md \
+            CODE_OF_CONDUCT.md \
             LICENSE \
+            README.md \
+            SUPPORT.md \
             docs/DESIGN.md \
             docs/BACKLOG.md \
             docs/CI_CD.md \
@@ -44,28 +79,3 @@ jobs:
             fi
           done
           exit $missing
-
-  # Placeholder — activated once go.mod exists. Until then the job exits early.
-  go:
-    name: Go build & test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Skip if no go.mod yet
-        id: gomod
-        run: |
-          if [ -f go.mod ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::go.mod not present yet — skipping Go build/test."
-          fi
-      - if: steps.gomod.outputs.present == 'true'
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-          cache: true
-      - if: steps.gomod.outputs.present == 'true'
-        run: go vet ./...
-      - if: steps.gomod.outputs.present == 'true'
-        run: go test ./...
