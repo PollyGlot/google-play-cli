@@ -4,8 +4,6 @@ package login
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -15,14 +13,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// Options configures where the command reads and writes state, and where it
-// renders output. main.go fills these in from os.UserConfigDir; tests pass
-// t.TempDir paths.
+// Options pins where the command reads and writes state. Output streams are
+// not part of Options — cobra's SetOut/SetErr (with os.Stdout/os.Stderr as
+// the default) is the canonical wiring.
 type Options struct {
 	ConfigPath   string
 	KeystoreRoot string
-	Stdout       io.Writer
-	Stderr       io.Writer
 }
 
 // NewCommand returns the cobra command for `gplay auth login`.
@@ -41,23 +37,16 @@ without an explicit --account flag.
 The credential is stored under the active keystore backend (file-only in
 this MVP slice; OS keystores arrive in a follow-up).`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(opts, saPath, name)
+			return run(cmd, opts, saPath, name)
 		},
 	}
 	cmd.Flags().StringVar(&saPath, "service-account", "", "path to a Google Cloud service-account JSON (required)")
 	cmd.Flags().StringVar(&name, "name", "", "friendly Account name (default: derived from client_email)")
 	_ = cmd.MarkFlagRequired("service-account")
-
-	if opts.Stdout != nil {
-		cmd.SetOut(opts.Stdout)
-	}
-	if opts.Stderr != nil {
-		cmd.SetErr(opts.Stderr)
-	}
 	return cmd
 }
 
-func run(opts Options, saPath, name string) error {
+func run(cmd *cobra.Command, opts Options, saPath, name string) error {
 	sa, err := serviceaccount.Load(saPath)
 	if err != nil {
 		return err
@@ -83,19 +72,13 @@ func run(opts Options, saPath, name string) error {
 		return err
 	}
 
-	stderr := opts.Stderr
-	if stderr == nil {
-		stderr = os.Stderr
-	}
-	fmt.Fprintf(stderr, "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
+	fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
 	return nil
 }
 
-// deriveName returns the left-of-@ part of a service-account email, suitable
-// as a friendly Account name. Empty string passes through.
+// deriveName returns the left-of-@ part of a service-account email. Returns
+// the input unchanged when no '@' is present.
 func deriveName(email string) string {
-	if i := strings.IndexByte(email, '@'); i > 0 {
-		return email[:i]
-	}
-	return email
+	local, _, _ := strings.Cut(email, "@")
+	return local
 }

@@ -6,8 +6,6 @@ package status
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -17,12 +15,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// Options injects state locations and writers so tests stay isolated.
+// Options pins where the command reads state. Output streams are wired via
+// cobra's SetOut/SetErr (with os.Stdout/os.Stderr as the default).
 type Options struct {
 	ConfigPath   string
 	KeystoreRoot string
-	Stdout       io.Writer
-	Stderr       io.Writer
 }
 
 // NewCommand returns the cobra command for `gplay auth status`.
@@ -32,17 +29,10 @@ func NewCommand(opts Options) *cobra.Command {
 		Use:   "status",
 		Short: "Print the active Account and where its credential lives",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(opts, output)
+			return run(cmd, opts, output)
 		},
 	}
 	cmd.Flags().StringVar(&output, "output", "table", "output format: table or json")
-
-	if opts.Stdout != nil {
-		cmd.SetOut(opts.Stdout)
-	}
-	if opts.Stderr != nil {
-		cmd.SetErr(opts.Stderr)
-	}
 	return cmd
 }
 
@@ -52,7 +42,7 @@ type payload struct {
 	Path        string `json:"path"`
 }
 
-func run(opts Options, output string) error {
+func run(cmd *cobra.Command, opts Options, output string) error {
 	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
 	if err != nil {
 		return err
@@ -63,6 +53,7 @@ func run(opts Options, output string) error {
 	if err != nil {
 		return err
 	}
+	// Active() can only be ok here: Resolve already short-circuited otherwise.
 	active, _ := cfg.Active()
 	p := payload{
 		Name:        active.Name,
@@ -70,17 +61,13 @@ func run(opts Options, output string) error {
 		Path:        filepath.Join(opts.KeystoreRoot, active.Name+".json"),
 	}
 
-	stdout := opts.Stdout
-	if stdout == nil {
-		stdout = os.Stdout
-	}
-
+	stdout := cmd.OutOrStdout()
 	switch output {
 	case "json":
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(p)
-	case "table", "":
+	case "table":
 		_, err := fmt.Fprintf(stdout, "Active account: %s\nClient email:   %s\nPath:           %s\n",
 			p.Name, p.ClientEmail, p.Path)
 		return err

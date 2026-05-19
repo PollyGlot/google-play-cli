@@ -39,19 +39,23 @@ func newCmd(t *testing.T) (*bytes.Buffer, *bytes.Buffer, login.Options) {
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
 	}
-	var stdout, stderr bytes.Buffer
-	opts.Stdout = &stdout
-	opts.Stderr = &stderr
-	return &stdout, &stderr, opts
+	return &bytes.Buffer{}, &bytes.Buffer{}, opts
+}
+
+func runCmd(t *testing.T, opts login.Options, stdout, stderr *bytes.Buffer, args ...string) error {
+	t.Helper()
+	cmd := login.NewCommand(opts)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs(args)
+	return cmd.Execute()
 }
 
 func TestLogin_validSA_persistsAndActivates(t *testing.T) {
 	saPath := writeSA(t, validSAJSON)
-	_, stderr, opts := newCmd(t)
+	stdout, stderr, opts := newCmd(t)
 
-	cmd := login.NewCommand(opts)
-	cmd.SetArgs([]string{"--service-account", saPath})
-	if err := cmd.Execute(); err != nil {
+	if err := runCmd(t, opts, stdout, stderr, "--service-account", saPath); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -83,13 +87,9 @@ func TestLogin_validSA_persistsAndActivates(t *testing.T) {
 func TestLogin_malformedSA_returnsTypedErrorWithFieldHint(t *testing.T) {
 	body := strings.Replace(validSAJSON, `"playci@test-proj.iam.gserviceaccount.com"`, `""`, 1)
 	saPath := writeSA(t, body)
-	_, _, opts := newCmd(t)
+	stdout, stderr, opts := newCmd(t)
 
-	cmd := login.NewCommand(opts)
-	cmd.SilenceUsage = true
-	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"--service-account", saPath})
-	err := cmd.Execute()
+	err := runCmd(t, opts, stdout, stderr, "--service-account", saPath)
 	if err == nil {
 		t.Fatal("Execute: expected error on missing client_email, got nil")
 	}
@@ -103,21 +103,15 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	v1 := strings.Replace(validSAJSON, `"-----BEGIN PRIVATE KEY-----\nMIIBCG\n-----END PRIVATE KEY-----\n"`, `"v1KEY"`, 1)
 	v2 := strings.Replace(validSAJSON, `"-----BEGIN PRIVATE KEY-----\nMIIBCG\n-----END PRIVATE KEY-----\n"`, `"v2KEY"`, 1)
 
-	_, _, opts := newCmd(t)
+	stdout, stderr, opts := newCmd(t)
 
-	// First login
 	path1 := writeSA(t, v1)
-	cmd := login.NewCommand(opts)
-	cmd.SetArgs([]string{"--service-account", path1, "--name", "shared"})
-	if err := cmd.Execute(); err != nil {
+	if err := runCmd(t, opts, stdout, stderr, "--service-account", path1, "--name", "shared"); err != nil {
 		t.Fatalf("first Execute: %v", err)
 	}
 
-	// Re-login with same --name but different content
 	path2 := writeSA(t, v2)
-	cmd = login.NewCommand(opts)
-	cmd.SetArgs([]string{"--service-account", path2, "--name", "shared"})
-	if err := cmd.Execute(); err != nil {
+	if err := runCmd(t, opts, stdout, stderr, "--service-account", path2, "--name", "shared"); err != nil {
 		t.Fatalf("re-Execute: %v", err)
 	}
 

@@ -64,14 +64,10 @@ replace Fastlane on Android CI pipelines.`,
 	auth.AddCommand(login.NewCommand(login.Options{
 		ConfigPath:   opts.ConfigPath,
 		KeystoreRoot: opts.KeystoreRoot,
-		Stdout:       os.Stdout,
-		Stderr:       os.Stderr,
 	}))
 	auth.AddCommand(status.NewCommand(status.Options{
 		ConfigPath:   opts.ConfigPath,
 		KeystoreRoot: opts.KeystoreRoot,
-		Stdout:       os.Stdout,
-		Stderr:       os.Stderr,
 	}))
 	root.AddCommand(auth)
 
@@ -89,17 +85,16 @@ replace Fastlane on Android CI pipelines.`,
 // defaultConfigDir returns the canonical gplay config directory per the PRD:
 //
 //   - Linux:        $XDG_CONFIG_HOME/gplay (or ~/.config/gplay)
-//   - macOS, Win:   ~/.gplay
+//   - macOS, Win:   ~/.gplay (deliberately NOT os.UserConfigDir's
+//     ~/Library/Application Support or %AppData% — gplay sits next to
+//     other dotfile-style dev tooling)
 func defaultConfigDir() (string, error) {
 	if runtime.GOOS == "linux" {
-		if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-			return filepath.Join(x, "gplay"), nil
-		}
-		home, err := os.UserHomeDir()
+		dir, err := os.UserConfigDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, ".config", "gplay"), nil
+		return filepath.Join(dir, "gplay"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

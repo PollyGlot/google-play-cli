@@ -22,17 +22,17 @@ const validSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-func seedActiveAccount(t *testing.T) (status.Options, *bytes.Buffer, *bytes.Buffer) {
+func newOpts(t *testing.T) status.Options {
 	t.Helper()
 	root := t.TempDir()
-	opts := status.Options{
+	return status.Options{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
 	}
-	var stdout, stderr bytes.Buffer
-	opts.Stdout = &stdout
-	opts.Stderr = &stderr
+}
 
+func seedActiveAccount(t *testing.T, opts status.Options) {
+	t.Helper()
 	be := keystore.NewFileBackend(opts.KeystoreRoot)
 	if err := be.Save("playci", []byte(validSAJSON)); err != nil {
 		t.Fatal(err)
@@ -45,15 +45,23 @@ func seedActiveAccount(t *testing.T) (status.Options, *bytes.Buffer, *bytes.Buff
 	if err := cfg.Save(opts.ConfigPath); err != nil {
 		t.Fatal(err)
 	}
-	return opts, &stdout, &stderr
+}
+
+func runCmd(t *testing.T, opts status.Options, stdout, stderr *bytes.Buffer, args ...string) error {
+	t.Helper()
+	cmd := status.NewCommand(opts)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs(args)
+	return cmd.Execute()
 }
 
 func TestStatus_table_showsNameEmailAndPath(t *testing.T) {
-	opts, stdout, _ := seedActiveAccount(t)
+	opts := newOpts(t)
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
 
-	cmd := status.NewCommand(opts)
-	cmd.SetArgs([]string{})
-	if err := cmd.Execute(); err != nil {
+	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -70,11 +78,11 @@ func TestStatus_table_showsNameEmailAndPath(t *testing.T) {
 }
 
 func TestStatus_jsonOutput_returnsStructuredPayload(t *testing.T) {
-	opts, stdout, _ := seedActiveAccount(t)
+	opts := newOpts(t)
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
 
-	cmd := status.NewCommand(opts)
-	cmd.SetArgs([]string{"--output", "json"})
-	if err := cmd.Execute(); err != nil {
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "json"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -98,20 +106,10 @@ func TestStatus_jsonOutput_returnsStructuredPayload(t *testing.T) {
 }
 
 func TestStatus_noActiveAccount_returnsErrNoActive(t *testing.T) {
-	root := t.TempDir()
-	opts := status.Options{
-		ConfigPath:   filepath.Join(root, "config.json"),
-		KeystoreRoot: filepath.Join(root, "accounts"),
-	}
+	opts := newOpts(t)
 	var stdout, stderr bytes.Buffer
-	opts.Stdout = &stdout
-	opts.Stderr = &stderr
 
-	cmd := status.NewCommand(opts)
-	cmd.SilenceUsage = true
-	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{})
-	err := cmd.Execute()
+	err := runCmd(t, opts, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("Execute: expected error with no active account, got nil")
 	}
