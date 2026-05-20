@@ -82,7 +82,7 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 		ClientEmail: sa.ClientEmail,
 		Backend:     label,
 	}
-	if label == "file" {
+	if label == keystore.BackendFile {
 		p.Path = filepath.Join(opts.KeystoreRoot, active.Name+".json")
 	}
 
@@ -97,7 +97,7 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 			p.Name, p.ClientEmail); err != nil {
 			return err
 		}
-		if p.Backend == "keyring" {
+		if p.Backend == keystore.BackendKeyring {
 			_, err := fmt.Fprintf(stdout, "Backend:        keystore\n")
 			return err
 		}

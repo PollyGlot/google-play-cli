@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"sync"
 
@@ -16,6 +17,14 @@ import (
 // secrets in the same Keychain / Credential Manager / Secret Service ring
 // without collisions.
 const KeyringService = "gplay"
+
+// Backend labels returned by Select. Stable identifiers for the JSON
+// output of `gplay auth status` and for the -v `keystore: using <label>
+// backend` log line.
+const (
+	BackendKeyring = "keyring"
+	BackendFile    = "file"
+)
 
 // reservedIndexUser is the keyring "user" field under which the keyring
 // backend persists its own list of stored Account names. go-keyring exposes
@@ -144,10 +153,8 @@ func (b *KeyringBackend) addToIndex(name string) error {
 	if err != nil {
 		return err
 	}
-	for _, n := range names {
-		if n == name {
-			return nil
-		}
+	if slices.Contains(names, name) {
+		return nil
 	}
 	names = append(names, name)
 	sort.Strings(names)
@@ -159,13 +166,9 @@ func (b *KeyringBackend) removeFromIndex(name string) error {
 	if err != nil {
 		return err
 	}
-	out := names[:0]
-	for _, n := range names {
-		if n != name {
-			out = append(out, n)
-		}
-	}
-	if len(out) == len(names) {
+	origLen := len(names)
+	out := slices.DeleteFunc(names, func(n string) bool { return n == name })
+	if len(out) == origLen {
 		return nil
 	}
 	return b.writeIndex(out)
@@ -206,13 +209,13 @@ func Select(opts SelectOptions) (Backend, string, error) {
 		if probeKeyring(opts.Keyring) {
 			selectVal = selectResult{
 				backend: NewKeyringBackend(opts.Keyring, KeyringService),
-				label:   "keyring",
+				label:   BackendKeyring,
 			}
 			return
 		}
 		selectVal = selectResult{
 			backend: NewFileBackend(opts.FileRoot),
-			label:   "file",
+			label:   BackendFile,
 		}
 	})
 	return selectVal.backend, selectVal.label, nil
