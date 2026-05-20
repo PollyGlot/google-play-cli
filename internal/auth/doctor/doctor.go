@@ -71,6 +71,19 @@ func Run(ctx context.Context, sa *serviceaccount.ServiceAccount, httpClient *htt
 			out = append(out, NewSkippedResult(c))
 			continue
 		}
+		if c.Run == nil {
+			// A misconfigured check (no Run func) is treated as a hard
+			// failure rather than letting the call panic. Downstream
+			// checks then skip per the normal stop-on-first-failure rule.
+			out = append(out, CheckResult{
+				Name:     c.Name,
+				Passed:   false,
+				ExitCode: c.ExitCode,
+				Hint:     "check is misconfigured: missing Run function",
+			})
+			failed = true
+			continue
+		}
 		r := c.Run(ctx, sa, httpClient)
 		// Name and ExitCode are owned by the Check definition; the runner
 		// re-asserts them onto the result so a Check that forgot to set
