@@ -24,6 +24,11 @@ const validSAJSON = `{
 
 func newOpts(t *testing.T) status.Options {
 	t.Helper()
+	// Hermetic env: the status command resolves credentials via the same
+	// resolver as everywhere else, so a stray GPLAY_* in the developer's
+	// shell must not bleed into these tests.
+	t.Setenv(resolver.EnvServiceAccount, "")
+	t.Setenv(resolver.EnvAccount, "")
 	root := t.TempDir()
 	return status.Options{
 		ConfigPath:   filepath.Join(root, "config.json"),
@@ -105,7 +110,7 @@ func TestStatus_jsonOutput_returnsStructuredPayload(t *testing.T) {
 	}
 }
 
-func TestStatus_noActiveAccount_returnsErrNoActive(t *testing.T) {
+func TestStatus_noActiveAccount_returnsErrNoSource(t *testing.T) {
 	opts := newOpts(t)
 	var stdout, stderr bytes.Buffer
 
@@ -113,7 +118,7 @@ func TestStatus_noActiveAccount_returnsErrNoActive(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute: expected error with no active account, got nil")
 	}
-	if !errors.Is(err, resolver.ErrNoActive) {
-		t.Errorf("err = %v, want resolver.ErrNoActive", err)
+	if !errors.Is(err, resolver.ErrNoSource) {
+		t.Errorf("err = %v, want resolver.ErrNoSource", err)
 	}
 }
