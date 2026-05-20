@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -28,10 +29,11 @@ type Options struct {
 	Keyring keystore.KeyringAPI
 }
 
-// ErrUnknownAccount is returned when the user asks to log out of an
-// Account that is not registered. The command layer maps this to
-// exit code 2 (CLI misuse) and prints the list of known names.
-var ErrUnknownAccount = errors.New("logout: unknown account")
+// ErrUnknownAccount is the sentinel surfaced when the requested Account
+// is not registered. It aliases the canonical error from
+// internal/config so callers don't have to import both packages just to
+// check the error type. The command layer maps this to exit code 2.
+var ErrUnknownAccount = config.ErrUnknownAccount
 
 // NewCommand returns the cobra command for `gplay auth logout <name>`.
 func NewCommand(opts Options) *cobra.Command {
@@ -53,11 +55,16 @@ func run(cmd *cobra.Command, opts Options, name string, verbose bool) error {
 		return err
 	}
 
-	// Validate before touching anything so a typo doesn't half-delete state.
-	if !hasAccount(cfg, name) {
-		fmt.Fprintf(cmd.ErrOrStderr(),
-			"unknown account %q. Known accounts: %s\n", name, listAccountNames(cfg))
-		return ErrUnknownAccount
+	// We delete from the in-memory config first to surface unknown-name
+	// errors before touching the keystore. RemoveAccount returns
+	// config.ErrUnknownAccount if the name is not registered, which the
+	// command layer maps to exit 2.
+	if err := cfg.RemoveAccount(name); err != nil {
+		if errors.Is(err, config.ErrUnknownAccount) {
+			fmt.Fprintf(cmd.ErrOrStderr(),
+				"unknown account %q. Known accounts: %s\n", name, listAccountNames(cfg))
+		}
+		return err
 	}
 
 	kr := opts.Keyring
@@ -75,16 +82,13 @@ func run(cmd *cobra.Command, opts Options, name string, verbose bool) error {
 		keystore.LogBackendOnce(cmd.ErrOrStderr(), label)
 	}
 
-	// Order matters: delete the credential first so a config-write failure
-	// after credential deletion still leaves a consistent "credential gone"
-	// state. The orphan config entry would just be a stale name.
+	// Delete the credential after the config edit succeeded in memory.
+	// A keystore-not-found is tolerated: the credential may already be
+	// gone if a prior logout half-completed.
 	if err := be.Delete(name); err != nil && !errors.Is(err, keystore.ErrNotFound) {
 		return err
 	}
 
-	if err := cfg.RemoveAccount(name); err != nil {
-		return err
-	}
 	if err := cfg.Save(opts.ConfigPath); err != nil {
 		return err
 	}
@@ -93,15 +97,9 @@ func run(cmd *cobra.Command, opts Options, name string, verbose bool) error {
 	return nil
 }
 
-func hasAccount(cfg *config.Config, name string) bool {
-	for _, a := range cfg.Accounts {
-		if a.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
+// listAccountNames returns a sorted, comma-separated rendering of the
+// registered Account names, or the placeholder when the registry is
+// empty. Used in the unknown-name error hint.
 func listAccountNames(cfg *config.Config) string {
 	if len(cfg.Accounts) == 0 {
 		return "(none registered)"
@@ -111,12 +109,5 @@ func listAccountNames(cfg *config.Config) string {
 		names[i] = a.Name
 	}
 	sort.Strings(names)
-	out := ""
-	for i, n := range names {
-		if i > 0 {
-			out += ", "
-		}
-		out += n
-	}
-	return out
+	return strings.Join(names, ", ")
 }

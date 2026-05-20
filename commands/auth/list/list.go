@@ -63,15 +63,22 @@ func run(cmd *cobra.Command, opts Options, output string) error {
 	}
 }
 
+// Markers shown next to each row in `--output table` so the user can
+// spot the active Account at a glance.
+const (
+	activeMarker   = "* "
+	inactiveMarker = "  "
+)
+
 func renderTable(w io.Writer, rows []accountRow) error {
 	if len(rows) == 0 {
 		_, err := fmt.Fprintln(w, "(no accounts registered)")
 		return err
 	}
 	for _, r := range rows {
-		marker := "  "
+		marker := inactiveMarker
 		if r.Active {
-			marker = "* "
+			marker = activeMarker
 		}
 		if _, err := fmt.Fprintf(w, "%s%s\n", marker, r.Name); err != nil {
 			return err
