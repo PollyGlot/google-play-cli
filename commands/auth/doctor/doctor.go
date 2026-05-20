@@ -6,14 +6,10 @@
 // credential, hands it to internal/auth/doctor, and renders either a
 // TTY checklist or a JSON pass-through of []CheckResult.
 //
-// Scope of this slice (issue #11): non-API checks only —
-//  1. SA JSON validity
-//  2. OAuth2 access-token mint
-//  3. token carries the androidpublisher scope
-//
-// The per-package edits.insert/delete round-trip (issue #12) plugs in
-// as one more entry in doctor.DefaultChecks() without touching this
-// glue.
+// Checks 1–3 always run (issue #11 slice). For each `--package <name>`
+// passed, the per-package edits.insert/delete round-trip (issue #12) is
+// appended to the chain — once per package value, in the order given on
+// the command line.
 package doctor
 
 import (
@@ -41,10 +37,16 @@ const (
 type Options struct {
 	ConfigPath   string
 	KeystoreRoot string
+	// Keyring is the keystore backend the command will probe. If nil, the
+	// default go-keyring adapter is used. Tests inject a fake to keep the
+	// OS keystore out of unit runs.
+	Keyring keystore.KeyringAPI
 }
 
 // failedError wraps the failing CheckResult so main.go can extract the
-// authoritative ExitCode for the process.
+// authoritative ExitCode for the process. When multiple checks fail
+// (e.g. several --package values), `first` carries the *worst* failure
+// (highest non-zero ExitCode); a tie picks the earliest in order.
 type failedError struct {
 	first authdoctor.CheckResult
 }
@@ -76,7 +78,10 @@ func ExitCode(err error) int {
 
 // NewCommand returns the cobra command for `gplay auth doctor`.
 func NewCommand(opts Options) *cobra.Command {
-	var output string
+	var (
+		output   string
+		packages []string
+	)
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run ordered diagnostic checks on the active credential",
@@ -85,8 +90,10 @@ func NewCommand(opts Options) *cobra.Command {
 1. Service account JSON is valid
 2. OAuth2 access token can be minted
 3. Token carries the androidpublisher scope
+4. (Per --package) edits.insert + edits.delete round-trip on the package
 
-Checks run in order and the chain stops on the first failure;
+Checks 1–3 run once. Check 4 runs once per --package value passed (in
+order). Checks run in order and the chain stops on the first failure;
 subsequent checks are reported as skipped. Use --output json to get a
 structured []CheckResult for scripting.`,
 		// A failing doctor is a normal exit path, not a usage error;
@@ -95,48 +102,89 @@ structured []CheckResult for scripting.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(cmd, opts, output)
+			return run(cmd, opts, output, packages)
 		},
 	}
 	cmd.Flags().StringVar(&output, "output", OutputTable, "output format: table or json")
+	cmd.Flags().StringSliceVar(&packages, "package", nil,
+		"Android package name to round-trip an edits.insert+delete against; repeat for multiple packages")
 	return cmd
 }
 
-func run(cmd *cobra.Command, opts Options, output string) error {
-	results, firstFailure := executeChecks(cmd, opts)
+func run(cmd *cobra.Command, opts Options, output string, packages []string) error {
+	results, worstFailure := executeChecks(cmd, opts, packages)
 
 	if err := render(cmd.OutOrStdout(), output, results); err != nil {
 		return err
 	}
-	if firstFailure != nil {
-		return &failedError{first: *firstFailure}
+	if worstFailure != nil {
+		return &failedError{first: *worstFailure}
 	}
 	return nil
+}
+
+// buildChecks composes the ordered Check chain for this invocation:
+// the three non-API checks, plus one per-package check per --package
+// value (in command-line order).
+func buildChecks(packages []string) []authdoctor.Check {
+	checks := authdoctor.DefaultChecks()
+	for _, p := range packages {
+		checks = append(checks, authdoctor.CheckPackageAccess(p))
+	}
+	return checks
 }
 
 // executeChecks resolves the active credential and runs the doctor
 // chain. If resolution fails, a synthetic check-1 failure is produced
 // and subsequent checks are reported as Skipped — so the user always
 // sees an ordered checklist instead of an opaque pre-check error.
-func executeChecks(cmd *cobra.Command, opts Options) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
-	checks := authdoctor.DefaultChecks()
+//
+// The worst failure (highest non-zero ExitCode; earliest wins on ties)
+// is returned alongside the full result slice, so the command's exit
+// code surfaces the most actionable problem from a multi-package run.
+func executeChecks(cmd *cobra.Command, opts Options, packages []string) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
+	checks := buildChecks(packages)
 	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
 	if err != nil {
 		return synthFailure(err, checks)
 	}
-	be := keystore.NewFileBackend(opts.KeystoreRoot)
+	kr := opts.Keyring
+	if kr == nil {
+		kr = keystore.DefaultKeyring()
+	}
+	be, _, err := keystore.Select(keystore.SelectOptions{
+		Keyring:  kr,
+		FileRoot: opts.KeystoreRoot,
+	})
+	if err != nil {
+		return synthFailure(err, checks)
+	}
 	sa, err := resolver.New(cfg, be).Resolve(resolver.Inputs{})
 	if err != nil {
 		return synthFailure(err, checks)
 	}
 
 	results := authdoctor.Run(cmd.Context(), sa, nil, checks...)
+	return results, worstFailure(results)
+}
+
+// worstFailure returns a pointer to the CheckResult with the highest
+// non-zero ExitCode in results, ignoring Skipped entries. Ties are
+// broken by the earliest position in the slice (so a 403 on package #1
+// wins over a 403 on package #3 — same exit code, but the first one
+// reported is the most natural "first thing to look at").
+func worstFailure(results []authdoctor.CheckResult) *authdoctor.CheckResult {
+	var worst *authdoctor.CheckResult
 	for i := range results {
-		if !results[i].Passed {
-			return results, &results[i]
+		r := &results[i]
+		if r.Passed || r.Skipped {
+			continue
+		}
+		if worst == nil || r.ExitCode > worst.ExitCode {
+			worst = r
 		}
 	}
-	return results, nil
+	return worst
 }
 
 // synthFailure builds a result slice where check #1 fails with the

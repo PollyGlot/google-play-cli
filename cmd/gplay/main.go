@@ -96,6 +96,7 @@ replace Fastlane on Android CI pipelines.`,
 	auth.AddCommand(doctor.NewCommand(doctor.Options{
 		ConfigPath:   opts.ConfigPath,
 		KeystoreRoot: opts.KeystoreRoot,
+		Keyring:      keystore.DefaultKeyring(),
 	}))
 	root.AddCommand(auth)
 
