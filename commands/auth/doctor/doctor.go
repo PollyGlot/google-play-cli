@@ -118,7 +118,7 @@ func executeChecks(cmd *cobra.Command, opts Options) ([]authdoctor.CheckResult, 
 		return synthFailure(err, len(authdoctor.DefaultChecks()))
 	}
 	be := keystore.NewFileBackend(opts.KeystoreRoot)
-	sa, err := resolver.New(cfg, be).Resolve()
+	sa, err := resolver.New(cfg, be).Resolve(resolver.Inputs{})
 	if err != nil {
 		return synthFailure(err, len(authdoctor.DefaultChecks()))
 	}
