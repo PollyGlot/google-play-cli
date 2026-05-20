@@ -130,16 +130,15 @@ func CheckOAuth2Mint() Check {
 // production it does not (the default transport is used); in tests, the
 // fixtures inject one. The check wraps that client's transport so it
 // can observe and forward the JWT exchange request.
-func CheckScope() Check {
-	return checkScopeRequiring(token.AndroidPublisherScope)
-}
-
-// checkScopeRequiring is the test seam used by the "missing scope"
-// failure case: it lets a test assert behavior when the gplay code path
-// requests a scope different from what the doctor is verifying. End
-// users always go through CheckScope, which pins the scope to the
-// AndroidPublisher constant exported by the token package.
-func checkScopeRequiring(required string) Check {
+//
+// The optional requiredScope variadic exists for the "scope drift"
+// failure test: end users always invoke CheckScope() and the check
+// pins to token.AndroidPublisherScope.
+func CheckScope(requiredScope ...string) Check {
+	required := token.AndroidPublisherScope
+	if len(requiredScope) > 0 {
+		required = requiredScope[0]
+	}
 	return Check{
 		Name:     "Token carries the androidpublisher scope",
 		ExitCode: exitAuth,
@@ -200,9 +199,14 @@ type scopeObserver struct {
 	captured string
 }
 
+// maxObservedBody caps the in-memory copy made of an outgoing token
+// exchange body. Real JWT-exchange payloads are a few KB; capping at
+// 64 KB keeps a malformed or hostile server from blowing up memory.
+const maxObservedBody = 64 * 1024
+
 func (o *scopeObserver) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Body != nil {
-		buf, err := io.ReadAll(req.Body)
+		buf, err := io.ReadAll(io.LimitReader(req.Body, maxObservedBody))
 		if err == nil {
 			o.captured = string(buf)
 			// Restore the body so the inner transport can consume it.

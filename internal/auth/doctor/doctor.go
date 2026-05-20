@@ -40,6 +40,19 @@ type Check struct {
 	Run      func(ctx context.Context, sa *serviceaccount.ServiceAccount, httpClient *http.Client) CheckResult
 }
 
+// NewSkippedResult builds a CheckResult representing a check the runner
+// did not execute (because a prior check in the chain failed). The
+// result carries the declared Name and ExitCode so JSON and TTY
+// renderers can show an ordered checklist even for un-run steps.
+func NewSkippedResult(c Check) CheckResult {
+	return CheckResult{
+		Name:     c.Name,
+		Passed:   false,
+		Skipped:  true,
+		ExitCode: c.ExitCode,
+	}
+}
+
 // Run executes checks in order. As soon as one check fails, every
 // remaining check is reported as Skipped=true / Passed=false with its
 // declared Name and ExitCode but no work done. A nil or empty chain
@@ -55,17 +68,13 @@ func Run(ctx context.Context, sa *serviceaccount.ServiceAccount, httpClient *htt
 	failed := false
 	for _, c := range checks {
 		if failed {
-			out = append(out, CheckResult{
-				Name:     c.Name,
-				Passed:   false,
-				Skipped:  true,
-				ExitCode: c.ExitCode,
-			})
+			out = append(out, NewSkippedResult(c))
 			continue
 		}
 		r := c.Run(ctx, sa, httpClient)
-		// Name and ExitCode are owned by the check definition; the runner
-		// guarantees the result carries them even if the check forgot.
+		// Name and ExitCode are owned by the Check definition; the runner
+		// re-asserts them onto the result so a Check that forgot to set
+		// them still appears correctly in the ordered checklist.
 		if r.Name == "" {
 			r.Name = c.Name
 		}

@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -156,20 +157,11 @@ func TestCheckSAJSONValid_eachRequiredFieldMissing(t *testing.T) {
 			if r.ExitCode != 10 {
 				t.Errorf("ExitCode = %d, want 10", r.ExitCode)
 			}
-			if !contains(r.Hint, tc.field) {
+			if !strings.Contains(r.Hint, tc.field) {
 				t.Errorf("Hint = %q, want to contain %q", r.Hint, tc.field)
 			}
 		})
 	}
-}
-
-func contains(haystack, needle string) bool {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
 }
 
 func TestCheckOAuth2Mint_happyPath(t *testing.T) {
@@ -283,7 +275,7 @@ func TestCheckScope_wrongRequiredScope_fails(t *testing.T) {
 	})
 
 	wrongScope := "https://www.googleapis.com/auth/something-else"
-	results := doctor.Run(ctx, sa, nil, doctor.ExportCheckScopeRequiring(wrongScope))
+	results := doctor.Run(ctx, sa, nil, doctor.CheckScope(wrongScope))
 	if len(results) != 1 {
 		t.Fatalf("results len = %d, want 1", len(results))
 	}

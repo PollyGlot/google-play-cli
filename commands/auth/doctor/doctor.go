@@ -30,6 +30,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
+// Output format identifiers accepted by the --output flag.
+const (
+	OutputTable = "table"
+	OutputJSON  = "json"
+)
+
 // Options pins where the command reads state from. Output streams are
 // wired via cobra's SetOut/SetErr.
 type Options struct {
@@ -92,7 +98,7 @@ structured []CheckResult for scripting.`,
 			return run(cmd, opts, output)
 		},
 	}
-	cmd.Flags().StringVar(&output, "output", "table", "output format: table or json")
+	cmd.Flags().StringVar(&output, "output", OutputTable, "output format: table or json")
 	return cmd
 }
 
@@ -113,17 +119,18 @@ func run(cmd *cobra.Command, opts Options, output string) error {
 // and subsequent checks are reported as Skipped — so the user always
 // sees an ordered checklist instead of an opaque pre-check error.
 func executeChecks(cmd *cobra.Command, opts Options) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
+	checks := authdoctor.DefaultChecks()
 	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
 	if err != nil {
-		return synthFailure(err, len(authdoctor.DefaultChecks()))
+		return synthFailure(err, checks)
 	}
 	be := keystore.NewFileBackend(opts.KeystoreRoot)
 	sa, err := resolver.New(cfg, be).Resolve(resolver.Inputs{})
 	if err != nil {
-		return synthFailure(err, len(authdoctor.DefaultChecks()))
+		return synthFailure(err, checks)
 	}
 
-	results := authdoctor.Run(cmd.Context(), sa, nil, authdoctor.DefaultChecks()...)
+	results := authdoctor.Run(cmd.Context(), sa, nil, checks...)
 	for i := range results {
 		if !results[i].Passed {
 			return results, &results[i]
@@ -136,38 +143,38 @@ func executeChecks(cmd *cobra.Command, opts Options) ([]authdoctor.CheckResult, 
 // resolution error's hint and checks #2..N are reported as Skipped, so
 // the JSON output and TTY rendering stay consistent with the
 // stop-on-first-failure rule even when resolution itself died.
-func synthFailure(err error, total int) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
+func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
 	failure := authdoctor.ResolutionFailure(err)[0]
-	results := make([]authdoctor.CheckResult, 0, total)
+	results := make([]authdoctor.CheckResult, 0, len(checks))
 	results = append(results, failure)
-	defaults := authdoctor.DefaultChecks()
-	for i := 1; i < total && i < len(defaults); i++ {
-		results = append(results, authdoctor.CheckResult{
-			Name:     defaults[i].Name,
-			Passed:   false,
-			Skipped:  true,
-			ExitCode: defaults[i].ExitCode,
-		})
+	for i := 1; i < len(checks); i++ {
+		results = append(results, authdoctor.NewSkippedResult(checks[i]))
 	}
 	return results, &results[0]
 }
 
+// iconForResult picks the emoji shown next to a check's Name in the
+// table-mode output.
+func iconForResult(r authdoctor.CheckResult) string {
+	switch {
+	case r.Skipped:
+		return "⏭"
+	case !r.Passed:
+		return "❌"
+	default:
+		return "✅"
+	}
+}
+
 func render(w io.Writer, output string, results []authdoctor.CheckResult) error {
 	switch output {
-	case "json":
+	case OutputJSON:
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(results)
-	case "table":
+	case OutputTable:
 		for _, r := range results {
-			icon := "✅"
-			switch {
-			case r.Skipped:
-				icon = "⏭"
-			case !r.Passed:
-				icon = "❌"
-			}
-			if _, err := fmt.Fprintf(w, "%s  %s\n", icon, r.Name); err != nil {
+			if _, err := fmt.Fprintf(w, "%s  %s\n", iconForResult(r), r.Name); err != nil {
 				return err
 			}
 			if !r.Passed && !r.Skipped && r.Hint != "" {
@@ -178,6 +185,6 @@ func render(w io.Writer, output string, results []authdoctor.CheckResult) error 
 		}
 		return nil
 	default:
-		return fmt.Errorf("unsupported --output %q (want table or json)", output)
+		return fmt.Errorf("unsupported --output %q (want %s or %s)", output, OutputTable, OutputJSON)
 	}
 }
