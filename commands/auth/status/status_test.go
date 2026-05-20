@@ -6,13 +6,67 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
+
+// fakeKeyring is a minimal in-process double for keystore.KeyringAPI used by
+// the status tests. Each test constructs a fresh one — never touches the
+// real OS keystore.
+type fakeKeyring struct {
+	mu          sync.Mutex
+	store       map[string]string
+	unavailable bool
+}
+
+func newFakeKeyring(unavailable bool) *fakeKeyring {
+	return &fakeKeyring{store: map[string]string{}, unavailable: unavailable}
+}
+
+func (f *fakeKeyring) key(service, user string) string { return service + "\x00" + user }
+
+func (f *fakeKeyring) Set(service, user, pass string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return errors.New("keystore unavailable")
+	}
+	f.store[f.key(service, user)] = pass
+	return nil
+}
+
+func (f *fakeKeyring) Get(service, user string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return "", errors.New("keystore unavailable")
+	}
+	v, ok := f.store[f.key(service, user)]
+	if !ok {
+		return "", keystore.ErrKeyringNotFound
+	}
+	return v, nil
+}
+
+func (f *fakeKeyring) Delete(service, user string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return errors.New("keystore unavailable")
+	}
+	if _, ok := f.store[f.key(service, user)]; !ok {
+		return keystore.ErrKeyringNotFound
+	}
+	delete(f.store, f.key(service, user))
+	return nil
+}
 
 const validSAJSON = `{
   "type": "service_account",
@@ -22,23 +76,36 @@ const validSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-func newOpts(t *testing.T) status.Options {
+func newOpts(t *testing.T, kr keystore.KeyringAPI) status.Options {
 	t.Helper()
 	// Hermetic env: the status command resolves credentials via the same
 	// resolver as everywhere else, so a stray GPLAY_* in the developer's
 	// shell must not bleed into these tests.
 	t.Setenv(resolver.EnvServiceAccount, "")
 	t.Setenv(resolver.EnvAccount, "")
+	// Reset the package-global Select cache so each test picks the
+	// backend appropriate to its fake keyring.
+	keystore.ResetSelectForTest()
 	root := t.TempDir()
 	return status.Options{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
+		Keyring:      kr,
 	}
 }
 
+// seedActiveAccount writes a service account into whichever backend Select
+// chooses for the given Options. Using Select (vs. NewFileBackend directly)
+// keeps the seed in step with what the command itself will read.
 func seedActiveAccount(t *testing.T, opts status.Options) {
 	t.Helper()
-	be := keystore.NewFileBackend(opts.KeystoreRoot)
+	be, _, err := keystore.Select(keystore.SelectOptions{
+		Keyring:  opts.Keyring,
+		FileRoot: opts.KeystoreRoot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := be.Save("playci", []byte(validSAJSON)); err != nil {
 		t.Fatal(err)
 	}
@@ -54,15 +121,21 @@ func seedActiveAccount(t *testing.T, opts status.Options) {
 
 func runCmd(t *testing.T, opts status.Options, stdout, stderr *bytes.Buffer, args ...string) error {
 	t.Helper()
-	cmd := status.NewCommand(opts)
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs(args)
-	return cmd.Execute()
+	// Wrap the subcommand in a minimal root so the persistent --verbose
+	// flag (declared at the binary level) is in scope, matching the
+	// production wiring in cmd/gplay/main.go.
+	sub := status.NewCommand(opts)
+	root := &cobra.Command{Use: "gplay"}
+	root.PersistentFlags().BoolP("verbose", "v", false, "")
+	root.AddCommand(sub)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs(append([]string{"status"}, args...))
+	return root.Execute()
 }
 
-func TestStatus_table_showsNameEmailAndPath(t *testing.T) {
-	opts := newOpts(t)
+func TestStatus_fileBackend_tableShowsNameEmailBackendAndPath(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(true))
 	seedActiveAccount(t, opts)
 	var stdout, stderr bytes.Buffer
 
@@ -77,13 +150,18 @@ func TestStatus_table_showsNameEmailAndPath(t *testing.T) {
 	if !strings.Contains(out, "playci@test-proj.iam.gserviceaccount.com") {
 		t.Errorf("output missing client_email; got %q", out)
 	}
-	if !strings.Contains(out, filepath.Join(opts.KeystoreRoot, "playci.json")) {
+	wantPath := filepath.Join(opts.KeystoreRoot, "playci.json")
+	if !strings.Contains(out, wantPath) {
 		t.Errorf("output missing credential path; got %q", out)
+	}
+	// Backend label: per the issue spec, "file: <path>" when file-backed.
+	if !strings.Contains(out, "file") {
+		t.Errorf("output missing 'file' backend label; got %q", out)
 	}
 }
 
-func TestStatus_jsonOutput_returnsStructuredPayload(t *testing.T) {
-	opts := newOpts(t)
+func TestStatus_fileBackend_jsonOutputIncludesBackendAndPath(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(true))
 	seedActiveAccount(t, opts)
 	var stdout, stderr bytes.Buffer
 
@@ -94,6 +172,7 @@ func TestStatus_jsonOutput_returnsStructuredPayload(t *testing.T) {
 	var payload struct {
 		Name        string `json:"name"`
 		ClientEmail string `json:"client_email"`
+		Backend     string `json:"backend"`
 		Path        string `json:"path"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
@@ -105,13 +184,90 @@ func TestStatus_jsonOutput_returnsStructuredPayload(t *testing.T) {
 	if payload.ClientEmail != "playci@test-proj.iam.gserviceaccount.com" {
 		t.Errorf("json.client_email = %q", payload.ClientEmail)
 	}
+	if payload.Backend != "file" {
+		t.Errorf("json.backend = %q, want file", payload.Backend)
+	}
 	if payload.Path != filepath.Join(opts.KeystoreRoot, "playci.json") {
 		t.Errorf("json.path = %q", payload.Path)
 	}
 }
 
+func TestStatus_keyringBackend_displaysKeyringLabelAndOmitsPath(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(false))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, keystore.BackendKeyring) {
+		t.Errorf("output missing %q backend label; got %q", keystore.BackendKeyring, out)
+	}
+	// File path is meaningless when the keyring is active and must not
+	// appear — otherwise users go hunting for a file that doesn't exist.
+	if strings.Contains(out, filepath.Join(opts.KeystoreRoot, "playci.json")) {
+		t.Errorf("output should omit file path when keyring is active; got %q", out)
+	}
+}
+
+func TestStatus_keyringBackend_jsonOmitsPath(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(false))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "json"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	var payload struct {
+		Name    string `json:"name"`
+		Backend string `json:"backend"`
+		Path    string `json:"path"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if payload.Backend != "keyring" {
+		t.Errorf("json.backend = %q, want keyring", payload.Backend)
+	}
+	if payload.Path != "" {
+		t.Errorf("json.path = %q, want empty for keyring backend", payload.Path)
+	}
+}
+
+func TestStatus_verboseFlag_emitsBackendSelectionLog(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(true))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr, "-v"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	want := "keystore: using file backend"
+	if !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr missing backend selection log %q; got %q", want, stderr.String())
+	}
+}
+
+func TestStatus_withoutVerbose_isSilentOnBackendSelection(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(true))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if strings.Contains(stderr.String(), "keystore: using") {
+		t.Errorf("non-verbose status should not emit backend log; got stderr %q", stderr.String())
+	}
+}
+
 func TestStatus_noActiveAccount_returnsErrNoSource(t *testing.T) {
-	opts := newOpts(t)
+	opts := newOpts(t, newFakeKeyring(true))
 	var stdout, stderr bytes.Buffer
 
 	err := runCmd(t, opts, &stdout, &stderr)

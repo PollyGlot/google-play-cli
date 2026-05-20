@@ -19,6 +19,9 @@ import (
 type Options struct {
 	ConfigPath   string
 	KeystoreRoot string
+	// Keyring is the keystore backend the command will probe. If nil, the
+	// default go-keyring adapter is used.
+	Keyring keystore.KeyringAPI
 }
 
 // NewCommand returns the cobra command for `gplay auth login`.
@@ -34,10 +37,15 @@ func NewCommand(opts Options) *cobra.Command {
 in the local gplay registry and mark it active so subsequent commands use it
 without an explicit --account flag.
 
-The credential is stored under the active keystore backend (file-only in
-this MVP slice; OS keystores arrive in a follow-up).`,
+The credential is stored in the OS keystore (macOS Keychain, Windows
+Credential Manager, or Linux Secret Service). On systems without a keystore
+daemon (headless Linux, CI containers), gplay transparently falls back to a
+0600 file under the config directory. The active backend is reported by
+` + "`gplay auth status`" + ` and logged once per process at -v.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(cmd, opts, saPath, name)
+			// Verbose is a root-level persistent flag (docs/DESIGN.md §8).
+			verbose, _ := cmd.Flags().GetBool("verbose")
+			return run(cmd, opts, saPath, name, verbose)
 		},
 	}
 	cmd.Flags().StringVar(&saPath, "service-account", "", "path to a Google Cloud service-account JSON (required)")
@@ -46,7 +54,7 @@ this MVP slice; OS keystores arrive in a follow-up).`,
 	return cmd
 }
 
-func run(cmd *cobra.Command, opts Options, saPath, name string) error {
+func run(cmd *cobra.Command, opts Options, saPath, name string, verbose bool) error {
 	sa, err := serviceaccount.Load(saPath)
 	if err != nil {
 		return err
@@ -55,7 +63,20 @@ func run(cmd *cobra.Command, opts Options, saPath, name string) error {
 		name = deriveName(sa.ClientEmail)
 	}
 
-	be := keystore.NewFileBackend(opts.KeystoreRoot)
+	kr := opts.Keyring
+	if kr == nil {
+		kr = keystore.DefaultKeyring()
+	}
+	be, label, err := keystore.Select(keystore.SelectOptions{
+		Keyring:  kr,
+		FileRoot: opts.KeystoreRoot,
+	})
+	if err != nil {
+		return err
+	}
+	if verbose {
+		keystore.LogBackendOnce(cmd.ErrOrStderr(), label)
+	}
 	if err := be.Save(name, sa.Raw); err != nil {
 		return err
 	}
