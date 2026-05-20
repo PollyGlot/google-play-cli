@@ -192,7 +192,7 @@ func TestStatus_fileBackend_jsonOutputIncludesBackendAndPath(t *testing.T) {
 	}
 }
 
-func TestStatus_keyringBackend_displaysKeystoreLabelAndOmitsPath(t *testing.T) {
+func TestStatus_keyringBackend_displaysKeyringLabelAndOmitsPath(t *testing.T) {
 	opts := newOpts(t, newFakeKeyring(false))
 	seedActiveAccount(t, opts)
 	var stdout, stderr bytes.Buffer
@@ -202,8 +202,8 @@ func TestStatus_keyringBackend_displaysKeystoreLabelAndOmitsPath(t *testing.T) {
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "keystore") {
-		t.Errorf("output missing 'keystore' backend label; got %q", out)
+	if !strings.Contains(out, keystore.BackendKeyring) {
+		t.Errorf("output missing %q backend label; got %q", keystore.BackendKeyring, out)
 	}
 	// File path is meaningless when the keyring is active and must not
 	// appear — otherwise users go hunting for a file that doesn't exist.

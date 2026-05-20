@@ -98,10 +98,10 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 			return err
 		}
 		if p.Backend == keystore.BackendKeyring {
-			_, err := fmt.Fprintf(stdout, "Backend:        keystore\n")
+			_, err := fmt.Fprintf(stdout, "Backend:        %s\n", keystore.BackendKeyring)
 			return err
 		}
-		_, err := fmt.Fprintf(stdout, "Backend:        file: %s\n", p.Path)
+		_, err := fmt.Fprintf(stdout, "Backend:        %s: %s\n", keystore.BackendFile, p.Path)
 		return err
 	default:
 		return fmt.Errorf("unsupported --output %q (want table or json)", output)
