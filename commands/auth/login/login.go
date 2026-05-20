@@ -27,8 +27,9 @@ type Options struct {
 // NewCommand returns the cobra command for `gplay auth login`.
 func NewCommand(opts Options) *cobra.Command {
 	var (
-		saPath string
-		name   string
+		saPath   string
+		name     string
+		activate bool
 	)
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -41,20 +42,25 @@ The credential is stored in the OS keystore (macOS Keychain, Windows
 Credential Manager, or Linux Secret Service). On systems without a keystore
 daemon (headless Linux, CI containers), gplay transparently falls back to a
 0600 file under the config directory. The active backend is reported by
-` + "`gplay auth status`" + ` and logged once per process at -v.`,
+` + "`gplay auth status`" + ` and logged once per process at -v.
+
+Pass --activate=false to add a second Account without changing which one
+is active. (The very first registered Account becomes active regardless,
+so the registry is never left without one when --activate=false is set.)`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Verbose is a root-level persistent flag (docs/DESIGN.md §8).
 			verbose, _ := cmd.Flags().GetBool("verbose")
-			return run(cmd, opts, saPath, name, verbose)
+			return run(cmd, opts, saPath, name, activate, verbose)
 		},
 	}
 	cmd.Flags().StringVar(&saPath, "service-account", "", "path to a Google Cloud service-account JSON (required)")
 	cmd.Flags().StringVar(&name, "name", "", "friendly Account name (default: derived from client_email)")
+	cmd.Flags().BoolVar(&activate, "activate", true, "mark the new Account active (default true)")
 	_ = cmd.MarkFlagRequired("service-account")
 	return cmd
 }
 
-func run(cmd *cobra.Command, opts Options, saPath, name string, verbose bool) error {
+func run(cmd *cobra.Command, opts Options, saPath, name string, activate, verbose bool) error {
 	sa, err := serviceaccount.Load(saPath)
 	if err != nil {
 		return err
@@ -85,15 +91,26 @@ func run(cmd *cobra.Command, opts Options, saPath, name string, verbose bool) er
 	if err != nil {
 		return err
 	}
+	// Whether to set the new Account active. The exception (per #10): the
+	// first registered Account always becomes active so the registry is
+	// never left without one — otherwise `gplay auth login --activate=false`
+	// on a fresh machine would leave the user with a non-functional setup.
+	wasEmpty := len(cfg.Accounts) == 0
 	cfg.AddAccount(name)
-	if err := cfg.SetActive(name); err != nil {
-		return err
+	if activate || wasEmpty {
+		if err := cfg.SetActive(name); err != nil {
+			return err
+		}
 	}
 	if err := cfg.Save(opts.ConfigPath); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
+	if activate || wasEmpty {
+		fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
+	} else {
+		fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
+	}
 	return nil
 }
 

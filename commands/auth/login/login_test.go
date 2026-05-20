@@ -202,6 +202,63 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	}
 }
 
+func TestLogin_activateFalse_onSecondAccount_keepsCurrentActive(t *testing.T) {
+	_, _, opts := newCmd(t)
+	saPath := writeSA(t, validSAJSON)
+
+	// First login (default --activate=true).
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, opts, &stdout, &stderr, "--service-account", saPath, "--name", "first"); err != nil {
+		t.Fatalf("first login: %v", err)
+	}
+
+	// Second login with --activate=false must NOT shift the active flag.
+	stdout.Reset()
+	stderr.Reset()
+	if err := runCmd(t, opts, &stdout, &stderr, "--service-account", saPath, "--name", "second", "--activate=false"); err != nil {
+		t.Fatalf("second login: %v", err)
+	}
+
+	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	if err != nil {
+		t.Fatalf("LoadOrEmpty: %v", err)
+	}
+	if len(cfg.Accounts) != 2 {
+		t.Fatalf("len(Accounts) = %d, want 2; cfg=%+v", len(cfg.Accounts), cfg)
+	}
+	active, ok := cfg.Active()
+	if !ok {
+		t.Fatal("Active() = false, want true (first should still be active)")
+	}
+	if active.Name != "first" {
+		t.Errorf("active.Name = %q, want %q", active.Name, "first")
+	}
+}
+
+func TestLogin_activateFalse_onFirstAccount_stillActivates(t *testing.T) {
+	_, _, opts := newCmd(t)
+	saPath := writeSA(t, validSAJSON)
+
+	// Empty registry + --activate=false: the new Account is still
+	// activated because the registry would otherwise be left without one.
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, opts, &stdout, &stderr, "--service-account", saPath, "--name", "only", "--activate=false"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	if err != nil {
+		t.Fatalf("LoadOrEmpty: %v", err)
+	}
+	active, ok := cfg.Active()
+	if !ok {
+		t.Fatal("Active() = false; first Account should always activate even with --activate=false")
+	}
+	if active.Name != "only" {
+		t.Errorf("active.Name = %q, want %q", active.Name, "only")
+	}
+}
+
 func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
 	keystore.ResetSelectForTest()
 	root := t.TempDir()

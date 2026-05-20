@@ -266,15 +266,36 @@ func TestStatus_withoutVerbose_isSilentOnBackendSelection(t *testing.T) {
 	}
 }
 
-func TestStatus_noActiveAccount_returnsErrNoSource(t *testing.T) {
+func TestStatus_noActiveAccount_printsInformationalAndExitsZero(t *testing.T) {
 	opts := newOpts(t, newFakeKeyring(true))
 	var stdout, stderr bytes.Buffer
 
-	err := runCmd(t, opts, &stdout, &stderr)
-	if err == nil {
-		t.Fatal("Execute: expected error with no active account, got nil")
+	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+		t.Fatalf("Execute: expected nil error (informational state), got %v", err)
 	}
-	if !errors.Is(err, resolver.ErrNoSource) {
-		t.Errorf("err = %v, want resolver.ErrNoSource", err)
+	if !strings.Contains(stdout.String(), "No active account") {
+		t.Errorf("stdout missing 'No active account' line; got %q", stdout.String())
+	}
+}
+
+func TestStatus_noActiveAccount_jsonShowsActiveFalse(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(true))
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "json"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var payload struct {
+		Active bool   `json:"active"`
+		Name   string `json:"name"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal: %v (raw=%q)", err, stdout.String())
+	}
+	if payload.Active {
+		t.Errorf("json.active = true, want false")
+	}
+	if payload.Name != "" {
+		t.Errorf("json.name = %q, want empty", payload.Name)
 	}
 }

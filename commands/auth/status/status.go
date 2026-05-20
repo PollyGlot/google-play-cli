@@ -2,11 +2,17 @@
 // active, the underlying client_email, the keystore backend in use, and
 // (when applicable) the on-disk credential path. JSON output is supported
 // via `--output json`.
+//
+// When no credential resolves (no active Account, no env override),
+// status prints a friendly "no active account" line and exits 0 — it is
+// informational, not a hard error.
 package status
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -45,10 +51,11 @@ func NewCommand(opts Options) *cobra.Command {
 }
 
 type payload struct {
-	Name        string `json:"name"`
-	ClientEmail string `json:"client_email"`
-	Backend     string `json:"backend"`
-	Path        string `json:"path"`
+	Active      bool   `json:"active"`
+	Name        string `json:"name,omitempty"`
+	ClientEmail string `json:"client_email,omitempty"`
+	Backend     string `json:"backend,omitempty"`
+	Path        string `json:"path,omitempty"`
 }
 
 func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
@@ -73,11 +80,15 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 
 	sa, err := resolver.New(cfg, be).Resolve(resolver.Inputs{})
 	if err != nil {
+		if errors.Is(err, resolver.ErrNoSource) {
+			return renderEmpty(cmd.OutOrStdout(), output)
+		}
 		return err
 	}
 	active, _ := cfg.Active()
 
 	p := payload{
+		Active:      true,
 		Name:        active.Name,
 		ClientEmail: sa.ClientEmail,
 		Backend:     label,
@@ -102,6 +113,26 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 			return err
 		}
 		_, err := fmt.Fprintf(stdout, "Backend:        %s: %s\n", keystore.BackendFile, p.Path)
+		return err
+	default:
+		return fmt.Errorf("unsupported --output %q (want table or json)", output)
+	}
+}
+
+// renderEmpty prints the informational "no active account" payload when
+// no credential resolves. Exit code stays 0 — this is state, not failure.
+func renderEmpty(w io.Writer, output string) error {
+	switch output {
+	case "json":
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(payload{Active: false})
+	case "table":
+		_, err := fmt.Fprintln(w, "No active account.")
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(w, "Run `gplay auth login` to register one, or `gplay auth list` to see registered Accounts.")
 		return err
 	default:
 		return fmt.Errorf("unsupported --output %q (want table or json)", output)

@@ -101,3 +101,45 @@ func TestConfig_addAccount_doesNotDuplicate(t *testing.T) {
 		t.Errorf("AddAccount called 3× → len = %d, want 1", got)
 	}
 }
+
+func TestConfig_removeAccount_removesEntry(t *testing.T) {
+	c := &config.Config{}
+	c.AddAccount("alpha")
+	c.AddAccount("beta")
+	c.AddAccount("gamma")
+
+	if err := c.RemoveAccount("beta"); err != nil {
+		t.Fatalf("RemoveAccount(beta): %v", err)
+	}
+	if got := len(c.Accounts); got != 2 {
+		t.Fatalf("len(Accounts) = %d after remove, want 2", got)
+	}
+	for _, a := range c.Accounts {
+		if a.Name == "beta" {
+			t.Errorf("beta still present after RemoveAccount: %+v", c.Accounts)
+		}
+	}
+}
+
+func TestConfig_removeAccount_unknownReturnsErr(t *testing.T) {
+	c := &config.Config{}
+	c.AddAccount("alpha")
+	if err := c.RemoveAccount("missing"); !errors.Is(err, config.ErrUnknownAccount) {
+		t.Errorf("RemoveAccount(missing) = %v, want ErrUnknownAccount", err)
+	}
+}
+
+func TestConfig_removeAccount_activeLeavesNoActive(t *testing.T) {
+	c := &config.Config{}
+	c.AddAccount("alpha")
+	c.AddAccount("beta")
+	if err := c.SetActive("beta"); err != nil {
+		t.Fatalf("SetActive: %v", err)
+	}
+	if err := c.RemoveAccount("beta"); err != nil {
+		t.Fatalf("RemoveAccount(beta): %v", err)
+	}
+	if _, ok := c.Active(); ok {
+		t.Errorf("Active() should return false after removing the active account")
+	}
+}
