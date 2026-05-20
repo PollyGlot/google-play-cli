@@ -11,6 +11,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
+	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
@@ -65,11 +66,17 @@ replace Fastlane on Android CI pipelines.`,
 	var (
 		serviceAccountFlag string
 		accountFlag        string
+		verbose            bool
 	)
 	root.PersistentFlags().StringVar(&serviceAccountFlag, "service-account", "",
 		"path to a service-account JSON, or inline JSON content (overrides --account, env, and active Account)")
 	root.PersistentFlags().StringVar(&accountFlag, "account", "",
 		"name of a stored Account to use (overrides env and active Account)")
+	// Persistent verbosity flag (docs/DESIGN.md §8). Subcommands read it via
+	// the inherited PersistentFlags so a single `-v` works at any position:
+	//   gplay -v auth status   (CI-friendly: option before subcommand)
+	//   gplay auth status -v   (interactive-friendly: option after)
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "log flow steps to stderr (info level)")
 
 	auth := &cobra.Command{
 		Use:   "auth",
@@ -78,10 +85,12 @@ replace Fastlane on Android CI pipelines.`,
 	auth.AddCommand(login.NewCommand(login.Options{
 		ConfigPath:   opts.ConfigPath,
 		KeystoreRoot: opts.KeystoreRoot,
+		Keyring:      keystore.DefaultKeyring(),
 	}))
 	auth.AddCommand(status.NewCommand(status.Options{
 		ConfigPath:   opts.ConfigPath,
 		KeystoreRoot: opts.KeystoreRoot,
+		Keyring:      keystore.DefaultKeyring(),
 	}))
 	root.AddCommand(auth)
 

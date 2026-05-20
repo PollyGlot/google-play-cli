@@ -6,13 +6,67 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
+
+// fakeKeyring is a configurable double for keystore.KeyringAPI. The login
+// tests use it in "unavailable" mode to force the file backend path, plus
+// one test in available mode to confirm the keyring path also persists.
+type fakeKeyring struct {
+	mu          sync.Mutex
+	store       map[string]string
+	unavailable bool
+}
+
+func newFakeKeyring(unavailable bool) *fakeKeyring {
+	return &fakeKeyring{store: map[string]string{}, unavailable: unavailable}
+}
+
+func (f *fakeKeyring) key(service, user string) string { return service + "\x00" + user }
+
+func (f *fakeKeyring) Set(service, user, pass string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return errors.New("keystore unavailable")
+	}
+	f.store[f.key(service, user)] = pass
+	return nil
+}
+
+func (f *fakeKeyring) Get(service, user string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return "", errors.New("keystore unavailable")
+	}
+	v, ok := f.store[f.key(service, user)]
+	if !ok {
+		return "", keystore.ErrKeyringNotFound
+	}
+	return v, nil
+}
+
+func (f *fakeKeyring) Delete(service, user string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return errors.New("keystore unavailable")
+	}
+	if _, ok := f.store[f.key(service, user)]; !ok {
+		return keystore.ErrKeyringNotFound
+	}
+	delete(f.store, f.key(service, user))
+	return nil
+}
 
 const validSAJSON = `{
   "type": "service_account",
@@ -34,21 +88,31 @@ func writeSA(t *testing.T, body string) string {
 
 func newCmd(t *testing.T) (*bytes.Buffer, *bytes.Buffer, login.Options) {
 	t.Helper()
+	keystore.ResetSelectForTest()
 	root := t.TempDir()
 	opts := login.Options{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
+		// Force file backend in the standard tests so the existing
+		// `keystore.NewFileBackend(opts.KeystoreRoot).Load(...)` reads keep
+		// working. The keyring path has its own dedicated test below.
+		Keyring: newFakeKeyring(true),
 	}
 	return &bytes.Buffer{}, &bytes.Buffer{}, opts
 }
 
 func runCmd(t *testing.T, opts login.Options, stdout, stderr *bytes.Buffer, args ...string) error {
 	t.Helper()
-	cmd := login.NewCommand(opts)
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs(args)
-	return cmd.Execute()
+	// Wrap the subcommand in a minimal root so the persistent --verbose
+	// flag is in scope, matching the production wiring in cmd/gplay/main.go.
+	sub := login.NewCommand(opts)
+	root := &cobra.Command{Use: "gplay"}
+	root.PersistentFlags().BoolP("verbose", "v", false, "")
+	root.AddCommand(sub)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs(append([]string{"login"}, args...))
+	return root.Execute()
 }
 
 func TestLogin_validSA_persistsAndActivates(t *testing.T) {
@@ -135,5 +199,32 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	cfg, _ := config.LoadOrEmpty(opts.ConfigPath)
 	if len(cfg.Accounts) != 1 {
 		t.Errorf("config Accounts = %v, want exactly one entry", cfg.Accounts)
+	}
+}
+
+func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
+	keystore.ResetSelectForTest()
+	root := t.TempDir()
+	fk := newFakeKeyring(false) // available
+	opts := login.Options{
+		ConfigPath:   filepath.Join(root, "config.json"),
+		KeystoreRoot: filepath.Join(root, "accounts"),
+		Keyring:      fk,
+	}
+
+	saPath := writeSA(t, validSAJSON)
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, opts, &stdout, &stderr, "--service-account", saPath); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	// The credential must land in the keyring fake, not on disk.
+	be := keystore.NewKeyringBackend(fk, keystore.KeyringService)
+	if _, err := be.Load("playci"); err != nil {
+		t.Errorf("keyring backend: Load after login: %v", err)
+	}
+	// And the file accounts/ directory must not have been created.
+	if _, err := os.Stat(opts.KeystoreRoot); !os.IsNotExist(err) {
+		t.Errorf("expected no file at %s when keyring backend active; stat err=%v", opts.KeystoreRoot, err)
 	}
 }
