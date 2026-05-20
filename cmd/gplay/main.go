@@ -10,7 +10,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
+	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
+	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
@@ -88,10 +90,18 @@ replace Fastlane on Android CI pipelines.`,
 		KeystoreRoot: opts.KeystoreRoot,
 		Keyring:      keystore.DefaultKeyring(),
 	}))
+	auth.AddCommand(logout.NewCommand(logout.Options{
+		ConfigPath:   opts.ConfigPath,
+		KeystoreRoot: opts.KeystoreRoot,
+		Keyring:      keystore.DefaultKeyring(),
+	}))
 	auth.AddCommand(status.NewCommand(status.Options{
 		ConfigPath:   opts.ConfigPath,
 		KeystoreRoot: opts.KeystoreRoot,
 		Keyring:      keystore.DefaultKeyring(),
+	}))
+	auth.AddCommand(list.NewCommand(list.Options{
+		ConfigPath: opts.ConfigPath,
 	}))
 	auth.AddCommand(doctor.NewCommand(doctor.Options{
 		ConfigPath:   opts.ConfigPath,
@@ -153,6 +163,9 @@ func exitCode(err error) int {
 	}
 	if errors.Is(err, resolver.ErrNoSource) {
 		return 10
+	}
+	if errors.Is(err, logout.ErrUnknownAccount) {
+		return 2
 	}
 	return 1
 }

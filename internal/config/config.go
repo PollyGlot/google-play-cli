@@ -68,6 +68,20 @@ func (c *Config) AddAccount(name string) {
 	c.Accounts = append(c.Accounts, Account{Name: name})
 }
 
+// RemoveAccount deletes an account by name. If the removed account was the
+// active one, the registry is left with no active account — callers decide
+// whether to choose a new active explicitly. Returns ErrUnknownAccount if
+// name is not in the registry.
+func (c *Config) RemoveAccount(name string) error {
+	for i, a := range c.Accounts {
+		if a.Name == name {
+			c.Accounts = append(c.Accounts[:i], c.Accounts[i+1:]...)
+			return nil
+		}
+	}
+	return ErrUnknownAccount
+}
+
 // SetActive marks one account as Active and clears the flag on every other.
 // Returns ErrUnknownAccount if name is not in the registry.
 func (c *Config) SetActive(name string) error {
