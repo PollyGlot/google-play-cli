@@ -49,7 +49,7 @@ func run(cmd *cobra.Command, opts Options, output string) error {
 	}
 	be := keystore.NewFileBackend(opts.KeystoreRoot)
 
-	sa, err := resolver.New(cfg, be).Resolve()
+	sa, err := resolver.New(cfg, be).Resolve(resolver.Inputs{})
 	if err != nil {
 		return err
 	}

@@ -20,8 +20,8 @@ func TestExitCode_mapping(t *testing.T) {
 		{"missing-field", &serviceaccount.MissingFieldError{Field: "client_email"}, 10},
 		{"wrapped-missing-field", fmt.Errorf("login: %w", &serviceaccount.MissingFieldError{Field: "private_key"}), 10},
 		{"oauth-401", &token.AuthError{StatusCode: 401, Body: "denied"}, 10},
-		{"no-active", resolver.ErrNoActive, 10},
-		{"wrapped-no-active", fmt.Errorf("status: %w", resolver.ErrNoActive), 10},
+		{"no-source", resolver.ErrNoSource, 10},
+		{"wrapped-no-source", fmt.Errorf("status: %w", resolver.ErrNoSource), 10},
 		{"generic", errors.New("boom"), 1},
 	}
 	for _, tc := range cases {
@@ -30,5 +30,16 @@ func TestExitCode_mapping(t *testing.T) {
 				t.Errorf("exitCode(%v) = %d, want %d", tc.err, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRootCmd_persistentFlags_serviceAccountAndAccount(t *testing.T) {
+	root := newRootCmd(rootOptions{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+
+	for _, name := range []string{"service-account", "account"} {
+		f := root.PersistentFlags().Lookup(name)
+		if f == nil {
+			t.Errorf("root command missing persistent --%s flag", name)
+		}
 	}
 }

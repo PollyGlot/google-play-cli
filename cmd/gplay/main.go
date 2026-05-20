@@ -58,6 +58,20 @@ replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: false,
 	}
 
+	// Persistent credential-resolution flags (docs/DESIGN.md §1). Every
+	// subcommand inherits these; subcommands that already declare a local
+	// --service-account flag (e.g. `auth login`) shadow the persistent one
+	// — that is intentional and harmless because `auth login` always uses
+	// the local value directly.
+	var (
+		serviceAccountFlag string
+		accountFlag        string
+	)
+	root.PersistentFlags().StringVar(&serviceAccountFlag, "service-account", "",
+		"path to a service-account JSON, or inline JSON content (overrides --account, env, and active Account)")
+	root.PersistentFlags().StringVar(&accountFlag, "account", "",
+		"name of a stored Account to use (overrides env and active Account)")
+
 	auth := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage gplay credentials",
@@ -128,7 +142,7 @@ func exitCode(err error) int {
 	if errors.As(err, &ae) {
 		return 10
 	}
-	if errors.Is(err, resolver.ErrNoActive) {
+	if errors.Is(err, resolver.ErrNoSource) {
 		return 10
 	}
 	return 1
