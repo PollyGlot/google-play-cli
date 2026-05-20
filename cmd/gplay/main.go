@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
@@ -83,6 +84,10 @@ replace Fastlane on Android CI pipelines.`,
 		ConfigPath:   opts.ConfigPath,
 		KeystoreRoot: opts.KeystoreRoot,
 	}))
+	auth.AddCommand(doctor.NewCommand(doctor.Options{
+		ConfigPath:   opts.ConfigPath,
+		KeystoreRoot: opts.KeystoreRoot,
+	}))
 	root.AddCommand(auth)
 
 	root.AddCommand(&cobra.Command{
@@ -122,6 +127,11 @@ func defaultConfigDir() (string, error) {
 func exitCode(err error) int {
 	if err == nil {
 		return 0
+	}
+	// The doctor command owns its own typed error that carries the
+	// authoritative ExitCode of the first failing check — defer to it.
+	if code := doctor.ExitCode(err); code != 1 {
+		return code
 	}
 
 	var mfe *serviceaccount.MissingFieldError
