@@ -407,14 +407,29 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 	return "", insertFailureResult(resp.StatusCode, body, sa, packageName), true
 }
 
+// statusToExitCode maps a Google Play API HTTP status to the gplay
+// exit-code taxonomy (docs/DESIGN.md §9). Shared by both `edits.insert`
+// and `edits.delete` failure paths.
+func statusToExitCode(status int) int {
+	switch {
+	case status == http.StatusForbidden:
+		return exitAuthz
+	case status >= 500:
+		return exitAPI5xx
+	default:
+		return exitAPI4xx
+	}
+}
+
 // insertFailureResult maps an edits.insert non-2xx status to the
 // CheckResult shape required by the issue.
 func insertFailureResult(status int, body []byte, sa *serviceaccount.ServiceAccount, packageName string) CheckResult {
+	exit := statusToExitCode(status)
 	switch {
 	case status == http.StatusForbidden:
 		return CheckResult{
 			Passed:   false,
-			ExitCode: exitAuthz,
+			ExitCode: exit,
 			Hint: "Service account is not granted access to " + packageName +
 				". In Play Console → Setup → API access, grant the appropriate permission to " +
 				sa.ClientEmail + ".",
@@ -422,26 +437,20 @@ func insertFailureResult(status int, body []byte, sa *serviceaccount.ServiceAcco
 	case status == http.StatusNotFound:
 		return CheckResult{
 			Passed:   false,
-			ExitCode: exitAPI4xx,
+			ExitCode: exit,
 			Hint:     "Package " + packageName + " not found in Play Console under this service account's organization.",
-		}
-	case status >= 400 && status < 500:
-		return CheckResult{
-			Passed:   false,
-			ExitCode: exitAPI4xx,
-			Hint:     apiErrorMessage(body, status) + " (HTTP " + fmt.Sprint(status) + " from edits.insert on " + packageName + ")",
 		}
 	case status >= 500:
 		return CheckResult{
 			Passed:   false,
-			ExitCode: exitAPI5xx,
-			Hint:     "temporary upstream failure — safe to retry (HTTP " + fmt.Sprint(status) + " from edits.insert on " + packageName + ")",
+			ExitCode: exit,
+			Hint:     fmt.Sprintf("temporary upstream failure — safe to retry (HTTP %d from edits.insert on %s)", status, packageName),
 		}
 	}
 	return CheckResult{
 		Passed:   false,
-		ExitCode: exitAPI4xx,
-		Hint:     "unexpected HTTP " + fmt.Sprint(status) + " from edits.insert on " + packageName,
+		ExitCode: exit,
+		Hint:     fmt.Sprintf("%s (HTTP %d from edits.insert on %s)", apiErrorMessage(body, status), status, packageName),
 	}
 }
 
@@ -472,20 +481,19 @@ func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editI
 		return CheckResult{}, false
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxObservedBody))
-	switch {
-	case resp.StatusCode >= 500:
+	exit := statusToExitCode(resp.StatusCode)
+	if resp.StatusCode >= 500 {
 		return CheckResult{
 			Passed:   false,
-			ExitCode: exitAPI5xx,
-			Hint:     "edits.insert on " + packageName + " succeeded but cleanup failed — temporary upstream failure, safe to retry (HTTP " + fmt.Sprint(resp.StatusCode) + ")",
-		}, true
-	default:
-		return CheckResult{
-			Passed:   false,
-			ExitCode: exitAPI4xx,
-			Hint:     "edits.insert on " + packageName + " succeeded but cleanup failed: " + apiErrorMessage(body, resp.StatusCode) + " (HTTP " + fmt.Sprint(resp.StatusCode) + ")",
+			ExitCode: exit,
+			Hint:     fmt.Sprintf("edits.insert on %s succeeded but cleanup failed — temporary upstream failure, safe to retry (HTTP %d)", packageName, resp.StatusCode),
 		}, true
 	}
+	return CheckResult{
+		Passed:   false,
+		ExitCode: exit,
+		Hint:     fmt.Sprintf("edits.insert on %s succeeded but cleanup failed: %s (HTTP %d)", packageName, apiErrorMessage(body, resp.StatusCode), resp.StatusCode),
+	}, true
 }
 
 // apiErrorMessage extracts the most useful human-readable message from
@@ -493,7 +501,7 @@ func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editI
 // when the body is empty or unparseable.
 func apiErrorMessage(body []byte, status int) string {
 	if len(body) == 0 {
-		return "HTTP " + fmt.Sprint(status)
+		return fmt.Sprintf("HTTP %d", status)
 	}
 	var env struct {
 		Error struct {
