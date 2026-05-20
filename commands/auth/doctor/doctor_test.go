@@ -8,16 +8,19 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
 
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
+	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
@@ -28,12 +31,74 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+// fakeKeyring mirrors the status_test double: tracks no state by default
+// but can be flipped to "unavailable" so Select() falls back to the file
+// backend. The fake is what keeps the OS keystore out of unit runs.
+type fakeKeyring struct {
+	mu          sync.Mutex
+	store       map[string]string
+	unavailable bool
+}
+
+func newFakeKeyring(unavailable bool) *fakeKeyring {
+	return &fakeKeyring{store: map[string]string{}, unavailable: unavailable}
+}
+
+func (f *fakeKeyring) key(service, user string) string { return service + "\x00" + user }
+
+func (f *fakeKeyring) Set(service, user, pass string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return errors.New("keystore unavailable")
+	}
+	f.store[f.key(service, user)] = pass
+	return nil
+}
+
+func (f *fakeKeyring) Get(service, user string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return "", errors.New("keystore unavailable")
+	}
+	v, ok := f.store[f.key(service, user)]
+	if !ok {
+		return "", keystore.ErrKeyringNotFound
+	}
+	return v, nil
+}
+
+func (f *fakeKeyring) Delete(service, user string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unavailable {
+		return errors.New("keystore unavailable")
+	}
+	if _, ok := f.store[f.key(service, user)]; !ok {
+		return keystore.ErrKeyringNotFound
+	}
+	delete(f.store, f.key(service, user))
+	return nil
+}
+
 func newOpts(t *testing.T) doctor.Options {
 	t.Helper()
+	// Hermetic env: doctor resolves credentials via the same resolver as
+	// every other command, so a stray GPLAY_* in the developer's shell
+	// must not bleed into these tests.
+	t.Setenv(resolver.EnvServiceAccount, "")
+	t.Setenv(resolver.EnvAccount, "")
+	// Reset the package-global Select cache so each test picks the
+	// backend appropriate to its fake keyring.
+	keystore.ResetSelectForTest()
 	root := t.TempDir()
 	return doctor.Options{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
+		// Default: keyring unavailable so the file backend is used and
+		// the existing setup (seeded SA on disk) works unchanged.
+		Keyring: newFakeKeyring(true),
 	}
 }
 
@@ -64,9 +129,19 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
+// seedActiveAccount writes a service account into whichever backend
+// Select chooses for the given Options. Using Select (vs. NewFileBackend
+// directly) keeps the seed in step with what the command itself will
+// read — i.e. the test exercises the same code path as production.
 func seedActiveAccount(t *testing.T, opts doctor.Options, saBytes []byte) {
 	t.Helper()
-	be := keystore.NewFileBackend(opts.KeystoreRoot)
+	be, _, err := keystore.Select(keystore.SelectOptions{
+		Keyring:  opts.Keyring,
+		FileRoot: opts.KeystoreRoot,
+	})
+	if err != nil {
+		t.Fatalf("keystore.Select: %v", err)
+	}
 	if err := be.Save("playci", saBytes); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
@@ -91,7 +166,7 @@ func runCmd(t *testing.T, opts doctor.Options, ctx context.Context, stdout, stde
 }
 
 // successRT returns a roundTripperFunc that responds with a healthy
-// OAuth2 token payload so checks 2 and 3 pass.
+// OAuth2 token payload so checks 2 and 3 pass and never panic.
 func successRT() roundTripperFunc {
 	return func(req *http.Request) (*http.Response, error) {
 		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
@@ -101,6 +176,104 @@ func successRT() roundTripperFunc {
 			Body:       io.NopCloser(bytes.NewBufferString(body)),
 		}, nil
 	}
+}
+
+// fullStackRT is a RoundTripper that handles the OAuth2 token exchange
+// plus per-package edits.insert and edits.delete in a single function,
+// for command-level integration tests. The per-package responder
+// returns the matching status for a given packageName.
+type fullStackRT struct {
+	t                  *testing.T
+	insertByPackage    map[string]int // status code per package on edits.insert
+	insertBodyOverride map[string]string
+	deleteStatus       int // status code returned for any edits.delete
+	insertCalls        map[string]int
+	deleteCalls        map[string]int
+	mu                 sync.Mutex
+}
+
+func (r *fullStackRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+		}, nil
+	}
+	// /androidpublisher/v3/applications/<pkg>/edits[/<id>]
+	const prefix = "/androidpublisher/v3/applications/"
+	if !strings.HasPrefix(req.URL.Path, prefix) {
+		r.t.Fatalf("fullStackRT: unexpected URL: %s", req.URL.String())
+	}
+	rest := strings.TrimPrefix(req.URL.Path, prefix)
+	// Either "<pkg>/edits" (insert) or "<pkg>/edits/<id>" (delete).
+	parts := strings.SplitN(rest, "/edits", 2)
+	if len(parts) != 2 {
+		r.t.Fatalf("fullStackRT: cannot parse package from URL: %s", req.URL.String())
+	}
+	pkg := parts[0]
+
+	if req.Method == http.MethodPost && parts[1] == "" {
+		if r.insertCalls == nil {
+			r.insertCalls = map[string]int{}
+		}
+		r.insertCalls[pkg]++
+		status, ok := r.insertByPackage[pkg]
+		if !ok {
+			status = 200
+		}
+		body := `{"id":"edit-for-` + pkg + `","expiryTimeSeconds":"1700000000"}`
+		if override, ok := r.insertBodyOverride[pkg]; ok {
+			body = override
+		}
+		if status != 200 && status != 201 {
+			body = `{"error":{"code":` + httpStatusToString(status) + `,"message":"upstream said no"}}`
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+		}, nil
+	}
+	if req.Method == http.MethodDelete {
+		if r.deleteCalls == nil {
+			r.deleteCalls = map[string]int{}
+		}
+		r.deleteCalls[pkg]++
+		status := r.deleteStatus
+		if status == 0 {
+			status = 204
+		}
+		return &http.Response{
+			StatusCode: status,
+			Body:       io.NopCloser(bytes.NewBufferString("")),
+		}, nil
+	}
+	r.t.Fatalf("fullStackRT: unexpected request: %s %s", req.Method, req.URL)
+	return nil, nil
+}
+
+func httpStatusToString(code int) string {
+	switch code {
+	case 200:
+		return "200"
+	case 201:
+		return "201"
+	case 400:
+		return "400"
+	case 403:
+		return "403"
+	case 404:
+		return "404"
+	case 500:
+		return "500"
+	case 503:
+		return "503"
+	}
+	return "0"
 }
 
 func ctxWithRT(fn roundTripperFunc) context.Context {
@@ -129,9 +302,15 @@ func TestDoctor_happyPath_prints3CheckmarksAndExits0(t *testing.T) {
 func TestDoctor_malformedSA_failsCheck1_skipsRest(t *testing.T) {
 	opts := newOpts(t)
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
-	// We seed with bytes that the keystore accepts but the doctor will
-	// detect as missing required fields at resolution time.
-	be := keystore.NewFileBackend(opts.KeystoreRoot)
+	// Seed with bytes the keystore accepts but the doctor will detect as
+	// missing required fields at resolution time.
+	be, _, err := keystore.Select(keystore.SelectOptions{
+		Keyring:  opts.Keyring,
+		FileRoot: opts.KeystoreRoot,
+	})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
 	if err := be.Save("playci", bad); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
@@ -145,11 +324,11 @@ func TestDoctor_malformedSA_failsCheck1_skipsRest(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr)
-	if err == nil {
+	runErr := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr)
+	if runErr == nil {
 		t.Fatal("Execute: expected error on malformed SA, got nil")
 	}
-	if got := doctor.ExitCode(err); got != 10 {
+	if got := doctor.ExitCode(runErr); got != 10 {
 		t.Errorf("ExitCode(err) = %d, want 10", got)
 	}
 }
@@ -192,7 +371,13 @@ func TestDoctor_jsonOutput_passesThroughCheckResults(t *testing.T) {
 func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 	opts := newOpts(t)
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
-	be := keystore.NewFileBackend(opts.KeystoreRoot)
+	be, _, err := keystore.Select(keystore.SelectOptions{
+		Keyring:  opts.Keyring,
+		FileRoot: opts.KeystoreRoot,
+	})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
 	if err := be.Save("playci", bad); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
@@ -206,11 +391,11 @@ func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json")
-	if err == nil {
+	runErr := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json")
+	if runErr == nil {
 		t.Fatal("Execute: expected error on malformed SA, got nil")
 	}
-	if got := doctor.ExitCode(err); got != 10 {
+	if got := doctor.ExitCode(runErr); got != 10 {
 		t.Errorf("ExitCode(err) = %d, want 10", got)
 	}
 
@@ -236,5 +421,92 @@ func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 		if parsed[i].Passed {
 			t.Errorf("result[%d].Passed = true, want false", i)
 		}
+	}
+}
+
+func TestDoctor_twoPackages_bothPassing_returns5ResultsAndExit0(t *testing.T) {
+	opts := newOpts(t)
+	seedActiveAccount(t, opts, signedSAJSON(t))
+
+	rt := &fullStackRT{
+		t:               t,
+		insertByPackage: map[string]int{"com.example.app1": 200, "com.example.app2": 200},
+	}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, opts, ctx, &stdout, &stderr,
+		"--output", "json",
+		"--package", "com.example.app1",
+		"--package", "com.example.app2",
+	); err != nil {
+		t.Fatalf("Execute: %v (stderr=%s)", err, stderr.String())
+	}
+
+	var parsed []struct {
+		Name     string `json:"name"`
+		Passed   bool   `json:"passed"`
+		Skipped  bool   `json:"skipped"`
+		ExitCode int    `json:"exit_code"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("Unmarshal: %v (raw=%q)", err, stdout.String())
+	}
+	if len(parsed) != 5 {
+		t.Fatalf("len(parsed) = %d, want 5 (3 non-API + 2 per-package)", len(parsed))
+	}
+	for i, r := range parsed {
+		if !r.Passed {
+			t.Errorf("result[%d] %s: Passed=false (%+v)", i, r.Name, r)
+		}
+	}
+	// Check 4 entries must each carry the package name in their Name.
+	if !strings.Contains(parsed[3].Name, "com.example.app1") {
+		t.Errorf("parsed[3].Name = %q, want to contain com.example.app1", parsed[3].Name)
+	}
+	if !strings.Contains(parsed[4].Name, "com.example.app2") {
+		t.Errorf("parsed[4].Name = %q, want to contain com.example.app2", parsed[4].Name)
+	}
+}
+
+func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
+	opts := newOpts(t)
+	seedActiveAccount(t, opts, signedSAJSON(t))
+
+	rt := &fullStackRT{
+		t:               t,
+		insertByPackage: map[string]int{"com.example.app1": 200, "com.example.app2": 403},
+	}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+
+	var stdout, stderr bytes.Buffer
+	runErr := runCmd(t, opts, ctx, &stdout, &stderr,
+		"--output", "json",
+		"--package", "com.example.app1",
+		"--package", "com.example.app2",
+	)
+	if runErr == nil {
+		t.Fatal("Execute: expected non-nil error when one package fails")
+	}
+	if got := doctor.ExitCode(runErr); got != 11 {
+		t.Errorf("ExitCode(err) = %d, want 11 (worst non-zero across checks)", got)
+	}
+}
+
+func TestDoctor_withoutPackage_runsOnlyThreeChecks(t *testing.T) {
+	opts := newOpts(t)
+	seedActiveAccount(t, opts, signedSAJSON(t))
+
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	var parsed []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if len(parsed) != 3 {
+		t.Errorf("len(parsed) = %d, want 3 (no --package → only non-API checks)", len(parsed))
 	}
 }

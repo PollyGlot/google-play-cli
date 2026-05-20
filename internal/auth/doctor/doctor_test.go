@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -357,5 +358,283 @@ func TestCheckSAJSONValid_jsonRoundTrip(t *testing.T) {
 	}
 	if parsed[0].Name == "" {
 		t.Errorf("name field missing in JSON: %s", b)
+	}
+}
+
+// packageRT is a RoundTripper helper for CheckPackageAccess tests. It
+// routes the OAuth2 token-exchange (POST to oauth2.googleapis.com/token)
+// and the androidpublisher edits insert/delete calls to dedicated
+// handlers, so each test wires only the responses it cares about.
+//
+// The check is expected to call:
+//
+//	POST   /androidpublisher/v3/applications/<pkg>/edits         (insert)
+//	DELETE /androidpublisher/v3/applications/<pkg>/edits/<id>    (delete)
+//
+// against host androidpublisher.googleapis.com.
+type packageRT struct {
+	t          *testing.T
+	tokenCalls int
+	insertResp func(req *http.Request) (*http.Response, error)
+	deleteResp func(req *http.Request) (*http.Response, error)
+
+	// Observed call sequence, useful for asserting the cleanup happens.
+	calls []string
+}
+
+func (p *packageRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	p.calls = append(p.calls, req.Method+" "+req.URL.Path)
+	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+		p.tokenCalls++
+		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+		}, nil
+	}
+	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits") {
+		if p.insertResp == nil {
+			p.t.Fatalf("packageRT: unexpected insert call (no handler set): %s %s", req.Method, req.URL)
+		}
+		return p.insertResp(req)
+	}
+	if req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/") {
+		if p.deleteResp == nil {
+			p.t.Fatalf("packageRT: unexpected delete call (no handler set): %s %s", req.Method, req.URL)
+		}
+		return p.deleteResp(req)
+	}
+	p.t.Fatalf("packageRT: unexpected request: %s %s", req.Method, req.URL)
+	return nil, nil
+}
+
+func jsonResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
+	}
+}
+
+// insertOK returns an edits.insert handler that responds 200 with a
+// well-formed Edit body so the check has an Edit ID to discard.
+func insertOK() func(*http.Request) (*http.Response, error) {
+	return func(*http.Request) (*http.Response, error) {
+		return jsonResponse(200, `{"id":"edit-xyz","expiryTimeSeconds":"1700000000"}`), nil
+	}
+}
+
+func deleteOK() func(*http.Request) (*http.Response, error) {
+	return func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 204, Body: io.NopCloser(bytes.NewBufferString(""))}, nil
+	}
+}
+
+func TestCheckPackageAccess_happyPath_passes(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := &packageRT{
+		t:          t,
+		insertResp: insertOK(),
+		deleteResp: deleteOK(),
+	}
+	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+
+	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
+	if len(results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(results))
+	}
+	r := results[0]
+	if !r.Passed || r.Skipped {
+		t.Errorf("result = %+v, want Passed=true Skipped=false", r)
+	}
+	if !strings.Contains(r.Name, "com.example.app") {
+		t.Errorf("Name = %q, want to contain package name", r.Name)
+	}
+}
+
+func TestCheckPackageAccess_happyPath_alwaysCleansUpEdit(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := &packageRT{
+		t:          t,
+		insertResp: insertOK(),
+		deleteResp: deleteOK(),
+	}
+	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+
+	_ = doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
+
+	sawDelete := false
+	for _, c := range rt.calls {
+		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-xyz") {
+			sawDelete = true
+			break
+		}
+	}
+	if !sawDelete {
+		t.Errorf("CheckPackageAccess did not DELETE the open Edit; saw calls: %v", rt.calls)
+	}
+}
+
+func TestCheckPackageAccess_403_returnsExit11AndCanonicalHint(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := &packageRT{
+		t: t,
+		insertResp: func(*http.Request) (*http.Response, error) {
+			return jsonResponse(403, `{"error":{"code":403,"message":"forbidden"}}`), nil
+		},
+	}
+	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+
+	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
+	if len(results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(results))
+	}
+	r := results[0]
+	if r.Passed {
+		t.Errorf("403: Passed=true, want false")
+	}
+	if r.ExitCode != 11 {
+		t.Errorf("ExitCode = %d, want 11", r.ExitCode)
+	}
+	if !strings.Contains(r.Hint, "Play Console") || !strings.Contains(r.Hint, "API access") {
+		t.Errorf("Hint = %q, want to mention 'Play Console → Setup → API access'", r.Hint)
+	}
+	if !strings.Contains(r.Hint, "com.example.app") {
+		t.Errorf("Hint = %q, want to contain the package name", r.Hint)
+	}
+	if !strings.Contains(r.Hint, "ci@test-proj.iam.gserviceaccount.com") {
+		t.Errorf("Hint = %q, want to contain the SA client_email", r.Hint)
+	}
+}
+
+func TestCheckPackageAccess_404_returnsExit30(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := &packageRT{
+		t: t,
+		insertResp: func(*http.Request) (*http.Response, error) {
+			return jsonResponse(404, `{"error":{"code":404,"message":"not found"}}`), nil
+		},
+	}
+	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+
+	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
+	if len(results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(results))
+	}
+	r := results[0]
+	if r.Passed {
+		t.Errorf("404: Passed=true, want false")
+	}
+	if r.ExitCode != 30 {
+		t.Errorf("ExitCode = %d, want 30", r.ExitCode)
+	}
+	if !strings.Contains(r.Hint, "com.example.app") {
+		t.Errorf("Hint = %q, want to contain the package name", r.Hint)
+	}
+}
+
+func TestCheckPackageAccess_400_returnsExit30(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := &packageRT{
+		t: t,
+		insertResp: func(*http.Request) (*http.Response, error) {
+			return jsonResponse(400, `{"error":{"code":400,"message":"bad request"}}`), nil
+		},
+	}
+	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+
+	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
+	if len(results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(results))
+	}
+	r := results[0]
+	if r.Passed {
+		t.Errorf("400: Passed=true, want false")
+	}
+	if r.ExitCode != 30 {
+		t.Errorf("ExitCode = %d, want 30", r.ExitCode)
+	}
+}
+
+func TestCheckPackageAccess_5xxOnInsert_returnsExit40(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := &packageRT{
+		t: t,
+		insertResp: func(*http.Request) (*http.Response, error) {
+			return jsonResponse(503, `{"error":{"code":503,"message":"service unavailable"}}`), nil
+		},
+	}
+	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+
+	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
+	if len(results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(results))
+	}
+	r := results[0]
+	if r.Passed {
+		t.Errorf("503: Passed=true, want false")
+	}
+	if r.ExitCode != 40 {
+		t.Errorf("ExitCode = %d, want 40", r.ExitCode)
+	}
+}
+
+func TestCheckPackageAccess_200InsertThen5xxDelete_returnsExit40(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := &packageRT{
+		t:          t,
+		insertResp: insertOK(),
+		deleteResp: func(*http.Request) (*http.Response, error) {
+			return jsonResponse(503, `{"error":{"code":503,"message":"transient"}}`), nil
+		},
+	}
+	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+
+	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
+	if len(results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(results))
+	}
+	r := results[0]
+	if r.Passed {
+		t.Errorf("delete 503: Passed=true, want false (cleanup failure is reported)")
+	}
+	if r.ExitCode != 40 {
+		t.Errorf("ExitCode = %d, want 40", r.ExitCode)
+	}
+	// Even though delete failed, the check MUST have attempted it
+	// (otherwise we'd leak an open Edit on the user's package).
+	sawDelete := false
+	for _, c := range rt.calls {
+		if strings.HasPrefix(c, "DELETE ") {
+			sawDelete = true
+			break
+		}
+	}
+	if !sawDelete {
+		t.Errorf("cleanup was not attempted; saw calls: %v", rt.calls)
+	}
+}
+
+func TestCheckPackageAccess_networkFailureOnInsert_returnsExit50(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := &packageRT{
+		t: t,
+		insertResp: func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial tcp: lookup androidpublisher.googleapis.com: no such host")
+		},
+	}
+	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+
+	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
+	if len(results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(results))
+	}
+	r := results[0]
+	if r.Passed {
+		t.Errorf("network err: Passed=true, want false")
+	}
+	if r.ExitCode != 50 {
+		t.Errorf("ExitCode = %d, want 50", r.ExitCode)
 	}
 }
