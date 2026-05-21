@@ -20,25 +20,27 @@ const fakeSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-func newResolver(t *testing.T) (*resolver.Resolver, *config.Config, keystore.Backend) {
+// newResolver hands back a Resolver wired to an empty *Resolved and a
+// fresh file-backed keystore. The Resolved is returned so each test can
+// set ConfigAccount (layer 5) to mimic "this account is active in config";
+// the keystore is returned so the test can stash bytes for any account
+// names it expects the resolver to look up by name.
+func newResolver(t *testing.T) (*resolver.Resolver, *config.Resolved, keystore.Backend) {
 	t.Helper()
 	// Always clear the credential env vars so tests are hermetic regardless of
 	// what the dev's shell has exported. Individual tests opt back in with
 	// t.Setenv when they want to exercise the env-driven layers.
 	t.Setenv(resolver.EnvServiceAccount, "")
 	t.Setenv(resolver.EnvAccount, "")
-	cfg := &config.Config{}
+	resolved := &config.Resolved{}
 	be := keystore.NewFileBackend(t.TempDir())
-	return resolver.New(cfg, be), cfg, be
+	return resolver.New(resolved, be), resolved, be
 }
 
 func TestResolve_returnsActiveAccountCredential(t *testing.T) {
-	r, cfg, be := newResolver(t)
+	r, resolved, be := newResolver(t)
 
-	cfg.AddAccount("ci")
-	if err := cfg.SetActive("ci"); err != nil {
-		t.Fatal(err)
-	}
+	resolved.ConfigAccount = "ci"
 	if err := be.Save("ci", []byte(fakeSAJSON)); err != nil {
 		t.Fatal(err)
 	}
@@ -89,8 +91,7 @@ func TestResolve_serviceAccountFlag_path(t *testing.T) {
 }
 
 func TestResolve_accountFlag_picksStoredAccount(t *testing.T) {
-	r, cfg, be := newResolver(t)
-	cfg.AddAccount("other")
+	r, _, be := newResolver(t)
 	if err := be.Save("other", []byte(fakeSAJSON)); err != nil {
 		t.Fatal(err)
 	}
@@ -137,8 +138,7 @@ func TestResolve_envServiceAccount_path(t *testing.T) {
 }
 
 func TestResolve_envAccount_picksStoredAccount(t *testing.T) {
-	r, cfg, be := newResolver(t)
-	cfg.AddAccount("envchosen")
+	r, _, be := newResolver(t)
 	if err := be.Save("envchosen", []byte(fakeSAJSON)); err != nil {
 		t.Fatal(err)
 	}
@@ -179,26 +179,21 @@ func saJSONWithEmail(email string) string {
 }
 
 func TestResolve_precedence_flagServiceAccount_winsAll(t *testing.T) {
-	r, cfg, be := newResolver(t)
+	r, resolved, be := newResolver(t)
 
 	// Layer 2 candidate
-	cfg.AddAccount("acct-flag")
 	if err := be.Save("acct-flag", []byte(saJSONWithEmail("acctflag@x"))); err != nil {
 		t.Fatal(err)
 	}
 	// Layer 4 candidate
-	cfg.AddAccount("acct-env")
 	if err := be.Save("acct-env", []byte(saJSONWithEmail("acctenv@x"))); err != nil {
 		t.Fatal(err)
 	}
 	// Layer 5 candidate (active)
-	cfg.AddAccount("acct-active")
 	if err := be.Save("acct-active", []byte(saJSONWithEmail("active@x"))); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.SetActive("acct-active"); err != nil {
-		t.Fatal(err)
-	}
+	resolved.ConfigAccount = "acct-active"
 	// Layer 3 candidate
 	t.Setenv("GPLAY_SERVICE_ACCOUNT", saJSONWithEmail("envsa@x"))
 	// Layer 4 candidate
@@ -218,23 +213,18 @@ func TestResolve_precedence_flagServiceAccount_winsAll(t *testing.T) {
 }
 
 func TestResolve_precedence_accountFlag_beatsEnvAndActive(t *testing.T) {
-	r, cfg, be := newResolver(t)
+	r, resolved, be := newResolver(t)
 
-	cfg.AddAccount("acct-flag")
 	if err := be.Save("acct-flag", []byte(saJSONWithEmail("acctflag@x"))); err != nil {
 		t.Fatal(err)
 	}
-	cfg.AddAccount("acct-env")
 	if err := be.Save("acct-env", []byte(saJSONWithEmail("acctenv@x"))); err != nil {
 		t.Fatal(err)
 	}
-	cfg.AddAccount("acct-active")
 	if err := be.Save("acct-active", []byte(saJSONWithEmail("active@x"))); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.SetActive("acct-active"); err != nil {
-		t.Fatal(err)
-	}
+	resolved.ConfigAccount = "acct-active"
 	t.Setenv("GPLAY_SERVICE_ACCOUNT", saJSONWithEmail("envsa@x"))
 	t.Setenv("GPLAY_ACCOUNT", "acct-env")
 
@@ -249,19 +239,15 @@ func TestResolve_precedence_accountFlag_beatsEnvAndActive(t *testing.T) {
 }
 
 func TestResolve_precedence_envServiceAccount_beatsEnvAccountAndActive(t *testing.T) {
-	r, cfg, be := newResolver(t)
+	r, resolved, be := newResolver(t)
 
-	cfg.AddAccount("acct-env")
 	if err := be.Save("acct-env", []byte(saJSONWithEmail("acctenv@x"))); err != nil {
 		t.Fatal(err)
 	}
-	cfg.AddAccount("acct-active")
 	if err := be.Save("acct-active", []byte(saJSONWithEmail("active@x"))); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.SetActive("acct-active"); err != nil {
-		t.Fatal(err)
-	}
+	resolved.ConfigAccount = "acct-active"
 	t.Setenv("GPLAY_SERVICE_ACCOUNT", saJSONWithEmail("envsa@x"))
 	t.Setenv("GPLAY_ACCOUNT", "acct-env")
 
@@ -307,14 +293,11 @@ func TestResolve_envServiceAccount_nonexistentPath_returnsError(t *testing.T) {
 }
 
 func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
-	r, cfg, be := newResolver(t)
-	cfg.AddAccount("active")
+	r, resolved, be := newResolver(t)
 	if err := be.Save("active", []byte(fakeSAJSON)); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.SetActive("active"); err != nil {
-		t.Fatal(err)
-	}
+	resolved.ConfigAccount = "active"
 	t.Setenv("GPLAY_SERVICE_ACCOUNT", "")
 	t.Setenv("GPLAY_ACCOUNT", "")
 
@@ -329,19 +312,15 @@ func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
 }
 
 func TestResolve_precedence_envAccount_beatsActive(t *testing.T) {
-	r, cfg, be := newResolver(t)
+	r, resolved, be := newResolver(t)
 
-	cfg.AddAccount("acct-env")
 	if err := be.Save("acct-env", []byte(saJSONWithEmail("acctenv@x"))); err != nil {
 		t.Fatal(err)
 	}
-	cfg.AddAccount("acct-active")
 	if err := be.Save("acct-active", []byte(saJSONWithEmail("active@x"))); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.SetActive("acct-active"); err != nil {
-		t.Fatal(err)
-	}
+	resolved.ConfigAccount = "acct-active"
 	t.Setenv("GPLAY_SERVICE_ACCOUNT", "")
 	t.Setenv("GPLAY_ACCOUNT", "acct-env")
 

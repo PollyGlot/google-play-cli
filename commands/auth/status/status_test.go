@@ -109,7 +109,7 @@ func seedActiveAccount(t *testing.T, opts status.Options) {
 	if err := be.Save("playci", []byte(validSAJSON)); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{}
+	cfg := &config.Global{}
 	cfg.AddAccount("playci")
 	if err := cfg.SetActive("playci"); err != nil {
 		t.Fatal(err)

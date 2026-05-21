@@ -22,7 +22,7 @@ func newOpts(t *testing.T) list.Options {
 
 func seed(t *testing.T, opts list.Options, names ...string) {
 	t.Helper()
-	cfg := &config.Config{}
+	cfg := &config.Global{}
 	for _, n := range names {
 		cfg.AddAccount(n)
 	}

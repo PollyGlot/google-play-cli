@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
@@ -109,6 +110,10 @@ replace Fastlane on Android CI pipelines.`,
 		Keyring:      keystore.DefaultKeyring(),
 	}))
 	root.AddCommand(auth)
+
+	// `gplay init` at the top level — pins a package to the current repo.
+	// Also wired as `gplay apps init` once the apps subcommand exists.
+	root.AddCommand(initcmd.NewCommand(initcmd.Options{}))
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",

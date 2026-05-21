@@ -42,7 +42,7 @@ func NewCommand(opts Options) *cobra.Command {
 }
 
 func run(cmd *cobra.Command, opts Options, output string) error {
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
 	if err != nil {
 		return err
 	}

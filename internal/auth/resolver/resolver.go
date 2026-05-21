@@ -6,7 +6,8 @@
 //  2. --account flag (stored Account name)
 //  3. GPLAY_SERVICE_ACCOUNT env var (path or inline JSON)
 //  4. GPLAY_ACCOUNT env var (stored Account name)
-//  5. The active Account in config
+//  5. The active Account in config (after cascade: project-local override
+//     beats global active flag — see config.Resolved.ConfigAccount)
 //
 // Inputs is the per-call carrier for flag and env values; the call site
 // (typically the root command) is responsible for populating it from
@@ -38,7 +39,7 @@ var ErrNoSource = errors.New(
 		"or run `gplay auth login`")
 
 // Inputs carries the per-call flag and env-var values fed to Resolve. A
-// zero-value Inputs falls straight through to layer 5 (active Account).
+// zero-value Inputs falls straight through to layer 5 (Resolved.ConfigAccount).
 type Inputs struct {
 	// ServiceAccountFlag is the value of `--service-account` (path or inline
 	// JSON). Empty means the flag was not set.
@@ -48,16 +49,17 @@ type Inputs struct {
 	AccountFlag string
 }
 
-// Resolver glues a config (which Account is active, what's registered) and
-// a keystore (where the SA JSON bytes live) into a single Resolve call.
+// Resolver glues a *config.Resolved (which account is active after the
+// cascade) and a keystore (where the SA JSON bytes live) into a single
+// Resolve call.
 type Resolver struct {
-	cfg *config.Config
-	ks  keystore.Backend
+	resolved *config.Resolved
+	ks       keystore.Backend
 }
 
-// New returns a Resolver backed by cfg and ks. Both are required.
-func New(cfg *config.Config, ks keystore.Backend) *Resolver {
-	return &Resolver{cfg: cfg, ks: ks}
+// New returns a Resolver backed by resolved and ks. Both are required.
+func New(resolved *config.Resolved, ks keystore.Backend) *Resolver {
+	return &Resolver{resolved: resolved, ks: ks}
 }
 
 // Resolve walks the precedence chain in order and returns the first
@@ -83,12 +85,11 @@ func (r *Resolver) Resolve(in Inputs) (*serviceaccount.ServiceAccount, error) {
 		return r.loadStoredAccount(v)
 	}
 
-	// Layer 5: active Account in config.
-	a, ok := r.cfg.Active()
-	if !ok {
+	// Layer 5: ConfigAccount from cascade (project-local override > global active).
+	if r.resolved == nil || r.resolved.ConfigAccount == "" {
 		return nil, ErrNoSource
 	}
-	return r.loadStoredAccount(a.Name)
+	return r.loadStoredAccount(r.resolved.ConfigAccount)
 }
 
 // loadStoredAccount loads a credential from the keystore by name and

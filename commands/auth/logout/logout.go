@@ -50,7 +50,7 @@ func NewCommand(opts Options) *cobra.Command {
 }
 
 func run(cmd *cobra.Command, opts Options, name string, verbose bool) error {
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func run(cmd *cobra.Command, opts Options, name string, verbose bool) error {
 // listAccountNames returns a sorted, comma-separated rendering of the
 // registered Account names, or the placeholder when the registry is
 // empty. Used in the unknown-name error hint.
-func listAccountNames(cfg *config.Config) string {
+func listAccountNames(cfg *config.Global) string {
 	if len(cfg.Accounts) == 0 {
 		return "(none registered)"
 	}

@@ -59,7 +59,7 @@ type payload struct {
 }
 
 func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	resolved, err := config.LoadFromEnv(opts.ConfigPath)
 	if err != nil {
 		return err
 	}
@@ -78,23 +78,28 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 		keystore.LogBackendOnce(cmd.ErrOrStderr(), label)
 	}
 
-	sa, err := resolver.New(cfg, be).Resolve(resolver.Inputs{})
+	sa, err := resolver.New(resolved, be).Resolve(resolver.Inputs{})
 	if err != nil {
 		if errors.Is(err, resolver.ErrNoSource) {
 			return renderEmpty(cmd.OutOrStdout(), output)
 		}
 		return err
 	}
-	active, _ := cfg.Active()
-
+	// ConfigAccount is empty when --service-account or GPLAY_SERVICE_ACCOUNT
+	// wins resolution: the credential bytes came from outside the config so
+	// no Account name applies. Surface that explicitly and skip the file
+	// path (which is keyed by Account name, so meaningless here).
+	activeName := resolved.ConfigAccount
 	p := payload{
 		Active:      true,
-		Name:        active.Name,
+		Name:        activeName,
 		ClientEmail: sa.ClientEmail,
 		Backend:     label,
 	}
-	if label == keystore.BackendFile {
-		p.Path = filepath.Join(opts.KeystoreRoot, active.Name+".json")
+	if activeName == "" {
+		p.Name = "(env override)"
+	} else if label == keystore.BackendFile {
+		p.Path = filepath.Join(opts.KeystoreRoot, activeName+".json")
 	}
 
 	stdout := cmd.OutOrStdout()
@@ -108,11 +113,11 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 			p.Name, p.ClientEmail); err != nil {
 			return err
 		}
-		if p.Backend == keystore.BackendKeyring {
-			_, err := fmt.Fprintf(stdout, "Backend:        %s\n", keystore.BackendKeyring)
+		if p.Path == "" {
+			_, err := fmt.Fprintf(stdout, "Backend:        %s\n", p.Backend)
 			return err
 		}
-		_, err := fmt.Fprintf(stdout, "Backend:        %s: %s\n", keystore.BackendFile, p.Path)
+		_, err := fmt.Fprintf(stdout, "Backend:        %s: %s\n", p.Backend, p.Path)
 		return err
 	default:
 		return fmt.Errorf("unsupported --output %q (want table or json)", output)

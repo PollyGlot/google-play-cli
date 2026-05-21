@@ -144,7 +144,7 @@ func buildChecks(packages []string) []authdoctor.Check {
 // code surfaces the most actionable problem from a multi-package run.
 func executeChecks(cmd *cobra.Command, opts Options, packages []string) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
 	checks := buildChecks(packages)
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	resolved, err := config.LoadFromEnv(opts.ConfigPath)
 	if err != nil {
 		return synthFailure(err, checks)
 	}
@@ -159,7 +159,7 @@ func executeChecks(cmd *cobra.Command, opts Options, packages []string) ([]authd
 	if err != nil {
 		return synthFailure(err, checks)
 	}
-	sa, err := resolver.New(cfg, be).Resolve(resolver.Inputs{})
+	sa, err := resolver.New(resolved, be).Resolve(resolver.Inputs{})
 	if err != nil {
 		return synthFailure(err, checks)
 	}

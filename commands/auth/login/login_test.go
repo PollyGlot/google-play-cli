@@ -123,9 +123,9 @@ func TestLogin_validSA_persistsAndActivates(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
 	if err != nil {
-		t.Fatalf("LoadOrEmpty: %v", err)
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
 	}
 	a, ok := cfg.Active()
 	if !ok {
@@ -196,7 +196,10 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	if len(names) != 1 {
 		t.Errorf("List = %v, want exactly one entry", names)
 	}
-	cfg, _ := config.LoadOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	if err != nil {
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
+	}
 	if len(cfg.Accounts) != 1 {
 		t.Errorf("config Accounts = %v, want exactly one entry", cfg.Accounts)
 	}
@@ -219,9 +222,9 @@ func TestLogin_activateFalse_onSecondAccount_keepsCurrentActive(t *testing.T) {
 		t.Fatalf("second login: %v", err)
 	}
 
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
 	if err != nil {
-		t.Fatalf("LoadOrEmpty: %v", err)
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
 	}
 	if len(cfg.Accounts) != 2 {
 		t.Fatalf("len(Accounts) = %d, want 2; cfg=%+v", len(cfg.Accounts), cfg)
@@ -246,9 +249,9 @@ func TestLogin_activateFalse_onFirstAccount_stillActivates(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
 	if err != nil {
-		t.Fatalf("LoadOrEmpty: %v", err)
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
 	}
 	active, ok := cfg.Active()
 	if !ok {
