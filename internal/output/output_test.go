@@ -7,20 +7,12 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
-
-// withIsTerminal swaps the package-level TTY hook for the duration of one
-// test and restores it via t.Cleanup. Tests do not need a pty.
-func withIsTerminal(t *testing.T, v bool) {
-	t.Helper()
-	prev := output.IsTerminalFunc()
-	output.SetIsTerminalFunc(func(_ io.Writer) bool { return v })
-	t.Cleanup(func() { output.SetIsTerminalFunc(prev) })
-}
 
 func TestResolve_AutoNonTTY_ReturnsJSON(t *testing.T) {
 	t.Setenv("CI", "")
-	withIsTerminal(t, false)
+	outputtest.ForceTerminal(t, false)
 
 	got, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
 	if err != nil {
@@ -33,7 +25,7 @@ func TestResolve_AutoNonTTY_ReturnsJSON(t *testing.T) {
 
 func TestResolve_AutoTTY_ReturnsTable(t *testing.T) {
 	t.Setenv("CI", "")
-	withIsTerminal(t, true)
+	outputtest.ForceTerminal(t, true)
 
 	got, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
 	if err != nil {
@@ -46,7 +38,7 @@ func TestResolve_AutoTTY_ReturnsTable(t *testing.T) {
 
 func TestResolve_AutoCIEnv_OverridesTTYToJSON(t *testing.T) {
 	t.Setenv("CI", "true")
-	withIsTerminal(t, true)
+	outputtest.ForceTerminal(t, true)
 
 	got, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
 	if err != nil {
@@ -59,7 +51,7 @@ func TestResolve_AutoCIEnv_OverridesTTYToJSON(t *testing.T) {
 
 func TestResolve_ExplicitTable_WinsOverNonTTY(t *testing.T) {
 	t.Setenv("CI", "")
-	withIsTerminal(t, false)
+	outputtest.ForceTerminal(t, false)
 
 	got, err := output.Resolve(output.FormatTable, &bytes.Buffer{})
 	if err != nil {
@@ -72,7 +64,7 @@ func TestResolve_ExplicitTable_WinsOverNonTTY(t *testing.T) {
 
 func TestRender_PicksMatchingRenderer(t *testing.T) {
 	t.Setenv("CI", "")
-	withIsTerminal(t, true)
+	outputtest.ForceTerminal(t, true)
 
 	var stdout bytes.Buffer
 	rs := output.Renderers{
@@ -138,6 +130,36 @@ func TestMarkdownTable_NoRows_EmitsHeaderAndSeparatorOnly(t *testing.T) {
 	want := "| A | B |\n| --- | --- |\n"
 	if got := buf.String(); got != want {
 		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestMarkdownTable_EscapesPipesInHeadersAndCells(t *testing.T) {
+	var buf bytes.Buffer
+	err := output.MarkdownTable(&buf, []string{"Col|A", "B"}, [][]string{
+		{"pipe|inside", "ok"},
+	})
+	if err != nil {
+		t.Fatalf("MarkdownTable: %v", err)
+	}
+	want := "| Col\\|A | B |\n| --- | --- |\n| pipe\\|inside | ok |\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestMarkdownTable_RowWidthMismatch_ReturnsError(t *testing.T) {
+	var buf bytes.Buffer
+	err := output.MarkdownTable(&buf, []string{"A", "B"}, [][]string{
+		{"a1", "b1"},
+		{"only-one"},
+	})
+	if err == nil {
+		t.Fatal("expected error for short row")
+	}
+	for _, want := range []string{"row 1", "1 cells", "want 2"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
 	}
 }
 

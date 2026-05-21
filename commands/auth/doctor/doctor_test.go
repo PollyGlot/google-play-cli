@@ -22,15 +22,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
-	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
-
-func forceTTY(t *testing.T, v bool) {
-	t.Helper()
-	prev := output.IsTerminalFunc()
-	output.SetIsTerminalFunc(func(_ io.Writer) bool { return v })
-	t.Cleanup(func() { output.SetIsTerminalFunc(prev) })
-}
 
 // roundTripperFunc — canonical AGENTS.md pattern.
 type roundTripperFunc func(req *http.Request) (*http.Response, error)
@@ -312,7 +305,7 @@ func TestDoctor_happyPath_prints3CheckmarksAndExits0(t *testing.T) {
 
 func TestDoctor_defaultNonTTY_emitsJSON(t *testing.T) {
 	t.Setenv("CI", "")
-	forceTTY(t, false)
+	outputtest.ForceTerminal(t, false)
 	opts := newOpts(t)
 	seedActiveAccount(t, opts, signedSAJSON(t))
 
@@ -331,7 +324,7 @@ func TestDoctor_defaultNonTTY_emitsJSON(t *testing.T) {
 
 func TestDoctor_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
 	t.Setenv("CI", "true")
-	forceTTY(t, true)
+	outputtest.ForceTerminal(t, true)
 	opts := newOpts(t)
 	seedActiveAccount(t, opts, signedSAJSON(t))
 

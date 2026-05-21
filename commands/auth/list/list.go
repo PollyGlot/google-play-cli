@@ -5,7 +5,6 @@
 package list
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -39,7 +38,7 @@ func NewCommand(opts Options) *cobra.Command {
 			return run(cmd, opts, output.Format(outputFlag))
 		},
 	}
-	cmd.Flags().StringVar(&outputFlag, "output", "", "output format: table, json, or markdown (default: auto — table on TTY, json in pipes/CI)")
+	output.RegisterFlag(cmd, &outputFlag)
 	return cmd
 }
 
@@ -59,15 +58,9 @@ func run(cmd *cobra.Command, opts Options, format output.Format) error {
 func renderersFor(rows []accountRow) output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, rows) },
-		JSON:     func(w io.Writer) error { return writeJSON(w, payload{Accounts: rows}) },
+		JSON:     func(w io.Writer) error { return output.WriteJSON(w, payload{Accounts: rows}) },
 		Markdown: func(w io.Writer) error { return renderMarkdown(w, rows) },
 	}
-}
-
-func writeJSON(w io.Writer, p payload) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(p)
 }
 
 // Markers shown next to each row in `--output table` so the user can

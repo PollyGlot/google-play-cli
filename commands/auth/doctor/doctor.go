@@ -14,7 +14,6 @@
 package doctor
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -101,7 +100,7 @@ structured []CheckResult for scripting.`,
 			return run(cmd, opts, output.Format(outputFlag), packages)
 		},
 	}
-	cmd.Flags().StringVar(&outputFlag, "output", "", "output format: table, json, or markdown (default: auto — table on TTY, json in pipes/CI)")
+	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringSliceVar(&packages, "package", nil,
 		"Android package name to round-trip an edits.insert+delete against; repeat for multiple packages")
 	return cmd
@@ -228,11 +227,7 @@ func renderersFor(results []authdoctor.CheckResult) output.Renderers {
 			}
 			return nil
 		},
-		JSON: func(w io.Writer) error {
-			enc := json.NewEncoder(w)
-			enc.SetIndent("", "  ")
-			return enc.Encode(results)
-		},
+		JSON:     func(w io.Writer) error { return output.WriteJSON(w, results) },
 		Markdown: func(w io.Writer) error { return renderMarkdownChecklist(w, results) },
 	}
 }

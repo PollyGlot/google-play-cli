@@ -10,7 +10,6 @@
 package status
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -48,7 +47,7 @@ func NewCommand(opts Options) *cobra.Command {
 			return run(cmd, opts, output.Format(outputFlag), verbose)
 		},
 	}
-	cmd.Flags().StringVar(&outputFlag, "output", "", "output format: table, json, or markdown (default: auto — table on TTY, json in pipes/CI)")
+	output.RegisterFlag(cmd, &outputFlag)
 	return cmd
 }
 
@@ -111,7 +110,7 @@ func run(cmd *cobra.Command, opts Options, format output.Format, verbose bool) e
 func renderersFor(p payload) output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
-		JSON:     func(w io.Writer) error { return writeJSON(w, p) },
+		JSON:     func(w io.Writer) error { return output.WriteJSON(w, p) },
 		Markdown: func(w io.Writer) error { return renderMarkdown(w, p) },
 	}
 }
@@ -127,15 +126,9 @@ func emptyRenderers() output.Renderers {
 			_, err := fmt.Fprintln(w, "Run `gplay auth login` to register one, or `gplay auth list` to see registered Accounts.")
 			return err
 		},
-		JSON:     func(w io.Writer) error { return writeJSON(w, payload{Active: false}) },
+		JSON:     func(w io.Writer) error { return output.WriteJSON(w, payload{Active: false}) },
 		Markdown: renderEmptyMarkdown,
 	}
-}
-
-func writeJSON(w io.Writer, p payload) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(p)
 }
 
 func renderTable(w io.Writer, p payload) error {

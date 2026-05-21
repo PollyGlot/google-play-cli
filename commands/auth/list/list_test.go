@@ -3,7 +3,6 @@ package list_test
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,15 +11,8 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/internal/config"
-	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
-
-func forceTTY(t *testing.T, v bool) {
-	t.Helper()
-	prev := output.IsTerminalFunc()
-	output.SetIsTerminalFunc(func(_ io.Writer) bool { return v })
-	t.Cleanup(func() { output.SetIsTerminalFunc(prev) })
-}
 
 func newOpts(t *testing.T) list.Options {
 	t.Helper()
@@ -122,7 +114,7 @@ func TestList_markdownOutput_emptyRegistry(t *testing.T) {
 
 func TestList_defaultNonTTY_emitsJSON(t *testing.T) {
 	t.Setenv("CI", "")
-	forceTTY(t, false)
+	outputtest.ForceTerminal(t, false)
 	opts := newOpts(t)
 	seed(t, opts, "alpha")
 	var stdout, stderr bytes.Buffer
@@ -143,7 +135,7 @@ func TestList_defaultNonTTY_emitsJSON(t *testing.T) {
 
 func TestList_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
 	t.Setenv("CI", "true")
-	forceTTY(t, true)
+	outputtest.ForceTerminal(t, true)
 	opts := newOpts(t)
 	seed(t, opts, "alpha")
 	var stdout, stderr bytes.Buffer
@@ -158,7 +150,7 @@ func TestList_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
 
 func TestList_explicitTableInPipe_overridesAutoJSON(t *testing.T) {
 	t.Setenv("CI", "")
-	forceTTY(t, false)
+	outputtest.ForceTerminal(t, false)
 	opts := newOpts(t)
 	seed(t, opts, "alpha")
 	var stdout, stderr bytes.Buffer
