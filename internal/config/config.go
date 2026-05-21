@@ -146,11 +146,13 @@ type Resolved struct {
 }
 
 // projectShared mirrors the on-disk shape of <repo>/.gplay/config.json.
-// Account is *json.RawMessage so a present-but-empty value is still
-// detected — committed configs must never carry it (see ADR-0004).
+// Account is json.RawMessage (not a pointer) so we can detect any presence
+// of the field — including `"account": null`, which a *json.RawMessage
+// would silently unmarshal to nil and let through. Committed configs must
+// never carry the field at all (see ADR-0004).
 type projectShared struct {
-	Package string           `json:"package"`
-	Account *json.RawMessage `json:"account"`
+	Package string          `json:"package"`
+	Account json.RawMessage `json:"account"`
 }
 
 // projectLocal mirrors the on-disk shape of <repo>/.gplay/config.local.json.
@@ -240,7 +242,7 @@ func readProjectShared(path string) (*projectShared, error) {
 	if err := json.Unmarshal(data, &ps); err != nil {
 		return nil, fmt.Errorf("config: parse %s: %w", path, err)
 	}
-	if ps.Account != nil {
+	if len(ps.Account) > 0 {
 		return nil, fmt.Errorf("config: %s: field \"account\" is forbidden in committed config (use .gplay/config.local.json or GPLAY_ACCOUNT)", path)
 	}
 	return &ps, nil

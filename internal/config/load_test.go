@@ -166,6 +166,21 @@ func TestLoad_projectShared_accountField_isRejected(t *testing.T) {
 	}
 }
 
+// `"account": null` is still presence of the forbidden field — must be
+// rejected the same as a non-null value.
+func TestLoad_projectShared_accountFieldExplicitlyNull_isRejected(t *testing.T) {
+	f := newLoadFixture(t)
+	f.writeShared(t, `{"package":"com.example.app","account":null}`)
+
+	_, err := config.Load(f.loadOpts())
+	if err == nil {
+		t.Fatal("Load: expected rejection of account:null in project-shared config")
+	}
+	if !strings.Contains(err.Error(), "account") {
+		t.Errorf("error %q must mention the offending field name", err.Error())
+	}
+}
+
 func TestLoad_projectLocal_accountField_isAccepted(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeLocal(t, `{"account":"manual"}`)
