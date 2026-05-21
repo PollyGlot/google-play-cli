@@ -22,7 +22,15 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 )
+
+func forceTTY(t *testing.T, v bool) {
+	t.Helper()
+	prev := output.IsTerminalFunc()
+	output.SetIsTerminalFunc(func(_ io.Writer) bool { return v })
+	t.Cleanup(func() { output.SetIsTerminalFunc(prev) })
+}
 
 // roundTripperFunc — canonical AGENTS.md pattern.
 type roundTripperFunc func(req *http.Request) (*http.Response, error)
@@ -285,7 +293,10 @@ func TestDoctor_happyPath_prints3CheckmarksAndExits0(t *testing.T) {
 	seedActiveAccount(t, opts, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr); err != nil {
+	// Pin the format being asserted: this test verifies the table emoji
+	// output, not the auto-default (which would be JSON in this non-TTY
+	// test context).
+	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -296,6 +307,106 @@ func TestDoctor_happyPath_prints3CheckmarksAndExits0(t *testing.T) {
 	}
 	if strings.Contains(combined, "❌") {
 		t.Errorf("combined output contains ❌ on happy path:\n%s", combined)
+	}
+}
+
+func TestDoctor_defaultNonTTY_emitsJSON(t *testing.T) {
+	t.Setenv("CI", "")
+	forceTTY(t, false)
+	opts := newOpts(t)
+	seedActiveAccount(t, opts, signedSAJSON(t))
+
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var parsed []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("non-TTY default should be JSON; got %q (err=%v)", stdout.String(), err)
+	}
+	if len(parsed) != 3 {
+		t.Errorf("expected 3 results in auto-JSON default, got %d", len(parsed))
+	}
+}
+
+func TestDoctor_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
+	t.Setenv("CI", "true")
+	forceTTY(t, true)
+	opts := newOpts(t)
+	seedActiveAccount(t, opts, signedSAJSON(t))
+
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &[]map[string]any{}); err != nil {
+		t.Errorf("CI=true must force JSON on TTY; got %q", stdout.String())
+	}
+}
+
+func TestDoctor_markdownOutput_emitsTaskList(t *testing.T) {
+	opts := newOpts(t)
+	seedActiveAccount(t, opts, signedSAJSON(t))
+
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "markdown"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "- [x]") {
+		t.Errorf("markdown happy path missing '- [x]'; got:\n%s", out)
+	}
+	// Markdown checklist must not use the emoji that belongs to the table form.
+	if strings.Contains(out, "✅") {
+		t.Errorf("markdown output should not carry emoji ✅; got:\n%s", out)
+	}
+}
+
+func TestDoctor_markdownOutput_failingCheckAndSkipped(t *testing.T) {
+	opts := newOpts(t)
+	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
+	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: opts.Keyring, FileRoot: opts.KeystoreRoot})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	if err := be.Save("playci", bad); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	cfg := &config.Global{}
+	cfg.AddAccount("playci")
+	_ = cfg.SetActive("playci")
+	_ = cfg.Save(opts.ConfigPath)
+
+	var stdout, stderr bytes.Buffer
+	runErr := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "markdown")
+	if runErr == nil {
+		t.Fatal("expected error for malformed SA")
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "- [ ]") {
+		t.Errorf("markdown failure must contain '- [ ]'; got:\n%s", out)
+	}
+	if !strings.Contains(out, "_skipped_") {
+		t.Errorf("markdown must mark skipped checks with '_skipped_'; got:\n%s", out)
+	}
+	if !strings.Contains(out, "— hint:") {
+		t.Errorf("markdown must include hint when one is present; got:\n%s", out)
+	}
+}
+
+func TestDoctor_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
+	opts := newOpts(t)
+	seedActiveAccount(t, opts, signedSAJSON(t))
+
+	var stdout, stderr bytes.Buffer
+	err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "xml")
+	if err == nil {
+		t.Fatal("expected error on --output xml")
+	}
+	for _, want := range []string{"unsupported", "table", "json", "markdown"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
 	}
 }
 

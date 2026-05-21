@@ -3,8 +3,9 @@
 // before any other command tries to talk to the API.
 //
 // This package is the thin command-layer glue: it resolves the active
-// credential, hands it to internal/auth/doctor, and renders either a
-// TTY checklist or a JSON pass-through of []CheckResult.
+// credential, hands it to internal/auth/doctor, and renders the
+// resulting checklist via internal/output (table = emoji checklist,
+// json = []CheckResult pass-through, markdown = GitHub task list).
 //
 // Checks 1–3 always run (issue #11 slice). For each `--package <name>`
 // passed, the per-package edits.insert/delete round-trip (issue #12) is
@@ -24,12 +25,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
-)
-
-// Output format identifiers accepted by the --output flag.
-const (
-	OutputTable = "table"
-	OutputJSON  = "json"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
 // Options pins where the command reads state from. Output streams are
@@ -79,8 +75,8 @@ func ExitCode(err error) int {
 // NewCommand returns the cobra command for `gplay auth doctor`.
 func NewCommand(opts Options) *cobra.Command {
 	var (
-		output   string
-		packages []string
+		outputFlag string
+		packages   []string
 	)
 	cmd := &cobra.Command{
 		Use:   "doctor",
@@ -102,19 +98,19 @@ structured []CheckResult for scripting.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(cmd, opts, output, packages)
+			return run(cmd, opts, output.Format(outputFlag), packages)
 		},
 	}
-	cmd.Flags().StringVar(&output, "output", OutputTable, "output format: table or json")
+	cmd.Flags().StringVar(&outputFlag, "output", "", "output format: table, json, or markdown (default: auto — table on TTY, json in pipes/CI)")
 	cmd.Flags().StringSliceVar(&packages, "package", nil,
 		"Android package name to round-trip an edits.insert+delete against; repeat for multiple packages")
 	return cmd
 }
 
-func run(cmd *cobra.Command, opts Options, output string, packages []string) error {
+func run(cmd *cobra.Command, opts Options, format output.Format, packages []string) error {
 	results, worstFailure := executeChecks(cmd, opts, packages)
 
-	if err := render(cmd.OutOrStdout(), output, results); err != nil {
+	if err := output.Render(cmd.OutOrStdout(), format, renderersFor(results)); err != nil {
 		return err
 	}
 	if worstFailure != nil {
@@ -202,7 +198,8 @@ func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResul
 }
 
 // iconForResult picks the emoji shown next to a check's Name in the
-// table-mode output.
+// table-mode output. Emoji belong to the table form only; the markdown
+// renderer uses the `- [x] / - [ ]` task-list idiom instead.
 func iconForResult(r authdoctor.CheckResult) string {
 	switch {
 	case r.Skipped:
@@ -214,25 +211,54 @@ func iconForResult(r authdoctor.CheckResult) string {
 	}
 }
 
-func render(w io.Writer, output string, results []authdoctor.CheckResult) error {
-	switch output {
-	case OutputJSON:
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(results)
-	case OutputTable:
-		for _, r := range results {
-			if _, err := fmt.Fprintf(w, "%s  %s\n", iconForResult(r), r.Name); err != nil {
-				return err
-			}
-			if !r.Passed && !r.Skipped && r.Hint != "" {
-				if _, err := fmt.Fprintf(w, "   hint: %s\n", r.Hint); err != nil {
+// renderersFor wires the three Format renderers for a slice of check
+// results.
+func renderersFor(results []authdoctor.CheckResult) output.Renderers {
+	return output.Renderers{
+		Table: func(w io.Writer) error {
+			for _, r := range results {
+				if _, err := fmt.Fprintf(w, "%s  %s\n", iconForResult(r), r.Name); err != nil {
 					return err
 				}
+				if !r.Passed && !r.Skipped && r.Hint != "" {
+					if _, err := fmt.Fprintf(w, "   hint: %s\n", r.Hint); err != nil {
+						return err
+					}
+				}
 			}
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported --output %q (want %s or %s)", output, OutputTable, OutputJSON)
+			return nil
+		},
+		JSON: func(w io.Writer) error {
+			enc := json.NewEncoder(w)
+			enc.SetIndent("", "  ")
+			return enc.Encode(results)
+		},
+		Markdown: func(w io.Writer) error { return renderMarkdownChecklist(w, results) },
 	}
+}
+
+// renderMarkdownChecklist emits a GitHub-flavored task list. Passed checks
+// → `- [x] name`. Failed checks → `- [ ] name — hint: <hint>` (hint
+// dropped when empty). Skipped checks → `- [ ] _skipped_: name` so a
+// reader can scan failures and skips separately.
+func renderMarkdownChecklist(w io.Writer, results []authdoctor.CheckResult) error {
+	for _, r := range results {
+		var line string
+		switch {
+		case r.Skipped:
+			line = fmt.Sprintf("- [ ] _skipped_: %s\n", r.Name)
+		case !r.Passed:
+			if r.Hint != "" {
+				line = fmt.Sprintf("- [ ] %s — hint: %s\n", r.Name, r.Hint)
+			} else {
+				line = fmt.Sprintf("- [ ] %s\n", r.Name)
+			}
+		default:
+			line = fmt.Sprintf("- [x] %s\n", r.Name)
+		}
+		if _, err := fmt.Fprint(w, line); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -10,6 +10,7 @@ For deeper rationale on the load-bearing choices, see:
 - [ADR-0002 — Safe production defaults](./adr/0002-safe-production-defaults.md)
 - [ADR-0003 — `--output json` is API pass-through](./adr/0003-json-passthrough.md)
 - [ADR-0004 — Cascading config](./adr/0004-cascading-config.md)
+- [ADR-0005 — TTY-aware output defaults](./adr/0005-tty-aware-output.md)
 
 ---
 
@@ -185,11 +186,36 @@ Backlog: real discovery via Cloud Resource Manager + IAM (see `BACKLOG.md`).
 
 ## 7. Output
 
-### Modes
+### Formats
 
-- TTY → `table` (default)
-- Pipe / non-TTY → `json` (default)
-- Override: `--output table|json|markdown`
+A command's output Format is one of `table`, `json`, or `markdown`. The
+default Format is `auto` — resolved by the dispatcher in `internal/output`:
+
+- `CI=true` (non-empty) → `json`
+- stdout is not a TTY → `json`
+- otherwise → `table`
+
+Explicit `--output table|json|markdown` always wins. `--output table` in
+a piped context (e.g. behind `tee`) is the escape hatch when the
+auto-detect is wrong. See [ADR-0005](./adr/0005-tty-aware-output.md).
+
+### Commands without `--output`
+
+`auth login` and `auth logout` emit free-form human text and do not
+expose `--output`. There is no structured payload that would survive
+three Renderers, and forcing one would invent a schema with no consumer.
+Any future command in the same shape (side-effecting, no structured
+result) follows the same rule.
+
+### `--output markdown`
+
+Markdown is a first-rank Format, not "table-in-markdown syntax". Each
+command renders the shape that fits its data:
+
+- Tabular data → a Markdown table (helper: `output.MarkdownTable`).
+- Status / info → a list of `- **Field**: value` lines.
+- Checklists (`auth doctor`) → GitHub-style task list
+  (`- [x] Check 1` / `- [ ] Check 2 — hint: ...`).
 
 ### `--output json` is API pass-through (ADR-0003)
 
