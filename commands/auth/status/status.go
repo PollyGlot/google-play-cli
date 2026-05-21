@@ -85,15 +85,20 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 		}
 		return err
 	}
+	// ConfigAccount is empty when --service-account or GPLAY_SERVICE_ACCOUNT
+	// wins resolution: the credential bytes came from outside the config so
+	// no Account name applies. Surface that explicitly and skip the file
+	// path (which is keyed by Account name, so meaningless here).
 	activeName := resolved.ConfigAccount
-
 	p := payload{
 		Active:      true,
 		Name:        activeName,
 		ClientEmail: sa.ClientEmail,
 		Backend:     label,
 	}
-	if label == keystore.BackendFile {
+	if activeName == "" {
+		p.Name = "(env override)"
+	} else if label == keystore.BackendFile {
 		p.Path = filepath.Join(opts.KeystoreRoot, activeName+".json")
 	}
 

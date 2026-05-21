@@ -59,7 +59,7 @@ becomes optional.
 
 The same `config.json` schema appears at three levels. Later wins:
 
-```
+```text
 $XDG_CONFIG_HOME/gplay/config.json     (global, machine-local — Accounts live here)
 <repo>/.gplay/config.json              (project shared, committed — package pin)
 <repo>/.gplay/config.local.json        (project local, gitignored — per-developer overrides)

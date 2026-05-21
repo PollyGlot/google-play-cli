@@ -162,6 +162,12 @@ type projectLocal struct {
 // the committed layer does not pin an `account`, and returns the merged
 // view in *Resolved.
 func Load(opts LoadOptions) (*Resolved, error) {
+	// HomeDir empty would silently disable the walk-up barrier. The
+	// other two fields degrade safely (missing global is empty Global;
+	// empty StartDir resolves to cwd via filepath.Abs).
+	if opts.HomeDir == "" {
+		return nil, fmt.Errorf("config: LoadOptions.HomeDir is required")
+	}
 	r := &Resolved{GlobalPath: opts.GlobalPath}
 
 	// Global layer — accounts list + active flag.

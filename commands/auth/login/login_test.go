@@ -196,7 +196,10 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	if len(names) != 1 {
 		t.Errorf("List = %v, want exactly one entry", names)
 	}
-	cfg, _ := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	if err != nil {
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
+	}
 	if len(cfg.Accounts) != 1 {
 		t.Errorf("config Accounts = %v, want exactly one entry", cfg.Accounts)
 	}

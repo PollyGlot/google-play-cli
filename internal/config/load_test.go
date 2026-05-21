@@ -15,14 +15,14 @@ import (
 // in a real repo: global ($XDG/gplay/config.json), project-shared
 // (.gplay/config.json), project-local (.gplay/config.local.json).
 type loadFixture struct {
-	root        string // tempdir root
-	homeDir     string // simulated $HOME (walk-up barrier)
-	xdgDir      string // simulated $XDG_CONFIG_HOME/gplay
-	globalPath  string
-	repoRoot    string // simulated repo root containing .gplay/
-	cwd         string // simulated cwd (a sub-sub-dir of repoRoot)
-	sharedPath  string // <repoRoot>/.gplay/config.json
-	localPath   string // <repoRoot>/.gplay/config.local.json
+	root       string // tempdir root
+	homeDir    string // simulated $HOME (walk-up barrier)
+	xdgDir     string // simulated $XDG_CONFIG_HOME/gplay
+	globalPath string
+	repoRoot   string // simulated repo root containing .gplay/
+	cwd        string // simulated cwd (a sub-sub-dir of repoRoot)
+	sharedPath string // <repoRoot>/.gplay/config.json
+	localPath  string // <repoRoot>/.gplay/config.local.json
 }
 
 func newLoadFixture(t *testing.T) *loadFixture {
