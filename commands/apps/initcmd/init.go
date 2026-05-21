@@ -9,21 +9,19 @@ package initcmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// Options injects file-system roots so the test fixtures can run
-// hermetically against a t.TempDir without touching the user's real home.
+// Options injects file-system roots so tests can run hermetically against a
+// t.TempDir. Production wiring leaves both empty and the command falls back
+// to os.Getwd() / os.UserHomeDir() at invocation time.
 type Options struct {
-	// RepoRoot is the directory in which to write .gplay/config.json.
-	// Production wiring sets this to cwd; tests inject a tempdir.
 	RepoRoot string
-	// HomeDir is the user's home directory. The command refuses to write
-	// when RepoRoot == HomeDir.
-	HomeDir string
+	HomeDir  string
 }
 
 // NewCommand returns the cobra command for `gplay init` and `gplay apps init`.
@@ -48,15 +46,33 @@ Run from the repo root.`,
 }
 
 func run(cmd *cobra.Command, opts Options, pkg string) error {
-	if err := config.Init(opts.RepoRoot, opts.HomeDir, pkg); err != nil {
+	repoRoot, home, err := resolveRoots(opts)
+	if err != nil {
+		return err
+	}
+	if err := config.Init(repoRoot, home, pkg); err != nil {
 		return err
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "✓ Pinned package %q for this repo (.gplay/config.json)\n", pkg)
-
-	// Registry membership hint. Until `gplay apps add` lands, the registry
-	// is always empty, so the hint always fires — that's intentional and
-	// fine for the first slice. ([slice 2] makes the registry populatable.)
 	fmt.Fprintf(cmd.ErrOrStderr(),
 		"  hint: run `gplay apps add %s` to register this package under the active Account.\n", pkg)
 	return nil
+}
+
+func resolveRoots(opts Options) (repoRoot, home string, err error) {
+	repoRoot = opts.RepoRoot
+	if repoRoot == "" {
+		repoRoot, err = os.Getwd()
+		if err != nil {
+			return "", "", err
+		}
+	}
+	home = opts.HomeDir
+	if home == "" {
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", "", err
+		}
+	}
+	return repoRoot, home, nil
 }

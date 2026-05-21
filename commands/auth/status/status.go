@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -60,7 +59,7 @@ type payload struct {
 }
 
 func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
-	resolved, err := loadResolvedFromEnv(opts.ConfigPath)
+	resolved, err := config.LoadFromEnv(opts.ConfigPath)
 	if err != nil {
 		return err
 	}
@@ -118,26 +117,6 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 	default:
 		return fmt.Errorf("unsupported --output %q (want table or json)", output)
 	}
-}
-
-// loadResolvedFromEnv builds the cascading Resolved view using cwd and
-// $HOME as the walk-up frame. The status command runs interactively or in
-// CI; in both cases the user's cwd is the meaningful project root for
-// pin discovery.
-func loadResolvedFromEnv(globalPath string) (*config.Resolved, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	return config.Load(config.LoadOptions{
-		GlobalPath: globalPath,
-		StartDir:   cwd,
-		HomeDir:    home,
-	})
 }
 
 // renderEmpty prints the informational "no active account" payload when

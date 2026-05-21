@@ -113,12 +113,7 @@ replace Fastlane on Android CI pipelines.`,
 
 	// `gplay init` at the top level — pins a package to the current repo.
 	// Also wired as `gplay apps init` once the apps subcommand exists.
-	cwd, _ := os.Getwd()
-	home, _ := os.UserHomeDir()
-	root.AddCommand(initcmd.NewCommand(initcmd.Options{
-		RepoRoot: cwd,
-		HomeDir:  home,
-	}))
+	root.AddCommand(initcmd.NewCommand(initcmd.Options{}))
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",

@@ -115,7 +115,9 @@ func TestInit_isIdempotent_onSecondCall(t *testing.T) {
 	}
 }
 
-func TestInit_outputFile_mode_is0600(t *testing.T) {
+// config.json is a committed file (per ADR-0004) shared with teammates,
+// so it must use a world-readable mode, not the 0600 reserved for secrets.
+func TestInit_configJSON_modeIsWorldReadable(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
 
@@ -126,8 +128,8 @@ func TestInit_outputFile_mode_is0600(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("config.json mode = %v, want 0600", info.Mode().Perm())
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("config.json mode = %v, want 0644", info.Mode().Perm())
 	}
 }
 

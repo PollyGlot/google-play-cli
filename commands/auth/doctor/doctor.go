@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -145,19 +144,7 @@ func buildChecks(packages []string) []authdoctor.Check {
 // code surfaces the most actionable problem from a multi-package run.
 func executeChecks(cmd *cobra.Command, opts Options, packages []string) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
 	checks := buildChecks(packages)
-	cwd, err := os.Getwd()
-	if err != nil {
-		return synthFailure(err, checks)
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return synthFailure(err, checks)
-	}
-	resolved, err := config.Load(config.LoadOptions{
-		GlobalPath: opts.ConfigPath,
-		StartDir:   cwd,
-		HomeDir:    home,
-	})
+	resolved, err := config.LoadFromEnv(opts.ConfigPath)
 	if err != nil {
 		return synthFailure(err, checks)
 	}

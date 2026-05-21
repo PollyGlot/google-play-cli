@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
@@ -111,10 +109,8 @@ func TestInitCmd_missingPackageFlag_returnsErrorBeforeWrite(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{})
-	// Cobra surfaces MarkFlagRequired errors with usage; the parent root
-	// suppresses usage on RunE errors but here we run the command directly,
-	// so silencing usage to keep stderr predictable.
-	cobraSilent(cmd)
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
 
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("Execute without --package: expected error, got nil")
@@ -122,9 +118,4 @@ func TestInitCmd_missingPackageFlag_returnsErrorBeforeWrite(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repo, ".gplay")); err == nil {
 		t.Error(".gplay/ should not be created when --package is missing")
 	}
-}
-
-func cobraSilent(c *cobra.Command) {
-	c.SilenceUsage = true
-	c.SilenceErrors = true
 }

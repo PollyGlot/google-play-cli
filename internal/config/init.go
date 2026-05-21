@@ -8,10 +8,8 @@ import (
 	"strings"
 )
 
-// gitignoreSnippet is the line set Init writes (or appends, if missing) to
-// .gplay/.gitignore. The marker lines guard the auto-managed block so a
-// rerun does not duplicate them — and so any rules the user added outside
-// the block survive untouched.
+// Marker lines bound the gplay-managed block inside .gplay/.gitignore so
+// rerunning Init only replaces our content and leaves user-added rules alone.
 const (
 	gitignoreMarkerStart = "# BEGIN gplay-managed"
 	gitignoreMarkerEnd   = "# END gplay-managed"
@@ -46,7 +44,7 @@ func Init(repoRoot, homeDir, pkg string) error {
 		return err
 	}
 	if absRepo == absHome {
-		return fmt.Errorf("config init: refusing to initialise at $HOME (%s) — a config there would be picked up by every repo's walk-up. Run gplay init inside the repo you actually want to pin.", absRepo)
+		return fmt.Errorf("config init: refusing to initialise at $HOME (%s); run gplay init inside a repo", absRepo)
 	}
 
 	gplayDir := filepath.Join(absRepo, ".gplay")
@@ -77,7 +75,7 @@ func writeConfigJSON(path, pkg string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o600)
+	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 // ensureGitignore writes the gplay-managed block into path. If the file

@@ -1,26 +1,4 @@
-// Package config owns gplay's cascading configuration model.
-//
-// The merge order is:
-//
-//	$XDG_CONFIG_HOME/gplay/config.json     (global, machine-local)
-//	<repo>/.gplay/config.json              (project shared, committed)
-//	<repo>/.gplay/config.local.json        (project local, gitignored)
-//	GPLAY_* env vars                       (handled by callers; per docs/DESIGN.md §1)
-//	CLI flags                              (handled by callers; per docs/DESIGN.md §1)
-//
-// Later wins. See ADR 0004 for the rationale.
-//
-// The package exposes two views:
-//
-//  1. Global — on-disk shape of the global layer alone. Used by `auth login`
-//     / `auth list` / `auth logout` (which only ever touch accounts).
-//  2. Resolved — the merged view used by every command at runtime.
-//
-// Account name selection (`Resolved.ConfigAccount`) is resolved here only
-// for the in-config layers (project-local override → global active).
-// Env- and flag-based overrides are interleaved with the SA-bytes layers
-// inside `internal/auth/resolver`; surfacing them here too would force the
-// resolver to second-guess us, so we don't.
+// Package config owns gplay's cascading configuration model. See ADR-0004.
 package config
 
 import (
@@ -132,17 +110,14 @@ func (g *Global) Active() (Account, bool) {
 	return Account{}, false
 }
 
-// LoadOptions controls Load.
+// LoadOptions controls Load. All three fields are required.
 type LoadOptions struct {
 	// GlobalPath is the absolute path of $XDG_CONFIG_HOME/gplay/config.json.
-	// Required.
 	GlobalPath string
 	// StartDir is the directory the walk-up starts from (typically cwd).
-	// Required.
 	StartDir string
-	// HomeDir is the user's home directory. Walk-up refuses to consider
-	// .gplay/ at or above HomeDir, preventing a rogue ~/.gplay/config.json
-	// from masquerading as a project pin. Required.
+	// HomeDir bounds the walk-up: .gplay/ at or above HomeDir is ignored,
+	// blocking a rogue ~/.gplay/config.json from posing as a project pin.
 	HomeDir string
 }
 
@@ -171,17 +146,16 @@ type Resolved struct {
 }
 
 // projectShared mirrors the on-disk shape of <repo>/.gplay/config.json.
-// The `account` field is included so we can detect (and reject) it being
-// present in a committed config — see ADR 0004.
+// Account is *json.RawMessage so a present-but-empty value is still
+// detected — committed configs must never carry it (see ADR-0004).
 type projectShared struct {
-	Package string `json:"package"`
-	Account string `json:"account"`
+	Package string           `json:"package"`
+	Account *json.RawMessage `json:"account"`
 }
 
 // projectLocal mirrors the on-disk shape of <repo>/.gplay/config.local.json.
 type projectLocal struct {
 	Account string `json:"account"`
-	Package string `json:"package"`
 }
 
 // Load runs the cascade. It reads each layer that exists, validates that
@@ -208,29 +182,24 @@ func Load(opts LoadOptions) (*Resolved, error) {
 	}
 	if err == nil {
 		gplayDir := filepath.Join(repoRoot, ".gplay")
-		// Project shared (committed) — only `package` allowed.
 		sharedPath := filepath.Join(gplayDir, "config.json")
-		if exists(sharedPath) {
+		ps, err := readProjectShared(sharedPath)
+		if err != nil {
+			return nil, err
+		}
+		if ps != nil {
 			r.ProjectSharedPath = sharedPath
-			ps, err := readProjectShared(sharedPath)
-			if err != nil {
-				return nil, err
-			}
 			r.Pin = ps.Package
 		}
-		// Project local (gitignored) — may override account and (rarely) package.
 		localPath := filepath.Join(gplayDir, "config.local.json")
-		if exists(localPath) {
+		pl, err := readProjectLocal(localPath)
+		if err != nil {
+			return nil, err
+		}
+		if pl != nil {
 			r.ProjectLocalPath = localPath
-			pl, err := readProjectLocal(localPath)
-			if err != nil {
-				return nil, err
-			}
 			if pl.Account != "" {
 				r.ConfigAccount = pl.Account
-			}
-			if pl.Package != "" {
-				r.Pin = pl.Package
 			}
 		}
 	}
@@ -238,32 +207,45 @@ func Load(opts LoadOptions) (*Resolved, error) {
 	return r, nil
 }
 
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-func readProjectShared(path string) (*projectShared, error) {
-	data, err := os.ReadFile(path)
+// LoadFromEnv builds Resolved using cwd and $HOME for the walk-up frame.
+// Convenience wrapper for commands; tests prefer Load directly.
+func LoadFromEnv(globalPath string) (*Resolved, error) {
+	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
 	}
-	if _, has := raw["account"]; has {
-		return nil, fmt.Errorf("config: %s: field %q is forbidden in committed config (account names are machine-local; put it in .gplay/config.local.json or set GPLAY_ACCOUNT instead)", path, "account")
+	return Load(LoadOptions{GlobalPath: globalPath, StartDir: cwd, HomeDir: home})
+}
+
+// readProjectShared returns nil, nil if path does not exist.
+func readProjectShared(path string) (*projectShared, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	var ps projectShared
 	if err := json.Unmarshal(data, &ps); err != nil {
 		return nil, fmt.Errorf("config: parse %s: %w", path, err)
 	}
+	if ps.Account != nil {
+		return nil, fmt.Errorf("config: %s: field \"account\" is forbidden in committed config (use .gplay/config.local.json or GPLAY_ACCOUNT)", path)
+	}
 	return &ps, nil
 }
 
+// readProjectLocal returns nil, nil if path does not exist.
 func readProjectLocal(path string) (*projectLocal, error) {
 	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
