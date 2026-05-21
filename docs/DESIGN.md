@@ -4,11 +4,12 @@ Living reference for the CLI design decisions that didn't rise to ADR-level
 (reversible, or "the obvious thing once you know the constraint") but that we
 still want to be consistent about across commands.
 
-For deeper rationale on three particular choices, see:
+For deeper rationale on the load-bearing choices, see:
 
 - [ADR-0001 — Credential storage](./adr/0001-credential-storage.md)
 - [ADR-0002 — Safe production defaults](./adr/0002-safe-production-defaults.md)
 - [ADR-0003 — `--output json` is API pass-through](./adr/0003-json-passthrough.md)
+- [ADR-0004 — Cascading config](./adr/0004-cascading-config.md)
 
 ---
 
@@ -47,18 +48,47 @@ Output: one `✅`/`❌` line per check, with an action hint on failure.
 
 ### Project pinning
 
-`gplay init --package com.example.myapp` writes `.gplay/project.json` at the
+`gplay init --package com.example.myapp` writes `.gplay/config.json` at the
 repo root. Any subsequent command run inside that tree (we walk up from cwd
 looking for `.gplay/`) defaults its target to that package — so `--package`
 becomes optional.
 
 `--package` always overrides.
 
+### Cascading layers (see [ADR-0004](./adr/0004-cascading-config.md))
+
+The same `config.json` schema appears at three levels. Later wins:
+
+```
+$XDG_CONFIG_HOME/gplay/config.json     (global, machine-local — Accounts live here)
+<repo>/.gplay/config.json              (project shared, committed — package pin)
+<repo>/.gplay/config.local.json        (project local, gitignored — per-developer overrides)
+GPLAY_* env vars                       (e.g. GPLAY_ACCOUNT, GPLAY_SERVICE_ACCOUNT)
+CLI flags                              (e.g. --account, --package, --service-account)
+```
+
+The walk-up that finds `.gplay/` refuses to traverse into `$HOME` (or any
+ancestor of `$HOME`) so a stray `~/.gplay/config.json` cannot masquerade
+as a project pin. `gplay init` refuses to run when `cwd == $HOME` for
+the same reason.
+
+### Field rules
+
+- **`account` is forbidden in committed `config.json`.** Account names
+  are machine-local; pinning one in shared state breaks teammates. The
+  loader rejects it with an error naming the offending file path.
+- `account` may appear in `config.local.json`, as `GPLAY_ACCOUNT`, or as
+  `--account`.
+
 ### `.gplay/` contents
 
-- `project.json` — package pinning. **Commit this.**
+- `config.json` — package pinning (the `package` field). **Commit this.**
+- `config.local.json` — per-developer overrides (`account`, rarely
+  `package`). **Gitignore this** — `gplay init` writes the rule for you
+  in `.gplay/.gitignore`.
 - `edit-<package>.json` — open explicit Edit ID (see `CONTEXT.md` → Edit).
-  **Gitignore this** — it's transient and per-developer.
+  **Gitignore this** too — transient and per-developer; covered by the
+  same `.gplay/.gitignore`.
 
 ---
 

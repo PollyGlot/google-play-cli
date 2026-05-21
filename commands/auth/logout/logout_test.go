@@ -86,7 +86,7 @@ func seed(t *testing.T, opts logout.Options, names ...string) {
 	if err != nil {
 		t.Fatalf("keystore.Select: %v", err)
 	}
-	cfg := &config.Config{}
+	cfg := &config.Global{}
 	for _, n := range names {
 		cfg.AddAccount(n)
 		if err := be.Save(n, []byte(`{"client_email":"`+n+`@x"}`)); err != nil {
@@ -138,7 +138,7 @@ func TestLogout_existingAccount_clearsBothStores(t *testing.T) {
 		t.Errorf("be.Load(beta) = %v, want ErrNotFound", err)
 	}
 	// Config: beta is gone.
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadOrEmpty: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestLogout_activeAccount_leavesRegistryWithoutActive(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	cfg, err := config.LoadOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadOrEmpty: %v", err)
 	}

@@ -145,7 +145,7 @@ func seedActiveAccount(t *testing.T, opts doctor.Options, saBytes []byte) {
 	if err := be.Save("playci", saBytes); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
-	cfg := &config.Config{}
+	cfg := &config.Global{}
 	cfg.AddAccount("playci")
 	if err := cfg.SetActive("playci"); err != nil {
 		t.Fatalf("SetActive: %v", err)
@@ -314,7 +314,7 @@ func TestDoctor_malformedSA_failsCheck1_skipsRest(t *testing.T) {
 	if err := be.Save("playci", bad); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
-	cfg := &config.Config{}
+	cfg := &config.Global{}
 	cfg.AddAccount("playci")
 	if err := cfg.SetActive("playci"); err != nil {
 		t.Fatalf("SetActive: %v", err)
@@ -381,7 +381,7 @@ func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 	if err := be.Save("playci", bad); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
-	cfg := &config.Config{}
+	cfg := &config.Global{}
 	cfg.AddAccount("playci")
 	if err := cfg.SetActive("playci"); err != nil {
 		t.Fatalf("SetActive: %v", err)
