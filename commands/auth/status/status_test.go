@@ -123,14 +123,14 @@ func newBoot(t *testing.T, kr keystore.KeyringAPI) kernel.Boot {
 // keeps the seed in step with what the command itself will read.
 func seedActiveAccount(t *testing.T, boot kernel.Boot) {
 	t.Helper()
-	be, _, err := keystore.Select(keystore.SelectOptions{
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  boot.Keyring,
 		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := be.Save("playci", []byte(validSAJSON)); err != nil {
+	if err := be.Save(context.Background(), "playci", []byte(validSAJSON)); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Global{}

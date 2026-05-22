@@ -206,7 +206,7 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 	if kr == nil {
 		kr = keystore.DefaultKeyring()
 	}
-	be, label, err := keystore.Select(keystore.SelectOptions{
+	be, label, err := keystore.Select(ctx, keystore.SelectOptions{
 		Keyring:  kr,
 		FileRoot: boot.KeystoreRoot,
 	})

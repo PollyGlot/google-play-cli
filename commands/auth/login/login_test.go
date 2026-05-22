@@ -24,7 +24,7 @@ import (
 func TestRun_pureBusiness(t *testing.T) {
 	_, _, boot := newCmd(t)
 	saPath := writeSA(t, validSAJSON)
-	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestLogin_validSA_persistsAndActivates(t *testing.T) {
 	}
 
 	be := keystore.NewFileBackend(boot.KeystoreRoot)
-	data, err := be.Load("playci")
+	data, err := be.Load(context.Background(), "playci")
 	if err != nil {
 		t.Fatalf("keystore.Load: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	}
 
 	be := keystore.NewFileBackend(boot.KeystoreRoot)
-	data, err := be.Load("shared")
+	data, err := be.Load(context.Background(), "shared")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	}
 
 	// And there should be exactly one entry
-	names, _ := be.List()
+	names, _ := be.List(context.Background())
 	if len(names) != 1 {
 		t.Errorf("List = %v, want exactly one entry", names)
 	}
@@ -329,7 +329,7 @@ func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
 
 	// The credential must land in the keyring fake, not on disk.
 	be := keystore.NewKeyringBackend(fk, keystore.KeyringService)
-	if _, err := be.Load("playci"); err != nil {
+	if _, err := be.Load(context.Background(), "playci"); err != nil {
 		t.Errorf("keyring backend: Load after login: %v", err)
 	}
 	// And the file accounts/ directory must not have been created.
