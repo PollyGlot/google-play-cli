@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -91,7 +92,7 @@ func (f *loadFixture) loadOpts() config.LoadOptions {
 func TestLoad_noFiles_returnsEmptyResolved(t *testing.T) {
 	f := newLoadFixture(t)
 
-	r, err := config.Load(f.loadOpts())
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestLoad_projectSharedPin_foundViaWalkUp(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeShared(t, `{"package":"com.example.app"}`)
 
-	r, err := config.Load(f.loadOpts())
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -123,7 +124,7 @@ func TestLoad_globalActiveAccount_isResolved(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeGlobal(t, `{"accounts":[{"name":"ci","active":true},{"name":"manual"}]}`)
 
-	r, err := config.Load(f.loadOpts())
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestLoad_projectLocal_accountOverridesGlobal(t *testing.T) {
 	f.writeGlobal(t, `{"accounts":[{"name":"ci","active":true},{"name":"manual"}]}`)
 	f.writeLocal(t, `{"account":"manual"}`)
 
-	r, err := config.Load(f.loadOpts())
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -153,7 +154,7 @@ func TestLoad_projectShared_accountField_isRejected(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeShared(t, `{"package":"com.example.app","account":"ci"}`)
 
-	_, err := config.Load(f.loadOpts())
+	_, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err == nil {
 		t.Fatal("Load: expected rejection of account field in project-shared config")
 	}
@@ -172,7 +173,7 @@ func TestLoad_projectShared_accountFieldExplicitlyNull_isRejected(t *testing.T) 
 	f := newLoadFixture(t)
 	f.writeShared(t, `{"package":"com.example.app","account":null}`)
 
-	_, err := config.Load(f.loadOpts())
+	_, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err == nil {
 		t.Fatal("Load: expected rejection of account:null in project-shared config")
 	}
@@ -185,7 +186,7 @@ func TestLoad_projectLocal_accountField_isAccepted(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeLocal(t, `{"account":"manual"}`)
 
-	r, err := config.Load(f.loadOpts())
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -206,7 +207,7 @@ func TestLoad_projectShared_atHomeDir_isIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := config.Load(f.loadOpts())
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestLoad_malformedJSON_returnsError(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeShared(t, `{not-json`)
 
-	_, err := config.Load(f.loadOpts())
+	_, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err == nil {
 		t.Fatal("Load: expected error for malformed JSON, got nil")
 	}
@@ -234,7 +235,7 @@ func TestLoad_paths_arePopulatedWhenFilesExist(t *testing.T) {
 	f.writeShared(t, `{"package":"com.example.app"}`)
 	f.writeLocal(t, `{"account":"manual"}`)
 
-	r, err := config.Load(f.loadOpts())
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -256,7 +257,7 @@ func TestLoad_missingGlobal_isOK(t *testing.T) {
 	if _, err := os.Stat(f.globalPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("precondition: globalPath should not exist, stat err = %v", err)
 	}
-	if _, err := config.Load(f.loadOpts()); err != nil {
+	if _, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts()); err != nil {
 		t.Errorf("Load (missing global): %v", err)
 	}
 }

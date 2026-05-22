@@ -1,32 +1,32 @@
 package config_test
 
 import (
+	"context"
 	"errors"
-	"os"
-	"path/filepath"
+	"io/fs"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-func tmpConfigPath(t *testing.T) string {
-	t.Helper()
-	return filepath.Join(t.TempDir(), "config.json")
-}
-
+// TestGlobal_addAndSaveLoad_roundTrips verifies the in-memory FS seam
+// without t.TempDir — proof that the FS interface lets the config tests
+// run hermetic and in-memory.
 func TestGlobal_addAndSaveLoad_roundTrips(t *testing.T) {
-	path := tmpConfigPath(t)
+	fsys := config.NewMemFS("/", "/home/u")
+	ctx := context.Background()
+	path := "/cfg/config.json"
 
-	g, err := config.LoadGlobalOrEmpty(path)
+	g, err := config.LoadGlobalOrEmpty(ctx, fsys, path)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty (initial): %v", err)
 	}
 	g.AddAccount("playci")
-	if err := g.Save(path); err != nil {
+	if err := g.Save(ctx, fsys, path); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	got, err := config.LoadGlobalOrEmpty(path)
+	got, err := config.LoadGlobalOrEmpty(ctx, fsys, path)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty (after save): %v", err)
 	}
@@ -79,15 +79,16 @@ func TestGlobal_setActive_unknownAccount_returnsErr(t *testing.T) {
 }
 
 func TestGlobal_loadGlobalOrEmpty_missingFile_returnsEmptyGlobal(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "does", "not", "exist.json")
-	g, err := config.LoadGlobalOrEmpty(missing)
+	fsys := config.NewMemFS("/", "/home/u")
+	missing := "/does/not/exist.json"
+	g, err := config.LoadGlobalOrEmpty(context.Background(), fsys, missing)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty (missing): %v", err)
 	}
 	if len(g.Accounts) != 0 {
 		t.Errorf("Accounts = %v, want empty", g.Accounts)
 	}
-	if _, err := os.Stat(missing); !errors.Is(err, os.ErrNotExist) {
+	if _, err := fsys.Stat(missing); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("LoadGlobalOrEmpty must not create the file lazily, got Stat err %v", err)
 	}
 }

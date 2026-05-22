@@ -2,6 +2,7 @@ package login_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,7 +16,46 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
+
+// TestRun_pureBusiness drives login.Run directly. The cobra wiring is
+// covered by the existing Execute()-based tests below; this one keeps
+// the business surface honest as the new test seam.
+func TestRun_pureBusiness(t *testing.T) {
+	_, _, boot := newCmd(t)
+	saPath := writeSA(t, validSAJSON)
+	var stderr bytes.Buffer
+	rc := kernel.New(context.Background(), boot, false)
+	rc.Stderr = &stderr
+
+	if err := login.Run(rc, login.Input{SAPath: saPath, Activate: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
+	if err != nil {
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
+	}
+	a, ok := cfg.Active()
+	if !ok || a.Name != "playci" {
+		t.Errorf("active = %+v ok=%v, want playci active", a, ok)
+	}
+}
+
+// TestRun_missingSAPath_isCLIError verifies the typed error mapping —
+// the empty-input case must exit 2 (CLI misuse), not 1 (generic).
+func TestRun_missingSAPath_isCLIError(t *testing.T) {
+	_, _, boot := newCmd(t)
+	rc := kernel.New(context.Background(), boot, false)
+	err := login.Run(rc, login.Input{Activate: true})
+	if err == nil {
+		t.Fatal("expected error for empty SAPath")
+	}
+	if got := exit.For(err); got != 2 {
+		t.Errorf("exit.For = %d, want 2 (CLI misuse)", got)
+	}
+}
 
 // fakeKeyring is a configurable double for keystore.KeyringAPI. The login
 // tests use it in "unavailable" mode to force the file backend path, plus
@@ -86,27 +126,30 @@ func writeSA(t *testing.T, body string) string {
 	return path
 }
 
-func newCmd(t *testing.T) (*bytes.Buffer, *bytes.Buffer, login.Options) {
+func newCmd(t *testing.T) (*bytes.Buffer, *bytes.Buffer, kernel.Boot) {
 	t.Helper()
-	keystore.ResetSelectForTest()
 	root := t.TempDir()
-	opts := login.Options{
+	boot := kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
 		// Force file backend in the standard tests so the existing
-		// `keystore.NewFileBackend(opts.KeystoreRoot).Load(...)` reads keep
+		// `keystore.NewFileBackend(boot.KeystoreRoot).Load(...)` reads keep
 		// working. The keyring path has its own dedicated test below.
 		Keyring: newFakeKeyring(true),
 	}
-	return &bytes.Buffer{}, &bytes.Buffer{}, opts
+	return &bytes.Buffer{}, &bytes.Buffer{}, boot
 }
 
-func runCmd(t *testing.T, opts login.Options, stdout, stderr *bytes.Buffer, args ...string) error {
+func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args ...string) error {
 	t.Helper()
-	// Wrap the subcommand in a minimal root so the persistent --verbose
-	// flag is in scope, matching the production wiring in cmd/gplay/main.go.
-	sub := login.NewCommand(opts)
+	boot.Stdout = stdout
+	boot.Stderr = stderr
+	// Wrap the subcommand in a minimal root that mirrors cmd/gplay/main.go:
+	// --service-account is a persistent root flag (so login can read it
+	// from cmd.Flags()) and --verbose is the standard verbosity persistent.
+	sub := login.NewCommand(boot)
 	root := &cobra.Command{Use: "gplay"}
+	root.PersistentFlags().String("service-account", "", "")
 	root.PersistentFlags().BoolP("verbose", "v", false, "")
 	root.AddCommand(sub)
 	root.SetOut(stdout)
@@ -117,13 +160,13 @@ func runCmd(t *testing.T, opts login.Options, stdout, stderr *bytes.Buffer, args
 
 func TestLogin_validSA_persistsAndActivates(t *testing.T) {
 	saPath := writeSA(t, validSAJSON)
-	stdout, stderr, opts := newCmd(t)
+	stdout, stderr, boot := newCmd(t)
 
-	if err := runCmd(t, opts, stdout, stderr, "--service-account", saPath); err != nil {
+	if err := runCmd(t, boot, stdout, stderr, "--service-account", saPath); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty: %v", err)
 	}
@@ -135,7 +178,7 @@ func TestLogin_validSA_persistsAndActivates(t *testing.T) {
 		t.Errorf("active account name = %q, want %q (derived from client_email)", a.Name, "playci")
 	}
 
-	be := keystore.NewFileBackend(opts.KeystoreRoot)
+	be := keystore.NewFileBackend(boot.KeystoreRoot)
 	data, err := be.Load("playci")
 	if err != nil {
 		t.Fatalf("keystore.Load: %v", err)
@@ -151,9 +194,9 @@ func TestLogin_validSA_persistsAndActivates(t *testing.T) {
 func TestLogin_malformedSA_returnsTypedErrorWithFieldHint(t *testing.T) {
 	body := strings.Replace(validSAJSON, `"playci@test-proj.iam.gserviceaccount.com"`, `""`, 1)
 	saPath := writeSA(t, body)
-	stdout, stderr, opts := newCmd(t)
+	stdout, stderr, boot := newCmd(t)
 
-	err := runCmd(t, opts, stdout, stderr, "--service-account", saPath)
+	err := runCmd(t, boot, stdout, stderr, "--service-account", saPath)
 	if err == nil {
 		t.Fatal("Execute: expected error on missing client_email, got nil")
 	}
@@ -167,19 +210,19 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	v1 := strings.Replace(validSAJSON, `"-----BEGIN PRIVATE KEY-----\nMIIBCG\n-----END PRIVATE KEY-----\n"`, `"v1KEY"`, 1)
 	v2 := strings.Replace(validSAJSON, `"-----BEGIN PRIVATE KEY-----\nMIIBCG\n-----END PRIVATE KEY-----\n"`, `"v2KEY"`, 1)
 
-	stdout, stderr, opts := newCmd(t)
+	stdout, stderr, boot := newCmd(t)
 
 	path1 := writeSA(t, v1)
-	if err := runCmd(t, opts, stdout, stderr, "--service-account", path1, "--name", "shared"); err != nil {
+	if err := runCmd(t, boot, stdout, stderr, "--service-account", path1, "--name", "shared"); err != nil {
 		t.Fatalf("first Execute: %v", err)
 	}
 
 	path2 := writeSA(t, v2)
-	if err := runCmd(t, opts, stdout, stderr, "--service-account", path2, "--name", "shared"); err != nil {
+	if err := runCmd(t, boot, stdout, stderr, "--service-account", path2, "--name", "shared"); err != nil {
 		t.Fatalf("re-Execute: %v", err)
 	}
 
-	be := keystore.NewFileBackend(opts.KeystoreRoot)
+	be := keystore.NewFileBackend(boot.KeystoreRoot)
 	data, err := be.Load("shared")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -196,7 +239,7 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 	if len(names) != 1 {
 		t.Errorf("List = %v, want exactly one entry", names)
 	}
-	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty: %v", err)
 	}
@@ -206,23 +249,23 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 }
 
 func TestLogin_activateFalse_onSecondAccount_keepsCurrentActive(t *testing.T) {
-	_, _, opts := newCmd(t)
+	_, _, boot := newCmd(t)
 	saPath := writeSA(t, validSAJSON)
 
 	// First login (default --activate=true).
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, &stdout, &stderr, "--service-account", saPath, "--name", "first"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--service-account", saPath, "--name", "first"); err != nil {
 		t.Fatalf("first login: %v", err)
 	}
 
 	// Second login with --activate=false must NOT shift the active flag.
 	stdout.Reset()
 	stderr.Reset()
-	if err := runCmd(t, opts, &stdout, &stderr, "--service-account", saPath, "--name", "second", "--activate=false"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--service-account", saPath, "--name", "second", "--activate=false"); err != nil {
 		t.Fatalf("second login: %v", err)
 	}
 
-	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty: %v", err)
 	}
@@ -239,17 +282,17 @@ func TestLogin_activateFalse_onSecondAccount_keepsCurrentActive(t *testing.T) {
 }
 
 func TestLogin_activateFalse_onFirstAccount_stillActivates(t *testing.T) {
-	_, _, opts := newCmd(t)
+	_, _, boot := newCmd(t)
 	saPath := writeSA(t, validSAJSON)
 
 	// Empty registry + --activate=false: the new Account is still
 	// activated because the registry would otherwise be left without one.
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, &stdout, &stderr, "--service-account", saPath, "--name", "only", "--activate=false"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--service-account", saPath, "--name", "only", "--activate=false"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty: %v", err)
 	}
@@ -263,10 +306,9 @@ func TestLogin_activateFalse_onFirstAccount_stillActivates(t *testing.T) {
 }
 
 func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
-	keystore.ResetSelectForTest()
 	root := t.TempDir()
 	fk := newFakeKeyring(false) // available
-	opts := login.Options{
+	boot := kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
 		Keyring:      fk,
@@ -274,7 +316,7 @@ func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
 
 	saPath := writeSA(t, validSAJSON)
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, &stdout, &stderr, "--service-account", saPath); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--service-account", saPath); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -284,7 +326,7 @@ func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
 		t.Errorf("keyring backend: Load after login: %v", err)
 	}
 	// And the file accounts/ directory must not have been created.
-	if _, err := os.Stat(opts.KeystoreRoot); !os.IsNotExist(err) {
-		t.Errorf("expected no file at %s when keyring backend active; stat err=%v", opts.KeystoreRoot, err)
+	if _, err := os.Stat(boot.KeystoreRoot); !os.IsNotExist(err) {
+		t.Errorf("expected no file at %s when keyring backend active; stat err=%v", boot.KeystoreRoot, err)
 	}
 }

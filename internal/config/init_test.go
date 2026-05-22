@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -15,7 +16,7 @@ func TestInit_writesConfigJSON_withPackagePin(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
 
-	if err := config.Init(repo, home, "com.example.app"); err != nil {
+	if err := config.Init(context.Background(), config.OSFS{}, repo, home, "com.example.app"); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	cfgPath := filepath.Join(repo, ".gplay", "config.json")
@@ -32,7 +33,7 @@ func TestInit_writesGitignore_excludingLocalAndEditFiles(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
 
-	if err := config.Init(repo, home, "com.example.app"); err != nil {
+	if err := config.Init(context.Background(), config.OSFS{}, repo, home, "com.example.app"); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	giPath := filepath.Join(repo, ".gplay", ".gitignore")
@@ -49,7 +50,7 @@ func TestInit_writesGitignore_excludingLocalAndEditFiles(t *testing.T) {
 
 func TestInit_inHomeDir_isRejected(t *testing.T) {
 	home := t.TempDir()
-	err := config.Init(home, home, "com.example.app")
+	err := config.Init(context.Background(), config.OSFS{}, home, home, "com.example.app")
 	if err == nil {
 		t.Fatal("Init in $HOME: expected error, got nil")
 	}
@@ -61,7 +62,7 @@ func TestInit_inHomeDir_isRejected(t *testing.T) {
 func TestInit_emptyPackage_isRejected(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
-	err := config.Init(repo, home, "")
+	err := config.Init(context.Background(), config.OSFS{}, repo, home, "")
 	if err == nil {
 		t.Fatal("Init with empty package: expected error, got nil")
 	}
@@ -70,7 +71,7 @@ func TestInit_emptyPackage_isRejected(t *testing.T) {
 func TestInit_packageWithoutDot_isRejected(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
-	err := config.Init(repo, home, "notapackage")
+	err := config.Init(context.Background(), config.OSFS{}, repo, home, "notapackage")
 	if err == nil {
 		t.Fatal("Init with dot-less package: expected error, got nil")
 	}
@@ -83,7 +84,7 @@ func TestInit_isIdempotent_onSecondCall(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
 
-	if err := config.Init(repo, home, "com.example.app"); err != nil {
+	if err := config.Init(context.Background(), config.OSFS{}, repo, home, "com.example.app"); err != nil {
 		t.Fatalf("Init first: %v", err)
 	}
 	// Append a user line to .gitignore — Init must not blow it away on rerun.
@@ -92,7 +93,7 @@ func TestInit_isIdempotent_onSecondCall(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := config.Init(repo, home, "com.example.app2"); err != nil {
+	if err := config.Init(context.Background(), config.OSFS{}, repo, home, "com.example.app2"); err != nil {
 		t.Fatalf("Init second: %v", err)
 	}
 
@@ -121,7 +122,7 @@ func TestInit_configJSON_modeIsWorldReadable(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
 
-	if err := config.Init(repo, home, "com.example.app"); err != nil {
+	if err := config.Init(context.Background(), config.OSFS{}, repo, home, "com.example.app"); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	info, err := os.Stat(filepath.Join(repo, ".gplay", "config.json"))
@@ -149,7 +150,7 @@ func appendLine(path, content string) error {
 // Make sure the test can detect "the file was never created" cleanly.
 func TestInit_inHomeDir_writesNoFiles(t *testing.T) {
 	home := t.TempDir()
-	_ = config.Init(home, home, "com.example.app") // error expected, we ignore
+	_ = config.Init(context.Background(), config.OSFS{}, home, home, "com.example.app") // error expected, we ignore
 
 	if _, err := os.Stat(filepath.Join(home, ".gplay", "config.json")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Init in $HOME must not create files; stat err = %v", err)

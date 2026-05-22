@@ -2,10 +2,11 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 
 	"github.com/PollyGlot/google-play-cli/internal/walkup"
@@ -23,15 +24,26 @@ type Global struct {
 	Accounts []Account `json:"accounts"`
 }
 
+// unknownAccountError is the type behind ErrUnknownAccount. Carrying
+// ExitCode() on the value lets exit.For dispatch the "unknown account"
+// case to exit code 2 (CLI misuse — the user named something we don't
+// know about) without a sentinel-specific branch in cmd/gplay/main.go.
+type unknownAccountError struct{}
+
+func (unknownAccountError) Error() string { return "config: unknown account" }
+func (unknownAccountError) ExitCode() int { return 2 }
+
 // ErrUnknownAccount is returned when an operation references an account name
 // that is not in the registry.
-var ErrUnknownAccount = errors.New("config: unknown account")
+var ErrUnknownAccount error = unknownAccountError{}
 
-// LoadGlobalOrEmpty reads the global layer. If the file does not exist, an
-// empty Global is returned without error (lazy creation by `auth login`).
-func LoadGlobalOrEmpty(path string) (*Global, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+// LoadGlobalOrEmpty reads the global layer through fsys. If the file does
+// not exist, an empty Global is returned without error (lazy creation by
+// `auth login`). The ctx is threaded for future cancellation support; the
+// underlying FS operations are synchronous today.
+func LoadGlobalOrEmpty(_ context.Context, fsys FS, path string) (*Global, error) {
+	data, err := fsys.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
 		return &Global{}, nil
 	}
 	if err != nil {
@@ -45,16 +57,17 @@ func LoadGlobalOrEmpty(path string) (*Global, error) {
 }
 
 // Save writes the global config to path with mode 0600, creating the parent
-// directory if needed.
-func (g *Global) Save(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+// directory if needed. ctx is threaded for future cancellation; fsys is the
+// FS seam — pass OSFS{} in production.
+func (g *Global) Save(_ context.Context, fsys FS, path string) error {
+	if err := fsys.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(g, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	return fsys.WriteFile(path, data, 0o600)
 }
 
 // AddAccount upserts an account by name. Calling AddAccount with a name that
@@ -160,10 +173,10 @@ type projectLocal struct {
 	Account string `json:"account"`
 }
 
-// Load runs the cascade. It reads each layer that exists, validates that
-// the committed layer does not pin an `account`, and returns the merged
-// view in *Resolved.
-func Load(opts LoadOptions) (*Resolved, error) {
+// Load runs the cascade. It reads each layer that exists through fsys,
+// validates that the committed layer does not pin an `account`, and
+// returns the merged view in *Resolved.
+func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 	// HomeDir empty would silently disable the walk-up barrier. The
 	// other two fields degrade safely (missing global is empty Global;
 	// empty StartDir resolves to cwd via filepath.Abs).
@@ -173,7 +186,7 @@ func Load(opts LoadOptions) (*Resolved, error) {
 	r := &Resolved{GlobalPath: opts.GlobalPath}
 
 	// Global layer — accounts list + active flag.
-	g, err := LoadGlobalOrEmpty(opts.GlobalPath)
+	g, err := LoadGlobalOrEmpty(ctx, fsys, opts.GlobalPath)
 	if err != nil {
 		return nil, err
 	}
@@ -185,13 +198,13 @@ func Load(opts LoadOptions) (*Resolved, error) {
 	// Walk up to find the nearest .gplay/ directory. Refuse to descend
 	// into $HOME so a stray ~/.gplay can't hijack repos.
 	repoRoot, err := walkup.FindFileExcluding(opts.StartDir, ".gplay", opts.HomeDir)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
 	if err == nil {
 		gplayDir := filepath.Join(repoRoot, ".gplay")
 		sharedPath := filepath.Join(gplayDir, "config.json")
-		ps, err := readProjectShared(sharedPath)
+		ps, err := readProjectShared(fsys, sharedPath)
 		if err != nil {
 			return nil, err
 		}
@@ -200,7 +213,7 @@ func Load(opts LoadOptions) (*Resolved, error) {
 			r.Pin = ps.Package
 		}
 		localPath := filepath.Join(gplayDir, "config.local.json")
-		pl, err := readProjectLocal(localPath)
+		pl, err := readProjectLocal(fsys, localPath)
 		if err != nil {
 			return nil, err
 		}
@@ -215,24 +228,25 @@ func Load(opts LoadOptions) (*Resolved, error) {
 	return r, nil
 }
 
-// LoadFromEnv builds Resolved using cwd and $HOME for the walk-up frame.
-// Convenience wrapper for commands; tests prefer Load directly.
-func LoadFromEnv(globalPath string) (*Resolved, error) {
-	cwd, err := os.Getwd()
+// LoadFromEnv builds Resolved using fsys's cwd and home for the walk-up
+// frame. Production passes OSFS{}; tests prefer Load directly with a
+// fixed StartDir / HomeDir.
+func LoadFromEnv(ctx context.Context, fsys FS, globalPath string) (*Resolved, error) {
+	cwd, err := fsys.Getwd()
 	if err != nil {
 		return nil, err
 	}
-	home, err := os.UserHomeDir()
+	home, err := fsys.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	return Load(LoadOptions{GlobalPath: globalPath, StartDir: cwd, HomeDir: home})
+	return Load(ctx, fsys, LoadOptions{GlobalPath: globalPath, StartDir: cwd, HomeDir: home})
 }
 
 // readProjectShared returns nil, nil if path does not exist.
-func readProjectShared(path string) (*projectShared, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+func readProjectShared(fsys FS, path string) (*projectShared, error) {
+	data, err := fsys.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
@@ -249,9 +263,9 @@ func readProjectShared(path string) (*projectShared, error) {
 }
 
 // readProjectLocal returns nil, nil if path does not exist.
-func readProjectLocal(path string) (*projectLocal, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+func readProjectLocal(fsys FS, path string) (*projectLocal, error) {
+	data, err := fsys.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {

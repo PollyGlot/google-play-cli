@@ -19,6 +19,9 @@ func (e *MissingFieldError) Error() string {
 	return fmt.Sprintf("service account JSON: missing or empty required field %q", e.Field)
 }
 
+// ExitCode satisfies exit.Coder: a malformed credential is an auth failure.
+func (*MissingFieldError) ExitCode() int { return 10 }
+
 // ServiceAccount holds the credential fields gplay needs to mint an OAuth2
 // token for the Google Play Developer API.
 type ServiceAccount struct {

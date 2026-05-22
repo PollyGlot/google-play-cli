@@ -7,7 +7,6 @@ import (
 	"io"
 	"slices"
 	"sort"
-	"sync"
 
 	"github.com/zalando/go-keyring"
 )
@@ -184,41 +183,21 @@ type SelectOptions struct {
 	FileRoot string
 }
 
-// selectResult caches the (Backend, label) pair returned by the first
-// Select call so subsequent calls reuse it. The Backend label is what
-// `auth status` displays and what the -v log line reports.
-type selectResult struct {
-	backend Backend
-	label   string
-}
-
-var (
-	selectOnce sync.Once
-	selectVal  selectResult
-)
-
 // Select picks the credential backend for this process. It probes the
-// keyring with a Set+Delete round-trip; on any error it falls back to the
-// file backend. The result is cached for the lifetime of the process.
+// keyring with a Set+Delete round-trip; on any error it falls back to
+// the file backend. The probe is cheap (one tiny namespaced key); call
+// once per invocation from the kernel and pass the result down. No
+// process-level caching is involved — each call is independent.
 //
 // The returned label is "keyring" or "file" — it is what `auth status`
-// displays and what the -v log line reports. The label is invariant once
-// chosen, so logging it once per process is safe.
+// displays and what the -v log line reports. The label is invariant
+// for a given (Keyring, FileRoot) pair; the kernel logs it once per
+// RunContext.
 func Select(opts SelectOptions) (Backend, string, error) {
-	selectOnce.Do(func() {
-		if probeKeyring(opts.Keyring) {
-			selectVal = selectResult{
-				backend: NewKeyringBackend(opts.Keyring, KeyringService),
-				label:   BackendKeyring,
-			}
-			return
-		}
-		selectVal = selectResult{
-			backend: NewFileBackend(opts.FileRoot),
-			label:   BackendFile,
-		}
-	})
-	return selectVal.backend, selectVal.label, nil
+	if probeKeyring(opts.Keyring) {
+		return NewKeyringBackend(opts.Keyring, KeyringService), BackendKeyring, nil
+	}
+	return NewFileBackend(opts.FileRoot), BackendFile, nil
 }
 
 // probeKeyring returns true if the keyring accepts a write+delete round
@@ -238,26 +217,10 @@ func probeKeyring(api KeyringAPI) bool {
 	return true
 }
 
-// ResetSelectForTest clears the cached selection. Test-only helper kept
-// unexported (`_test.go`-suffixed name) where possible — but Go forbids
-// _test.go content from being referenced across packages without an
-// export, and the cmd-level test must reset between cases. Keeping it
-// in production code is the smallest seam.
-func ResetSelectForTest() {
-	selectOnce = sync.Once{}
-	selectVal = selectResult{}
-	logOnce = sync.Once{}
-}
-
-var logOnce sync.Once
-
-// LogBackendOnce writes "keystore: using <label> backend\n" to w exactly
-// once per process. The selector caches its result, so this label is
-// invariant for the life of the process — emitting it once is enough to
-// tell a debugger where credentials live, and repeat lines would be
-// noise in long-running test/CI runs.
-func LogBackendOnce(w io.Writer, label string) {
-	logOnce.Do(func() {
-		_, _ = fmt.Fprintf(w, "keystore: using %s backend\n", label)
-	})
+// LogBackend writes "keystore: using <label> backend\n" to w. The
+// caller owns the once-per-invocation semantics (see
+// kernel.RunContext.Backend) — this function is a small renderer with
+// no globals.
+func LogBackend(w io.Writer, label string) {
+	_, _ = fmt.Fprintf(w, "keystore: using %s backend\n", label)
 }

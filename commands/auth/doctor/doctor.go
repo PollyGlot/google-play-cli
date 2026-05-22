@@ -14,31 +14,27 @@
 package doctor
 
 import (
-	"errors"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
-	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
-	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// Options pins where the command reads state from. Output streams are
-// wired via cobra's SetOut/SetErr.
-type Options struct {
-	ConfigPath   string
-	KeystoreRoot string
-	// Keyring is the keystore backend the command will probe. If nil, the
-	// default go-keyring adapter is used. Tests inject a fake to keep the
-	// OS keystore out of unit runs.
-	Keyring keystore.KeyringAPI
+// Input is the business surface of `gplay auth doctor`.
+type Input struct {
+	Format   output.Format
+	Packages []string
 }
 
-// failedError wraps the failing CheckResult so main.go can extract the
+// failedError wraps the failing CheckResult so exit.For can extract the
 // authoritative ExitCode for the process. When multiple checks fail
 // (e.g. several --package values), `first` carries the *worst* failure
 // (highest non-zero ExitCode); a tie picks the earliest in order.
@@ -53,26 +49,18 @@ func (e *failedError) Error() string {
 	return e.first.Name + ": check failed"
 }
 
-// ExitCode extracts the exit code that should be returned to the shell
-// for an error returned by the doctor command. Returns 0 when err is
-// nil, the failing check's ExitCode when err is a doctor failure, and
-// 1 otherwise (per docs/DESIGN.md §9 fallback).
-func ExitCode(err error) int {
-	if err == nil {
-		return 0
+// ExitCode satisfies exit.Coder: the failing check's declared exit code
+// wins (per docs/DESIGN.md §9), falling back to 10 when the check failed
+// without setting one (i.e. an auth-shaped failure by default).
+func (e *failedError) ExitCode() int {
+	if e.first.ExitCode != 0 {
+		return e.first.ExitCode
 	}
-	var fe *failedError
-	if errors.As(err, &fe) {
-		if fe.first.ExitCode != 0 {
-			return fe.first.ExitCode
-		}
-		return 10
-	}
-	return 1
+	return 10
 }
 
 // NewCommand returns the cobra command for `gplay auth doctor`.
-func NewCommand(opts Options) *cobra.Command {
+func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
 		packages   []string
@@ -97,7 +85,10 @@ structured []CheckResult for scripting.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(cmd, opts, output.Format(outputFlag), packages)
+			return Run(kernel.FromCobra(cmd, boot), Input{
+				Format:   output.Format(outputFlag),
+				Packages: packages,
+			})
 		},
 	}
 	output.RegisterFlag(cmd, &outputFlag)
@@ -106,10 +97,11 @@ structured []CheckResult for scripting.`,
 	return cmd
 }
 
-func run(cmd *cobra.Command, opts Options, format output.Format, packages []string) error {
-	results, worstFailure := executeChecks(cmd, opts, packages)
+// Run is the pure business function for `gplay auth doctor`.
+func Run(rc *kernel.RunContext, in Input) error {
+	results, worstFailure := executeChecks(rc, in.Packages)
 
-	if err := output.Render(cmd.OutOrStdout(), format, renderersFor(results)); err != nil {
+	if err := output.Render(rc.Stdout, in.Format, renderersFor(results)); err != nil {
 		return err
 	}
 	if worstFailure != nil {
@@ -120,9 +112,11 @@ func run(cmd *cobra.Command, opts Options, format output.Format, packages []stri
 
 // buildChecks composes the ordered Check chain for this invocation:
 // the three non-API checks, plus one per-package check per --package
-// value (in command-line order).
-func buildChecks(packages []string) []authdoctor.Check {
-	checks := authdoctor.DefaultChecks()
+// value (in command-line order). obs is the ScopeObserver CheckScope
+// reads from; pass nil only for the synthetic-failure branch where no
+// check actually runs.
+func buildChecks(obs *transport.ScopeObserver, packages []string) []authdoctor.Check {
+	checks := authdoctor.DefaultChecks(obs)
 	for _, p := range packages {
 		checks = append(checks, authdoctor.CheckPackageAccess(p))
 	}
@@ -137,30 +131,43 @@ func buildChecks(packages []string) []authdoctor.Check {
 // The worst failure (highest non-zero ExitCode; earliest wins on ties)
 // is returned alongside the full result slice, so the command's exit
 // code surfaces the most actionable problem from a multi-package run.
-func executeChecks(cmd *cobra.Command, opts Options, packages []string) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
-	checks := buildChecks(packages)
-	resolved, err := config.LoadFromEnv(opts.ConfigPath)
-	if err != nil {
-		return synthFailure(err, checks)
-	}
-	kr := opts.Keyring
-	if kr == nil {
-		kr = keystore.DefaultKeyring()
-	}
-	be, _, err := keystore.Select(keystore.SelectOptions{
-		Keyring:  kr,
-		FileRoot: opts.KeystoreRoot,
-	})
-	if err != nil {
-		return synthFailure(err, checks)
-	}
-	sa, err := resolver.New(resolved, be).Resolve(resolver.Inputs{})
-	if err != nil {
-		return synthFailure(err, checks)
-	}
+//
+// The HTTP client doctor passes to each Check is wrapped with
+// transport.WithScopeObserver so CheckScope can read the requested
+// scopes without poking at ctx.Value.
+func executeChecks(rc *kernel.RunContext, packages []string) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
+	// Compose the doctor's HTTP client once: take whatever base the
+	// runtime gave us (test fixtures inject one via ctx.Value, prod
+	// uses http.DefaultClient) and wrap its transport with the scope
+	// observer.
+	base := baseHTTPClient(rc)
+	wrapped, obs := transport.WithScopeObserver(base.Transport)
+	hc := &http.Client{Transport: wrapped}
 
-	results := authdoctor.Run(cmd.Context(), sa, nil, checks...)
+	checks := buildChecks(obs, packages)
+	sa, err := rc.ResolveAccount(resolver.Inputs{})
+	if err != nil {
+		return synthFailure(err, checks)
+	}
+	results := authdoctor.Run(rc.Ctx, sa, hc, checks...)
 	return results, worstFailure(results)
+}
+
+// baseHTTPClient returns the underlying http.Client doctor's checks
+// should run on top of. Production falls back to http.DefaultClient
+// (so the default transport is used); tests inject one via the well-
+// known oauth2.HTTPClient context key, and the fixture's RoundTripper
+// stays the underlying transport after scope-observer wrapping.
+func baseHTTPClient(rc *kernel.RunContext) *http.Client {
+	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
+		if c, ok := v.(*http.Client); ok && c != nil {
+			return c
+		}
+	}
+	if rc.HTTP != nil {
+		return rc.HTTP
+	}
+	return &http.Client{}
 }
 
 // worstFailure returns a pointer to the CheckResult with the highest

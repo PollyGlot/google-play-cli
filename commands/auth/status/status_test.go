@@ -2,6 +2,7 @@ package status_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -15,8 +16,33 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
+
+// TestRun_pureBusiness drives status.Run directly without going through
+// cobra. The seam the kernel exposes — RunContext + Input — is the test
+// surface.
+func TestRun_pureBusiness(t *testing.T) {
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
+	var stdout, stderr bytes.Buffer
+	rc := kernel.New(context.Background(), boot, false)
+	rc.Stdout = &stdout
+	rc.Stderr = &stderr
+
+	if err := status.Run(rc, status.Input{Format: output.FormatJSON}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var p status.Payload
+	if err := json.Unmarshal(stdout.Bytes(), &p); err != nil {
+		t.Fatalf("unmarshal: %v (raw=%q)", err, stdout.String())
+	}
+	if !p.Active || p.Name != "playci" {
+		t.Errorf("payload = %+v, want active=true name=playci", p)
+	}
+}
 
 // fakeKeyring is a minimal in-process double for keystore.KeyringAPI used by
 // the status tests. Each test constructs a fresh one — never touches the
@@ -77,7 +103,7 @@ const validSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-func newOpts(t *testing.T, kr keystore.KeyringAPI) status.Options {
+func newBoot(t *testing.T, kr keystore.KeyringAPI) kernel.Boot {
 	t.Helper()
 	// Hermetic env: the status command resolves credentials via the same
 	// resolver as everywhere else, so a stray GPLAY_* in the developer's
@@ -86,9 +112,8 @@ func newOpts(t *testing.T, kr keystore.KeyringAPI) status.Options {
 	t.Setenv(resolver.EnvAccount, "")
 	// Reset the package-global Select cache so each test picks the
 	// backend appropriate to its fake keyring.
-	keystore.ResetSelectForTest()
 	root := t.TempDir()
-	return status.Options{
+	return kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
 		Keyring:      kr,
@@ -96,13 +121,13 @@ func newOpts(t *testing.T, kr keystore.KeyringAPI) status.Options {
 }
 
 // seedActiveAccount writes a service account into whichever backend Select
-// chooses for the given Options. Using Select (vs. NewFileBackend directly)
+// chooses for the given Boot. Using Select (vs. NewFileBackend directly)
 // keeps the seed in step with what the command itself will read.
-func seedActiveAccount(t *testing.T, opts status.Options) {
+func seedActiveAccount(t *testing.T, boot kernel.Boot) {
 	t.Helper()
 	be, _, err := keystore.Select(keystore.SelectOptions{
-		Keyring:  opts.Keyring,
-		FileRoot: opts.KeystoreRoot,
+		Keyring:  boot.Keyring,
+		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -115,17 +140,19 @@ func seedActiveAccount(t *testing.T, opts status.Options) {
 	if err := cfg.SetActive("playci"); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.Save(opts.ConfigPath); err != nil {
+	if err := cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func runCmd(t *testing.T, opts status.Options, stdout, stderr *bytes.Buffer, args ...string) error {
+func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args ...string) error {
 	t.Helper()
+	boot.Stdout = stdout
+	boot.Stderr = stderr
 	// Wrap the subcommand in a minimal root so the persistent --verbose
 	// flag (declared at the binary level) is in scope, matching the
 	// production wiring in cmd/gplay/main.go.
-	sub := status.NewCommand(opts)
+	sub := status.NewCommand(boot)
 	root := &cobra.Command{Use: "gplay"}
 	root.PersistentFlags().BoolP("verbose", "v", false, "")
 	root.AddCommand(sub)
@@ -136,14 +163,14 @@ func runCmd(t *testing.T, opts status.Options, stdout, stderr *bytes.Buffer, arg
 }
 
 func TestStatus_fileBackend_tableShowsNameEmailBackendAndPath(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
 	// Tests target the table rendering. The auto-default resolves to JSON
 	// here (test buffer is not a TTY), so we pass --output table to pin
 	// the format being asserted.
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "table"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -154,7 +181,7 @@ func TestStatus_fileBackend_tableShowsNameEmailBackendAndPath(t *testing.T) {
 	if !strings.Contains(out, "playci@test-proj.iam.gserviceaccount.com") {
 		t.Errorf("output missing client_email; got %q", out)
 	}
-	wantPath := filepath.Join(opts.KeystoreRoot, "playci.json")
+	wantPath := filepath.Join(boot.KeystoreRoot, "playci.json")
 	if !strings.Contains(out, wantPath) {
 		t.Errorf("output missing credential path; got %q", out)
 	}
@@ -165,11 +192,11 @@ func TestStatus_fileBackend_tableShowsNameEmailBackendAndPath(t *testing.T) {
 }
 
 func TestStatus_fileBackend_jsonOutputIncludesBackendAndPath(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "json"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "json"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -191,17 +218,17 @@ func TestStatus_fileBackend_jsonOutputIncludesBackendAndPath(t *testing.T) {
 	if payload.Backend != "file" {
 		t.Errorf("json.backend = %q, want file", payload.Backend)
 	}
-	if payload.Path != filepath.Join(opts.KeystoreRoot, "playci.json") {
+	if payload.Path != filepath.Join(boot.KeystoreRoot, "playci.json") {
 		t.Errorf("json.path = %q", payload.Path)
 	}
 }
 
 func TestStatus_keyringBackend_displaysKeyringLabelAndOmitsPath(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(false))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(false))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "table"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -211,17 +238,17 @@ func TestStatus_keyringBackend_displaysKeyringLabelAndOmitsPath(t *testing.T) {
 	}
 	// File path is meaningless when the keyring is active and must not
 	// appear — otherwise users go hunting for a file that doesn't exist.
-	if strings.Contains(out, filepath.Join(opts.KeystoreRoot, "playci.json")) {
+	if strings.Contains(out, filepath.Join(boot.KeystoreRoot, "playci.json")) {
 		t.Errorf("output should omit file path when keyring is active; got %q", out)
 	}
 }
 
 func TestStatus_keyringBackend_jsonOmitsPath(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(false))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(false))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "json"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "json"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -242,11 +269,11 @@ func TestStatus_keyringBackend_jsonOmitsPath(t *testing.T) {
 }
 
 func TestStatus_verboseFlag_emitsBackendSelectionLog(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "-v"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "-v"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -257,11 +284,11 @@ func TestStatus_verboseFlag_emitsBackendSelectionLog(t *testing.T) {
 }
 
 func TestStatus_withoutVerbose_isSilentOnBackendSelection(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -271,10 +298,10 @@ func TestStatus_withoutVerbose_isSilentOnBackendSelection(t *testing.T) {
 }
 
 func TestStatus_noActiveAccount_printsInformationalAndExitsZero(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
+	boot := newBoot(t, newFakeKeyring(true))
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "table"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: expected nil error (informational state), got %v", err)
 	}
 	if !strings.Contains(stdout.String(), "No active account") {
@@ -285,11 +312,11 @@ func TestStatus_noActiveAccount_printsInformationalAndExitsZero(t *testing.T) {
 func TestStatus_defaultNonTTY_emitsJSON(t *testing.T) {
 	t.Setenv("CI", "")
 	outputtest.ForceTerminal(t, false)
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	var payload struct {
@@ -306,11 +333,11 @@ func TestStatus_defaultNonTTY_emitsJSON(t *testing.T) {
 func TestStatus_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
 	t.Setenv("CI", "true")
 	outputtest.ForceTerminal(t, true)
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &struct{}{}); err != nil {
@@ -321,11 +348,11 @@ func TestStatus_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
 func TestStatus_defaultTTY_emitsTable(t *testing.T) {
 	t.Setenv("CI", "")
 	outputtest.ForceTerminal(t, true)
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "Active account:") {
@@ -334,11 +361,11 @@ func TestStatus_defaultTTY_emitsTable(t *testing.T) {
 }
 
 func TestStatus_markdownOutput_emitsDefinitionList(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "markdown"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "markdown"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	out := stdout.String()
@@ -354,10 +381,10 @@ func TestStatus_markdownOutput_emitsDefinitionList(t *testing.T) {
 }
 
 func TestStatus_markdownOutput_emptyShape(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
+	boot := newBoot(t, newFakeKeyring(true))
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "markdown"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "markdown"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	out := stdout.String()
@@ -372,11 +399,11 @@ func TestStatus_markdownOutput_emptyShape(t *testing.T) {
 func TestStatus_explicitTableInPipe_overridesAutoJSON(t *testing.T) {
 	t.Setenv("CI", "")
 	outputtest.ForceTerminal(t, false)
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "table"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "Active account:") {
@@ -385,11 +412,11 @@ func TestStatus_explicitTableInPipe_overridesAutoJSON(t *testing.T) {
 }
 
 func TestStatus_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seedActiveAccount(t, opts)
+	boot := newBoot(t, newFakeKeyring(true))
+	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	err := runCmd(t, opts, &stdout, &stderr, "--output", "xml")
+	err := runCmd(t, boot, &stdout, &stderr, "--output", "xml")
 	if err == nil {
 		t.Fatal("expected error on --output xml, got nil")
 	}
@@ -401,10 +428,10 @@ func TestStatus_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
 }
 
 func TestStatus_noActiveAccount_jsonShowsActiveFalse(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
+	boot := newBoot(t, newFakeKeyring(true))
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr, "--output", "json"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "json"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	var payload struct {

@@ -35,6 +35,9 @@ func (e *AuthError) Error() string {
 
 func (e *AuthError) Unwrap() error { return e.Cause }
 
+// ExitCode satisfies exit.Coder: a refused JWT exchange is an auth failure.
+func (*AuthError) ExitCode() int { return 10 }
+
 // Source returns an oauth2.TokenSource that lazily mints access tokens for
 // the AndroidPublisherScope by signing a JWT with the service-account key
 // and exchanging it at sa.TokenURI. Errors from the exchange are wrapped in

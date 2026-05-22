@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,9 +15,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
-	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
-	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
-	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
 // Build-time variables injected by GoReleaser via -ldflags.
@@ -34,22 +32,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "gplay: %v\n", err)
 		os.Exit(1)
 	}
-	rootOpts := rootOptions{
+	boot := kernel.Boot{
+		Stdout:       os.Stdout,
+		Stderr:       os.Stderr,
+		Stdin:        os.Stdin,
 		ConfigPath:   filepath.Join(configDir, "config.json"),
 		KeystoreRoot: filepath.Join(configDir, "accounts"),
+		Keyring:      keystore.DefaultKeyring(),
 	}
 
-	if err := newRootCmd(rootOpts).Execute(); err != nil {
-		os.Exit(exitCode(err))
+	if err := newRootCmd(boot).Execute(); err != nil {
+		os.Exit(exit.For(err))
 	}
 }
 
-type rootOptions struct {
-	ConfigPath   string
-	KeystoreRoot string
-}
-
-func newRootCmd(opts rootOptions) *cobra.Command {
+func newRootCmd(boot kernel.Boot) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "gplay",
 		Short: "Google Play Developer CLI",
@@ -63,10 +60,9 @@ replace Fastlane on Android CI pipelines.`,
 	}
 
 	// Persistent credential-resolution flags (docs/DESIGN.md §1). Every
-	// subcommand inherits these; subcommands that already declare a local
-	// --service-account flag (e.g. `auth login`) shadow the persistent one
-	// — that is intentional and harmless because `auth login` always uses
-	// the local value directly.
+	// subcommand inherits these via the cobra parent chain — login reads
+	// the same --service-account everyone else does, so the contract stays
+	// consistent across the binary.
 	var (
 		serviceAccountFlag string
 		accountFlag        string
@@ -86,29 +82,11 @@ replace Fastlane on Android CI pipelines.`,
 		Use:   "auth",
 		Short: "Manage gplay credentials",
 	}
-	auth.AddCommand(login.NewCommand(login.Options{
-		ConfigPath:   opts.ConfigPath,
-		KeystoreRoot: opts.KeystoreRoot,
-		Keyring:      keystore.DefaultKeyring(),
-	}))
-	auth.AddCommand(logout.NewCommand(logout.Options{
-		ConfigPath:   opts.ConfigPath,
-		KeystoreRoot: opts.KeystoreRoot,
-		Keyring:      keystore.DefaultKeyring(),
-	}))
-	auth.AddCommand(status.NewCommand(status.Options{
-		ConfigPath:   opts.ConfigPath,
-		KeystoreRoot: opts.KeystoreRoot,
-		Keyring:      keystore.DefaultKeyring(),
-	}))
-	auth.AddCommand(list.NewCommand(list.Options{
-		ConfigPath: opts.ConfigPath,
-	}))
-	auth.AddCommand(doctor.NewCommand(doctor.Options{
-		ConfigPath:   opts.ConfigPath,
-		KeystoreRoot: opts.KeystoreRoot,
-		Keyring:      keystore.DefaultKeyring(),
-	}))
+	auth.AddCommand(login.NewCommand(boot))
+	auth.AddCommand(logout.NewCommand(boot))
+	auth.AddCommand(status.NewCommand(boot))
+	auth.AddCommand(list.NewCommand(boot))
+	auth.AddCommand(doctor.NewCommand(boot))
 	root.AddCommand(auth)
 
 	// `gplay init` at the top level — pins a package to the current repo.
@@ -145,33 +123,4 @@ func defaultConfigDir() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".gplay"), nil
-}
-
-// exitCode maps the typed errors raised by the auth modules to the semantic
-// exit codes documented in docs/DESIGN.md §9.
-func exitCode(err error) int {
-	if err == nil {
-		return 0
-	}
-	// The doctor command owns its own typed error that carries the
-	// authoritative ExitCode of the first failing check — defer to it.
-	if code := doctor.ExitCode(err); code != 1 {
-		return code
-	}
-
-	var mfe *serviceaccount.MissingFieldError
-	if errors.As(err, &mfe) {
-		return 10
-	}
-	var ae *token.AuthError
-	if errors.As(err, &ae) {
-		return 10
-	}
-	if errors.Is(err, resolver.ErrNoSource) {
-		return 10
-	}
-	if errors.Is(err, logout.ErrUnknownAccount) {
-		return 2
-	}
-	return 1
 }
