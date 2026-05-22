@@ -2,6 +2,7 @@ package logout_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,39 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
+
+// TestRun_pureBusiness drives logout.Run with a hand-built RunContext.
+// Run mutates the on-disk config + the keystore backend in rc.Keystore.
+func TestRun_pureBusiness(t *testing.T) {
+	boot := newBoot(t, newFakeKeyring(true))
+	seed(t, boot, "alpha", "beta")
+	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
+	rc.Keystore = be
+
+	r, err := logout.Run(rc, logout.Input{Name: "beta", Confirm: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if r != nil {
+		t.Errorf("logout.Run returned a Renderable; want nil")
+	}
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
+	if err != nil {
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
+	}
+	for _, a := range cfg.Accounts {
+		if a.Name == "beta" {
+			t.Errorf("beta still in registry: %+v", cfg.Accounts)
+		}
+	}
+}
 
 // fakeKeyring is the same minimal double the login/status tests use:
 // in-process map keyed by service + user, no real OS keystore.
@@ -65,11 +98,10 @@ func (f *fakeKeyring) Delete(service, user string) error {
 	return nil
 }
 
-func newOpts(t *testing.T, kr keystore.KeyringAPI) logout.Options {
+func newBoot(t *testing.T, kr keystore.KeyringAPI) kernel.Boot {
 	t.Helper()
-	keystore.ResetSelectForTest()
 	root := t.TempDir()
-	return logout.Options{
+	return kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
 		Keyring:      kr,
@@ -77,11 +109,11 @@ func newOpts(t *testing.T, kr keystore.KeyringAPI) logout.Options {
 }
 
 // seed installs n accounts; the first one is marked active.
-func seed(t *testing.T, opts logout.Options, names ...string) {
+func seed(t *testing.T, boot kernel.Boot, names ...string) {
 	t.Helper()
 	be, _, err := keystore.Select(keystore.SelectOptions{
-		Keyring:  opts.Keyring,
-		FileRoot: opts.KeystoreRoot,
+		Keyring:  boot.Keyring,
+		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("keystore.Select: %v", err)
@@ -98,16 +130,17 @@ func seed(t *testing.T, opts logout.Options, names ...string) {
 			t.Fatalf("SetActive: %v", err)
 		}
 	}
-	if err := cfg.Save(opts.ConfigPath); err != nil {
+	if err := cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath); err != nil {
 		t.Fatalf("cfg.Save: %v", err)
 	}
 	// Reset Select so subsequent runCmd picks up the fake again.
-	keystore.ResetSelectForTest()
 }
 
-func runCmd(t *testing.T, opts logout.Options, stdout, stderr *bytes.Buffer, args ...string) error {
+func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args ...string) error {
 	t.Helper()
-	sub := logout.NewCommand(opts)
+	boot.Stdout = stdout
+	boot.Stderr = stderr
+	sub := logout.NewCommand(boot)
 	root := &cobra.Command{Use: "gplay"}
 	root.PersistentFlags().BoolP("verbose", "v", false, "")
 	root.AddCommand(sub)
@@ -118,18 +151,18 @@ func runCmd(t *testing.T, opts logout.Options, stdout, stderr *bytes.Buffer, arg
 }
 
 func TestLogout_existingAccount_clearsBothStores(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seed(t, opts, "alpha", "beta")
+	boot := newBoot(t, newFakeKeyring(true))
+	seed(t, boot, "alpha", "beta")
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, &stdout, &stderr, "beta"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
 	// Keystore: beta is gone.
 	be, _, err := keystore.Select(keystore.SelectOptions{
-		Keyring:  opts.Keyring,
-		FileRoot: opts.KeystoreRoot,
+		Keyring:  boot.Keyring,
+		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
@@ -138,7 +171,7 @@ func TestLogout_existingAccount_clearsBothStores(t *testing.T) {
 		t.Errorf("be.Load(beta) = %v, want ErrNotFound", err)
 	}
 	// Config: beta is gone.
-	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadOrEmpty: %v", err)
 	}
@@ -150,11 +183,11 @@ func TestLogout_existingAccount_clearsBothStores(t *testing.T) {
 }
 
 func TestLogout_unknownAccount_exitsWithErrUnknown(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seed(t, opts, "alpha")
+	boot := newBoot(t, newFakeKeyring(true))
+	seed(t, boot, "alpha")
 
 	var stdout, stderr bytes.Buffer
-	err := runCmd(t, opts, &stdout, &stderr, "ghost")
+	err := runCmd(t, boot, &stdout, &stderr, "ghost", "--confirm")
 	if !errors.Is(err, logout.ErrUnknownAccount) {
 		t.Errorf("err = %v, want ErrUnknownAccount", err)
 	}
@@ -165,15 +198,15 @@ func TestLogout_unknownAccount_exitsWithErrUnknown(t *testing.T) {
 }
 
 func TestLogout_activeAccount_leavesRegistryWithoutActive(t *testing.T) {
-	opts := newOpts(t, newFakeKeyring(true))
-	seed(t, opts, "alpha", "beta") // alpha is active (first one)
+	boot := newBoot(t, newFakeKeyring(true))
+	seed(t, boot, "alpha", "beta") // alpha is active (first one)
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, &stdout, &stderr, "alpha"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "alpha", "--confirm"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadOrEmpty: %v", err)
 	}

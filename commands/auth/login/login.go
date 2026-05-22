@@ -8,26 +8,84 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// Options pins where the command reads and writes state. Output streams are
-// not part of Options — cobra's SetOut/SetErr (with os.Stdout/os.Stderr as
-// the default) is the canonical wiring.
-type Options struct {
-	ConfigPath   string
-	KeystoreRoot string
-	// Keyring is the keystore backend the command will probe. If nil, the
-	// default go-keyring adapter is used.
-	Keyring keystore.KeyringAPI
+// ErrMissingServiceAccount is returned when login runs without a
+// --service-account flag. It satisfies exit.Coder so the binary exits
+// 2 (CLI misuse) rather than the generic 1.
+var ErrMissingServiceAccount = missingFlagError{}
+
+type missingFlagError struct{}
+
+func (missingFlagError) Error() string {
+	return `login: --service-account is required (path to a service-account JSON, or inline JSON)`
+}
+func (missingFlagError) ExitCode() int { return 2 }
+
+// Input carries login-specific flags. SAPath comes from the root
+// persistent --service-account flag (docs/DESIGN.md §1); the kernel
+// hands it through via rc.* — but since the flag is captured at the
+// cobra wrapper level, the closure passes it explicitly here.
+type Input struct {
+	SAPath   string
+	Name     string
+	Activate bool
 }
 
-// NewCommand returns the cobra command for `gplay auth login`.
-func NewCommand(opts Options) *cobra.Command {
+// Run registers the named Account in keystore + config. login emits a
+// free-form stderr line and returns no Renderable. The service-account
+// JSON is read through rc.FS so tests can drive login with an in-memory
+// fixture and Ctrl-C propagates through rc.Ctx.
+func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	if in.SAPath == "" {
+		return nil, ErrMissingServiceAccount
+	}
+	sa, err := serviceaccount.LoadFromFS(rc.Ctx, rc.FS, in.SAPath)
+	if err != nil {
+		return nil, err
+	}
+	name := in.Name
+	if name == "" {
+		name = deriveName(sa.ClientEmail)
+	}
+
+	if err := rc.Keystore.Save(name, sa.Raw); err != nil {
+		return nil, err
+	}
+
+	cfg, err := config.LoadGlobalOrEmpty(rc.Ctx, rc.FS, rc.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	// First Account always activates so the registry is never empty.
+	wasEmpty := len(cfg.Accounts) == 0
+	cfg.AddAccount(name)
+	if in.Activate || wasEmpty {
+		if err := cfg.SetActive(name); err != nil {
+			return nil, err
+		}
+	}
+	if err := cfg.Save(rc.Ctx, rc.FS, rc.ConfigPath); err != nil {
+		return nil, err
+	}
+
+	if in.Activate || wasEmpty {
+		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
+	} else {
+		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
+	}
+	return nil, nil
+}
+
+// NewCommand returns the cobra command for `gplay auth login`. The
+// --service-account flag is inherited from the root command's
+// persistent flags.
+func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
-		saPath   string
 		name     string
 		activate bool
 	)
@@ -48,74 +106,17 @@ Pass --activate=false to add a second Account without changing which one
 is active. (The very first registered Account becomes active regardless,
 so the registry is never left without one when --activate=false is set.)`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Verbose is a root-level persistent flag (docs/DESIGN.md §8).
-			verbose, _ := cmd.Flags().GetBool("verbose")
-			return run(cmd, opts, saPath, name, activate, verbose)
+			saPath, _ := cmd.Flags().GetString("service-account")
+			return kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
+				return Run(rc, Input{SAPath: saPath, Name: name, Activate: activate})
+			})
 		},
 	}
-	cmd.Flags().StringVar(&saPath, "service-account", "", "path to a Google Cloud service-account JSON (required)")
 	cmd.Flags().StringVar(&name, "name", "", "friendly Account name (default: derived from client_email)")
 	cmd.Flags().BoolVar(&activate, "activate", true, "mark the new Account active (default true)")
-	_ = cmd.MarkFlagRequired("service-account")
 	return cmd
 }
 
-func run(cmd *cobra.Command, opts Options, saPath, name string, activate, verbose bool) error {
-	sa, err := serviceaccount.Load(saPath)
-	if err != nil {
-		return err
-	}
-	if name == "" {
-		name = deriveName(sa.ClientEmail)
-	}
-
-	kr := opts.Keyring
-	if kr == nil {
-		kr = keystore.DefaultKeyring()
-	}
-	be, label, err := keystore.Select(keystore.SelectOptions{
-		Keyring:  kr,
-		FileRoot: opts.KeystoreRoot,
-	})
-	if err != nil {
-		return err
-	}
-	if verbose {
-		keystore.LogBackendOnce(cmd.ErrOrStderr(), label)
-	}
-	if err := be.Save(name, sa.Raw); err != nil {
-		return err
-	}
-
-	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
-	if err != nil {
-		return err
-	}
-	// Whether to set the new Account active. The exception (per #10): the
-	// first registered Account always becomes active so the registry is
-	// never left without one — otherwise `gplay auth login --activate=false`
-	// on a fresh machine would leave the user with a non-functional setup.
-	wasEmpty := len(cfg.Accounts) == 0
-	cfg.AddAccount(name)
-	if activate || wasEmpty {
-		if err := cfg.SetActive(name); err != nil {
-			return err
-		}
-	}
-	if err := cfg.Save(opts.ConfigPath); err != nil {
-		return err
-	}
-
-	if activate || wasEmpty {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
-	} else {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
-	}
-	return nil
-}
-
-// deriveName returns the left-of-@ part of a service-account email. Returns
-// the input unchanged when no '@' is present.
 func deriveName(email string) string {
 	local, _, _ := strings.Cut(email, "@")
 	return local

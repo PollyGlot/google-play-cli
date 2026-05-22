@@ -18,7 +18,18 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
+	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
+
+// scopeWired builds the http.Client + ScopeObserver pair the way the
+// command layer does in production: wrap the fixture's transport with
+// transport.WithScopeObserver, return both. The returned client is
+// what the test passes as the hc argument to doctor.Run, and the
+// observer is what CheckScope reads from.
+func scopeWired(rt http.RoundTripper) (*http.Client, *transport.ScopeObserver) {
+	wrapped, obs := transport.WithScopeObserver(rt)
+	return &http.Client{Transport: wrapped}, obs
+}
 
 // roundTripperFunc is the canonical pattern documented in AGENTS.md: a
 // function type that implements http.RoundTripper, so each test wires
@@ -227,7 +238,7 @@ func TestCheckScope_happyPath_observesAndroidPublisherScope(t *testing.T) {
 	// test can independently assert the scope was sent, then responds
 	// with a successful token to let the check complete.
 	var capturedBody string
-	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.Body != nil {
 			buf, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -242,8 +253,9 @@ func TestCheckScope_happyPath_observesAndroidPublisherScope(t *testing.T) {
 			Body:       io.NopCloser(bytes.NewBufferString(body)),
 		}, nil
 	})
+	hc, obs := scopeWired(rt)
 
-	results := doctor.Run(ctx, sa, nil, doctor.CheckScope())
+	results := doctor.Run(context.Background(), sa, hc, doctor.CheckScope(obs))
 	if len(results) != 1 {
 		t.Fatalf("results len = %d, want 1", len(results))
 	}
@@ -266,7 +278,7 @@ func TestCheckScope_happyPath_observesAndroidPublisherScope(t *testing.T) {
 // scope-mismatch path without mutating production constants.
 func TestCheckScope_wrongRequiredScope_fails(t *testing.T) {
 	sa := makeSignedSA(t)
-	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
 		return &http.Response{
 			StatusCode: 200,
@@ -274,9 +286,10 @@ func TestCheckScope_wrongRequiredScope_fails(t *testing.T) {
 			Body:       io.NopCloser(bytes.NewBufferString(body)),
 		}, nil
 	})
+	hc, obs := scopeWired(rt)
 
 	wrongScope := "https://www.googleapis.com/auth/something-else"
-	results := doctor.Run(ctx, sa, nil, doctor.CheckScope(wrongScope))
+	results := doctor.Run(context.Background(), sa, hc, doctor.CheckScope(obs, wrongScope))
 	if len(results) != 1 {
 		t.Fatalf("results len = %d, want 1", len(results))
 	}
@@ -309,7 +322,7 @@ func TestRun_stopsOnFirstFailure(t *testing.T) {
 	results := doctor.Run(ctx, sa, nil,
 		doctor.CheckSAJSONValid(),
 		doctor.CheckOAuth2Mint(),
-		doctor.CheckScope(),
+		doctor.CheckScope(nil),
 	)
 	if len(results) != 3 {
 		t.Fatalf("results len = %d, want 3", len(results))

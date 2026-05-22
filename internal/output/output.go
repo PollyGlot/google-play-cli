@@ -64,6 +64,14 @@ type Renderers struct {
 	Markdown func(io.Writer) error
 }
 
+// Renderable is what a command's business function returns to the
+// kernel: a payload that knows how to render itself in each Format.
+// The kernel calls Renderers() then output.Render against the resolved
+// Format on rc.
+type Renderable interface {
+	Renderers() Renderers
+}
+
 // Render resolves the requested Format for w, picks the matching field
 // from r, and runs it. A nil field surfaces the same uniform
 // "unsupported --output" error as an unknown Format — so a command that

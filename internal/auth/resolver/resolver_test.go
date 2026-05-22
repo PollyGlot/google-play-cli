@@ -1,6 +1,7 @@
 package resolver_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -20,254 +21,231 @@ const fakeSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-// newResolver hands back a Resolver wired to an empty *Resolved and a
-// fresh file-backed keystore. The Resolved is returned so each test can
-// set ConfigAccount (layer 5) to mimic "this account is active in config";
-// the keystore is returned so the test can stash bytes for any account
-// names it expects the resolver to look up by name.
-func newResolver(t *testing.T) (*resolver.Resolver, *config.Resolved, keystore.Backend) {
-	t.Helper()
-	// Always clear the credential env vars so tests are hermetic regardless of
-	// what the dev's shell has exported. Individual tests opt back in with
-	// t.Setenv when they want to exercise the env-driven layers.
-	t.Setenv(resolver.EnvServiceAccount, "")
-	t.Setenv(resolver.EnvAccount, "")
-	resolved := &config.Resolved{}
-	be := keystore.NewFileBackend(t.TempDir())
-	return resolver.New(resolved, be), resolved, be
-}
-
-func TestResolve_returnsActiveAccountCredential(t *testing.T) {
-	r, resolved, be := newResolver(t)
-
-	resolved.ConfigAccount = "ci"
-	if err := be.Save("ci", []byte(fakeSAJSON)); err != nil {
-		t.Fatal(err)
-	}
-
-	sa, err := r.Resolve(resolver.Inputs{})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "ci@p.iam.gserviceaccount.com" {
-		t.Errorf("ClientEmail = %q", sa.ClientEmail)
-	}
-}
-
-func TestResolve_noSource_returnsErrNoSource(t *testing.T) {
-	r, _, _ := newResolver(t)
-	_, err := r.Resolve(resolver.Inputs{})
-	if !errors.Is(err, resolver.ErrNoSource) {
-		t.Errorf("Resolve (empty inputs, empty config) = %v, want ErrNoSource", err)
-	}
-}
-
-func TestResolve_serviceAccountFlag_inlineJSON(t *testing.T) {
-	r, _, _ := newResolver(t)
-
-	sa, err := r.Resolve(resolver.Inputs{ServiceAccountFlag: fakeSAJSON})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "ci@p.iam.gserviceaccount.com" {
-		t.Errorf("ClientEmail = %q", sa.ClientEmail)
-	}
-}
-
-func TestResolve_serviceAccountFlag_path(t *testing.T) {
-	r, _, _ := newResolver(t)
-	path := filepath.Join(t.TempDir(), "sa.json")
-	if err := os.WriteFile(path, []byte(fakeSAJSON), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	sa, err := r.Resolve(resolver.Inputs{ServiceAccountFlag: path})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "ci@p.iam.gserviceaccount.com" {
-		t.Errorf("ClientEmail = %q", sa.ClientEmail)
-	}
-}
-
-func TestResolve_accountFlag_picksStoredAccount(t *testing.T) {
-	r, _, be := newResolver(t)
-	if err := be.Save("other", []byte(fakeSAJSON)); err != nil {
-		t.Fatal(err)
-	}
-
-	sa, err := r.Resolve(resolver.Inputs{AccountFlag: "other"})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "ci@p.iam.gserviceaccount.com" {
-		t.Errorf("ClientEmail = %q", sa.ClientEmail)
-	}
-}
-
-func TestResolve_envServiceAccount_inlineJSON(t *testing.T) {
-	r, _, _ := newResolver(t)
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", fakeSAJSON)
-	t.Setenv("GPLAY_ACCOUNT", "")
-
-	sa, err := r.Resolve(resolver.Inputs{})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "ci@p.iam.gserviceaccount.com" {
-		t.Errorf("ClientEmail = %q", sa.ClientEmail)
-	}
-}
-
-func TestResolve_envServiceAccount_path(t *testing.T) {
-	r, _, _ := newResolver(t)
-	path := filepath.Join(t.TempDir(), "sa.json")
-	if err := os.WriteFile(path, []byte(fakeSAJSON), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", path)
-	t.Setenv("GPLAY_ACCOUNT", "")
-
-	sa, err := r.Resolve(resolver.Inputs{})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "ci@p.iam.gserviceaccount.com" {
-		t.Errorf("ClientEmail = %q", sa.ClientEmail)
-	}
-}
-
-func TestResolve_envAccount_picksStoredAccount(t *testing.T) {
-	r, _, be := newResolver(t)
-	if err := be.Save("envchosen", []byte(fakeSAJSON)); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", "")
-	t.Setenv("GPLAY_ACCOUNT", "envchosen")
-
-	sa, err := r.Resolve(resolver.Inputs{})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "ci@p.iam.gserviceaccount.com" {
-		t.Errorf("ClientEmail = %q", sa.ClientEmail)
-	}
-}
-
-func TestResolve_noSource_errorHint_mentionsLoginAndEnv(t *testing.T) {
-	r, _, _ := newResolver(t)
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", "")
-	t.Setenv("GPLAY_ACCOUNT", "")
-
-	_, err := r.Resolve(resolver.Inputs{})
-	if err == nil {
-		t.Fatal("Resolve: expected error, got nil")
-	}
-	msg := err.Error()
-	for _, want := range []string{"gplay auth login", "GPLAY_SERVICE_ACCOUNT", "--service-account"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("error message missing %q: %s", want, msg)
-		}
-	}
-}
-
-// saJSONWithEmail returns a copy of fakeSAJSON with client_email replaced by
-// the given value. Useful for precedence tests where each source carries a
-// distinguishable email so we can verify which one won.
-func saJSONWithEmail(email string) string {
+// saWithEmail returns fakeSAJSON with client_email replaced — useful in
+// precedence cases where every layer needs a distinguishable winner.
+func saWithEmail(email string) string {
 	return strings.Replace(fakeSAJSON, "ci@p.iam.gserviceaccount.com", email, 1)
 }
 
-func TestResolve_precedence_flagServiceAccount_winsAll(t *testing.T) {
-	r, resolved, be := newResolver(t)
+// setup returns a Deps wired to a fresh file-backed keystore (caller
+// stashes any bytes it needs). The returned *config.Resolved is the
+// layer-5 surface tests mutate to emulate "this account is active in
+// config". Env vars are no longer touched — the resolver reads its
+// EnvServiceAccount / EnvAccount from Inputs.
+func setup(t *testing.T) (resolver.Deps, *config.Resolved, keystore.Backend) {
+	t.Helper()
+	resolved := &config.Resolved{}
+	be := keystore.NewFileBackend(t.TempDir())
+	return resolver.Deps{Resolved: resolved, Keystore: be}, resolved, be
+}
 
-	// Layer 2 candidate
-	if err := be.Save("acct-flag", []byte(saJSONWithEmail("acctflag@x"))); err != nil {
-		t.Fatal(err)
+// TestResolve_cascade walks the five precedence layers documented in
+// DESIGN.md §1, one row per layer, each row asserting that the named
+// layer wins when every higher-priority layer is unset. Layer-overlap
+// (multiple sources set; highest wins) gets a separate group below.
+func TestResolve_cascade(t *testing.T) {
+	cases := []struct {
+		name   string
+		setup  func(t *testing.T, deps *resolver.Deps, resolved *config.Resolved, be keystore.Backend) resolver.Inputs
+		want   string // expected ClientEmail
+		wantOK bool
+	}{
+		{
+			name: "layer1-flag-inline-json",
+			setup: func(_ *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				return resolver.Inputs{ServiceAccountFlag: fakeSAJSON}
+			},
+			want:   "ci@p.iam.gserviceaccount.com",
+			wantOK: true,
+		},
+		{
+			name: "layer1-flag-path",
+			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				p := filepath.Join(t.TempDir(), "sa.json")
+				mustWrite(t, p, fakeSAJSON)
+				return resolver.Inputs{ServiceAccountFlag: p}
+			},
+			want:   "ci@p.iam.gserviceaccount.com",
+			wantOK: true,
+		},
+		{
+			name: "layer2-account-flag",
+			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, be keystore.Backend) resolver.Inputs {
+				mustSave(t, be, "other", fakeSAJSON)
+				return resolver.Inputs{AccountFlag: "other"}
+			},
+			want:   "ci@p.iam.gserviceaccount.com",
+			wantOK: true,
+		},
+		{
+			name: "layer3-env-service-account-inline",
+			setup: func(_ *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				return resolver.Inputs{EnvServiceAccount: fakeSAJSON}
+			},
+			want:   "ci@p.iam.gserviceaccount.com",
+			wantOK: true,
+		},
+		{
+			name: "layer3-env-service-account-path",
+			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				p := filepath.Join(t.TempDir(), "sa.json")
+				mustWrite(t, p, fakeSAJSON)
+				return resolver.Inputs{EnvServiceAccount: p}
+			},
+			want:   "ci@p.iam.gserviceaccount.com",
+			wantOK: true,
+		},
+		{
+			name: "layer3-env-inline-with-leading-whitespace",
+			setup: func(_ *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				return resolver.Inputs{EnvServiceAccount: "  \n\t" + fakeSAJSON}
+			},
+			want:   "ci@p.iam.gserviceaccount.com",
+			wantOK: true,
+		},
+		{
+			name: "layer4-env-account",
+			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, be keystore.Backend) resolver.Inputs {
+				mustSave(t, be, "envchosen", fakeSAJSON)
+				return resolver.Inputs{EnvAccount: "envchosen"}
+			},
+			want:   "ci@p.iam.gserviceaccount.com",
+			wantOK: true,
+		},
+		{
+			name: "layer5-config-active",
+			setup: func(t *testing.T, _ *resolver.Deps, resolved *config.Resolved, be keystore.Backend) resolver.Inputs {
+				mustSave(t, be, "ci", fakeSAJSON)
+				resolved.ConfigAccount = "ci"
+				return resolver.Inputs{}
+			},
+			want:   "ci@p.iam.gserviceaccount.com",
+			wantOK: true,
+		},
+		{
+			name: "no-source",
+			setup: func(_ *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				return resolver.Inputs{}
+			},
+			wantOK: false,
+		},
 	}
-	// Layer 4 candidate
-	if err := be.Save("acct-env", []byte(saJSONWithEmail("acctenv@x"))); err != nil {
-		t.Fatal(err)
-	}
-	// Layer 5 candidate (active)
-	if err := be.Save("acct-active", []byte(saJSONWithEmail("active@x"))); err != nil {
-		t.Fatal(err)
-	}
-	resolved.ConfigAccount = "acct-active"
-	// Layer 3 candidate
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", saJSONWithEmail("envsa@x"))
-	// Layer 4 candidate
-	t.Setenv("GPLAY_ACCOUNT", "acct-env")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			deps, resolved, be := setup(t)
+			in := tc.setup(t, &deps, resolved, be)
 
-	// Layer 1: flag SA wins over everything else.
-	sa, err := r.Resolve(resolver.Inputs{
-		ServiceAccountFlag: saJSONWithEmail("flagsa@x"),
-		AccountFlag:        "acct-flag",
-	})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "flagsa@x" {
-		t.Errorf("winner = %q, want %q (flag SA layer 1)", sa.ClientEmail, "flagsa@x")
+			sa, err := resolver.Resolve(context.Background(), deps, in)
+			if !tc.wantOK {
+				if !errors.Is(err, resolver.ErrNoSource) {
+					t.Errorf("err = %v, want ErrNoSource", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Resolve: %v", err)
+			}
+			if sa.ClientEmail != tc.want {
+				t.Errorf("ClientEmail = %q, want %q", sa.ClientEmail, tc.want)
+			}
+		})
 	}
 }
 
-func TestResolve_precedence_accountFlag_beatsEnvAndActive(t *testing.T) {
-	r, resolved, be := newResolver(t)
+// TestResolve_precedence asserts the *order* of layers when several are
+// set simultaneously — i.e. the layer that "wins" against every layer
+// below it.
+func TestResolve_precedence(t *testing.T) {
+	type seed struct {
+		flagSA   string
+		flagAcct string
+		envSA    string
+		envAcct  string
+	}
+	allLayers := seed{
+		flagSA:   saWithEmail("flagsa@x"),
+		flagAcct: "acct-flag",
+		envSA:    saWithEmail("envsa@x"),
+		envAcct:  "acct-env",
+	}
+	cases := []struct {
+		name string
+		drop seed // layers set to zero for this case
+		want string
+	}{
+		{
+			name: "flag-service-account-wins-all",
+			want: "flagsa@x",
+		},
+		{
+			name: "account-flag-wins-when-no-flag-sa",
+			drop: seed{flagSA: " "},
+			want: "acctflag@x",
+		},
+		{
+			name: "env-service-account-wins-when-no-flags",
+			drop: seed{flagSA: " ", flagAcct: " "},
+			want: "envsa@x",
+		},
+		{
+			name: "env-account-wins-over-active",
+			drop: seed{flagSA: " ", flagAcct: " ", envSA: " "},
+			want: "acctenv@x",
+		},
+		{
+			name: "active-wins-when-nothing-else",
+			drop: seed{flagSA: " ", flagAcct: " ", envSA: " ", envAcct: " "},
+			want: "active@x",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			deps, resolved, be := setup(t)
+			// Seed every layer; drop overrides selectively below.
+			mustSave(t, be, "acct-flag", saWithEmail("acctflag@x"))
+			mustSave(t, be, "acct-env", saWithEmail("acctenv@x"))
+			mustSave(t, be, "acct-active", saWithEmail("active@x"))
+			resolved.ConfigAccount = "acct-active"
 
-	if err := be.Save("acct-flag", []byte(saJSONWithEmail("acctflag@x"))); err != nil {
-		t.Fatal(err)
-	}
-	if err := be.Save("acct-env", []byte(saJSONWithEmail("acctenv@x"))); err != nil {
-		t.Fatal(err)
-	}
-	if err := be.Save("acct-active", []byte(saJSONWithEmail("active@x"))); err != nil {
-		t.Fatal(err)
-	}
-	resolved.ConfigAccount = "acct-active"
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", saJSONWithEmail("envsa@x"))
-	t.Setenv("GPLAY_ACCOUNT", "acct-env")
+			// Apply drops — a non-empty drop field clears that layer.
+			in := resolver.Inputs{
+				ServiceAccountFlag: allLayers.flagSA,
+				AccountFlag:        allLayers.flagAcct,
+				EnvServiceAccount:  allLayers.envSA,
+				EnvAccount:         allLayers.envAcct,
+			}
+			if tc.drop.flagSA != "" {
+				in.ServiceAccountFlag = ""
+			}
+			if tc.drop.flagAcct != "" {
+				in.AccountFlag = ""
+			}
+			if tc.drop.envSA != "" {
+				in.EnvServiceAccount = ""
+			}
+			if tc.drop.envAcct != "" {
+				in.EnvAccount = ""
+			}
 
-	// Layer 2: --account beats env and active (but no --service-account).
-	sa, err := r.Resolve(resolver.Inputs{AccountFlag: "acct-flag"})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "acctflag@x" {
-		t.Errorf("winner = %q, want %q (--account layer 2)", sa.ClientEmail, "acctflag@x")
+			sa, err := resolver.Resolve(context.Background(), deps, in)
+			if err != nil {
+				t.Fatalf("Resolve: %v", err)
+			}
+			if sa.ClientEmail != tc.want {
+				t.Errorf("winner = %q, want %q", sa.ClientEmail, tc.want)
+			}
+		})
 	}
 }
 
-func TestResolve_precedence_envServiceAccount_beatsEnvAccountAndActive(t *testing.T) {
-	r, resolved, be := newResolver(t)
+// TestResolve_emptyEnvVars_areIgnored — an explicitly empty env var must
+// fall through, not short-circuit a higher-priority layer.
+func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
+	deps, resolved, be := setup(t)
+	mustSave(t, be, "active", fakeSAJSON)
+	resolved.ConfigAccount = "active"
 
-	if err := be.Save("acct-env", []byte(saJSONWithEmail("acctenv@x"))); err != nil {
-		t.Fatal(err)
-	}
-	if err := be.Save("acct-active", []byte(saJSONWithEmail("active@x"))); err != nil {
-		t.Fatal(err)
-	}
-	resolved.ConfigAccount = "acct-active"
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", saJSONWithEmail("envsa@x"))
-	t.Setenv("GPLAY_ACCOUNT", "acct-env")
-
-	// Layer 3: GPLAY_SERVICE_ACCOUNT beats GPLAY_ACCOUNT and active.
-	sa, err := r.Resolve(resolver.Inputs{})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "envsa@x" {
-		t.Errorf("winner = %q, want %q (GPLAY_SERVICE_ACCOUNT layer 3)", sa.ClientEmail, "envsa@x")
-	}
-}
-
-func TestResolve_envServiceAccount_inlineJSON_withLeadingWhitespace(t *testing.T) {
-	r, _, _ := newResolver(t)
-	// Leading whitespace + newline must still be detected as inline JSON.
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", "  \n\t"+fakeSAJSON)
-	t.Setenv("GPLAY_ACCOUNT", "")
-
-	sa, err := r.Resolve(resolver.Inputs{})
+	sa, err := resolver.Resolve(context.Background(), deps, resolver.Inputs{})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -276,60 +254,47 @@ func TestResolve_envServiceAccount_inlineJSON_withLeadingWhitespace(t *testing.T
 	}
 }
 
-func TestResolve_envServiceAccount_nonexistentPath_returnsError(t *testing.T) {
-	r, _, _ := newResolver(t)
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", filepath.Join(t.TempDir(), "missing.json"))
-	t.Setenv("GPLAY_ACCOUNT", "")
+// TestResolve_envServiceAccount_missingPath_failsLoudly — setting layer
+// 3 to a path that doesn't exist must surface the underlying error
+// rather than silently falling through to ErrNoSource.
+func TestResolve_envServiceAccount_missingPath_failsLoudly(t *testing.T) {
+	deps, _, _ := setup(t)
+	missingPath := filepath.Join(t.TempDir(), "missing.json")
 
-	_, err := r.Resolve(resolver.Inputs{})
+	_, err := resolver.Resolve(context.Background(), deps, resolver.Inputs{EnvServiceAccount: missingPath})
 	if err == nil {
 		t.Fatal("Resolve: expected error for nonexistent path, got nil")
 	}
-	// Don't pin the exact wrapping; just make sure it doesn't fall through
-	// to ErrNoSource (which would mean we silently skipped layer 3).
 	if errors.Is(err, resolver.ErrNoSource) {
 		t.Errorf("Resolve fell through to ErrNoSource; layer 3 should fail loudly when set: %v", err)
 	}
 }
 
-func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
-	r, resolved, be := newResolver(t)
-	if err := be.Save("active", []byte(fakeSAJSON)); err != nil {
-		t.Fatal(err)
+// TestResolve_noSourceHint asserts the actionable hint stays in the
+// ErrNoSource message — users land on this in the cold-start state.
+func TestResolve_noSourceHint(t *testing.T) {
+	deps, _, _ := setup(t)
+	_, err := resolver.Resolve(context.Background(), deps, resolver.Inputs{})
+	if err == nil {
+		t.Fatal("expected error")
 	}
-	resolved.ConfigAccount = "active"
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", "")
-	t.Setenv("GPLAY_ACCOUNT", "")
-
-	// Empty envs must behave identically to unset — fall through to layer 5.
-	sa, err := r.Resolve(resolver.Inputs{})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "ci@p.iam.gserviceaccount.com" {
-		t.Errorf("ClientEmail = %q", sa.ClientEmail)
+	for _, want := range []string{"gplay auth login", "GPLAY_SERVICE_ACCOUNT", "--service-account"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error message missing %q: %s", want, err.Error())
+		}
 	}
 }
 
-func TestResolve_precedence_envAccount_beatsActive(t *testing.T) {
-	r, resolved, be := newResolver(t)
-
-	if err := be.Save("acct-env", []byte(saJSONWithEmail("acctenv@x"))); err != nil {
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := be.Save("acct-active", []byte(saJSONWithEmail("active@x"))); err != nil {
-		t.Fatal(err)
-	}
-	resolved.ConfigAccount = "acct-active"
-	t.Setenv("GPLAY_SERVICE_ACCOUNT", "")
-	t.Setenv("GPLAY_ACCOUNT", "acct-env")
+}
 
-	// Layer 4: GPLAY_ACCOUNT beats active.
-	sa, err := r.Resolve(resolver.Inputs{})
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if sa.ClientEmail != "acctenv@x" {
-		t.Errorf("winner = %q, want %q (GPLAY_ACCOUNT layer 4)", sa.ClientEmail, "acctenv@x")
+func mustSave(t *testing.T, be keystore.Backend, name, content string) {
+	t.Helper()
+	if err := be.Save(name, []byte(content)); err != nil {
+		t.Fatal(err)
 	}
 }

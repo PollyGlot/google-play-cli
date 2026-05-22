@@ -21,9 +21,45 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
+	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
+
+// TestRun_pureBusiness drives doctor.Run with a hand-built RunContext.
+// doctor renders directly to rc.Stdout (so a failing check still prints
+// the checklist), so the assertion targets the rendered bytes rather
+// than the (nil) return value.
+func TestRun_pureBusiness(t *testing.T) {
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
+	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var stdout bytes.Buffer
+	boot.Stdout = &stdout
+	rc := kernel.NewForTest(ctxWithRT(successRT()), boot, kernel.Inputs{Format: output.FormatJSON})
+	rc.Account = sa
+
+	r, err := doctor.Run(rc, doctor.Input{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if r != nil {
+		t.Errorf("Run returned a Renderable; want nil (doctor renders itself)")
+	}
+	var parsed []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("unmarshal: %v (raw=%q)", err, stdout.String())
+	}
+	if len(parsed) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(parsed))
+	}
+}
 
 // roundTripperFunc — canonical AGENTS.md pattern.
 type roundTripperFunc func(req *http.Request) (*http.Response, error)
@@ -83,7 +119,7 @@ func (f *fakeKeyring) Delete(service, user string) error {
 	return nil
 }
 
-func newOpts(t *testing.T) doctor.Options {
+func newBoot(t *testing.T) kernel.Boot {
 	t.Helper()
 	// Hermetic env: doctor resolves credentials via the same resolver as
 	// every other command, so a stray GPLAY_* in the developer's shell
@@ -92,9 +128,8 @@ func newOpts(t *testing.T) doctor.Options {
 	t.Setenv(resolver.EnvAccount, "")
 	// Reset the package-global Select cache so each test picks the
 	// backend appropriate to its fake keyring.
-	keystore.ResetSelectForTest()
 	root := t.TempDir()
-	return doctor.Options{
+	return kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
 		// Default: keyring unavailable so the file backend is used and
@@ -131,14 +166,14 @@ func signedSAJSON(t *testing.T) []byte {
 }
 
 // seedActiveAccount writes a service account into whichever backend
-// Select chooses for the given Options. Using Select (vs. NewFileBackend
+// Select chooses for the given Boot. Using Select (vs. NewFileBackend
 // directly) keeps the seed in step with what the command itself will
 // read — i.e. the test exercises the same code path as production.
-func seedActiveAccount(t *testing.T, opts doctor.Options, saBytes []byte) {
+func seedActiveAccount(t *testing.T, boot kernel.Boot, saBytes []byte) {
 	t.Helper()
 	be, _, err := keystore.Select(keystore.SelectOptions{
-		Keyring:  opts.Keyring,
-		FileRoot: opts.KeystoreRoot,
+		Keyring:  boot.Keyring,
+		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("keystore.Select: %v", err)
@@ -151,14 +186,16 @@ func seedActiveAccount(t *testing.T, opts doctor.Options, saBytes []byte) {
 	if err := cfg.SetActive("playci"); err != nil {
 		t.Fatalf("SetActive: %v", err)
 	}
-	if err := cfg.Save(opts.ConfigPath); err != nil {
+	if err := cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath); err != nil {
 		t.Fatalf("cfg.Save: %v", err)
 	}
 }
 
-func runCmd(t *testing.T, opts doctor.Options, ctx context.Context, stdout, stderr *bytes.Buffer, args ...string) error {
+func runCmd(t *testing.T, boot kernel.Boot, ctx context.Context, stdout, stderr *bytes.Buffer, args ...string) error {
 	t.Helper()
-	cmd := doctor.NewCommand(opts)
+	boot.Stdout = stdout
+	boot.Stderr = stderr
+	cmd := doctor.NewCommand(boot)
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
@@ -282,14 +319,14 @@ func ctxWithRT(fn roundTripperFunc) context.Context {
 }
 
 func TestDoctor_happyPath_prints3CheckmarksAndExits0(t *testing.T) {
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
 	// Pin the format being asserted: this test verifies the table emoji
 	// output, not the auto-default (which would be JSON in this non-TTY
 	// test context).
-	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "table"); err != nil {
+	if err := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -306,11 +343,11 @@ func TestDoctor_happyPath_prints3CheckmarksAndExits0(t *testing.T) {
 func TestDoctor_defaultNonTTY_emitsJSON(t *testing.T) {
 	t.Setenv("CI", "")
 	outputtest.ForceTerminal(t, false)
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr); err != nil {
+	if err := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	var parsed []map[string]any
@@ -325,11 +362,11 @@ func TestDoctor_defaultNonTTY_emitsJSON(t *testing.T) {
 func TestDoctor_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
 	t.Setenv("CI", "true")
 	outputtest.ForceTerminal(t, true)
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr); err != nil {
+	if err := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &[]map[string]any{}); err != nil {
@@ -338,11 +375,11 @@ func TestDoctor_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
 }
 
 func TestDoctor_markdownOutput_emitsTaskList(t *testing.T) {
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "markdown"); err != nil {
+	if err := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "markdown"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	out := stdout.String()
@@ -356,9 +393,9 @@ func TestDoctor_markdownOutput_emitsTaskList(t *testing.T) {
 }
 
 func TestDoctor_markdownOutput_failingCheckAndSkipped(t *testing.T) {
-	opts := newOpts(t)
+	boot := newBoot(t)
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
-	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: opts.Keyring, FileRoot: opts.KeystoreRoot})
+	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
@@ -368,10 +405,10 @@ func TestDoctor_markdownOutput_failingCheckAndSkipped(t *testing.T) {
 	cfg := &config.Global{}
 	cfg.AddAccount("playci")
 	_ = cfg.SetActive("playci")
-	_ = cfg.Save(opts.ConfigPath)
+	_ = cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath)
 
 	var stdout, stderr bytes.Buffer
-	runErr := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "markdown")
+	runErr := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "markdown")
 	if runErr == nil {
 		t.Fatal("expected error for malformed SA")
 	}
@@ -388,11 +425,11 @@ func TestDoctor_markdownOutput_failingCheckAndSkipped(t *testing.T) {
 }
 
 func TestDoctor_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
-	err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "xml")
+	err := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "xml")
 	if err == nil {
 		t.Fatal("expected error on --output xml")
 	}
@@ -404,13 +441,13 @@ func TestDoctor_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
 }
 
 func TestDoctor_malformedSA_failsCheck1_skipsRest(t *testing.T) {
-	opts := newOpts(t)
+	boot := newBoot(t)
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
 	// Seed with bytes the keystore accepts but the doctor will detect as
 	// missing required fields at resolution time.
 	be, _, err := keystore.Select(keystore.SelectOptions{
-		Keyring:  opts.Keyring,
-		FileRoot: opts.KeystoreRoot,
+		Keyring:  boot.Keyring,
+		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
@@ -423,26 +460,26 @@ func TestDoctor_malformedSA_failsCheck1_skipsRest(t *testing.T) {
 	if err := cfg.SetActive("playci"); err != nil {
 		t.Fatalf("SetActive: %v", err)
 	}
-	if err := cfg.Save(opts.ConfigPath); err != nil {
+	if err := cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath); err != nil {
 		t.Fatalf("cfg.Save: %v", err)
 	}
 
 	var stdout, stderr bytes.Buffer
-	runErr := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr)
+	runErr := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr)
 	if runErr == nil {
 		t.Fatal("Execute: expected error on malformed SA, got nil")
 	}
-	if got := doctor.ExitCode(runErr); got != 10 {
-		t.Errorf("ExitCode(err) = %d, want 10", got)
+	if got := exit.For(runErr); got != 10 {
+		t.Errorf("exit.For(err) = %d, want 10", got)
 	}
 }
 
 func TestDoctor_jsonOutput_passesThroughCheckResults(t *testing.T) {
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json"); err != nil {
+	if err := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -473,11 +510,11 @@ func TestDoctor_jsonOutput_passesThroughCheckResults(t *testing.T) {
 }
 
 func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
-	opts := newOpts(t)
+	boot := newBoot(t)
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
 	be, _, err := keystore.Select(keystore.SelectOptions{
-		Keyring:  opts.Keyring,
-		FileRoot: opts.KeystoreRoot,
+		Keyring:  boot.Keyring,
+		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
@@ -490,17 +527,17 @@ func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 	if err := cfg.SetActive("playci"); err != nil {
 		t.Fatalf("SetActive: %v", err)
 	}
-	if err := cfg.Save(opts.ConfigPath); err != nil {
+	if err := cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath); err != nil {
 		t.Fatalf("cfg.Save: %v", err)
 	}
 
 	var stdout, stderr bytes.Buffer
-	runErr := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json")
+	runErr := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json")
 	if runErr == nil {
 		t.Fatal("Execute: expected error on malformed SA, got nil")
 	}
-	if got := doctor.ExitCode(runErr); got != 10 {
-		t.Errorf("ExitCode(err) = %d, want 10", got)
+	if got := exit.For(runErr); got != 10 {
+		t.Errorf("exit.For(err) = %d, want 10", got)
 	}
 
 	var parsed []struct {
@@ -529,8 +566,8 @@ func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 }
 
 func TestDoctor_twoPackages_bothPassing_returns5ResultsAndExit0(t *testing.T) {
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	rt := &fullStackRT{
 		t:               t,
@@ -539,7 +576,7 @@ func TestDoctor_twoPackages_bothPassing_returns5ResultsAndExit0(t *testing.T) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, ctx, &stdout, &stderr,
+	if err := runCmd(t, boot, ctx, &stdout, &stderr,
 		"--output", "json",
 		"--package", "com.example.app1",
 		"--package", "com.example.app2",
@@ -574,8 +611,8 @@ func TestDoctor_twoPackages_bothPassing_returns5ResultsAndExit0(t *testing.T) {
 }
 
 func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	rt := &fullStackRT{
 		t:               t,
@@ -584,7 +621,7 @@ func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
 
 	var stdout, stderr bytes.Buffer
-	runErr := runCmd(t, opts, ctx, &stdout, &stderr,
+	runErr := runCmd(t, boot, ctx, &stdout, &stderr,
 		"--output", "json",
 		"--package", "com.example.app1",
 		"--package", "com.example.app2",
@@ -592,17 +629,17 @@ func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
 	if runErr == nil {
 		t.Fatal("Execute: expected non-nil error when one package fails")
 	}
-	if got := doctor.ExitCode(runErr); got != 11 {
-		t.Errorf("ExitCode(err) = %d, want 11 (worst non-zero across checks)", got)
+	if got := exit.For(runErr); got != 11 {
+		t.Errorf("exit.For(err) = %d, want 11 (worst non-zero across checks)", got)
 	}
 }
 
 func TestDoctor_withoutPackage_runsOnlyThreeChecks(t *testing.T) {
-	opts := newOpts(t)
-	seedActiveAccount(t, opts, signedSAJSON(t))
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, opts, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json"); err != nil {
+	if err := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "json"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 

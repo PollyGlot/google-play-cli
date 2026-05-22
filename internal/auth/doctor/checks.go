@@ -8,7 +8,6 @@ package doctor
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,7 +20,13 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
+
+// maxAPIBodyRead caps how many bytes of an androidpublisher API
+// response body we hold in memory. Error envelopes are small; the cap
+// stops a malformed or hostile server from blowing up RAM.
+const maxAPIBodyRead = 64 * 1024
 
 // Exit codes per docs/DESIGN.md §9.
 const (
@@ -39,11 +44,15 @@ const (
 // DefaultChecks returns the ordered chain used by `gplay auth doctor`
 // in its non-API form (issue #11). The per-package edits.insert/delete
 // round-trip (issue #12) appends one more Check to this slice.
-func DefaultChecks() []Check {
+//
+// obs is the ScopeObserver wired around the doctor's HTTP client at the
+// command layer; CheckScope reads from it to assert the requested
+// scopes. Pass nil only in tests that don't exercise CheckScope.
+func DefaultChecks(obs *transport.ScopeObserver) []Check {
 	return []Check{
 		CheckSAJSONValid(),
 		CheckOAuth2Mint(),
-		CheckScope(),
+		CheckScope(obs),
 	}
 }
 
@@ -100,16 +109,17 @@ func missingFieldHint(field string) string {
 // CheckOAuth2Mint asserts that an OAuth2 access token can be minted by
 // signing a JWT with the SA's private key and exchanging it at the
 // configured token_uri. Failure (non-2xx response, signature problem,
-// any transport error) is mapped to exit code 10.
-//
-// The HTTP transport used for the exchange is taken from
-// ctx via oauth2.HTTPClient (set by the test harness) — see the
-// token package for the underlying wiring.
+// any transport error) is mapped to exit code 10. hc is the http.Client
+// the runner threads down — the doctor command wraps it with the scope
+// observer, but for this check that wrapping is invisible.
 func CheckOAuth2Mint() Check {
 	return Check{
 		Name:     "OAuth2 access token can be minted",
 		ExitCode: exitAuth,
-		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, _ *http.Client) CheckResult {
+		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) CheckResult {
+			if hc != nil {
+				ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
+			}
 			ts, err := token.Source(ctx, sa)
 			if err != nil {
 				return CheckResult{
@@ -131,22 +141,17 @@ func CheckOAuth2Mint() Check {
 }
 
 // CheckScope asserts that the OAuth2 JWT exchange driven by the token
-// package carries the AndroidPublisher scope. The check intercepts the
-// outgoing HTTP request to the token endpoint, parses the `scope` field
-// out of the form-encoded body, and confirms the AndroidPublisher scope
-// is listed. This catches the case where the scope constant in the
-// token package has drifted from the one Google requires for the
-// androidpublisher API surface.
+// package carries the AndroidPublisher scope. It reads observed scopes
+// from obs (which the caller wires via transport.WithScopeObserver) and
+// fails when the required scope is absent.
 //
-// The check requires that ctx already carries an oauth2.HTTPClient — in
-// production it does not (the default transport is used); in tests, the
-// fixtures inject one. The check wraps that client's transport so it
-// can observe and forward the JWT exchange request.
+// obs may be nil — the check then reports a wiring bug instead of a
+// credential problem.
 //
-// The optional requiredScope variadic exists for the "scope drift"
-// failure test: end users always invoke CheckScope() and the check
-// pins to token.AndroidPublisherScope.
-func CheckScope(requiredScope ...string) Check {
+// The optional requiredScope variadic exists for the scope-drift
+// failure test; production callers pass only obs and the check pins
+// to token.AndroidPublisherScope.
+func CheckScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
 	required := token.AndroidPublisherScope
 	if len(requiredScope) > 0 {
 		required = requiredScope[0]
@@ -154,24 +159,17 @@ func CheckScope(requiredScope ...string) Check {
 	return Check{
 		Name:     "Token carries the androidpublisher scope",
 		ExitCode: exitAuth,
-		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, _ *http.Client) CheckResult {
-			// Wrap whatever HTTP client ctx carries (the test injects
-			// one; in prod it is the default transport) with a small
-			// observer that records the request body of the token
-			// exchange. The token exchange POSTs form data including
-			// the scope field.
-			base, _ := ctx.Value(oauth2.HTTPClient).(*http.Client)
-			if base == nil {
-				base = &http.Client{}
+		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) CheckResult {
+			if obs == nil {
+				return CheckResult{
+					Passed:   false,
+					ExitCode: exitAuth,
+					Hint:     "scope check requires a ScopeObserver; this indicates a bug in gplay's auth wiring",
+				}
 			}
-			obs := &scopeObserver{inner: base.Transport}
-			if obs.inner == nil {
-				obs.inner = http.DefaultTransport
+			if hc != nil {
+				ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
 			}
-			wrapped := *base
-			wrapped.Transport = obs
-			ctx = context.WithValue(ctx, oauth2.HTTPClient, &wrapped)
-
 			ts, err := token.Source(ctx, sa)
 			if err != nil {
 				return CheckResult{
@@ -188,7 +186,7 @@ func CheckScope(requiredScope ...string) Check {
 				}
 			}
 
-			scopes := obs.observedScopes()
+			scopes := obs.Scopes()
 			for _, s := range scopes {
 				if s == required {
 					return CheckResult{Passed: true}
@@ -201,88 +199,6 @@ func CheckScope(requiredScope ...string) Check {
 			}
 		},
 	}
-}
-
-// scopeObserver is an http.RoundTripper that records the scope claim
-// sent in the JWT exchange request body, then delegates to its inner
-// transport so the response still flows through unchanged.
-type scopeObserver struct {
-	inner    http.RoundTripper
-	captured string
-}
-
-// maxObservedBody caps the in-memory copy made of an outgoing token
-// exchange body. Real JWT-exchange payloads are a few KB; capping at
-// 64 KB keeps a malformed or hostile server from blowing up memory.
-const maxObservedBody = 64 * 1024
-
-func (o *scopeObserver) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Body != nil {
-		buf, err := io.ReadAll(io.LimitReader(req.Body, maxObservedBody))
-		if err == nil {
-			o.captured = string(buf)
-			// Restore the body so the inner transport can consume it.
-			req.Body = io.NopCloser(strings.NewReader(o.captured))
-			req.ContentLength = int64(len(buf))
-		}
-	}
-	return o.inner.RoundTrip(req)
-}
-
-// observedScopes parses the captured form-encoded JWT-exchange body and
-// returns the requested scopes (the JWT's "scope" claim is mirrored
-// into the form's "scope" parameter by golang.org/x/oauth2).
-func (o *scopeObserver) observedScopes() []string {
-	values, err := url.ParseQuery(o.captured)
-	if err != nil {
-		return nil
-	}
-	raw := values.Get("scope")
-	if raw == "" {
-		// As a fallback, decode the assertion JWT and read its scope
-		// claim. The JWT exchange flow used by JWTConfig embeds the
-		// requested scopes inside the assertion's payload (not as a
-		// separate form param), so this is the realistic path.
-		return scopesFromAssertion(values.Get("assertion"))
-	}
-	return strings.Fields(raw)
-}
-
-// scopesFromAssertion extracts the "scope" claim from a base64url
-// JWT payload without verifying the signature (we only inspect, we
-// do not consume the token). Returns nil if the JWT can't be parsed.
-func scopesFromAssertion(jwt string) []string {
-	parts := strings.Split(jwt, ".")
-	if len(parts) != 3 {
-		return nil
-	}
-	payload, err := base64URLDecode(parts[1])
-	if err != nil {
-		return nil
-	}
-	// We avoid encoding/json here to keep the helper dependency-free;
-	// the scope claim is a quoted string value in the JSON payload.
-	const key = `"scope":"`
-	idx := strings.Index(payload, key)
-	if idx < 0 {
-		return nil
-	}
-	rest := payload[idx+len(key):]
-	end := strings.IndexByte(rest, '"')
-	if end < 0 {
-		return nil
-	}
-	return strings.Fields(rest[:end])
-}
-
-// base64URLDecode is a base64url decoder that tolerates the missing
-// padding the JWT spec deliberately omits.
-func base64URLDecode(s string) (string, error) {
-	b, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(s, "="))
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }
 
 // ResolutionFailure builds a synthetic check-1 failure for the case
@@ -328,7 +244,10 @@ func CheckPackageAccess(packageName string) Check {
 	return Check{
 		Name:     "Service account can edit " + packageName,
 		ExitCode: exitAuthz,
-		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, _ *http.Client) CheckResult {
+		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) CheckResult {
+			if hc != nil {
+				ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
+			}
 			ts, err := token.Source(ctx, sa)
 			if err != nil {
 				return CheckResult{
@@ -385,7 +304,7 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxObservedBody))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAPIBodyRead))
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
 		var parsed struct {
@@ -480,7 +399,7 @@ func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editI
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return CheckResult{}, false
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxObservedBody))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAPIBodyRead))
 	exit := statusToExitCode(resp.StatusCode)
 	if resp.StatusCode >= 500 {
 		return CheckResult{

@@ -2,6 +2,7 @@ package initcmd_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,7 +88,7 @@ func TestInitCmd_pinIsReadableByLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := config.Load(config.LoadOptions{
+	resolved, err := config.Load(context.Background(), config.OSFS{}, config.LoadOptions{
 		GlobalPath: filepath.Join(home, ".gplay-global-not-needed-for-this-test.json"),
 		StartDir:   subSub,
 		HomeDir:    home,

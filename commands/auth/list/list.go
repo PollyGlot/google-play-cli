@@ -10,67 +10,67 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// Options pins where the command reads state from.
-type Options struct {
-	ConfigPath string
+// Input has no command-specific flags; the kernel hands list everything
+// it needs via rc.Resolved.
+type Input struct{}
+
+// Payload is the rendered data. The kernel calls Renderers() and dispatches.
+type Payload struct {
+	Accounts []AccountRow `json:"accounts"`
 }
 
-type accountRow struct {
+// AccountRow is one row of the list.
+type AccountRow struct {
 	Name   string `json:"name"`
 	Active bool   `json:"active"`
 }
 
-type payload struct {
-	Accounts []accountRow `json:"accounts"`
+// Renderers satisfies output.Renderable.
+func (p Payload) Renderers() output.Renderers {
+	return output.Renderers{
+		Table:    func(w io.Writer) error { return renderTable(w, p.Accounts) },
+		JSON:     func(w io.Writer) error { return output.WriteJSON(w, p) },
+		Markdown: func(w io.Writer) error { return renderMarkdown(w, p.Accounts) },
+	}
+}
+
+// Run is the pure business function: read the registry from rc.Resolved,
+// shape it into rows, return a Renderable.
+func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
+	rows := make([]AccountRow, 0, len(rc.Resolved.Accounts))
+	for _, a := range rc.Resolved.Accounts {
+		rows = append(rows, AccountRow{Name: a.Name, Active: a.Active})
+	}
+	return Payload{Accounts: rows}, nil
 }
 
 // NewCommand returns the cobra command for `gplay auth list`.
-func NewCommand(opts Options) *cobra.Command {
+func NewCommand(boot kernel.Boot) *cobra.Command {
 	var outputFlag string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List every registered Account",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(cmd, opts, output.Format(outputFlag))
+			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
+				return Run(rc, Input{})
+			})
 		},
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	return cmd
 }
 
-func run(cmd *cobra.Command, opts Options, format output.Format) error {
-	cfg, err := config.LoadGlobalOrEmpty(opts.ConfigPath)
-	if err != nil {
-		return err
-	}
-	rows := make([]accountRow, 0, len(cfg.Accounts))
-	for _, a := range cfg.Accounts {
-		rows = append(rows, accountRow{Name: a.Name, Active: a.Active})
-	}
-	return output.Render(cmd.OutOrStdout(), format, renderersFor(rows))
-}
-
-// renderersFor wires the three Format renderers for a payload of rows.
-func renderersFor(rows []accountRow) output.Renderers {
-	return output.Renderers{
-		Table:    func(w io.Writer) error { return renderTable(w, rows) },
-		JSON:     func(w io.Writer) error { return output.WriteJSON(w, payload{Accounts: rows}) },
-		Markdown: func(w io.Writer) error { return renderMarkdown(w, rows) },
-	}
-}
-
-// Markers shown next to each row in `--output table` so the user can
-// spot the active Account at a glance.
+// Markers shown next to each row in `--output table`.
 const (
 	activeMarker   = "* "
 	inactiveMarker = "  "
 )
 
-func renderTable(w io.Writer, rows []accountRow) error {
+func renderTable(w io.Writer, rows []AccountRow) error {
 	if len(rows) == 0 {
 		_, err := fmt.Fprintln(w, "(no accounts registered)")
 		return err
@@ -87,11 +87,7 @@ func renderTable(w io.Writer, rows []accountRow) error {
 	return nil
 }
 
-// renderMarkdown emits a 2-column Markdown table (Account, Active). The
-// Active cell carries "*" for the active Account and is otherwise empty
-// — the same convention as the table renderer, just typeset for the
-// idiom that fits a Markdown reader.
-func renderMarkdown(w io.Writer, rows []accountRow) error {
+func renderMarkdown(w io.Writer, rows []AccountRow) error {
 	if len(rows) == 0 {
 		_, err := fmt.Fprintln(w, "_No accounts registered._")
 		return err

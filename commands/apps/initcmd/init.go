@@ -50,7 +50,7 @@ func run(cmd *cobra.Command, opts Options, pkg string) error {
 	if err != nil {
 		return err
 	}
-	if err := config.Init(repoRoot, home, pkg); err != nil {
+	if err := config.Init(cmd.Context(), config.OSFS{}, repoRoot, home, pkg); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Pinned package %q for this repo (.gplay/config.json)\n", pkg)
