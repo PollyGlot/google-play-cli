@@ -19,6 +19,7 @@ package kernel
 import (
 	"context"
 	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -241,7 +242,10 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 }
 
 // FromCobra builds an Inputs from cmd's persistent flag values
-// (--verbose, --service-account, --account) and cmd.Context().
+// (--verbose, --service-account, --account), the credential env vars,
+// and cmd.Context(). Reading os.Getenv here (once per invocation) is
+// the kernel's single concession to process state — the resolver
+// itself stays pure.
 func FromCobra(cmd *cobra.Command, format string) Inputs {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	saFlag, _ := cmd.Flags().GetString("service-account")
@@ -253,6 +257,8 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 		Resolver: resolver.Inputs{
 			ServiceAccountFlag: saFlag,
 			AccountFlag:        acctFlag,
+			EnvServiceAccount:  os.Getenv(resolver.EnvServiceAccount),
+			EnvAccount:         os.Getenv(resolver.EnvAccount),
 		},
 	}
 }

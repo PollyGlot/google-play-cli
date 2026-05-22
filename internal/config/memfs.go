@@ -105,7 +105,7 @@ func (m *MemFS) Stat(name string) (fs.FileInfo, error) {
 		}, nil
 	}
 	if _, ok := m.dirs[name]; ok {
-		return memFileInfo{name: path.Base(name), isDir: true, perm: 0o700}, nil
+		return memFileInfo{name: path.Base(name), isDir: true, perm: fs.ModeDir | 0o700}, nil
 	}
 	return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
 }

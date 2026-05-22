@@ -17,7 +17,6 @@ package resolver
 
 import (
 	"context"
-	"os"
 	"unicode"
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
@@ -60,6 +59,10 @@ type Deps struct {
 
 // Inputs carries the per-call flag values fed to Resolve. A zero-value
 // Inputs falls straight through to layer 5 (Deps.Resolved.ConfigAccount).
+//
+// EnvServiceAccount / EnvAccount are read once by the caller (typically
+// the kernel via os.Getenv) and passed in — the resolver stays a pure
+// function with no hidden process state.
 type Inputs struct {
 	// ServiceAccountFlag is the value of `--service-account` (path or inline
 	// JSON). Empty means the flag was not set.
@@ -67,6 +70,11 @@ type Inputs struct {
 	// AccountFlag is the value of `--account` (stored Account name). Empty
 	// means the flag was not set.
 	AccountFlag string
+	// EnvServiceAccount is the value of $GPLAY_SERVICE_ACCOUNT. The
+	// caller reads it once at boot and passes it in.
+	EnvServiceAccount string
+	// EnvAccount is the value of $GPLAY_ACCOUNT, same shape as above.
+	EnvAccount string
 }
 
 // Resolve walks the precedence chain in order and returns the first
@@ -87,14 +95,15 @@ func Resolve(_ context.Context, deps Deps, in Inputs) (*serviceaccount.ServiceAc
 		return loadStoredAccount(deps.Keystore, in.AccountFlag)
 	}
 
-	// Layer 3: GPLAY_SERVICE_ACCOUNT env var (path or inline JSON).
-	if v := os.Getenv(EnvServiceAccount); v != "" {
-		return loadServiceAccount(v)
+	// Layer 3: GPLAY_SERVICE_ACCOUNT env var (read by caller, passed
+	// in via Inputs.EnvServiceAccount).
+	if in.EnvServiceAccount != "" {
+		return loadServiceAccount(in.EnvServiceAccount)
 	}
 
-	// Layer 4: GPLAY_ACCOUNT env var (stored Account name).
-	if v := os.Getenv(EnvAccount); v != "" {
-		return loadStoredAccount(deps.Keystore, v)
+	// Layer 4: GPLAY_ACCOUNT env var.
+	if in.EnvAccount != "" {
+		return loadStoredAccount(deps.Keystore, in.EnvAccount)
 	}
 
 	// Layer 5: ConfigAccount from cascade (project-local override > global active).

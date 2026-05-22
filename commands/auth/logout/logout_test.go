@@ -30,7 +30,7 @@ func TestRun_pureBusiness(t *testing.T) {
 	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
 	rc.Keystore = be
 
-	r, err := logout.Run(rc, logout.Input{Name: "beta"})
+	r, err := logout.Run(rc, logout.Input{Name: "beta", Confirm: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestLogout_existingAccount_clearsBothStores(t *testing.T) {
 	seed(t, boot, "alpha", "beta")
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, boot, &stdout, &stderr, "beta"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -187,7 +187,7 @@ func TestLogout_unknownAccount_exitsWithErrUnknown(t *testing.T) {
 	seed(t, boot, "alpha")
 
 	var stdout, stderr bytes.Buffer
-	err := runCmd(t, boot, &stdout, &stderr, "ghost")
+	err := runCmd(t, boot, &stdout, &stderr, "ghost", "--confirm")
 	if !errors.Is(err, logout.ErrUnknownAccount) {
 		t.Errorf("err = %v, want ErrUnknownAccount", err)
 	}
@@ -202,7 +202,7 @@ func TestLogout_activeAccount_leavesRegistryWithoutActive(t *testing.T) {
 	seed(t, boot, "alpha", "beta") // alpha is active (first one)
 
 	var stdout, stderr bytes.Buffer
-	if err := runCmd(t, boot, &stdout, &stderr, "alpha"); err != nil {
+	if err := runCmd(t, boot, &stdout, &stderr, "alpha", "--confirm"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 

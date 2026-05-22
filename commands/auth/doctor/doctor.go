@@ -69,7 +69,10 @@ func (e *failedError) ExitCode() int {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	base := doctorBaseHTTP(rc)
 	wrapped, obs := transport.WithScopeObserver(base.Transport)
-	hc := &http.Client{Transport: wrapped}
+	// Clone the base client so injected Timeout/CheckRedirect/Jar
+	// survive — only the Transport is replaced.
+	hc := *base
+	hc.Transport = wrapped
 
 	checks := buildChecks(obs, in.Packages)
 
@@ -78,7 +81,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if rc.Account == nil {
 		results, worst = synthFailure(errors.New("no active account; run `gplay auth login`"), checks)
 	} else {
-		results = authdoctor.Run(rc.Ctx, rc.Account, hc, checks...)
+		results = authdoctor.Run(rc.Ctx, rc.Account, &hc, checks...)
 		worst = worstFailure(results)
 	}
 

@@ -37,12 +37,14 @@ type Input struct {
 }
 
 // Run registers the named Account in keystore + config. login emits a
-// free-form stderr line and returns no Renderable.
+// free-form stderr line and returns no Renderable. The service-account
+// JSON is read through rc.FS so tests can drive login with an in-memory
+// fixture and Ctrl-C propagates through rc.Ctx.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.SAPath == "" {
 		return nil, ErrMissingServiceAccount
 	}
-	sa, err := serviceaccount.Load(in.SAPath)
+	sa, err := serviceaccount.LoadFromFS(rc.Ctx, rc.FS, in.SAPath)
 	if err != nil {
 		return nil, err
 	}

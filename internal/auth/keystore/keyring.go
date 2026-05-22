@@ -200,10 +200,11 @@ func Select(opts SelectOptions) (Backend, string, error) {
 	return NewFileBackend(opts.FileRoot), BackendFile, nil
 }
 
-// probeKeyring returns true if the keyring accepts a write+delete round
-// trip. Any error (including keyring.ErrUnsupportedPlatform on a build
-// without a native provider, or a dbus failure on headless Linux) causes
-// the probe to fail and the caller falls back to the file backend.
+// probeKeyring returns true if the keyring accepts a full write+delete
+// round trip. Either step failing (Set or Delete) demotes us to the
+// file backend — if Delete is broken, a later `gplay auth logout` would
+// fail too, and we want that surfaced at selection time rather than
+// halfway through a credential cleanup.
 func probeKeyring(api KeyringAPI) bool {
 	if api == nil {
 		return false
@@ -211,9 +212,9 @@ func probeKeyring(api KeyringAPI) bool {
 	if err := api.Set(KeyringService, probeUser, "ok"); err != nil {
 		return false
 	}
-	// Best-effort cleanup; the probe value is tiny and namespaced, so we
-	// don't fail the selection if Delete errors here.
-	_ = api.Delete(KeyringService, probeUser)
+	if err := api.Delete(KeyringService, probeUser); err != nil {
+		return false
+	}
 	return true
 }
 

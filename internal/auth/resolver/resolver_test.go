@@ -27,14 +27,13 @@ func saWithEmail(email string) string {
 	return strings.Replace(fakeSAJSON, "ci@p.iam.gserviceaccount.com", email, 1)
 }
 
-// setup wipes the credential env vars and returns a Deps wired to a
-// fresh file-backed keystore (caller stashes any bytes it needs). The
-// returned *config.Resolved is the layer-5 surface tests mutate to
-// emulate "this account is active in config".
+// setup returns a Deps wired to a fresh file-backed keystore (caller
+// stashes any bytes it needs). The returned *config.Resolved is the
+// layer-5 surface tests mutate to emulate "this account is active in
+// config". Env vars are no longer touched — the resolver reads its
+// EnvServiceAccount / EnvAccount from Inputs.
 func setup(t *testing.T) (resolver.Deps, *config.Resolved, keystore.Backend) {
 	t.Helper()
-	t.Setenv(resolver.EnvServiceAccount, "")
-	t.Setenv(resolver.EnvAccount, "")
 	resolved := &config.Resolved{}
 	be := keystore.NewFileBackend(t.TempDir())
 	return resolver.Deps{Resolved: resolved, Keystore: be}, resolved, be
@@ -80,9 +79,8 @@ func TestResolve_cascade(t *testing.T) {
 		},
 		{
 			name: "layer3-env-service-account-inline",
-			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
-				t.Setenv(resolver.EnvServiceAccount, fakeSAJSON)
-				return resolver.Inputs{}
+			setup: func(_ *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				return resolver.Inputs{EnvServiceAccount: fakeSAJSON}
 			},
 			want:   "ci@p.iam.gserviceaccount.com",
 			wantOK: true,
@@ -92,17 +90,15 @@ func TestResolve_cascade(t *testing.T) {
 			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
 				p := filepath.Join(t.TempDir(), "sa.json")
 				mustWrite(t, p, fakeSAJSON)
-				t.Setenv(resolver.EnvServiceAccount, p)
-				return resolver.Inputs{}
+				return resolver.Inputs{EnvServiceAccount: p}
 			},
 			want:   "ci@p.iam.gserviceaccount.com",
 			wantOK: true,
 		},
 		{
 			name: "layer3-env-inline-with-leading-whitespace",
-			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
-				t.Setenv(resolver.EnvServiceAccount, "  \n\t"+fakeSAJSON)
-				return resolver.Inputs{}
+			setup: func(_ *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				return resolver.Inputs{EnvServiceAccount: "  \n\t" + fakeSAJSON}
 			},
 			want:   "ci@p.iam.gserviceaccount.com",
 			wantOK: true,
@@ -111,8 +107,7 @@ func TestResolve_cascade(t *testing.T) {
 			name: "layer4-env-account",
 			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, be keystore.Backend) resolver.Inputs {
 				mustSave(t, be, "envchosen", fakeSAJSON)
-				t.Setenv(resolver.EnvAccount, "envchosen")
-				return resolver.Inputs{}
+				return resolver.Inputs{EnvAccount: "envchosen"}
 			},
 			want:   "ci@p.iam.gserviceaccount.com",
 			wantOK: true,
@@ -211,30 +206,25 @@ func TestResolve_precedence(t *testing.T) {
 			mustSave(t, be, "acct-env", saWithEmail("acctenv@x"))
 			mustSave(t, be, "acct-active", saWithEmail("active@x"))
 			resolved.ConfigAccount = "acct-active"
-			t.Setenv(resolver.EnvServiceAccount, allLayers.envSA)
-			t.Setenv(resolver.EnvAccount, allLayers.envAcct)
 
 			// Apply drops — a non-empty drop field clears that layer.
-			envSA := allLayers.envSA
-			envAcct := allLayers.envAcct
-			if tc.drop.envSA != "" {
-				envSA = ""
-			}
-			if tc.drop.envAcct != "" {
-				envAcct = ""
-			}
-			t.Setenv(resolver.EnvServiceAccount, envSA)
-			t.Setenv(resolver.EnvAccount, envAcct)
-
 			in := resolver.Inputs{
 				ServiceAccountFlag: allLayers.flagSA,
 				AccountFlag:        allLayers.flagAcct,
+				EnvServiceAccount:  allLayers.envSA,
+				EnvAccount:         allLayers.envAcct,
 			}
 			if tc.drop.flagSA != "" {
 				in.ServiceAccountFlag = ""
 			}
 			if tc.drop.flagAcct != "" {
 				in.AccountFlag = ""
+			}
+			if tc.drop.envSA != "" {
+				in.EnvServiceAccount = ""
+			}
+			if tc.drop.envAcct != "" {
+				in.EnvAccount = ""
 			}
 
 			sa, err := resolver.Resolve(context.Background(), deps, in)
@@ -269,9 +259,9 @@ func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
 // rather than silently falling through to ErrNoSource.
 func TestResolve_envServiceAccount_missingPath_failsLoudly(t *testing.T) {
 	deps, _, _ := setup(t)
-	t.Setenv(resolver.EnvServiceAccount, filepath.Join(t.TempDir(), "missing.json"))
+	missingPath := filepath.Join(t.TempDir(), "missing.json")
 
-	_, err := resolver.Resolve(context.Background(), deps, resolver.Inputs{})
+	_, err := resolver.Resolve(context.Background(), deps, resolver.Inputs{EnvServiceAccount: missingPath})
 	if err == nil {
 		t.Fatal("Resolve: expected error for nonexistent path, got nil")
 	}
