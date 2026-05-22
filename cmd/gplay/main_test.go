@@ -40,20 +40,20 @@ func TestResolveVersion(t *testing.T) {
 		wantVersion, wantCommit, wantDateStr string
 	}{
 		{
-			name:        "ldflags present — keep them, ignore BuildInfo",
-			ldVersion:   "v9.9.9", ldCommit: "deadbeef", ldDate: "2030-01-01",
+			name:      "ldflags present — keep them, ignore BuildInfo",
+			ldVersion: "v9.9.9", ldCommit: "deadbeef", ldDate: "2030-01-01",
 			info: buildInfo, infoOK: true,
 			wantVersion: "v9.9.9", wantCommit: "deadbeef", wantDateStr: "2030-01-01",
 		},
 		{
-			name:        "ldflags default + BuildInfo — fall back to BuildInfo",
-			ldVersion:   "dev", ldCommit: "none", ldDate: "unknown",
+			name:      "ldflags default + BuildInfo — fall back to BuildInfo",
+			ldVersion: "dev", ldCommit: "none", ldDate: "unknown",
 			info: buildInfo, infoOK: true,
 			wantVersion: "v0.1.0-alpha.1", wantCommit: "abc123", wantDateStr: "2026-05-22T12:00:00Z",
 		},
 		{
-			name:        "ldflags default + no BuildInfo — keep defaults",
-			ldVersion:   "dev", ldCommit: "none", ldDate: "unknown",
+			name:      "ldflags default + no BuildInfo — keep defaults",
+			ldVersion: "dev", ldCommit: "none", ldDate: "unknown",
 			info: nil, infoOK: false,
 			wantVersion: "dev", wantCommit: "none", wantDateStr: "unknown",
 		},
