@@ -61,7 +61,7 @@ func run(cmd *cobra.Command, opts Options, name string, verbose bool) error {
 	// command layer maps to exit 2.
 	if err := cfg.RemoveAccount(name); err != nil {
 		if errors.Is(err, config.ErrUnknownAccount) {
-			fmt.Fprintf(cmd.ErrOrStderr(),
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 				"unknown account %q. Known accounts: %s\n", name, listAccountNames(cfg))
 		}
 		return err
@@ -93,7 +93,7 @@ func run(cmd *cobra.Command, opts Options, name string, verbose bool) error {
 		return err
 	}
 
-	fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q removed\n", name)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q removed\n", name)
 	return nil
 }
 

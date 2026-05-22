@@ -383,7 +383,7 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 			Hint:     "network failure on edits.insert for " + packageName + " — safe to retry (" + err.Error() + ")",
 		}, true
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxObservedBody))
 
@@ -475,7 +475,7 @@ func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editI
 			Hint:     "edits.insert on " + packageName + " succeeded but cleanup failed — safe to retry (" + err.Error() + ")",
 		}, true
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// 200, 204, and any other 2xx are fine.
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return CheckResult{}, false
