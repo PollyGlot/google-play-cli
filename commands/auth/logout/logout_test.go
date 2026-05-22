@@ -22,7 +22,7 @@ import (
 func TestRun_pureBusiness(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	seed(t, boot, "alpha", "beta")
-	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
@@ -111,7 +111,7 @@ func newBoot(t *testing.T, kr keystore.KeyringAPI) kernel.Boot {
 // seed installs n accounts; the first one is marked active.
 func seed(t *testing.T, boot kernel.Boot, names ...string) {
 	t.Helper()
-	be, _, err := keystore.Select(keystore.SelectOptions{
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  boot.Keyring,
 		FileRoot: boot.KeystoreRoot,
 	})
@@ -121,8 +121,8 @@ func seed(t *testing.T, boot kernel.Boot, names ...string) {
 	cfg := &config.Global{}
 	for _, n := range names {
 		cfg.AddAccount(n)
-		if err := be.Save(n, []byte(`{"client_email":"`+n+`@x"}`)); err != nil {
-			t.Fatalf("be.Save(%s): %v", n, err)
+		if err := be.Save(context.Background(), n, []byte(`{"client_email":"`+n+`@x"}`)); err != nil {
+			t.Fatalf("be.Save(context.Background(), %s): %v", n, err)
 		}
 	}
 	if len(names) > 0 {
@@ -160,15 +160,15 @@ func TestLogout_existingAccount_clearsBothStores(t *testing.T) {
 	}
 
 	// Keystore: beta is gone.
-	be, _, err := keystore.Select(keystore.SelectOptions{
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  boot.Keyring,
 		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
-	if _, err := be.Load("beta"); !errors.Is(err, keystore.ErrNotFound) {
-		t.Errorf("be.Load(beta) = %v, want ErrNotFound", err)
+	if _, err := be.Load(context.Background(), "beta"); !errors.Is(err, keystore.ErrNotFound) {
+		t.Errorf("be.Load(context.Background(), beta) = %v, want ErrNotFound", err)
 	}
 	// Config: beta is gone.
 	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)

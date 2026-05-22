@@ -294,7 +294,7 @@ func mustWrite(t *testing.T, path, content string) {
 
 func mustSave(t *testing.T, be keystore.Backend, name, content string) {
 	t.Helper()
-	if err := be.Save(name, []byte(content)); err != nil {
+	if err := be.Save(context.Background(), name, []byte(content)); err != nil {
 		t.Fatal(err)
 	}
 }

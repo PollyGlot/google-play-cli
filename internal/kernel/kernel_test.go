@@ -56,13 +56,13 @@ func newBoot(t *testing.T) kernel.Boot {
 
 func seedActiveAccount(t *testing.T, boot kernel.Boot) {
 	t.Helper()
-	be, _, err := keystore.Select(keystore.SelectOptions{
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
-	if err := be.Save("ci", []byte(fakeSAJSON)); err != nil {
+	if err := be.Save(context.Background(), "ci", []byte(fakeSAJSON)); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	cfg := &config.Global{}

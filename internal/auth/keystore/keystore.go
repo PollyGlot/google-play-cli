@@ -5,6 +5,7 @@
 package keystore
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -16,12 +17,14 @@ import (
 var ErrNotFound = errors.New("keystore: credential not found")
 
 // Backend is the storage contract. Implementations must persist arbitrary
-// byte blobs (the SA JSON) under human-friendly names.
+// byte blobs (the SA JSON) under human-friendly names. ctx is threaded
+// for future cancellation support — today's backends are synchronous
+// but a remote/HSM-backed backend would honour it.
 type Backend interface {
-	Save(name string, data []byte) error
-	Load(name string) ([]byte, error)
-	Delete(name string) error
-	List() ([]string, error)
+	Save(ctx context.Context, name string, data []byte) error
+	Load(ctx context.Context, name string) ([]byte, error)
+	Delete(ctx context.Context, name string) error
+	List(ctx context.Context) ([]string, error)
 }
 
 // FileBackend persists credentials as `<root>/<name>.json` with mode 0600.
@@ -43,7 +46,7 @@ func (b *FileBackend) path(name string) string {
 
 // Save writes data to <root>/<name>.json with mode 0600, creating the parent
 // directory if needed.
-func (b *FileBackend) Save(name string, data []byte) error {
+func (b *FileBackend) Save(_ context.Context, name string, data []byte) error {
 	if err := os.MkdirAll(b.root, 0o700); err != nil {
 		return err
 	}
@@ -51,7 +54,7 @@ func (b *FileBackend) Save(name string, data []byte) error {
 }
 
 // Load returns the bytes stored under name, or ErrNotFound.
-func (b *FileBackend) Load(name string) ([]byte, error) {
+func (b *FileBackend) Load(_ context.Context, name string) ([]byte, error) {
 	data, err := os.ReadFile(b.path(name))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotFound
@@ -60,7 +63,7 @@ func (b *FileBackend) Load(name string) ([]byte, error) {
 }
 
 // Delete removes the credential. Returns ErrNotFound if absent.
-func (b *FileBackend) Delete(name string) error {
+func (b *FileBackend) Delete(_ context.Context, name string) error {
 	err := os.Remove(b.path(name))
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrNotFound
@@ -69,7 +72,7 @@ func (b *FileBackend) Delete(name string) error {
 }
 
 // List returns the names currently stored (without the .json suffix).
-func (b *FileBackend) List() ([]string, error) {
+func (b *FileBackend) List(_ context.Context) ([]string, error) {
 	entries, err := os.ReadDir(b.root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil

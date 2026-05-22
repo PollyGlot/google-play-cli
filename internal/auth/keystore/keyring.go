@@ -1,6 +1,7 @@
 package keystore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -87,7 +88,7 @@ func NewKeyringBackend(api KeyringAPI, service string) *KeyringBackend {
 }
 
 // Save writes data under the given Account name and updates the index.
-func (b *KeyringBackend) Save(name string, data []byte) error {
+func (b *KeyringBackend) Save(_ context.Context, name string, data []byte) error {
 	if err := b.api.Set(b.service, name, string(data)); err != nil {
 		return err
 	}
@@ -95,7 +96,7 @@ func (b *KeyringBackend) Save(name string, data []byte) error {
 }
 
 // Load returns the bytes stored under name, or ErrNotFound.
-func (b *KeyringBackend) Load(name string) ([]byte, error) {
+func (b *KeyringBackend) Load(_ context.Context, name string) ([]byte, error) {
 	v, err := b.api.Get(b.service, name)
 	if err != nil {
 		if errors.Is(err, keyring.ErrNotFound) {
@@ -108,7 +109,7 @@ func (b *KeyringBackend) Load(name string) ([]byte, error) {
 
 // Delete removes the credential and updates the index. Returns ErrNotFound
 // if absent.
-func (b *KeyringBackend) Delete(name string) error {
+func (b *KeyringBackend) Delete(_ context.Context, name string) error {
 	err := b.api.Delete(b.service, name)
 	if err != nil {
 		if errors.Is(err, keyring.ErrNotFound) {
@@ -120,7 +121,7 @@ func (b *KeyringBackend) Delete(name string) error {
 }
 
 // List returns the Account names currently stored.
-func (b *KeyringBackend) List() ([]string, error) {
+func (b *KeyringBackend) List(_ context.Context) ([]string, error) {
 	return b.readIndex()
 }
 
@@ -189,11 +190,9 @@ type SelectOptions struct {
 // once per invocation from the kernel and pass the result down. No
 // process-level caching is involved — each call is independent.
 //
-// The returned label is "keyring" or "file" — it is what `auth status`
-// displays and what the -v log line reports. The label is invariant
-// for a given (Keyring, FileRoot) pair; the kernel logs it once per
-// RunContext.
-func Select(opts SelectOptions) (Backend, string, error) {
+// ctx is threaded for future cancellation support; the probe itself
+// is synchronous today.
+func Select(_ context.Context, opts SelectOptions) (Backend, string, error) {
 	if probeKeyring(opts.Keyring) {
 		return NewKeyringBackend(opts.Keyring, KeyringService), BackendKeyring, nil
 	}

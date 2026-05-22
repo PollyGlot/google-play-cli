@@ -2,6 +2,7 @@ package keystore_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -22,10 +23,10 @@ func TestFileBackend_saveLoad_roundTrips(t *testing.T) {
 	be, _ := newFileBackend(t)
 	want := []byte(`{"client_email":"x@y.iam"}`)
 
-	if err := be.Save("ci", want); err != nil {
+	if err := be.Save(context.Background(), "ci", want); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	got, err := be.Load("ci")
+	got, err := be.Load(context.Background(), "ci")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -40,7 +41,7 @@ func TestFileBackend_save_writesMode0600(t *testing.T) {
 	}
 	be, root := newFileBackend(t)
 
-	if err := be.Save("ci", []byte("{}")); err != nil {
+	if err := be.Save(context.Background(), "ci", []byte("{}")); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	info, err := os.Stat(filepath.Join(root, "ci.json"))
@@ -54,7 +55,7 @@ func TestFileBackend_save_writesMode0600(t *testing.T) {
 
 func TestFileBackend_load_missing_returnsErrNotFound(t *testing.T) {
 	be, _ := newFileBackend(t)
-	_, err := be.Load("nope")
+	_, err := be.Load(context.Background(), "nope")
 	if !errors.Is(err, keystore.ErrNotFound) {
 		t.Fatalf("Load: got %v, want ErrNotFound", err)
 	}
@@ -62,16 +63,16 @@ func TestFileBackend_load_missing_returnsErrNotFound(t *testing.T) {
 
 func TestFileBackend_delete_removesEntry(t *testing.T) {
 	be, _ := newFileBackend(t)
-	if err := be.Save("ci", []byte("{}")); err != nil {
+	if err := be.Save(context.Background(), "ci", []byte("{}")); err != nil {
 		t.Fatal(err)
 	}
-	if err := be.Delete("ci"); err != nil {
+	if err := be.Delete(context.Background(), "ci"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, err := be.Load("ci"); !errors.Is(err, keystore.ErrNotFound) {
+	if _, err := be.Load(context.Background(), "ci"); !errors.Is(err, keystore.ErrNotFound) {
 		t.Errorf("after Delete: Load got %v, want ErrNotFound", err)
 	}
-	if err := be.Delete("ci"); !errors.Is(err, keystore.ErrNotFound) {
+	if err := be.Delete(context.Background(), "ci"); !errors.Is(err, keystore.ErrNotFound) {
 		t.Errorf("double Delete: got %v, want ErrNotFound", err)
 	}
 }
@@ -79,11 +80,11 @@ func TestFileBackend_delete_removesEntry(t *testing.T) {
 func TestFileBackend_list_returnsSavedNamesWithoutSuffix(t *testing.T) {
 	be, _ := newFileBackend(t)
 	for _, n := range []string{"alpha", "beta", "gamma"} {
-		if err := be.Save(n, []byte("{}")); err != nil {
+		if err := be.Save(context.Background(), n, []byte("{}")); err != nil {
 			t.Fatal(err)
 		}
 	}
-	names, err := be.List()
+	names, err := be.List(context.Background())
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -101,13 +102,13 @@ func TestFileBackend_list_returnsSavedNamesWithoutSuffix(t *testing.T) {
 
 func TestFileBackend_save_overwritesExisting(t *testing.T) {
 	be, _ := newFileBackend(t)
-	if err := be.Save("ci", []byte(`{"v":1}`)); err != nil {
+	if err := be.Save(context.Background(), "ci", []byte(`{"v":1}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := be.Save("ci", []byte(`{"v":2}`)); err != nil {
+	if err := be.Save(context.Background(), "ci", []byte(`{"v":2}`)); err != nil {
 		t.Fatalf("Save (overwrite): %v", err)
 	}
-	got, err := be.Load("ci")
+	got, err := be.Load(context.Background(), "ci")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +122,7 @@ func TestFileBackend_save_createsParentDirIfMissing(t *testing.T) {
 	nested := filepath.Join(parent, "deep", "not", "yet", "made")
 	be := keystore.NewFileBackend(nested)
 
-	if err := be.Save("ci", []byte("{}")); err != nil {
+	if err := be.Save(context.Background(), "ci", []byte("{}")); err != nil {
 		t.Fatalf("Save into uncreated dir: %v", err)
 	}
 	if _, err := os.Stat(nested); err != nil {

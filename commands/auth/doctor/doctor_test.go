@@ -171,14 +171,14 @@ func signedSAJSON(t *testing.T) []byte {
 // read — i.e. the test exercises the same code path as production.
 func seedActiveAccount(t *testing.T, boot kernel.Boot, saBytes []byte) {
 	t.Helper()
-	be, _, err := keystore.Select(keystore.SelectOptions{
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  boot.Keyring,
 		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("keystore.Select: %v", err)
 	}
-	if err := be.Save("playci", saBytes); err != nil {
+	if err := be.Save(context.Background(), "playci", saBytes); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
 	cfg := &config.Global{}
@@ -395,11 +395,11 @@ func TestDoctor_markdownOutput_emitsTaskList(t *testing.T) {
 func TestDoctor_markdownOutput_failingCheckAndSkipped(t *testing.T) {
 	boot := newBoot(t)
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
-	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
-	if err := be.Save("playci", bad); err != nil {
+	if err := be.Save(context.Background(), "playci", bad); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	cfg := &config.Global{}
@@ -445,14 +445,14 @@ func TestDoctor_malformedSA_failsCheck1_skipsRest(t *testing.T) {
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
 	// Seed with bytes the keystore accepts but the doctor will detect as
 	// missing required fields at resolution time.
-	be, _, err := keystore.Select(keystore.SelectOptions{
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  boot.Keyring,
 		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
-	if err := be.Save("playci", bad); err != nil {
+	if err := be.Save(context.Background(), "playci", bad); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
 	cfg := &config.Global{}
@@ -512,14 +512,14 @@ func TestDoctor_jsonOutput_passesThroughCheckResults(t *testing.T) {
 func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 	boot := newBoot(t)
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
-	be, _, err := keystore.Select(keystore.SelectOptions{
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  boot.Keyring,
 		FileRoot: boot.KeystoreRoot,
 	})
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
-	if err := be.Save("playci", bad); err != nil {
+	if err := be.Save(context.Background(), "playci", bad); err != nil {
 		t.Fatalf("keystore.Save: %v", err)
 	}
 	cfg := &config.Global{}

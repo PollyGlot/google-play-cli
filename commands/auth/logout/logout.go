@@ -69,7 +69,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	// keystore-not-found is tolerated: a prior logout may have
 	// half-completed, or the user wiped the keychain by hand.
-	if err := rc.Keystore.Delete(in.Name); err != nil && !errors.Is(err, keystore.ErrNotFound) {
+	if err := rc.Keystore.Delete(rc.Ctx, in.Name); err != nil && !errors.Is(err, keystore.ErrNotFound) {
 		return nil, err
 	}
 

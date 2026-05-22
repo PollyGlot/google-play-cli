@@ -78,13 +78,10 @@ type Inputs struct {
 }
 
 // Resolve walks the precedence chain in order and returns the first
-// service account that resolves, or ErrNoSource if none does.
-//
-// ctx is threaded through for future cancellation support (env var lookup
-// and JSON parsing themselves don't block, but a keystore Load on a slow
-// backend may). The function itself is otherwise pure: no globals, no
-// singletons.
-func Resolve(_ context.Context, deps Deps, in Inputs) (*serviceaccount.ServiceAccount, error) {
+// service account that resolves, or ErrNoSource if none does. ctx is
+// threaded through to keystore.Backend.Load so a slow keychain probe
+// honours Ctrl-C.
+func Resolve(ctx context.Context, deps Deps, in Inputs) (*serviceaccount.ServiceAccount, error) {
 	// Layer 1: --service-account flag (inline JSON or path).
 	if in.ServiceAccountFlag != "" {
 		return loadServiceAccount(in.ServiceAccountFlag)
@@ -92,7 +89,7 @@ func Resolve(_ context.Context, deps Deps, in Inputs) (*serviceaccount.ServiceAc
 
 	// Layer 2: --account flag (stored Account name).
 	if in.AccountFlag != "" {
-		return loadStoredAccount(deps.Keystore, in.AccountFlag)
+		return loadStoredAccount(ctx, deps.Keystore, in.AccountFlag)
 	}
 
 	// Layer 3: GPLAY_SERVICE_ACCOUNT env var (read by caller, passed
@@ -103,20 +100,20 @@ func Resolve(_ context.Context, deps Deps, in Inputs) (*serviceaccount.ServiceAc
 
 	// Layer 4: GPLAY_ACCOUNT env var.
 	if in.EnvAccount != "" {
-		return loadStoredAccount(deps.Keystore, in.EnvAccount)
+		return loadStoredAccount(ctx, deps.Keystore, in.EnvAccount)
 	}
 
 	// Layer 5: ConfigAccount from cascade (project-local override > global active).
 	if deps.Resolved == nil || deps.Resolved.ConfigAccount == "" {
 		return nil, ErrNoSource
 	}
-	return loadStoredAccount(deps.Keystore, deps.Resolved.ConfigAccount)
+	return loadStoredAccount(ctx, deps.Keystore, deps.Resolved.ConfigAccount)
 }
 
 // loadStoredAccount loads a credential from the keystore by name and
 // parses it as a service account.
-func loadStoredAccount(ks keystore.Backend, name string) (*serviceaccount.ServiceAccount, error) {
-	data, err := ks.Load(name)
+func loadStoredAccount(ctx context.Context, ks keystore.Backend, name string) (*serviceaccount.ServiceAccount, error) {
+	data, err := ks.Load(ctx, name)
 	if err != nil {
 		return nil, err
 	}

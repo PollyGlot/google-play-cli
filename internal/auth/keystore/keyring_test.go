@@ -2,6 +2,7 @@ package keystore_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"path/filepath"
 	"sort"
@@ -85,7 +86,7 @@ func TestSelect_keyringAvailable_returnsKeyringBackend(t *testing.T) {
 	fk := newFakeKeyring()
 	dir := t.TempDir()
 
-	be, label, err := keystore.Select(keystore.SelectOptions{
+	be, label, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  fk,
 		FileRoot: dir,
 	})
@@ -100,10 +101,10 @@ func TestSelect_keyringAvailable_returnsKeyringBackend(t *testing.T) {
 	}
 
 	// Sanity: Save flows through the keyring, not the filesystem.
-	if err := be.Save("alpha", []byte(`{"v":1}`)); err != nil {
+	if err := be.Save(context.Background(), "alpha", []byte(`{"v":1}`)); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	got, err := be.Load("alpha")
+	got, err := be.Load(context.Background(), "alpha")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestSelect_keyringUnavailable_fallsBackToFile(t *testing.T) {
 	fk.probeErr = errors.New("Secret Service unavailable")
 	dir := t.TempDir()
 
-	be, label, err := keystore.Select(keystore.SelectOptions{
+	be, label, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  fk,
 		FileRoot: dir,
 	})
@@ -132,11 +133,11 @@ func TestSelect_keyringUnavailable_fallsBackToFile(t *testing.T) {
 		t.Errorf("label = %q, want %q", label, "file")
 	}
 
-	if err := be.Save("alpha", []byte(`{"v":1}`)); err != nil {
+	if err := be.Save(context.Background(), "alpha", []byte(`{"v":1}`)); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	// File backend writes <dir>/alpha.json.
-	if _, err := keystore.NewFileBackend(dir).Load("alpha"); err != nil {
+	if _, err := keystore.NewFileBackend(dir).Load(context.Background(), "alpha"); err != nil {
 		t.Errorf("expected file backend persistence after fallback, got %v", err)
 	}
 }
@@ -146,10 +147,10 @@ func TestKeyringBackend_saveLoad_roundTrips(t *testing.T) {
 	be := keystore.NewKeyringBackend(fk, "gplay")
 
 	want := []byte(`{"client_email":"x@y.iam"}`)
-	if err := be.Save("ci", want); err != nil {
+	if err := be.Save(context.Background(), "ci", want); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	got, err := be.Load("ci")
+	got, err := be.Load(context.Background(), "ci")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -162,7 +163,7 @@ func TestKeyringBackend_load_missing_returnsErrNotFound(t *testing.T) {
 	fk := newFakeKeyring()
 	be := keystore.NewKeyringBackend(fk, "gplay")
 
-	_, err := be.Load("nope")
+	_, err := be.Load(context.Background(), "nope")
 	if !errors.Is(err, keystore.ErrNotFound) {
 		t.Errorf("Load: got %v, want ErrNotFound", err)
 	}
@@ -172,16 +173,16 @@ func TestKeyringBackend_delete_removesEntry(t *testing.T) {
 	fk := newFakeKeyring()
 	be := keystore.NewKeyringBackend(fk, "gplay")
 
-	if err := be.Save("ci", []byte("{}")); err != nil {
+	if err := be.Save(context.Background(), "ci", []byte("{}")); err != nil {
 		t.Fatal(err)
 	}
-	if err := be.Delete("ci"); err != nil {
+	if err := be.Delete(context.Background(), "ci"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, err := be.Load("ci"); !errors.Is(err, keystore.ErrNotFound) {
+	if _, err := be.Load(context.Background(), "ci"); !errors.Is(err, keystore.ErrNotFound) {
 		t.Errorf("after Delete: Load got %v, want ErrNotFound", err)
 	}
-	if err := be.Delete("ci"); !errors.Is(err, keystore.ErrNotFound) {
+	if err := be.Delete(context.Background(), "ci"); !errors.Is(err, keystore.ErrNotFound) {
 		t.Errorf("double Delete: got %v, want ErrNotFound", err)
 	}
 }
@@ -191,11 +192,11 @@ func TestKeyringBackend_list_returnsSavedNamesAndExcludesReservedIndex(t *testin
 	be := keystore.NewKeyringBackend(fk, "gplay")
 
 	for _, n := range []string{"alpha", "beta", "gamma"} {
-		if err := be.Save(n, []byte("{}")); err != nil {
+		if err := be.Save(context.Background(), n, []byte("{}")); err != nil {
 			t.Fatal(err)
 		}
 	}
-	names, err := be.List()
+	names, err := be.List(context.Background())
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestSelect_probesOnEveryCall(t *testing.T) {
 	dir := t.TempDir()
 
 	opts := keystore.SelectOptions{Keyring: fk, FileRoot: dir}
-	if _, _, err := keystore.Select(opts); err != nil {
+	if _, _, err := keystore.Select(context.Background(), opts); err != nil {
 		t.Fatalf("first Select: %v", err)
 	}
 	// Reset the probe flag; the second call must hit the keyring again
@@ -228,7 +229,7 @@ func TestSelect_probesOnEveryCall(t *testing.T) {
 	fk.probed = false
 	fk.mu.Unlock()
 
-	if _, _, err := keystore.Select(opts); err != nil {
+	if _, _, err := keystore.Select(context.Background(), opts); err != nil {
 		t.Fatalf("second Select: %v", err)
 	}
 	if !fk.probed {
