@@ -1,6 +1,7 @@
+version: "2"
+
 run:
   timeout: 5m
-  go: "1.23"
 
 linters:
   enable:
@@ -10,12 +11,13 @@ linters:
     - staticcheck
     - unused
     - misspell
+  exclusions:
+    rules:
+      - path: cmd/gplay/main.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
     - gofmt
     - goimports
-
-issues:
-  exclude-rules:
-    # Allow init() functions and main without checking returns of fmt.Println etc.
-    - path: cmd/gplay/main.go
-      linters:
-        - errcheck
