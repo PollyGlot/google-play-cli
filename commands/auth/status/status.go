@@ -1,15 +1,15 @@
 // Package status implements `gplay auth status`: print which Account is
 // active, the underlying client_email, the keystore backend in use, and
-// (when applicable) the on-disk credential path. JSON output is supported
-// via `--output json`.
+// (when applicable) the on-disk credential path. The output Format is
+// resolved by internal/output: TTY → table, pipe/CI → json, and
+// --output markdown returns an idiomatic definition list.
 //
 // When no credential resolves (no active Account, no env override),
-// status prints a friendly "no active account" line and exits 0 — it is
-// informational, not a hard error.
+// status prints a friendly "no active account" payload and exits 0 — it
+// is informational, not a hard error.
 package status
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +20,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
 // Options pins where the command reads state. Output streams are wired via
@@ -34,7 +35,7 @@ type Options struct {
 
 // NewCommand returns the cobra command for `gplay auth status`.
 func NewCommand(opts Options) *cobra.Command {
-	var output string
+	var outputFlag string
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Print the active Account, the keystore backend, and where the credential lives",
@@ -43,10 +44,10 @@ func NewCommand(opts Options) *cobra.Command {
 			// read it via the inherited flag set so `-v` works at any
 			// position on the command line.
 			verbose, _ := cmd.Flags().GetBool("verbose")
-			return run(cmd, opts, output, verbose)
+			return run(cmd, opts, output.Format(outputFlag), verbose)
 		},
 	}
-	cmd.Flags().StringVar(&output, "output", "table", "output format: table or json")
+	output.RegisterFlag(cmd, &outputFlag)
 	return cmd
 }
 
@@ -58,7 +59,7 @@ type payload struct {
 	Path        string `json:"path,omitempty"`
 }
 
-func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
+func run(cmd *cobra.Command, opts Options, format output.Format, verbose bool) error {
 	resolved, err := config.LoadFromEnv(opts.ConfigPath)
 	if err != nil {
 		return err
@@ -81,7 +82,7 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 	sa, err := resolver.New(resolved, be).Resolve(resolver.Inputs{})
 	if err != nil {
 		if errors.Is(err, resolver.ErrNoSource) {
-			return renderEmpty(cmd.OutOrStdout(), output)
+			return output.Render(cmd.OutOrStdout(), format, emptyRenderers())
 		}
 		return err
 	}
@@ -102,44 +103,69 @@ func run(cmd *cobra.Command, opts Options, output string, verbose bool) error {
 		p.Path = filepath.Join(opts.KeystoreRoot, activeName+".json")
 	}
 
-	stdout := cmd.OutOrStdout()
-	switch output {
-	case "json":
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(p)
-	case "table":
-		if _, err := fmt.Fprintf(stdout, "Active account: %s\nClient email:   %s\n",
-			p.Name, p.ClientEmail); err != nil {
-			return err
-		}
-		if p.Path == "" {
-			_, err := fmt.Fprintf(stdout, "Backend:        %s\n", p.Backend)
-			return err
-		}
-		_, err := fmt.Fprintf(stdout, "Backend:        %s: %s\n", p.Backend, p.Path)
-		return err
-	default:
-		return fmt.Errorf("unsupported --output %q (want table or json)", output)
+	return output.Render(cmd.OutOrStdout(), format, renderersFor(p))
+}
+
+// renderersFor wires the three Format renderers for a populated payload.
+func renderersFor(p payload) output.Renderers {
+	return output.Renderers{
+		Table:    func(w io.Writer) error { return renderTable(w, p) },
+		JSON:     func(w io.Writer) error { return output.WriteJSON(w, p) },
+		Markdown: func(w io.Writer) error { return renderMarkdown(w, p) },
 	}
 }
 
-// renderEmpty prints the informational "no active account" payload when
-// no credential resolves. Exit code stays 0 — this is state, not failure.
-func renderEmpty(w io.Writer, output string) error {
-	switch output {
-	case "json":
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(payload{Active: false})
-	case "table":
-		_, err := fmt.Fprintln(w, "No active account.")
-		if err != nil {
+// emptyRenderers wires the three renderers for the "no active account"
+// payload. Exit code stays 0 — this is state, not failure.
+func emptyRenderers() output.Renderers {
+	return output.Renderers{
+		Table: func(w io.Writer) error {
+			if _, err := fmt.Fprintln(w, "No active account."); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintln(w, "Run `gplay auth login` to register one, or `gplay auth list` to see registered Accounts.")
+			return err
+		},
+		JSON:     func(w io.Writer) error { return output.WriteJSON(w, payload{Active: false}) },
+		Markdown: renderEmptyMarkdown,
+	}
+}
+
+func renderTable(w io.Writer, p payload) error {
+	if _, err := fmt.Fprintf(w, "Active account: %s\nClient email:   %s\n", p.Name, p.ClientEmail); err != nil {
+		return err
+	}
+	if p.Path == "" {
+		_, err := fmt.Fprintf(w, "Backend:        %s\n", p.Backend)
+		return err
+	}
+	_, err := fmt.Fprintf(w, "Backend:        %s: %s\n", p.Backend, p.Path)
+	return err
+}
+
+// renderMarkdown emits a "- **Field**: value" definition list. Path is
+// omitted when the backend is keyring (where it would be meaningless).
+func renderMarkdown(w io.Writer, p payload) error {
+	if _, err := fmt.Fprintf(w, "- **Active account**: %s\n", p.Name); err != nil {
+		return err
+	}
+	if p.ClientEmail != "" {
+		if _, err := fmt.Fprintf(w, "- **Client email**: %s\n", p.ClientEmail); err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(w, "Run `gplay auth login` to register one, or `gplay auth list` to see registered Accounts.")
-		return err
-	default:
-		return fmt.Errorf("unsupported --output %q (want table or json)", output)
 	}
+	if _, err := fmt.Fprintf(w, "- **Backend**: %s\n", p.Backend); err != nil {
+		return err
+	}
+	if p.Path != "" {
+		if _, err := fmt.Fprintf(w, "- **Path**: %s\n", p.Path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderEmptyMarkdown(w io.Writer) error {
+	_, err := fmt.Fprintln(w, "**No active account.**\n\nRun `gplay auth login` to register one, or `gplay auth list` to see registered Accounts.")
+	return err
 }

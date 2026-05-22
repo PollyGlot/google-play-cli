@@ -28,3 +28,11 @@ A repo-local pinning of a gplay invocation to a specific Android package. Create
 A Project pins a **package only** — not an Account. Account resolution stays separate (config-wide active or env/flag).
 
 Coexists in `.gplay/` with `edit-<package>.json` (open explicit Edit, see above). `.gplay/` is meant to be committed for `project.json` and gitignored for `edit-*.json` (transient).
+
+### Format
+A way of shaping a command's output for a specific reader: `table` for humans on a TTY, `json` for machines and scripts, `markdown` for documentation, chat agents, and PR comments. Selected by `--output`. The special value `auto` (the default, encoded as the empty string on the flag) lets the CLI pick based on context: `json` when stdout is not a TTY or when `CI=true`, `table` otherwise.
+
+`json` is API pass-through (see [ADR-0003](./docs/adr/0003-json-passthrough.md)). `table` and `markdown` are human-shaped views; each command chooses how to render its data in those formats.
+
+### Renderer
+A function that turns a command's data payload into bytes for a given Format. Each command supplies its own three Renderers (one per Format), and a shared dispatcher in `internal/output` picks the right one based on the resolved Format. The dispatcher owns the "unsupported format" error path so each command stops re-implementing it.

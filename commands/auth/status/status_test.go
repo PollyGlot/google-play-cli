@@ -15,6 +15,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
 // fakeKeyring is a minimal in-process double for keystore.KeyringAPI used by
@@ -139,7 +140,10 @@ func TestStatus_fileBackend_tableShowsNameEmailBackendAndPath(t *testing.T) {
 	seedActiveAccount(t, opts)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+	// Tests target the table rendering. The auto-default resolves to JSON
+	// here (test buffer is not a TTY), so we pass --output table to pin
+	// the format being asserted.
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -197,7 +201,7 @@ func TestStatus_keyringBackend_displaysKeyringLabelAndOmitsPath(t *testing.T) {
 	seedActiveAccount(t, opts)
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -270,11 +274,129 @@ func TestStatus_noActiveAccount_printsInformationalAndExitsZero(t *testing.T) {
 	opts := newOpts(t, newFakeKeyring(true))
 	var stdout, stderr bytes.Buffer
 
-	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: expected nil error (informational state), got %v", err)
 	}
 	if !strings.Contains(stdout.String(), "No active account") {
 		t.Errorf("stdout missing 'No active account' line; got %q", stdout.String())
+	}
+}
+
+func TestStatus_defaultNonTTY_emitsJSON(t *testing.T) {
+	t.Setenv("CI", "")
+	outputtest.ForceTerminal(t, false)
+	opts := newOpts(t, newFakeKeyring(true))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("non-TTY default should be JSON; got %q (err=%v)", stdout.String(), err)
+	}
+	if payload.Name != "playci" {
+		t.Errorf("json.name = %q, want playci", payload.Name)
+	}
+}
+
+func TestStatus_defaultCIEnv_emitsJSON_evenOnTTY(t *testing.T) {
+	t.Setenv("CI", "true")
+	outputtest.ForceTerminal(t, true)
+	opts := newOpts(t, newFakeKeyring(true))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &struct{}{}); err != nil {
+		t.Errorf("CI=true should force JSON even on TTY; got %q", stdout.String())
+	}
+}
+
+func TestStatus_defaultTTY_emitsTable(t *testing.T) {
+	t.Setenv("CI", "")
+	outputtest.ForceTerminal(t, true)
+	opts := newOpts(t, newFakeKeyring(true))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Active account:") {
+		t.Errorf("TTY default should be table; got %q", stdout.String())
+	}
+}
+
+func TestStatus_markdownOutput_emitsDefinitionList(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(true))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "markdown"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"- **Active account**: playci",
+		"- **Client email**: playci@test-proj.iam.gserviceaccount.com",
+		"- **Backend**: file",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("markdown missing %q; got %q", want, out)
+		}
+	}
+}
+
+func TestStatus_markdownOutput_emptyShape(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(true))
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "markdown"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "**No active account.**") {
+		t.Errorf("empty markdown missing 'No active account' header; got %q", out)
+	}
+	if !strings.Contains(out, "gplay auth login") {
+		t.Errorf("empty markdown missing login hint; got %q", out)
+	}
+}
+
+func TestStatus_explicitTableInPipe_overridesAutoJSON(t *testing.T) {
+	t.Setenv("CI", "")
+	outputtest.ForceTerminal(t, false)
+	opts := newOpts(t, newFakeKeyring(true))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, opts, &stdout, &stderr, "--output", "table"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Active account:") {
+		t.Errorf("explicit --output table must win even in pipe; got %q", stdout.String())
+	}
+}
+
+func TestStatus_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
+	opts := newOpts(t, newFakeKeyring(true))
+	seedActiveAccount(t, opts)
+	var stdout, stderr bytes.Buffer
+
+	err := runCmd(t, opts, &stdout, &stderr, "--output", "xml")
+	if err == nil {
+		t.Fatal("expected error on --output xml, got nil")
+	}
+	for _, want := range []string{"unsupported", "table", "json", "markdown"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
 	}
 }
 
