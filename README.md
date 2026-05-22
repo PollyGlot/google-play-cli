@@ -53,9 +53,25 @@ go install github.com/PollyGlot/google-play-cli/cmd/gplay@latest
 # Point gplay at a Google Cloud service account JSON.
 gplay auth login --service-account ./service_account.json
 
+# List configured accounts and see which one is active.
+gplay auth list
+gplay auth status
+
 # Verify the SA actually has access to your app.
 gplay auth doctor --package com.example.myapp
 
+# Bootstrap a project-local config (cascading: project → user → defaults).
+gplay init
+```
+
+Full command reference: `gplay --help` (or `gplay <subcommand> --help`).
+
+### Planned for v0.1 stable
+
+The Fastlane-replacement surface lands incrementally on the road to
+`v0.1.0`. These commands are not yet implemented in the current pre-release:
+
+```bash
 # Upload an AAB to the internal track.
 gplay releases upload app.aab \
   --package com.example.myapp \
@@ -69,7 +85,8 @@ gplay releases promote --package com.example.myapp --from internal --to beta
 gplay reviews list --package com.example.myapp --stars 1-2
 ```
 
-Full command reference: `gplay --help` (or `gplay <subcommand> --help`).
+See [docs/BACKLOG.md](docs/BACKLOG.md) for the full roadmap and what is
+intentionally out of scope.
 
 ## How it's set up
 
