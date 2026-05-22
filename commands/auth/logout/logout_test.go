@@ -17,19 +17,25 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestRun_pureBusiness drives logout.Run directly with a hand-built
-// RunContext — no cobra. This is the test surface the kernel migration
-// gains: every command can be exercised without a full cobra tree.
+// TestRun_pureBusiness drives logout.Run with a hand-built RunContext.
+// Run mutates the on-disk config + the keystore backend in rc.Keystore.
 func TestRun_pureBusiness(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	seed(t, boot, "alpha", "beta")
-	var stdout, stderr bytes.Buffer
-	rc := kernel.New(context.Background(), boot, false)
-	rc.Stdout = &stdout
-	rc.Stderr = &stderr
+	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
 
-	if err := logout.Run(rc, logout.Input{Name: "beta"}); err != nil {
+	rc := kernel.New(context.Background(), boot, kernel.Inputs{})
+	rc.Keystore = be
+
+	r, err := logout.Run(rc, logout.Input{Name: "beta"})
+	if err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+	if r != nil {
+		t.Errorf("logout.Run returned a Renderable; want nil")
 	}
 	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {

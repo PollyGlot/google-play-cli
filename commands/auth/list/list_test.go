@@ -54,28 +54,30 @@ func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args .
 }
 
 // TestRun_pureBusiness exercises the business function without cobra,
-// using a kernel.RunContext built by hand. This is the test surface
-// commands gain by moving to the kernel — no t.TempDir-juggled cobra
-// tree to assert on registry output.
+// using a hand-built kernel.RunContext. Run reads rc.Resolved.Accounts
+// directly; no kernel.Run plumbing needed.
 func TestRun_pureBusiness(t *testing.T) {
-	boot := newBoot(t)
-	seed(t, boot, "alpha", "beta")
-	var stdout bytes.Buffer
-	rc := kernel.New(context.Background(), boot, false)
-	rc.Stdout = &stdout
+	rc := kernel.New(context.Background(), kernel.Boot{}, kernel.Inputs{Format: output.FormatJSON})
+	rc.Resolved = &config.Resolved{
+		Accounts: []config.Account{
+			{Name: "alpha", Active: true},
+			{Name: "beta"},
+		},
+	}
 
-	if err := list.Run(rc, list.Input{Format: output.FormatJSON}); err != nil {
+	r, err := list.Run(rc, list.Input{})
+	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	var parsed list.Payload
-	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
-		t.Fatalf("unmarshal: %v (raw=%q)", err, stdout.String())
+	p, ok := r.(list.Payload)
+	if !ok {
+		t.Fatalf("Run returned %T, want list.Payload", r)
 	}
-	if len(parsed.Accounts) != 2 {
-		t.Fatalf("len(Accounts) = %d, want 2", len(parsed.Accounts))
+	if len(p.Accounts) != 2 {
+		t.Fatalf("len(Accounts) = %d, want 2", len(p.Accounts))
 	}
-	if parsed.Accounts[0].Name != "alpha" || !parsed.Accounts[0].Active {
-		t.Errorf("Accounts[0] = %+v, want alpha active=true", parsed.Accounts[0])
+	if p.Accounts[0].Name != "alpha" || !p.Accounts[0].Active {
+		t.Errorf("Accounts[0] = %+v, want alpha active=true", p.Accounts[0])
 	}
 }
 

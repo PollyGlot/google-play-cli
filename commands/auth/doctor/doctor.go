@@ -2,15 +2,8 @@
 // checks (per docs/DESIGN.md §1) that catch credential misconfiguration
 // before any other command tries to talk to the API.
 //
-// This package is the thin command-layer glue: it resolves the active
-// credential, hands it to internal/auth/doctor, and renders the
-// resulting checklist via internal/output (table = emoji checklist,
-// json = []CheckResult pass-through, markdown = GitHub task list).
-//
-// Checks 1–3 always run (issue #11 slice). For each `--package <name>`
-// passed, the per-package edits.insert/delete round-trip (issue #12) is
-// appended to the chain — once per package value, in the order given on
-// the command line.
+// Checks 1–3 always run. For each `--package <name>` passed, the
+// per-package edits.insert/delete round-trip is appended to the chain.
 package doctor
 
 import (
@@ -22,22 +15,33 @@ import (
 	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
-	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
+	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// Input is the business surface of `gplay auth doctor`.
+// Input carries doctor-specific flags.
 type Input struct {
-	Format   output.Format
 	Packages []string
 }
 
-// failedError wraps the failing CheckResult so exit.For can extract the
-// authoritative ExitCode for the process. When multiple checks fail
-// (e.g. several --package values), `first` carries the *worst* failure
-// (highest non-zero ExitCode); a tie picks the earliest in order.
+// Payload wraps the ordered slice of check results so the kernel can
+// dispatch the right Renderer per Format.
+type Payload struct {
+	Results []authdoctor.CheckResult
+}
+
+// Renderers satisfies output.Renderable.
+func (p Payload) Renderers() output.Renderers {
+	return output.Renderers{
+		Table:    func(w io.Writer) error { return renderTable(w, p.Results) },
+		JSON:     func(w io.Writer) error { return output.WriteJSON(w, p.Results) },
+		Markdown: func(w io.Writer) error { return renderMarkdown(w, p.Results) },
+	}
+}
+
+// failedError surfaces the worst check failure to exit.For.
 type failedError struct {
 	first authdoctor.CheckResult
 }
@@ -49,14 +53,42 @@ func (e *failedError) Error() string {
 	return e.first.Name + ": check failed"
 }
 
-// ExitCode satisfies exit.Coder: the failing check's declared exit code
-// wins (per docs/DESIGN.md §9), falling back to 10 when the check failed
-// without setting one (i.e. an auth-shaped failure by default).
 func (e *failedError) ExitCode() int {
 	if e.first.ExitCode != 0 {
 		return e.first.ExitCode
 	}
 	return 10
+}
+
+// Run is the pure business function. It composes the HTTP client with a
+// scope observer (specific to doctor — the kernel's pre-wired rc.HTTP
+// has no observer), runs each Check, and returns a Renderable.
+func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	// Compose the doctor's HTTP client: base from rc (test fixtures
+	// inject one via ctx.Value, prod uses oauth2.NewClient — see
+	// doctorBaseHTTP), wrapped with a scope observer for CheckScope.
+	base := doctorBaseHTTP(rc)
+	wrapped, obs := transport.WithScopeObserver(base.Transport)
+	hc := &http.Client{Transport: wrapped}
+
+	checks := buildChecks(obs, in.Packages)
+
+	// rc.Account is nil when resolution failed; emit a synthetic
+	// check-1 failure rather than a pre-check error.
+	if rc.Account == nil {
+		results, worst := synthFailure(synthError("no active account"), checks)
+		if worst != nil {
+			return Payload{Results: results}, &failedError{first: *worst}
+		}
+		return Payload{Results: results}, nil
+	}
+
+	results := authdoctor.Run(rc.Ctx, rc.Account, hc, checks...)
+	worst := worstFailure(results)
+	if worst != nil {
+		return Payload{Results: results}, &failedError{first: *worst}
+	}
+	return Payload{Results: results}, nil
 }
 
 // NewCommand returns the cobra command for `gplay auth doctor`.
@@ -85,9 +117,11 @@ structured []CheckResult for scripting.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return Run(kernel.FromCobra(cmd, boot), Input{
-				Format:   output.Format(outputFlag),
-				Packages: packages,
+			b := boot
+			b.Stdout = cmd.OutOrStdout()
+			b.Stderr = cmd.ErrOrStderr()
+			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
+				return Run(rc, Input{Packages: packages})
 			})
 		},
 	}
@@ -97,68 +131,10 @@ structured []CheckResult for scripting.`,
 	return cmd
 }
 
-// Run is the pure business function for `gplay auth doctor`.
-func Run(rc *kernel.RunContext, in Input) error {
-	results, worstFailure := executeChecks(rc, in.Packages)
-
-	if err := output.Render(rc.Stdout, in.Format, renderersFor(results)); err != nil {
-		return err
-	}
-	if worstFailure != nil {
-		return &failedError{first: *worstFailure}
-	}
-	return nil
-}
-
-// buildChecks composes the ordered Check chain for this invocation:
-// the three non-API checks, plus one per-package check per --package
-// value (in command-line order). obs is the ScopeObserver CheckScope
-// reads from; pass nil only for the synthetic-failure branch where no
-// check actually runs.
-func buildChecks(obs *transport.ScopeObserver, packages []string) []authdoctor.Check {
-	checks := authdoctor.DefaultChecks(obs)
-	for _, p := range packages {
-		checks = append(checks, authdoctor.CheckPackageAccess(p))
-	}
-	return checks
-}
-
-// executeChecks resolves the active credential and runs the doctor
-// chain. If resolution fails, a synthetic check-1 failure is produced
-// and subsequent checks are reported as Skipped — so the user always
-// sees an ordered checklist instead of an opaque pre-check error.
-//
-// The worst failure (highest non-zero ExitCode; earliest wins on ties)
-// is returned alongside the full result slice, so the command's exit
-// code surfaces the most actionable problem from a multi-package run.
-//
-// The HTTP client doctor passes to each Check is wrapped with
-// transport.WithScopeObserver so CheckScope can read the requested
-// scopes without poking at ctx.Value.
-func executeChecks(rc *kernel.RunContext, packages []string) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
-	// Compose the doctor's HTTP client once: take whatever base the
-	// runtime gave us (test fixtures inject one via ctx.Value, prod
-	// uses http.DefaultClient) and wrap its transport with the scope
-	// observer.
-	base := baseHTTPClient(rc)
-	wrapped, obs := transport.WithScopeObserver(base.Transport)
-	hc := &http.Client{Transport: wrapped}
-
-	checks := buildChecks(obs, packages)
-	sa, err := rc.ResolveAccount(resolver.Inputs{})
-	if err != nil {
-		return synthFailure(err, checks)
-	}
-	results := authdoctor.Run(rc.Ctx, sa, hc, checks...)
-	return results, worstFailure(results)
-}
-
-// baseHTTPClient returns the underlying http.Client doctor's checks
-// should run on top of. Production falls back to http.DefaultClient
-// (so the default transport is used); tests inject one via the well-
-// known oauth2.HTTPClient context key, and the fixture's RoundTripper
-// stays the underlying transport after scope-observer wrapping.
-func baseHTTPClient(rc *kernel.RunContext) *http.Client {
+// doctorBaseHTTP returns the underlying http.Client doctor wraps with
+// its scope observer. Tests inject a base via ctx.Value(oauth2.HTTPClient);
+// production falls back to http.DefaultClient.
+func doctorBaseHTTP(rc *kernel.RunContext) *http.Client {
 	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
 		if c, ok := v.(*http.Client); ok && c != nil {
 			return c
@@ -170,11 +146,16 @@ func baseHTTPClient(rc *kernel.RunContext) *http.Client {
 	return &http.Client{}
 }
 
-// worstFailure returns a pointer to the CheckResult with the highest
-// non-zero ExitCode in results, ignoring Skipped entries. Ties are
-// broken by the earliest position in the slice (so a 403 on package #1
-// wins over a 403 on package #3 — same exit code, but the first one
-// reported is the most natural "first thing to look at").
+func buildChecks(obs *transport.ScopeObserver, packages []string) []authdoctor.Check {
+	checks := authdoctor.DefaultChecks(obs)
+	for _, p := range packages {
+		checks = append(checks, authdoctor.CheckPackageAccess(p))
+	}
+	return checks
+}
+
+// worstFailure returns the highest-exit-code failing check; ties break
+// on order.
 func worstFailure(results []authdoctor.CheckResult) *authdoctor.CheckResult {
 	var worst *authdoctor.CheckResult
 	for i := range results {
@@ -189,10 +170,8 @@ func worstFailure(results []authdoctor.CheckResult) *authdoctor.CheckResult {
 	return worst
 }
 
-// synthFailure builds a result slice where check #1 fails with the
-// resolution error's hint and checks #2..N are reported as Skipped, so
-// the JSON output and TTY rendering stay consistent with the
-// stop-on-first-failure rule even when resolution itself died.
+// synthFailure builds check #1 as failed + the rest as skipped when
+// resolution itself died (no active account).
 func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
 	failure := authdoctor.ResolutionFailure(err)[0]
 	results := make([]authdoctor.CheckResult, 0, len(checks))
@@ -203,9 +182,12 @@ func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResul
 	return results, &results[0]
 }
 
-// iconForResult picks the emoji shown next to a check's Name in the
-// table-mode output. Emoji belong to the table form only; the markdown
-// renderer uses the `- [x] / - [ ]` task-list idiom instead.
+// synthError converts a free-form reason into the shape ResolutionFailure
+// expects.
+func synthError(msg string) error {
+	return &serviceaccount.MissingFieldError{Field: "(none — " + msg + ")"}
+}
+
 func iconForResult(r authdoctor.CheckResult) string {
 	switch {
 	case r.Skipped:
@@ -217,33 +199,21 @@ func iconForResult(r authdoctor.CheckResult) string {
 	}
 }
 
-// renderersFor wires the three Format renderers for a slice of check
-// results.
-func renderersFor(results []authdoctor.CheckResult) output.Renderers {
-	return output.Renderers{
-		Table: func(w io.Writer) error {
-			for _, r := range results {
-				if _, err := fmt.Fprintf(w, "%s  %s\n", iconForResult(r), r.Name); err != nil {
-					return err
-				}
-				if !r.Passed && !r.Skipped && r.Hint != "" {
-					if _, err := fmt.Fprintf(w, "   hint: %s\n", r.Hint); err != nil {
-						return err
-					}
-				}
+func renderTable(w io.Writer, results []authdoctor.CheckResult) error {
+	for _, r := range results {
+		if _, err := fmt.Fprintf(w, "%s  %s\n", iconForResult(r), r.Name); err != nil {
+			return err
+		}
+		if !r.Passed && !r.Skipped && r.Hint != "" {
+			if _, err := fmt.Fprintf(w, "   hint: %s\n", r.Hint); err != nil {
+				return err
 			}
-			return nil
-		},
-		JSON:     func(w io.Writer) error { return output.WriteJSON(w, results) },
-		Markdown: func(w io.Writer) error { return renderMarkdownChecklist(w, results) },
+		}
 	}
+	return nil
 }
 
-// renderMarkdownChecklist emits a GitHub-flavored task list. Passed checks
-// → `- [x] name`. Failed checks → `- [ ] name — hint: <hint>` (hint
-// dropped when empty). Skipped checks → `- [ ] _skipped_: name` so a
-// reader can scan failures and skips separately.
-func renderMarkdownChecklist(w io.Writer, results []authdoctor.CheckResult) error {
+func renderMarkdown(w io.Writer, results []authdoctor.CheckResult) error {
 	for _, r := range results {
 		var line string
 		switch {

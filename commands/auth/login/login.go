@@ -11,11 +11,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// ErrMissingServiceAccount is returned when login is invoked without a
-// --service-account flag value. It satisfies exit.Coder so the binary
-// exits 2 (CLI misuse) rather than the generic 1.
+// ErrMissingServiceAccount is returned when login runs without a
+// --service-account flag. It satisfies exit.Coder so the binary exits
+// 2 (CLI misuse) rather than the generic 1.
 var ErrMissingServiceAccount = missingFlagError{}
 
 type missingFlagError struct{}
@@ -25,55 +26,49 @@ func (missingFlagError) Error() string {
 }
 func (missingFlagError) ExitCode() int { return 2 }
 
-// Input is the business surface of `gplay auth login`.
+// Input carries login-specific flags. SAPath comes from the root
+// persistent --service-account flag (docs/DESIGN.md §1); the kernel
+// hands it through via rc.* — but since the flag is captured at the
+// cobra wrapper level, the closure passes it explicitly here.
 type Input struct {
-	// SAPath is the path to a service-account JSON file (or inline JSON
-	// payload — login defers to serviceaccount.Load which accepts both).
 	SAPath   string
 	Name     string
 	Activate bool
 }
 
-// Run is the pure business function. The keystore backend is resolved
-// lazily on rc and the config is loaded directly from rc.ConfigPath.
-func Run(rc *kernel.RunContext, in Input) error {
+// Run registers the named Account in keystore + config. login emits a
+// free-form stderr line and returns no Renderable.
+func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.SAPath == "" {
-		return ErrMissingServiceAccount
+		return nil, ErrMissingServiceAccount
 	}
 	sa, err := serviceaccount.Load(in.SAPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	name := in.Name
 	if name == "" {
 		name = deriveName(sa.ClientEmail)
 	}
 
-	be, _, err := rc.Backend()
-	if err != nil {
-		return err
-	}
-	if err := be.Save(name, sa.Raw); err != nil {
-		return err
+	if err := rc.Keystore.Save(name, sa.Raw); err != nil {
+		return nil, err
 	}
 
 	cfg, err := config.LoadGlobalOrEmpty(rc.Ctx, rc.FS, rc.ConfigPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// Whether to set the new Account active. The exception (per #10): the
-	// first registered Account always becomes active so the registry is
-	// never left without one — otherwise `gplay auth login --activate=false`
-	// on a fresh machine would leave the user with a non-functional setup.
+	// First Account always activates so the registry is never empty.
 	wasEmpty := len(cfg.Accounts) == 0
 	cfg.AddAccount(name)
 	if in.Activate || wasEmpty {
 		if err := cfg.SetActive(name); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if err := cfg.Save(rc.Ctx, rc.FS, rc.ConfigPath); err != nil {
-		return err
+		return nil, err
 	}
 
 	if in.Activate || wasEmpty {
@@ -81,13 +76,12 @@ func Run(rc *kernel.RunContext, in Input) error {
 	} else {
 		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
 	}
-	return nil
+	return nil, nil
 }
 
 // NewCommand returns the cobra command for `gplay auth login`. The
-// `--service-account` flag is inherited from the root command's
-// persistent flags (docs/DESIGN.md §1) — login reads the same value
-// every other command uses, so the contract stays consistent.
+// --service-account flag is inherited from the root command's
+// persistent flags.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		name     string
@@ -110,12 +104,12 @@ Pass --activate=false to add a second Account without changing which one
 is active. (The very first registered Account becomes active regardless,
 so the registry is never left without one when --activate=false is set.)`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// --service-account is a root-level persistent flag (docs/DESIGN.md §1).
 			saPath, _ := cmd.Flags().GetString("service-account")
-			return Run(kernel.FromCobra(cmd, boot), Input{
-				SAPath:   saPath,
-				Name:     name,
-				Activate: activate,
+			b := boot
+			b.Stdout = cmd.OutOrStdout()
+			b.Stderr = cmd.ErrOrStderr()
+			return kernel.Run(b, kernel.FromCobra(cmd, ""), func(rc *kernel.RunContext) (output.Renderable, error) {
+				return Run(rc, Input{SAPath: saPath, Name: name, Activate: activate})
 			})
 		},
 	}
@@ -124,8 +118,6 @@ so the registry is never left without one when --activate=false is set.)`,
 	return cmd
 }
 
-// deriveName returns the left-of-@ part of a service-account email. Returns
-// the input unchanged when no '@' is present.
 func deriveName(email string) string {
 	local, _, _ := strings.Cut(email, "@")
 	return local

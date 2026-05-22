@@ -20,18 +20,25 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestRun_pureBusiness drives login.Run directly. The cobra wiring is
-// covered by the existing Execute()-based tests below; this one keeps
-// the business surface honest as the new test seam.
+// TestRun_pureBusiness drives login.Run with a hand-built RunContext.
 func TestRun_pureBusiness(t *testing.T) {
 	_, _, boot := newCmd(t)
 	saPath := writeSA(t, validSAJSON)
+	be, _, err := keystore.Select(keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
 	var stderr bytes.Buffer
-	rc := kernel.New(context.Background(), boot, false)
-	rc.Stderr = &stderr
+	boot.Stderr = &stderr
+	rc := kernel.New(context.Background(), boot, kernel.Inputs{})
+	rc.Keystore = be
 
-	if err := login.Run(rc, login.Input{SAPath: saPath, Activate: true}); err != nil {
+	r, err := login.Run(rc, login.Input{SAPath: saPath, Activate: true})
+	if err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+	if r != nil {
+		t.Errorf("login.Run returned a Renderable; want nil")
 	}
 	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
@@ -47,8 +54,8 @@ func TestRun_pureBusiness(t *testing.T) {
 // the empty-input case must exit 2 (CLI misuse), not 1 (generic).
 func TestRun_missingSAPath_isCLIError(t *testing.T) {
 	_, _, boot := newCmd(t)
-	rc := kernel.New(context.Background(), boot, false)
-	err := login.Run(rc, login.Input{Activate: true})
+	rc := kernel.New(context.Background(), boot, kernel.Inputs{})
+	_, err := login.Run(rc, login.Input{Activate: true})
 	if err == nil {
 		t.Fatal("expected error for empty SAPath")
 	}

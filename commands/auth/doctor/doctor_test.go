@@ -21,6 +21,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
+	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -28,26 +29,29 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRun_pureBusiness drives doctor.Run directly — no cobra. The
-// per-package check is omitted (the existing Execute()-based tests still
-// cover that). This one keeps the business seam honest.
+// TestRun_pureBusiness drives doctor.Run with a hand-built RunContext.
+// The ctxWithRT injection provides the test transport; doctor wraps it
+// with its scope observer internally.
 func TestRun_pureBusiness(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))
-	var stdout, stderr bytes.Buffer
-	rc := kernel.New(ctxWithRT(successRT()), boot, false)
-	rc.Stdout = &stdout
-	rc.Stderr = &stderr
+	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	rc := kernel.New(ctxWithRT(successRT()), boot, kernel.Inputs{Format: output.FormatJSON})
+	rc.Account = sa
 
-	if err := doctor.Run(rc, doctor.Input{Format: output.FormatJSON}); err != nil {
+	r, err := doctor.Run(rc, doctor.Input{})
+	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	var parsed []map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
-		t.Fatalf("unmarshal: %v (raw=%q)", err, stdout.String())
+	p, ok := r.(doctor.Payload)
+	if !ok {
+		t.Fatalf("Run returned %T, want doctor.Payload", r)
 	}
-	if len(parsed) != 3 {
-		t.Errorf("len(results) = %d, want 3", len(parsed))
+	if len(p.Results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(p.Results))
 	}
 }
 

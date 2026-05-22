@@ -15,32 +15,30 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
+	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
-	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRun_pureBusiness drives status.Run directly without going through
-// cobra. The seam the kernel exposes — RunContext + Input — is the test
-// surface.
+// TestRun_pureBusiness drives status.Run with a hand-built RunContext.
+// Run pulls Account/Resolved/KeystoreLabel from rc and shapes Payload.
 func TestRun_pureBusiness(t *testing.T) {
-	boot := newBoot(t, newFakeKeyring(true))
-	seedActiveAccount(t, boot)
-	var stdout, stderr bytes.Buffer
-	rc := kernel.New(context.Background(), boot, false)
-	rc.Stdout = &stdout
-	rc.Stderr = &stderr
+	rc := kernel.New(context.Background(), kernel.Boot{KeystoreRoot: "/keys"}, kernel.Inputs{})
+	rc.Account = &serviceaccount.ServiceAccount{ClientEmail: "playci@x"}
+	rc.Resolved = &config.Resolved{ConfigAccount: "playci"}
+	rc.KeystoreLabel = keystore.BackendFile
 
-	if err := status.Run(rc, status.Input{Format: output.FormatJSON}); err != nil {
+	r, err := status.Run(rc, status.Input{})
+	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	var p status.Payload
-	if err := json.Unmarshal(stdout.Bytes(), &p); err != nil {
-		t.Fatalf("unmarshal: %v (raw=%q)", err, stdout.String())
+	p, ok := r.(status.Payload)
+	if !ok {
+		t.Fatalf("Run returned %T, want status.Payload", r)
 	}
-	if !p.Active || p.Name != "playci" {
-		t.Errorf("payload = %+v, want active=true name=playci", p)
+	if !p.Active || p.Name != "playci" || p.ClientEmail != "playci@x" {
+		t.Errorf("payload = %+v, want active=true name=playci email=playci@x", p)
 	}
 }
 
