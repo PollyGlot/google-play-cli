@@ -107,9 +107,9 @@ func run(cmd *cobra.Command, opts Options, saPath, name string, activate, verbos
 	}
 
 	if activate || wasEmpty {
-		fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
 	} else {
-		fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
 	}
 	return nil
 }

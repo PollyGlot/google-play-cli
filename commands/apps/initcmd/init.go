@@ -53,8 +53,8 @@ func run(cmd *cobra.Command, opts Options, pkg string) error {
 	if err := config.Init(repoRoot, home, pkg); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "✓ Pinned package %q for this repo (.gplay/config.json)\n", pkg)
-	fmt.Fprintf(cmd.ErrOrStderr(),
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Pinned package %q for this repo (.gplay/config.json)\n", pkg)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 		"  hint: run `gplay apps add %s` to register this package under the active Account.\n", pkg)
 	return nil
 }
