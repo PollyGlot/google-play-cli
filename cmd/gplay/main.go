@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 
@@ -97,11 +98,47 @@ replace Fastlane on Android CI pipelines.`,
 		Use:   "version",
 		Short: "Print gplay version",
 		Run: func(cmd *cobra.Command, _ []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "gplay %s (%s, %s)\n", version, commit, date)
+			info, ok := debug.ReadBuildInfo()
+			v, c, d := resolveVersion(version, commit, date, info, ok)
+			fmt.Fprintf(cmd.OutOrStdout(), "gplay %s (%s, %s)\n", v, c, d)
 		},
 	})
 
 	return root
+}
+
+// resolveVersion picks the best (version, commit, date) triple to print.
+//
+// GoReleaser injects ldflag values at build time. `go install <module>@<tag>`
+// skips those ldflags, so we fall back to debug.BuildInfo: Main.Version carries
+// the module pseudo/tagged version, and the vcs.* settings carry the commit and
+// commit time. Ldflag-injected values stay authoritative when present so
+// GoReleaser and Homebrew builds aren't affected.
+func resolveVersion(ldVersion, ldCommit, ldDate string, info *debug.BuildInfo, infoOK bool) (string, string, string) {
+	if ldVersion != "dev" {
+		return ldVersion, ldCommit, ldDate
+	}
+	if !infoOK || info == nil {
+		return ldVersion, ldCommit, ldDate
+	}
+	v, c, d := ldVersion, ldCommit, ldDate
+	// "(devel)" is what BuildInfo reports for unversioned local builds — not useful.
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		v = info.Main.Version
+	}
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			if s.Value != "" {
+				c = s.Value
+			}
+		case "vcs.time":
+			if s.Value != "" {
+				d = s.Value
+			}
+		}
+	}
+	return v, c, d
 }
 
 // defaultConfigDir returns the canonical gplay config directory per the PRD:
