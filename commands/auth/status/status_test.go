@@ -24,7 +24,7 @@ import (
 // TestRun_pureBusiness drives status.Run with a hand-built RunContext.
 // Run pulls Account/Resolved/KeystoreLabel from rc and shapes Payload.
 func TestRun_pureBusiness(t *testing.T) {
-	rc := kernel.New(context.Background(), kernel.Boot{KeystoreRoot: "/keys"}, kernel.Inputs{})
+	rc := kernel.NewForTest(context.Background(), kernel.Boot{KeystoreRoot: "/keys"}, kernel.Inputs{})
 	rc.Account = &serviceaccount.ServiceAccount{ClientEmail: "playci@x"}
 	rc.Resolved = &config.Resolved{ConfigAccount: "playci"}
 	rc.KeystoreLabel = keystore.BackendFile

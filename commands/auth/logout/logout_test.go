@@ -27,7 +27,7 @@ func TestRun_pureBusiness(t *testing.T) {
 		t.Fatalf("Select: %v", err)
 	}
 
-	rc := kernel.New(context.Background(), boot, kernel.Inputs{})
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
 	rc.Keystore = be
 
 	r, err := logout.Run(rc, logout.Input{Name: "beta"})

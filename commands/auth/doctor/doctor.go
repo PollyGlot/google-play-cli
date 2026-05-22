@@ -7,6 +7,7 @@
 package doctor
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
-	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/transport"
@@ -60,35 +60,39 @@ func (e *failedError) ExitCode() int {
 	return 10
 }
 
-// Run is the pure business function. It composes the HTTP client with a
-// scope observer (specific to doctor — the kernel's pre-wired rc.HTTP
-// has no observer), runs each Check, and returns a Renderable.
+// Run executes the check chain, renders the checklist itself (so a
+// failing check still shows the diagnostic alongside the error), and
+// returns nil + failedError on failure. Returning (nil, err) keeps
+// kernel.Run on the default "errors → stderr only" path; the
+// rendering happens here so doctor's "checklist on stdout even when
+// red" contract stays local to doctor.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	// Compose the doctor's HTTP client: base from rc (test fixtures
-	// inject one via ctx.Value, prod uses oauth2.NewClient — see
-	// doctorBaseHTTP), wrapped with a scope observer for CheckScope.
 	base := doctorBaseHTTP(rc)
 	wrapped, obs := transport.WithScopeObserver(base.Transport)
 	hc := &http.Client{Transport: wrapped}
 
 	checks := buildChecks(obs, in.Packages)
 
-	// rc.Account is nil when resolution failed; emit a synthetic
-	// check-1 failure rather than a pre-check error.
+	var results []authdoctor.CheckResult
+	var worst *authdoctor.CheckResult
 	if rc.Account == nil {
-		results, worst := synthFailure(synthError("no active account"), checks)
-		if worst != nil {
-			return Payload{Results: results}, &failedError{first: *worst}
-		}
-		return Payload{Results: results}, nil
+		results, worst = synthFailure(errors.New("no active account; run `gplay auth login`"), checks)
+	} else {
+		results = authdoctor.Run(rc.Ctx, rc.Account, hc, checks...)
+		worst = worstFailure(results)
 	}
 
-	results := authdoctor.Run(rc.Ctx, rc.Account, hc, checks...)
-	worst := worstFailure(results)
-	if worst != nil {
-		return Payload{Results: results}, &failedError{first: *worst}
+	payload := Payload{Results: results}
+	// Render the checklist regardless of pass/fail so the user always
+	// sees an ordered list, then return failedError so exit.For picks
+	// up the worst check's code.
+	if err := output.Render(rc.Stdout, rc.Format, payload.Renderers()); err != nil {
+		return nil, err
 	}
-	return Payload{Results: results}, nil
+	if worst != nil {
+		return nil, &failedError{first: *worst}
+	}
+	return nil, nil
 }
 
 // NewCommand returns the cobra command for `gplay auth doctor`.
@@ -133,15 +137,13 @@ structured []CheckResult for scripting.`,
 
 // doctorBaseHTTP returns the underlying http.Client doctor wraps with
 // its scope observer. Tests inject a base via ctx.Value(oauth2.HTTPClient);
-// production falls back to http.DefaultClient.
+// production falls back to http.DefaultClient (each check minted its
+// own oauth2 client on top via oauth2.NewClient(ctx, ts)).
 func doctorBaseHTTP(rc *kernel.RunContext) *http.Client {
 	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
 		if c, ok := v.(*http.Client); ok && c != nil {
 			return c
 		}
-	}
-	if rc.HTTP != nil {
-		return rc.HTTP
 	}
 	return &http.Client{}
 }
@@ -180,12 +182,6 @@ func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResul
 		results = append(results, authdoctor.NewSkippedResult(checks[i]))
 	}
 	return results, &results[0]
-}
-
-// synthError converts a free-form reason into the shape ResolutionFailure
-// expects.
-func synthError(msg string) error {
-	return &serviceaccount.MissingFieldError{Field: "(none — " + msg + ")"}
 }
 
 func iconForResult(r authdoctor.CheckResult) string {

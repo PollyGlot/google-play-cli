@@ -57,7 +57,7 @@ func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args .
 // using a hand-built kernel.RunContext. Run reads rc.Resolved.Accounts
 // directly; no kernel.Run plumbing needed.
 func TestRun_pureBusiness(t *testing.T) {
-	rc := kernel.New(context.Background(), kernel.Boot{}, kernel.Inputs{Format: output.FormatJSON})
+	rc := kernel.NewForTest(context.Background(), kernel.Boot{}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Resolved = &config.Resolved{
 		Accounts: []config.Account{
 			{Name: "alpha", Active: true},

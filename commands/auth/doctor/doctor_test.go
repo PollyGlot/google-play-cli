@@ -30,8 +30,9 @@ import (
 )
 
 // TestRun_pureBusiness drives doctor.Run with a hand-built RunContext.
-// The ctxWithRT injection provides the test transport; doctor wraps it
-// with its scope observer internally.
+// doctor renders directly to rc.Stdout (so a failing check still prints
+// the checklist), so the assertion targets the rendered bytes rather
+// than the (nil) return value.
 func TestRun_pureBusiness(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))
@@ -39,19 +40,24 @@ func TestRun_pureBusiness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	rc := kernel.New(ctxWithRT(successRT()), boot, kernel.Inputs{Format: output.FormatJSON})
+	var stdout bytes.Buffer
+	boot.Stdout = &stdout
+	rc := kernel.NewForTest(ctxWithRT(successRT()), boot, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa
 
 	r, err := doctor.Run(rc, doctor.Input{})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	p, ok := r.(doctor.Payload)
-	if !ok {
-		t.Fatalf("Run returned %T, want doctor.Payload", r)
+	if r != nil {
+		t.Errorf("Run returned a Renderable; want nil (doctor renders itself)")
 	}
-	if len(p.Results) != 3 {
-		t.Errorf("len(results) = %d, want 3", len(p.Results))
+	var parsed []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("unmarshal: %v (raw=%q)", err, stdout.String())
+	}
+	if len(parsed) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(parsed))
 	}
 }
 

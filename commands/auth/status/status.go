@@ -78,10 +78,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "status",
 		Short: "Print the active Account, the keystore backend, and where the credential lives",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			b := boot
-			b.Stdout = cmd.OutOrStdout()
-			b.Stderr = cmd.ErrOrStderr()
-			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
+			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{})
 			})
 		},

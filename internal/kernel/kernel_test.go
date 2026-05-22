@@ -89,7 +89,7 @@ func (p fakePayload) Renderers() output.Renderers {
 
 func TestNew_wiresIOFromBoot(t *testing.T) {
 	boot := newBoot(t)
-	rc := kernel.New(context.Background(), boot, kernel.Inputs{})
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
 	if rc.Stdout != boot.Stdout {
 		t.Errorf("Stdout not wired from Boot")
 	}
@@ -124,18 +124,7 @@ func TestRun_resolvesActiveAccountAndRenders(t *testing.T) {
 	}
 }
 
-func TestRun_requireAccount_returnsErrNoSource(t *testing.T) {
-	boot := newBoot(t)
-	err := kernel.Run(boot, kernel.Inputs{RequireAccount: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
-		t.Fatal("fn must not be invoked when account resolution fails with RequireAccount=true")
-		return nil, nil
-	})
-	if !errors.Is(err, resolver.ErrNoSource) {
-		t.Errorf("err = %v, want ErrNoSource", err)
-	}
-}
-
-func TestRun_noAccount_RequireAccountFalse_callsFnWithNilAccount(t *testing.T) {
+func TestRun_noAccount_callsFnWithNilAccount(t *testing.T) {
 	boot := newBoot(t)
 	called := false
 	err := kernel.Run(boot, kernel.Inputs{}, func(rc *kernel.RunContext) (output.Renderable, error) {

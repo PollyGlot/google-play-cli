@@ -105,10 +105,7 @@ is active. (The very first registered Account becomes active regardless,
 so the registry is never left without one when --activate=false is set.)`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			saPath, _ := cmd.Flags().GetString("service-account")
-			b := boot
-			b.Stdout = cmd.OutOrStdout()
-			b.Stderr = cmd.ErrOrStderr()
-			return kernel.Run(b, kernel.FromCobra(cmd, ""), func(rc *kernel.RunContext) (output.Renderable, error) {
+			return kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{SAPath: saPath, Name: name, Activate: activate})
 			})
 		},

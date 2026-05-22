@@ -39,7 +39,6 @@ func main() {
 		ConfigPath:   filepath.Join(configDir, "config.json"),
 		KeystoreRoot: filepath.Join(configDir, "accounts"),
 		Keyring:      keystore.DefaultKeyring(),
-		HTTPFactory:  kernel.OAuth2HTTPFactory,
 	}
 
 	if err := newRootCmd(boot).Execute(); err != nil {

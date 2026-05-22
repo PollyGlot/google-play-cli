@@ -30,7 +30,7 @@ func TestRun_pureBusiness(t *testing.T) {
 	}
 	var stderr bytes.Buffer
 	boot.Stderr = &stderr
-	rc := kernel.New(context.Background(), boot, kernel.Inputs{})
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
 	rc.Keystore = be
 
 	r, err := login.Run(rc, login.Input{SAPath: saPath, Activate: true})
@@ -54,7 +54,7 @@ func TestRun_pureBusiness(t *testing.T) {
 // the empty-input case must exit 2 (CLI misuse), not 1 (generic).
 func TestRun_missingSAPath_isCLIError(t *testing.T) {
 	_, _, boot := newCmd(t)
-	rc := kernel.New(context.Background(), boot, kernel.Inputs{})
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
 	_, err := login.Run(rc, login.Input{Activate: true})
 	if err == nil {
 		t.Fatal("expected error for empty SAPath")

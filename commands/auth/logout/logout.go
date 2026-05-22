@@ -63,10 +63,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Remove a registered Account from the config and the keystore",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := boot
-			b.Stdout = cmd.OutOrStdout()
-			b.Stderr = cmd.ErrOrStderr()
-			return kernel.Run(b, kernel.FromCobra(cmd, ""), func(rc *kernel.RunContext) (output.Renderable, error) {
+			return kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{Name: args[0]})
 			})
 		},
