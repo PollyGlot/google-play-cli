@@ -107,6 +107,35 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	return nil
 }
 
+// WithReadOnlyEdit opens an Edit on pkg, invokes fn with the new Edit ID
+// for read-only operations (tracks.get, details.get, ...), and ALWAYS
+// discards the Edit afterward — a read-only Edit must never be committed.
+// Committing a change-free Edit would, at best, burn one of the daily
+// publish slots Google Play rate-limits and, at worst, mutate state; so
+// `gplay releases list` / `tracks list` open, read, and discard.
+//
+// The discard runs in a deferred closure, so it fires on the normal
+// return, on a closure error, AND during a panic unwind — after which
+// the panic keeps propagating untouched. Unlike WithEdit, no recover()
+// is needed: a read-only Edit is ALWAYS discarded, so there is no
+// KeepOnFailure branch to honor on the panic path. The cleanup uses a
+// fresh bounded context so a canceled or timed-out parent ctx still
+// cleans up the open Edit — leaving one dangling blocks the user's next
+// publish for up to 24h. fn's error (or nil) propagates verbatim; a
+// discard failure is swallowed so the real outcome reaches the caller.
+func WithReadOnlyEdit(ctx context.Context, hc *http.Client, pkg string, fn func(editID string) error) error {
+	editID, err := insertEdit(ctx, hc, pkg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = deleteEdit(cleanupCtx, hc, pkg, editID)
+		cancel()
+	}()
+	return fn(editID)
+}
+
 func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error) {
 	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/edits"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, http.NoBody)
