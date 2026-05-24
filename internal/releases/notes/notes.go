@@ -9,17 +9,26 @@
 package notes
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// osReadDir and osReadFile are package-level variables to let later
-// blocks (e.g. an injected internal/config.FS seam) swap the
+// MaxNoteFileSize caps the size of any single release-notes file read
+// from --release-notes-dir. Google Play's per-locale limit is 500
+// characters; 1 MiB is orders of magnitude beyond any legitimate notes
+// payload and exists purely to keep a hostile or accidentally huge file
+// from OOM-ing the CLI.
+const MaxNoteFileSize = 1 << 20
+
+// osReadDir, osStat, and osReadFile are package-level variables to let
+// later blocks (e.g. an injected internal/config.FS seam) swap the
 // filesystem without rewriting Load. Today they delegate to os.
 var (
 	osReadDir  = func(dir string) ([]fs.DirEntry, error) { return os.ReadDir(dir) }
+	osStat     = func(p string) (os.FileInfo, error) { return os.Stat(p) }
 	osReadFile = func(p string) ([]byte, error) { return os.ReadFile(p) }
 )
 
@@ -59,10 +68,16 @@ func (e *ValidationError) Error() string { return e.Message }
 func (e *ValidationError) ExitCode() int { return 2 }
 
 // Load returns the list of (locale, text) pairs derived from opts.
-// In Dir mode it reads every `<locale>.txt` under opts.Dir, plus an
-// optional `default.txt` that ships as the DefaultLanguage entry when
-// no explicit `<DefaultLanguage>.txt` is present. Passing both Text and
-// Dir is CLI misuse and returns a ValidationError (ExitCode()=2).
+// In Text mode the single string is assigned to DefaultLanguage with
+// trailing whitespace trimmed, matching how Dir mode normalizes each
+// file's contents — so `--release-notes "Bug fixes\n"` and a
+// `--release-notes-dir` with the same content produce identical wire
+// payloads. In Dir mode every `<locale>.txt` under opts.Dir becomes one
+// entry, plus an optional `default.txt` that ships as the
+// DefaultLanguage entry when no explicit `<DefaultLanguage>.txt` is
+// present (matched case-insensitively). Per-file reads are capped at
+// MaxNoteFileSize to prevent OOM on hostile inputs. Passing both Text
+// and Dir is CLI misuse and returns a ValidationError (ExitCode()=2).
 func Load(opts Opts) ([]LocaleNote, error) {
 	if opts.Text != "" && opts.Dir != "" {
 		return nil, &ValidationError{
@@ -75,7 +90,7 @@ func Load(opts Opts) ([]LocaleNote, error) {
 				Message: "DefaultLanguage is required when using --release-notes (no locale to assign the text to)",
 			}
 		}
-		return []LocaleNote{{Locale: opts.DefaultLanguage, Text: opts.Text}}, nil
+		return []LocaleNote{{Locale: opts.DefaultLanguage, Text: trimTrailingWS(opts.Text)}}, nil
 	}
 	if opts.Dir == "" {
 		return nil, nil
@@ -103,7 +118,7 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 			hasDefault = true
 			continue
 		}
-		text, err := osReadFile(filepath.Join(dir, name))
+		text, err := readCapped(filepath.Join(dir, name))
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +133,7 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 			}
 		}
 		if !covers(out, defaultLang) {
-			text, err := osReadFile(filepath.Join(dir, defaultLocaleFile+".txt"))
+			text, err := readCapped(filepath.Join(dir, defaultLocaleFile+".txt"))
 			if err != nil {
 				return nil, err
 			}
@@ -128,10 +143,43 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 	return out, nil
 }
 
-// covers reports whether out already has an entry for locale.
+// readCapped stat-checks p against MaxNoteFileSize before reading the
+// file into memory, then verifies the post-read size as a belt-and-
+// suspenders defence against TOCTOU growth. Files larger than the cap
+// produce a *ValidationError naming the file and the limit — Google
+// Play's per-locale notes are capped at 500 characters anyway, so 1 MiB
+// is generous.
+func readCapped(p string) ([]byte, error) {
+	info, err := osStat(p)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > MaxNoteFileSize {
+		return nil, &ValidationError{
+			Message: fmt.Sprintf("release-notes file %s exceeds the %d-byte cap (got %d bytes) — Google Play limits per-locale notes to 500 characters", p, int64(MaxNoteFileSize), info.Size()),
+		}
+	}
+	text, err := osReadFile(p)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(text)) > MaxNoteFileSize {
+		return nil, &ValidationError{
+			Message: fmt.Sprintf("release-notes file %s exceeds the %d-byte cap (got %d bytes) — Google Play limits per-locale notes to 500 characters", p, int64(MaxNoteFileSize), len(text)),
+		}
+	}
+	return text, nil
+}
+
+// covers reports whether out already has an entry for locale, comparing
+// case-insensitively so that e.g. `en-us.txt` in the release-notes
+// directory correctly suppresses the default.txt fallback for an
+// `en-US` DefaultLanguage — otherwise Google Play would reject the
+// upload for emitting two entries that resolve to the same canonical
+// locale.
 func covers(out []LocaleNote, locale string) bool {
 	for _, n := range out {
-		if n.Locale == locale {
+		if strings.EqualFold(n.Locale, locale) {
 			return true
 		}
 	}

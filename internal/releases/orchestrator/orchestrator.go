@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/bundles"
@@ -32,6 +33,17 @@ func (e *ConfirmRequiredError) Error() string {
 }
 
 func (e *ConfirmRequiredError) ExitCode() int { return 2 }
+
+// InvalidOptsError signals a caller-side validation failure: a Status /
+// UserFraction combination Google Play would reject, or any other
+// orchestrator-level precondition. It maps to exit code 2 so the CLI
+// taxonomy stays consistent with the command-layer usage errors.
+type InvalidOptsError struct {
+	Message string
+}
+
+func (e *InvalidOptsError) Error() string { return e.Message }
+func (e *InvalidOptsError) ExitCode() int { return 2 }
 
 // resolvedPublishStatus reports the wire-format status a given Opts
 // would produce after applying the safe-default rule. Used by both the
@@ -133,6 +145,21 @@ type Result struct {
 // sent, without any HTTP. The returned Result has VersionCode=0 and
 // ReleaseName="(dry-run)".
 func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
+	// Caller-side validation runs first so dry-run callers still see
+	// invalid-opts errors and live callers don't open an Edit only to
+	// discover their flag combination was bad.
+	if err := validateOpts(opts); err != nil {
+		return nil, err
+	}
+
+	// Dry-run is evaluated BEFORE the --confirm guard so users can
+	// preview a production publish (e.g. to inspect what --staged 0.05
+	// would emit) without having to satisfy the confirm guardrail. The
+	// preview path performs no HTTP and has no side effects.
+	if opts.DryRun {
+		return dryRunResult(opts)
+	}
+
 	if requiresConfirm(opts) && !opts.Confirm {
 		return nil, &ConfirmRequiredError{
 			Track:  opts.Track,
@@ -140,25 +167,30 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		}
 	}
 
-	if opts.DryRun {
-		return dryRunResult(opts)
-	}
-
 	result := &Result{Track: opts.Track}
 
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure}, func(editID string) error {
 		var localized []tracks.LocalizedText
 		if opts.ReleaseNotes != "" || opts.ReleaseNotesDir != "" {
-			lang, err := details.GetDefaultLanguage(ctx, hc, opts.Package, editID)
-			if err != nil {
-				return err
+			// details.get is an extra round-trip; only do it when the
+			// notes loader actually needs DefaultLanguage — i.e. when
+			// the user supplied --release-notes text, or when the
+			// directory contains a default.txt fallback. A directory
+			// with only explicit per-locale files works without it.
+			needLang := opts.ReleaseNotes != "" || hasDefaultTxt(opts.ReleaseNotesDir)
+			loadOpts := notes.Opts{
+				Text: opts.ReleaseNotes,
+				Dir:  opts.ReleaseNotesDir,
 			}
-			result.DefaultLanguage = lang
-			loaded, err := notes.Load(notes.Opts{
-				Text:            opts.ReleaseNotes,
-				Dir:             opts.ReleaseNotesDir,
-				DefaultLanguage: lang,
-			})
+			if needLang {
+				lang, err := details.GetDefaultLanguage(ctx, hc, opts.Package, editID)
+				if err != nil {
+					return err
+				}
+				result.DefaultLanguage = lang
+				loadOpts.DefaultLanguage = lang
+			}
+			loaded, err := notes.Load(loadOpts)
 			if err != nil {
 				return err
 			}
@@ -191,6 +223,34 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+// validateOpts enforces the orchestrator-level preconditions every
+// caller (CLI, future MCP server, library user) must satisfy. Currently
+// covers the InProgress fraction range; checks that depend on Track and
+// Status interplay (safe-default rule) belong in buildRelease.
+func validateOpts(opts Opts) error {
+	if opts.Status == StatusInProgress {
+		if opts.UserFraction <= 0 || opts.UserFraction > 1.0 {
+			return &InvalidOptsError{
+				Message: "UserFraction must be in (0, 1] when Status is InProgress",
+			}
+		}
+	}
+	return nil
+}
+
+// hasDefaultTxt reports whether a release-notes directory contains a
+// default.txt fallback. The orchestrator uses it to decide whether the
+// extra edits.details.get round-trip is needed.
+func hasDefaultTxt(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(dir, "default.txt")); err == nil {
+		return true
+	}
+	return false
 }
 
 // buildRelease translates Opts + the discovered versionCode into a
@@ -233,15 +293,32 @@ func buildRelease(versionCode int, opts Opts) tracks.Release {
 // constant rather than a string literal so the comparison is grep-able.
 const TrackProduction = "production"
 
+// dryRunDefaultLangPlaceholder satisfies notes.Load's DefaultLanguage
+// requirement during a dry-run so the loader's structural validation
+// (mutual exclusion, file-size cap, missing dir) still runs. The real
+// DefaultLanguage is resolved at upload time via edits.details.get.
+const dryRunDefaultLangPlaceholder = "(default-language-at-upload-time)"
+
 // dryRunResult validates the inputs Upload would consume without any
 // HTTP and returns a preview Result describing the planned payload.
-// The Edit lifecycle, AAB upload, and tracks.update are all skipped.
+// Mirrors the live path's validation contract: mutual exclusion of
+// notes flags, AAB and dir reachability, and the notes loader's own
+// file-size and structural checks all fire here. The synthetic
+// DefaultLanguage placeholder bypasses the API-resolved validation that
+// only applies at upload time.
 func dryRunResult(opts Opts) (*Result, error) {
+	// Replicate notes.Load's mutual-exclusion guard up front so a bad
+	// flag combination is rejected with a stable error type.
+	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
+		return nil, &dryRunError{msg: "--release-notes and --release-notes-dir are mutually exclusive"}
+	}
 	if opts.AABPath != "" {
 		if _, err := os.Stat(opts.AABPath); err != nil {
 			return nil, &dryRunError{msg: "AAB not accessible: " + err.Error()}
 		}
 	}
+
+	var previewLocales []string
 	if opts.ReleaseNotesDir != "" {
 		st, err := os.Stat(opts.ReleaseNotesDir)
 		if err != nil {
@@ -250,7 +327,26 @@ func dryRunResult(opts Opts) (*Result, error) {
 		if !st.IsDir() {
 			return nil, &dryRunError{msg: "release-notes-dir is not a directory: " + opts.ReleaseNotesDir}
 		}
+		// Run the actual loader so the file-size cap, per-locale walk,
+		// and default.txt rules are all exercised. The placeholder
+		// DefaultLanguage satisfies notes.Load's API contract; the live
+		// upload resolves the real value via details.get.
+		loaded, err := notes.Load(notes.Opts{
+			Dir:             opts.ReleaseNotesDir,
+			DefaultLanguage: dryRunDefaultLangPlaceholder,
+		})
+		if err != nil {
+			return nil, &dryRunError{msg: err.Error()}
+		}
+		for _, n := range loaded {
+			if n.Locale == dryRunDefaultLangPlaceholder {
+				previewLocales = append(previewLocales, "(default-language)")
+			} else {
+				previewLocales = append(previewLocales, n.Locale)
+			}
+		}
 	}
+
 	// Compute the would-be release shape via the same builder the live
 	// flow uses, with a synthetic versionCode 0 since the real one is
 	// only known after bundles.upload.
@@ -261,6 +357,7 @@ func dryRunResult(opts Opts) (*Result, error) {
 		Status:       release.Status,
 		UserFraction: release.UserFraction,
 		ReleaseName:  "(dry-run)",
+		Locales:      previewLocales,
 	}, nil
 }
 

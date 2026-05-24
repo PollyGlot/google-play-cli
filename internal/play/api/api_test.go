@@ -93,6 +93,48 @@ func TestError_implementsCoder(t *testing.T) {
 	}
 }
 
+// TestError_ExitCode covers the operation-aware special case: a 400 or
+// 404 from edits.bundles.upload means "malformed AAB" and must surface
+// as exit code 20, while auth/5xx/transport rules still win over the
+// operation hint, and non-bundles operations stay on the generic table.
+func TestError_ExitCode(t *testing.T) {
+	cases := []struct {
+		name      string
+		operation string
+		status    int
+		want      int
+	}{
+		{"bundles.upload 400 → malformed-AAB exit 20", "bundles.upload", 400, 20},
+		{"bundles.upload 404 → malformed-AAB exit 20", "bundles.upload", 404, 20},
+		{"bundles.upload 403 → auth still wins (11)", "bundles.upload", 403, 11},
+		{"bundles.upload 500 → 5xx still wins (40)", "bundles.upload", 500, 40},
+		{"bundles.upload 0 → transport still wins (50)", "bundles.upload", 0, 50},
+		{"bundles.upload 409 → conflict still wins (60)", "bundles.upload", 409, 60},
+		{"edits.insert 400 → generic 4xx (30)", "edits.insert", 400, 30},
+		{"edits.insert 404 → generic 4xx (30)", "edits.insert", 404, 30},
+		{"tracks.update 400 → generic 4xx (30)", "tracks.update", 400, 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := &api.Error{Operation: tc.operation, Package: "com.x", StatusCode: tc.status, Message: "x"}
+			if got := e.ExitCode(); got != tc.want {
+				t.Errorf("(&Error{Operation:%q,StatusCode:%d}).ExitCode() = %d, want %d",
+					tc.operation, tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestError_ExitCode_nilReceiver guards the documented nil-receiver
+// behaviour: a nil *Error returns 0, matching the existing Error()
+// pattern.
+func TestError_ExitCode_nilReceiver(t *testing.T) {
+	var e *api.Error
+	if got := e.ExitCode(); got != 0 {
+		t.Errorf("(nil *Error).ExitCode() = %d, want 0", got)
+	}
+}
+
 // TestError_Unwrap exposes the underlying transport error to errors.Is /
 // errors.As callers.
 func TestError_Unwrap(t *testing.T) {

@@ -36,18 +36,31 @@ func (e *Error) Error() string {
 // errors.As traverse the chain naturally.
 func (e *Error) Unwrap() error { return e.Cause }
 
-// ExitCode satisfies the gplay Coder contract. The mapping table is in
-// StatusToExitCode and matches docs/DESIGN.md §9.
+// ExitCode satisfies the gplay Coder contract. The mapping table mostly
+// lives in StatusToExitCode and matches docs/DESIGN.md §9; the one
+// operation-aware nuance handled here is bundles.upload, where 400 and
+// 404 mean "malformed AAB" and must surface as exit 20 (not the generic
+// 30). Auth (403), conflict (409), 5xx and transport-level failures
+// still win over the operation hint — a 403 on bundles.upload is still
+// an auth problem.
 func (e *Error) ExitCode() int {
 	if e == nil {
 		return 0
+	}
+	if e.Operation == "bundles.upload" {
+		switch e.StatusCode {
+		case http.StatusBadRequest, http.StatusNotFound:
+			return 20
+		}
 	}
 	return StatusToExitCode(e.StatusCode)
 }
 
 // StatusToExitCode maps a Google Play API HTTP status (or 0 for
-// transport failures) to the gplay exit-code taxonomy. The full table
-// is in docs/DESIGN.md §9; the cases that matter:
+// transport failures) to the gplay exit-code taxonomy. It is the
+// operation-agnostic fallback used by *Error.ExitCode; operation-aware
+// overrides (e.g. bundles.upload 400/404 → 20) live on the receiver.
+// The full table is in docs/DESIGN.md §9; the cases that matter:
 //
 //	0           → 50 (transport: timeout, DNS, refused)
 //	403         → 11 (authorization — SA not invited on app)

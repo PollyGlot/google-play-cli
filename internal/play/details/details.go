@@ -24,15 +24,15 @@ func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string
 		"/details"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
 	if err != nil {
-		return "", &api.Error{Operation: "edits.details.get", Package: pkg, Message: err.Error()}
+		return "", &api.Error{Operation: "edits.details.get", Package: pkg, Message: err.Error(), Cause: err}
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
 		return "", &api.Error{Operation: "edits.details.get", Package: pkg, Message: err.Error(), Cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIBodyRead))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
 		return "", &api.Error{
 			Operation:  "edits.details.get",
 			Package:    pkg,
@@ -40,6 +40,7 @@ func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string
 			Message:    api.APIErrorMessage(body, resp.StatusCode),
 		}
 	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed struct {
 		DefaultLanguage string `json:"defaultLanguage"`
 	}
@@ -49,6 +50,7 @@ func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
 			Message:    "decode response: " + err.Error(),
+			Cause:      err,
 		}
 	}
 	if parsed.DefaultLanguage == "" {

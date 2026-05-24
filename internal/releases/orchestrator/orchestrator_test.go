@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
@@ -326,8 +327,9 @@ func TestUpload_bundleUploadFail_triggersEditDelete(t *testing.T) {
 
 // TestUpload_bundleUploadFail_keepOnFailure_doesNotDelete asserts the
 // --keep-edit-on-failure opt-out: when KeepEditOnFailure=true, a mid-Edit
-// failure must NOT trigger edits.delete, so the operator can inspect the
-// open Edit ID and explicitly discard it later.
+// failure must NOT trigger edits.delete, and the returned error must
+// carry the open Edit ID (wrapped in *edits.DanglingEditError) so the
+// operator can `gplay edits discard` it manually.
 func TestUpload_bundleUploadFail_keepOnFailure_doesNotDelete(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt := &playRT{
@@ -357,6 +359,89 @@ func TestUpload_bundleUploadFail_keepOnFailure_doesNotDelete(t *testing.T) {
 		if strings.HasPrefix(c, "DELETE ") {
 			t.Errorf("KeepEditOnFailure=true but saw DELETE in calls: %v", rt.calls)
 		}
+	}
+
+	// The error must carry the open Edit ID so the operator can recover.
+	var dangling *edits.DanglingEditError
+	if !errors.As(err, &dangling) {
+		t.Fatalf("err = %v (%T), want *edits.DanglingEditError carrying the Edit ID", err, err)
+	}
+	if dangling.EditID != "edit-keep" {
+		t.Errorf("DanglingEditError.EditID = %q, want edit-keep", dangling.EditID)
+	}
+}
+
+// TestUpload_commitFail_triggersEditDelete asserts the auto-discard
+// safety net extends to commit failures too: a 5xx on edits.commit
+// (after a successful AAB upload + tracks.update) must call
+// edits.delete to clean up the orphan Edit.
+func TestUpload_commitFail_triggersEditDelete(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &playRT{
+		t:           t,
+		editID:      "edit-commit-fail",
+		versionCode: 999,
+		commitHandler: func(req *http.Request) (*http.Response, error) {
+			return jsonResp(503, `{"error":{"code":503,"message":"service unavailable"}}`), nil
+		},
+	}
+	hc := &http.Client{Transport: rt}
+
+	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package: "com.example.app",
+		Track:   "internal",
+		AABPath: aab,
+	})
+	if err == nil {
+		t.Fatal("Upload: want error after commit failure, got nil")
+	}
+
+	sawDelete := false
+	for _, c := range rt.calls {
+		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-commit-fail") {
+			sawDelete = true
+			break
+		}
+	}
+	if !sawDelete {
+		t.Errorf("auto-discard not triggered after commit failure; calls = %v", rt.calls)
+	}
+}
+
+// TestUpload_commitFail_keepOnFailure_carriesEditID asserts the same
+// DanglingEditError wrapping happens on a commit failure when
+// KeepEditOnFailure is set.
+func TestUpload_commitFail_keepOnFailure_carriesEditID(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &playRT{
+		t:           t,
+		editID:      "edit-commit-keep",
+		versionCode: 1000,
+		commitHandler: func(req *http.Request) (*http.Response, error) {
+			return jsonResp(503, `{"error":{"code":503,"message":"service unavailable"}}`), nil
+		},
+		deleteHandler: func(req *http.Request) (*http.Response, error) {
+			t.Errorf("DELETE was called despite KeepEditOnFailure=true: %s", req.URL.Path)
+			return jsonResp(204, ""), nil
+		},
+	}
+	hc := &http.Client{Transport: rt}
+
+	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package:           "com.example.app",
+		Track:             "internal",
+		AABPath:           aab,
+		KeepEditOnFailure: true,
+	})
+	if err == nil {
+		t.Fatal("Upload: want error after commit failure, got nil")
+	}
+	var dangling *edits.DanglingEditError
+	if !errors.As(err, &dangling) {
+		t.Fatalf("err = %v (%T), want *edits.DanglingEditError", err, err)
+	}
+	if dangling.EditID != "edit-commit-keep" {
+		t.Errorf("DanglingEditError.EditID = %q, want edit-commit-keep", dangling.EditID)
 	}
 }
 
@@ -421,12 +506,12 @@ func TestUpload_insertEdit_409_returnsExit60Error(t *testing.T) {
 	}
 }
 
-// TestUpload_withReleaseNotesDir_attachesPerLocaleNotes is the end-to-end
-// integration of the notes loader: when --release-notes-dir is set, the
-// orchestrator fetches the app's default language via edits.details.get,
-// loads the per-locale .txt files, and attaches them as releaseNotes on
-// the tracks.update payload.
-func TestUpload_withReleaseNotesDir_attachesPerLocaleNotes(t *testing.T) {
+// TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet asserts
+// the optimization from finding #8: when --release-notes-dir contains
+// only explicit per-locale .txt files (no default.txt fallback), the
+// orchestrator skips the edits.details.get round-trip — DefaultLanguage
+// is not needed by notes.Load in that case.
+func TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet(t *testing.T) {
 	aab := writeFakeAAB(t)
 	notesDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(notesDir, "en-US.txt"), []byte("English changelog"), 0644); err != nil {
@@ -437,9 +522,65 @@ func TestUpload_withReleaseNotesDir_attachesPerLocaleNotes(t *testing.T) {
 	}
 
 	rt := &playRT{
+		t:           t,
+		editID:      "edit-explicit",
+		versionCode: 300,
+		detailsHandler: func(req *http.Request) (*http.Response, error) {
+			t.Errorf("details.get was called for an explicit-only notes dir: %s", req.URL.Path)
+			return jsonResp(500, ""), nil
+		},
+	}
+	hc := &http.Client{Transport: rt}
+
+	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package:         "com.example.app",
+		Track:           "internal",
+		AABPath:         aab,
+		ReleaseNotesDir: notesDir,
+	})
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+
+	// tracks.update body still carries both locales.
+	body := string(rt.trackUpdateReq)
+	for _, want := range []string{
+		`"language":"en-US"`,
+		`"language":"fr-FR"`,
+		"English changelog",
+		"Changelog français",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body = %s, want substring %q", body, want)
+		}
+	}
+
+	if result.DefaultLanguage != "" {
+		t.Errorf("result.DefaultLanguage = %q, want empty (no details.get called)", result.DefaultLanguage)
+	}
+	if len(result.Locales) != 2 {
+		t.Errorf("result.Locales = %v, want 2 entries (en-US, fr-FR)", result.Locales)
+	}
+}
+
+// TestUpload_withReleaseNotesDir_defaultTxt_fetchesDetailsGet asserts
+// the inverse: when the directory contains default.txt, the
+// orchestrator DOES fetch DefaultLanguage so notes.Load can assign the
+// fallback to the right locale.
+func TestUpload_withReleaseNotesDir_defaultTxt_fetchesDetailsGet(t *testing.T) {
+	aab := writeFakeAAB(t)
+	notesDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(notesDir, "default.txt"), []byte("Fallback notes"), 0644); err != nil {
+		t.Fatalf("WriteFile default: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(notesDir, "fr-FR.txt"), []byte("Notes en français"), 0644); err != nil {
+		t.Fatalf("WriteFile fr-FR: %v", err)
+	}
+
+	rt := &playRT{
 		t:               t,
-		editID:          "edit-notes",
-		versionCode:     300,
+		editID:          "edit-defaulttxt",
+		versionCode:     400,
 		defaultLanguage: "en-US",
 	}
 	hc := &http.Client{Transport: rt}
@@ -454,7 +595,6 @@ func TestUpload_withReleaseNotesDir_attachesPerLocaleNotes(t *testing.T) {
 		t.Fatalf("Upload: %v", err)
 	}
 
-	// details.get must have been called.
 	sawDetails := false
 	for _, c := range rt.calls {
 		if strings.HasPrefix(c, "GET ") && strings.HasSuffix(c, "/details") {
@@ -463,27 +603,10 @@ func TestUpload_withReleaseNotesDir_attachesPerLocaleNotes(t *testing.T) {
 		}
 	}
 	if !sawDetails {
-		t.Errorf("details.get not called; calls = %v", rt.calls)
+		t.Errorf("details.get not called despite default.txt being present; calls = %v", rt.calls)
 	}
-
-	// tracks.update body carries both locales and their text.
-	body := string(rt.trackUpdateReq)
-	for _, want := range []string{
-		`"language":"en-US"`,
-		`"language":"fr-FR"`,
-		"English changelog",
-		"Changelog français",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body = %s, want substring %q", body, want)
-		}
-	}
-
 	if result.DefaultLanguage != "en-US" {
 		t.Errorf("result.DefaultLanguage = %q, want en-US", result.DefaultLanguage)
-	}
-	if len(result.Locales) != 2 {
-		t.Errorf("result.Locales = %v, want 2 entries (en-US, fr-FR)", result.Locales)
 	}
 }
 

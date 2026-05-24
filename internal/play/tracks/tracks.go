@@ -67,7 +67,7 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, rel
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIBodyRead))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
 		return nil, nil, &api.Error{
 			Operation:  opTracksUpdate,
 			Package:    pkg,
@@ -75,7 +75,10 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, rel
 			Message:    api.APIErrorMessage(body, resp.StatusCode),
 		}
 	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIBodyRead))
+	// The success body is the ADR-0003 JSON pass-through; cap it at the
+	// generous MaxAPISuccessBodyRead so apps with many locales × long
+	// release notes don't get a silently truncated tracks.update response.
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed Track
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, raw, &api.Error{

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
@@ -201,5 +202,158 @@ func TestLoad_defaultTxt_missingDefaultLanguage_returnsExit2(t *testing.T) {
 	}
 	if coder.ExitCode() != 2 {
 		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	}
+}
+
+// TestLoad_textMode_trimsTrailingWhitespace_matchesDirMode asserts the
+// parity fix from finding #10: `--release-notes "Bug fixes\n"` and a
+// `--release-notes-dir` containing the same `default.txt` body must
+// produce byte-identical wire payloads. Without trim parity, the text-
+// mode entry would carry the trailing newline while the file-mode entry
+// would not, and the two CLI flows would diverge on the wire.
+func TestLoad_textMode_trimsTrailingWhitespace_matchesDirMode(t *testing.T) {
+	const body = "Bug fixes and performance improvements."
+	const noisy = body + "\n  \t\r\n"
+
+	textGot, err := notes.Load(notes.Opts{
+		Text:            noisy,
+		DefaultLanguage: "en-US",
+	})
+	if err != nil {
+		t.Fatalf("Load(Text): %v", err)
+	}
+	if len(textGot) != 1 || textGot[0].Locale != "en-US" || textGot[0].Text != body {
+		t.Fatalf("text-mode got %v, want one entry {en-US, %q}", textGot, body)
+	}
+
+	dir := t.TempDir()
+	writeFile(t, dir, "default.txt", noisy)
+	dirGot, err := notes.Load(notes.Opts{
+		Dir:             dir,
+		DefaultLanguage: "en-US",
+	})
+	if err != nil {
+		t.Fatalf("Load(Dir): %v", err)
+	}
+	if len(dirGot) != 1 || dirGot[0] != textGot[0] {
+		t.Errorf("parity broken: text=%v, dir=%v", textGot, dirGot)
+	}
+}
+
+// TestLoad_dirMode_fileExceedsCap_returnsExit2 asserts finding #12: a
+// release-notes file larger than MaxNoteFileSize must be rejected with
+// a ValidationError (ExitCode()=2) naming the file, rather than being
+// silently loaded into memory.
+func TestLoad_dirMode_fileExceedsCap_returnsExit2(t *testing.T) {
+	dir := t.TempDir()
+	huge := make([]byte, notes.MaxNoteFileSize+1)
+	for i := range huge {
+		huge[i] = 'a'
+	}
+	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), huge, 0644); err != nil {
+		t.Fatalf("WriteFile huge: %v", err)
+	}
+
+	_, err := notes.Load(notes.Opts{
+		Dir:             dir,
+		DefaultLanguage: "en-US",
+	})
+	if err == nil {
+		t.Fatal("Load(huge file): want error, got nil")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) {
+		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
+	}
+	if coder.ExitCode() != 2 {
+		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	}
+	if !strings.Contains(err.Error(), "en-US.txt") {
+		t.Errorf("error message %q does not name the offending file", err.Error())
+	}
+}
+
+// TestLoad_dirMode_defaultTxtExceedsCap_returnsExit2 exercises the same
+// cap on the default.txt code path, which uses a distinct readCapped
+// call site.
+func TestLoad_dirMode_defaultTxtExceedsCap_returnsExit2(t *testing.T) {
+	dir := t.TempDir()
+	huge := make([]byte, notes.MaxNoteFileSize+1)
+	for i := range huge {
+		huge[i] = 'b'
+	}
+	if err := os.WriteFile(filepath.Join(dir, "default.txt"), huge, 0644); err != nil {
+		t.Fatalf("WriteFile huge default: %v", err)
+	}
+
+	_, err := notes.Load(notes.Opts{
+		Dir:             dir,
+		DefaultLanguage: "en-US",
+	})
+	if err == nil {
+		t.Fatal("Load(huge default.txt): want error, got nil")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) {
+		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
+	}
+	if coder.ExitCode() != 2 {
+		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	}
+	if !strings.Contains(err.Error(), "default.txt") {
+		t.Errorf("error message %q does not name the offending file", err.Error())
+	}
+}
+
+// TestLoad_dirMode_atCapBoundary_loadsSuccessfully asserts that a file
+// exactly at MaxNoteFileSize loads cleanly — the cap is inclusive, so
+// `> cap` fails but `== cap` succeeds.
+func TestLoad_dirMode_atCapBoundary_loadsSuccessfully(t *testing.T) {
+	dir := t.TempDir()
+	atLimit := make([]byte, notes.MaxNoteFileSize)
+	for i := range atLimit {
+		atLimit[i] = 'x'
+	}
+	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), atLimit, 0644); err != nil {
+		t.Fatalf("WriteFile at-limit: %v", err)
+	}
+
+	got, err := notes.Load(notes.Opts{
+		Dir:             dir,
+		DefaultLanguage: "en-US",
+	})
+	if err != nil {
+		t.Fatalf("Load(at-cap): %v", err)
+	}
+	if len(got) != 1 || got[0].Locale != "en-US" || len(got[0].Text) != notes.MaxNoteFileSize {
+		t.Errorf("at-cap file should load: got %d entries, text len %d", len(got), len(got[0].Text))
+	}
+}
+
+// TestLoad_dirMode_caseInsensitiveCoversDedupes asserts finding #14: a
+// per-locale file whose stem differs only in case from DefaultLanguage
+// (e.g. `en-us.txt` vs DefaultLanguage `en-US`) must be treated as
+// covering DefaultLanguage, so `default.txt` does NOT add a second
+// near-duplicate entry that Google Play would reject.
+func TestLoad_dirMode_caseInsensitiveCoversDedupes(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "en-us.txt", "Lowercase locale stem")
+	writeFile(t, dir, "default.txt", "Should not be emitted")
+
+	got, err := notes.Load(notes.Opts{
+		Dir:             dir,
+		DefaultLanguage: "en-US",
+	})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d entries (%v), want 1 (en-us.txt should cover en-US)", len(got), got)
+	}
+	if !strings.EqualFold(got[0].Locale, "en-US") {
+		t.Errorf("entry locale %q does not match en-US case-insensitively", got[0].Locale)
+	}
+	if got[0].Text != "Lowercase locale stem" {
+		t.Errorf("default.txt leaked into output: got text %q", got[0].Text)
 	}
 }

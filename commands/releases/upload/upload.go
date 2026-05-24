@@ -6,6 +6,7 @@
 package upload
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,12 +66,27 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
+// showsUserFraction reports whether userFraction is semantically
+// meaningful for the given release status. Draft / completed-without-
+// fraction releases omit it (the JSON view already does this via the
+// omitempty tag); the table and markdown views match that contract.
+func showsUserFraction(status string) bool {
+	return status == "inProgress" || status == "completed"
+}
+
 func renderTable(w io.Writer, r *orchestrator.Result) error {
-	_, err := fmt.Fprintf(w,
-		"versionCode: %d\ntrack:        %s\nstatus:       %s\nuserFraction: %v\nreleaseName:  %s\n",
-		r.VersionCode, r.Track, r.Status, r.UserFraction, r.ReleaseName,
-	)
-	if err != nil {
+	if _, err := fmt.Fprintf(w,
+		"versionCode: %d\ntrack:        %s\nstatus:       %s\n",
+		r.VersionCode, r.Track, r.Status,
+	); err != nil {
+		return err
+	}
+	if showsUserFraction(r.Status) {
+		if _, err := fmt.Fprintf(w, "userFraction: %v\n", r.UserFraction); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(w, "releaseName:  %s\n", r.ReleaseName); err != nil {
 		return err
 	}
 	if r.DefaultLanguage != "" {
@@ -99,10 +115,18 @@ func renderJSON(w io.Writer, r *orchestrator.Result) error {
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
-	_, err := fmt.Fprintf(w,
-		"- **versionCode**: %d\n- **track**: %s\n- **status**: %s\n- **userFraction**: %v\n- **releaseName**: %s\n",
-		r.VersionCode, r.Track, r.Status, r.UserFraction, r.ReleaseName,
-	)
+	if _, err := fmt.Fprintf(w,
+		"- **versionCode**: %d\n- **track**: %s\n- **status**: %s\n",
+		r.VersionCode, r.Track, r.Status,
+	); err != nil {
+		return err
+	}
+	if showsUserFraction(r.Status) {
+		if _, err := fmt.Fprintf(w, "- **userFraction**: %v\n", r.UserFraction); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(w, "- **releaseName**: %s\n", r.ReleaseName)
 	return err
 }
 
@@ -158,10 +182,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if err != nil {
 			return nil, &authError{msg: "could not build token source: " + err.Error()}
 		}
-		// oauth2.NewClient inherits ctx's oauth2.HTTPClient for the underlying
-		// transport, so a test-injected RoundTripper sees both the /token
-		// exchange and the androidpublisher calls.
-		httpClient = oauth2.NewClient(rc.Ctx, ts)
+		// baseHTTP exposes the test seam (ctx's oauth2.HTTPClient) so a
+		// single injected RoundTripper covers both the /token exchange and
+		// the androidpublisher calls. oauth2.NewClient honours the same
+		// context key for the token exchange itself.
+		base := baseHTTP(rc)
+		ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
+		httpClient = oauth2.NewClient(ctx, ts)
 	}
 
 	// Translate flag-shape Status to orchestrator Status.
@@ -193,6 +220,20 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	return Payload{Result: result}, nil
+}
+
+// baseHTTP returns the http.Client used as the underlying transport for
+// both the OAuth2 /token exchange and the androidpublisher API calls.
+// Tests inject a RoundTripper via ctx.Value(oauth2.HTTPClient); production
+// falls back to http.DefaultClient. This mirrors doctor's pattern so a
+// single RoundTripper covers the whole upload round trip.
+func baseHTTP(rc *kernel.RunContext) *http.Client {
+	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
+		if c, ok := v.(*http.Client); ok && c != nil {
+			return c
+		}
+	}
+	return http.DefaultClient
 }
 
 // NewCommand returns the cobra command for `gplay releases upload`.
