@@ -78,6 +78,26 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 		// open Edit ID so they can `gplay edits discard` it manually.
 		return &DanglingEditError{EditID: editID, Err: failureErr}
 	}
+	// Panic safety: if fn (or any downstream code it calls) panics, we
+	// still must clean up the open Edit before letting the panic
+	// continue — otherwise a 24h Edit lock leaks. We re-panic after
+	// cleanup so the caller observes the original failure unchanged
+	// and any higher-level recovery (e.g. test harness, server
+	// middleware) still sees it. KeepOnFailure is honored: a debug
+	// session that asked to keep the Edit gets the panic with no
+	// DELETE side effect (the Edit ID is recoverable via
+	// `gplay edits discard`).
+	defer func() {
+		if r := recover(); r != nil {
+			if !opts.KeepOnFailure {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				_ = deleteEdit(cleanupCtx, hc, pkg, editID)
+				cancel()
+			}
+			panic(r)
+		}
+	}()
+
 	if fnErr := fn(editID); fnErr != nil {
 		return handleFailure(fnErr)
 	}

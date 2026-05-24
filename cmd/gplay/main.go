@@ -15,6 +15,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
+	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -100,6 +101,7 @@ replace Fastlane on Android CI pipelines.`,
 		Short: "Manage app releases (upload, promote, rollout)",
 	}
 	releases.AddCommand(upload.NewCommand(boot))
+	releases.AddCommand(promote.NewCommand(boot))
 	root.AddCommand(releases)
 
 	root.AddCommand(&cobra.Command{

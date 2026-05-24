@@ -45,18 +45,18 @@ type InvalidOptsError struct {
 func (e *InvalidOptsError) Error() string { return e.Message }
 func (e *InvalidOptsError) ExitCode() int { return 2 }
 
-// resolvedPublishStatus reports the wire-format status a given Opts
-// would produce after applying the safe-default rule. Used by both the
-// confirm guard and the dry-run preview.
-func resolvedPublishStatus(opts Opts) string {
-	s := opts.Status
-	if s == StatusUnspecified {
-		if opts.Track == TrackProduction {
+// resolvedStatus reports the wire-format release status (draft /
+// completed / inProgress) a given Status + Track would produce after
+// applying the ADR-0002 safe-default rule. Shared by both the upload
+// and promote orchestrators so the rule is defined exactly once.
+func resolvedStatus(track string, status Status) string {
+	if status == StatusUnspecified {
+		if track == TrackProduction {
 			return "draft"
 		}
 		return "completed"
 	}
-	switch s {
+	switch status {
 	case StatusDraft:
 		return "draft"
 	case StatusCompleted:
@@ -67,15 +67,40 @@ func resolvedPublishStatus(opts Opts) string {
 	return ""
 }
 
-// requiresConfirm reports whether the upload would publish to real
-// users on production. Draft uploads (explicit or safe-default) do
-// not need confirmation. Non-production tracks affect only testers.
-func requiresConfirm(opts Opts) bool {
-	if opts.Track != TrackProduction {
+// requiresConfirm reports whether a release operation would publish to
+// real users on production. Draft operations (explicit or safe-default)
+// do not need confirmation. Non-production tracks affect only testers.
+// Shared by upload and promote.
+func requiresConfirm(track string, status Status) bool {
+	if track != TrackProduction {
 		return false
 	}
-	status := resolvedPublishStatus(opts)
-	return status == "completed" || status == "inProgress"
+	s := resolvedStatus(track, status)
+	return s == "completed" || s == "inProgress"
+}
+
+// statusPayload resolves the (status, userFraction) pair the wire
+// payload must carry, given a caller-supplied Status + UserFraction and
+// the target Track. Applies the ADR-0002 safe-default rule when Status
+// is Unspecified (production → draft, others → completed/1.0). Shared
+// by buildRelease (upload) and buildPromoteRelease (promote).
+func statusPayload(track string, status Status, userFraction float64) (string, float64) {
+	if status == StatusUnspecified {
+		if track == TrackProduction {
+			status = StatusDraft
+		} else {
+			status = StatusCompleted
+		}
+	}
+	switch status {
+	case StatusDraft:
+		return "draft", 0
+	case StatusCompleted:
+		return "completed", 1.0
+	case StatusInProgress:
+		return "inProgress", userFraction
+	}
+	return "", 0
 }
 
 // Status drives the release status payload sent on the target track.
@@ -160,10 +185,10 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		return dryRunResult(opts)
 	}
 
-	if requiresConfirm(opts) && !opts.Confirm {
+	if requiresConfirm(opts.Track, opts.Status) && !opts.Confirm {
 		return nil, &ConfirmRequiredError{
 			Track:  opts.Track,
-			Status: resolvedPublishStatus(opts),
+			Status: resolvedStatus(opts.Track, opts.Status),
 		}
 	}
 
@@ -262,31 +287,12 @@ func hasDefaultTxt(dir string) bool {
 }
 
 // buildRelease translates Opts + the discovered versionCode into a
-// tracks.Release payload. Owns the ADR-0002 safe-default rule: when
-// Status is unspecified, target production defaults to draft and every
-// other track defaults to completed/1.0.
+// tracks.Release payload. The ADR-0002 safe-default rule and the
+// status→userFraction mapping live in statusPayload, shared with
+// buildPromoteRelease so the wire shape stays identical across upload
+// and promote.
 func buildRelease(versionCode int, opts Opts) tracks.Release {
-	status := opts.Status
-	userFraction := opts.UserFraction
-	if status == StatusUnspecified {
-		if opts.Track == TrackProduction {
-			status = StatusDraft
-		} else {
-			status = StatusCompleted
-		}
-	}
-	statusStr := ""
-	switch status {
-	case StatusDraft:
-		statusStr = "draft"
-		userFraction = 0 // omitted by the json tag's omitempty
-	case StatusCompleted:
-		statusStr = "completed"
-		userFraction = 1.0
-	case StatusInProgress:
-		statusStr = "inProgress"
-		// userFraction passes through from Opts.
-	}
+	statusStr, userFraction := statusPayload(opts.Track, opts.Status, opts.UserFraction)
 	codeStr := strconv.Itoa(versionCode)
 	return tracks.Release{
 		Name:         codeStr,

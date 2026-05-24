@@ -15,7 +15,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-const opTracksUpdate = "tracks.update"
+const (
+	opTracksGet    = "tracks.get"
+	opTracksUpdate = "tracks.update"
+)
 
 // LocalizedText mirrors the API's `LocalizedText` shape: one per locale
 // in a release's releaseNotes payload.
@@ -40,6 +43,49 @@ type Release struct {
 type Track struct {
 	Track    string    `json:"track"`
 	Releases []Release `json:"releases"`
+}
+
+// Get fetches the current Track resource at edits.tracks.get. The
+// returned Track carries every release coexisting on the track (e.g.
+// inProgress + halted), which is what the promote / rollout / halt /
+// resume verbs consume. The raw JSON body is returned alongside for
+// --output json pass-through (ADR-0003) and for diagnostics.
+func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Track, json.RawMessage, error) {
+	u := api.AndroidPubBase +
+		"/applications/" + url.PathEscape(pkg) +
+		"/edits/" + url.PathEscape(editID) +
+		"/tracks/" + url.PathEscape(track)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		return nil, nil, &api.Error{
+			Operation:  opTracksGet,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    api.APIErrorMessage(body, resp.StatusCode),
+		}
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	var parsed Track
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, raw, &api.Error{
+			Operation:  opTracksGet,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "decode response: " + err.Error(),
+			Cause:      err,
+		}
+	}
+	return &parsed, raw, nil
 }
 
 // Update PUTs the track resource at edits.tracks.update with the
