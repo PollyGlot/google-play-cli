@@ -38,11 +38,15 @@ type Input struct {
 	Columns string
 }
 
+// usageError is a CLI-misuse error (missing --track, no package, unknown
+// column); ExitCode()=2 per docs/DESIGN.md §9.
 type usageError struct{ msg string }
 
 func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
 
+// authError signals that no credential resolved for a call that needs
+// one; ExitCode()=10 per docs/DESIGN.md §9.
 type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
@@ -78,11 +82,17 @@ const (
 // --columns is unset. Documented in the command's --help.
 var DefaultColumns = []string{colName, colStatus, colUserFraction, colVersionCodes, colNotes}
 
+// columnDef pairs a column's table/markdown header with the extractor
+// that turns a release into that column's cell value.
 type columnDef struct {
 	header string
 	value  func(tracks.Release) string
 }
 
+// columnRegistry is the single source of truth for which columns exist:
+// it maps each canonical --columns key to its header and cell extractor.
+// resolveColumns validates user input against it, and the renderers read
+// headers and values from it.
 var columnRegistry = map[string]columnDef{
 	colName:         {"NAME", func(r tracks.Release) string { return r.Name }},
 	colStatus:       {"STATUS", func(r tracks.Release) string { return r.Status }},
@@ -109,6 +119,9 @@ type Payload struct {
 	Columns  []string         `json:"-"`
 }
 
+// Renderers satisfies output.Renderable with one renderer per Format.
+// The JSON form is the ADR-0003 tracks.get pass-through; table and
+// markdown are human-shaped views over the same releases.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
@@ -117,6 +130,7 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
+// headers returns the selected columns' display headers, in order.
 func (p Payload) headers() []string {
 	h := make([]string, len(p.Columns))
 	for i, k := range p.Columns {
@@ -140,6 +154,8 @@ func (p Payload) row(r tracks.Release) []string {
 	return cells
 }
 
+// renderTable writes a tab-aligned table of the selected columns, or a
+// friendly note when the track carries no releases.
 func renderTable(w io.Writer, p Payload) error {
 	if len(p.Releases) == 0 {
 		_, err := fmt.Fprintf(w, "(no releases on track %s)\n", p.Track)
@@ -157,6 +173,9 @@ func renderTable(w io.Writer, p Payload) error {
 	return tw.Flush()
 }
 
+// renderJSON emits the raw tracks.get body verbatim (ADR-0003
+// pass-through), falling back to the gplay Payload shape only if the raw
+// body is somehow absent.
 func renderJSON(w io.Writer, p Payload) error {
 	// API pass-through: emit the raw tracks.get body (ADR-0003).
 	if len(p.Raw) > 0 {
@@ -166,6 +185,8 @@ func renderJSON(w io.Writer, p Payload) error {
 	return output.WriteJSON(w, p)
 }
 
+// renderMarkdown writes the selected columns as a GitHub-Flavored
+// Markdown table via output.MarkdownTable.
 func renderMarkdown(w io.Writer, p Payload) error {
 	rows := make([][]string, 0, len(p.Releases))
 	for _, r := range p.Releases {
