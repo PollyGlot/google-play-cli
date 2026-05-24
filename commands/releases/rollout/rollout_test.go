@@ -147,6 +147,7 @@ func TestRunRollout_happyPath_fullSequence(t *testing.T) {
 		Track:   "production",
 		To:      "0.2",
 		ToSet:   true,
+		Confirm: true,
 	})
 	if err != nil {
 		t.Fatalf("RunRollout: %v", err)
@@ -226,6 +227,7 @@ func TestRunResume_happyPath(t *testing.T) {
 	if _, err := rollout.RunResume(rc, rollout.Input{
 		Package: "com.example.app",
 		Track:   "production",
+		Confirm: true,
 	}); err != nil {
 		t.Fatalf("RunResume: %v", err)
 	}
@@ -248,12 +250,31 @@ func TestRunComplete_happyPath(t *testing.T) {
 	if _, err := rollout.RunComplete(rc, rollout.Input{
 		Package: "com.example.app",
 		Track:   "production",
+		Confirm: true,
 	}); err != nil {
 		t.Fatalf("RunComplete: %v", err)
 	}
 	body := string(rt.trackUpdateReq)
 	if !strings.Contains(body, `"status":"completed"`) || !strings.Contains(body, `"userFraction":1`) {
 		t.Errorf("tracks.update body = %s, want completed at 1.0", body)
+	}
+}
+
+// TestRun_productionWriteWithoutConfirm_returnsExit2 asserts the production
+// confirm gate at the CLI: complete on production without --confirm refuses
+// (exit 2) before any HTTP.
+func TestRun_productionWriteWithoutConfirm_returnsExit2(t *testing.T) {
+	rt := &stateRT{t: t}
+	rc := newRC(t, rt)
+
+	_, err := rollout.RunComplete(rc, rollout.Input{
+		Package: "com.example.app",
+		Track:   "production",
+		// Confirm omitted → must refuse before any HTTP.
+	})
+	assertExit(t, err, 2)
+	if len(rt.calls) != 0 {
+		t.Errorf("expected zero HTTP calls before confirm guard, saw: %v", rt.calls)
 	}
 }
 

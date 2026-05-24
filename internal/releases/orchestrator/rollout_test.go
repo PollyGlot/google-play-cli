@@ -66,6 +66,7 @@ func TestRollout_setsInProgressAtTargetFraction(t *testing.T) {
 		Package:      "com.example.app",
 		Track:        "production",
 		UserFraction: 0.05,
+		Confirm:      true,
 	})
 	if err != nil {
 		t.Fatalf("Rollout: %v", err)
@@ -138,6 +139,7 @@ func TestResume_setsInProgressPreservesFraction(t *testing.T) {
 	result, err := orchestrator.Resume(context.Background(), hc, orchestrator.StateOpts{
 		Package: "com.example.app",
 		Track:   "production",
+		Confirm: true,
 	})
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
@@ -169,6 +171,7 @@ func TestComplete_rampsToFullRollout(t *testing.T) {
 	result, err := orchestrator.Complete(context.Background(), hc, orchestrator.StateOpts{
 		Package: "com.example.app",
 		Track:   "production",
+		Confirm: true,
 	})
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
@@ -326,6 +329,7 @@ func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 		Package:     "com.example.app",
 		Track:       "production",
 		VersionCode: 501,
+		Confirm:     true,
 	})
 	if err != nil {
 		t.Fatalf("Complete --version-code 501: %v", err)
@@ -409,6 +413,7 @@ func TestState_releaseNameDisambiguates(t *testing.T) {
 		Package:     "com.example.app",
 		Track:       "production",
 		ReleaseName: "v2.0-rc2",
+		Confirm:     true,
 	})
 	if err != nil {
 		t.Fatalf("Complete with --release-name v2.0-rc2: %v", err)
@@ -468,6 +473,7 @@ func TestState_versionCodeNotFound_returnsExit30(t *testing.T) {
 		Package:     "com.example.app",
 		Track:       "production",
 		VersionCode: 999,
+		Confirm:     true,
 	})
 	if err == nil {
 		t.Fatal("Resume(unknown --version-code): want error, got nil")
@@ -601,6 +607,7 @@ func TestState_trackUpdateFail_triggersEditDelete(t *testing.T) {
 		Package:      "com.example.app",
 		Track:        "production",
 		UserFraction: 0.2,
+		Confirm:      true,
 	})
 	if err == nil {
 		t.Fatal("Rollout: want error after track update failure, got nil")
@@ -735,4 +742,75 @@ func TestRollout_dryRun_invalidFractionStillCaught(t *testing.T) {
 	if coder.ExitCode() != 2 {
 		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
 	}
+}
+
+// TestState_confirmGate verifies the ADR-0002 production confirm guard for
+// the rollout family: rollout / resume / complete on production reach real
+// users and need Confirm=true; halt does not (it reduces exposure); and
+// non-production tracks never need it.
+func TestState_confirmGate(t *testing.T) {
+	const onProd = `{"track":"production","releases":[{"name":"800","status":"inProgress","versionCodes":["800"],"userFraction":0.2}]}`
+	const onBeta = `{"track":"beta","releases":[{"name":"800","status":"inProgress","versionCodes":["800"],"userFraction":0.2}]}`
+
+	// complete on production without --confirm → refused before any HTTP.
+	t.Run("complete production without confirm refuses", func(t *testing.T) {
+		rt := &stateRT{
+			t:      t,
+			editID: "should-not-open",
+			insertHandler: func(req *http.Request) (*http.Response, error) {
+				t.Errorf("insert called despite missing confirm: %s", req.URL.Path)
+				return jsonResp(500, ""), nil
+			},
+		}
+		hc := &http.Client{Transport: rt}
+		_, err := orchestrator.Complete(context.Background(), hc, orchestrator.StateOpts{
+			Package: "com.example.app", Track: "production",
+		})
+		if err == nil {
+			t.Fatal("complete on production without confirm: want error, got nil")
+		}
+		var confirmErr *orchestrator.ConfirmRequiredError
+		if !errors.As(err, &confirmErr) {
+			t.Fatalf("err = %v (%T), want *orchestrator.ConfirmRequiredError", err, err)
+		}
+		if confirmErr.ExitCode() != 2 {
+			t.Errorf("ExitCode() = %d, want 2", confirmErr.ExitCode())
+		}
+		if len(rt.calls) != 0 {
+			t.Errorf("expected zero HTTP calls before confirm guard, saw: %v", rt.calls)
+		}
+	})
+
+	// halt on production without --confirm → allowed (reduces exposure).
+	t.Run("halt production without confirm proceeds", func(t *testing.T) {
+		rt := &stateRT{t: t, editID: "edit-halt-noconfirm", sourceTrackGetResp: onProd, trackUpdateRawResp: `{}`}
+		hc := &http.Client{Transport: rt}
+		if _, err := orchestrator.Halt(context.Background(), hc, orchestrator.StateOpts{
+			Package: "com.example.app", Track: "production",
+		}); err != nil {
+			t.Fatalf("Halt on production without confirm should proceed: %v", err)
+		}
+	})
+
+	// complete on a non-production track without --confirm → allowed.
+	t.Run("complete beta without confirm proceeds", func(t *testing.T) {
+		rt := &stateRT{t: t, editID: "edit-complete-beta", sourceTrackGetResp: onBeta, trackUpdateRawResp: `{}`}
+		hc := &http.Client{Transport: rt}
+		if _, err := orchestrator.Complete(context.Background(), hc, orchestrator.StateOpts{
+			Package: "com.example.app", Track: "beta",
+		}); err != nil {
+			t.Fatalf("Complete on beta without confirm should proceed: %v", err)
+		}
+	})
+
+	// rollout on production WITH --confirm → allowed.
+	t.Run("rollout production with confirm proceeds", func(t *testing.T) {
+		rt := &stateRT{t: t, editID: "edit-rollout-confirm", sourceTrackGetResp: onProd, trackUpdateRawResp: `{}`}
+		hc := &http.Client{Transport: rt}
+		if _, err := orchestrator.Rollout(context.Background(), hc, orchestrator.StateOpts{
+			Package: "com.example.app", Track: "production", UserFraction: 0.5, Confirm: true,
+		}); err != nil {
+			t.Fatalf("Rollout on production with confirm should proceed: %v", err)
+		}
+	})
 }

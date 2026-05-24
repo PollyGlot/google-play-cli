@@ -36,6 +36,7 @@ type Input struct {
 	To                string
 	ToSet             bool
 	KeepEditOnFailure bool
+	Confirm           bool
 	DryRun            bool
 }
 
@@ -162,6 +163,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, call stateF
 		ReleaseName:       in.ReleaseName,
 		UserFraction:      userFraction,
 		KeepEditOnFailure: in.KeepEditOnFailure,
+		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
 	if err != nil {
@@ -208,6 +210,7 @@ func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the release with this versionCode (disambiguator when the track holds more than one)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the release with this name (disambiguator)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "required to roll out / resume / complete a release on production (reaches real users)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the transition without any HTTP call")
 }
 

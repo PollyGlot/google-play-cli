@@ -95,10 +95,19 @@ type StateOpts struct {
 
 	KeepEditOnFailure bool
 
+	// Confirm gates production-impacting transitions. Required (else
+	// *ConfirmRequiredError, exit 2) when Track is "production" AND the
+	// transition would expose the release to real users — rollout / resume
+	// / complete. Halt is exempt (it reduces exposure), and non-production
+	// tracks never need it. Mirrors the upload / promote confirm gate
+	// (ADR-0002) so operators learn the rule once.
+	Confirm bool
+
 	// DryRun validates inputs and previews the planned transition without
 	// any HTTP: no Edit is opened, no tracks.get, no tracks.update. The
 	// returned Result describes the status / userFraction the update would
-	// set, with VersionCode=0 and ReleaseName="(dry-run)".
+	// set, with VersionCode=0 and ReleaseName="(dry-run)". Runs BEFORE the
+	// confirm gate so a production publish can be previewed without --confirm.
 	DryRun bool
 }
 
@@ -148,8 +157,17 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 	if err := validateStateOpts(opts, tr.verb); err != nil {
 		return nil, err
 	}
+	// Dry-run is evaluated BEFORE the confirm gate so a production publish
+	// can be previewed without satisfying --confirm (mirrors upload/promote).
 	if opts.DryRun {
 		return dryRunStateResult(opts, tr), nil
+	}
+	// Inherits ADR-0002's confirm guard: a transition that would reach real
+	// users on production (rollout / resume / complete — not halt) requires
+	// Confirm=true. Runs before any HTTP so a missing --confirm short-circuits
+	// without opening an Edit.
+	if transitionReachesProdUsers(opts.Track, tr.status) && !opts.Confirm {
+		return nil, &ConfirmRequiredError{Track: opts.Track, Status: tr.status}
 	}
 
 	result := &Result{Track: opts.Track}
@@ -264,6 +282,17 @@ func validateStateOpts(opts StateOpts, verb string) error {
 		}
 	}
 	return nil
+}
+
+// transitionReachesProdUsers reports whether a transition to the given wire
+// status on the given track would expose the release to real production
+// users — the rollout-family analogue of requiresConfirm (upload / promote).
+// inProgress / completed reach users; halted does not (it reduces exposure).
+func transitionReachesProdUsers(track, status string) bool {
+	if track != TrackProduction {
+		return false
+	}
+	return status == "inProgress" || status == "completed"
 }
 
 // dryRunStateResult previews the transition without HTTP. It can show the
