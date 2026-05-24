@@ -19,10 +19,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 )
 
-// AmbiguousReleaseError signals that the source track has multiple
-// coexisting releases that map to a single promotion target. Mapped to
-// exit code 60 (state conflict / ambiguous release target). The error
-// lists the candidate versionCodes + names so the operator can pick.
+// AmbiguousReleaseError signals that a track has multiple coexisting
+// releases where the operation needs exactly one (promote's source, or a
+// rollout-family target). Mapped to exit code 60 (state conflict /
+// ambiguous release target). The error lists the candidate versionCodes +
+// names so the operator can pick.
 //
 // FilterApplied carries whether the caller already supplied
 // --version-code or --release-name; the hint adapts so the operator
@@ -36,7 +37,7 @@ type AmbiguousReleaseError struct {
 
 func (e *AmbiguousReleaseError) Error() string {
 	var b strings.Builder
-	b.WriteString("source track ")
+	b.WriteString("track ")
 	b.WriteString(e.Track)
 	b.WriteString(" has multiple coexisting releases — ")
 	if e.FilterApplied {
