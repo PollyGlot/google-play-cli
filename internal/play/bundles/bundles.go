@@ -18,6 +18,25 @@ import (
 
 const op = "bundles.upload"
 
+// LocalIOError is returned when the AAB cannot be read from the local
+// filesystem (missing path, permission denied, stat failure). It is
+// distinct from *api.Error so the exit code maps to client-side
+// validation (20 per docs/DESIGN.md §9) rather than transport (50).
+type LocalIOError struct {
+	Path  string
+	Cause error
+}
+
+func (e *LocalIOError) Error() string {
+	return fmt.Sprintf("%s: %s: %v", op, e.Path, e.Cause)
+}
+
+func (e *LocalIOError) Unwrap() error { return e.Cause }
+
+// ExitCode satisfies gplay's Coder contract: a missing or unreadable
+// AAB is a client-side validation failure, not a transport problem.
+func (e *LocalIOError) ExitCode() int { return 20 }
+
 // Upload streams the AAB at aabPath to bundles.upload and returns the
 // versionCode Google parsed out of the bundle. Error mapping to gplay
 // exit codes will land in Block 4 of the TDD plan; for now only the
@@ -25,12 +44,7 @@ const op = "bundles.upload"
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (int, error) {
 	f, err := os.Open(aabPath)
 	if err != nil {
-		return 0, &api.Error{
-			Operation: op,
-			Package:   pkg,
-			Message:   fmt.Sprintf("open AAB %s: %v", aabPath, err),
-			Cause:     err,
-		}
+		return 0, &LocalIOError{Path: aabPath, Cause: err}
 	}
 	defer func() { _ = f.Close() }()
 
@@ -41,12 +55,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (
 	// AABs, and (b) prevents the transport from retrying the request.
 	info, err := f.Stat()
 	if err != nil {
-		return 0, &api.Error{
-			Operation: op,
-			Package:   pkg,
-			Message:   fmt.Sprintf("stat AAB %s: %v", aabPath, err),
-			Cause:     err,
-		}
+		return 0, &LocalIOError{Path: aabPath, Cause: err}
 	}
 
 	u := api.UploadBase +
