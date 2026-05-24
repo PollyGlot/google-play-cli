@@ -15,6 +15,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
+	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -93,6 +94,13 @@ replace Fastlane on Android CI pipelines.`,
 	// `gplay init` at the top level — pins a package to the current repo.
 	// Also wired as `gplay apps init` once the apps subcommand exists.
 	root.AddCommand(initcmd.NewCommand(initcmd.Options{}))
+
+	releases := &cobra.Command{
+		Use:   "releases",
+		Short: "Manage app releases (upload, promote, rollout)",
+	}
+	releases.AddCommand(upload.NewCommand(boot))
+	root.AddCommand(releases)
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
