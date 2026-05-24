@@ -45,6 +45,22 @@ type InvalidOptsError struct {
 func (e *InvalidOptsError) Error() string { return e.Message }
 func (e *InvalidOptsError) ExitCode() int { return 2 }
 
+// validateStatusValue rejects any Status value outside the four
+// declared constants. Used by both validateOpts (upload) and
+// validatePromoteOpts (promote) so an out-of-band Status fails fast
+// with *InvalidOptsError (exit 2) — without this, statusPayload and
+// resolvedStatus silently fall through to status="" and ship an
+// invalid wire payload.
+func validateStatusValue(status Status) error {
+	switch status {
+	case StatusUnspecified, StatusDraft, StatusCompleted, StatusInProgress:
+		return nil
+	}
+	return &InvalidOptsError{
+		Message: "Status value is not one of StatusUnspecified, StatusDraft, StatusCompleted, StatusInProgress",
+	}
+}
+
 // resolvedStatus reports the wire-format release status (draft /
 // completed / inProgress) a given Status + Track would produce after
 // applying the ADR-0002 safe-default rule. Shared by both the upload
@@ -258,6 +274,9 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 // Checks that depend on Track and Status interplay (safe-default rule)
 // belong in buildRelease.
 func validateOpts(opts Opts) error {
+	if err := validateStatusValue(opts.Status); err != nil {
+		return err
+	}
 	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
 		return &InvalidOptsError{
 			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive — pick one",

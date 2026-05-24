@@ -153,6 +153,38 @@ func TestRenderTable_includesDefaultLanguage(t *testing.T) {
 	}
 }
 
+// TestRenderMarkdown_includesDefaultLanguageAndLocales asserts that
+// the markdown renderer surfaces the same notes-resolution fields
+// (DefaultLanguage, Locales) that the table renderer prints — so
+// `--output markdown` and `--output table` don't diverge.
+func TestRenderMarkdown_includesDefaultLanguageAndLocales(t *testing.T) {
+	p := promote.Payload{Result: &orchestrator.Result{
+		VersionCode:     142,
+		Track:           "beta",
+		Status:          "completed",
+		ReleaseName:     "142",
+		DefaultLanguage: "en-US",
+		Locales:         []string{"en-US", "fr-FR"},
+	}}
+	var buf bytes.Buffer
+	if err := p.Renderers().Markdown(&buf); err != nil {
+		t.Fatalf("Markdown render: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "**defaultLang**") {
+		t.Errorf("markdown output = %q, want a **defaultLang** field", out)
+	}
+	if !strings.Contains(out, "en-US") {
+		t.Errorf("markdown output = %q, want the locale value 'en-US'", out)
+	}
+	if !strings.Contains(out, "**locales**") {
+		t.Errorf("markdown output = %q, want a **locales** field", out)
+	}
+	if !strings.Contains(out, "fr-FR") {
+		t.Errorf("markdown output = %q, want fr-FR in the locales list", out)
+	}
+}
+
 // TestRun_internalToBeta_happyPath asserts the full vertical slice from
 // CLI input to wire — /token exchange precedes the androidpublisher
 // edits.insert, then the canonical promote 4-call sequence runs.
@@ -194,6 +226,16 @@ func TestRun_internalToBeta_happyPath(t *testing.T) {
 		if rt.calls[i] != want {
 			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
 		}
+	}
+
+	// ADR-0003: --output json must be API pass-through — the raw
+	// tracks.update response body, not a gplay-shaped re-serialization.
+	var jsonOut bytes.Buffer
+	if err := r.Renderers().JSON(&jsonOut); err != nil {
+		t.Fatalf("JSON render: %v", err)
+	}
+	if got := strings.TrimSpace(jsonOut.String()); got != strings.TrimSpace(rt.trackUpdateRawResp) {
+		t.Errorf("JSON output = %s\nwant raw tracks.update payload = %s", got, rt.trackUpdateRawResp)
 	}
 }
 

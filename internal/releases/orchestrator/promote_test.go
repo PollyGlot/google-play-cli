@@ -910,6 +910,160 @@ func TestPromote_validateOpts_libraryCallers(t *testing.T) {
 	}
 }
 
+// TestPromote_dryRun_makesNoHTTPCalls asserts that PromoteOpts.DryRun
+// completes successfully with zero HTTP calls and returns a preview
+// Result describing what would be sent. The coding guideline requires
+// every releases write op to support --dry-run; the orchestrator
+// honors it BEFORE the confirm guard so operators can preview a
+// production publish without committing to --confirm.
+func TestPromote_dryRun_makesNoHTTPCalls(t *testing.T) {
+	rt := &promoteRT{
+		t:      t,
+		editID: "should-not-open",
+		insertHandler: func(req *http.Request) (*http.Response, error) {
+			t.Errorf("HTTP call in dry-run mode: %s", req.URL.Path)
+			return jsonResp(500, ""), nil
+		},
+	}
+	hc := &http.Client{Transport: rt}
+
+	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
+		Package:   "com.example.app",
+		FromTrack: "internal",
+		ToTrack:   "beta",
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("Promote(dry-run): %v", err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("dry-run made HTTP calls: %v", rt.calls)
+	}
+	if result.Status != "completed" {
+		t.Errorf("result.Status = %q, want completed (non-production safe-default preview)", result.Status)
+	}
+	if result.ReleaseName != "(dry-run)" {
+		t.Errorf("result.ReleaseName = %q, want (dry-run)", result.ReleaseName)
+	}
+	if result.Track != "beta" {
+		t.Errorf("result.Track = %q, want beta", result.Track)
+	}
+}
+
+// TestPromote_dryRun_productionSafeDefault asserts dry-run also applies
+// the ADR-0002 safe-default — production target with no status flag
+// previews as draft, with no HTTP and without needing --confirm.
+func TestPromote_dryRun_productionSafeDefault(t *testing.T) {
+	rt := &promoteRT{t: t}
+	hc := &http.Client{Transport: rt}
+
+	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
+		Package:   "com.example.app",
+		FromTrack: "beta",
+		ToTrack:   "production",
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("Promote(dry-run production): %v", err)
+	}
+	if result.Status != "draft" {
+		t.Errorf("result.Status = %q, want draft", result.Status)
+	}
+}
+
+// TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate
+// asserts dry-run runs BEFORE the confirm guard so a user can preview
+// a production publish (e.g. --complete) without having to satisfy
+// --confirm. The live path still requires --confirm for the same
+// inputs (covered by other tests).
+func TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate(t *testing.T) {
+	rt := &promoteRT{t: t}
+	hc := &http.Client{Transport: rt}
+
+	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
+		Package:   "com.example.app",
+		FromTrack: "beta",
+		ToTrack:   "production",
+		Status:    orchestrator.StatusCompleted,
+		Confirm:   false,
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("Promote(dry-run production complete, no confirm): %v", err)
+	}
+	if result.Status != "completed" {
+		t.Errorf("result.Status = %q, want completed", result.Status)
+	}
+	if result.UserFraction != 1.0 {
+		t.Errorf("result.UserFraction = %v, want 1.0", result.UserFraction)
+	}
+}
+
+// TestPromote_dryRun_invalidOptsStillCaught asserts that orchestrator-
+// level validation (validatePromoteOpts) runs even in dry-run mode —
+// so a caller previewing with bad inputs still gets the right error
+// instead of a misleading "looks fine, would have shipped" preview.
+func TestPromote_dryRun_invalidOptsStillCaught(t *testing.T) {
+	rt := &promoteRT{t: t}
+	hc := &http.Client{Transport: rt}
+
+	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
+		Package: "com.example.app",
+		// FromTrack missing
+		ToTrack: "beta",
+		DryRun:  true,
+	})
+	if err == nil {
+		t.Fatal("Promote(dry-run with missing FromTrack): want error, got nil")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) {
+		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
+	}
+	if coder.ExitCode() != 2 {
+		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	}
+}
+
+// TestPromote_unknownStatusValue_returnsExit2Error asserts that a
+// Status value outside the four declared constants is rejected with
+// *InvalidOptsError (exit 2) before any HTTP. Without this guard,
+// statusPayload's switch falls through to `return "", 0` and ships a
+// release with status=” that the API rejects opaquely — and a future
+// new Status constant added to the enum but not wired in statusPayload
+// would silently break.
+func TestPromote_unknownStatusValue_returnsExit2Error(t *testing.T) {
+	rt := &promoteRT{
+		t:      t,
+		editID: "should-not-open",
+		insertHandler: func(req *http.Request) (*http.Response, error) {
+			t.Errorf("insert was called despite invalid Status: %s", req.URL.Path)
+			return jsonResp(500, ""), nil
+		},
+	}
+	hc := &http.Client{Transport: rt}
+
+	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
+		Package:   "com.example.app",
+		FromTrack: "internal",
+		ToTrack:   "beta",
+		Status:    orchestrator.Status(99), // not a declared constant
+	})
+	if err == nil {
+		t.Fatal("Promote(unknown Status): want error, got nil")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) {
+		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
+	}
+	if coder.ExitCode() != 2 {
+		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected zero HTTP calls before Status validation, saw: %v", rt.calls)
+	}
+}
+
 // TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error asserts
 // that a source release with no versionCodes (a legitimate draft
 // placeholder on the Play API) does NOT panic on the

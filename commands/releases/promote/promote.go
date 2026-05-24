@@ -36,6 +36,7 @@ type Input struct {
 	StagedFractionSet bool
 	KeepEditOnFailure bool
 	Confirm           bool
+	DryRun            bool
 }
 
 type usageError struct{ msg string }
@@ -126,8 +127,20 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w, "- **releaseName**: %s\n", r.ReleaseName)
-	return err
+	if _, err := fmt.Fprintf(w, "- **releaseName**: %s\n", r.ReleaseName); err != nil {
+		return err
+	}
+	if r.DefaultLanguage != "" {
+		if _, err := fmt.Fprintf(w, "- **defaultLang**: %s\n", r.DefaultLanguage); err != nil {
+			return err
+		}
+	}
+	if len(r.Locales) > 0 {
+		if _, err := fmt.Fprintf(w, "- **locales**: %v\n", r.Locales); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Run is the business function the kernel invokes. Validates the flag
@@ -168,16 +181,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
 	}
 
-	if rc.Account == nil {
-		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
+	// Dry-run skips auth entirely: nothing hits the network, so a
+	// missing Account is not a problem here. The orchestrator handles
+	// the dry-run path before any HTTP would happen.
+	var httpClient *http.Client
+	if !in.DryRun {
+		if rc.Account == nil {
+			return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
+		}
+		ts, err := token.Source(rc.Ctx, rc.Account)
+		if err != nil {
+			return nil, &authError{msg: "could not build token source: " + err.Error()}
+		}
+		base := baseHTTP(rc)
+		ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
+		httpClient = oauth2.NewClient(ctx, ts)
 	}
-	ts, err := token.Source(rc.Ctx, rc.Account)
-	if err != nil {
-		return nil, &authError{msg: "could not build token source: " + err.Error()}
-	}
-	base := baseHTTP(rc)
-	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
-	httpClient := oauth2.NewClient(ctx, ts)
 
 	var status orchestrator.Status
 	switch {
@@ -203,6 +222,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		Confirm:           in.Confirm,
+		DryRun:            in.DryRun,
 	})
 	if err != nil {
 		return nil, err
@@ -264,5 +284,6 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required when promoting to production with --complete / --staged")
+	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	return cmd
 }

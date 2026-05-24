@@ -133,8 +133,8 @@ func (e *EmptyVersionCodesError) ExitCode() int { return 60 }
 
 // PromoteOpts is the input contract for Promote. Mirrors Opts where
 // the semantics overlap (Status / UserFraction / ReleaseNotes /
-// Confirm / KeepEditOnFailure) so callers of both flows can share
-// flag-parsing helpers.
+// Confirm / DryRun / KeepEditOnFailure) so callers of both flows can
+// share flag-parsing helpers.
 type PromoteOpts struct {
 	Package   string
 	FromTrack string
@@ -155,6 +155,15 @@ type PromoteOpts struct {
 	KeepEditOnFailure bool
 
 	Confirm bool
+
+	// DryRun validates inputs and computes what would be sent without
+	// performing any HTTP. No Edit is opened, no source tracks.get is
+	// issued, no destination tracks.update is sent. The returned Result
+	// describes the planned payload with VersionCode=0 (the real value
+	// would come from tracks.get on the source) and ReleaseName="(dry-run)".
+	// Runs BEFORE the confirm guard so operators can preview a
+	// production publish without committing to --confirm.
+	DryRun bool
 }
 
 // Promote performs the promote flow inside a single Edit:
@@ -178,6 +187,14 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	// these; both layers enforce the contract independently.
 	if err := validatePromoteOpts(opts); err != nil {
 		return nil, err
+	}
+
+	// Dry-run is evaluated BEFORE the --confirm guard so users can
+	// preview a production publish (e.g. --to production --complete)
+	// without having to satisfy the confirm guardrail. The preview
+	// path performs no HTTP and has no side effects.
+	if opts.DryRun {
+		return dryRunPromoteResult(opts), nil
 	}
 
 	// Inherits ADR-0002's confirm guard: a production target that would
@@ -281,6 +298,9 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 // *InvalidOptsError (exit 2), never to a deeper-layer surprise like a
 // 404 or a panic.
 func validatePromoteOpts(opts PromoteOpts) error {
+	if err := validateStatusValue(opts.Status); err != nil {
+		return err
+	}
 	if opts.FromTrack == "" {
 		return &InvalidOptsError{Message: "FromTrack is required"}
 	}
@@ -300,6 +320,23 @@ func validatePromoteOpts(opts PromoteOpts) error {
 		}
 	}
 	return nil
+}
+
+// dryRunPromoteResult previews what Promote would send for the given
+// opts, without any HTTP. The real VersionCode would come from
+// tracks.get on the source — synthesized as 0 here. The Status /
+// UserFraction reflect the ADR-0002 safe-default rule via
+// statusPayload so the preview shows exactly what the wire payload
+// would look like.
+func dryRunPromoteResult(opts PromoteOpts) *Result {
+	statusStr, userFraction := statusPayload(opts.ToTrack, opts.Status, opts.UserFraction)
+	return &Result{
+		Track:        opts.ToTrack,
+		VersionCode:  0,
+		Status:       statusStr,
+		UserFraction: userFraction,
+		ReleaseName:  "(dry-run)",
+	}
 }
 
 // pickSourceRelease selects which release on the source track to
