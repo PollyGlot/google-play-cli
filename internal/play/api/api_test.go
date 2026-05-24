@@ -21,6 +21,7 @@ func TestStatusToExitCode(t *testing.T) {
 		{"404 not found → generic 4xx", 404, 30},
 		{"400 bad request → generic 4xx", 400, 30},
 		{"409 conflict → state conflict", 409, 60},
+		{"429 too many requests → state conflict (rate-limited)", 429, 60},
 		{"410 gone → generic 4xx", 410, 30},
 		{"418 teapot → generic 4xx", 418, 30},
 		{"500 server error → 5xx retryable", 500, 40},
@@ -110,9 +111,12 @@ func TestError_ExitCode(t *testing.T) {
 		{"bundles.upload 500 → 5xx still wins (40)", "bundles.upload", 500, 40},
 		{"bundles.upload 0 → transport still wins (50)", "bundles.upload", 0, 50},
 		{"bundles.upload 409 → conflict still wins (60)", "bundles.upload", 409, 60},
+		{"bundles.upload 429 → rate-limited (60)", "bundles.upload", 429, 60},
 		{"edits.insert 400 → generic 4xx (30)", "edits.insert", 400, 30},
 		{"edits.insert 404 → generic 4xx (30)", "edits.insert", 404, 30},
+		{"edits.insert 429 → rate-limited (60)", "edits.insert", 429, 60},
 		{"tracks.update 400 → generic 4xx (30)", "tracks.update", 400, 30},
+		{"tracks.update 429 → rate-limited (60)", "tracks.update", 429, 60},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

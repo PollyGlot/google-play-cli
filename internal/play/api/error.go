@@ -65,6 +65,7 @@ func (e *Error) ExitCode() int {
 //	0           → 50 (transport: timeout, DNS, refused)
 //	403         → 11 (authorization — SA not invited on app)
 //	409         → 60 (state conflict — stale Edit, ambiguous target)
+//	429         → 60 (rate-limited — same "transient state, sometimes retry" bucket)
 //	5xx         → 40 (upstream temporarily unhealthy, retry-safe)
 //	other 4xx   → 30 (API misuse: not found, bad request, conflict, gone)
 func StatusToExitCode(status int) int {
@@ -73,7 +74,7 @@ func StatusToExitCode(status int) int {
 		return 50
 	case status == http.StatusForbidden:
 		return 11
-	case status == http.StatusConflict:
+	case status == http.StatusConflict, status == http.StatusTooManyRequests:
 		return 60
 	case status >= 500:
 		return 40

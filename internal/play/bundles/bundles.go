@@ -69,13 +69,13 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (
 	req.ContentLength = info.Size()
 	// GetBody lets http.Client replay the body across 3xx redirects and
 	// across transport-level retries (e.g. an oauth2 token refresh that
-	// rebuilds the request). Without it the second attempt would send an
-	// empty body and Google would either fail or accept a corrupted upload.
+	// rebuilds the request). Per net/http's contract, GetBody must return
+	// a fresh independent ReadCloser each call — the transport closes
+	// Request.Body (the *os.File `f`) after each attempt, so seeking and
+	// re-wrapping it would yield reads from a closed handle. Opening a
+	// new file handle keeps each retry independent.
 	req.GetBody = func() (io.ReadCloser, error) {
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			return nil, err
-		}
-		return io.NopCloser(f), nil
+		return os.Open(aabPath)
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	resp, err := hc.Do(req)

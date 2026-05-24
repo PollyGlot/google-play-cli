@@ -294,3 +294,32 @@ func TestRun_productionPublishWithConfirm_succeedsAndHitsAPI(t *testing.T) {
 		t.Errorf("tracks.update body = %s, want userFraction=1.0", body)
 	}
 }
+
+// TestNewCommand_registersExpectedFlags is a thin smoke test for the
+// cobra wiring. It does not exercise Run end-to-end (the kernel-level
+// tests above do that) — its job is to catch a flag-plumbing regression
+// where a future refactor of NewCommand drops or renames a flag and
+// the Input struct silently goes unwired.
+func TestNewCommand_registersExpectedFlags(t *testing.T) {
+	cmd := upload.NewCommand(kernel.Boot{})
+	for _, name := range []string{
+		"package",
+		"track",
+		"release-notes",
+		"release-notes-dir",
+		"draft",
+		"complete",
+		"staged",
+		"keep-edit-on-failure",
+		"confirm",
+		"dry-run",
+		"output",
+	} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("cobra command missing expected flag --%s", name)
+		}
+	}
+	if got := cmd.Use; got != "upload <aab>" {
+		t.Errorf("cmd.Use = %q, want %q", got, "upload <aab>")
+	}
+}

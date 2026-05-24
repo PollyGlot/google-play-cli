@@ -67,11 +67,20 @@ func (p Payload) Renderers() output.Renderers {
 }
 
 // showsUserFraction reports whether userFraction is semantically
-// meaningful for the given release status. Draft / completed-without-
-// fraction releases omit it (the JSON view already does this via the
-// omitempty tag); the table and markdown views match that contract.
-func showsUserFraction(status string) bool {
-	return status == "inProgress" || status == "completed"
+// meaningful for the given release status AND value. inProgress always
+// shows it (the fraction IS the rollout percentage); completed only
+// shows it when non-zero (the API can omit userFraction on completed
+// responses for 100% rollouts, and we should not surface a misleading
+// "userFraction: 0" in that case). Draft / unspecified statuses always
+// hide it — matches the JSON view's omitempty contract.
+func showsUserFraction(status string, userFraction float64) bool {
+	if status == "inProgress" {
+		return true
+	}
+	if status == "completed" && userFraction > 0 {
+		return true
+	}
+	return false
 }
 
 func renderTable(w io.Writer, r *orchestrator.Result) error {
@@ -81,7 +90,7 @@ func renderTable(w io.Writer, r *orchestrator.Result) error {
 	); err != nil {
 		return err
 	}
-	if showsUserFraction(r.Status) {
+	if showsUserFraction(r.Status, r.UserFraction) {
 		if _, err := fmt.Fprintf(w, "userFraction: %v\n", r.UserFraction); err != nil {
 			return err
 		}
@@ -121,7 +130,7 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 	); err != nil {
 		return err
 	}
-	if showsUserFraction(r.Status) {
+	if showsUserFraction(r.Status, r.UserFraction) {
 		if _, err := fmt.Fprintf(w, "- **userFraction**: %v\n", r.UserFraction); err != nil {
 			return err
 		}

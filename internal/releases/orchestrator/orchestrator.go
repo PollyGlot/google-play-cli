@@ -226,10 +226,18 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 }
 
 // validateOpts enforces the orchestrator-level preconditions every
-// caller (CLI, future MCP server, library user) must satisfy. Currently
-// covers the InProgress fraction range; checks that depend on Track and
-// Status interplay (safe-default rule) belong in buildRelease.
+// caller (CLI, future MCP server, library user) must satisfy. Centralizing
+// these checks here keeps exit semantics stable across dry-run and live
+// paths: every misuse maps to *InvalidOptsError (exit 2), never to the
+// dry-run validation code (20) and never to a deeper-layer surprise.
+// Checks that depend on Track and Status interplay (safe-default rule)
+// belong in buildRelease.
 func validateOpts(opts Opts) error {
+	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
+		return &InvalidOptsError{
+			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive — pick one",
+		}
+	}
 	if opts.Status == StatusInProgress {
 		if opts.UserFraction <= 0 || opts.UserFraction > 1.0 {
 			return &InvalidOptsError{
@@ -301,17 +309,11 @@ const dryRunDefaultLangPlaceholder = "(default-language-at-upload-time)"
 
 // dryRunResult validates the inputs Upload would consume without any
 // HTTP and returns a preview Result describing the planned payload.
-// Mirrors the live path's validation contract: mutual exclusion of
-// notes flags, AAB and dir reachability, and the notes loader's own
-// file-size and structural checks all fire here. The synthetic
-// DefaultLanguage placeholder bypasses the API-resolved validation that
-// only applies at upload time.
+// Caller-side mutual-exclusion / fraction-range checks already ran in
+// validateOpts; this function only adds the dry-run-specific FS checks
+// (AAB reachable, notes dir walkable) and the notes loader's own
+// structural validation via a placeholder DefaultLanguage.
 func dryRunResult(opts Opts) (*Result, error) {
-	// Replicate notes.Load's mutual-exclusion guard up front so a bad
-	// flag combination is rejected with a stable error type.
-	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
-		return nil, &dryRunError{msg: "--release-notes and --release-notes-dir are mutually exclusive"}
-	}
 	if opts.AABPath != "" {
 		if _, err := os.Stat(opts.AABPath); err != nil {
 			return nil, &dryRunError{msg: "AAB not accessible: " + err.Error()}
