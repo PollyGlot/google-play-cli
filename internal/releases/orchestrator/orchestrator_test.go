@@ -234,6 +234,7 @@ func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.
 		Track:   "production",
 		AABPath: aab,
 		Status:  orchestrator.StatusCompleted,
+		Confirm: true, // production publish gate (see ConfirmRequiredError)
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -269,6 +270,7 @@ func TestUpload_productionTrack_explicitStaged_sendsInProgressWithFraction(t *te
 		AABPath:      aab,
 		Status:       orchestrator.StatusInProgress,
 		UserFraction: 0.05,
+		Confirm:      true, // production publish gate (see ConfirmRequiredError)
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -482,5 +484,129 @@ func TestUpload_withReleaseNotesDir_attachesPerLocaleNotes(t *testing.T) {
 	}
 	if len(result.Locales) != 2 {
 		t.Errorf("result.Locales = %v, want 2 entries (en-US, fr-FR)", result.Locales)
+	}
+}
+
+// TestUpload_productionComplete_withoutConfirm_returnsExit2 asserts the
+// --confirm guardrail: a production publish that would reach real
+// users (Completed) without Confirm=true must refuse before any HTTP.
+func TestUpload_productionComplete_withoutConfirm_returnsExit2(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &playRT{
+		t:           t,
+		editID:      "should-not-open",
+		versionCode: 0,
+		// Any HTTP call here would fail the test — a refused confirm
+		// must short-circuit before insert.
+		insertHandler: func(req *http.Request) (*http.Response, error) {
+			t.Errorf("insert was called despite missing --confirm: %s", req.URL.Path)
+			return jsonResp(500, ""), nil
+		},
+	}
+	hc := &http.Client{Transport: rt}
+
+	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package: "com.example.app",
+		Track:   "production",
+		AABPath: aab,
+		Status:  orchestrator.StatusCompleted,
+		Confirm: false,
+	})
+	if err == nil {
+		t.Fatal("Upload(production+Completed without Confirm): want error, got nil")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) {
+		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
+	}
+	if coder.ExitCode() != 2 {
+		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected zero HTTP calls before --confirm guard, saw: %v", rt.calls)
+	}
+}
+
+// TestUpload_productionDraft_withoutConfirm_works asserts that the
+// --confirm guard does NOT block production draft uploads (the safe
+// path that does not affect real users).
+func TestUpload_productionDraft_withoutConfirm_works(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &playRT{
+		t:                  t,
+		editID:             "edit-prod-draft",
+		versionCode:        700,
+		trackUpdateRawResp: `{"track":"production","releases":[{"status":"draft"}]}`,
+	}
+	hc := &http.Client{Transport: rt}
+
+	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package: "com.example.app",
+		Track:   "production",
+		AABPath: aab,
+		// Status unspecified → safe-default = draft on production
+	})
+	if err != nil {
+		t.Fatalf("Upload(production safe-default): %v", err)
+	}
+	if result.Status != "draft" {
+		t.Errorf("result.Status = %q, want draft", result.Status)
+	}
+}
+
+// TestUpload_dryRun_makesNoHTTPCalls asserts that --dry-run completes
+// successfully and emits no HTTP calls. The returned Result describes
+// the planned payload.
+func TestUpload_dryRun_makesNoHTTPCalls(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &playRT{
+		t:      t,
+		editID: "should-not-open",
+		insertHandler: func(req *http.Request) (*http.Response, error) {
+			t.Errorf("HTTP call in dry-run mode: %s", req.URL.Path)
+			return jsonResp(500, ""), nil
+		},
+	}
+	hc := &http.Client{Transport: rt}
+
+	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package: "com.example.app",
+		Track:   "internal",
+		AABPath: aab,
+		DryRun:  true,
+	})
+	if err != nil {
+		t.Fatalf("Upload(dry-run): %v", err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("dry-run made HTTP calls: %v", rt.calls)
+	}
+	if result.Status != "completed" {
+		t.Errorf("result.Status = %q, want completed (internal track safe-default)", result.Status)
+	}
+	if result.ReleaseName != "(dry-run)" {
+		t.Errorf("result.ReleaseName = %q, want (dry-run)", result.ReleaseName)
+	}
+}
+
+// TestUpload_dryRun_productionSafeDefault asserts that dry-run also
+// applies the ADR-0002 safe-default — production with no status flag
+// previews as draft.
+func TestUpload_dryRun_productionSafeDefault(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &playRT{t: t}
+	hc := &http.Client{Transport: rt}
+
+	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package: "com.example.app",
+		Track:   "production",
+		AABPath: aab,
+		DryRun:  true,
+	})
+	if err != nil {
+		t.Fatalf("Upload(dry-run production): %v", err)
+	}
+	if result.Status != "draft" {
+		t.Errorf("result.Status = %q, want draft", result.Status)
 	}
 }

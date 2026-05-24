@@ -51,5 +51,16 @@ func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string
 			Message:    "decode response: " + err.Error(),
 		}
 	}
+	if parsed.DefaultLanguage == "" {
+		// An empty defaultLanguage with a 2xx response is an API
+		// contract violation — downstream callers would emit release
+		// notes with empty language keys.
+		return "", &api.Error{
+			Operation:  "edits.details.get",
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "missing defaultLanguage in response body",
+		}
+	}
 	return parsed.DefaultLanguage, nil
 }

@@ -70,6 +70,11 @@ func Load(opts Opts) ([]LocaleNote, error) {
 		}
 	}
 	if opts.Text != "" {
+		if opts.DefaultLanguage == "" {
+			return nil, &ValidationError{
+				Message: "DefaultLanguage is required when using --release-notes (no locale to assign the text to)",
+			}
+		}
 		return []LocaleNote{{Locale: opts.DefaultLanguage, Text: opts.Text}}, nil
 	}
 	if opts.Dir == "" {
@@ -106,12 +111,19 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 	}
 	// Apply default.txt as the DefaultLanguage entry, but only if no
 	// explicit per-locale file already covers DefaultLanguage.
-	if hasDefault && defaultLang != "" && !covers(out, defaultLang) {
-		text, err := osReadFile(filepath.Join(dir, defaultLocaleFile+".txt"))
-		if err != nil {
-			return nil, err
+	if hasDefault {
+		if defaultLang == "" {
+			return nil, &ValidationError{
+				Message: "DefaultLanguage is required when default.txt is present in the release-notes directory (no locale to assign the fallback to)",
+			}
 		}
-		out = append(out, LocaleNote{Locale: defaultLang, Text: trimTrailingWS(string(text))})
+		if !covers(out, defaultLang) {
+			text, err := osReadFile(filepath.Join(dir, defaultLocaleFile+".txt"))
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, LocaleNote{Locale: defaultLang, Text: trimTrailingWS(string(text))})
+		}
 	}
 	return out, nil
 }

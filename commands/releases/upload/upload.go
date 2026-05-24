@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
@@ -31,6 +32,8 @@ type Input struct {
 	StagedFraction    float64
 	StagedFractionSet bool
 	KeepEditOnFailure bool
+	Confirm           bool
+	DryRun            bool
 }
 
 // usageError is a CLI-misuse error with ExitCode()=2.
@@ -143,18 +146,23 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &usageError{msg: "missing --track"}
 	}
 
-	// Build authenticated HTTP client from the resolved Account.
-	if rc.Account == nil {
-		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
+	// Dry-run skips auth entirely: nothing hits the network, so a
+	// missing Account is not a problem here. The orchestrator handles
+	// the dry-run path before any HTTP would happen.
+	var httpClient *http.Client
+	if !in.DryRun {
+		if rc.Account == nil {
+			return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
+		}
+		ts, err := token.Source(rc.Ctx, rc.Account)
+		if err != nil {
+			return nil, &authError{msg: "could not build token source: " + err.Error()}
+		}
+		// oauth2.NewClient inherits ctx's oauth2.HTTPClient for the underlying
+		// transport, so a test-injected RoundTripper sees both the /token
+		// exchange and the androidpublisher calls.
+		httpClient = oauth2.NewClient(rc.Ctx, ts)
 	}
-	ts, err := token.Source(rc.Ctx, rc.Account)
-	if err != nil {
-		return nil, &authError{msg: "could not build token source: " + err.Error()}
-	}
-	// oauth2.NewClient inherits ctx's oauth2.HTTPClient for the underlying
-	// transport, so a test-injected RoundTripper sees both the /token
-	// exchange and the androidpublisher calls.
-	httpClient := oauth2.NewClient(rc.Ctx, ts)
 
 	// Translate flag-shape Status to orchestrator Status.
 	var status orchestrator.Status
@@ -178,6 +186,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotes:      in.ReleaseNotes,
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
+		Confirm:           in.Confirm,
+		DryRun:            in.DryRun,
 	})
 	if err != nil {
 		return nil, err
@@ -228,5 +238,7 @@ so closed-test tracks with custom names just work.`,
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
+	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	return cmd
 }

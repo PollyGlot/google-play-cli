@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
@@ -34,7 +35,13 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	}
 	if fnErr := fn(editID); fnErr != nil {
 		if !opts.KeepOnFailure {
-			_ = deleteEdit(ctx, hc, pkg, editID)
+			// Best-effort discard runs on a fresh, bounded context so a
+			// canceled or timed-out parent ctx does not also kill the
+			// cleanup — leaving the Edit dangling blocks the user's next
+			// publish for up to 24h.
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = deleteEdit(cleanupCtx, hc, pkg, editID)
+			cancel()
 		}
 		return fnErr
 	}

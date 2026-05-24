@@ -8,13 +8,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
+
+const opTracksUpdate = "tracks.update"
 
 // LocalizedText mirrors the API's `LocalizedText` shape: one per locale
 // in a release's releaseNotes payload.
@@ -52,26 +53,38 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, rel
 
 	payload, err := json.Marshal(Track{Track: track, Releases: []Release{release}})
 	if err != nil {
-		return nil, nil, fmt.Errorf("tracks.update: marshal payload: %w", err)
+		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(payload))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: err.Error(), Cause: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: err.Error(), Cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, nil, fmt.Errorf("tracks.update: HTTP %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIBodyRead))
+		return nil, nil, &api.Error{
+			Operation:  opTracksUpdate,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    api.APIErrorMessage(body, resp.StatusCode),
+		}
 	}
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIBodyRead))
 	var parsed Track
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, fmt.Errorf("tracks.update: decode response: %w", err)
+		return nil, raw, &api.Error{
+			Operation:  opTracksUpdate,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "decode response: " + err.Error(),
+			Cause:      err,
+		}
 	}
 	return &parsed, raw, nil
 }

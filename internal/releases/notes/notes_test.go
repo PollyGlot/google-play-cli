@@ -165,3 +165,41 @@ func TestLoad_neitherTextNorDir_returnsEmpty(t *testing.T) {
 		t.Errorf("got %v, want empty slice", got)
 	}
 }
+
+// TestLoad_textMode_missingDefaultLanguage_returnsExit2 asserts the
+// fail-fast: --release-notes without a DefaultLanguage has no locale
+// to assign to and must reject (exit 2) rather than silently emitting
+// an empty-locale entry.
+func TestLoad_textMode_missingDefaultLanguage_returnsExit2(t *testing.T) {
+	_, err := notes.Load(notes.Opts{Text: "Bug fixes"})
+	if err == nil {
+		t.Fatal("Load(Text without DefaultLanguage): want error, got nil")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) {
+		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
+	}
+	if coder.ExitCode() != 2 {
+		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	}
+}
+
+// TestLoad_defaultTxt_missingDefaultLanguage_returnsExit2 asserts the
+// same fail-fast for the dir-mode fallback: default.txt present + no
+// DefaultLanguage = no locale to assign the fallback to.
+func TestLoad_defaultTxt_missingDefaultLanguage_returnsExit2(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "default.txt", "Fallback")
+
+	_, err := notes.Load(notes.Opts{Dir: dir})
+	if err == nil {
+		t.Fatal("Load(default.txt without DefaultLanguage): want error, got nil")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) {
+		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
+	}
+	if coder.ExitCode() != 2 {
+		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	}
+}
