@@ -165,4 +165,3 @@ func TestLoad_neitherTextNorDir_returnsEmpty(t *testing.T) {
 		t.Errorf("got %v, want empty slice", got)
 	}
 }
-
