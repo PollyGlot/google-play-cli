@@ -7,6 +7,48 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] — 2026-05-26
+
+Second pre-release. Lands the core Fastlane-replacement surface
+(`releases upload`, `promote`, `rollout`) plus the Apps registry
+foundation (`apps add`, `list`, `info`).
+
+This is still **not** a stability commitment — `v0.1.0` stable arrives
+once `tracks` and `reviews` ship.
+
+### Added
+
+- `gplay releases upload <aab>` — AAB upload through the Edits model
+  (`insert edit` → upload bundle → `tracks.update` → `commit edit`),
+  with `--track`, `--user-fraction`, and `--dry-run` flags.
+- `gplay releases promote --from <track> --to <track>` — promote an
+  already-uploaded build between tracks without re-uploading.
+- `gplay releases rollout` — staged rollout state machine with
+  `rollout` / `halt` / `resume` / `complete` subcommands and explicit
+  user-fraction control.
+- `gplay releases list` — read-only view of releases per track,
+  backed by `tracks.get`.
+- `gplay apps add` — register an app in the local registry with
+  edits-validation against the Google Play Developer API
+  (`edits.Validate` round-trip).
+- `gplay apps list` — list registry entries scoped to the active
+  account.
+- `gplay apps info` — fetch app details and per-locale store listings
+  (verbatim envelope from `details.get` + `listings.get`).
+
+### Fixed
+
+- `gplay version` — fall back to `debug.BuildInfo` when no ldflags
+  metadata is embedded, so `go install …@latest` builds report a
+  meaningful version instead of `dev`.
+
+### Not in this release
+
+- `gplay tracks list` / `status`
+- `gplay reviews list` / `reply`
+- `gplay apps remove`
+- `gplay vitals`, `metadata`, `subscriptions`, `iap`
+
 ## [0.1.0-alpha.1] — 2026-05-22
 
 First public pre-release. The goal is to exercise the release pipeline
@@ -44,5 +86,6 @@ The following commands from the roadmap are **not** included yet:
 
 These ship incrementally on the road to `v0.1.0` stable.
 
-[Unreleased]: https://github.com/PollyGlot/google-play-cli/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/PollyGlot/google-play-cli/compare/v0.1.0-alpha.2...HEAD
+[0.1.0-alpha.2]: https://github.com/PollyGlot/google-play-cli/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/PollyGlot/google-play-cli/releases/tag/v0.1.0-alpha.1
