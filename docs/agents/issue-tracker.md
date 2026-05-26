@@ -27,7 +27,7 @@ vue d'ensemble du projet.
 
 Chaque issue doit aussi porter un `area:*` (`area:auth`, `area:apps`,
 `area:releases`, `area:tracks`, `area:reviews`) et une `priority:*`
-(`high`/`medium`/`low`).
+(`priority:high`/`priority:medium`/`priority:low`).
 
 ## Quand un skill dit "publish to the issue tracker"
 

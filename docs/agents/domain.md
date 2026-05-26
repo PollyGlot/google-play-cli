@@ -20,7 +20,7 @@ signaler leur absence en préambule.
 
 ## Structure : single-context
 
-```
+```text
 /
 ├── CONTEXT.md
 ├── AGENTS.md
