@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
+	"github.com/PollyGlot/google-play-cli/commands/apps/infocmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
@@ -113,6 +114,7 @@ replace Fastlane on Android CI pipelines.`,
 	apps.AddCommand(initcmd.NewCommand(initcmd.Options{}))
 	apps.AddCommand(addcmd.NewCommand(boot))
 	apps.AddCommand(listcmd.NewCommand(boot))
+	apps.AddCommand(infocmd.NewCommand(boot))
 	root.AddCommand(apps)
 
 	releases := &cobra.Command{

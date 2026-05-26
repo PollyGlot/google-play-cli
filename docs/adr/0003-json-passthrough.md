@@ -13,6 +13,7 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
 ## Exceptions
 
 - **`apps list`** has no API source (there is no `apps.list` endpoint — see the local-registry workaround). Its JSON shape is `{"apps":[...]}`, chosen to mirror Google's naming convention for consistency with the rest of the output.
+- **`apps info`** combines two endpoints (`edits.details.get` + `edits.listings.get` on the default language) inside one read-only Edit. A single pass-through is therefore impossible. The JSON shape is `{"details":{...},"listing":{...}}`, where each sub-object is the upstream body verbatim — so the three reasons above still hold inside the envelope (one source of truth per sub-object, no mapping bugs, forward-compatible).
 - **Errors** are not API pass-through. They use a gplay-defined shape on stderr: `{"error":{"code":"<symbolic>","message":"<human>","details":{...}}}`. Wrapping the API error inside `details` preserves the upstream payload.
 
 ## Considered Options

@@ -1,0 +1,198 @@
+// Package infocmd implements `gplay apps info`: a read-only sanity
+// check on what the active service account sees for a given app.
+// Opens a Google Play Edit, reads details.get + listings.get on the
+// app's default language, discards the Edit, and renders the trio
+// {defaultLanguage, title, contactEmail} that confirms "yes, I'm
+// looking at the right app".
+//
+// Like `gplay releases list`, it is thin glue over internal/play —
+// resolve --package, build an authenticated client, call
+// internal/play/details.Get, and render. The Edit is opened and
+// discarded inside details.Get via edits.WithReadOnlyEdit; nothing is
+// ever committed.
+package infocmd
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+
+	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
+
+	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/details"
+)
+
+// Input is the request-shaped struct cobra builds from flags.
+type Input struct {
+	Package string
+}
+
+// usageError is a CLI-misuse error (missing --package and no pin);
+// ExitCode()=2 per docs/DESIGN.md §9.
+type usageError struct{ msg string }
+
+func (e *usageError) Error() string { return e.msg }
+func (e *usageError) ExitCode() int { return 2 }
+
+// authError signals that no credential resolved for a call that needs
+// one; ExitCode()=10 per docs/DESIGN.md §9.
+type authError struct{ msg string }
+
+func (e *authError) Error() string { return e.msg }
+func (e *authError) ExitCode() int { return 10 }
+
+// Payload satisfies output.Renderable. Raw carries the
+// {"details":..,"listing":..} envelope for the --output json
+// pass-through (explicit exception to ADR-0003); the three typed
+// fields drive the table and markdown renderers. Package is carried
+// for context in the human-facing views.
+type Payload struct {
+	Package         string          `json:"-"`
+	DefaultLanguage string          `json:"defaultLanguage"`
+	Title           string          `json:"title"`
+	ContactEmail    string          `json:"contactEmail"`
+	Raw             json.RawMessage `json:"-"`
+}
+
+// Renderers satisfies output.Renderable with one renderer per Format.
+// JSON emits the raw envelope verbatim; table and markdown are
+// human-shaped views over the three Details fields.
+func (p Payload) Renderers() output.Renderers {
+	return output.Renderers{
+		Table:    func(w io.Writer) error { return renderTable(w, p) },
+		JSON:     func(w io.Writer) error { return renderJSON(w, p) },
+		Markdown: func(w io.Writer) error { return renderMarkdown(w, p) },
+	}
+}
+
+// renderTable writes a `Field  Value` two-column table. The package
+// header sits above so a reader of `gplay apps info` knows immediately
+// which app they are looking at.
+func renderTable(w io.Writer, p Payload) error {
+	if _, err := fmt.Fprintf(w, "PACKAGE: %s\n", p.Package); err != nil {
+		return err
+	}
+	rows := [][2]string{
+		{"DEFAULT_LANGUAGE", p.DefaultLanguage},
+		{"TITLE", p.Title},
+		{"CONTACT_EMAIL", p.ContactEmail},
+	}
+	for _, r := range rows {
+		if _, err := fmt.Fprintf(w, "%s\t%s\n", r[0], r[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// renderJSON emits the raw {"details":..,"listing":..} envelope
+// verbatim. Falls back to the typed Payload only if the envelope was
+// somehow not captured (defensive — Run always populates Raw on
+// success).
+func renderJSON(w io.Writer, p Payload) error {
+	if len(p.Raw) > 0 {
+		_, err := w.Write(p.Raw)
+		return err
+	}
+	return output.WriteJSON(w, p)
+}
+
+// renderMarkdown emits a `- **Field**: value` list per docs/DESIGN.md
+// §7 — single-record info commands render as a list, not as a GFM
+// table. The package name leads as a level-2 heading so the rendered
+// markdown drops cleanly into a PR comment or a docs page.
+func renderMarkdown(w io.Writer, p Payload) error {
+	_, err := fmt.Fprintf(w, "## %s\n\n- **Default language**: %s\n- **Title**: %s\n- **Contact email**: %s\n",
+		p.Package, p.DefaultLanguage, p.Title, p.ContactEmail)
+	return err
+}
+
+// Run is the business function the kernel invokes. It resolves the
+// package (--package flag → repo pin → usage error), builds an
+// authenticated HTTP client, and calls details.Get — which itself
+// opens and discards the Edit, so there is no mutation path here.
+func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	pkg := in.Package
+	if pkg == "" && rc.Resolved != nil {
+		pkg = rc.Resolved.Pin
+	}
+	if pkg == "" {
+		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+	}
+
+	if rc.Account == nil {
+		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
+	}
+	ts, err := token.Source(rc.Ctx, rc.Account)
+	if err != nil {
+		return nil, &authError{msg: "could not build token source: " + err.Error()}
+	}
+	base := baseHTTP(rc)
+	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
+	httpClient := oauth2.NewClient(ctx, ts)
+
+	d, raw, err := details.Get(rc.Ctx, httpClient, pkg)
+	if err != nil {
+		return nil, err
+	}
+	return Payload{
+		Package:         pkg,
+		DefaultLanguage: d.DefaultLanguage,
+		Title:           d.Title,
+		ContactEmail:    d.ContactEmail,
+		Raw:             raw,
+	}, nil
+}
+
+// baseHTTP exposes the test seam (ctx's oauth2.HTTPClient) so a single
+// injected RoundTripper covers both the /token exchange and the
+// androidpublisher calls. Mirrors releases/list, upload, promote.
+func baseHTTP(rc *kernel.RunContext) *http.Client {
+	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
+		if c, ok := v.(*http.Client); ok && c != nil {
+			return c
+		}
+	}
+	return http.DefaultClient
+}
+
+// NewCommand returns the cobra command for `gplay apps info`.
+func NewCommand(boot kernel.Boot) *cobra.Command {
+	var (
+		outputFlag string
+		in         Input
+	)
+	cmd := &cobra.Command{
+		Use:   "info",
+		Short: "Show default language, title, and contact email for an app",
+		Long: `Show the app's defaultLanguage, title (on the default language),
+and contactEmail — the minimum needed to confirm "yes, I'm looking at the
+right app".
+
+Reads from the Google Play Developer API inside a read-only Edit (open →
+details.get + listings.get → discard); nothing is committed. The package
+defaults to the repo's .gplay/config.json pin when --package is omitted.
+
+--output json returns the gplay envelope {"details":..,"listing":..} —
+each sub-object is the upstream API body verbatim. (Explicit exception
+to ADR-0003: two endpoints are merged here, so the JSON shape is gplay-
+defined rather than a single API pass-through.)`,
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
+				return Run(rc, in)
+			})
+		},
+	}
+	output.RegisterFlag(cmd, &outputFlag)
+	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
+	return cmd
+}
