@@ -16,6 +16,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
+	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -102,6 +103,10 @@ replace Fastlane on Android CI pipelines.`,
 	}
 	releases.AddCommand(upload.NewCommand(boot))
 	releases.AddCommand(promote.NewCommand(boot))
+	releases.AddCommand(rollout.NewRolloutCommand(boot))
+	releases.AddCommand(rollout.NewHaltCommand(boot))
+	releases.AddCommand(rollout.NewResumeCommand(boot))
+	releases.AddCommand(rollout.NewCompleteCommand(boot))
 	root.AddCommand(releases)
 
 	root.AddCommand(&cobra.Command{

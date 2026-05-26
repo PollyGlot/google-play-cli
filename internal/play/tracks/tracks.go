@@ -88,21 +88,32 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Trac
 	return &parsed, raw, nil
 }
 
-// Update PUTs the track resource at edits.tracks.update with the
-// provided release. Returns the parsed Track and the raw JSON body for
-// --output json pass-through (ADR-0003).
+// Update PUTs the track resource at edits.tracks.update carrying a single
+// release. Returns the parsed Track and the raw JSON body for --output json
+// pass-through (ADR-0003). Used by upload / promote, which build a fresh
+// release for the (possibly empty) destination track.
 func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, release Release) (*Track, json.RawMessage, error) {
+	payload, err := json.Marshal(Track{Track: track, Releases: []Release{release}})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
+	}
+	return UpdateRaw(ctx, hc, pkg, editID, track, payload)
+}
+
+// UpdateRaw PUTs a caller-built track body to edits.tracks.update verbatim.
+// tracks.update REPLACES the track's whole releases array, so a caller that
+// mutates one release on a track holding several (the rollout state machine)
+// must send every release — and must preserve fields gplay does not model
+// (e.g. countryTargeting). Building the body from the raw tracks.get JSON
+// and patching only the target release is the lossless way to do that;
+// round-tripping through the typed Release struct would drop the rest.
+func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, body []byte) (*Track, json.RawMessage, error) {
 	u := api.AndroidPubBase +
 		"/applications/" + url.PathEscape(pkg) +
 		"/edits/" + url.PathEscape(editID) +
 		"/tracks/" + url.PathEscape(track)
 
-	payload, err := json.Marshal(Track{Track: track, Releases: []Release{release}})
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: err.Error(), Cause: err}
 	}
