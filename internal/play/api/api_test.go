@@ -71,6 +71,20 @@ func TestAPIErrorMessage(t *testing.T) {
 			status: 400,
 			want:   `{"error":{"code":400}}`,
 		},
+		{
+			name:   "whitespace-only body falls back to HTTP <status>",
+			body:   []byte("   \n\t  "),
+			status: 502,
+			want:   "HTTP 502",
+		},
+		{
+			name:   "envelope with empty message and whitespace-only outer body still has a floor",
+			body:   []byte(`{"error":{"message":""}}`),
+			status: 500,
+			// Outer JSON is well-formed but envelope message is blank →
+			// fall through to trimmed raw → trim is non-empty → keep raw.
+			want: `{"error":{"message":""}}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

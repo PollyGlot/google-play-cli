@@ -129,7 +129,15 @@ func ParseErrorEnvelope(body []byte, status int) (message string, reasons []stri
 		}
 	}
 	if message == "" {
+		// Fall through the chain: envelope (no message extracted) →
+		// trimmed raw body → "HTTP <status>". A whitespace-only body
+		// trims to "", which would leave the caller staring at a blank
+		// API error string with no signal at all; restoring the
+		// "HTTP <status>" floor keeps every code path informative.
 		message = strings.TrimSpace(string(body))
+		if message == "" {
+			message = fmt.Sprintf("HTTP %d", status)
+		}
 	}
 	return message, reasons
 }
