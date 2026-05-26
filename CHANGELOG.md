@@ -35,6 +35,8 @@ once `tracks` and `reviews` ship.
   account.
 - `gplay apps info` — fetch app details and per-locale store listings
   (verbatim envelope from `details.get` + `listings.get`).
+- `gplay apps remove` — drop an entry from the local registry. Purely
+  local cleanup, no HTTP round-trip.
 
 ### Fixed
 
@@ -46,7 +48,6 @@ once `tracks` and `reviews` ship.
 
 - `gplay tracks list` / `status`
 - `gplay reviews list` / `reply`
-- `gplay apps remove`
 - `gplay vitals`, `metadata`, `subscriptions`, `iap`
 
 ## [0.1.0-alpha.1] — 2026-05-22
