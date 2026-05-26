@@ -237,6 +237,81 @@ func TestGet_emptyDefaultLanguage_errorsBeforeListingsCall(t *testing.T) {
 	}
 }
 
+// brokenBody is a body that errors on the first Read so getJSON's
+// io.ReadAll surfaces an error mid-stream — the case CodeRabbit
+// flagged: a truncated response on a 2xx status must not be silently
+// passed to json.Unmarshal as if the body were complete.
+type brokenBody struct{}
+
+func (brokenBody) Read(_ []byte) (int, error) { return 0, errors.New("simulated read error") }
+func (brokenBody) Close() error               { return nil }
+
+// detailsBodyReadErrorRT delivers a 200 status on details.get but
+// returns a body that errors on every Read, so getJSON's io.ReadAll
+// fails. Insert + delete still succeed so the test can also assert the
+// Edit is discarded.
+type detailsBodyReadErrorRT struct {
+	t      *testing.T
+	editID string
+
+	mu    sync.Mutex
+	calls []string
+}
+
+func (r *detailsBodyReadErrorRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
+	switch {
+	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
+		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
+	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
+		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/details"):
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       brokenBody{},
+		}, nil
+	}
+	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
+	return nil, nil
+}
+
+// TestGet_bodyReadFailure_surfacesAsAPIError asserts that a network
+// read failure on the success body of details.get is wrapped in
+// *api.Error rather than silently flowing into json.Unmarshal as if
+// the body were complete. The Edit is still discarded.
+func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
+	rt := &detailsBodyReadErrorRT{t: t, editID: "edit-readerr"}
+	hc := &http.Client{Transport: rt}
+
+	_, _, err := details.Get(context.Background(), hc, "com.example.app")
+	if err == nil {
+		t.Fatal("expected an error for a broken response body, got nil")
+	}
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v, want *api.Error in the chain", err)
+	}
+	if !strings.Contains(apiErr.Message, "read response body") {
+		t.Errorf("api.Error.Message = %q, want it to mention 'read response body'", apiErr.Message)
+	}
+	if !strings.Contains(apiErr.Operation, "details.get") {
+		t.Errorf("api.Error.Operation = %q, want it to mention details.get", apiErr.Operation)
+	}
+	// Edit must still be discarded.
+	sawDelete := false
+	for _, c := range rt.calls {
+		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-readerr") {
+			sawDelete = true
+		}
+	}
+	if !sawDelete {
+		t.Errorf("Edit not discarded after read failure; calls = %v", rt.calls)
+	}
+}
+
 // TestGet_detailsGet404_mapsExit30 asserts a 404 on details.get surfaces
 // as exit 30 (API 4xx other than auth/perms). Real-world trigger:
 // service account never invited on the app, or wrong package name.

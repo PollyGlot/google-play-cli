@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
@@ -46,6 +47,30 @@ type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
 func (e *authError) ExitCode() int { return 10 }
+
+// validationError is a client-side package-name format failure with
+// ExitCode()=20 per docs/DESIGN.md §9 (client-side validation). Same
+// gate as addcmd: the cheapest shape check (non-empty, reverse-DNS dot)
+// before any HTTP round-trip. Catches typos at the CLI boundary so the
+// user sees a clear "not a valid Android package name" rather than a
+// generic 404 from edits.insert.
+type validationError struct{ msg string }
+
+func (e *validationError) Error() string { return e.msg }
+func (e *validationError) ExitCode() int { return 20 }
+
+// validatePackage applies the same cheap client-side check as
+// addcmd.validatePackage: non-empty + at least one dot (Google Play
+// uses reverse-DNS package names, so a missing dot is a typo). Kept
+// local rather than imported from addcmd to keep its message wording
+// scoped to "apps info" — the two commands surface their errors with
+// their own command prefix, which is the project's convention.
+func validatePackage(pkg string) error {
+	if !strings.Contains(pkg, ".") {
+		return &validationError{msg: fmt.Sprintf("apps info: %q is not a valid Android package name (must contain a dot, e.g. com.example.myapp)", pkg)}
+	}
+	return nil
+}
 
 // Payload satisfies output.Renderable. Raw carries the
 // {"details":..,"listing":..} envelope for the --output json
@@ -124,6 +149,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	if pkg == "" {
 		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+	}
+	if err := validatePackage(pkg); err != nil {
+		return nil, err
 	}
 
 	if rc.Account == nil {

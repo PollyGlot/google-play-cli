@@ -244,6 +244,22 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
+// TestRun_invalidPackage_exit20 asserts that a package name that
+// doesn't even pass the cheapest client-side shape check (must
+// contain a dot, reverse-DNS convention) fails fast with exit 20
+// before any HTTP round-trip. Same gate as `apps add`.
+func TestRun_invalidPackage_exit20(t *testing.T) {
+	rt := &infoRT{t: t}
+	rc, _ := newRC(t, rt)
+	_, err := infocmd.Run(rc, infocmd.Input{Package: "not-a-package"})
+	if code := exitCodeOf(t, err); code != 20 {
+		t.Errorf("ExitCode() = %d, want 20", code)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected zero HTTP calls before validation error, saw: %v", rt.calls)
+	}
+}
+
 // TestRun_noAccount_exit10 asserts that with no resolved Account the
 // command fails auth (exit 10) before any HTTP call — there is no
 // dry-run path for a read-only listing.

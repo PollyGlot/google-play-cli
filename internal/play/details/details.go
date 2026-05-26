@@ -186,7 +186,24 @@ func getJSON(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawM
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		// A truncated/interrupted read on the error path would
+		// otherwise mask the real reason behind a generic
+		// ParseErrorEnvelope fallback ("HTTP <status>"). Surface the
+		// read failure verbatim so the operator knows the request
+		// reached the server but the response stream broke — a
+		// retryable network condition mapped to exit 50 by
+		// StatusToExitCode when StatusCode is 0, or to the HTTP class
+		// otherwise.
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		if readErr != nil {
+			return nil, resp.StatusCode, &api.Error{
+				Operation:  op,
+				Package:    pkg,
+				StatusCode: resp.StatusCode,
+				Message:    "read error response body: " + readErr.Error(),
+				Cause:      readErr,
+			}
+		}
 		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return nil, resp.StatusCode, &api.Error{
 			Operation:  op,
@@ -196,7 +213,19 @@ func getJSON(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawM
 			Reasons:    reasons,
 		}
 	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	// Same defensive read on the success path: a partial JSON body
+	// would otherwise reach json.Unmarshal and surface as a
+	// "decode response" error that buries the real (network) cause.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return nil, resp.StatusCode, &api.Error{
+			Operation:  op,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response body: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
 	return raw, resp.StatusCode, nil
 }
 
