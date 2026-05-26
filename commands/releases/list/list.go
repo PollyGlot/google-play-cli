@@ -42,14 +42,20 @@ type Input struct {
 // column); ExitCode()=2 per docs/DESIGN.md §9.
 type usageError struct{ msg string }
 
+// Error returns the misuse message.
 func (e *usageError) Error() string { return e.msg }
+
+// ExitCode reports 2 (CLI misuse) per docs/DESIGN.md §9.
 func (e *usageError) ExitCode() int { return 2 }
 
 // authError signals that no credential resolved for a call that needs
 // one; ExitCode()=10 per docs/DESIGN.md §9.
 type authError struct{ msg string }
 
+// Error returns the auth-failure message.
 func (e *authError) Error() string { return e.msg }
+
+// ExitCode reports 10 (authentication failure) per docs/DESIGN.md §9.
 func (e *authError) ExitCode() int { return 10 }
 
 // trackNotFoundError wraps a tracks.get 404 with an actionable hint
@@ -61,10 +67,13 @@ type trackNotFoundError struct {
 	cause error
 }
 
+// Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *trackNotFoundError) Error() string {
 	return fmt.Sprintf("track %q not found — run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
+// Unwrap exposes the underlying *api.Error so the Coder chain keeps
+// mapping the 404 to exit 30.
 func (e *trackNotFoundError) Unwrap() error { return e.cause }
 
 // Canonical --columns keys. They match the API field names (per ADR-0003
