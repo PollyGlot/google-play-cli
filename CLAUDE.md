@@ -166,6 +166,25 @@ google-play-cli/
 
 Anything beyond #5 is explicitly deferred (see `docs/BACKLOG.md`).
 
+## Agent skills
+
+### Issue tracker
+
+Issues vivent dans GitHub Issues sur `PollyGlot/google-play-cli`. Quatre
+types co-existent via labels `type:prd` / `type:slice` / `type:arch` /
+`type:parking`. Voir [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)
+et [`docs/ROADMAP.md`](docs/ROADMAP.md) pour la vue d'ensemble.
+
+### Triage labels
+
+Mapping des cinq rôles canoniques + labels locaux (`type:*`, `area:*`,
+`priority:*`). Voir [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context : `CONTEXT.md` à la racine + `docs/adr/`. Voir
+[`docs/agents/domain.md`](docs/agents/domain.md).
+
 ## Notes
 
 - The Edits model means most publishing operations need 3 steps: create
