@@ -67,11 +67,13 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Trac
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return nil, nil, &api.Error{
 			Operation:  opTracksGet,
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
-			Message:    api.APIErrorMessage(body, resp.StatusCode),
+			Message:    msg,
+			Reasons:    reasons,
 		}
 	}
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
@@ -125,11 +127,13 @@ func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, 
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return nil, nil, &api.Error{
 			Operation:  opTracksUpdate,
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
-			Message:    api.APIErrorMessage(body, resp.StatusCode),
+			Message:    msg,
+			Reasons:    reasons,
 		}
 	}
 	// The success body is the ADR-0003 JSON pass-through; cap it at the

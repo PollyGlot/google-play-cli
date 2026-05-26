@@ -5,6 +5,7 @@ package api_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -69,6 +70,20 @@ func TestAPIErrorMessage(t *testing.T) {
 			body:   []byte(`{"error":{"code":400}}`),
 			status: 400,
 			want:   `{"error":{"code":400}}`,
+		},
+		{
+			name:   "whitespace-only body falls back to HTTP <status>",
+			body:   []byte("   \n\t  "),
+			status: 502,
+			want:   "HTTP 502",
+		},
+		{
+			name:   "envelope with empty message and whitespace-only outer body still has a floor",
+			body:   []byte(`{"error":{"message":""}}`),
+			status: 500,
+			// Outer JSON is well-formed but envelope message is blank →
+			// fall through to trimmed raw → trim is non-empty → keep raw.
+			want: `{"error":{"message":""}}`,
 		},
 	}
 	for _, tc := range cases {
@@ -146,5 +161,37 @@ func TestError_Unwrap(t *testing.T) {
 	e := &api.Error{Operation: "edits.insert", Package: "com.x", Message: cause.Error(), Cause: cause}
 	if !errors.Is(e, cause) {
 		t.Errorf("errors.Is(e, cause) = false, want true")
+	}
+}
+
+// TestError_Error_includesReasons asserts the user-visible string
+// surfaces the structured Reasons slice — without this, the
+// editAlreadyExists / rateLimitExceeded / etc. signal Google ships
+// in the envelope is parsed but invisible in CI logs and `gplay`
+// stderr output.
+func TestError_Error_includesReasons(t *testing.T) {
+	e := &api.Error{
+		Operation:  "edits.insert",
+		Package:    "com.example.app",
+		StatusCode: 400,
+		Message:    "Edit ID is required.",
+		Reasons:    []string{"editAlreadyExists"},
+	}
+	got := e.Error()
+	if !strings.Contains(got, "editAlreadyExists") {
+		t.Errorf("Error() should include reason; got %q", got)
+	}
+	if !strings.Contains(got, "HTTP 400") {
+		t.Errorf("Error() should still include HTTP status; got %q", got)
+	}
+}
+
+// TestError_Error_omitsReasonsWhenEmpty keeps the pre-existing
+// format stable when no reasons were captured: no trailing "[reason: ]".
+func TestError_Error_omitsReasonsWhenEmpty(t *testing.T) {
+	e := &api.Error{Operation: "edits.insert", Package: "com.x", StatusCode: 403, Message: "no"}
+	got := e.Error()
+	if strings.Contains(got, "[reason:") {
+		t.Errorf("Error() should not emit empty [reason: ] suffix; got %q", got)
 	}
 }

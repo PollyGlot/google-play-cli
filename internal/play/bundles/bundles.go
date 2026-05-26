@@ -85,11 +85,13 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return 0, &api.Error{
 			Operation:  op,
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
-			Message:    api.APIErrorMessage(body, resp.StatusCode),
+			Message:    msg,
+			Reasons:    reasons,
 		}
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))

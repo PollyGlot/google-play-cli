@@ -83,6 +83,15 @@ type RunContext struct {
 	// check-1 failure; login/logout don't need one).
 	Account *serviceaccount.ServiceAccount
 
+	// AccountName is the local Account name that backs Account, or ""
+	// when the credential came from an ad-hoc source (--service-account
+	// flag or GPLAY_SERVICE_ACCOUNT env var). Commands writing to the
+	// registry must use this (the credential that actually ran the
+	// probe) rather than rc.Resolved.ConfigAccount, which only reflects
+	// the cascade layer and ignores --account/--service-account/env
+	// overrides.
+	AccountName string
+
 	// Format is the resolved output Format — never FormatAuto.
 	Format output.Format
 
@@ -221,12 +230,17 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 	// file, malformed JSON) leaves rc.Account = nil. Commands that
 	// need a credential check rc.Account != nil; commands that don't
 	// (login, logout, list) proceed unaffected. doctor surfaces the
-	// failure via check #1 in its own diagnostic path.
-	sa, _ := resolver.Resolve(ctx, resolver.Deps{Resolved: resolved, Keystore: be}, in.Resolver)
+	// failure via check #1 in its own diagnostic path. The Account
+	// name is captured alongside the credential so registry writers
+	// (apps add) can persist under the Account that actually backs
+	// the probe, not under rc.Resolved.ConfigAccount which only
+	// reflects the cascade layer.
+	sa, accountName, _ := resolver.ResolveWithName(ctx, resolver.Deps{Resolved: resolved, Keystore: be}, in.Resolver)
 
 	return &RunContext{
 		Ctx:           ctx,
 		Account:       sa,
+		AccountName:   accountName,
 		Format:        format,
 		Resolved:      resolved,
 		Keystore:      be,

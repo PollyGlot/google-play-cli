@@ -82,32 +82,58 @@ type Inputs struct {
 // threaded through to keystore.Backend.Load so a slow keychain probe
 // honours Ctrl-C.
 func Resolve(ctx context.Context, deps Deps, in Inputs) (*serviceaccount.ServiceAccount, error) {
-	// Layer 1: --service-account flag (inline JSON or path).
+	sa, _, err := ResolveWithName(ctx, deps, in)
+	return sa, err
+}
+
+// ResolveWithName behaves like Resolve but ALSO returns the local
+// Account name backing the resolved credential. The name is non-empty
+// only for stored-Account paths (layers 2, 4, 5); inline-JSON paths
+// (layers 1, 3) return "" because an ad-hoc credential has no local
+// registry entry. Callers that need to write back to the registry
+// (`gplay apps add` persisting under the actual Account that ran the
+// probe, not the cascade's ConfigAccount snapshot) use this variant.
+func ResolveWithName(ctx context.Context, deps Deps, in Inputs) (*serviceaccount.ServiceAccount, string, error) {
+	// Layer 1: --service-account flag (inline JSON or path). Ad-hoc
+	// credential, no local Account name.
 	if in.ServiceAccountFlag != "" {
-		return loadServiceAccount(in.ServiceAccountFlag)
+		sa, err := loadServiceAccount(in.ServiceAccountFlag)
+		return sa, "", err
 	}
 
 	// Layer 2: --account flag (stored Account name).
 	if in.AccountFlag != "" {
-		return loadStoredAccount(ctx, deps.Keystore, in.AccountFlag)
+		sa, err := loadStoredAccount(ctx, deps.Keystore, in.AccountFlag)
+		if err != nil {
+			return nil, "", err
+		}
+		return sa, in.AccountFlag, nil
 	}
 
-	// Layer 3: GPLAY_SERVICE_ACCOUNT env var (read by caller, passed
-	// in via Inputs.EnvServiceAccount).
+	// Layer 3: GPLAY_SERVICE_ACCOUNT env var. Ad-hoc credential.
 	if in.EnvServiceAccount != "" {
-		return loadServiceAccount(in.EnvServiceAccount)
+		sa, err := loadServiceAccount(in.EnvServiceAccount)
+		return sa, "", err
 	}
 
 	// Layer 4: GPLAY_ACCOUNT env var.
 	if in.EnvAccount != "" {
-		return loadStoredAccount(ctx, deps.Keystore, in.EnvAccount)
+		sa, err := loadStoredAccount(ctx, deps.Keystore, in.EnvAccount)
+		if err != nil {
+			return nil, "", err
+		}
+		return sa, in.EnvAccount, nil
 	}
 
 	// Layer 5: ConfigAccount from cascade (project-local override > global active).
 	if deps.Resolved == nil || deps.Resolved.ConfigAccount == "" {
-		return nil, ErrNoSource
+		return nil, "", ErrNoSource
 	}
-	return loadStoredAccount(ctx, deps.Keystore, deps.Resolved.ConfigAccount)
+	sa, err := loadStoredAccount(ctx, deps.Keystore, deps.Resolved.ConfigAccount)
+	if err != nil {
+		return nil, "", err
+	}
+	return sa, deps.Resolved.ConfigAccount, nil
 }
 
 // loadStoredAccount loads a credential from the keystore by name and

@@ -118,3 +118,34 @@ func (m *MemFS) UserHomeDir() (string, error) {
 	}
 	return m.homeDir, nil
 }
+
+// Rename moves a file between two paths in-memory. Mirrors os.Rename's
+// semantics: missing source is ErrNotExist; overwriting an existing
+// destination succeeds silently.
+func (m *MemFS) Rename(oldpath, newpath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	f, ok := m.files[oldpath]
+	if !ok {
+		return &fs.PathError{Op: "rename", Path: oldpath, Err: fs.ErrNotExist}
+	}
+	m.files[newpath] = f
+	delete(m.files, oldpath)
+	for d := path.Dir(newpath); d != "." && d != "/"; d = path.Dir(d) {
+		m.dirs[d] = struct{}{}
+	}
+	return nil
+}
+
+// Remove deletes a file. Missing files surface as fs.ErrNotExist —
+// matches os.Remove so callers using errors.Is(_, fs.ErrNotExist) keep
+// working under MemFS.
+func (m *MemFS) Remove(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.files[name]; !ok {
+		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrNotExist}
+	}
+	delete(m.files, name)
+	return nil
+}
