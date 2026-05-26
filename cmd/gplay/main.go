@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
@@ -47,6 +48,12 @@ func main() {
 	}
 
 	if err := newRootCmd(boot).Execute(); err != nil {
+		// Subcommands set SilenceErrors:true on their cobra Command so the
+		// stack-trace-style "Error: ..." cobra would emit is suppressed —
+		// but we still owe the user a one-line message before exiting,
+		// otherwise the only signal is the exit code (which CI sees, but
+		// a human running gplay in a terminal does not).
+		fmt.Fprintln(os.Stderr, "gplay:", err)
 		os.Exit(exit.For(err))
 	}
 }
@@ -95,8 +102,16 @@ replace Fastlane on Android CI pipelines.`,
 	root.AddCommand(auth)
 
 	// `gplay init` at the top level — pins a package to the current repo.
-	// Also wired as `gplay apps init` once the apps subcommand exists.
+	// Also wired as `gplay apps init` below so both forms are discoverable.
 	root.AddCommand(initcmd.NewCommand(initcmd.Options{}))
+
+	apps := &cobra.Command{
+		Use:   "apps",
+		Short: "Manage Android packages registered with gplay",
+	}
+	apps.AddCommand(initcmd.NewCommand(initcmd.Options{}))
+	apps.AddCommand(addcmd.NewCommand(boot))
+	root.AddCommand(apps)
 
 	releases := &cobra.Command{
 		Use:   "releases",

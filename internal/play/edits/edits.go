@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -21,18 +22,20 @@ import (
 
 // DanglingEditError wraps the upstream failure that caused an Edit to be
 // left open in KeepOnFailure mode. It carries the Edit ID so the
-// operator can recover via `gplay edits discard --package <P>` or
-// `gplay auth doctor --package <P>` once the issue is fixed. It
-// implements gplay's Coder contract by inheriting from the wrapped
-// error when possible, falling back to exit 60 (state conflict) so the
-// dangling Edit surfaces as a retryable state condition.
+// operator can recover by waiting for the Edit's ~24h expiry, or by
+// releasing it via the Google Play Console. (A `gplay edits discard`
+// subcommand is planned per DESIGN.md §4 but not yet wired; the message
+// points at remediation paths that work today.) It implements gplay's
+// Coder contract by inheriting from the wrapped error when possible,
+// falling back to exit 60 (state conflict) so the dangling Edit
+// surfaces as a retryable state condition.
 type DanglingEditError struct {
 	EditID string
 	Err    error
 }
 
 func (e *DanglingEditError) Error() string {
-	return fmt.Sprintf("edit %s left open (run `gplay edits discard --package <pkg>` to clean up): %v", e.EditID, e.Err)
+	return fmt.Sprintf("edit %s left open (wait ~24h for expiry, or release it via the Google Play Console): %v", e.EditID, e.Err)
 }
 
 func (e *DanglingEditError) Unwrap() error { return e.Err }
@@ -68,14 +71,17 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 			// Best-effort discard runs on a fresh, bounded context so a
 			// canceled or timed-out parent ctx does not also kill the
 			// cleanup — leaving the Edit dangling blocks the user's next
-			// publish for up to 24h.
+			// publish for up to 24h. `defer cancel()` rather than an
+			// inline call guarantees the timer goroutine is released
+			// even if deleteEdit panics on a misbehaving transport.
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 			_ = deleteEdit(cleanupCtx, hc, pkg, editID)
-			cancel()
 			return failureErr
 		}
 		// KeepOnFailure: the caller debugging the failure needs the
-		// open Edit ID so they can `gplay edits discard` it manually.
+		// open Edit ID so they can release it via the Play Console
+		// (or wait ~24h for it to expire) once the root cause is fixed.
 		return &DanglingEditError{EditID: editID, Err: failureErr}
 	}
 	// Panic safety: if fn (or any downstream code it calls) panics, we
@@ -91,8 +97,8 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 		if r := recover(); r != nil {
 			if !opts.KeepOnFailure {
 				cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
 				_ = deleteEdit(cleanupCtx, hc, pkg, editID)
-				cancel()
 			}
 			panic(r)
 		}
@@ -130,10 +136,105 @@ func WithReadOnlyEdit(ctx context.Context, hc *http.Client, pkg string, fn func(
 	}
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 		_ = deleteEdit(cleanupCtx, hc, pkg, editID)
-		cancel()
 	}()
 	return fn(editID)
+}
+
+// EditConflictError signals that the upstream insertEdit was rejected
+// because an Edit is already open on the package. It is recoverable —
+// the open Edit auto-expires after ~24h, or the operator can release
+// it via the Google Play Console — so the error message points at a
+// real, today-available remediation path rather than the planned-but-
+// unwired `gplay edits discard` subcommand. The mapping to exit 30
+// (API 4xx, recoverable) rather than the generic state-conflict exit
+// 60 stays the same.
+type EditConflictError struct {
+	Package string
+	Err     error
+}
+
+func (e *EditConflictError) Error() string {
+	return fmt.Sprintf(
+		"an Edit is already open on %s (wait ~24h for it to expire, or release it via the Google Play Console): %v",
+		e.Package, e.Err,
+	)
+}
+
+func (e *EditConflictError) Unwrap() error { return e.Err }
+
+// ExitCode forwards to the wrapped *api.Error so the underlying HTTP
+// status drives the exit-code mapping — 400+editAlreadyExists stays
+// at 30 (API misuse, recoverable), but a 429+editAlreadyExists (Google
+// has been known to ship the reason on rate-limited responses) keeps
+// its 60 (state conflict, retry-with-backoff) classification rather
+// than being silently downgraded. Mirrors the DanglingEditError
+// pattern. Falls back to 30 if no Coder is found in the chain.
+func (e *EditConflictError) ExitCode() int {
+	var c interface{ ExitCode() int }
+	if errors.As(e.Err, &c) {
+		return c.ExitCode()
+	}
+	return 30
+}
+
+// Validate is a cheap access probe: open an Edit on pkg and immediately
+// discard it (no commit). A successful round-trip means the active
+// credential has both Play-API authentication AND the per-package
+// permission grant — the failure mode `gplay apps add` is most often
+// asked to catch.
+//
+// Validate calls insertEdit + deleteEdit directly (rather than going
+// through WithReadOnlyEdit) for one reason: WithReadOnlyEdit
+// deliberately swallows the discard error in its `defer` so a
+// read-only listing always returns the closure's result. Validate's
+// contract is the opposite — the probe MUST report a failed discard,
+// because reporting success while leaking a 24h-locked Edit corrupts
+// the very state the probe was meant to verify. A failed discard
+// surfaces as a *DanglingEditError carrying the open Edit ID.
+//
+// Insert failures are mapped:
+//   - editAlreadyExists reason → *EditConflictError (exit 30 + Play
+//     Console recovery hint)
+//   - anything else            → the raw *api.Error (exit code via
+//     StatusToExitCode: 403→11, 404→30, 429→60, …)
+func Validate(ctx context.Context, hc *http.Client, pkg string) error {
+	editID, err := insertEdit(ctx, hc, pkg)
+	if err != nil {
+		if isEditAlreadyExists(err) {
+			return &EditConflictError{Package: pkg, Err: err}
+		}
+		return err
+	}
+	// The discard runs on a fresh, bounded context so a canceled or
+	// timed-out parent ctx does not prevent cleanup. We still propagate
+	// any cleanup failure as a DanglingEditError so the operator knows
+	// they have an Edit to release manually.
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if delErr := deleteEdit(cleanupCtx, hc, pkg, editID); delErr != nil {
+		return &DanglingEditError{EditID: editID, Err: delErr}
+	}
+	return nil
+}
+
+// isEditAlreadyExists reports whether err carries Google Play's
+// `editAlreadyExists` reason. The envelope's top-level message is
+// often a generic "Edit ID is required" string; the discriminating
+// signal lives in error.errors[].reason and is preserved on
+// api.Error.Reasons.
+func isEditAlreadyExists(err error) bool {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	for _, r := range apiErr.Reasons {
+		if strings.EqualFold(r, "editAlreadyExists") {
+			return true
+		}
+	}
+	return false
 }
 
 func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error) {
@@ -150,11 +251,13 @@ func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return "", &api.Error{
 			Operation:  "edits.insert",
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
-			Message:    api.APIErrorMessage(body, resp.StatusCode),
+			Message:    msg,
+			Reasons:    reasons,
 		}
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
@@ -197,11 +300,13 @@ func deleteEdit(ctx context.Context, hc *http.Client, pkg, editID string) error 
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return &api.Error{
 			Operation:  "edits.delete",
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
-			Message:    api.APIErrorMessage(body, resp.StatusCode),
+			Message:    msg,
+			Reasons:    reasons,
 		}
 	}
 	return nil
@@ -220,11 +325,13 @@ func commitEdit(ctx context.Context, hc *http.Client, pkg, editID string) error 
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return &api.Error{
 			Operation:  "edits.commit",
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
-			Message:    api.APIErrorMessage(body, resp.StatusCode),
+			Message:    msg,
+			Reasons:    reasons,
 		}
 	}
 	return nil

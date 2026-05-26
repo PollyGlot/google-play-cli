@@ -14,9 +14,13 @@ import (
 
 // Account is the human-friendly registration of a service-account credential.
 // The credential bytes themselves live in the keystore, keyed by Name.
+// Packages is the per-Account registry of Android package names this Account
+// has been registered against via `gplay apps add`; the field is omitempty so
+// pre-registry config files round-trip unchanged.
 type Account struct {
-	Name   string `json:"name"`
-	Active bool   `json:"active"`
+	Name     string   `json:"name"`
+	Active   bool     `json:"active"`
+	Packages []string `json:"packages,omitempty"`
 }
 
 // Global is the on-disk shape of $XDG_CONFIG_HOME/gplay/config.json.
@@ -59,6 +63,15 @@ func LoadGlobalOrEmpty(_ context.Context, fsys FS, path string) (*Global, error)
 // Save writes the global config to path with mode 0600, creating the parent
 // directory if needed. ctx is threaded for future cancellation; fsys is the
 // FS seam — pass OSFS{} in production.
+//
+// The write is atomic when the underlying FS supports it: the data is
+// written to a sibling `<path>.tmp` first, then renamed onto `path`.
+// On POSIX (and Windows for same-volume renames), rename is atomic, so
+// a crash, SIGKILL, or disk-full mid-write leaves the prior config.json
+// intact instead of a half-truncated file that breaks every subsequent
+// gplay invocation with "unexpected end of input". A best-effort
+// Remove of the .tmp file runs on the failure path so a hung
+// invocation does not strand stale fragments.
 func (g *Global) Save(_ context.Context, fsys FS, path string) error {
 	if err := fsys.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -67,7 +80,15 @@ func (g *Global) Save(_ context.Context, fsys FS, path string) error {
 	if err != nil {
 		return err
 	}
-	return fsys.WriteFile(path, data, 0o600)
+	tmp := path + ".tmp"
+	if err := fsys.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := fsys.Rename(tmp, path); err != nil {
+		_ = fsys.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // AddAccount upserts an account by name. Calling AddAccount with a name that

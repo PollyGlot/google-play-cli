@@ -17,19 +17,30 @@ import (
 type Error struct {
 	Operation  string // e.g. "edits.insert", "bundles.upload"
 	Package    string
-	StatusCode int    // 0 = transport-level (no HTTP response)
-	Message    string // extracted via APIErrorMessage when a body is available
-	Cause      error  // underlying transport error, if any
+	StatusCode int      // 0 = transport-level (no HTTP response)
+	Message    string   // extracted via APIErrorMessage when a body is available
+	Reasons    []string // error.errors[].reason values from the envelope (e.g. "editAlreadyExists")
+	Cause      error    // underlying transport error, if any
 }
 
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
 	}
-	if e.StatusCode == 0 {
-		return fmt.Sprintf("%s on %s: %s", e.Operation, e.Package, e.Message)
+	suffix := ""
+	if len(e.Reasons) > 0 {
+		// Reasons carry the discriminating Google API signal (e.g.
+		// editAlreadyExists, rateLimitExceeded). Including them in the
+		// human-visible string means a user reading `gplay` output —
+		// or a CI log — can immediately see why an API rejection
+		// landed without dumping the full envelope. Joined with "," to
+		// keep the line compact when more than one reason is returned.
+		suffix = " [reason: " + strings.Join(e.Reasons, ",") + "]"
 	}
-	return fmt.Sprintf("%s on %s: %s (HTTP %d)", e.Operation, e.Package, e.Message, e.StatusCode)
+	if e.StatusCode == 0 {
+		return fmt.Sprintf("%s on %s: %s%s", e.Operation, e.Package, e.Message, suffix)
+	}
+	return fmt.Sprintf("%s on %s: %s (HTTP %d)%s", e.Operation, e.Package, e.Message, e.StatusCode, suffix)
 }
 
 // Unwrap exposes the transport-level cause (if any) so errors.Is /
@@ -87,16 +98,38 @@ func StatusToExitCode(status int) int {
 // a Google API error envelope ({"error":{"message":"..."}}), falling
 // back to a generic placeholder when the body is empty or unparseable.
 func APIErrorMessage(body []byte, status int) string {
+	msg, _ := ParseErrorEnvelope(body, status)
+	return msg
+}
+
+// ParseErrorEnvelope extracts both the human-readable message AND the
+// structured `errors[].reason` values from a Google API error envelope.
+// Reasons (e.g. "editAlreadyExists", "rateLimitExceeded") let callers
+// branch on semantically distinct failure modes that share an HTTP
+// status. The message follows APIErrorMessage's fallback chain: envelope
+// → trimmed raw body → "HTTP <status>".
+func ParseErrorEnvelope(body []byte, status int) (message string, reasons []string) {
 	if len(body) == 0 {
-		return fmt.Sprintf("HTTP %d", status)
+		return fmt.Sprintf("HTTP %d", status), nil
 	}
 	var env struct {
 		Error struct {
 			Message string `json:"message"`
+			Errors  []struct {
+				Reason string `json:"reason"`
+			} `json:"errors"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal(body, &env); err == nil && env.Error.Message != "" {
-		return env.Error.Message
+	if err := json.Unmarshal(body, &env); err == nil {
+		message = env.Error.Message
+		for _, e := range env.Error.Errors {
+			if e.Reason != "" {
+				reasons = append(reasons, e.Reason)
+			}
+		}
 	}
-	return strings.TrimSpace(string(body))
+	if message == "" {
+		message = strings.TrimSpace(string(body))
+	}
+	return message, reasons
 }
