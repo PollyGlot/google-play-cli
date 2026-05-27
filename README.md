@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="docs/marketing/header.png" alt="gplay — standalone Go binary for the Google Play Developer API, built for CI, scripts, and AI agents" width="100%" />
+</p>
+
+<p align="center">
   <a href="https://github.com/PollyGlot/google-play-cli/releases/latest"><img src="https://img.shields.io/github/v/release/PollyGlot/google-play-cli?style=for-the-badge&color=blue" alt="Latest Release"></a>
   <a href="https://github.com/PollyGlot/google-play-cli/stargazers"><img src="https://img.shields.io/github/stars/PollyGlot/google-play-cli?style=for-the-badge" alt="GitHub Stars"></a>
   <img src="https://img.shields.io/badge/Go-1.22+-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
@@ -6,15 +10,19 @@
   <img src="https://img.shields.io/badge/status-pre--1.0-orange?style=for-the-badge" alt="Status">
 </p>
 
-# gplay — Google Play Developer CLI
+# gplay
 
-A fast, lightweight, scriptable CLI for the **Google Play Developer API**.
-Replace Fastlane/Ruby on Android CI pipelines and enable autonomous app
-administration from your terminal, IDE, or AI agent.
+Every team shipping an Android app eventually hits the same wall: Fastlane
+`supply` drags a Ruby runtime into your CI image, output meant for humans,
+and generic exit codes that make retry logic guesswork. `gplay` is what
+you'd build today if you started fresh — one static binary, no runtime,
+JSON output that matches the Google Play Developer API verbatim, semantic
+exit codes, safe production defaults.
 
-> **Status: pre-1.0.** The MVP surface is being implemented. Expect breaking
-> changes. See [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally
-> out of scope today.
+> **Status: pre-1.0.** v0.1.0-alpha.2 is out and usable. The MVP surface
+> (auth, releases, apps) ships in alpha. Tracks and reviews land next.
+> Breaking changes are expected before `v0.1.0` stable — see
+> [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally out of scope.
 
 ## Why
 
@@ -32,19 +40,18 @@ administration from your terminal, IDE, or AI agent.
 
 ## Install
 
-(Coming as soon as the first release ships. Channels planned for v0.1:
-GitHub Releases binaries, Homebrew tap, `curl ... | sh` install script,
-`go install`.)
+`go install` works today against tagged alpha releases. Homebrew,
+install script, and pre-built binaries land with `v0.1.0` stable.
 
 ```bash
-# Homebrew (planned)
+# go install — works today (alpha builds tagged)
+go install github.com/PollyGlot/google-play-cli/cmd/gplay@latest
+
+# Homebrew (planned for v0.1.0)
 brew install PollyGlot/gplay/gplay
 
-# Install script (planned)
+# Install script (planned for v0.1.0)
 curl -fsSL https://gplay.sh/install | sh
-
-# go install (works once the repo has a tagged release)
-go install github.com/PollyGlot/google-play-cli/cmd/gplay@latest
 ```
 
 ## Quick start

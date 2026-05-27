@@ -1,0 +1,259 @@
+<!doctype html>
+<!--
+  gplay — header card V1 (FINAL)
+  Canvas: 1600×900, designed for X / Threads / GitHub social preview.
+
+  Design system
+  -------------
+  · Wordmark      : Google Sans Code 700     — Google's own mono, CLI-as-brand statement
+  · Tagline       : DM Sans 400              — proportional, reads as marketing copy
+  · Terminal code : Google Sans Code regular — coherent with the wordmark
+  · Accent only   : iridescent magenta→pink→lavender→blue→cyan on the underscore
+  · Background    : 3 big radial gradients + pearl catch-light, blur 60px
+                    (one cohesive iridescent surface, no patchwork)
+  · Composition   : 1fr | 800px grid, 80px gap, 80px side padding
+
+  Pre-render PNG (1600×900)
+  -------------------------
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless --disable-gpu --hide-scrollbars \
+      --window-size=1600,900 --virtual-time-budget=8000 \
+      --screenshot=$HOME/Documents/gplay-marketing/visuals/header-v1.png \
+      file://$HOME/Documents/gplay-marketing/visuals/header-v1.html
+
+  Editing
+  -------
+  · Bump version: change the .ver text in the terminal title bar
+  · Change tagline: edit the .tagline div content
+  · Adjust iridescence intensity: tune the alpha values in .aurora
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gplay — header card</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500&family=Google+Sans+Code:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* ---- Android bugdroid iridescent palette ----
+       Pearl whites for the catch-light, magenta dominant in the body,
+       cool blue and cyan in the shadows. Each value is the RGB triplet
+       for use inside rgba(). ---- */
+    :root {
+      --bg:        #050507;
+      --ink:       #ffffff;
+      --ink-soft:  #d4d4d8;
+      --ink-mute:  #8a8a90;
+      --green:     #3DDC84;
+      --pearl:     255, 240, 250;
+      --magenta:   255, 110, 195;
+      --pink:      255, 160, 215;
+      --lavender:  210, 165, 245;
+      --blue:      130, 175, 255;
+      --cyan:      150, 225, 240;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 1600px;
+      height: 900px;
+      overflow: hidden;
+      background: var(--bg);
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .card {
+      position: relative;
+      width: 1600px;
+      height: 900px;
+      color: var(--ink);
+      isolation: isolate;
+      overflow: hidden;
+    }
+
+    /* Layer 1 — base */
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: var(--bg);
+      z-index: -3;
+    }
+
+    /* Layer 2 — bugdroid iridescence as one flowing surface
+       (three big radials, heavy blur, melt into each other) */
+    .aurora {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      background:
+        radial-gradient(ellipse 1100px 850px at 92% 25%, rgba(var(--magenta), 0.62), transparent 70%),
+        radial-gradient(ellipse 1000px 850px at 100% 65%, rgba(var(--blue),    0.58), transparent 70%),
+        radial-gradient(ellipse  900px 750px at 78% 100%, rgba(var(--cyan),    0.45), transparent 72%);
+      filter: blur(60px) saturate(130%);
+      pointer-events: none;
+    }
+
+    /* Layer 2b — pearl catch-light (highlight on the bugdroid) */
+    .shimmer {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      background:
+        radial-gradient(ellipse 380px 280px at 85% 42%, rgba(var(--pearl),   0.50), transparent 62%),
+        radial-gradient(ellipse 500px 400px at 92% 52%, rgba(var(--lavender), 0.35), transparent 65%);
+      mix-blend-mode: screen;
+      filter: blur(30px);
+      pointer-events: none;
+    }
+
+    /* Layer 3 — almost-invisible grid for depth */
+    .grid {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: radial-gradient(ellipse 1200px 800px at 20% 50%, black 0%, transparent 75%);
+      pointer-events: none;
+    }
+
+    /* ---- Layout ---- */
+    .stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1fr 740px;
+      align-items: center;
+      gap: 100px;
+      padding: 0 80px;
+    }
+
+    /* ---- Left: wordmark + tagline ---- */
+    .left { position: relative; min-width: 0; }
+
+    .wordmark {
+      font-family: 'Google Sans Code', 'JetBrains Mono', monospace;
+      font-size: 156px;
+      font-weight: 700;
+      letter-spacing: -4px;
+      line-height: 1.05;
+      margin-bottom: 40px;
+      color: var(--ink);
+    }
+
+    /* Iridescent gradient on the underscore — the only colored element */
+    .wordmark .accent {
+      background: linear-gradient(
+        135deg,
+        rgb(var(--magenta))   0%,
+        rgb(var(--pink))     22%,
+        rgb(var(--lavender)) 45%,
+        rgb(var(--blue))     70%,
+        rgb(var(--cyan))    100%
+      );
+      -webkit-background-clip: text;
+              background-clip: text;
+      color: transparent;
+    }
+
+    .tagline {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 30px;
+      font-weight: 400;
+      line-height: 1.4;
+      color: var(--ink-soft);
+      max-width: 580px;
+      letter-spacing: -0.4px;
+    }
+
+    /* ---- Right: terminal ---- */
+    .terminal-wrap { position: relative; }
+
+    .terminal {
+      position: relative;
+      z-index: 1;
+      background: #0c0c10;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.04),
+        0 30px 80px rgba(0,0,0,0.5);
+      font-family: 'Google Sans Code', 'JetBrains Mono', monospace;
+    }
+
+    .terminal-chrome {
+      background: rgba(255,255,255,0.025);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .terminal-chrome .traffic   { width: 14px; height: 14px; border-radius: 50%; }
+    .terminal-chrome .traffic.r { background: #ff5f56; }
+    .terminal-chrome .traffic.y { background: #ffbd2e; }
+    .terminal-chrome .traffic.g { background: #27c93f; }
+
+    .terminal-chrome .title {
+      flex: 1;
+      text-align: center;
+      font-family: 'Google Sans Code', 'JetBrains Mono', monospace;
+      font-size: 19px;
+      color: var(--ink-mute);
+      letter-spacing: 0.3px;
+    }
+    .terminal-chrome .title .ver { color: var(--ink-soft); }
+
+    .terminal-body {
+      padding: 44px 42px 48px 42px;
+      font-size: 26px;
+      line-height: 1.65;
+      color: var(--ink-soft);
+    }
+    .terminal-body .prompt { color: var(--green); margin-right: 12px; }
+    .terminal-body .arrow  { color: var(--green); margin-right: 10px; }
+    .terminal-body .flag   { color: var(--ink-mute); }
+    .terminal-body .ok     { color: var(--green); }  /* color only, no bold (real-terminal feel) */
+    .terminal-body .spacer { height: 22px; }
+    .terminal-body .indent { padding-left: 32px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="aurora"></div>
+    <div class="shimmer"></div>
+    <div class="grid"></div>
+
+    <div class="stage">
+      <div class="left">
+        <div class="wordmark">gplay<span class="accent">_</span></div>
+        <div class="tagline">Standalone Go binary for the Google&nbsp;Play Developer&nbsp;API.<br>Built for CI, scripts, and AI&nbsp;agents.</div>
+      </div>
+
+      <div class="terminal-wrap">
+        <div class="terminal">
+          <div class="terminal-chrome">
+            <div class="traffic r"></div>
+            <div class="traffic y"></div>
+            <div class="traffic g"></div>
+            <div class="title">gplay&nbsp;&nbsp;<span class="ver">v0.1.0-alpha.2</span></div>
+          </div>
+          <div class="terminal-body">
+            <div><span class="prompt">$</span>gplay releases upload app.aab</div>
+            <div class="indent"><span class="flag">--track production</span></div>
+            <div><span class="arrow">→</span><span class="ok">draft release created</span></div>
+            <div class="spacer"></div>
+            <div><span class="prompt">$</span>gplay releases rollout <span class="flag">--to 0.05</span></div>
+            <div><span class="arrow">→</span><span class="ok">production at 5%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
