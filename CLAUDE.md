@@ -46,7 +46,11 @@ content directly).
 - REST reference: https://developers.google.com/android-publisher/api-ref/rest
 - Key concept: **Edits model** — transactional workflow: `insert edit` →
   make changes → `commit edit`
-- Official Go client lib available: `google.golang.org/api/androidpublisher/v3`
+- gplay speaks the API directly over HTTP from `internal/play/api/`. We
+  do **not** depend on `google.golang.org/api/androidpublisher/v3` (the
+  auto-generated official Go SDK). See
+  [`docs/adr/0007-raw-http-not-google-go-sdk.md`](docs/adr/0007-raw-http-not-google-go-sdk.md)
+  for the why.
 - Reporting API (vitals) lives on a **separate** service:
   `androidvitals.googleapis.com`
 
@@ -192,6 +196,9 @@ Single-context : `CONTEXT.md` à la racine + `docs/adr/`. Voir
   in implicit mode; explicit mode is available for batching.
 - Rate limits: don't publish more than once per day for alpha/beta, less
   for production.
-- Official Go client: `google.golang.org/api/androidpublisher/v3` — prefer
-  this over raw HTTP calls.
-- For auth, use `golang.org/x/oauth2/google`.
+- Do **not** add `google.golang.org/api/androidpublisher/v3` as a
+  dependency. gplay hand-rolls the HTTP calls in `internal/play/api/`
+  on purpose — see
+  [`docs/adr/0007-raw-http-not-google-go-sdk.md`](docs/adr/0007-raw-http-not-google-go-sdk.md).
+- For auth, do use `golang.org/x/oauth2/google` (small, focused, has no
+  equivalent worth hand-rolling — see ADR-0007 "What about auth?").
