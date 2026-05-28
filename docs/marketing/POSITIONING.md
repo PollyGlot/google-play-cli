@@ -13,9 +13,9 @@
 > A standalone Go binary for the Google Play Developer API — built for
 > CI pipelines, scripts, and AI agents.
 
-**Alt 1 (replacement angle)**
-> Replace Fastlane on Android CI. One binary. No Ruby runtime. JSON in,
-> JSON out.
+**Alt 1 (historical angle)**
+> Android CI has been running on Ruby since 2014. Here's the native Go
+> binary I wish I'd had.
 
 **Alt 2 (agent angle)**
 > The Google Play Developer API, as one binary your agents can drive.
@@ -232,6 +232,6 @@ collaborative.
 ## One-line variants for bios
 
 - "Standalone Go CLI for the Google Play Developer API."
-- "Replace Fastlane on Android CI. One binary."
+- "Native Go CLI for Android publishing. One binary."
 - "The Google Play API, as one binary your CI and your agents can drive."
 - "Ship Android apps from your terminal, your CI, or your agent."
