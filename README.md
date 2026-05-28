@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/marketing/header.png" alt="gplay — standalone Go binary for the Google Play Developer API, built for CI, scripts, and AI agents" width="100%" />
+  <img src="docs/marketing/header.png" alt="gplay — standalone Go binary for the Google Play Developer API, built for CI, scripts, and AI agents" width="720" />
 </p>
 
 <p align="center">
