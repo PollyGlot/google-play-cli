@@ -33,7 +33,7 @@
   <title>gplay — header card</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500&family=Google+Sans+Code:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     /* ---- Android bugdroid iridescent palette ----
        Pearl whites for the catch-light, magenta dominant in the body,
@@ -59,7 +59,7 @@
       height: 900px;
       overflow: hidden;
       background: var(--bg);
-      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Google Sans Code', 'JetBrains Mono', monospace;
     }
 
     .card {
@@ -145,29 +145,25 @@
       color: var(--ink);
     }
 
-    /* Iridescent gradient on the underscore — the only colored element */
+    /* Underscore is the only colored element — solid Android green.
+       Was a gradient-clip-text in v0 (absolute-ban per impeccable
+       audit). Solid is more committed and reads cleaner at small
+       sizes (X timeline preview). */
     .wordmark .accent {
-      background: linear-gradient(
-        135deg,
-        rgb(var(--magenta))   0%,
-        rgb(var(--pink))     22%,
-        rgb(var(--lavender)) 45%,
-        rgb(var(--blue))     70%,
-        rgb(var(--cyan))    100%
-      );
-      -webkit-background-clip: text;
-              background-clip: text;
-      color: transparent;
+      color: var(--green);
     }
 
+    /* Tagline mono-unified post-audit (DM Sans was on the reflex-reject
+       list). Smaller font + tighter line-height compensates for mono's
+       wider rhythm, so 24px reads roughly like 30px proportional did. */
     .tagline {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 30px;
+      font-family: 'Google Sans Code', monospace;
+      font-size: 24px;
       font-weight: 400;
-      line-height: 1.4;
+      line-height: 1.5;
       color: var(--ink-soft);
-      max-width: 580px;
-      letter-spacing: -0.4px;
+      max-width: 640px;
+      letter-spacing: -0.2px;
     }
 
     /* ---- Right: terminal ---- */
@@ -178,7 +174,7 @@
       z-index: 1;
       background: #0c0c10;
       border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 18px;
+      border-radius: 20px;          /* unified across all visuals (audit) */
       overflow: hidden;
       box-shadow:
         0 0 0 1px rgba(255,255,255,0.04),
