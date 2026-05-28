@@ -239,10 +239,17 @@ func renderJSON(w io.Writer, p Payload) error {
 }
 
 // renderMarkdown writes the selected columns as a GitHub-Flavored
-// Markdown table via output.MarkdownTable. The halted marker carries
+// Markdown table via output.MarkdownTable, preceded by the same
+// track-context line as the table view so a pasted report stands on its
+// own without the originating command line. The halted marker carries
 // through the shared column extractors, so a halted rollout stands out in
 // markdown too.
 func renderMarkdown(w io.Writer, p Payload) error {
+	if p.Track != "" {
+		if _, err := fmt.Fprintf(w, "Track: %s (%s)\n\n", p.Track, p.Kind); err != nil {
+			return err
+		}
+	}
 	rows := make([][]string, 0, len(p.Releases))
 	for _, r := range p.Releases {
 		rows = append(rows, p.row(r))
@@ -290,13 +297,14 @@ func resolveColumns(spec string) ([]string, error) {
 // resolves the package, builds an authenticated HTTP client, then opens a
 // read-only Edit and reads the single track.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
 		return nil, &usageError{msg: "missing --track"}
 	}
 
-	pkg := in.Package
+	pkg := strings.TrimSpace(in.Package)
 	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
+		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
 		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}

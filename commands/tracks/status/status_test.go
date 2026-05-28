@@ -399,6 +399,11 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	if !strings.Contains(out, "!HALTED") {
 		t.Errorf("markdown output = %q, want the halted marker !HALTED", out)
 	}
+	// Markdown carries the same track/kind context as the table view, so
+	// a pasted report stands on its own without the command line.
+	if !strings.Contains(out, "Track: production (standard)") {
+		t.Errorf("markdown output = %q, want the track/kind context line", out)
+	}
 }
 
 // TestRun_unknownTrack_exit30WithHint asserts that an unknown track
@@ -497,6 +502,37 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	rt := &statusRT{t: t}
 	rc, _ := newRC(t, rt)
 	_, err := status.Run(rc, status.Input{Track: "production"})
+	if code := exitCodeOf(t, err); code != 2 {
+		t.Errorf("ExitCode() = %d, want 2", code)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	}
+}
+
+// TestRun_whitespaceTrack_exit2 asserts a --track that is only whitespace
+// is treated as missing: a usage error (exit 2) caught before any HTTP
+// call, not a track named "   " sent to the API. Mirrors the empty-track
+// guard — leading/trailing whitespace from a shell or CI variable must be
+// trimmed at the input boundary.
+func TestRun_whitespaceTrack_exit2(t *testing.T) {
+	rt := &statusRT{t: t}
+	rc, _ := newRC(t, rt)
+	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "   "})
+	if code := exitCodeOf(t, err); code != 2 {
+		t.Errorf("ExitCode() = %d, want 2", code)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	}
+}
+
+// TestRun_whitespacePackage_exit2 asserts a --package that is only
+// whitespace is treated as missing (exit 2) before any HTTP call.
+func TestRun_whitespacePackage_exit2(t *testing.T) {
+	rt := &statusRT{t: t}
+	rc, _ := newRC(t, rt)
+	_, err := status.Run(rc, status.Input{Package: "   ", Track: "production"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
