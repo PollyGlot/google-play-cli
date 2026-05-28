@@ -1,7 +1,7 @@
-// Package tracks reads and updates the release configuration of a
-// Google Play track within an open Edit. The two operations exposed —
-// Get and Update — are shared by the upload, promote, rollout, halt,
-// resume, complete, and tracks-list commands.
+// Package tracks reads and updates the release configuration of Google
+// Play tracks within an open Edit. The operations exposed — Get (one
+// track), List (every track), and Update — are shared by the upload,
+// promote, rollout, halt, resume, complete, and tracks-list commands.
 package tracks
 
 import (
@@ -17,6 +17,7 @@ import (
 
 const (
 	opTracksGet    = "tracks.get"
+	opTracksList   = "tracks.list"
 	opTracksUpdate = "tracks.update"
 )
 
@@ -88,6 +89,65 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Trac
 		}
 	}
 	return &parsed, raw, nil
+}
+
+// List fetches every track configured on the app at edits.tracks.list:
+// the standard tracks the SA can see plus any custom closed tracks. It
+// returns the parsed Track slice and the raw {"tracks":[...]} body for
+// the --output json pass-through (ADR-0003). Cross-track presentation
+// (injecting absent standard tracks, deriving the standard/custom kind,
+// summarizing the top release) is a command-layer concern; List returns
+// exactly what the API returns. Like Get, it runs inside an Edit the
+// caller has already opened.
+func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Track, json.RawMessage, error) {
+	u := api.AndroidPubBase +
+		"/applications/" + url.PathEscape(pkg) +
+		"/edits/" + url.PathEscape(editID) +
+		"/tracks"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksList, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksList, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
+		return nil, nil, &api.Error{
+			Operation:  opTracksList,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    msg,
+			Reasons:    reasons,
+		}
+	}
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return nil, nil, &api.Error{
+			Operation:  opTracksList,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
+	var parsed struct {
+		Tracks []Track `json:"tracks"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, raw, &api.Error{
+			Operation:  opTracksList,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "decode response: " + err.Error(),
+			Cause:      err,
+		}
+	}
+	return parsed.Tracks, raw, nil
 }
 
 // Update PUTs the track resource at edits.tracks.update carrying a single
