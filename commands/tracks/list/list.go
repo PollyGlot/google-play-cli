@@ -322,13 +322,16 @@ func renderTable(w io.Writer, p Payload) error {
 }
 
 // renderJSON emits the raw edits.tracks.list body verbatim (ADR-0003
-// pass-through).
+// pass-through). Raw is always populated on the Run path; an empty Raw
+// would mean we never captured the API body, so we error rather than
+// synthesize a body (every Payload field is json:"-", so falling back to
+// output.WriteJSON would emit a bare "{}" and silently break the contract).
 func renderJSON(w io.Writer, p Payload) error {
-	if len(p.Raw) > 0 {
-		_, err := w.Write(p.Raw)
-		return err
+	if len(p.Raw) == 0 {
+		return fmt.Errorf("missing raw tracks.list payload for --output json")
 	}
-	return output.WriteJSON(w, p)
+	_, err := w.Write(p.Raw)
+	return err
 }
 
 // renderMarkdown writes the selected columns as a GitHub-Flavored

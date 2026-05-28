@@ -125,7 +125,16 @@ func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Track, js
 			Reasons:    reasons,
 		}
 	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return nil, nil, &api.Error{
+			Operation:  opTracksList,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
 	var parsed struct {
 		Tracks []Track `json:"tracks"`
 	}
