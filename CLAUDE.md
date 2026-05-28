@@ -13,11 +13,14 @@ Two repos planned:
 
 ## Existing alternatives we looked at
 
-- https://github.com/Vacxe/google-play-cli — Go, partial coverage
-- GPC by yasserstudio — TypeScript, full but heavy
+- https://github.com/Vacxe/google-play-cli — **Kotlin** wrapper around
+  the official Google Play Java library; partial API coverage.
+- GPC by yasserstudio (https://github.com/yasserstudio/gpc) —
+  TypeScript, covers all 217 API endpoints, ships **both** as
+  `npm install` and as a standalone binary via an install script.
 
-Neither covers the "standalone Go binary + agent skills" sweet spot that
-this project aims for.
+Neither covers the "native Go cold start + MVP-scoped + agent-first
+design + companion skills" sweet spot that this project aims for.
 
 ## Language & stack
 

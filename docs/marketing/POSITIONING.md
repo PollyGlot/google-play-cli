@@ -189,12 +189,20 @@ collaborative.
   what you'd reach for if you don't need everything Fastlane carries."
 
 **vs Vacxe/google-play-cli**
-- "An earlier Go CLI that inspired this project. `gplay` aims for full
-  MVP coverage plus an agent-first design."
+- An earlier **Kotlin** CLI that wraps the official Google Play Java
+  library. Partial coverage. `gplay` differs by being native Go (fast
+  cold start, no JVM warmup), speaking the API over raw HTTP rather
+  than via the SDK (see [ADR-0007](../adr/0007-raw-http-not-google-go-sdk.md)),
+  and being agent-first by design.
 
 **vs GPC (yasserstudio, TypeScript)**
-- "Comprehensive coverage, requires Node. `gplay` trades coverage for a
-  single binary."
+- Comprehensive coverage (all 217 API endpoints) and ships both as
+  `npm install` and as a standalone binary via install script — so
+  the "you need Node" line that used to apply doesn't anymore.
+  `gplay` differs by being native Go (no TS-binary init overhead),
+  MVP-scoped on purpose, and built with agent-first defaults
+  (JSON pass-through verbatim, semantic exit codes, no interactive
+  prompts) baked in from day one rather than added later.
 
 ---
 
