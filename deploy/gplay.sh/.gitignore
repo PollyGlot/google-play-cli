@@ -1,0 +1,2 @@
+# Wrangler local state (account cache, build artifacts) — never commit
+.wrangler/

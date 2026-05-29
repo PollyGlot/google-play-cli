@@ -1,0 +1,14 @@
+name = "gplay-install"
+main = "worker.js"
+compatibility_date = "2026-05-01"
+workers_dev = true
+
+# No custom route yet. `wrangler deploy` publishes to
+#   https://gplay-install.<your-subdomain>.workers.dev
+#
+# Once gplay.sh is registered and its nameservers point at this Cloudflare
+# account, bind the apex as a custom domain and redeploy:
+#
+# routes = [
+#   { pattern = "gplay.sh", custom_domain = true },
+# ]
