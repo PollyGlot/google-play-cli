@@ -106,19 +106,30 @@ func formatDate(t time.Time) string {
 	return t.Format(dateLayout)
 }
 
-// summary is the first line of a comment, truncated to maxSummaryLen runes
-// with an ellipsis — the table-friendly digest of the latest comment.
+// summary is a one-line, table-friendly digest of a comment: the first line
+// that carries visible text (so a comment opening with a blank line is not
+// summarized as empty), with interior whitespace — tabs, stray carriage
+// returns, runs of spaces — collapsed to single spaces so the cell cannot
+// inject an extra tabwriter column or break a Markdown row, then truncated
+// to maxSummaryLen runes with an ellipsis.
 func summary(text string) string {
-	line := text
-	if i := strings.IndexByte(line, '\n'); i >= 0 {
-		line = line[:i]
-	}
-	line = strings.TrimSpace(line)
+	line := strings.Join(strings.Fields(firstNonEmptyLine(text)), " ")
 	runes := []rune(line)
 	if len(runes) > maxSummaryLen {
 		return string(runes[:maxSummaryLen]) + "…"
 	}
 	return line
+}
+
+// firstNonEmptyLine returns the first line of text whose content is not
+// blank/whitespace-only, or "" when every line is blank.
+func firstNonEmptyLine(text string) string {
+	for _, ln := range strings.Split(text, "\n") {
+		if strings.TrimSpace(ln) != "" {
+			return ln
+		}
+	}
+	return ""
 }
 
 // Payload satisfies output.Renderable. Reviews is the (filtered, capped) set

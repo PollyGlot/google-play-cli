@@ -52,11 +52,7 @@ func (r *listRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	if strings.HasSuffix(req.URL.Path, "/reviews") {
 		if r.reviewCode != 0 {
-			body := r.errBody
-			if body == "" {
-				body = `{"error":{"code":` + itoa(r.reviewCode) + `,"message":"boom"}}`
-			}
-			return jsonResp(r.reviewCode, body), nil
+			return jsonResp(r.reviewCode, r.errBody), nil
 		}
 		body := "{}"
 		if r.n < len(r.pages) {
@@ -67,17 +63,6 @@ func (r *listRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 	return nil, nil
-}
-
-func itoa(n int) string {
-	switch n {
-	case 403:
-		return "403"
-	case 404:
-		return "404"
-	default:
-		return "500"
-	}
 }
 
 func jsonResp(code int, body string) *http.Response {
@@ -320,6 +305,11 @@ func TestSummary(t *testing.T) {
 		{"trims spaces", "   spaced   ", "spaced"},
 		{"empty", "", ""},
 		{"truncates long line", strings.Repeat("a", 70), strings.Repeat("a", 60) + "…"},
+		{"skips leading blank lines", "\n\n  \nReal content here", "Real content here"},
+		{"collapses interior tab", "price:\t5 stars", "price: 5 stars"},
+		{"collapses tab run on first line", "a\t\tb", "a b"},
+		{"strips trailing carriage return", "Great app\r\nsecond line", "Great app"},
+		{"all blank yields empty", "\n  \n\t\n", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -456,7 +446,9 @@ func TestRun_happyPath_warnsAndReturnsPayload(t *testing.T) {
 	}
 
 	// The 7-day window warning is always printed to stderr on success.
-	if !strings.Contains(stderr.String(), "WARN:") || !strings.Contains(stderr.String(), "7 day") {
-		t.Errorf("stderr = %q, want a WARN: line mentioning the 7-day window", stderr.String())
+	// Assert against the constant so rewording it cannot silently weaken
+	// this check, while a genuinely missing warning still fails.
+	if !strings.Contains(stderr.String(), sevenDayWarning) {
+		t.Errorf("stderr = %q, want the 7-day window warning %q", stderr.String(), sevenDayWarning)
 	}
 }
