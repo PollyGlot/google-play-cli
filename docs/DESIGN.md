@@ -161,7 +161,8 @@ required.
 ## 5. Reviews
 
 - API hard limit: **only the last 7 days** are exposed. Surfaced in `--help`
-  and as a stderr warning when the result set hits the window edge.
+  and as a stderr `WARN:` line on **every** successful run — including an empty
+  result (a quiet empty result must not read as "this app has no reviews").
 - Auto-pagination is on by default; `--limit N` caps the result count, default
   is no cap.
 - `--stars` (e.g. `1`, `1-2`, `1,3,5`) is a **client-side** filter — the API
