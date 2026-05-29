@@ -30,7 +30,7 @@ install-hooks: ## Install local pre-commit hook
 	@echo "hooks installed (no-op if .githooks/pre-commit does not exist yet)"
 
 release-snapshot: ## Local GoReleaser snapshot (no publish) — sanity-check the config
-	goreleaser release --snapshot --clean --skip=publish,sign
+	goreleaser release --snapshot --clean --skip=publish,sign,sbom
 
 clean: ## Remove build artifacts
 	rm -rf bin dist

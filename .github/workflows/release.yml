@@ -1,6 +1,14 @@
 name: Release
 
 on:
+  # Called by release-please.yml once a Version PR merges and a release is cut.
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref (tag) to build and publish.
+        type: string
+        required: true
+  # Manual escape hatch: push a tag by hand to publish without release-please.
   push:
     tags:
       - 'v*.*.*'
@@ -14,16 +22,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write  # OIDC token for keyless cosign signing
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # GoReleaser reads the full git history for the changelog
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/setup-go@v6
         with:
           go-version: '1.25'
           cache: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft (SBOM generator)
+        uses: anchore/sbom-action/download-syft@v0
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
