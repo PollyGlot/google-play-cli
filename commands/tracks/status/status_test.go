@@ -393,7 +393,7 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	if !strings.Contains(out, "---") {
 		t.Errorf("markdown output = %q, want a GFM `---` separator row", out)
 	}
-	if !strings.Contains(strings.ToUpper(out), "NAME") || !strings.Contains(out, "143") {
+	if !strings.Contains(out, "NAME") || !strings.Contains(out, "143") {
 		t.Errorf("markdown output = %q, want the release row", out)
 	}
 	if !strings.Contains(out, "!HALTED") {
