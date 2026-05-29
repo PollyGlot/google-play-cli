@@ -19,13 +19,16 @@ package kernel
 import (
 	"context"
 	"io"
+	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
+	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
@@ -254,6 +257,54 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 		KeystoreRoot:  boot.KeystoreRoot,
 	}, nil
 }
+
+// AuthedClient builds the authenticated *http.Client every API-touching
+// command uses to reach the Google Play Developer API. It performs the
+// auth handshake that was previously copy-pasted at each call site: it
+// requires a resolved Account, mints an OAuth2 token source from it, and
+// returns an oauth2-wrapped client.
+//
+// The base transport is read from rc.Ctx's oauth2.HTTPClient value (falling
+// back to http.DefaultClient), and that same value is threaded into the
+// context oauth2.NewClient receives — so a single test-injected RoundTripper
+// covers BOTH the /token exchange and the subsequent androidpublisher calls.
+// This is the test seam the command tests rely on.
+//
+// A nil Account yields an *authError (exit code 10 per docs/DESIGN.md §9).
+// Callers with a no-network path (--dry-run, --no-verify) must gate this
+// call behind that branch themselves.
+func (rc *RunContext) AuthedClient() (*http.Client, error) {
+	if rc.Account == nil {
+		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
+	}
+	ts, err := token.Source(rc.Ctx, rc.Account)
+	if err != nil {
+		return nil, &authError{msg: "could not build token source: " + err.Error()}
+	}
+	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, baseHTTPClient(rc.Ctx))
+	return oauth2.NewClient(ctx, ts), nil
+}
+
+// baseHTTPClient extracts the transport used as the underlying client for
+// both the OAuth2 /token exchange and the androidpublisher API calls. Tests
+// inject a RoundTripper via ctx.Value(oauth2.HTTPClient); production falls
+// back to http.DefaultClient.
+func baseHTTPClient(ctx context.Context) *http.Client {
+	if v := ctx.Value(oauth2.HTTPClient); v != nil {
+		if c, ok := v.(*http.Client); ok && c != nil {
+			return c
+		}
+	}
+	return http.DefaultClient
+}
+
+// authError signals an auth failure surfaced by AuthedClient (no resolved
+// Account, or the token source could not be built); ExitCode()=10 per
+// docs/DESIGN.md §9.
+type authError struct{ msg string }
+
+func (e *authError) Error() string { return e.msg }
+func (e *authError) ExitCode() int { return 10 }
 
 // FromCobra builds an Inputs from cmd's persistent flag values
 // (--verbose, --service-account, --account), the credential env vars,

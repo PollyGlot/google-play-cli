@@ -14,17 +14,14 @@
 package reply
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 
 	"github.com/PollyGlot/google-play-cli/commands/reviews/reviewerr"
-	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -48,13 +45,6 @@ type usageError struct{ msg string }
 
 func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
-
-// authError signals no credential resolved for a call that needs one;
-// ExitCode()=10.
-type authError struct{ msg string }
-
-func (e *authError) Error() string { return e.msg }
-func (e *authError) ExitCode() int { return 10 }
 
 // Run validates the flag combination, resolves the package, and dispatches
 // to single- or batch-reply. It writes all user-facing output itself and
@@ -85,15 +75,11 @@ func Run(rc *kernel.RunContext, in Input) error {
 	// --dry-run never touches the network, so a missing Account is fine.
 	var httpClient *http.Client
 	if !in.DryRun {
-		if rc.Account == nil {
-			return &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
-		}
-		ts, err := token.Source(rc.Ctx, rc.Account)
+		var err error
+		httpClient, err = rc.AuthedClient()
 		if err != nil {
-			return &authError{msg: "could not build token source: " + err.Error()}
+			return err
 		}
-		ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, baseHTTP(rc))
-		httpClient = oauth2.NewClient(ctx, ts)
 	}
 
 	if in.BatchSet {
@@ -236,18 +222,6 @@ func writeRaw(w io.Writer, raw []byte) error {
 		}
 	}
 	return nil
-}
-
-// baseHTTP exposes the test seam (ctx's oauth2.HTTPClient) so one injected
-// RoundTripper covers both the /token exchange and the androidpublisher
-// calls. Mirrors reviews list / tracks.
-func baseHTTP(rc *kernel.RunContext) *http.Client {
-	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
-		if c, ok := v.(*http.Client); ok && c != nil {
-			return c
-		}
-	}
-	return http.DefaultClient
 }
 
 // NewCommand returns the cobra command for `gplay reviews reply`.

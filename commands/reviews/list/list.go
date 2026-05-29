@@ -8,21 +8,17 @@
 package list
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 
 	"github.com/PollyGlot/google-play-cli/commands/reviews/reviewerr"
-	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/reviews"
@@ -49,14 +45,6 @@ type usageError struct{ msg string }
 func (e *usageError) Error() string { return e.msg }
 
 func (e *usageError) ExitCode() int { return 2 }
-
-// authError signals that no credential resolved for a call that needs one;
-// ExitCode()=10 per docs/DESIGN.md §9.
-type authError struct{ msg string }
-
-func (e *authError) Error() string { return e.msg }
-
-func (e *authError) ExitCode() int { return 10 }
 
 // Canonical --columns keys. reviewId and stars/locale match the API
 // vocabulary (per ADR-0003 the JSON view is pass-through) so an operator who
@@ -263,16 +251,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	if rc.Account == nil {
-		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
-	}
-	ts, err := token.Source(rc.Ctx, rc.Account)
+	httpClient, err := rc.AuthedClient()
 	if err != nil {
-		return nil, &authError{msg: "could not build token source: " + err.Error()}
+		return nil, err
 	}
-	base := baseHTTP(rc)
-	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
-	httpClient := oauth2.NewClient(ctx, ts)
 
 	all, err := reviews.List(rc.Ctx, httpClient, pkg)
 	if err != nil {
@@ -302,18 +284,6 @@ func warn(rc *kernel.RunContext) {
 	if rc.Stderr != nil {
 		_, _ = io.WriteString(rc.Stderr, sevenDayWarning+"\n")
 	}
-}
-
-// baseHTTP exposes the test seam (ctx's oauth2.HTTPClient) so a single
-// injected RoundTripper covers both the /token exchange and the
-// androidpublisher calls. Mirrors tracks/releases list.
-func baseHTTP(rc *kernel.RunContext) *http.Client {
-	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
-		if c, ok := v.(*http.Client); ok && c != nil {
-			return c
-		}
-	}
-	return http.DefaultClient
 }
 
 // NewCommand returns the cobra command for `gplay reviews list`.

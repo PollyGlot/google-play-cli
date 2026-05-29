@@ -9,7 +9,6 @@
 package status
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,9 +19,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 
-	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -46,16 +43,6 @@ func (e *usageError) Error() string { return e.msg }
 
 // ExitCode reports 2 (CLI misuse) per docs/DESIGN.md §9.
 func (e *usageError) ExitCode() int { return 2 }
-
-// authError signals that no credential resolved for a call that needs
-// one; ExitCode()=10 per docs/DESIGN.md §9.
-type authError struct{ msg string }
-
-// Error returns the auth-failure message.
-func (e *authError) Error() string { return e.msg }
-
-// ExitCode reports 10 (authentication failure) per docs/DESIGN.md §9.
-func (e *authError) ExitCode() int { return 10 }
 
 // trackNotFoundError wraps a tracks.get 404 with an actionable hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
@@ -368,16 +355,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	if rc.Account == nil {
-		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
-	}
-	ts, err := token.Source(rc.Ctx, rc.Account)
+	httpClient, err := rc.AuthedClient()
 	if err != nil {
-		return nil, &authError{msg: "could not build token source: " + err.Error()}
+		return nil, err
 	}
-	base := baseHTTP(rc)
-	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
-	httpClient := oauth2.NewClient(ctx, ts)
 
 	var (
 		parsed *tracks.Track
@@ -404,18 +385,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Raw:      raw,
 		Columns:  cols,
 	}, nil
-}
-
-// baseHTTP exposes the test seam (ctx's oauth2.HTTPClient) so a single
-// injected RoundTripper covers both the /token exchange and the
-// androidpublisher calls. Mirrors releases list / tracks list.
-func baseHTTP(rc *kernel.RunContext) *http.Client {
-	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
-		if c, ok := v.(*http.Client); ok && c != nil {
-			return c
-		}
-	}
-	return http.DefaultClient
 }
 
 // NewCommand returns the cobra command for `gplay tracks status`.

@@ -106,6 +106,29 @@ func missingFieldHint(field string) string {
 		"\"; re-download the JSON from Google Cloud Console and run `gplay auth login`"
 }
 
+// tokenSource threads the runner's HTTP client into ctx (so a test-injected
+// RoundTripper covers the /token exchange) and mints an OAuth2 token source
+// from sa. On failure it returns a ready-to-surface auth CheckResult. The
+// returned context carries the base client, so a caller that builds an
+// oauth2.NewClient on top sees the same seam for the androidpublisher calls.
+//
+// This is the shared opening of every API-touching check; each check adds
+// its own ts.Token() / round-trip logic on top.
+func tokenSource(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) (context.Context, oauth2.TokenSource, *CheckResult) {
+	if hc != nil {
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
+	}
+	ts, err := token.Source(ctx, sa)
+	if err != nil {
+		return ctx, nil, &CheckResult{
+			Passed:   false,
+			ExitCode: exitAuth,
+			Hint:     "could not build token source: " + err.Error(),
+		}
+	}
+	return ctx, ts, nil
+}
+
 // CheckOAuth2Mint asserts that an OAuth2 access token can be minted by
 // signing a JWT with the SA's private key and exchanging it at the
 // configured token_uri. Failure (non-2xx response, signature problem,
@@ -117,16 +140,9 @@ func CheckOAuth2Mint() Check {
 		Name:     "OAuth2 access token can be minted",
 		ExitCode: exitAuth,
 		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) CheckResult {
-			if hc != nil {
-				ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
-			}
-			ts, err := token.Source(ctx, sa)
-			if err != nil {
-				return CheckResult{
-					Passed:   false,
-					ExitCode: exitAuth,
-					Hint:     "could not build token source: " + err.Error(),
-				}
+			_, ts, fail := tokenSource(ctx, sa, hc)
+			if fail != nil {
+				return *fail
 			}
 			if _, err := ts.Token(); err != nil {
 				return CheckResult{
@@ -167,16 +183,9 @@ func CheckScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
 					Hint:     "scope check requires a ScopeObserver; this indicates a bug in gplay's auth wiring",
 				}
 			}
-			if hc != nil {
-				ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
-			}
-			ts, err := token.Source(ctx, sa)
-			if err != nil {
-				return CheckResult{
-					Passed:   false,
-					ExitCode: exitAuth,
-					Hint:     "could not build token source: " + err.Error(),
-				}
+			_, ts, fail := tokenSource(ctx, sa, hc)
+			if fail != nil {
+				return *fail
 			}
 			if _, err := ts.Token(); err != nil {
 				return CheckResult{
@@ -245,16 +254,9 @@ func CheckPackageAccess(packageName string) Check {
 		Name:     "Service account can edit " + packageName,
 		ExitCode: exitAuthz,
 		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) CheckResult {
-			if hc != nil {
-				ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
-			}
-			ts, err := token.Source(ctx, sa)
-			if err != nil {
-				return CheckResult{
-					Passed:   false,
-					ExitCode: exitAuth,
-					Hint:     "could not build token source: " + err.Error(),
-				}
+			ctx, ts, fail := tokenSource(ctx, sa, hc)
+			if fail != nil {
+				return *fail
 			}
 			// oauth2.NewClient inherits ctx's oauth2.HTTPClient for the
 			// underlying transport, so a test-injected RoundTripper sees
