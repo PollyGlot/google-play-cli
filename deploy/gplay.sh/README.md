@@ -56,7 +56,7 @@ curl -fsSL https://gplay-install.<your-subdomain>.workers.dev/install | sh
    nameservers at Cloudflare.
 3. Uncomment the `routes` block in [`wrangler.toml`](wrangler.toml) and
    `npx wrangler deploy` again.
-4. Verify end to end: `curl -fsSL https://gplay.sh/install | sh`.
+4. Verify end-to-end: `curl -fsSL https://gplay.sh/install | sh`.
 5. Only then flip the references (separate PR), per ADR-0009:
    - `README.md` → `https://gplay.sh/install`
    - `.goreleaser.yaml` `release.header` → same

@@ -31,6 +31,7 @@ export default {
 
     if (pathname === "/install" || pathname === "/install.sh") {
       const upstream = await fetch(RAW_INSTALL_URL, {
+        method: request.method,
         cf: { cacheTtl: CACHE_SECONDS, cacheEverything: true },
       });
       if (!upstream.ok) {
