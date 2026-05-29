@@ -16,9 +16,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 
-	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -45,12 +43,6 @@ type usageError struct{ msg string }
 
 func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
-
-// authError signals "no account resolved"; ExitCode()=10 per docs/DESIGN.md §9.
-type authError struct{ msg string }
-
-func (e *authError) Error() string { return e.msg }
-func (e *authError) ExitCode() int { return 10 }
 
 // Payload satisfies output.Renderable for the resulting state-transition
 // Result. JSON is API pass-through (the raw tracks.update body, ADR-0003).
@@ -144,16 +136,11 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, call stateF
 	// before any HTTP would happen.
 	var httpClient *http.Client
 	if !in.DryRun {
-		if rc.Account == nil {
-			return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
-		}
-		ts, err := token.Source(rc.Ctx, rc.Account)
+		var err error
+		httpClient, err = rc.AuthedClient()
 		if err != nil {
-			return nil, &authError{msg: "could not build token source: " + err.Error()}
+			return nil, err
 		}
-		base := baseHTTP(rc)
-		ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
-		httpClient = oauth2.NewClient(ctx, ts)
 	}
 
 	result, err := call(rc.Ctx, httpClient, orchestrator.StateOpts{
@@ -170,18 +157,6 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, call stateF
 		return nil, err
 	}
 	return Payload{Result: result}, nil
-}
-
-// baseHTTP returns the transport used for both the OAuth2 /token exchange
-// and the androidpublisher calls. Tests inject a RoundTripper via
-// ctx.Value(oauth2.HTTPClient); production falls back to http.DefaultClient.
-func baseHTTP(rc *kernel.RunContext) *http.Client {
-	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
-		if c, ok := v.(*http.Client); ok && c != nil {
-			return c
-		}
-	}
-	return http.DefaultClient
 }
 
 // RunRollout validates the --to fraction (AC6: required, numeric, in

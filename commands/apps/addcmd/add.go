@@ -8,15 +8,12 @@ package addcmd
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 
 	"github.com/PollyGlot/google-play-cli/internal/apps/registry"
-	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -110,16 +107,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	if !in.NoVerify {
-		if rc.Account == nil {
-			return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
-		}
-		ts, err := token.Source(rc.Ctx, rc.Account)
+		hc, err := rc.AuthedClient()
 		if err != nil {
-			return nil, &authError{msg: "could not build token source: " + err.Error()}
+			return nil, err
 		}
-		base := baseHTTP(rc)
-		oauthCtx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
-		hc := oauth2.NewClient(oauthCtx, ts)
 		probeCtx, cancel := context.WithTimeout(rc.Ctx, validateTimeout)
 		defer cancel()
 		if err := edits.Validate(probeCtx, hc, in.Package); err != nil {
@@ -170,19 +161,6 @@ func accountInGlobal(g *config.Global, name string) bool {
 		}
 	}
 	return false
-}
-
-// baseHTTP mirrors the test seam in commands/releases/upload: a
-// RoundTripper injected via ctx.Value(oauth2.HTTPClient) lets a single
-// fake cover both the /token exchange and the androidpublisher calls.
-// Production falls back to http.DefaultClient.
-func baseHTTP(rc *kernel.RunContext) *http.Client {
-	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
-		if c, ok := v.(*http.Client); ok && c != nil {
-			return c
-		}
-	}
-	return http.DefaultClient
 }
 
 // NewCommand returns the cobra command for `gplay apps add <pkg>`.

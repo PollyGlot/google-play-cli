@@ -6,16 +6,13 @@
 package upload
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 
-	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -42,13 +39,6 @@ type usageError struct{ msg string }
 
 func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
-
-// authError signals "no account resolved"; ExitCode()=10 per
-// docs/DESIGN.md §9 and the resolver precedence rules.
-type authError struct{ msg string }
-
-func (e *authError) Error() string { return e.msg }
-func (e *authError) ExitCode() int { return 10 }
 
 // Payload satisfies output.Renderable for the resulting upload Result.
 type Payload struct {
@@ -184,20 +174,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// the dry-run path before any HTTP would happen.
 	var httpClient *http.Client
 	if !in.DryRun {
-		if rc.Account == nil {
-			return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
-		}
-		ts, err := token.Source(rc.Ctx, rc.Account)
+		var err error
+		httpClient, err = rc.AuthedClient()
 		if err != nil {
-			return nil, &authError{msg: "could not build token source: " + err.Error()}
+			return nil, err
 		}
-		// baseHTTP exposes the test seam (ctx's oauth2.HTTPClient) so a
-		// single injected RoundTripper covers both the /token exchange and
-		// the androidpublisher calls. oauth2.NewClient honours the same
-		// context key for the token exchange itself.
-		base := baseHTTP(rc)
-		ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, base)
-		httpClient = oauth2.NewClient(ctx, ts)
 	}
 
 	// Translate flag-shape Status to orchestrator Status.
@@ -229,20 +210,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	return Payload{Result: result}, nil
-}
-
-// baseHTTP returns the http.Client used as the underlying transport for
-// both the OAuth2 /token exchange and the androidpublisher API calls.
-// Tests inject a RoundTripper via ctx.Value(oauth2.HTTPClient); production
-// falls back to http.DefaultClient. This mirrors doctor's pattern so a
-// single RoundTripper covers the whole upload round trip.
-func baseHTTP(rc *kernel.RunContext) *http.Client {
-	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
-		if c, ok := v.(*http.Client); ok && c != nil {
-			return c
-		}
-	}
-	return http.DefaultClient
 }
 
 // NewCommand returns the cobra command for `gplay releases upload`.
