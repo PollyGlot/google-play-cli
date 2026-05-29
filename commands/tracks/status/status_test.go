@@ -406,6 +406,18 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	}
 }
 
+// TestRenderJSON_emptyRaw_errors asserts the JSON view refuses to emit a
+// Payload with no captured raw body rather than silently writing zero
+// bytes (exit 0). Every Payload field is json:"-", so an empty Raw could
+// only ever produce a bare body and break the ADR-0003 pass-through
+// contract — defensive parity with the tracks.list sibling.
+func TestRenderJSON_emptyRaw_errors(t *testing.T) {
+	var buf bytes.Buffer
+	if err := (status.Payload{}).Renderers().JSON(&buf); err == nil {
+		t.Fatalf("JSON render of empty Raw = nil error, want a non-nil error")
+	}
+}
+
 // TestRun_unknownTrack_exit30WithHint asserts that an unknown track
 // (tracks.get 404) maps to exit 30 with a hint pointing the operator at
 // `gplay tracks list`, and that the read-only Edit is still discarded.
