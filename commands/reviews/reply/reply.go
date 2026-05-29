@@ -116,7 +116,7 @@ func runSingle(rc *kernel.RunContext, pkg, reviewID, text string, dryRun bool, h
 	}
 	_, _ = fmt.Fprintf(rc.Stderr, "Reply posted on %s\n", reviewID)
 	if rc.Format == output.FormatJSON {
-		writeRaw(rc.Stdout, raw)
+		return writeRaw(rc.Stdout, raw)
 	}
 	return nil
 }
@@ -191,9 +191,13 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 	}
 
 	if rc.Format == output.FormatJSON {
-		_ = output.WriteJSON(rc.Stdout, struct {
+		// A broken/closed stdout is a hard failure the consumer cannot see
+		// past, so it supersedes the per-row aggregate exit below.
+		if err := output.WriteJSON(rc.Stdout, struct {
 			Results []rowResult `json:"results"`
-		}{Results: results})
+		}{Results: results}); err != nil {
+			return err
+		}
 	}
 
 	if worst != 0 {
@@ -228,12 +232,19 @@ func maxInt(a, b int) int {
 }
 
 // writeRaw passes an API JSON body through to w verbatim, ensuring a single
-// trailing newline so piped output is line-friendly.
-func writeRaw(w io.Writer, raw []byte) {
-	_, _ = w.Write(raw)
-	if n := len(raw); n == 0 || raw[n-1] != '\n' {
-		_, _ = io.WriteString(w, "\n")
+// trailing newline so piped output is line-friendly. A write failure (broken
+// or closed stdout) is returned so the caller can surface it rather than
+// reporting a success the consumer never received.
+func writeRaw(w io.Writer, raw []byte) error {
+	if _, err := w.Write(raw); err != nil {
+		return err
 	}
+	if n := len(raw); n == 0 || raw[n-1] != '\n' {
+		if _, err := io.WriteString(w, "\n"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // baseHTTP exposes the test seam (ctx's oauth2.HTTPClient) so one injected

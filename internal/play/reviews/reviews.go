@@ -145,7 +145,16 @@ func Reply(ctx context.Context, hc *http.Client, pkg, reviewID, text string) (js
 			Reasons:    reasons,
 		}
 	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return nil, &api.Error{
+			Operation:  opReviewsReply,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
 	return raw, nil
 }
 
