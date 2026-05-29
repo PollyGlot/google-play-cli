@@ -3,6 +3,13 @@ main = "worker.js"
 compatibility_date = "2026-05-01"
 workers_dev = true
 
+# account_id is intentionally NOT set here. CI passes it via the
+# `accountId` input of cloudflare/wrangler-action, sourced from the GitHub
+# Actions variable `vars.CLOUDFLARE_ACCOUNT_ID`, so the account ID stays out of
+# this public file. For a local `wrangler deploy`, export CLOUDFLARE_ACCOUNT_ID
+# (or run `wrangler login`, which discovers the account). See
+# docs/adr/0009-install-distribution-vanity-domain.md.
+
 # No custom route yet. `wrangler deploy` publishes to
 #   https://gplay-install.<your-subdomain>.workers.dev
 #

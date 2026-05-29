@@ -33,4 +33,9 @@ jobs:
           # custom-domain binding (which needs Zone DNS/Routes edit) is done
           # once, manually — those permissions never live in repo secrets.
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Passed explicitly so wrangler doesn't auto-discover the account via
+          # /memberships (which the minimal token can't do). The account ID is
+          # config, not a credential, but kept out of the public wrangler.toml
+          # as a GitHub Actions variable. See ADR-0009.
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: deploy/gplay.sh

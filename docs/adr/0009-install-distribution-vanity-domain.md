@@ -93,6 +93,25 @@ edit DNS or create routes. The one-time binding of the `gplay.sh` custom domain
 with a local `wrangler deploy`, so those broader permissions never live in repo
 secrets. DNS stays out of CI permanently; only Worker-code publishing is automated.
 
+Keeping the token that minimal has one consequence: `wrangler deploy` cannot
+auto-discover the account (that lookup hits `/memberships`, which needs
+`Memberships:Read` — i.e. User → Memberships → Read), so it would fail with
+`Authentication error [code: 10000]`. (Wrangler's own error text points at
+`User Details:Read`, but that scope only governs the email shown by `whoami`;
+the account lookup itself is gated by `Memberships:Read`.)
+The fix is to pass the account ID **explicitly** rather than broaden the token —
+via the `accountId` input of `cloudflare/wrangler-action`, sourced from the GitHub
+Actions variable `vars.CLOUDFLARE_ACCOUNT_ID`.
+
+The account ID is **config, not a credential** — it grants nothing on its own and
+appears in dashboard URLs — so committing it to `wrangler.toml` would be harmless.
+We still keep it out of this public file, as a GitHub Actions *variable* (not a
+secret: a variable is the honest classification for non-sensitive config). This
+mirrors the reference project `RhysSullivan/executor`, which likewise never commits
+its account ID and sources it from CI configuration. The net effect: nothing in
+the repo identifies the Cloudflare account, and the deploy token remains
+`Workers Scripts:Edit` only.
+
 The `push: main` trigger is also what keeps the secret safe from fork PRs: it runs
 only on already-merged (maintainer-reviewed) code, never on untrusted `pull_request`
 events, so the token is never exposed to a contributor's fork.
