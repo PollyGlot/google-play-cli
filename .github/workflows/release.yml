@@ -8,6 +8,10 @@ on:
         description: Git ref (tag) to build and publish.
         type: string
         required: true
+    secrets:
+      HOMEBREW_TAP_GITHUB_TOKEN:
+        description: PAT with contents:write on PollyGlot/homebrew-tap.
+        required: false
   # Manual escape hatch: push a tag by hand to publish without release-please.
   push:
     tags:
