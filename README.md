@@ -19,10 +19,13 @@ you'd build today if you started fresh — one static binary, no runtime,
 JSON output that matches the Google Play Developer API verbatim, semantic
 exit codes, safe production defaults.
 
-> **Status: pre-1.0.** `v0.1.0` ships the MVP surface — auth, apps,
-> releases, and tracks. Reviews land next. Breaking changes are still
-> possible before `v1.0` — see [docs/BACKLOG.md](docs/BACKLOG.md) for
-> what's intentionally out of scope.
+> **Public preview — pre-1.0.** The full MVP surface is implemented: auth,
+> apps, releases, tracks, and reviews. This is an invitation to test and give
+> feedback — breaking changes are still possible before `v1.0`, where
+> per-command stability labels will mark what's frozen. See
+> [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally out of scope and
+> [ADR-0010](docs/adr/0010-versioning-public-contract-and-ga.md) for the
+> versioning policy.
 
 ## Why
 
@@ -40,8 +43,8 @@ exit codes, safe production defaults.
 
 ## Install
 
-All install methods are live as of `v0.1.0`: `go install`, Homebrew, the
-install script, and pre-built binaries for Linux, macOS, and Windows on the
+All install methods are live: `go install`, Homebrew, the install script, and
+pre-built binaries for Linux, macOS, and Windows on the
 [releases page](https://github.com/PollyGlot/google-play-cli/releases).
 
 ```bash
@@ -74,13 +77,12 @@ gplay init
 
 Full command reference: `gplay --help` (or `gplay <subcommand> --help`).
 
-### Planned for v0.1 stable
+### The Fastlane-replacement surface
 
-The Fastlane-replacement surface lands incrementally on the road to
-`v0.1.0`. These commands are not yet implemented in the current pre-release:
+These all work today (public preview):
 
 ```bash
-# Upload an AAB to the internal track.
+# Upload an AAB to the internal track, with localized release notes.
 gplay releases upload app.aab \
   --package com.example.myapp \
   --track internal \
@@ -89,8 +91,12 @@ gplay releases upload app.aab \
 # Promote the latest internal build to beta.
 gplay releases promote --package com.example.myapp --from internal --to beta
 
-# Read the most recent reviews (API exposes the last 7 days only).
+# Stage a production rollout, then advance it.
+gplay releases rollout --package com.example.myapp --track production --to 0.10
+
+# Read the most recent reviews (API exposes the last 7 days only) and reply.
 gplay reviews list --package com.example.myapp --stars 1-2
+gplay reviews reply --review-id REVIEW_ID --reply "Thanks for the feedback!"
 ```
 
 See [docs/BACKLOG.md](docs/BACKLOG.md) for the full roadmap and what is
