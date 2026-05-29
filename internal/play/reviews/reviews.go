@@ -7,6 +7,7 @@
 package reviews
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -18,7 +19,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-const opReviewsList = "reviews.list"
+const (
+	opReviewsList  = "reviews.list"
+	opReviewsReply = "reviews.reply"
+)
 
 // Timestamp mirrors the API's google.protobuf.Timestamp-shaped value:
 // seconds is a decimal string, nanos an int. Modeled only where gplay reads
@@ -100,6 +104,58 @@ func (r Review) LastModified() time.Time {
 		return time.Time{}
 	}
 	return time.Unix(secs, int64(uc.LastModified.Nanos)).UTC()
+}
+
+// Reply posts a developer response to reviewID via reviews.reply. Like
+// List it is a direct call on the application — reviews are NOT mutated
+// inside an Edit. The request body is the API's {"replyText": ...} shape;
+// the verbatim 2xx body is returned for the --output json pass-through
+// (ADR-0003). A non-2xx becomes an *api.Error carrying the status, so the
+// shared classifier maps 403 → exit 11 and 404 → exit 30.
+func Reply(ctx context.Context, hc *http.Client, pkg, reviewID, text string) (json.RawMessage, error) {
+	payload, err := json.Marshal(struct {
+		ReplyText string `json:"replyText"`
+	}{ReplyText: text})
+	if err != nil {
+		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
+	}
+
+	u := api.AndroidPubBase +
+		"/applications/" + url.PathEscape(pkg) +
+		"/reviews/" + url.PathEscape(reviewID) + ":reply"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(payload))
+	if err != nil {
+		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
+		return nil, &api.Error{
+			Operation:  opReviewsReply,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    msg,
+			Reasons:    reasons,
+		}
+	}
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return nil, &api.Error{
+			Operation:  opReviewsReply,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
+	return raw, nil
 }
 
 // List fetches every review of pkg from reviews.list, following
