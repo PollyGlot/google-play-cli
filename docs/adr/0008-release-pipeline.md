@@ -32,15 +32,24 @@ attaches artifacts without touching that body. Ordering is guaranteed by the
    release PR." This was the single manual step worth automating; the rest of
    the pipeline was already solid.
 
-3. **No second PAT.** release-please runs on `push: main` with the default
-   `GITHUB_TOKEN` and calls `release.yml` in the same workflow run via
-   `workflow_call`. Because GoReleaser runs as a dependent job rather than via a
-   cascaded tag-push event, we avoid the "GITHUB_TOKEN doesn't trigger
-   workflows" cascade problem and the extra personal access token it would
-   otherwise require. (The Homebrew tap still needs its existing
-   `HOMEBREW_TAP_GITHUB_TOKEN`.)
+3. **Single build trigger via `workflow_call`.** release-please runs on
+   `push: main` and calls `release.yml` in the same workflow run via
+   `workflow_call`, gated on its `release_created` output. GoReleaser runs as a
+   dependent job, not off a tag-push event, so there is exactly one build per
+   release. The manual path is a `workflow_dispatch` (not an auto `push: tags`
+   trigger) precisely because release-please authors tags with a GitHub App
+   token (see below): an auto tag trigger would fire a second, racing GoReleaser
+   run on the same tag.
 
-4. **Supply-chain provenance at no marginal cost.** Once GoReleaser owns the
+4. **Bot identity via a GitHub App.** release-please uses a token minted from the
+   `gplay` GitHub App (`actions/create-github-app-token`) rather than the default
+   `GITHUB_TOKEN`, so the release PR, tag and commits are authored by
+   `gplay[bot]`. This also removes the dependency on the "Allow GitHub Actions to
+   create and approve pull requests" repo setting, since the App token is not the
+   `GITHUB_TOKEN`. (The Homebrew tap still needs its existing
+   `HOMEBREW_TAP_GITHUB_TOKEN`; the App needs `GPLAY_APP_ID` + `GPLAY_APP_PRIVATE_KEY`.)
+
+5. **Supply-chain provenance at no marginal cost.** Once GoReleaser owns the
    build, signing checksums with keyless cosign (OIDC, `id-token: write`) and
    emitting an SPDX SBOM per archive is a few lines of config. gplay's pitch is
    that third-party CI pipelines pull the binary; signed checksums and an SBOM
@@ -55,9 +64,10 @@ attaches artifacts without touching that body. Ordering is guaranteed by the
   created the release, or it would create one with GitHub-native notes instead
   of the curated changelog. The `needs:` edge enforces this; breaking it would
   silently degrade the release body, not fail loudly.
-- **The manual-tag path no longer gets the curated changelog.** Pushing a
-  `vX.Y.Z` tag by hand still works (escape hatch) but produces GoReleaser's own
-  release header, since release-please isn't in that loop.
+- **The manual path no longer gets the curated changelog.** Running the
+  `workflow_dispatch` escape hatch on a tag still builds and publishes, but
+  produces GoReleaser's own release header, since release-please isn't in that
+  loop.
 
 ## Versioning strategy
 

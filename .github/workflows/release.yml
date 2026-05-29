@@ -12,10 +12,15 @@ on:
       HOMEBREW_TAP_GITHUB_TOKEN:
         description: PAT with contents:write on PollyGlot/homebrew-tap.
         required: false
-  # Manual escape hatch: push a tag by hand to publish without release-please.
-  push:
-    tags:
-      - 'v*.*.*'
+  # Manual escape hatch. Deliberately NOT an auto `push: tags` trigger: now that
+  # release-please uses a GitHub App token, its tag creation would fire push:tags
+  # and race the workflow_call path with a duplicate GoReleaser run.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag to build and publish (e.g. v0.1.0).
+        type: string
+        required: true
 
 permissions:
   contents: read

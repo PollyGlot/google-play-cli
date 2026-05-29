@@ -21,9 +21,18 @@ jobs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
+      # Mint a token for the gplay GitHub App so the release PR, tag and commits
+      # are authored by gplay[bot] instead of github-actions[bot].
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.GPLAY_APP_ID }}
+          private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
+
       - uses: googleapis/release-please-action@v4
         id: rp
         with:
+          token: ${{ steps.app-token.outputs.token }}
           # Drives versioning from release-please-config.json +
           # .release-please-manifest.json (single root package, type "simple").
           config-file: release-please-config.json
