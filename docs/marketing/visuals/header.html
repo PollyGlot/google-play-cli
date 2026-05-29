@@ -23,7 +23,9 @@
 
   Editing
   -------
-  · Bump version: change the .ver text in the terminal title bar
+  · Version: intentionally omitted from the title bar — the brand asset is
+    decoupled from releases (live version lives in the README badge; see
+    ADR-0008 / ADR-0010)
   · Change tagline: edit the .tagline div content
   · Adjust iridescence intensity: tune the alpha values in .aurora
 -->
@@ -203,7 +205,6 @@
       color: var(--ink-mute);
       letter-spacing: 0.3px;
     }
-    .terminal-chrome .title .ver { color: var(--ink-soft); }
 
     .terminal-body {
       padding: 44px 42px 48px 42px;
@@ -237,7 +238,7 @@
             <div class="traffic r"></div>
             <div class="traffic y"></div>
             <div class="traffic g"></div>
-            <div class="title">gplay&nbsp;&nbsp;<span class="ver">v0.1.0-alpha.2</span></div>
+            <div class="title">gplay</div>
           </div>
           <div class="terminal-body">
             <div><span class="prompt">$</span>gplay releases upload app.aab</div>
