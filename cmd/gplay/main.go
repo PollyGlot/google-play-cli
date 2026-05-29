@@ -23,6 +23,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
+	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
 	tracksstatus "github.com/PollyGlot/google-play-cli/commands/tracks/status"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
@@ -141,6 +142,13 @@ replace Fastlane on Android CI pipelines.`,
 	tracks.AddCommand(trackslist.NewCommand(boot))
 	tracks.AddCommand(tracksstatus.NewCommand(boot))
 	root.AddCommand(tracks)
+
+	reviews := &cobra.Command{
+		Use:   "reviews",
+		Short: "Read user reviews (list)",
+	}
+	reviews.AddCommand(reviewslist.NewCommand(boot))
+	root.AddCommand(reviews)
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
