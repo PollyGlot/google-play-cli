@@ -22,6 +22,29 @@ single source of truth — there is no static copy to drift. Rationale:
 
 ## Deploy
 
+**The Worker deploys automatically.** Any push to `main` that touches
+`deploy/gplay.sh/**` triggers
+[`.github/workflows/deploy-worker.yml`](../../.github/workflows/deploy-worker.yml),
+which runs `wrangler deploy` for you. The trigger is the *path*, not the kind of
+merge: a CLI release or an `install.sh` edit does **not** redeploy the Worker —
+the Worker proxies `install.sh` live from `main`. See
+[ADR-0009](../../docs/adr/0009-install-distribution-vanity-domain.md).
+
+This needs one repo secret, `CLOUDFLARE_API_TOKEN`:
+
+1. Cloudflare dashboard → **My Profile → API Tokens → Create Token**, custom
+   token with **only** `Account → Workers Scripts → Edit`, scoped to the one
+   account that owns this Worker. Suggested token name:
+   `gplay-install-worker-deploy (GitHub Actions)`.
+2. Repo → **Settings → Secrets and variables → Actions → New repository
+   secret**, name `CLOUDFLARE_API_TOKEN`.
+
+The token stays minimal on purpose (public repo): it can republish the Worker
+script and nothing else. The one-time custom-domain binding below needs broader
+zone permissions and is therefore done **manually**, never from CI.
+
+### Manual deploy (first-time domain binding / dispatch / debugging)
+
 Wrangler needs to authenticate to Cloudflare once. Either:
 
 ```bash
@@ -29,7 +52,7 @@ Wrangler needs to authenticate to Cloudflare once. Either:
 npx wrangler login
 ```
 
-or set a scoped API token (`Workers Scripts:Edit`) in the environment:
+or set a scoped API token in the environment:
 
 ```bash
 export CLOUDFLARE_API_TOKEN=…

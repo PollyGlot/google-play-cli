@@ -36,3 +36,9 @@ A way of shaping a command's output for a specific reader: `table` for humans on
 
 ### Renderer
 A function that turns a command's data payload into bytes for a given Format. Each command supplies its own three Renderers (one per Format), and a shared dispatcher in `internal/output` picks the right one based on the resolved Format. The dispatcher owns the "unsupported format" error path so each command stops re-implementing it.
+
+### Release
+Cutting a new published version of the **gplay CLI** itself: the versioned binaries, archives, checksums, SBOMs, cosign signature, Homebrew formula and GitHub Release. A Release is triggered by merging the rolling "release PR" maintained by release-please, which creates the `vX.Y.Z` tag; GoReleaser then builds and publishes the artifacts. A Release concerns the CLI distribution only — it never touches the gplay.sh Worker, and the Worker needs no redeploy when a new version ships (see Deploy).
+
+### Deploy
+Publishing a new version of the **gplay.sh Worker code** (the Cloudflare Worker that serves the install script behind `https://gplay.sh/install`). A Deploy is `wrangler deploy` of `deploy/gplay.sh/`, triggered only when the Worker's own code changes (`worker.js` / `wrangler.toml`) — not when `install.sh` changes (the Worker proxies it live from `main`) and not when the CLI is Released. Distinct from Release: a Deploy concerns the install-URL proxy, a Release concerns the CLI artifacts. The two are fully decoupled.
