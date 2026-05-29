@@ -42,3 +42,12 @@ Cutting a new published version of the **gplay CLI** itself: the versioned binar
 
 ### Deploy
 Publishing a new version of the **gplay.sh Worker code** (the Cloudflare Worker that serves the install script behind `https://gplay.sh/install`). A Deploy is `wrangler deploy` of `deploy/gplay.sh/`, triggered only when the Worker's own code changes (`worker.js` / `wrangler.toml`) — not when `install.sh` changes (the Worker proxies it live from `main`) and not when the CLI is Released. Distinct from Release: a Deploy concerns the install-URL proxy, a Release concerns the CLI artifacts. The two are fully decoupled.
+
+### Public contract
+The subset of gplay's interface that a Release promises not to break without a major version bump: command and flag names and their semantics, exit codes, the config schema and resolution precedence, Account resolution precedence, and the guarantee that `--output json` stays API-passthrough. Deliberately **excluded**: the `table` / `markdown` layouts (human views, free to evolve), the *fields* inside the passthrough JSON (owned by the Google Play Developer API, not gplay), and stderr / log wording. Distinct from "everything the CLI does" — the Public contract is only the part under an explicit stability promise. See [ADR-0010](./docs/adr/0010-versioning-public-contract-and-ga.md).
+
+### Stability label
+A per-command lifecycle marker shown in help output, signalling how far a command's surface can be depended on: **no label** = part of the Public contract (stable); **`[experimental]`** = shipped but still evolving, outside the contract; **`DEPRECATED:`** = a compatibility path kept during a migration, not the long-term home. Lets a command ship before it is frozen.
+
+### Public preview / GA
+Two named maturity states of the gplay CLI. **Public preview** is the `v0.x` line: publicly installable and usable, an invitation to test and give feedback, with breaking changes still possible — no Public contract promise yet. **GA** (general availability, `v1.0`+) is the state where the Public contract is in force. These are communication-and-promise states, not feature-count thresholds.
