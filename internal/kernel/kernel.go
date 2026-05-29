@@ -277,11 +277,16 @@ func (rc *RunContext) AuthedClient() (*http.Client, error) {
 	if rc.Account == nil {
 		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
 	}
-	ts, err := token.Source(rc.Ctx, rc.Account)
+	// Thread the base client into the context BEFORE building the token
+	// source: jwt.Config.TokenSource captures the context it is given and
+	// reuses it for the /token mint/refresh calls. Deriving ctx first means
+	// one injected client (the test seam, or http.DefaultClient in prod)
+	// covers both the /token exchange and the androidpublisher calls.
+	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, baseHTTPClient(rc.Ctx))
+	ts, err := token.Source(ctx, rc.Account)
 	if err != nil {
 		return nil, &authError{msg: "could not build token source: " + err.Error()}
 	}
-	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, baseHTTPClient(rc.Ctx))
 	return oauth2.NewClient(ctx, ts), nil
 }
 
