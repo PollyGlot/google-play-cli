@@ -34,8 +34,10 @@ jobs:
       id-token: write  # OIDC token for keyless cosign signing
     steps:
       - name: Validate ref is a tag
+        env:
+          INPUT_REF: ${{ inputs.ref || github.ref }}
         run: |
-          REF="${{ inputs.ref || github.ref }}"
+          REF="$INPUT_REF"
           if [[ "$REF" != v* && "$REF" != refs/tags/v* ]]; then
             echo "Expected a tag ref like v0.1.0, got: $REF" >&2
             exit 1
