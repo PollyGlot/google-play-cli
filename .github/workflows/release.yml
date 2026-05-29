@@ -12,10 +12,15 @@ on:
       HOMEBREW_TAP_GITHUB_TOKEN:
         description: PAT with contents:write on PollyGlot/homebrew-tap.
         required: false
-  # Manual escape hatch: push a tag by hand to publish without release-please.
-  push:
-    tags:
-      - 'v*.*.*'
+  # Manual escape hatch. Deliberately NOT an auto `push: tags` trigger: now that
+  # release-please uses a GitHub App token, its tag creation would fire push:tags
+  # and race the workflow_call path with a duplicate GoReleaser run.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag to build and publish (e.g. v0.1.0).
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -28,6 +33,16 @@ jobs:
       contents: write
       id-token: write  # OIDC token for keyless cosign signing
     steps:
+      - name: Validate ref is a tag
+        env:
+          INPUT_REF: ${{ inputs.ref || github.ref }}
+        run: |
+          REF="$INPUT_REF"
+          if [[ "$REF" != v* && "$REF" != refs/tags/v* ]]; then
+            echo "Expected a tag ref like v0.1.0, got: $REF" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # GoReleaser reads the full git history for the changelog
