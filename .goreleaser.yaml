@@ -43,6 +43,26 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# Software Bill of Materials, one SPDX doc per archive. Needs `syft` on PATH
+# (the release workflow installs it; `make release-snapshot` skips this stage).
+sboms:
+  - id: archives
+    artifacts: archive
+
+# Keyless cosign signature over checksums.txt. Signing the checksum file
+# transitively covers every artifact it lists. Needs `cosign` on PATH and
+# `id-token: write` in CI (OIDC). Produces checksums.txt.sigstore.json.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - "sign-blob"
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
@@ -53,6 +73,10 @@ release:
   github:
     owner: PollyGlot
     name: google-play-cli
+  # release-please creates the GitHub Release (with its changelog body) before
+  # GoReleaser runs. keep-existing means we attach artifacts without clobbering
+  # that body. The header below only applies on the manual `git tag` path.
+  mode: keep-existing
   draft: false
   prerelease: auto
   name_template: "v{{.Version}}"

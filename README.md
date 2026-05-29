@@ -19,10 +19,10 @@ you'd build today if you started fresh — one static binary, no runtime,
 JSON output that matches the Google Play Developer API verbatim, semantic
 exit codes, safe production defaults.
 
-> **Status: pre-1.0.** v0.1.0-alpha.2 is out and usable. The MVP surface
-> (auth, releases, apps) ships in alpha. Tracks and reviews land next.
-> Breaking changes are expected before `v0.1.0` stable — see
-> [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally out of scope.
+> **Status: pre-1.0.** `v0.1.0` ships the MVP surface — auth, apps,
+> releases, and tracks. Reviews land next. Breaking changes are still
+> possible before `v1.0` — see [docs/BACKLOG.md](docs/BACKLOG.md) for
+> what's intentionally out of scope.
 
 ## Why
 
@@ -40,18 +40,19 @@ exit codes, safe production defaults.
 
 ## Install
 
-`go install` works today against tagged alpha releases. Homebrew,
-install script, and pre-built binaries land with `v0.1.0` stable.
+All install methods are live as of `v0.1.0`: `go install`, Homebrew, the
+install script, and pre-built binaries for Linux, macOS, and Windows on the
+[releases page](https://github.com/PollyGlot/google-play-cli/releases).
 
 ```bash
-# go install — works today (alpha builds tagged)
+# go install
 go install github.com/PollyGlot/google-play-cli/cmd/gplay@latest
 
-# Homebrew (planned for v0.1.0)
-brew install PollyGlot/gplay/gplay
+# Homebrew
+brew install PollyGlot/tap/gplay
 
-# Install script (planned for v0.1.0)
-curl -fsSL https://gplay.sh/install | sh
+# Install script
+curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
 ```
 
 ## Quick start

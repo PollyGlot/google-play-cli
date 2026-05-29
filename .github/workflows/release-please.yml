@@ -1,0 +1,45 @@
+name: Release Please
+
+# Maintains a rolling "release" PR that bumps the version and regenerates
+# CHANGELOG.md from Conventional Commits. Merging that PR cuts a GitHub Release
+# and tag, which then triggers the GoReleaser build (release.yml) to attach
+# binaries, checksums, SBOMs and the cosign signature.
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          # Drives versioning from release-please-config.json +
+          # .release-please-manifest.json (single root package, type "simple").
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  release:
+    name: Publish artifacts
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
+      id-token: write
+    # GITHUB_TOKEN is forwarded to called workflows automatically; only the tap
+    # PAT needs to be passed explicitly.
+    secrets:
+      HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: ${{ needs.release-please.outputs.tag_name }}
