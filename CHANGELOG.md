@@ -5,6 +5,21 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/PollyGlot/google-play-cli/compare/v0.1.0...v0.2.0) (2026-05-29)
+
+
+### Features
+
+* **install:** serve install script via gplay.sh Cloudflare Worker ([#87](https://github.com/PollyGlot/google-play-cli/issues/87)) ([f4ee120](https://github.com/PollyGlot/google-play-cli/commit/f4ee120a1c14d4e67df1a920a468db2c32e969d9))
+* **reviews:** gplay reviews list (7-day window, auto-paginated, --stars filter) ([#61](https://github.com/PollyGlot/google-play-cli/issues/61)) ([#92](https://github.com/PollyGlot/google-play-cli/issues/92)) ([344879e](https://github.com/PollyGlot/google-play-cli/commit/344879edf5df8ad9e65b6e8faf38ec6147090fbf))
+* **reviews:** gplay reviews reply — single + --batch ([#62](https://github.com/PollyGlot/google-play-cli/issues/62)) ([#96](https://github.com/PollyGlot/google-play-cli/issues/96)) ([dd0aab5](https://github.com/PollyGlot/google-play-cli/commit/dd0aab52af9b3bee071afa566255d1b0589c9dae))
+
+
+### Bug Fixes
+
+* **install:** print version via `gplay version`, not `--version` ([#88](https://github.com/PollyGlot/google-play-cli/issues/88)) ([37794b1](https://github.com/PollyGlot/google-play-cli/commit/37794b1bf566f43731ccc963532966550c24a7db))
+* **worker:** source account_id from a CI variable so the minimal token can deploy ([#91](https://github.com/PollyGlot/google-play-cli/issues/91)) ([ff93fe2](https://github.com/PollyGlot/google-play-cli/commit/ff93fe26d261641c279b38569027328a20077cd9))
+
 ## [0.1.0](https://github.com/PollyGlot/google-play-cli/compare/v0.1.0-alpha.2...v0.1.0) (2026-05-29)
 
 
