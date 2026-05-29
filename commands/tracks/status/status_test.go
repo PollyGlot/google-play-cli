@@ -436,6 +436,34 @@ func TestRun_unknownTrack_exit30WithHint(t *testing.T) {
 	}
 }
 
+// TestRun_unknownPackage_exit30WithHint asserts that an unknown package
+// (edits.insert 404, raised before the read closure runs) maps to exit 30
+// with a hint pointing the operator at `gplay apps list` — mirroring the
+// sibling `gplay tracks list`. The closure never runs, so the track is
+// never read; the package miss is caught at insert, distinct from the
+// tracks.get 404 (unknown track) that points at `gplay tracks list`.
+func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
+	rt := &statusRT{
+		t:          t,
+		insertCode: 404,
+		insertBody: `{"error":{"code":404,"message":"The requested package does not exist."}}`,
+	}
+	rc, _ := newRC(t, rt)
+
+	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "production"})
+	if code := exitCodeOf(t, err); code != 30 {
+		t.Errorf("ExitCode() = %d, want 30", code)
+	}
+	if !strings.Contains(err.Error(), "apps list") {
+		t.Errorf("error %q, want a hint mentioning `gplay apps list`", err.Error())
+	}
+	for _, c := range rt.calls {
+		if strings.Contains(c, "/tracks/") {
+			t.Errorf("track was read despite an insert (package) failure; calls = %v", rt.calls)
+		}
+	}
+}
+
 // TestRun_forbidden_exit11WithHint asserts that a 403 (service account not
 // invited on the app) maps to exit 11 with the standard grant-access hint.
 func TestRun_forbidden_exit11WithHint(t *testing.T) {
