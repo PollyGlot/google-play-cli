@@ -5,6 +5,24 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0](https://github.com/PollyGlot/google-play-cli/compare/v0.1.0-alpha.2...v0.1.0) (2026-05-29)
+
+
+### Features
+
+* **tracks:** gplay tracks list (cross-track view) ([#77](https://github.com/PollyGlot/google-play-cli/issues/77)) ([eafaa2c](https://github.com/PollyGlot/google-play-cli/commit/eafaa2ce1aec94aec7afaee20040fc494aa2199f))
+* **tracks:** gplay tracks status (single-track deep view) ([#78](https://github.com/PollyGlot/google-play-cli/issues/78)) ([38e73c1](https://github.com/PollyGlot/google-play-cli/commit/38e73c1a94daaa34c0673d6a5e4d379e0a82454b))
+
+
+### Bug Fixes
+
+* **tracks:** tracks status JSON guard + un-mask markdown header test ([#79](https://github.com/PollyGlot/google-play-cli/issues/79)) ([3696643](https://github.com/PollyGlot/google-play-cli/commit/3696643795c4074379a61f30592ad7879b5237f0))
+
+
+### Miscellaneous Chores
+
+* graduate release to 0.1.0 ([#84](https://github.com/PollyGlot/google-play-cli/issues/84)) ([46399bc](https://github.com/PollyGlot/google-play-cli/commit/46399bc50bee85d7028eedf744c0995adf18d34b))
+
 ## [Unreleased]
 
 ## [0.1.0-alpha.2] — 2026-05-26
