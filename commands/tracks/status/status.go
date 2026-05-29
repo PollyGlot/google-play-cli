@@ -252,8 +252,14 @@ func renderTable(w io.Writer, p Payload) error {
 }
 
 // renderJSON emits the raw tracks.get body verbatim (ADR-0003
-// pass-through).
+// pass-through). Raw is always populated on the Run path; an empty Raw
+// would mean we never captured the API body, so we error rather than
+// emit zero bytes (every Payload field is json:"-", so an empty Raw
+// would silently break the contract).
 func renderJSON(w io.Writer, p Payload) error {
+	if len(p.Raw) == 0 {
+		return fmt.Errorf("missing raw tracks.get payload for --output json")
+	}
 	_, err := w.Write(p.Raw)
 	return err
 }

@@ -393,7 +393,7 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	if !strings.Contains(out, "---") {
 		t.Errorf("markdown output = %q, want a GFM `---` separator row", out)
 	}
-	if !strings.Contains(strings.ToUpper(out), "NAME") || !strings.Contains(out, "143") {
+	if !strings.Contains(out, "NAME") || !strings.Contains(out, "143") {
 		t.Errorf("markdown output = %q, want the release row", out)
 	}
 	if !strings.Contains(out, "!HALTED") {
@@ -403,6 +403,18 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	// a pasted report stands on its own without the command line.
 	if !strings.Contains(out, "Track: production (standard)") {
 		t.Errorf("markdown output = %q, want the track/kind context line", out)
+	}
+}
+
+// TestRenderJSON_emptyRaw_errors asserts the JSON view refuses to emit a
+// Payload with no captured raw body rather than silently writing zero
+// bytes (exit 0). Every Payload field is json:"-", so an empty Raw could
+// only ever produce a bare body and break the ADR-0003 pass-through
+// contract — defensive parity with the tracks.list sibling.
+func TestRenderJSON_emptyRaw_errors(t *testing.T) {
+	var buf bytes.Buffer
+	if err := (status.Payload{}).Renderers().JSON(&buf); err == nil {
+		t.Fatalf("JSON render of empty Raw = nil error, want a non-nil error")
 	}
 }
 
