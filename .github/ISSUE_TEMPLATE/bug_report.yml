@@ -17,8 +17,8 @@ body:
     id: version
     attributes:
       label: gplay version
-      description: Output of `gplay --version`
-      placeholder: "gplay v0.1.0 (abc123, 2026-05-19)"
+      description: Output of `gplay version`
+      placeholder: "gplay 0.1.0 (abc123, 2026-05-19)"
     validations:
       required: true
 

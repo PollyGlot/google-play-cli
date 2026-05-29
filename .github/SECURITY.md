@@ -19,7 +19,7 @@ Two private channels are available, pick whichever is convenient:
 
 Please include:
 
-- The version of `gplay` affected (output of `gplay --version`).
+- The version of `gplay` affected (output of `gplay version`).
 - A description of the vulnerability and its impact (what an attacker can do).
 - Reproduction steps or a proof-of-concept.
 - Any suggested remediation.
