@@ -9,13 +9,20 @@
 //
 //   - Blank lines and lines beginning with `#` are skipped.
 //   - A reply containing tabs or newlines must be double-quoted; inside a
-//     quoted field a literal quote is written `""`.
-//   - Every data line must have exactly two fields with a non-empty
-//     review-id; anything else is a malformed Line carrying an Err, and
+//     quoted field a literal quote is written `""`. A bare double-quote in
+//     reply prose (e.g. `say "hi"`) is taken literally — quotes only matter
+//     when a field begins with one (LazyQuotes), so common prose does not
+//     need escaping.
+//   - Every data line must have exactly two fields, a non-empty review-id,
+//     and a non-empty reply (mirroring single mode, which requires
+//     --reply); anything else is a malformed Line carrying an Err, and
 //     parsing continues with the next line (a per-line failure must not
-//     abort the batch). The one unrecoverable case is an unterminated
-//     quote: it consumes the rest of the stream by definition, so the tail
-//     surfaces as a single error Line.
+//     abort the batch). The one footgun is a reply that *opens* with a
+//     double-quote and never closes it: under LazyQuotes the quoted field
+//     absorbs the rest of the stream into that one record (so following
+//     rows are not parsed separately) rather than erroring. Replies that
+//     merely contain a quote mid-prose are unaffected — only a leading
+//     unbalanced quote triggers this.
 package batch
 
 import (
@@ -51,6 +58,7 @@ func Parse(r io.Reader) []Line {
 	cr.Comma = '\t'
 	cr.Comment = '#'
 	cr.FieldsPerRecord = -1 // we validate the field count ourselves
+	cr.LazyQuotes = true    // a bare " in reply prose is literal, not a parse error
 
 	var lines []Line
 	for {
@@ -72,17 +80,25 @@ func Parse(r io.Reader) []Line {
 			lines = append(lines, Line{Num: num, Err: fmt.Errorf("expected 2 tab-separated fields (review-id and reply), got %d", len(rec))})
 			continue
 		}
-		if strings.TrimSpace(rec[0]) == "" {
+		id := strings.TrimSpace(rec[0]) // surrounding whitespace would 404 against the API
+		if id == "" {
 			lines = append(lines, Line{Num: num, Err: errors.New("empty review-id")})
 			continue
 		}
-		lines = append(lines, Line{Num: num, Record: Record{ReviewID: rec[0], Reply: rec[1]}})
+		if rec[1] == "" {
+			lines = append(lines, Line{Num: num, Err: errors.New("empty reply (single mode requires --reply, batch mirrors it)")})
+			continue
+		}
+		lines = append(lines, Line{Num: num, Record: Record{ReviewID: id, Reply: rec[1]}})
 	}
 	return lines
 }
 
 // parseErrLine pulls the source line out of a *csv.ParseError, or 0 when
-// the error carries no position.
+// the error carries no position. With LazyQuotes the csv reader no longer
+// raises quote-balancing errors, so in practice this fires only for a
+// reader-level IO failure (which carries no position) — it stays as a
+// defensive fallback.
 func parseErrLine(err error) int {
 	var pe *csv.ParseError
 	if errors.As(err, &pe) {

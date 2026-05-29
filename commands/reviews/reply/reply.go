@@ -168,7 +168,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 		if ln.Err != nil {
 			_, _ = fmt.Fprintf(rc.Stderr, "ERR line %d: %v\n", ln.Num, ln.Err)
 			results = append(results, rowResult{Status: "error", Error: ln.Err.Error()})
-			worst = maxInt(worst, 2) // malformed input is CLI misuse (exit 2)
+			worst = max(worst, 2) // malformed input is CLI misuse (exit 2)
 			failed++
 			continue
 		}
@@ -182,7 +182,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 			cerr := reviewerr.ClassifyReply(pkg, id, err)
 			_, _ = fmt.Fprintf(rc.Stderr, "ERR %s %s\n", id, cerr.Error())
 			results = append(results, rowResult{ReviewID: id, Status: "error", Error: cerr.Error()})
-			worst = maxInt(worst, exit.For(cerr))
+			worst = max(worst, exit.For(cerr))
 			failed++
 			continue
 		}
@@ -220,15 +220,6 @@ func batchSource(rc *kernel.RunContext, path string) (io.Reader, func(), error) 
 		return nil, func() {}, &usageError{msg: "cannot read --batch file: " + err.Error()}
 	}
 	return f, func() { _ = f.Close() }, nil
-}
-
-// maxInt returns the larger of a and b — the batch exit-code aggregation is a
-// plain numeric maximum (the highest code seen wins).
-func maxInt(a, b int) int {
-	if b > a {
-		return b
-	}
-	return a
 }
 
 // writeRaw passes an API JSON body through to w verbatim, ensuring a single

@@ -95,3 +95,57 @@ func TestParse_emptyReviewID_isMalformed(t *testing.T) {
 		t.Fatalf("a line with an empty review-id must be malformed, got %+v", lines)
 	}
 }
+
+func TestParse_emptyReply_isMalformed(t *testing.T) {
+	// A trailing tab with no reply text parses to two fields, the second
+	// empty. Single mode rejects an empty --reply (exit 2); batch must mirror
+	// it rather than POST an empty developer response.
+	lines := Parse(strings.NewReader("r1\t\n"))
+	if len(lines) != 1 || lines[0].Err == nil {
+		t.Fatalf("a line with an empty reply must be malformed, got %+v", lines)
+	}
+	if lines[0].Record != (Record{}) {
+		t.Errorf("a malformed line must not carry a Record, got %+v", lines[0].Record)
+	}
+}
+
+func TestParse_bareQuoteInReplyIsLiteral(t *testing.T) {
+	// A reply with a bare (non-RFC-4180) double-quote is common prose and must
+	// be taken literally, not rejected as a parse error (LazyQuotes).
+	lines := Parse(strings.NewReader("r1\tHe said \"hi\" please\n"))
+	if len(lines) != 1 || lines[0].Err != nil {
+		t.Fatalf("a bare quote in prose must parse cleanly, got %+v", lines)
+	}
+	if lines[0].Record != (Record{"r1", `He said "hi" please`}) {
+		t.Errorf("Record = %+v, want the quote kept literal", lines[0].Record)
+	}
+}
+
+func TestParse_reviewIDIsTrimmed(t *testing.T) {
+	// Surrounding whitespace on a hand-edited id would be URL-escaped and 404;
+	// it is trimmed before the record is built.
+	lines := Parse(strings.NewReader("  r1  \tthanks\n"))
+	if len(lines) != 1 || lines[0].Err != nil {
+		t.Fatalf("got %+v, want one clean record", lines)
+	}
+	if lines[0].Record.ReviewID != "r1" {
+		t.Errorf("ReviewID = %q, want %q (surrounding whitespace trimmed)", lines[0].Record.ReviewID, "r1")
+	}
+}
+
+func TestParse_leadingUnterminatedQuoteAbsorbsRest(t *testing.T) {
+	// Documents the LazyQuotes footgun: a reply that opens with a double-quote
+	// and never closes it absorbs the remaining lines into one record rather
+	// than erroring. Following rows are therefore not parsed separately. This
+	// pins the known tradeoff so a future reader does not expect r2/r3 here.
+	lines := Parse(strings.NewReader("r1\t\"oops\nr2\tgood\nr3\tgood\n"))
+	if len(lines) != 1 {
+		t.Fatalf("a leading unterminated quote folds the rest into one record; got %d lines: %+v", len(lines), lines)
+	}
+	if lines[0].Err != nil || lines[0].Record.ReviewID != "r1" {
+		t.Errorf("line 0 = %+v, want a single r1 record carrying the absorbed tail", lines[0])
+	}
+	if !strings.Contains(lines[0].Record.Reply, "r2") {
+		t.Errorf("the absorbed reply should contain the following rows verbatim, got %q", lines[0].Record.Reply)
+	}
+}
