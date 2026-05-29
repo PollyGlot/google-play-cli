@@ -3,11 +3,15 @@ package reviews
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 // reviewsRT is a RoundTripper that serves a fixed sequence of canned
@@ -56,6 +60,112 @@ func (r *loopingRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Header:     make(http.Header),
 	}, nil
+}
+
+// replyRT captures the reviews.reply POST — method, path, and request body —
+// and serves a canned response. code/errBody force a non-2xx for the
+// error-mapping test (0 → 200).
+type replyRT struct {
+	code     int
+	respBody string
+	errBody  string
+
+	mu      sync.Mutex
+	method  string
+	path    string
+	reqBody string
+	calls   int
+}
+
+func (r *replyRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	r.method = req.Method
+	r.path = req.URL.Path
+	if req.Body != nil {
+		b, _ := io.ReadAll(req.Body)
+		r.reqBody = string(b)
+	}
+	code := r.code
+	if code == 0 {
+		code = 200
+	}
+	body := r.respBody
+	if code != 200 {
+		body = r.errBody
+	}
+	return &http.Response{
+		StatusCode: code,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestReply_postsReplyTextAndReturnsRawBody(t *testing.T) {
+	rt := &replyRT{respBody: `{"result":{"replyText":"thanks","lastEdited":{"seconds":"1700000000"}}}`}
+	hc := &http.Client{Transport: rt}
+
+	raw, err := Reply(context.Background(), hc, "com.example.app", "gp:AOqpT123", "thanks")
+	if err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+
+	if rt.method != http.MethodPost {
+		t.Errorf("method = %q, want POST", rt.method)
+	}
+	// The reviewId's own colon and the :reply custom-method colon both stay
+	// literal in the path.
+	wantPath := "/androidpublisher/v3/applications/com.example.app/reviews/gp:AOqpT123:reply"
+	if rt.path != wantPath {
+		t.Errorf("path = %q, want %q", rt.path, wantPath)
+	}
+	// The body carries the reply under the API's replyText field.
+	var sent struct {
+		ReplyText string `json:"replyText"`
+	}
+	if err := json.Unmarshal([]byte(rt.reqBody), &sent); err != nil {
+		t.Fatalf("request body is not JSON: %v (%s)", err, rt.reqBody)
+	}
+	if sent.ReplyText != "thanks" {
+		t.Errorf("replyText = %q, want %q", sent.ReplyText, "thanks")
+	}
+	// The response is passed through verbatim for --output json (ADR-0003).
+	if !json.Valid(raw) {
+		t.Errorf("raw is not valid JSON: %s", raw)
+	}
+	if !strings.Contains(string(raw), "thanks") {
+		t.Errorf("raw should echo the API response, got: %s", raw)
+	}
+}
+
+func TestReply_nonOKBecomesAPIErrorWithStatus(t *testing.T) {
+	cases := []struct {
+		name     string
+		code     int
+		wantExit int // via the shared StatusToExitCode taxonomy
+	}{
+		{"forbidden", 403, 11},
+		{"notFound", 404, 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &replyRT{code: tc.code, errBody: `{"error":{"code":` + strconv.Itoa(tc.code) + `,"message":"nope"}}`}
+			hc := &http.Client{Transport: rt}
+
+			_, err := Reply(context.Background(), hc, "com.example.app", "r1", "hi")
+			var apiErr *api.Error
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("err = %v (%T), want *api.Error", err, err)
+			}
+			if apiErr.StatusCode != tc.code {
+				t.Errorf("StatusCode = %d, want %d", apiErr.StatusCode, tc.code)
+			}
+			if apiErr.ExitCode() != tc.wantExit {
+				t.Errorf("ExitCode() = %d, want %d", apiErr.ExitCode(), tc.wantExit)
+			}
+		})
+	}
 }
 
 func TestList_stopsOnRepeatedPaginationToken(t *testing.T) {

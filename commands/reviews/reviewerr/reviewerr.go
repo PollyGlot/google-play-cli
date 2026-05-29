@@ -43,9 +43,24 @@ func (e *packageNotFoundError) Error() string {
 
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
+// reviewNotFoundError wraps a 404 from reviews.reply, where the unknown
+// resource is the review — not the package — so the hint names the reviewId
+// and the 7-day window rather than pointing at `gplay apps list`.
+type reviewNotFoundError struct {
+	reviewID string
+	cause    error
+}
+
+func (e *reviewNotFoundError) Error() string {
+	return fmt.Sprintf("review %q not found — check the id, or note the reviews API only exposes the last 7 days so an older review can no longer be replied to: %v", e.reviewID, e.cause)
+}
+
+func (e *reviewNotFoundError) Unwrap() error { return e.cause }
+
 // Classify adds an actionable hint to a 403 or 404 from a reviews call while
 // leaving the wrapped *api.Error to drive the exit code. Every other failure
-// (5xx, network, decode) propagates verbatim.
+// (5xx, network, decode) propagates verbatim. Used by `reviews list`, where a
+// 404 means the package is unknown.
 func Classify(pkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
@@ -54,6 +69,24 @@ func Classify(pkg string, err error) error {
 			return &forbiddenError{pkg: pkg, cause: err}
 		case http.StatusNotFound:
 			return &packageNotFoundError{pkg: pkg, cause: err}
+		}
+	}
+	return err
+}
+
+// ClassifyReply is Classify for the reviews.reply verb. A 403 reuses the
+// shared "Reply to reviews" grant hint (the permission gates reading and
+// replying alike), but a 404 here means the reviewId is unknown — not the
+// package — so it gets a review-specific hint. Exit codes are unchanged
+// (403 → 11, 404 → 30): the wrapped *api.Error stays authoritative.
+func ClassifyReply(pkg, reviewID string, err error) error {
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusForbidden:
+			return &forbiddenError{pkg: pkg, cause: err}
+		case http.StatusNotFound:
+			return &reviewNotFoundError{reviewID: reviewID, cause: err}
 		}
 	}
 	return err
