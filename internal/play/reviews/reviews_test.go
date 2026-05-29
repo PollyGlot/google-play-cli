@@ -37,6 +37,41 @@ func (r *reviewsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
+// loopingRT always advertises the same nextPageToken, simulating an API that
+// cycles a pagination token. It self-limits so an unguarded loop fails the
+// test fast instead of hanging.
+type loopingRT struct {
+	t     *testing.T
+	calls int
+}
+
+func (r *loopingRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.calls++
+	if r.calls > 10 {
+		r.t.Fatalf("List made %d calls without terminating — pagination token loop not guarded", r.calls)
+	}
+	body := `{"reviews":[{"reviewId":"r","comments":[{"userComment":{"starRating":5,"reviewerLanguage":"en"}}]}],"tokenPagination":{"nextPageToken":"LOOP"}}`
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestList_stopsOnRepeatedPaginationToken(t *testing.T) {
+	rt := &loopingRT{t: t}
+	hc := &http.Client{Transport: rt}
+
+	_, err := List(context.Background(), hc, "com.example.app")
+	if err == nil {
+		t.Fatal("expected an error when the API repeats a pagination token, got nil")
+	}
+	// First call yields LOOP (new), second call repeats LOOP → detected.
+	if rt.calls != 2 {
+		t.Errorf("expected exactly 2 calls before detecting the loop, got %d", rt.calls)
+	}
+}
+
 func TestList_autoPaginates(t *testing.T) {
 	page1 := `{"reviews":[{"reviewId":"r1","comments":[{"userComment":{"text":"a","starRating":5,"reviewerLanguage":"en"}}]}],"tokenPagination":{"nextPageToken":"PAGE2"}}`
 	page2 := `{"reviews":[{"reviewId":"r2","comments":[{"userComment":{"text":"b","starRating":3,"reviewerLanguage":"en"}}]}],"tokenPagination":{"nextPageToken":"PAGE3"}}`

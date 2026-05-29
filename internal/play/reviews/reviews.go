@@ -109,6 +109,11 @@ func (r Review) LastModified() time.Time {
 func List(ctx context.Context, hc *http.Client, pkg string) ([]Review, error) {
 	var out []Review
 	pageToken := ""
+	// seen guards against a server that repeats or cycles a pagination
+	// token: without this the loop would request the same page forever
+	// (until context cancellation). A non-progressing token is treated as a
+	// server fault rather than silently truncating the result.
+	seen := map[string]struct{}{}
 	for {
 		reviews, next, err := listPage(ctx, hc, pkg, pageToken)
 		if err != nil {
@@ -118,6 +123,14 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Review, error) {
 		if next == "" {
 			return out, nil
 		}
+		if _, dup := seen[next]; dup {
+			return nil, &api.Error{
+				Operation: opReviewsList,
+				Package:   pkg,
+				Message:   "pagination token loop detected in reviews.list (server repeated a nextPageToken)",
+			}
+		}
+		seen[next] = struct{}{}
 		pageToken = next
 	}
 }
