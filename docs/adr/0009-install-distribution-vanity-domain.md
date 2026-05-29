@@ -58,6 +58,45 @@ work is tracked in issue #85; a full doc site (rejected below) in issue #86.
   Out of scope here — a much larger, orthogonal effort tracked separately. This
   ADR covers only the install endpoint.
 
+## When and how the Worker is deployed
+
+The Worker is **Deployed** (`wrangler deploy`) only when its own code changes
+(`deploy/gplay.sh/**`) — never on a CLI **Release** and never when `install.sh`
+changes. This decoupling is the whole point of the proxy: `install.sh` is fetched
+live from `main`, and the installer resolves the latest release itself, so neither
+a script edit nor a new CLI version requires touching the Worker. The only changes
+that warrant a Deploy are edits to `worker.js` / `wrangler.toml` (e.g. attaching the
+`gplay.sh` custom domain, adjusting cache or routes) — expected to happen a handful
+of times in the project's life.
+
+Deployment is automated via `.github/workflows/deploy-worker.yml`, gated on
+`push: main` **path-filtered to `deploy/gplay.sh/**`**. The trigger is the *path*,
+not the *kind of merge*: the workflow stays dormant on the vast majority of PRs and
+fires only on the rare Worker-code change.
+
+### Why automate something that runs twice a year
+
+Not to save time — there is none to save on two events. The value is eliminating
+**silent drift**: a Worker-code change (typically uncommenting the `routes` block to
+bind `gplay.sh`) that is merged but never `wrangler deploy`-ed leaves git and
+production disagreeing with no error surfaced. That is precisely the failure mode
+this ADR's "single source of truth" stance exists to prevent for the script — so we
+prevent it for the Worker code too.
+
+### Token scope on a public repo
+
+The deploy secret (`CLOUDFLARE_API_TOKEN`) is deliberately **minimal**: account-level
+`Workers Scripts:Edit`, nothing more. On a public OSS repo a leaked secret is a
+high-value target, so the token can at worst republish the Worker script — it cannot
+edit DNS or create routes. The one-time binding of the `gplay.sh` custom domain
+(which *does* need `DNS:Edit` + `Workers Routes:Edit` on the zone) is done **manually**
+with a local `wrangler deploy`, so those broader permissions never live in repo
+secrets. DNS stays out of CI permanently; only Worker-code publishing is automated.
+
+The `push: main` trigger is also what keeps the secret safe from fork PRs: it runs
+only on already-merged (maintainer-reviewed) code, never on untrusted `pull_request`
+events, so the token is never exposed to a contributor's fork.
+
 ## Note on tooling
 
 The Cloudflare MCP server connected to this project is **read-only for Workers**

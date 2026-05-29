@@ -1,0 +1,36 @@
+name: Deploy gplay.sh Worker
+
+# Deploys the Cloudflare Worker that serves the install script
+# (https://gplay.sh/install). Triggered by the *path*, not the kind of merge:
+# fires only when the Worker's own code changes, never on a CLI release and
+# never on an install.sh edit (the Worker proxies install.sh live from `main`).
+# See docs/adr/0009-install-distribution-vanity-domain.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/gplay.sh/**'
+      - '.github/workflows/deploy-worker.yml'
+  # Manual escape hatch (e.g. to redeploy without a code change).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: wrangler deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          # Minimal scope: account-level `Workers Scripts:Edit`. The gplay.sh
+          # custom-domain binding (which needs Zone DNS/Routes edit) is done
+          # once, manually — those permissions never live in repo secrets.
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: deploy/gplay.sh
