@@ -50,10 +50,12 @@ const (
 // candidate locale; inside it, every file whose name listing.SpecByFile
 // recognizes (title.txt, short_description.txt, full_description.txt,
 // video.txt) becomes a managed field on that locale's Listing. The file
-// contents are taken verbatim except that at most one trailing newline
-// (\r\n or \n) is stripped — the inverse of the single "\n" Write
-// appends — so a multi-line full_description keeps its internal newlines
-// intact.
+// contents are taken verbatim except that at most one trailing "\n" is
+// stripped — the exact inverse of the single "\n" Write appends — so a
+// multi-line full_description keeps its internal newlines intact. The codec
+// does not normalize CRLF (see stripOneTrailingNewline): a "\r\n"-saved
+// file keeps its "\r" in the value, preserving the Read(Write(X)) == X
+// round-trip for any value.
 //
 // Everything else is deliberately ignored, drawing the metadata/releases
 // boundary on disk: unrecognized files (a README, a *.md, an unknown
@@ -126,16 +128,22 @@ func readLocale(path, locale string) (listing.Listing, error) {
 	return l, nil
 }
 
-// stripOneTrailingNewline removes a single trailing line ending — "\r\n"
-// or a lone "\n" — and nothing else. It is the exact inverse of the one
-// "\n" Write appends to a non-empty value, which is what makes
-// Read(Write(X)) == X hold. It must remove *at most one* newline (not
-// TrimRight) so that a value whose own last character is a newline, or a
-// full_description ending in a blank line, survives the round-trip.
+// stripOneTrailingNewline removes a single trailing "\n" — and nothing
+// else. It is the EXACT inverse of the one "\n" Write appends, which is
+// what makes Read(Write(X)) == X hold for *every* value, and Write(Read(D))
+// == D for every disk file D (a clean bijection both ways).
+//
+// It deliberately does NOT also strip a preceding "\r": doing so would make
+// a value whose own last byte is "\r" round-trip to a different value
+// (Write("x\r") = "x\r\n", and stripping "\r\n" would read back "x", not
+// "x\r"), silently breaking the pull→apply no-op invariant for Play-sourced
+// text with a trailing carriage return (CodeRabbit review, PR #110). The
+// consequence is that the codec does not normalize CRLF: a file saved with
+// "\r\n" line endings keeps its "\r" inside the value — save field files as
+// LF for clean values. Stripping at most one byte (not TrimRight) is what
+// lets a full_description ending in a blank line survive the round-trip.
 func stripOneTrailingNewline(s string) string {
-	if n := len(s); n >= 2 && s[n-2] == '\r' && s[n-1] == '\n' {
-		return s[:n-2]
-	} else if n >= 1 && s[n-1] == '\n' {
+	if n := len(s); n >= 1 && s[n-1] == '\n' {
 		return s[:n-1]
 	}
 	return s

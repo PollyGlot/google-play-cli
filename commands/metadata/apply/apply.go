@@ -215,7 +215,12 @@ func writeSummary(w io.Writer, s diff.Summary) error {
 func (p Payload) renderMarkdown(w io.Writer) error {
 	r := p.Result
 	if r.DryRun {
-		return output.MarkdownTable(w, diffHeaders, diffRows(r.Diff))
+		if err := output.MarkdownTable(w, diffHeaders, diffRows(r.Diff)); err != nil {
+			return err
+		}
+		// Parity with renderTable: the dry-run human views both carry the
+		// summary tally under the table.
+		return writeSummary(w, r.Diff.Summary)
 	}
 	rows := applyRows(r)
 	if len(rows) == 0 {

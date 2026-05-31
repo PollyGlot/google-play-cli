@@ -187,7 +187,10 @@ func TestRead_trimsOnlyOneTrailingNewline(t *testing.T) {
 	// Internal newlines kept; exactly one trailing \n stripped → the
 	// value retains its own trailing blank line.
 	writeFile(t, filepath.Join(dir, "en-US", "full_description.txt"), "line1\nline2\n\n")
-	// CRLF line ending: the final \r\n is stripped as one unit.
+	// CRLF line ending: only the final \n is stripped — the preceding \r
+	// is part of the value. The codec strips EXACTLY what Write appends (one
+	// \n) and does not normalize CRLF, so Read stays the exact inverse of
+	// Write (save field files as LF for clean values).
 	writeFile(t, filepath.Join(dir, "en-US", "title.txt"), "Title\r\n")
 	// No trailing newline at all: value is taken verbatim.
 	writeFile(t, filepath.Join(dir, "en-US", "video.txt"), "https://youtu.be/x")
@@ -200,8 +203,8 @@ func TestRead_trimsOnlyOneTrailingNewline(t *testing.T) {
 	if v, _ := get(t, en, listing.FullDescription); v != "line1\nline2\n" {
 		t.Errorf("full_description = %q, want %q (internal newline + one trailing blank line kept)", v, "line1\nline2\n")
 	}
-	if v, _ := get(t, en, listing.Title); v != "Title" {
-		t.Errorf("title = %q, want Title (CRLF stripped as one)", v)
+	if v, _ := get(t, en, listing.Title); v != "Title\r" {
+		t.Errorf("title = %q, want %q (only the trailing \\n stripped, \\r kept)", v, "Title\r")
 	}
 	if v, _ := get(t, en, listing.Video); v != "https://youtu.be/x" {
 		t.Errorf("video = %q, want verbatim (no trailing newline to strip)", v)
@@ -304,6 +307,17 @@ func TestRoundTrip_writeReadIsIdentity(t *testing.T) {
 			"fr-FR": mk("fr-FR", map[listing.Field]string{
 				listing.Title:           "Mon appli",
 				listing.FullDescription: "Para un.\n\nPara deux.\n", // trailing blank line preserved
+			}),
+		},
+		"value ending in carriage return": {
+			// Regression guard (CodeRabbit, PR #110): a value whose last byte
+			// is "\r" must survive Write→Read. Write appends "\n" → "x\r\n";
+			// Read strips ONLY the "\n" → "x\r". If Read also stripped the
+			// "\r", this would silently break the pull→apply no-op invariant
+			// for Play-sourced text with CR line endings.
+			"en-GB": mk("en-GB", map[listing.Field]string{
+				listing.Title:           "Title\r",
+				listing.FullDescription: "a\r\nb\r", // internal CR + trailing CR
 			}),
 		},
 		"several locales, partial field coverage": {
