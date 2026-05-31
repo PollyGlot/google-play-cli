@@ -29,6 +29,28 @@ A Project pins a **package only** — not an Account. Account resolution stays s
 
 Coexists in `.gplay/` with `edit-<package>.json` (open explicit Edit, see above). `.gplay/` is meant to be committed for `project.json` and gitignored for `edit-*.json` (transient).
 
+### Listing
+The textual store-front of an app **for one locale**: `title`, `shortDescription`, `fullDescription`, and an optional promo `video` URL. Backed by Google's `edits.listings` resource. A locale that has any of these is said to "have a Listing"; `deletegroup` removes a locale's Listing entirely.
+
+On disk, each field maps to a fastlane-named file inside the locale directory: `title.txt`, `short_description.txt`, `full_description.txt`, `video.txt` (snake_case, identical to `fastlane supply` so an existing tree is a drop-in). Google's limits — title 30, short 80, full 4000 chars — are enforced offline by `gplay metadata validate`.
+
+Deliberately **excludes** release notes (the per-release "what's new" text): those are not a Listing field on Google Play and gplay owns them under `releases upload --release-notes[-dir]`, not under metadata. It also excludes app-level details (contact email, default language — `edits.details`) and store images (`edits.images`), which are separate API resources and separate (parked) scope.
+
+The canonical on-disk form of a set of Listings is the **metadata tree** (see below).
+
+### Store front
+The **per-locale** presentation of an app on Google Play: its Listings (text) and, in future scope, its store images (icon, feature graphic, screenshots per locale and form factor). This is the axis the `metadata` command namespace owns. Deliberately distinct from **app-global** configuration — default language, contact details (`edits.details`), country availability (`edits.countryavailability`) — which is keyed by app, not by locale, and belongs with the `apps` namespace (gplay already reads details via `apps info`), never inside the metadata tree.
+
+The dividing question for any new store-presence surface is "is it keyed by locale?": yes → store front → `metadata`; no → app-global → `apps`.
+
+### Metadata tree
+The on-disk form of an app's Store front: a directory with one sub-directory per locale. Today each locale holds one `.txt` file per Listing field; future image scope adds an `images/` sub-directory under the same locale, governed by the same Additive sync rules. It mirrors the shape `fastlane supply` reads, minus fastlane's redundant `android/` segment and minus its `changelogs/` (release notes live with `releases`, not metadata). Plain text is chosen over JSON for the text fields so a 4000-character `fullDescription` stays human-editable and produces a line-by-line git diff. The directory is the unit `gplay metadata pull` writes and `gplay metadata apply` reads (`--dir`, default `./metadata`).
+
+Within a locale's directory, a **missing** field file and an **empty** field file mean different things to `apply`: missing = "I don't manage this field, leave the online value alone"; empty = "clear this field online". `pull` preserves this by writing a file only for a non-empty online field, so `pull` then `apply` with no edits is a no-op.
+
+### Additive sync
+gplay's reconciliation stance for the Metadata tree: `apply` only ever upserts the locales and fields it finds on disk; anything live on Play but absent locally is left untouched, never deleted by omission. Deletion is opt-in via `--prune` (which also refuses to remove the app's `defaultLanguage` Listing). The mirror stance (disk is the sole source of truth, online-only locales get deleted) is deliberately **not** the default — it makes a partial `pull` followed by `apply` a data-loss event.
+
 ### Format
 A way of shaping a command's output for a specific reader: `table` for humans on a TTY, `json` for machines and scripts, `markdown` for documentation, chat agents, and PR comments. Selected by `--output`. The special value `auto` (the default, encoded as the empty string on the flag) lets the CLI pick based on context: `json` when stdout is not a TTY or when `CI=true`, `table` otherwise.
 
