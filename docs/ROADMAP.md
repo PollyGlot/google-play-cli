@@ -46,6 +46,25 @@ décisions et audit du vocabulaire de verbes dans
 labels, dogfooding sur une vraie app, docs `concepts/`, guide `migrate-to-1-0`,
 set de skills v1 (#53).
 
+## Route 1.x — PRD planifiés (additifs)
+
+Surfaces API additionnelles, **planifiées** (additives, au-delà du gel MVP de la
+1.0 — voir [ADR-0010](adr/0010-versioning-public-contract-and-ga.md)). Promues
+depuis le parking le 2026-05-31. Chacune est un PRD « sec » (scope + forme de
+commande, sans grilling complet) : à griller puis décomposer via `/to-issues`
+au moment de l'attaquer. Ordre de priorité :
+
+| Ordre | # | Area | Sujet | État |
+|---|---|---|---|---|
+| 1 | [#50](https://github.com/PollyGlot/google-play-cli/issues/50) | metadata | Listings textuels par locale (`edits.listings`) — remplace le côté texte de `fastlane supply` | Prêt à griller |
+| 2 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API, service séparé) + mappings ProGuard/R8 | Prêt à griller |
+| 3 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | Prêt à griller |
+| 4 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | Spike d'investigation d'abord (scope OAuth GCS + parseur CSV) |
+
+**#50 part en tête** : réutilise le *edits model* déjà implémenté (releases),
+aucune nouvelle API ni scope OAuth, et avance directement le récit « remplacer
+Fastlane » (côté texte de `supply`).
+
 ## Parking (post-MVP)
 
 Idées trackées pour visibilité, **pas** planifiées. Voir
@@ -55,9 +74,6 @@ Idées trackées pour visibilité, **pas** planifiées. Voir
 |---|---|---|
 | [#38](https://github.com/PollyGlot/google-play-cli/issues/38) | [arch] Renderer interface (contredit ADR-0005) | Décision à re-litiguer si besoin |
 | [#48](https://github.com/PollyGlot/google-play-cli/issues/48) | `gplay edits begin/commit/discard` (mode explicit) | Implicit mode suffit pour MVP |
-| [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | PRD Vitals (crashes/ANR + ProGuard mappings) | API séparée, sous-module entier |
-| [#50](https://github.com/PollyGlot/google-play-cli/issues/50) | PRD Metadata listings (textes par locale) | Hors MVP |
-| [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | PRD Subscriptions & IAP (+ RevenueCat sync) | Hors MVP |
 | [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | Snapshot Discovery doc | Doc-only |
 | [#53](https://github.com/PollyGlot/google-play-cli/issues/53) | Bootstrap `google-play-cli-skills` repo | Sibling repo — set de skills v1 du lancement GA |
 | [#55](https://github.com/PollyGlot/google-play-cli/issues/55) | Migration vers `androidpublisher/v3` Go client officiel | Refacto interne |

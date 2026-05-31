@@ -2,6 +2,15 @@
 
 Ce fichier liste les parties de la Google Play Developer API (et APIs liées) **délibérément reportées** au-delà du MVP de `gplay`. Chaque entrée note ce que la surface permet et pourquoi elle est différée. Ce n'est ni un glossaire (voir `CONTEXT.md`) ni une décision tranchée (voir `docs/adr/`) — juste un registre du scope.
 
+> **Mise à jour 2026-05-31 — quatre surfaces ne sont plus « reportées ».**
+> Elles ont été promues en **PRD planifiés** (Route 1.x — voir
+> [ROADMAP.md](ROADMAP.md)) : Listings textuels → [#50](https://github.com/PollyGlot/google-play-cli/issues/50),
+> Vitals crashes/ANR + mappings ProGuard → [#49](https://github.com/PollyGlot/google-play-cli/issues/49),
+> Subscriptions v2 & IAP one-shot → [#51](https://github.com/PollyGlot/google-play-cli/issues/51),
+> Historique reviews >7j (CSV GCS) → [#94](https://github.com/PollyGlot/google-play-cli/issues/94).
+> Leurs sections ci-dessous sont conservées comme rationnel d'origine. Tout le
+> reste du fichier est toujours hors scope.
+
 ## MVP (rappel, in-scope)
 
 - Auth — service account → OAuth2 access token
