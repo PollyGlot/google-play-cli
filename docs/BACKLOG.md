@@ -42,8 +42,9 @@ Upload du fichier `mapping.txt` pour dé-obfusquer les crashes côté Play Conso
 Mécanisme legacy pour distribuer >150 MB d'assets hors APK.
 **Pourquoi plus tard :** legacy, remplacé par Play Asset Delivery. À ne faire que sur demande explicite.
 
-### APK legacy — `edits.apks`
+### APK legacy — `edits.apks` — 🔼 **PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118) (plus tard, hors first-release)**
 Upload d'APK au lieu d'AAB.
+> **Promu en PRD planifié mais déprioritisé** (2026-06-01) — apps existantes only, voir [ROADMAP.md](ROADMAP.md) « Ensuite ». Section conservée comme rationnel d'origine.
 **Pourquoi plus tard :** Google n'accepte plus de nouveaux APK pour nouvelles apps depuis 2021. AAB-only par défaut, APK ajouté seulement si un user le réclame.
 
 ### Testers (groupes internes) — `edits.testers` — 🔼 **dé-parké 2026-06-01**

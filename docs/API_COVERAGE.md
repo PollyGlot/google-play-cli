@@ -21,8 +21,8 @@
 | | Familles API | Détail |
 |---|---|---|
 | ✅ Livré | **5** surfaces | auth · apps (registre local) · releases/tracks · reviews (7j) · metadata listings |
-| 📋 Planifié | **6** PRD | images · details+country · data safety · vitals · monetization · reviews-history |
-| 🅿️ Backlog | **~10** surfaces | apks/obb/testers/apprecovery · purchases · internal-sharing · custom apps · discovery… |
+| 📋 Planifié | **8** PRD | *first-release :* images · details+country · data safety · tracks/testers — *ensuite :* vitals · monetization · reviews-history · apk |
+| 🅿️ Backlog | **~7** surfaces | obb/apprecovery · purchases · internal-sharing · custom apps · auto-discovery… |
 | 🚫 / ➖ | **~8** surfaces | integrity · PAD · users/grants · deviceTierConfigs · generatedapks · externaltransactions… |
 
 ---
@@ -46,7 +46,7 @@ flowchart TB
         E_det["details (langue, contact)\nPRD #113"]:::planned
         E_ctry["countryavailability\nPRD #113"]:::planned
         E_deob["deobfuscationfiles\n(mappings ProGuard) → #49"]:::planned
-        E_apk["apks (APK legacy)"]:::parked
+        E_apk["apks (APK legacy)\nplus tard → #118"]:::planned
         E_obb["expansionfiles (OBB)"]:::parked
         E_test["testers + custom tracks\n(test fermé 1ère release)"]:::planned
         E_rec["apprecovery (rollback ciblé)"]:::parked
