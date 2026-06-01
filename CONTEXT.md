@@ -51,6 +51,21 @@ Within a locale's directory, a **missing** field file and an **empty** field fil
 ### Additive sync
 gplay's reconciliation stance for the Metadata tree: `apply` only ever upserts the locales and fields it finds on disk; anything live on Play but absent locally is left untouched, never deleted by omission. Deletion is opt-in via `--prune` (which also refuses to remove the app's `defaultLanguage` Listing). The mirror stance (disk is the sole source of truth, online-only locales get deleted) is deliberately **not** the default — it makes a partial `pull` followed by `apply` a data-loss event.
 
+### Standard track
+One of the four tracks Google Play provisions for **every** app, in promotion order: `internal`, `alpha`, `beta`, `production`. gplay derives the standard-vs-closed **kind** from the track name alone — the API carries no such field — so the distinction lives only in the human (`table`/`markdown`) views, never the JSON pass-through.
+
+### Closed track
+A testing track an app owner creates **beyond** the four Standard tracks, with a custom name (`qa-team`, `external-beta`, …), to gate a build to an explicit audience. It is the **only** kind of track gplay can create: the create endpoint's sole supported type is closed testing (no API path creates an open or internal track). Carries a form factor (phone by default).
+
+_Avoid_: "custom track" on its own as the canonical noun — prefer **Closed track**.
+
+**Flagged ambiguity**: `tracks list` renders a derived `kind` column whose value for these is `custom`, not `closed`. They denote the same thing — every non-Standard track is a Closed track, since closed testing is the only creatable type. `custom` is a display label for the kind axis (standard ↔ custom); **Closed track** is the canonical concept.
+
+### Tester
+The unit of test audience gplay manages on a track. On Google Play's API the authorized audience is expressed **only** as Google Groups (an array of group email addresses, e.g. `qa@googlegroups.com`), never as individual tester emails — adding people one-by-one is a Play Console-only gesture and is **out of gplay's scope**. A Tester set is keyed by track (one per track) and managed declaratively: `gplay testers set` replaces the whole list of groups, `gplay testers list` reads it.
+
+_Avoid_: treating a "tester" as an individual person or a bare email address — in gplay the addressable tester unit is a **Google Group**.
+
 ### Format
 A way of shaping a command's output for a specific reader: `table` for humans on a TTY, `json` for machines and scripts, `markdown` for documentation, chat agents, and PR comments. Selected by `--output`. The special value `auto` (the default, encoded as the empty string on the flag) lets the CLI pick based on context: `json` when stdout is not a TTY or when `CI=true`, `table` otherwise.
 
