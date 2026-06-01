@@ -30,9 +30,11 @@ Titre, description courte, description longue, vidéo YouTube, par locale.
 **Statut :** implémenté via la famille `gplay metadata list/pull/validate/apply` (modèle de sync additif, [ADR-0011](adr/0011-metadata-apply-sync-model.md)). Section conservée comme rationnel d'origine.
 **Pourquoi c'était reporté :** remplace `fastlane supply` côté texte, utile mais pas bloquant pour un CI qui ne fait qu'uploader des builds. Souvent piloté par un repo de metadata canonique séparé du repo de code, conçu une fois le MVP stable.
 
-### Images de store — `edits.images`
-Icône, feature graphic, screenshots phone/tablet/TV/Wear/Chromebook, promo graphics.
-**Pourquoi plus tard :** workflow complexe (resize, slots par locale et par form factor), gros morceau à part entière. Souvent géré hors CI (designers).
+### Images de store — `edits.images` — 🔼 **PRD [#112](https://github.com/PollyGlot/google-play-cli/issues/112)**
+Icône, feature graphic, screenshots phone/tablet 7"/tablet 10"/TV/Wear, promo graphics — par locale.
+> **Promu en PRD** (2026-06-01) — la moitié image de `fastlane supply`, modèle de sync calqué sur [ADR-0011](adr/0011-metadata-apply-sync-model.md) + identité par `sha256` ([ADR-0012](adr/0012-image-slot-reconciliation.md)). Section conservée comme rationnel d'origine.
+**Hors scope retenu :** (a) **Chromebook screenshots** — non exposé par l'énum `AppImageType` de `androidpublisher v3` (UI Play Console only) ; à ajouter si/quand Google l'expose. (b) **`metadata images clear`** (vider entièrement un slot via `deleteall`) — seul verbe sans équivalent déclaratif, repoussé (ADR-0012 §3). (c) Resize/composition/framing d'images (downstream tooling).
+**Pourquoi c'était reporté :** workflow complexe (validation des dimensions par type, slots par locale et par form factor), gros morceau à part entière. Souvent géré hors CI (designers).
 
 ### Mappings ProGuard/R8 — `edits.deobfuscationfiles`
 Upload du fichier `mapping.txt` pour dé-obfusquer les crashes côté Play Console.
