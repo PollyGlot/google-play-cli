@@ -18,7 +18,8 @@ import (
 )
 
 // rt is a minimal RoundTripper that returns a canned response for the
-// tracks.list GET and records the request line for assertion.
+// tracks.list GET (and the tracks.create POST) and records the request
+// line — plus the request body, for write ops — for assertion.
 type rt struct {
 	t      *testing.T
 	status int
@@ -26,11 +27,15 @@ type rt struct {
 
 	gotPath   string
 	gotMethod string
+	gotBody   []byte
 }
 
 func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.gotPath = req.URL.Path
 	r.gotMethod = req.Method
+	if req.Body != nil {
+		r.gotBody, _ = io.ReadAll(req.Body)
+	}
 	status := r.status
 	if status == 0 {
 		status = 200
@@ -98,5 +103,63 @@ func TestList_apiError_isWrappedWithStatus(t *testing.T) {
 	}
 	if apiErr.StatusCode != 403 {
 		t.Errorf("StatusCode = %d, want 403", apiErr.StatusCode)
+	}
+}
+
+// TestCreate_postsClosedTestingConfig_andReturnsRawBody asserts Create
+// POSTs edits.tracks.create with a TrackConfig that hardcodes the only
+// supported type (CLOSED_TESTING) and the DEFAULT form factor, carrying
+// the caller's track name, and hands back the parsed Track plus the raw
+// body verbatim for the ADR-0003 JSON pass-through.
+func TestCreate_postsClosedTestingConfig_andReturnsRawBody(t *testing.T) {
+	raw := `{"track":"qa-team","releases":[]}`
+	transport := &rt{t: t, body: raw}
+	hc := &http.Client{Transport: transport}
+
+	got, gotRaw, err := tracks.Create(context.Background(), hc, "com.example.app", "edit-123", "qa-team", tracks.FormFactorDefault)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-123/tracks"
+	if transport.gotMethod != http.MethodPost || transport.gotPath != wantPath {
+		t.Errorf("request = %s %s, want POST %s", transport.gotMethod, transport.gotPath, wantPath)
+	}
+	body := string(transport.gotBody)
+	for _, want := range []string{`"track":"qa-team"`, `"type":"CLOSED_TESTING"`, `"formFactor":"DEFAULT"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("request body = %s, want it to contain %s", body, want)
+		}
+	}
+	if got.Track != "qa-team" {
+		t.Errorf("Track = %q, want qa-team", got.Track)
+	}
+	if strings.TrimSpace(string(gotRaw)) != strings.TrimSpace(raw) {
+		t.Errorf("raw body = %s, want verbatim response %s", gotRaw, raw)
+	}
+}
+
+// TestCreate_apiError_isWrappedWithStatus asserts a non-2xx
+// tracks.create response (e.g. creating a track that already exists)
+// surfaces as an *api.Error carrying the HTTP status so the exit-code
+// taxonomy maps it (400 -> 30 via StatusToExitCode), with the envelope
+// reason preserved.
+func TestCreate_apiError_isWrappedWithStatus(t *testing.T) {
+	transport := &rt{t: t, status: 400, body: `{"error":{"code":400,"message":"Track already exists.","errors":[{"reason":"badRequest"}]}}`}
+	hc := &http.Client{Transport: transport}
+
+	_, _, err := tracks.Create(context.Background(), hc, "com.example.app", "edit-123", "qa-team", tracks.FormFactorDefault)
+	if err == nil {
+		t.Fatal("expected an error on a 400 response, got nil")
+	}
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v (%T), want *api.Error", err, err)
+	}
+	if apiErr.StatusCode != 400 {
+		t.Errorf("StatusCode = %d, want 400", apiErr.StatusCode)
+	}
+	if len(apiErr.Reasons) == 0 || apiErr.Reasons[0] != "badRequest" {
+		t.Errorf("Reasons = %v, want [badRequest] surfaced from the envelope", apiErr.Reasons)
 	}
 }

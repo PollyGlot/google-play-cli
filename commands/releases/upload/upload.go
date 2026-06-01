@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -207,7 +208,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		DryRun:            in.DryRun,
 	})
 	if err != nil {
-		return nil, err
+		// A tracks.update 404 means the target track does not exist yet;
+		// attach the `gplay tracks create <name>` hint. Every other failure
+		// (and the exit code) passes through untouched.
+		return nil, trackhint.Classify(in.Track, err)
 	}
 	return Payload{Result: result}, nil
 }

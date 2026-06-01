@@ -45,6 +45,10 @@ type uploadRT struct {
 	editID             string
 	versionCode        int
 	trackUpdateRawResp string
+	// trackUpdateStatus, when >= 400, makes the tracks.update PUT fail with
+	// that status (carrying a Google error envelope) so tests can exercise
+	// the track-not-found hint path. 0 (the default) means a 200 success.
+	trackUpdateStatus int
 
 	mu             sync.Mutex
 	calls          []string
@@ -75,6 +79,9 @@ func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/tracks/"):
 		body, _ := io.ReadAll(req.Body)
 		r.trackUpdateReq = body
+		if r.trackUpdateStatus >= 400 {
+			return jsonResp(r.trackUpdateStatus, `{"error":{"code":404,"message":"Track not found."}}`), nil
+		}
 		resp := r.trackUpdateRawResp
 		if resp == "" {
 			resp = `{}`
@@ -292,6 +299,44 @@ func TestRun_productionPublishWithConfirm_succeedsAndHitsAPI(t *testing.T) {
 	}
 	if !strings.Contains(body, `"userFraction":1`) {
 		t.Errorf("tracks.update body = %s, want userFraction=1.0", body)
+	}
+}
+
+// TestRun_uploadToMissingClosedTrack_hintsTracksCreate asserts that an
+// upload whose --track has not been created yet (tracks.update 404) fails
+// with a `gplay tracks create <name>` hint, preserves the underlying exit
+// code (30, not rewritten by the hint), and never auto-creates the track —
+// gplay only ever PUTs tracks.update, never POSTs a fresh track on upload.
+func TestRun_uploadToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &uploadRT{
+		t:                 t,
+		editID:            "edit-miss",
+		versionCode:       142,
+		trackUpdateStatus: http.StatusNotFound,
+	}
+	rc, _ := newRC(t, rt)
+
+	_, err := upload.Run(rc, upload.Input{
+		Package: "com.example.app",
+		Track:   "qa-team",
+		AABPath: aab,
+	})
+	if err == nil {
+		t.Fatal("Run returned nil error; want a track-not-found hint")
+	}
+	if !strings.Contains(err.Error(), "gplay tracks create qa-team") {
+		t.Errorf("error %q is missing the `gplay tracks create qa-team` hint", err.Error())
+	}
+	if code := exit.For(err); code != 30 {
+		t.Errorf("exit.For(err) = %d, want 30 (underlying *api.Error preserved); err=%v", code, err)
+	}
+	// No auto-create: gplay must never POST a fresh track as a side effect of
+	// an upload — only PUT tracks.update against the (expected-to-exist) track.
+	for _, c := range rt.calls {
+		if c == "POST /androidpublisher/v3/applications/com.example.app/edits/edit-miss/tracks" {
+			t.Errorf("upload auto-created a track (saw %q); it must only PUT tracks.update", c)
+		}
 	}
 }
 
