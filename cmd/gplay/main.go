@@ -20,6 +20,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
+	compliancedatasafetyvalidate "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/validate"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
 	metadataimageslist "github.com/PollyGlot/google-play-cli/commands/metadata/images/list"
@@ -204,6 +205,23 @@ replace Fastlane on Android CI pipelines.`,
 	metadataImages.AddCommand(metadataimagesapply.NewCommand(boot))
 	metadata.AddCommand(metadataImages)
 	root.AddCommand(metadata)
+
+	// `gplay compliance` — regulatory declarations that gate publication
+	// (Data Safety today; content rating and other "App content" surfaces in
+	// future scope). App-keyed, write-heavy, outside the Edits model — a
+	// distinct family from the store-presence namespaces. See PRD #114 /
+	// ADR-0014.
+	compliance := &cobra.Command{
+		Use:   "compliance",
+		Short: "Manage an app's regulatory declarations (Data Safety, ...)",
+	}
+	datasafety := &cobra.Command{
+		Use:   "datasafety",
+		Short: "Push and validate the app's Data Safety declaration (write-only)",
+	}
+	datasafety.AddCommand(compliancedatasafetyvalidate.NewCommand(boot))
+	compliance.AddCommand(datasafety)
+	root.AddCommand(compliance)
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
