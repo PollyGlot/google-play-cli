@@ -262,6 +262,53 @@ func TestSet_dryRun_noHTTP(t *testing.T) {
 	}
 }
 
+// TestSet_dryRunJSON_previewsPatch asserts that --dry-run under --output
+// json (the DEFAULT in pipes/CI) produces a parseable preview object —
+// tagged dryRun:true and carrying only the touched fields — rather than
+// erroring. This is the contract a CI pipeline relies on; it must not
+// regress. Still zero HTTP.
+func TestSet_dryRunJSON_previewsPatch(t *testing.T) {
+	rt := &setRT{t: t}
+	rc, _ := newRC(t, rt)
+
+	r, err := detailscmd.RunSet(rc, detailscmd.SetInput{
+		Package:         "com.example.app",
+		ContactEmail:    "new@example.com",
+		ContactEmailSet: true,
+		DryRun:          true,
+	})
+	if err != nil {
+		t.Fatalf("RunSet: %v", err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", rt.calls)
+	}
+
+	var jsonOut bytes.Buffer
+	if err := r.Renderers().JSON(&jsonOut); err != nil {
+		t.Fatalf("JSON render must not error on --dry-run (json is the CI default): %v", err)
+	}
+	var preview struct {
+		DryRun bool `json:"dryRun"`
+		Patch  struct {
+			ContactEmail *string `json:"contactEmail"`
+			ContactPhone *string `json:"contactPhone"`
+		} `json:"patch"`
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &preview); err != nil {
+		t.Fatalf("dry-run JSON is not a parseable preview object: %v\nout=%s", err, jsonOut.String())
+	}
+	if !preview.DryRun {
+		t.Errorf("preview.dryRun = false, want true; out=%s", jsonOut.String())
+	}
+	if preview.Patch.ContactEmail == nil || *preview.Patch.ContactEmail != "new@example.com" {
+		t.Errorf("preview.patch.contactEmail = %v, want \"new@example.com\"", preview.Patch.ContactEmail)
+	}
+	if preview.Patch.ContactPhone != nil {
+		t.Errorf("preview.patch.contactPhone = %v, want absent (untouched field)", *preview.Patch.ContactPhone)
+	}
+}
+
 // TestSet_dryRun_worksWithNoAccount asserts --dry-run never touches auth:
 // even with no resolved Account it previews successfully.
 func TestSet_dryRun_worksWithNoAccount(t *testing.T) {

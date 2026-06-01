@@ -143,13 +143,24 @@ func renderSetTable(w io.Writer, p SetPayload) error {
 }
 
 // renderSetJSON emits the raw details.patch body verbatim (ADR-0003
-// pass-through). On --dry-run no API call was made, so Raw is empty; we
-// error rather than emit zero bytes so the contract break is loud — a
-// dry-run preview belongs to the table/markdown views, not the JSON
-// pass-through (matching `testers set`).
+// pass-through) for an applied write. A --dry-run makes no API call, so
+// there is no body to pass through — but --output json is the DEFAULT in
+// pipes/CI (docs/DESIGN.md), exactly where a dry-run is most likely to
+// run, so it must still produce parseable output rather than erroring.
+// We emit a gplay-shaped preview object, clearly tagged `dryRun` and
+// carrying only the fields the patch would touch; it is unmistakable from
+// a real details.patch response (which echoes the full resource and has
+// no `dryRun` key). An empty Raw with no dry-run is a contract break we
+// surface loudly rather than emitting zero bytes.
 func renderSetJSON(w io.Writer, p SetPayload) error {
 	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw details.patch payload for --output json (a --dry-run preview is shown via --output table/markdown)")
+		if p.DryRun {
+			return output.WriteJSON(w, struct {
+				DryRun bool                    `json:"dryRun"`
+				Patch  details.AppDetailsPatch `json:"patch"`
+			}{DryRun: true, Patch: p.Patch})
+		}
+		return fmt.Errorf("missing raw details.patch payload for --output json")
 	}
 	_, err := w.Write(p.Raw)
 	return err

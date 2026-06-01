@@ -131,3 +131,45 @@ func TestGet_404_mapsExit30(t *testing.T) {
 		t.Errorf("ExitCode() = %d, want 30", code)
 	}
 }
+
+// brokenBody errors on the first Read so io.ReadAll fails mid-stream — a
+// truncated 2xx response must surface as an I/O failure, not be silently
+// passed to json.Unmarshal as if the body were complete.
+type brokenBody struct{}
+
+func (brokenBody) Read(_ []byte) (int, error) { return 0, errors.New("simulated read error") }
+func (brokenBody) Close() error               { return nil }
+
+// brokenBodyRT returns a 200 on countryAvailability.get with a body that
+// errors on every Read.
+type brokenBodyRT struct{ t *testing.T }
+
+func (r *brokenBodyRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Method != http.MethodGet {
+		r.t.Fatalf("unexpected method %s", req.Method)
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       brokenBody{},
+	}, nil
+}
+
+// TestGet_bodyReadFailure_surfacesAsAPIError asserts that a network read
+// failure on the success body is wrapped in *api.Error rather than
+// silently flowing into json.Unmarshal as if the body were complete.
+func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
+	hc := &http.Client{Transport: &brokenBodyRT{t: t}}
+
+	_, _, err := countryavailability.Get(context.Background(), hc, "com.example.app", "edit-1", "production")
+	if err == nil {
+		t.Fatal("expected an error for a broken response body, got nil")
+	}
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v, want *api.Error in the chain", err)
+	}
+	if !strings.Contains(apiErr.Message, "read response") {
+		t.Errorf("api.Error.Message = %q, want it to mention 'read response'", apiErr.Message)
+	}
+}

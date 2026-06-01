@@ -208,7 +208,20 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDe
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		// Mirror getJSON's defensive read: a truncated/interrupted read on
+		// the error path would otherwise mask the real reason behind a
+		// generic ParseErrorEnvelope fallback. Surface it verbatim so the
+		// operator knows the request reached the server but the stream broke.
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		if readErr != nil {
+			return nil, nil, &api.Error{
+				Operation:  opDetailsPatch,
+				Package:    pkg,
+				StatusCode: resp.StatusCode,
+				Message:    "read error response body: " + readErr.Error(),
+				Cause:      readErr,
+			}
+		}
 		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return nil, nil, &api.Error{
 			Operation:  opDetailsPatch,
@@ -218,7 +231,19 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDe
 			Reasons:    reasons,
 		}
 	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	// Same defensive read on the success path: a partial JSON body would
+	// otherwise reach json.Unmarshal and surface as a "decode response"
+	// error that buries the real (network) cause.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return nil, nil, &api.Error{
+			Operation:  opDetailsPatch,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response body: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
 	var parsed AppDetails
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, raw, &api.Error{

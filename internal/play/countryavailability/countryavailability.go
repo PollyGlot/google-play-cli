@@ -72,7 +72,20 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Trac
 			Reasons:    reasons,
 		}
 	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	// Capture the read error on the success path (matching tracks.List /
+	// listings / reviews): a partial body would otherwise reach
+	// json.Unmarshal and surface as a "decode response" error that buries
+	// the real (network) cause.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return nil, nil, &api.Error{
+			Operation:  opCountryAvailabilityGet,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
 	var parsed TrackCountryAvailability
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, raw, &api.Error{

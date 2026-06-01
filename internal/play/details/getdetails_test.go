@@ -158,3 +158,42 @@ func TestGetDetails_get404_mapsExit30(t *testing.T) {
 		t.Errorf("ExitCode() = %d, want 30 (404 → API 4xx)", code)
 	}
 }
+
+// patchBrokenBodyRT returns a 200 on the details PATCH with a body that
+// errors on every Read (reusing details_test.brokenBody), so Patch's
+// success-path io.ReadAll fails mid-stream.
+type patchBrokenBodyRT struct{ t *testing.T }
+
+func (r *patchBrokenBodyRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Method != http.MethodPatch || !strings.HasSuffix(req.URL.Path, "/details") {
+		r.t.Fatalf("unexpected request %s %s", req.Method, req.URL.Path)
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       brokenBody{},
+	}, nil
+}
+
+// TestPatch_bodyReadFailure_surfacesAsAPIError asserts that a read failure
+// on Patch's success body is wrapped in *api.Error ("read response body")
+// rather than silently flowing into json.Unmarshal as a decode error.
+func TestPatch_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
+	hc := &http.Client{Transport: &patchBrokenBodyRT{t: t}}
+	email := "hi@example.com"
+
+	_, _, err := details.Patch(context.Background(), hc, "com.example.app", "edit-1", details.AppDetailsPatch{ContactEmail: &email})
+	if err == nil {
+		t.Fatal("expected an error for a broken response body, got nil")
+	}
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v, want *api.Error in the chain", err)
+	}
+	if !strings.Contains(apiErr.Message, "read response body") {
+		t.Errorf("api.Error.Message = %q, want it to mention 'read response body'", apiErr.Message)
+	}
+	if !strings.Contains(apiErr.Operation, "details.patch") {
+		t.Errorf("api.Error.Operation = %q, want it to mention details.patch", apiErr.Operation)
+	}
+}
