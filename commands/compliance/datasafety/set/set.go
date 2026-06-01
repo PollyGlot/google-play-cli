@@ -186,7 +186,9 @@ func (p Payload) renderTable(w io.Writer) error {
 	}
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 	if p.Account != "" {
-		fmt.Fprintf(tw, "account\t%s\n", p.Account)
+		if _, err := fmt.Fprintf(tw, "account\t%s\n", p.Account); err != nil {
+			return err
+		}
 	}
 	if err := tw.Flush(); err != nil {
 		return err

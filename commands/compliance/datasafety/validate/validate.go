@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -99,10 +100,17 @@ func (p Payload) Renderers() output.Renderers {
 
 func (p Payload) renderText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	fmt.Fprintf(tw, "FILE\t%s\n", p.File)
-	fmt.Fprintf(tw, "STATUS\tstructurally valid\n")
-	fmt.Fprintf(tw, "ROWS\t%d\n", p.Rows)
-	fmt.Fprintf(tw, "COLUMNS\t%d\n", p.Columns)
+	rows := [][2]string{
+		{"FILE", p.File},
+		{"STATUS", "structurally valid"},
+		{"ROWS", strconv.Itoa(p.Rows)},
+		{"COLUMNS", strconv.Itoa(p.Columns)},
+	}
+	for _, r := range rows {
+		if _, err := fmt.Fprintf(tw, "%s\t%s\n", r[0], r[1]); err != nil {
+			return err
+		}
+	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
