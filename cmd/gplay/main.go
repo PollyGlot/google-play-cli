@@ -21,6 +21,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimageslist "github.com/PollyGlot/google-play-cli/commands/metadata/images/list"
+	metadataimagespull "github.com/PollyGlot/google-play-cli/commands/metadata/images/pull"
 	metadatalist "github.com/PollyGlot/google-play-cli/commands/metadata/list"
 	metadatapull "github.com/PollyGlot/google-play-cli/commands/metadata/pull"
 	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
@@ -192,6 +193,7 @@ replace Fastlane on Android CI pipelines.`,
 		Short: "Manage Store images (per-locale icon, feature graphic, screenshots)",
 	}
 	metadataImages.AddCommand(metadataimageslist.NewCommand(boot))
+	metadataImages.AddCommand(metadataimagespull.NewCommand(boot))
 	metadata.AddCommand(metadataImages)
 	root.AddCommand(metadata)
 
