@@ -32,6 +32,7 @@ import (
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	testerslist "github.com/PollyGlot/google-play-cli/commands/testers/list"
 	testersset "github.com/PollyGlot/google-play-cli/commands/testers/set"
+	tracksavailability "github.com/PollyGlot/google-play-cli/commands/tracks/availability"
 	trackscreate "github.com/PollyGlot/google-play-cli/commands/tracks/create"
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
 	tracksstatus "github.com/PollyGlot/google-play-cli/commands/tracks/status"
@@ -152,6 +153,7 @@ replace Fastlane on Android CI pipelines.`,
 	tracks.AddCommand(trackslist.NewCommand(boot))
 	tracks.AddCommand(tracksstatus.NewCommand(boot))
 	tracks.AddCommand(trackscreate.NewCommand(boot))
+	tracks.AddCommand(tracksavailability.NewCommand(boot))
 	root.AddCommand(tracks)
 
 	// `gplay testers` — read and declare the Google Groups authorized to
