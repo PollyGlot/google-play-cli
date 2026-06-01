@@ -20,6 +20,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
+	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
+	metadataimageslist "github.com/PollyGlot/google-play-cli/commands/metadata/images/list"
+	metadataimagespull "github.com/PollyGlot/google-play-cli/commands/metadata/images/pull"
+	metadataimagesvalidate "github.com/PollyGlot/google-play-cli/commands/metadata/images/validate"
 	metadatalist "github.com/PollyGlot/google-play-cli/commands/metadata/list"
 	metadatapull "github.com/PollyGlot/google-play-cli/commands/metadata/pull"
 	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
@@ -182,6 +186,19 @@ replace Fastlane on Android CI pipelines.`,
 	metadata.AddCommand(metadatapull.NewCommand(boot))
 	metadata.AddCommand(metadatavalidate.NewCommand(boot))
 	metadata.AddCommand(metadataapply.NewCommand(boot))
+
+	// `gplay metadata images` — Store images (per-locale icon / feature
+	// graphic / screenshots), the fastlane-supply image side. See PRD #112 /
+	// ADR-0013.
+	metadataImages := &cobra.Command{
+		Use:   "images",
+		Short: "Manage Store images (per-locale icon, feature graphic, screenshots)",
+	}
+	metadataImages.AddCommand(metadataimageslist.NewCommand(boot))
+	metadataImages.AddCommand(metadataimagespull.NewCommand(boot))
+	metadataImages.AddCommand(metadataimagesvalidate.NewCommand(boot))
+	metadataImages.AddCommand(metadataimagesapply.NewCommand(boot))
+	metadata.AddCommand(metadataImages)
 	root.AddCommand(metadata)
 
 	root.AddCommand(&cobra.Command{
