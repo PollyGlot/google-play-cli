@@ -18,12 +18,40 @@
 package tree
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
+	"github.com/PollyGlot/google-play-cli/internal/metadata/locale"
 )
+
+// LocaleNoFieldsError is returned by Read when a directory NAMED like a
+// known Play store locale (locale.IsKnown) holds at least one file but none
+// the codec recognizes as a Listing field. That is the signature of a
+// filename typo — e.g. `full-description.txt` (hyphen) instead of
+// `full_description.txt` — which would otherwise make the locale vanish
+// from the Tree silently and, under `metadata apply --prune`, get its live
+// Listing deleted. Erroring here makes the typo loud for every consumer of
+// the tree (validate and apply alike) instead of silently dropping data.
+//
+// Note: the check keys on the embedded locale registry, so a locale Google
+// added after this gplay release (one you would whitelist with
+// --allow-locale) is not recognized as locale-shaped here and a typo inside
+// it is still silently skipped; the registry is the best offline signal
+// available and is the same authority `metadata validate` uses.
+type LocaleNoFieldsError struct {
+	Locale string
+	Files  []string // the unrecognized file names found in the directory
+}
+
+func (e *LocaleNoFieldsError) Error() string {
+	return fmt.Sprintf(
+		"locale directory %q contains files but no recognized Listing field (%v); expected one of title.txt, short_description.txt, full_description.txt, video.txt — check for a typo in the file name",
+		e.Locale, e.Files)
+}
 
 // osReadDir, osReadFile, osMkdirAll, and osWriteFile are package-level
 // seams so a later block can swap the filesystem (e.g. an injected
@@ -68,7 +96,12 @@ const (
 //
 // A dir that does not exist or cannot be read is an error (the caller
 // maps it to a CLI exit code). An existing but empty dir is not an
-// error: it yields an empty, non-nil Tree.
+// error: it yields an empty, non-nil Tree. The one exception to "silently
+// ignore the unrecognized" is a directory NAMED like a known Play locale
+// that holds an unrecognized *.txt* and no recognized field file: that is
+// a Listing-field filename typo, returned as *LocaleNoFieldsError so it is
+// not silently dropped (which, under `apply --prune`, would delete the
+// live Listing).
 func Read(dir string) (listing.Tree, error) {
 	entries, err := osReadDir(dir)
 	if err != nil {
@@ -81,18 +114,29 @@ func Read(dir string) (listing.Tree, error) {
 		if !e.IsDir() {
 			continue
 		}
-		locale := e.Name()
-		l, err := readLocale(filepath.Join(dir, locale), locale)
+		loc := e.Name()
+		l, unrecognized, err := readLocale(filepath.Join(dir, loc), loc)
 		if err != nil {
 			return nil, err
 		}
 		// A directory with no recognized field file (e.g. `changelogs/`,
 		// or a locale holding only a README) is not a managed Listing —
-		// omit it rather than emit an empty entry.
+		// omit it rather than emit an empty entry. BUT if the directory is
+		// named like a known Play locale and holds an unrecognized *.txt*,
+		// that is a Listing-field filename typo (e.g. `full-description.txt`):
+		// silently dropping it would, under --prune, delete the live Listing.
+		// Surface it loudly instead. Non-locale dirs (changelogs/, junk/),
+		// README-only locale dirs, and locales Google added since this
+		// release (not in the registry) stay benign.
 		if l.Empty() {
+			if locale.IsKnown(loc) {
+				if stray := txtFiles(unrecognized); len(stray) > 0 {
+					return nil, &LocaleNoFieldsError{Locale: loc, Files: stray}
+				}
+			}
 			continue
 		}
-		tr[locale] = l
+		tr[loc] = l
 	}
 	return tr, nil
 }
@@ -100,13 +144,17 @@ func Read(dir string) (listing.Tree, error) {
 // readLocale reads one locale directory into a Listing. It reads only
 // the recognized field *files* at this level; nested directories and
 // unrecognized files are skipped. The returned Listing may be Empty (no
-// recognized field), which Read uses to decide whether to keep it.
-func readLocale(path, locale string) (listing.Listing, error) {
+// recognized field), which Read uses to decide whether to keep it. The
+// second return is the list of unrecognized (non-directory) file names
+// found, so Read can distinguish a locale-shaped dir whose field files are
+// all mis-named (a typo worth erroring on) from an empty or README-only one.
+func readLocale(path, locale string) (listing.Listing, []string, error) {
 	entries, err := osReadDir(path)
 	if err != nil {
-		return listing.Listing{}, err
+		return listing.Listing{}, nil, err
 	}
 	l := listing.NewListing(locale)
+	var unrecognized []string
 	for _, e := range entries {
 		// A nested directory inside a locale (e.g. a future `images/`,
 		// or a misplaced `changelogs/`) is out of scope for the text
@@ -116,16 +164,32 @@ func readLocale(path, locale string) (listing.Listing, error) {
 		}
 		spec, ok := listing.SpecByFile(e.Name())
 		if !ok {
-			// Unrecognized file (README, *.md, unknown *.txt) — ignore.
+			// Unrecognized file (README, *.md, unknown *.txt) — ignore here,
+			// but remember it so Read can flag a locale-shaped dir that holds
+			// only mis-named files.
+			unrecognized = append(unrecognized, e.Name())
 			continue
 		}
 		b, err := osReadFile(filepath.Join(path, e.Name()))
 		if err != nil {
-			return listing.Listing{}, err
+			return listing.Listing{}, unrecognized, err
 		}
 		l.Set(spec.Field, stripOneTrailingNewline(string(b)))
 	}
-	return l, nil
+	return l, unrecognized, nil
+}
+
+// txtFiles filters names down to the *.txt ones — the file type a Listing
+// field uses, so a mis-named `full-description.txt` is flagged while a
+// README.md / LICENSE / *.png in a locale dir stays ignored.
+func txtFiles(names []string) []string {
+	var out []string
+	for _, n := range names {
+		if strings.EqualFold(filepath.Ext(n), ".txt") {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // stripOneTrailingNewline removes a single trailing "\n" — and nothing

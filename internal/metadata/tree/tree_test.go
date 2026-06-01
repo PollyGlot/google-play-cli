@@ -1,6 +1,7 @@
 package tree_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -151,6 +152,70 @@ func TestRead_localeWithNoRecognizedFieldIsOmitted(t *testing.T) {
 	}
 	if got := tr.Locales(); !reflect.DeepEqual(got, []string{"en-US"}) {
 		t.Fatalf("locales = %v, want [en-US]", got)
+	}
+}
+
+// TestRead_knownLocaleMisnamedFieldFile asserts the typo guard: a
+// directory named like a KNOWN Play locale that holds an unrecognized
+// *.txt and no recognized field file is a filename typo — Read returns a
+// *LocaleNoFieldsError rather than silently dropping the locale (which,
+// under apply --prune, would delete the live Listing).
+func TestRead_knownLocaleMisnamedFieldFile(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "en-US", "title.txt"), "Title\n")
+	// de-DE is a known locale, but its description file is mis-named
+	// (hyphen instead of underscore) → no recognized field → typo.
+	writeFile(t, filepath.Join(dir, "de-DE", "full-description.txt"), "Beschreibung\n")
+
+	_, err := tree.Read(dir)
+	if err == nil {
+		t.Fatal("Read = nil error, want *LocaleNoFieldsError for a mis-named field file")
+	}
+	var lnf *tree.LocaleNoFieldsError
+	if !errors.As(err, &lnf) {
+		t.Fatalf("err = %v (%T), want *LocaleNoFieldsError", err, err)
+	}
+	if lnf.Locale != "de-DE" {
+		t.Errorf("LocaleNoFieldsError.Locale = %q, want de-DE", lnf.Locale)
+	}
+	if !reflect.DeepEqual(lnf.Files, []string{"full-description.txt"}) {
+		t.Errorf("LocaleNoFieldsError.Files = %v, want [full-description.txt]", lnf.Files)
+	}
+}
+
+// TestRead_knownLocaleReadmeOnlyIsBenign asserts a known-locale dir holding
+// only a non-.txt stray (a README) is NOT a typo error — it stays silently
+// ignored, matching the documented metadata/releases boundary.
+func TestRead_knownLocaleReadmeOnlyIsBenign(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "en-US", "title.txt"), "Title\n")
+	writeFile(t, filepath.Join(dir, "fr-FR", "README.md"), "notes for translators\n")
+
+	tr, err := tree.Read(dir)
+	if err != nil {
+		t.Fatalf("Read: %v (README-only known-locale dir should be ignored, not an error)", err)
+	}
+	if got := tr.Locales(); !reflect.DeepEqual(got, []string{"en-US"}) {
+		t.Fatalf("locales = %v, want [en-US] (fr-FR README-only ignored)", got)
+	}
+}
+
+// TestRead_unknownLocaleMisnamedFieldFileIsBenign asserts the typo guard is
+// scoped to KNOWN locales: a non-locale dir (or a locale Google added after
+// this release) with a stray .txt is still silently ignored, so the codec
+// never errors on a directory it cannot vouch for as locale-shaped.
+func TestRead_unknownLocaleMisnamedFieldFileIsBenign(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "en-US", "title.txt"), "Title\n")
+	// "notes" is not a known Play locale → a stray .txt inside it is ignored.
+	writeFile(t, filepath.Join(dir, "notes", "full-description.txt"), "x\n")
+
+	tr, err := tree.Read(dir)
+	if err != nil {
+		t.Fatalf("Read: %v (unknown-locale dir with a stray .txt should be ignored)", err)
+	}
+	if got := tr.Locales(); !reflect.DeepEqual(got, []string{"en-US"}) {
+		t.Fatalf("locales = %v, want [en-US] (notes/ ignored)", got)
 	}
 }
 
