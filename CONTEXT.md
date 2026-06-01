@@ -88,6 +88,18 @@ The set of countries an app's artifacts are distributed to **on a given track**,
 
 _Avoid_: describing Country availability as "app-global" or filing it under `apps` — both contradict the track-keyed, read-only reality.
 
+### Compliance
+The command family for an app's **regulatory declarations** — the Play Console gestures that **gate publication** rather than shape store presence: Data Safety today, content rating and other "App content" declarations in future scope. A Compliance surface is recognised by a cluster of traits that no `metadata`/`apps`/`tracks` surface shares: keyed by **app**, **write-heavy or write-only**, **outside the Edits model**, and a **publication gate** (Google blocks releases if it is stale). This is why Compliance is its own namespace rather than folding app-keyed declarations into `apps`: the store-presence axis test (locale→`metadata`, app→`apps`, track→`tracks`) is scoped to *store presence* and does not bind a regulatory surface.
+
+_Avoid_: filing a regulatory declaration under `metadata` (it is not the per-locale Store front) or under `apps` (that namespace is identity + editable app-global config, not regulatory gates).
+
+### Data Safety declaration
+The app-global statement of what user data an app collects, how it is shared with third parties, and its security practices — backed by Google's `applications.dataSafety` resource and surfaced by gplay under `compliance datasafety`. Keyed by **app**, it is a **publication gate**: Google blocks releases when it is out of date, so it bears on **every** app, not only monetised ones.
+
+gplay can **set it but never read it back**: the Developer API exposes only a write (`POST …/applications/{package}/dataSafety`) — there is no `get`. This single fact, not a preference, is why there is no `compliance datasafety pull`, why the [Additive sync](#additive-sync) model of [ADR-0011](docs/adr/0011-metadata-apply-sync-model.md) does **not** apply (no diff is possible), and why a dry-run can only be offline. The declaration travels as **one CSV document** — the same import/export CSV the Play Console uses, adopted verbatim (gplay does not re-model Google's evolving schema), versioned in the repo as a plain file.
+
+_Avoid_: calling it "metadata" (it is a compliance gate, not Store front) or implying gplay can show the live declaration (it cannot — the API is write-only).
+
 ### Format
 A way of shaping a command's output for a specific reader: `table` for humans on a TTY, `json` for machines and scripts, `markdown` for documentation, chat agents, and PR comments. Selected by `--output`. The special value `auto` (the default, encoded as the empty string on the flag) lets the CLI pick based on context: `json` when stdout is not a TTY or when `CI=true`, `table` otherwise.
 
