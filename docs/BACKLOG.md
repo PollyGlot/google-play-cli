@@ -46,9 +46,10 @@ Mécanisme legacy pour distribuer >150 MB d'assets hors APK.
 Upload d'APK au lieu d'AAB.
 **Pourquoi plus tard :** Google n'accepte plus de nouveaux APK pour nouvelles apps depuis 2021. AAB-only par défaut, APK ajouté seulement si un user le réclame.
 
-### Testers (groupes internes) — `edits.testers`
+### Testers (groupes internes) — `edits.testers` — 🔼 **dé-parké 2026-06-01**
 Gestion des emails de testeurs sur tracks closed.
-**Pourquoi plus tard :** workflow secondaire, la plupart des équipes gèrent ça à la main dans Play Console une fois.
+> **Promu au thème first-release readiness** (le test fermé est désormais obligatoire avant la 1ère prod pour les nouveaux comptes) — voir [ROADMAP.md](ROADMAP.md). Couplé à la création de custom closed tracks ci-dessous. Section conservée comme rationnel d'origine.
+**Pourquoi c'était reporté :** workflow secondaire, la plupart des équipes gèrent ça à la main dans Play Console une fois.
 
 ### Détails app — `edits.details`
 Langue par défaut, email/téléphone/site contact.
@@ -62,9 +63,10 @@ Liste des pays où l'app est dispo.
 Rollback ciblé d'un release vers une version précédente pour des users impactés.
 **Pourquoi plus tard :** incident response, niche. À considérer si on fait un module "incident" complet.
 
-### Création / gestion de custom closed tracks — `tracks.create` + testers
+### Création / gestion de custom closed tracks — `tracks.create` + testers — 🔼 **dé-parké 2026-06-01**
 Créer des tracks closed nommés (`qa-team`, `external-beta`...) et y gérer la liste de testeurs.
-**Pourquoi plus tard :** le MVP accepte `--track <any-string>` en passthrough donc utiliser un track existant marche déjà. La *création* d'un nouveau closed track et la gestion fine des testeurs sont reportées.
+> **Promu au thème first-release readiness** — voir [ROADMAP.md](ROADMAP.md). Section conservée comme rationnel d'origine.
+**Pourquoi c'était reporté :** le MVP accepte `--track <any-string>` en passthrough donc utiliser un track existant marche déjà. La *création* d'un nouveau closed track et la gestion fine des testeurs sont reportées.
 
 ---
 

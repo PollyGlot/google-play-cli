@@ -33,37 +33,57 @@ Toute la surface MVP est implémentée et mergée dans `main` :
 | reviews | list / reply | [#6](https://github.com/PollyGlot/google-play-cli/issues/6) ✅ |
 | output | dispatcher TTY-aware + markdown | [#26](https://github.com/PollyGlot/google-play-cli/issues/26) ✅ |
 
-Statut produit : **public preview (pre-1.0)**. La `v0.2.0` (reviews) sort dès le
-merge de la release PR release-please, puis on enchaîne sur la route v1.0.
+Statut produit : **public preview (`0.x`)**. La `v0.2.0` (reviews) est sortie.
+On reste délibérément en `0.x` — voir le mode de livraison ci-dessous. **Pas de
+bascule 1.0 planifiée à court terme.**
 
-## Route vers v1.0 (GA)
+## Mode de livraison — `0.x` rolling, gel 1.0 différé
 
-La 1.0 gèle la surface MVP derrière un *Public contract* (voir
-[ADR-0010](adr/0010-versioning-public-contract-and-ga.md) et `CONTEXT.md` :
-*Public contract*, *Stability label*, *Public preview / GA*). Checklist,
-décisions et audit du vocabulaire de verbes dans
-**[#98](https://github.com/PollyGlot/google-play-cli/issues/98)** : stability
-labels, dogfooding sur une vraie app, docs `concepts/`, guide `migrate-to-1-0`,
-set de skills v1 (#53).
+**Décision (2026-06-01).** On ne planifie **pas** le gel 1.0 à court terme. On
+reste en `0.x` et on **shippe large** : plusieurs features/correctifs par
+version mineure, breaking changes permis (SemVer `0.x`, voir
+[ADR-0008](adr/0008-release-pipeline.md)). La politique de stabilité de
+[ADR-0010](adr/0010-versioning-public-contract-and-ga.md) (Public contract,
+stability labels, GA) **reste valable mais en sommeil** : on décidera du moment
+du gel 1.0 une fois la surface « first-release readiness » stabilisée. La
+checklist de durcissement
+([#98](https://github.com/PollyGlot/google-play-cli/issues/98)) n'est donc plus
+la prochaine étape — elle attend.
 
-## Route 1.x — PRD planifiés (additifs)
+## Thème actif — First-release readiness
 
-Surfaces API additionnelles, **planifiées** (additives, au-delà du gel MVP de la
-1.0 — voir [ADR-0010](adr/0010-versioning-public-contract-and-ga.md)). Promues
-depuis le parking le 2026-05-31. Chacune est un PRD « sec » (scope + forme de
-commande, sans grilling complet) : à griller puis décomposer via `/to-issues`
-au moment de l'attaquer. Ordre de priorité :
+**North star near-term :** *gplay prépare et publie une app de bout en bout, de
+zéro à sa première release de production.* Tout ce qui touche la prépa complète
+d'une première mise en ligne. Ces PRD shippent **en continu en `0.x`** (à
+griller puis décomposer via `/to-issues` au moment de les attaquer) :
 
-| Ordre | # | Area | Sujet | État |
+| # | Area | Surface API | État |
+|---|---|---|---|
+| ✅ | metadata | Listings textuels (`edits.listings`) | Livré (slices #101–#107) |
+| [#112](https://github.com/PollyGlot/google-play-cli/issues/112) | metadata | Images & screenshots (`edits.images`) | À griller |
+| [#113](https://github.com/PollyGlot/google-play-cli/issues/113) | metadata | App details + country availability (`edits.details` / `edits.countryavailability`) | À griller |
+| [#114](https://github.com/PollyGlot/google-play-cli/issues/114) | compliance | Data safety (`applications.dataSafety`) | À griller |
+| [#117](https://github.com/PollyGlot/google-play-cli/issues/117) | tracks | Custom closed tracks + testers (`tracks.create` + `edits.testers`) — **dé-parké** du backlog | À griller |
+
+> ⚠️ **Mur dur.** Content rating, public cible, déclarations ads/news n'ont
+> **aucun endpoint** dans l'API Google → restent manuels en console. À
+> **documenter**, pas à automatiser. La promesse « prépa complète depuis le
+> CLI » s'arrête là.
+
+## Ensuite — surfaces additives (post first-release)
+
+Planifiées, mais derrière le thème first-release. Toujours en `0.x`, sans
+attendre de gel.
+
+| Ordre | # | Area | Sujet | Note |
 |---|---|---|---|---|
-| 1 | [#50](https://github.com/PollyGlot/google-play-cli/issues/50) | metadata | Listings textuels par locale (`edits.listings`) — remplace le côté texte de `fastlane supply` | ✅ Implémenté (slices #101–#107) |
-| 2 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API, service séparé) + mappings ProGuard/R8 | Prêt à griller |
-| 3 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | Prêt à griller |
-| 4 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | Spike d'investigation d'abord (scope OAuth GCS + parseur CSV) |
+| 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API) + mappings ProGuard/R8 | Observabilité **post-lancement**, pas first-release |
+| 2 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | **Post-v1** (confirmé) |
+| 3 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | Spike d'investigation d'abord |
+| — | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) | releases | APK upload (`edits.apks`) | Apps **existantes** only — hors thème first-release (AAB obligatoire pour les nouvelles apps depuis 2021) |
 
-**#50 part en tête** : réutilise le *edits model* déjà implémenté (releases),
-aucune nouvelle API ni scope OAuth, et avance directement le récit « remplacer
-Fastlane » (côté texte de `supply`).
+Les docs utilisateur ([#116](https://github.com/PollyGlot/google-play-cli/issues/116))
+avancent en parallèle, sans dépendre du gel 1.0.
 
 ## Parking (post-MVP)
 
