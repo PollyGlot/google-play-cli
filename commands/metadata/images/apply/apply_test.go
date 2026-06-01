@@ -9,7 +9,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -41,8 +43,9 @@ func pngOf(w, h int) []byte {
 // (so a local image is a fresh upload). It records uploads, deleteall calls,
 // and whether a commit happened, and fails on nothing it does not recognize.
 type applyRT struct {
-	t      *testing.T
-	editID string
+	t        *testing.T
+	editID   string
+	liveBody string // images.list body for every slot (default: empty)
 
 	mu        sync.Mutex
 	uploads   int
@@ -69,7 +72,11 @@ func (r *applyRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		_, _ = io.Copy(io.Discard, req.Body)
 		return jsonResp(200, fmt.Sprintf(`{"image":{"id":"up%d","url":"u","sha256":"s"}}`, r.uploads)), nil
 	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/listings/"):
-		return jsonResp(200, `{"images":[]}`), nil // every slot empty live
+		body := r.liveBody
+		if body == "" {
+			body = `{"images":[]}` // every slot empty live by default
+		}
+		return jsonResp(200, body), nil
 	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/listings/"):
 		r.deleteAll++
 		return jsonResp(200, `{"deleted":[]}`), nil
@@ -254,6 +261,60 @@ func TestRun_validateFailFast(t *testing.T) {
 	}
 	if len(rt2.calls) == 0 {
 		t.Error("--no-validate should let the dry-run reach Play")
+	}
+}
+
+// TestRun_dryRunPrune_showsDeleteRecords asserts `--dry-run --prune --output
+// json` surfaces an online-only image as a delete record in the ADR-0013
+// schema (the #135 jq gate), without committing.
+func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
+	dir := t.TempDir()
+	shot := pngOf(1080, 1920)
+	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.PhoneScreenshots: {shot}}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	shotSum := sha256.Sum256(shot)
+	// Live has the local shot plus an online-only one; --prune should delete it.
+	live := fmt.Sprintf(`{"images":[{"id":"keep","sha256":%q},{"id":"drop","sha256":%q}]}`,
+		hex.EncodeToString(shotSum[:]), "00deadbeef")
+	rt := &applyRT{t: t, editID: "e", liveBody: live}
+	rc := newRC(t, rt)
+
+	r, err := imagesapply.Run(rc, imagesapply.Input{
+		Package: "com.example.app", Dir: dir, DryRun: true, Prune: true, Types: []string{"phoneScreenshots"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if rt.committed {
+		t.Error("dry-run must not commit")
+	}
+	var buf bytes.Buffer
+	if err := r.Renderers().JSON(&buf); err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	var doc struct {
+		Slots []struct {
+			Op string `json:"op"`
+		} `json:"slots"`
+		Summary struct {
+			Delete int `json:"delete"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatalf("not the diff schema: %v\n%s", err, buf.String())
+	}
+	if doc.Summary.Delete < 1 {
+		t.Errorf("prune dry-run should report a delete: %s", buf.String())
+	}
+	hasDelete := false
+	for _, s := range doc.Slots {
+		if s.Op == "delete" {
+			hasDelete = true
+		}
+	}
+	if !hasDelete {
+		t.Errorf("prune dry-run should carry a delete record: %s", buf.String())
 	}
 }
 

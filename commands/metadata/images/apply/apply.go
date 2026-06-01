@@ -46,6 +46,7 @@ type Input struct {
 	Dir        string
 	DryRun     bool
 	Confirm    bool
+	Prune      bool
 	Locales    []string
 	Types      []string
 	NoValidate bool
@@ -202,6 +203,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Package:    pkg,
 		DryRun:     in.DryRun,
 		Confirm:    in.Confirm,
+		Prune:      in.Prune,
 		Locales:    in.Locales,
 		Types:      in.Types,
 		NoValidate: in.NoValidate,
@@ -258,6 +260,7 @@ the Edit (0 published).
 	cmd.Flags().StringVar(&in.Dir, "dir", DefaultDir, "metadata tree root directory")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the delta without committing (online)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the real publish (images go live immediately)")
+	cmd.Flags().BoolVar(&in.Prune, "prune", false, "also delete a managed slot's online-only images (destructive; requires --confirm)")
 	cmd.Flags().StringArrayVar(&in.Locales, "locale", nil, "restrict to these locale codes (repeatable)")
 	cmd.Flags().StringArrayVar(&in.Types, "type", nil, "restrict to these image types (repeatable)")
 	cmd.Flags().BoolVar(&in.NoValidate, "no-validate", false, "skip the offline image validation pre-check (Play's commit stays the authority)")

@@ -49,7 +49,7 @@ func TestUnchanged_isNoOp(t *testing.T) {
 		Local: [][]byte{B("a"), B("b")},
 		Live:  []images.Image{img("1", B("a")), img("2", B("b"))},
 	}
-	plans := imagediff.Plans([]imagediff.SlotInput{in})
+	plans := imagediff.Plans([]imagediff.SlotInput{in}, false)
 	if plans[0].Kind != imagediff.KindNone {
 		t.Errorf("identical slot should be KindNone, got %v", plans[0].Kind)
 	}
@@ -62,7 +62,7 @@ func TestUnchanged_isNoOp(t *testing.T) {
 // uploads.
 func TestSingular_upload_whenLiveEmpty(t *testing.T) {
 	in := imagediff.SlotInput{Locale: "en-US", Type: images.Icon, Local: [][]byte{B("icon")}}
-	p := imagediff.Plans([]imagediff.SlotInput{in})[0]
+	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
 	if p.Kind != imagediff.KindRewrite || len(p.Uploads) != 1 {
 		t.Errorf("singular upload should rewrite with 1 upload, got kind=%v uploads=%d", p.Kind, len(p.Uploads))
 	}
@@ -79,7 +79,7 @@ func TestSingular_replace_whenContentDiffers(t *testing.T) {
 		Local: [][]byte{B("new-icon")},
 		Live:  []images.Image{img("old", B("old-icon"))},
 	}
-	p := imagediff.Plans([]imagediff.SlotInput{in})[0]
+	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
 	if p.Kind != imagediff.KindRewrite {
 		t.Errorf("singular replace should be KindRewrite, got %v", p.Kind)
 	}
@@ -96,7 +96,7 @@ func TestGallery_pureAppend_uploadsTail(t *testing.T) {
 		Local: [][]byte{B("a"), B("b"), B("c")},
 		Live:  []images.Image{img("1", B("a")), img("2", B("b"))},
 	}
-	p := imagediff.Plans([]imagediff.SlotInput{in})[0]
+	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
 	if p.Kind != imagediff.KindAppend {
 		t.Errorf("pure append should be KindAppend, got %v", p.Kind)
 	}
@@ -116,7 +116,7 @@ func TestGallery_reorder_whenOrderDiffers_noLoss(t *testing.T) {
 		Local: [][]byte{B("b"), B("a")},
 		Live:  []images.Image{img("1", B("a")), img("2", B("b"))},
 	}
-	p := imagediff.Plans([]imagediff.SlotInput{in})[0]
+	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
 	if p.Kind != imagediff.KindRewrite {
 		t.Errorf("reorder should be KindRewrite, got %v", p.Kind)
 	}
@@ -138,7 +138,7 @@ func TestGallery_additive_keepsOnlineOnly(t *testing.T) {
 		Local: [][]byte{B("a"), B("new")},
 		Live:  []images.Image{img("1", B("a")), img("2", B("extra"))},
 	}
-	p := imagediff.Plans([]imagediff.SlotInput{in})[0]
+	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
 	if hasOp(p.Changes, imagediff.OpDelete) {
 		t.Errorf("additive must never emit a delete: %v", opsOf(p.Changes))
 	}
@@ -158,7 +158,7 @@ func TestUntouchedSlot_whenLocalEmpty(t *testing.T) {
 		Locale: "en-US", Type: images.Icon,
 		Live: []images.Image{img("old", B("icon"))},
 	}
-	p := imagediff.Plans([]imagediff.SlotInput{in})[0]
+	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
 	if p.Kind != imagediff.KindNone {
 		t.Errorf("unmanaged slot should be KindNone, got %v", p.Kind)
 	}
@@ -174,7 +174,7 @@ func TestAggregate_summaryAndSchema(t *testing.T) {
 		{Locale: "en-US", Type: images.Icon, Local: [][]byte{B("icon")}},                                                                            // upload
 		{Locale: "en-US", Type: images.PhoneScreenshots, Local: [][]byte{B("b"), B("a")}, Live: []images.Image{img("1", B("a")), img("2", B("b"))}}, // reorder
 	}
-	res := imagediff.Aggregate("com.example.app", imagediff.Plans(slots))
+	res := imagediff.Aggregate("com.example.app", imagediff.Plans(slots, false))
 	if res.Package != "com.example.app" {
 		t.Errorf("package = %q", res.Package)
 	}

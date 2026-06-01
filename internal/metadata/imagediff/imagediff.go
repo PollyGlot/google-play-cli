@@ -111,11 +111,15 @@ type Plan struct {
 	DeleteIDs []string // KindDeleteIDs: live image ids to delete (prune)
 }
 
-// Plans reconciles every slot independently (additive default — no prune).
-func Plans(slots []SlotInput) []Plan {
+// Plans reconciles every slot independently. With prune false (the additive
+// default) an online-only image is never deleted; with prune true a managed
+// slot's online-only images (sha256 in no local file) are removed and the slot
+// is reconciled exactly to local (ADR-0013 §1). prune never touches an
+// unmanaged (absent/empty) slot.
+func Plans(slots []SlotInput, prune bool) []Plan {
 	out := make([]Plan, 0, len(slots))
 	for _, in := range slots {
-		out = append(out, reconcile(in))
+		out = append(out, reconcile(in, prune))
 	}
 	return out
 }
@@ -143,8 +147,9 @@ func Aggregate(pkg string, plans []Plan) Result {
 	return res
 }
 
-// reconcile computes one slot's plan under the additive model.
-func reconcile(in SlotInput) Plan {
+// reconcile computes one slot's plan. prune authorizes deleting a managed
+// slot's online-only images (and reconciling it exactly to local).
+func reconcile(in SlotInput, prune bool) Plan {
 	p := Plan{Locale: in.Locale, Type: in.Type}
 	localShas := shasOf(in.Local)
 	liveShas := liveShasOf(in.Live)
@@ -200,9 +205,14 @@ func reconcile(in SlotInput) Plan {
 		return p
 	}
 
-	// Online-only images exist. Additive default: never delete them; only
-	// append the genuinely-new local images (those not already live). Full
-	// reconciliation (which would drop the online-only ones) is --prune (#135).
+	// Online-only images exist.
+	if prune {
+		return prunePlan(in, localShas, liveShas, liveSet, onlineOnly)
+	}
+
+	// Additive default: never delete the online-only images; only append the
+	// genuinely-new local images (those not already live). Full reconciliation
+	// (which would drop the online-only ones) is --prune.
 	for i, s := range localShas {
 		if !liveSet[s] {
 			p.Uploads = append(p.Uploads, in.Local[i])
@@ -217,6 +227,64 @@ func reconcile(in SlotInput) Plan {
 		p.Changes = []SlotChange{slotLevel(in, OpUnchanged)}
 	}
 	return p
+}
+
+// prunePlan reconciles a managed gallery slot exactly to local when online-only
+// images must be removed (--prune). When local is an order-preserving
+// subsequence of live with nothing new, the online-only images are removed
+// in place (delete by id, no deleteall, no re-upload). Otherwise the slot is
+// rewritten (deleteall + re-upload local), and the change records reflect the
+// net intent: a delete per online-only image, an upload per genuinely-new
+// local image, and a single reorder iff the retained images change relative
+// order.
+func prunePlan(in SlotInput, localShas, liveShas []string, liveSet map[string]bool, onlineOnly []images.Image) Plan {
+	p := Plan{Locale: in.Locale, Type: in.Type}
+	localSet := toSet(localShas)
+
+	var newLocal []int // local indices whose sha is not yet live
+	for i, s := range localShas {
+		if !liveSet[s] {
+			newLocal = append(newLocal, i)
+		}
+	}
+	retainedLive := keepInSet(liveShas, localSet)
+	retainedLocal := keepInSet(localShas, liveSet)
+	reordered := !equalStrings(retainedLive, retainedLocal)
+
+	if len(newLocal) == 0 && !reordered {
+		// Pure delete: drop the online-only images in place, order preserved.
+		p.Kind = KindDeleteIDs
+		for _, img := range onlineOnly {
+			p.DeleteIDs = append(p.DeleteIDs, img.ID)
+			p.Changes = append(p.Changes, SlotChange{Locale: in.Locale, ImageType: string(in.Type), Op: OpDelete, Sha256: img.Sha256, Position: -1})
+		}
+		return p
+	}
+
+	// General rewrite: deleteall + re-upload the full local sequence.
+	p.Kind = KindRewrite
+	p.Uploads = in.Local
+	if reordered {
+		p.Changes = append(p.Changes, slotLevel(in, OpReorder))
+	}
+	for _, i := range newLocal {
+		p.Changes = append(p.Changes, uploadChange(in, localShas[i], i))
+	}
+	for _, img := range onlineOnly {
+		p.Changes = append(p.Changes, SlotChange{Locale: in.Locale, ImageType: string(in.Type), Op: OpDelete, Sha256: img.Sha256, Position: -1})
+	}
+	return p
+}
+
+// keepInSet returns the elements of ss that are in set, preserving order.
+func keepInSet(ss []string, set map[string]bool) []string {
+	var out []string
+	for _, s := range ss {
+		if set[s] {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func slotLevel(in SlotInput, op Op) SlotChange {

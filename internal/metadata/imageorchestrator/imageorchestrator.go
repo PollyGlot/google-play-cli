@@ -48,6 +48,11 @@ type Opts struct {
 	Locales []string
 	Types   []string
 
+	// Prune deletes a managed slot's online-only images (sha256 in no local
+	// file) and reconciles the slot exactly to local. Opt-in (destructive);
+	// never touches an unmanaged slot (ADR-0013 §1/§3).
+	Prune bool
+
 	// NoValidate bypasses the offline imagevalidate fail-fast pre-check
 	// (ADR-0013 §4 — gplay must never be permanently stricter than Play).
 	NoValidate bool
@@ -120,7 +125,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 
 	if opts.DryRun {
 		if err := edits.WithReadOnlyEdit(ctx, hc, opts.Package, func(editID string) error {
-			plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types)
+			plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types, opts.Prune)
 			if err != nil {
 				return err
 			}
@@ -136,7 +141,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 	// diff returns errNoChanges so the Edit auto-discards. Any per-slot failure
 	// also auto-discards → 0 slots published (atomic).
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{}, func(editID string) error {
-		plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types)
+		plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types, opts.Prune)
 		if err != nil {
 			return err
 		}
@@ -159,7 +164,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 
 // planSlots fetches live images for every considered (locale, type) slot inside
 // the open Edit and reconciles each against the local tree.
-func planSlots(ctx context.Context, hc *http.Client, pkg, editID string, local imagetree.Tree, locales []string, types []images.Type) ([]imagediff.Plan, error) {
+func planSlots(ctx context.Context, hc *http.Client, pkg, editID string, local imagetree.Tree, locales []string, types []images.Type, prune bool) ([]imagediff.Plan, error) {
 	inputs := make([]imagediff.SlotInput, 0, len(locales)*len(types))
 	for _, loc := range locales {
 		for _, ty := range types {
@@ -174,7 +179,7 @@ func planSlots(ctx context.Context, hc *http.Client, pkg, editID string, local i
 			})
 		}
 	}
-	return imagediff.Plans(inputs), nil
+	return imagediff.Plans(inputs, prune), nil
 }
 
 // executePlan runs one slot's plan inside the open Edit.
