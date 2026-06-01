@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
+	"github.com/PollyGlot/google-play-cli/commands/apps/detailscmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/infocmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
@@ -35,6 +36,7 @@ import (
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	testerslist "github.com/PollyGlot/google-play-cli/commands/testers/list"
 	testersset "github.com/PollyGlot/google-play-cli/commands/testers/set"
+	tracksavailability "github.com/PollyGlot/google-play-cli/commands/tracks/availability"
 	trackscreate "github.com/PollyGlot/google-play-cli/commands/tracks/create"
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
 	tracksstatus "github.com/PollyGlot/google-play-cli/commands/tracks/status"
@@ -131,6 +133,7 @@ replace Fastlane on Android CI pipelines.`,
 	apps.AddCommand(addcmd.NewCommand(boot))
 	apps.AddCommand(listcmd.NewCommand(boot))
 	apps.AddCommand(infocmd.NewCommand(boot))
+	apps.AddCommand(detailscmd.NewCommand(boot))
 	apps.AddCommand(removecmd.NewCommand(boot))
 	root.AddCommand(apps)
 
@@ -154,6 +157,7 @@ replace Fastlane on Android CI pipelines.`,
 	tracks.AddCommand(trackslist.NewCommand(boot))
 	tracks.AddCommand(tracksstatus.NewCommand(boot))
 	tracks.AddCommand(trackscreate.NewCommand(boot))
+	tracks.AddCommand(tracksavailability.NewCommand(boot))
 	root.AddCommand(tracks)
 
 	// `gplay testers` — read and declare the Google Groups authorized to

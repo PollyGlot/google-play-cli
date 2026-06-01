@@ -21,7 +21,7 @@
 | | Familles API | Détail |
 |---|---|---|
 | ✅ Livré | **5** surfaces | auth · apps (registre local) · releases/tracks · reviews (7j) · metadata listings |
-| 📋 Planifié | **8** PRD | *first-release :* images · details+country · data safety · tracks/testers — *ensuite :* vitals · monetization · reviews-history · apk |
+| 📋 Planifié | **7** PRD | *first-release :* images · data safety · tracks/testers — *ensuite :* vitals · monetization · reviews-history · apk |
 | 🅿️ Backlog | **~7** surfaces | obb/apprecovery · purchases · internal-sharing · custom apps · auto-discovery… |
 | 🚫 / ➖ | **~8** surfaces | integrity · PAD · users/grants · deviceTierConfigs · generatedapks · externaltransactions… |
 
@@ -43,8 +43,8 @@ flowchart TB
         E_track["tracks (releases/rollout)"]:::done
         E_list["listings (textes/locale)"]:::done
         E_img["images (screenshots, icône)\nPRD #112"]:::planned
-        E_det["details (langue, contact)\nPRD #113"]:::planned
-        E_ctry["countryavailability\nPRD #113"]:::planned
+        E_det["details (langue, contact)\nPRD #113"]:::done
+        E_ctry["countryavailability\nPRD #113 (read-only)"]:::done
         E_deob["deobfuscationfiles\n(mappings ProGuard) → #49"]:::planned
         E_apk["apks (APK legacy)\nplus tard → #118"]:::planned
         E_obb["expansionfiles (OBB)"]:::parked
@@ -121,8 +121,8 @@ flowchart TB
 | `edits.tracks` | Releases, promote, rollout, halt/resume/complete | ✅ | PRD #4/#5 |
 | `edits.listings` | Titre, descriptions, vidéo YouTube par locale | ✅ | PRD [#50](https://github.com/PollyGlot/google-play-cli/issues/50) |
 | `edits.images` | Screenshots, icône, feature graphic par locale/format | 📋 | PRD [#112](https://github.com/PollyGlot/google-play-cli/issues/112) |
-| `edits.details` | Langue par défaut, email/tel/site contact | 📋 | PRD [#113](https://github.com/PollyGlot/google-play-cli/issues/113) |
-| `edits.countryavailability` | Pays de distribution | 📋 | PRD [#113](https://github.com/PollyGlot/google-play-cli/issues/113) |
+| `edits.details` | Langue par défaut, email/tel/site contact (read + set) | ✅ | PRD #113 — `apps details` / `apps details set` ([#126](https://github.com/PollyGlot/google-play-cli/issues/126)/[#127](https://github.com/PollyGlot/google-play-cli/issues/127)) |
+| `edits.countryavailability` | Pays de distribution par track (read-only) | ✅ | PRD #113 — `tracks availability` ([#128](https://github.com/PollyGlot/google-play-cli/issues/128), [ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) |
 | `edits.deobfuscationfiles` | Upload `mapping.txt` (dé-obfuscation crashes) | 📋 | couplé vitals [#49](https://github.com/PollyGlot/google-play-cli/issues/49) |
 | `edits.apks` | Upload APK legacy | 📋 | PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118) — apps existantes only, **plus tard** (AAB obligatoire pour les nouvelles apps depuis 2021) |
 | `edits.expansionfiles` | OBB / fichiers d'expansion | 🅿️ | legacy, remplacé par PAD |

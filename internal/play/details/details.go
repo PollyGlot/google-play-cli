@@ -14,6 +14,7 @@
 package details
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -25,8 +26,9 @@ import (
 )
 
 const (
-	opDetailsGet  = "details.get"
-	opListingsGet = "listings.get"
+	opDetailsGet   = "details.get"
+	opDetailsPatch = "details.patch"
+	opListingsGet  = "listings.get"
 )
 
 // Details surfaces the three fields `gplay apps info` displays — the
@@ -37,6 +39,67 @@ type Details struct {
 	DefaultLanguage string `json:"defaultLanguage"`
 	Title           string `json:"title"`
 	ContactEmail    string `json:"contactEmail"`
+}
+
+// AppDetails is the full edits.details resource backing `gplay apps
+// details`: the app-global App details record. Unlike Details (the
+// cross-resource identity card behind apps info, which borrows title
+// from a Listing), AppDetails is exactly the four fields the
+// edits.details resource owns. json tags mirror the API verbatim so the
+// --output json pass-through (ADR-0003) carries the upstream field names
+// unchanged — and since GetDetails reads a SINGLE endpoint, no envelope
+// exception is needed.
+type AppDetails struct {
+	DefaultLanguage string `json:"defaultLanguage"`
+	ContactEmail    string `json:"contactEmail"`
+	ContactPhone    string `json:"contactPhone"`
+	ContactWebsite  string `json:"contactWebsite"`
+}
+
+// GetDetails opens a read-only Edit on pkg, reads edits.details.get ONLY
+// (no listings.get, unlike Get), discards the Edit, and returns both the
+// typed *AppDetails and the raw details.get body verbatim. Because a
+// single endpoint is read, the raw payload is a clean ADR-0003
+// pass-through — there is no gplay envelope to document an exception for.
+//
+// Errors propagate as *api.Error so the gplay exit-code taxonomy maps
+// transparently: 403 → 11, 404 → 30, 5xx → 40, network → 50. The Edit is
+// always discarded (WithReadOnlyEdit's deferred cleanup) even on failure
+// — a dangling read-only Edit would block the user's next publish for
+// ~24h. Unlike fetchDetails (whose empty-defaultLanguage guard exists to
+// protect a downstream listings.get URL), GetDetails surfaces whatever
+// the API returns: there is no second call to protect, and the read must
+// report the resource faithfully.
+func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, json.RawMessage, error) {
+	var (
+		out *AppDetails
+		raw json.RawMessage
+	)
+	if err := edits.WithReadOnlyEdit(ctx, hc, pkg, func(editID string) error {
+		u := api.AndroidPubBase +
+			"/applications/" + url.PathEscape(pkg) +
+			"/edits/" + url.PathEscape(editID) +
+			"/details"
+		body, status, err := getJSON(ctx, hc, opDetailsGet, pkg, u)
+		if err != nil {
+			return err
+		}
+		var parsed AppDetails
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return &api.Error{
+				Operation:  opDetailsGet,
+				Package:    pkg,
+				StatusCode: status,
+				Message:    "decode response: " + err.Error(),
+				Cause:      err,
+			}
+		}
+		out, raw = &parsed, body
+		return nil
+	}); err != nil {
+		return nil, nil, err
+	}
+	return out, raw, nil
 }
 
 // Get opens a read-only Edit on pkg, reads details.get +
@@ -95,6 +158,103 @@ func Get(ctx context.Context, hc *http.Client, pkg string) (*Details, json.RawMe
 		return nil, nil, err
 	}
 	return out, raw, nil
+}
+
+// AppDetailsPatch is a partial update of the edits.details resource. Each
+// field is a *string with the missing-vs-empty contract (ADR-0011):
+//   - nil   → the field is OMITTED from the patch body (left intact upstream)
+//   - non-nil → the field is SENT (including a pointer to "" — which CLEARS it)
+//
+// The json tags carry ,omitempty so encoding/json drops nil pointers but
+// keeps a non-nil pointer to the empty string: a nil pointer is "empty"
+// and omitted, while a non-nil *string is never empty regardless of the
+// string it points at. That is exactly the "set what you're given, leave
+// the rest" semantics — no manual map-building needed.
+type AppDetailsPatch struct {
+	DefaultLanguage *string `json:"defaultLanguage,omitempty"`
+	ContactEmail    *string `json:"contactEmail,omitempty"`
+	ContactPhone    *string `json:"contactPhone,omitempty"`
+	ContactWebsite  *string `json:"contactWebsite,omitempty"`
+}
+
+// Patch PATCHes a partial AppDetailsPatch to edits.details.patch inside an
+// Edit the caller has already opened. Only the non-nil fields of patch
+// reach the wire (see AppDetailsPatch) — a field the caller left nil is
+// absent from the body and stays intact upstream; a field set to a
+// pointer-to-"" is sent empty and clears it. Returns the parsed
+// *AppDetails (the patched resource the API echoes back) and the raw JSON
+// body for the --output json pass-through (ADR-0003). Errors propagate as
+// *api.Error so the exit-code taxonomy maps transparently. Modeled on
+// testers.Update, but a PATCH (partial) rather than a PUT (wholesale).
+func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDetailsPatch) (*AppDetails, json.RawMessage, error) {
+	payload, err := json.Marshal(patch)
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
+	}
+
+	u := api.AndroidPubBase +
+		"/applications/" + url.PathEscape(pkg) +
+		"/edits/" + url.PathEscape(editID) +
+		"/details"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u, bytes.NewReader(payload))
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Mirror getJSON's defensive read: a truncated/interrupted read on
+		// the error path would otherwise mask the real reason behind a
+		// generic ParseErrorEnvelope fallback. Surface it verbatim so the
+		// operator knows the request reached the server but the stream broke.
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		if readErr != nil {
+			return nil, nil, &api.Error{
+				Operation:  opDetailsPatch,
+				Package:    pkg,
+				StatusCode: resp.StatusCode,
+				Message:    "read error response body: " + readErr.Error(),
+				Cause:      readErr,
+			}
+		}
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
+		return nil, nil, &api.Error{
+			Operation:  opDetailsPatch,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    msg,
+			Reasons:    reasons,
+		}
+	}
+	// Same defensive read on the success path: a partial JSON body would
+	// otherwise reach json.Unmarshal and surface as a "decode response"
+	// error that buries the real (network) cause.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return nil, nil, &api.Error{
+			Operation:  opDetailsPatch,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response body: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
+	var parsed AppDetails
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, raw, &api.Error{
+			Operation:  opDetailsPatch,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "decode response: " + err.Error(),
+			Cause:      err,
+		}
+	}
+	return &parsed, raw, nil
 }
 
 // fetchDetails GETs edits.details.get and returns (raw body,
