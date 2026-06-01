@@ -20,6 +20,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
+	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
 	metadataimageslist "github.com/PollyGlot/google-play-cli/commands/metadata/images/list"
 	metadataimagespull "github.com/PollyGlot/google-play-cli/commands/metadata/images/pull"
 	metadataimagesvalidate "github.com/PollyGlot/google-play-cli/commands/metadata/images/validate"
@@ -196,6 +197,7 @@ replace Fastlane on Android CI pipelines.`,
 	metadataImages.AddCommand(metadataimageslist.NewCommand(boot))
 	metadataImages.AddCommand(metadataimagespull.NewCommand(boot))
 	metadataImages.AddCommand(metadataimagesvalidate.NewCommand(boot))
+	metadataImages.AddCommand(metadataimagesapply.NewCommand(boot))
 	metadata.AddCommand(metadataImages)
 	root.AddCommand(metadata)
 
