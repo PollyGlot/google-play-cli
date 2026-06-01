@@ -5,6 +5,17 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/PollyGlot/google-play-cli/compare/v0.2.0...v0.3.0) (2026-06-01)
+
+
+### Features
+
+* **apps,tracks:** App details (read+set) + Country availability (read-only) — PRD [#113](https://github.com/PollyGlot/google-play-cli/issues/113) ([#138](https://github.com/PollyGlot/google-play-cli/issues/138)) ([f6a172a](https://github.com/PollyGlot/google-play-cli/commit/f6a172a0bcb46956ca25965b6102f63163c07805))
+* **compliance:** Data Safety declaration — write-only datasafety surface (PRD [#114](https://github.com/PollyGlot/google-play-cli/issues/114)) ([#140](https://github.com/PollyGlot/google-play-cli/issues/140), [#141](https://github.com/PollyGlot/google-play-cli/issues/141), [#142](https://github.com/PollyGlot/google-play-cli/issues/142)) ([#144](https://github.com/PollyGlot/google-play-cli/issues/144)) ([1c275d0](https://github.com/PollyGlot/google-play-cli/commit/1c275d0ec72f04c2d6be28a99badd498b49f339e))
+* **metadata:** images family — list/pull/validate/apply (+prune) (PRD [#112](https://github.com/PollyGlot/google-play-cli/issues/112)) ([#139](https://github.com/PollyGlot/google-play-cli/issues/139)) ([366fa47](https://github.com/PollyGlot/google-play-cli/commit/366fa47ead89ba7b1faebb7ce1001475d7c6454c))
+* **metadata:** listings family — list/pull/validate/apply (PRD [#50](https://github.com/PollyGlot/google-play-cli/issues/50)) ([#110](https://github.com/PollyGlot/google-play-cli/issues/110)) ([ee00165](https://github.com/PollyGlot/google-play-cli/commit/ee001659ae10e229fe861a74f072b4fbe3453ce4))
+* **tracks:** closed tracks + testers — create/list/set + create hint (PRD [#117](https://github.com/PollyGlot/google-play-cli/issues/117)) ([#125](https://github.com/PollyGlot/google-play-cli/issues/125)) ([68fb3d1](https://github.com/PollyGlot/google-play-cli/commit/68fb3d135154d0e106acb5fd53bc6146414c6869))
+
 ## [0.2.0](https://github.com/PollyGlot/google-play-cli/compare/v0.1.0...v0.2.0) (2026-05-29)
 
 
