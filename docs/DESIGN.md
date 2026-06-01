@@ -275,3 +275,64 @@ The upstream API payload, if any, is preserved inside `details`.
 
 Documented in `gplay help exit-codes` (or equivalent) and in `docs/CI_CD.md`
 when that exists.
+
+---
+
+## 10. Tracks and testers
+
+`gplay tracks create` and `gplay testers list/set` manage custom closed
+testing tracks and their authorized audience. Both surfaces are shaped by
+hard constraints of the Play Developer API — see `CONTEXT.md` (**Closed
+track**, **Tester**) for the domain terms.
+
+### Creating tracks
+
+- `gplay tracks create <name>` creates a **closed testing** track. The
+  create endpoint (`edits.tracks.create`) supports exactly one type
+  (`CLOSED_TESTING`), so there is **no `--type` flag** — every created
+  track is closed. Open/internal track creation has no API path.
+- The new track's form factor is `DEFAULT` (phone). `WEAR` / `AUTOMOTIVE`
+  closed tracks are deferred (`BACKLOG.md`) behind a future
+  `--form-factor` flag — additive, non-breaking when it lands.
+- Creating a track that **already exists** surfaces the API error (exit
+  30); gplay does not fake idempotency. "Ensure exists" would be an
+  explicit future `--if-not-exists`.
+- There is **no `tracks delete`** — the API exposes
+  create/get/list/patch/update but no delete. Removing a track is a Play
+  Console-only gesture.
+
+### Managing testers
+
+- The `edits.testers` resource exposes a **single** field, `googleGroups[]`,
+  and explicitly does not support individual tester emails ("email lists
+  are not supported by this resource"). So `gplay testers` manages
+  **Google Groups only** (`--group a@googlegroups.com,...`); there is **no
+  `--email`**. Adding individuals one-by-one stays Console-only.
+- Testers are **declarative**: `testers set` replaces the whole group list
+  (maps 1:1 to `testers.update`), `testers list` reads it (`testers.get`).
+  No `add` / `remove` — the typical case is a single group, and a
+  declarative replace is idempotent (agent/CI-friendly).
+- A bare `testers set` with neither `--group` nor `--clear` is a misuse
+  (exit 2), so a forgotten `--group` can never silently wipe the list.
+  Emptying the list on purpose is the explicit `--clear`.
+- Testers are keyed per-track (`…/testers/{track}`), so `--track` is
+  **required**. gplay does not restrict which track names are valid —
+  `testers set --track production` is sent to the API, which rejects it;
+  gplay surfaces that error rather than re-implementing the rule.
+
+### Write safety
+
+Both commands are writes: implicit Edit (open → mutate → commit), with
+`--dry-run` (validate + preview the payload, no HTTP) and
+`--keep-edit-on-failure` (skip auto-discard for debugging), matching
+`releases upload` / `promote`. **No `--confirm`**: a closed test track is
+low-stakes and reversible, unlike a production rollout.
+
+### Discovering the create step
+
+`releases upload` / `promote` keep their passthrough `--track` (§3.2). An
+upload/promote to a closed track that **does not exist yet** fails at the
+API; gplay attaches a hint pointing at `gplay tracks create <name>` (same
+pattern as the other track-not-found hints). gplay **never auto-creates** a
+track as a side effect of an upload — a typo'd `--track` must fail, not
+silently spawn a phantom track.
