@@ -45,36 +45,51 @@ version mineure, breaking changes permis (SemVer `0.x`, voir
 [ADR-0008](adr/0008-release-pipeline.md)). La politique de stabilité de
 [ADR-0010](adr/0010-versioning-public-contract-and-ga.md) (Public contract,
 stability labels, GA) **reste valable mais en sommeil** : on décidera du moment
-du gel 1.0 une fois la surface « first-release readiness » stabilisée. La
-checklist de durcissement
-([#98](https://github.com/PollyGlot/google-play-cli/issues/98)) n'est donc plus
-la prochaine étape — elle attend.
+du gel 1.0 une fois la surface « first-release readiness » stabilisée —
+**désormais le cas** (thème livré ci-dessous). Le trigger de la checklist de
+durcissement
+([#98](https://github.com/PollyGlot/google-play-cli/issues/98)) est donc franchi,
+mais on la garde **en attente délibérée** : on continue à shipper l'outillage
+interne et la surface additive avant de décider du gel.
 
-## Thème actif — First-release readiness
+## Thème livré ✅ — First-release readiness
 
 **North star near-term :** *gplay prépare et publie une app de bout en bout, de
-zéro à sa première release de production.* Tout ce qui touche la prépa complète
-d'une première mise en ligne. Ces PRD shippent **en continu en `0.x`** (à
-griller puis décomposer via `/to-issues` au moment de les attaquer) :
+zéro à sa première release de production.* Toute la prépa d'une première mise en
+ligne est **livrée** — les 6 surfaces ci-dessous sont shippées et mergées en
+`0.x` :
 
 | # | Area | Surface API | État |
 |---|---|---|---|
 | ✅ | metadata | Listings textuels (`edits.listings`) | Livré (slices #101–#107) |
-| [#112](https://github.com/PollyGlot/google-play-cli/issues/112) | metadata | Images et screenshots (`edits.images`) — grillé ([ADR-0013](adr/0013-image-slot-reconciliation.md)) → 6 slices #130–#135 | `ready-for-agent` (gate #130 HITL) |
+| ✅ | metadata | Images et screenshots (`edits.images`) — grillé ([ADR-0013](adr/0013-image-slot-reconciliation.md)) → 6 slices #130–#135 | Livré (slices #130–#135) |
 | ✅ | apps | App details — read + set (`edits.details`) | Livré (slices #126/#127) |
 | ✅ | tracks | Country availability — read-only (`edits.countryavailability`) — splittée de #113 ([ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) | Livré (slice #128) |
-| [#114](https://github.com/PollyGlot/google-play-cli/issues/114) | compliance | Data safety (`applications.dataSafety`) | À griller |
-| [#117](https://github.com/PollyGlot/google-play-cli/issues/117) | tracks | Custom closed tracks + testers (`tracks.create` + `edits.testers`) — **dé-parké** du backlog | À griller |
+| ✅ | compliance | Data safety (`applications.dataSafety`) — grillé ([ADR-0014](adr/0014-compliance-namespace-datasafety-write-only.md)) → 3 slices #140–#142 | Livré (slices #140–#142) |
+| ✅ | tracks | Custom closed tracks + testers (`tracks.create` + `edits.testers`) — **dé-parké** du backlog → 4 slices #120–#123 | Livré (slices #120–#123) |
 
 > ⚠️ **Mur dur.** Content rating, public cible, déclarations ads/news n'ont
 > **aucun endpoint** dans l'API Google → restent manuels en console. À
 > **documenter**, pas à automatiser. La promesse « prépa complète depuis le
 > CLI » s'arrête là.
 
+## Thème actif — Durcissement interne & outillage agent
+
+First-release readiness étant livré, le thème actif bascule vers le
+**durcissement interne** plutôt que l'élargissement de surface : de petits
+chantiers à haute confiance qui réduisent la dette et outillent les agents, sans
+engager le débat du gel 1.0 ([#98](https://github.com/PollyGlot/google-play-cli/issues/98),
+toujours en attente délibérée).
+
+| Ordre | # | Area | Sujet | Note |
+|---|---|---|---|---|
+| 1 | [#93](https://github.com/PollyGlot/google-play-cli/issues/93) | arch | Extraire la machinery partagée des `… list` (column registry + render + `resolveColumns`) | ~120–150 lignes dupliquées × 3 (`reviews`/`tracks`/`releases list`) qui dérivent à chaque ajout |
+| 2 | [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | tooling | Snapshot offline du Discovery doc `androidpublisher_v3.json` (+ target de regen) | Levier code-gen agent ; le trigger « surface > ~10 commandes » est franchi |
+
 ## Ensuite — surfaces additives (post first-release)
 
-Planifiées, mais derrière le thème first-release. Toujours en `0.x`, sans
-attendre de gel.
+Planifiées, mais derrière le thème actif. Toujours en `0.x`, sans attendre de
+gel.
 
 | Ordre | # | Area | Sujet | Note |
 |---|---|---|---|---|
@@ -95,9 +110,7 @@ Idées trackées pour visibilité, **pas** planifiées. Voir
 |---|---|---|
 | [#38](https://github.com/PollyGlot/google-play-cli/issues/38) | [arch] Renderer interface (contredit ADR-0005) | Décision à re-litiguer si besoin |
 | [#48](https://github.com/PollyGlot/google-play-cli/issues/48) | `gplay edits begin/commit/discard` (mode explicit) | Implicit mode suffit pour MVP |
-| [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | Snapshot Discovery doc | Doc-only |
 | [#53](https://github.com/PollyGlot/google-play-cli/issues/53) | Bootstrap `google-play-cli-skills` repo | Sibling repo — set de skills v1 du lancement GA |
-| [#55](https://github.com/PollyGlot/google-play-cli/issues/55) | Migration vers `androidpublisher/v3` Go client officiel | Refacto interne |
 
 ## Commandes utiles
 
