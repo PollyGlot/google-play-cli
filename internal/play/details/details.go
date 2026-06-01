@@ -39,6 +39,67 @@ type Details struct {
 	ContactEmail    string `json:"contactEmail"`
 }
 
+// AppDetails is the full edits.details resource backing `gplay apps
+// details`: the app-global App details record. Unlike Details (the
+// cross-resource identity card behind apps info, which borrows title
+// from a Listing), AppDetails is exactly the four fields the
+// edits.details resource owns. json tags mirror the API verbatim so the
+// --output json pass-through (ADR-0003) carries the upstream field names
+// unchanged — and since GetDetails reads a SINGLE endpoint, no envelope
+// exception is needed.
+type AppDetails struct {
+	DefaultLanguage string `json:"defaultLanguage"`
+	ContactEmail    string `json:"contactEmail"`
+	ContactPhone    string `json:"contactPhone"`
+	ContactWebsite  string `json:"contactWebsite"`
+}
+
+// GetDetails opens a read-only Edit on pkg, reads edits.details.get ONLY
+// (no listings.get, unlike Get), discards the Edit, and returns both the
+// typed *AppDetails and the raw details.get body verbatim. Because a
+// single endpoint is read, the raw payload is a clean ADR-0003
+// pass-through — there is no gplay envelope to document an exception for.
+//
+// Errors propagate as *api.Error so the gplay exit-code taxonomy maps
+// transparently: 403 → 11, 404 → 30, 5xx → 40, network → 50. The Edit is
+// always discarded (WithReadOnlyEdit's deferred cleanup) even on failure
+// — a dangling read-only Edit would block the user's next publish for
+// ~24h. Unlike fetchDetails (whose empty-defaultLanguage guard exists to
+// protect a downstream listings.get URL), GetDetails surfaces whatever
+// the API returns: there is no second call to protect, and the read must
+// report the resource faithfully.
+func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, json.RawMessage, error) {
+	var (
+		out *AppDetails
+		raw json.RawMessage
+	)
+	if err := edits.WithReadOnlyEdit(ctx, hc, pkg, func(editID string) error {
+		u := api.AndroidPubBase +
+			"/applications/" + url.PathEscape(pkg) +
+			"/edits/" + url.PathEscape(editID) +
+			"/details"
+		body, status, err := getJSON(ctx, hc, opDetailsGet, pkg, u)
+		if err != nil {
+			return err
+		}
+		var parsed AppDetails
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return &api.Error{
+				Operation:  opDetailsGet,
+				Package:    pkg,
+				StatusCode: status,
+				Message:    "decode response: " + err.Error(),
+				Cause:      err,
+			}
+		}
+		out, raw = &parsed, body
+		return nil
+	}); err != nil {
+		return nil, nil, err
+	}
+	return out, raw, nil
+}
+
 // Get opens a read-only Edit on pkg, reads details.get +
 // listings.get(defaultLanguage), discards the Edit, and returns both
 // the typed *Details and the raw JSON envelope. The envelope shape is
