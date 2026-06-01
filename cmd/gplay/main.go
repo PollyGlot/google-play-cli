@@ -20,6 +20,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
+	compliancedatasafetyset "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/set"
 	compliancedatasafetyvalidate "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/validate"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
@@ -220,6 +221,7 @@ replace Fastlane on Android CI pipelines.`,
 		Short: "Push and validate the app's Data Safety declaration (write-only)",
 	}
 	datasafety.AddCommand(compliancedatasafetyvalidate.NewCommand(boot))
+	datasafety.AddCommand(compliancedatasafetyset.NewCommand(boot))
 	compliance.AddCommand(datasafety)
 	root.AddCommand(compliance)
 
