@@ -60,7 +60,7 @@ griller puis décomposer via `/to-issues` au moment de les attaquer) :
 | # | Area | Surface API | État |
 |---|---|---|---|
 | ✅ | metadata | Listings textuels (`edits.listings`) | Livré (slices #101–#107) |
-| [#112](https://github.com/PollyGlot/google-play-cli/issues/112) | metadata | Images & screenshots (`edits.images`) | À griller |
+| [#112](https://github.com/PollyGlot/google-play-cli/issues/112) | metadata | Images & screenshots (`edits.images`) — grillé ([ADR-0013](adr/0013-image-slot-reconciliation.md)) → 6 slices #130–#135 | `ready-for-agent` (gate #130 HITL) |
 | [#113](https://github.com/PollyGlot/google-play-cli/issues/113) | apps | App details — read + set (`edits.details`) | Grillé → PRD, `ready-for-agent` |
 | [#128](https://github.com/PollyGlot/google-play-cli/issues/128) | tracks | Country availability — read-only (`edits.countryavailability`) — splittée de #113 ([ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) | `ready-for-agent` |
 | [#114](https://github.com/PollyGlot/google-play-cli/issues/114) | compliance | Data safety (`applications.dataSafety`) | À griller |
