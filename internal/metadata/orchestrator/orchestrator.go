@@ -121,6 +121,23 @@ func (e *PruneDefaultLanguageError) Error() string {
 
 func (e *PruneDefaultLanguageError) ExitCode() int { return 2 }
 
+// EmptyTreePruneError signals --prune was requested against an empty local
+// tree. Pruning an empty tree classifies EVERY online locale as a delete
+// (only the defaultLanguage is otherwise spared), so it would wipe the
+// app's entire Store presence — almost never the intent, and the classic
+// symptom of a mis-pointed --dir (a typo'd path that still resolves to a
+// readable-but-empty directory, or a dir holding only a README / files the
+// codec does not recognize). It is refused before any network, in dry-run
+// too, and maps to exit 2 (a guardrail refusal, like ConfirmRequired /
+// PruneDefaultLanguage).
+type EmptyTreePruneError struct{}
+
+func (e *EmptyTreePruneError) Error() string {
+	return "refusing to --prune against an empty local metadata tree: this would delete every online locale's Listing except the defaultLanguage. Check --dir points at your metadata directory (run `gplay metadata pull` to populate it), or drop --prune"
+}
+
+func (e *EmptyTreePruneError) ExitCode() int { return 2 }
+
 // errNoChanges is an internal sentinel: returned from the write Edit's
 // closure when the diff is a no-op so edits.WithEdit auto-discards instead
 // of committing an empty Edit (quota conservation). It never escapes Apply.
@@ -142,6 +159,17 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	// an invalid tree never reaches the diff.
 	if blocking := blockingProblems(local, allowSet(opts.AllowLocale)); len(blocking) > 0 {
 		return nil, &ValidationError{Problems: blocking}
+	}
+
+	// 3. Empty-tree prune guard. With no locale on disk, --prune would
+	// classify every online locale as a delete (sparing only the
+	// defaultLanguage) and wipe the app's Store presence — almost always a
+	// mis-pointed --dir, never a real intent. Refuse before any network, in
+	// dry-run too, so the preview also says "no" rather than rendering a
+	// delete-everything plan. (Without --prune an empty tree is a legitimate
+	// no-op and is left to flow through.)
+	if opts.Prune && len(local) == 0 {
+		return nil, &EmptyTreePruneError{}
 	}
 
 	result := &Result{Package: opts.Package, DryRun: opts.DryRun}

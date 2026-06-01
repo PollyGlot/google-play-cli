@@ -9,6 +9,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -360,6 +361,59 @@ func TestApply_prune_refusesDefaultLanguage(t *testing.T) {
 	}
 	if rt.saw("DELETE", "/listings/") {
 		t.Error("deleted a listing despite the refusal")
+	}
+}
+
+// TestApply_prune_emptyTreeRefused: --prune against an empty local tree is
+// refused (exit 2) BEFORE any network — an empty tree would otherwise
+// classify every online locale as a delete and wipe the app's Store
+// presence (the classic mis-pointed --dir). Covers the real-apply path.
+func TestApply_prune_emptyTreeRefused(t *testing.T) {
+	rt := &fakeRT{t: t, editID: "e1"}
+	_, err := orchestrator.Apply(context.Background(), client(rt), listing.Tree{},
+		orchestrator.Opts{Package: "com.x", Confirm: true, Prune: true})
+	if code := exitCode(t, err); code != 2 {
+		t.Errorf("exit = %d, want 2 (refuse --prune on an empty tree)", code)
+	}
+	var want *orchestrator.EmptyTreePruneError
+	if !errors.As(err, &want) {
+		t.Errorf("err = %v (%T), want *EmptyTreePruneError", err, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected 0 HTTP calls (refused before network), saw %v", rt.calls)
+	}
+}
+
+// TestApply_dryRunPrune_emptyTreeRefused: the empty-tree prune guard fires
+// in dry-run too, so a preview never renders a delete-everything plan.
+func TestApply_dryRunPrune_emptyTreeRefused(t *testing.T) {
+	rt := &fakeRT{t: t, editID: "e1"}
+	_, err := orchestrator.Apply(context.Background(), client(rt), listing.Tree{},
+		orchestrator.Opts{Package: "com.x", DryRun: true, Prune: true})
+	if code := exitCode(t, err); code != 2 {
+		t.Errorf("exit = %d, want 2 (refuse --prune on an empty tree in dry-run)", code)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected 0 HTTP calls, saw %v", rt.calls)
+	}
+}
+
+// TestApply_emptyTreeNoPrune_isNoop: an empty tree WITHOUT --prune is a
+// legitimate no-op (nothing on disk to upsert, nothing pruned) — it must
+// NOT be refused. It lists, finds no changes, and discards.
+func TestApply_emptyTreeNoPrune_isNoop(t *testing.T) {
+	rt := &fakeRT{t: t, editID: "e0",
+		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`}
+	res, err := orchestrator.Apply(context.Background(), client(rt), listing.Tree{},
+		orchestrator.Opts{Package: "com.x", Confirm: true})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if res.Diff.HasChanges() {
+		t.Error("empty tree without --prune should be a no-op")
+	}
+	if rt.saw("POST", ":commit") {
+		t.Error("committed for an empty-tree no-op")
 	}
 }
 
