@@ -39,9 +39,16 @@ Deliberately **excludes** release notes (the per-release "what's new" text): tho
 The canonical on-disk form of a set of Listings is the **metadata tree** (see below).
 
 ### Store front
-The **per-locale** presentation of an app on Google Play: its Listings (text) and, in future scope, its store images (icon, feature graphic, screenshots per locale and form factor). This is the axis the `metadata` command namespace owns. Deliberately distinct from **app-global** configuration — default language, contact details (`edits.details`), country availability (`edits.countryavailability`) — which is keyed by app, not by locale, and belongs with the `apps` namespace (gplay already reads details via `apps info`), never inside the metadata tree.
+The **per-locale** presentation of an app on Google Play: its Listings (text) and, in future scope, its store images (icon, feature graphic, screenshots per locale and form factor). This is the axis the `metadata` command namespace owns. Deliberately distinct from **app-global** configuration — default language and contact details (`edits.details`) — which is keyed by app, not by locale, and belongs with the `apps` namespace (gplay already reads details via `apps info`), never inside the metadata tree.
 
-The dividing question for any new store-presence surface is "is it keyed by locale?": yes → store front → `metadata`; no → app-global → `apps`.
+The dividing question for any new store-presence surface is its **key axis**: keyed by locale → store front → `metadata`; keyed by app → **App details** → `apps`; keyed by track → **Country availability** → `tracks`.
+
+### App details
+The app-global configuration block backed by Google's `edits.details` resource: `defaultLanguage` plus the user-visible contact `email`, `phone`, and `website`. Keyed by **app** — one set per package, independent of locale (unlike a Listing) and of track (unlike Country availability). The only writable app-global surface gplay exposes today; read with the bare `apps details`, written field-by-field with `apps details set`.
+
+Distinct from **apps info**, the cross-resource *identity card* (package + title + default language, where `title` comes from a Listing, not from details). App details is the full `edits.details` record; `apps info` is a deliberately terse "am I looking at the right app?" check.
+
+_Avoid_: calling these fields "metadata" — metadata is the per-locale Store front.
 
 ### Metadata tree
 The on-disk form of an app's Store front: a directory with one sub-directory per locale. Today each locale holds one `.txt` file per Listing field; future image scope adds an `images/` sub-directory under the same locale, governed by the same Additive sync rules. It mirrors the shape `fastlane supply` reads, minus fastlane's redundant `android/` segment and minus its `changelogs/` (release notes live with `releases`, not metadata). Plain text is chosen over JSON for the text fields so a 4000-character `fullDescription` stays human-editable and produces a line-by-line git diff. The directory is the unit `gplay metadata pull` writes and `gplay metadata apply` reads (`--dir`, default `./metadata`).
@@ -65,6 +72,13 @@ _Avoid_: "custom track" on its own as the canonical noun — prefer **Closed tra
 The unit of test audience gplay manages on a track. On Google Play's API the authorized audience is expressed **only** as Google Groups (an array of group email addresses, e.g. `qa@googlegroups.com`), never as individual tester emails — adding people one-by-one is a Play Console-only gesture and is **out of gplay's scope**. A Tester set is keyed by track (one per track) and managed declaratively: `gplay testers set` replaces the whole list of groups, `gplay testers list` reads it.
 
 _Avoid_: treating a "tester" as an individual person or a bare email address — in gplay the addressable tester unit is a **Google Group**.
+
+### Country availability
+The set of countries an app's artifacts are distributed to **on a given track**, backed by Google's `edits.countryavailability` resource: `syncWithProduction`, `restOfWorld`, and the list of targeted `countries[]` (CLDR two-letter codes). Keyed by **track**, not by app — there is no app-global "where is this app available" in this resource; you ask it per track.
+
+**Read-only on the Developer API** (the resource exposes only `get`; setting availability is a Play Console gesture). gplay therefore surfaces it as a read under the `tracks` namespace, never an editable `apps` field.
+
+_Avoid_: describing Country availability as "app-global" or filing it under `apps` — both contradict the track-keyed, read-only reality.
 
 ### Format
 A way of shaping a command's output for a specific reader: `table` for humans on a TTY, `json` for machines and scripts, `markdown` for documentation, chat agents, and PR comments. Selected by `--output`. The special value `auto` (the default, encoded as the empty string on the flag) lets the CLI pick based on context: `json` when stdout is not a TTY or when `CI=true`, `table` otherwise.
