@@ -29,6 +29,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
+	testerslist "github.com/PollyGlot/google-play-cli/commands/testers/list"
+	testersset "github.com/PollyGlot/google-play-cli/commands/testers/set"
+	trackscreate "github.com/PollyGlot/google-play-cli/commands/tracks/create"
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
 	tracksstatus "github.com/PollyGlot/google-play-cli/commands/tracks/status"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
@@ -142,11 +145,24 @@ replace Fastlane on Android CI pipelines.`,
 
 	tracks := &cobra.Command{
 		Use:   "tracks",
-		Short: "Inspect release tracks (standard and custom closed)",
+		Short: "Inspect and create release tracks (standard and custom closed)",
 	}
 	tracks.AddCommand(trackslist.NewCommand(boot))
 	tracks.AddCommand(tracksstatus.NewCommand(boot))
+	tracks.AddCommand(trackscreate.NewCommand(boot))
 	root.AddCommand(tracks)
+
+	// `gplay testers` — read and declare the Google Groups authorized to
+	// test a (custom closed) track. A top-level namespace parallel to
+	// `tracks`, mirroring the sibling API resources edits.tracks /
+	// edits.testers. See PRD #117 / docs/DESIGN.md §10.
+	testers := &cobra.Command{
+		Use:   "testers",
+		Short: "Manage the Google Groups authorized to test a track",
+	}
+	testers.AddCommand(testerslist.NewCommand(boot))
+	testers.AddCommand(testersset.NewCommand(boot))
+	root.AddCommand(testers)
 
 	reviews := &cobra.Command{
 		Use:   "reviews",

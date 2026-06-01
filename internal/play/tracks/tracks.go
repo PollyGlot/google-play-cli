@@ -1,7 +1,8 @@
 // Package tracks reads and updates the release configuration of Google
 // Play tracks within an open Edit. The operations exposed — Get (one
-// track), List (every track), and Update — are shared by the upload,
-// promote, rollout, halt, resume, complete, and tracks-list commands.
+// track), List (every track), Update, and Create (a new closed-testing
+// track) — are shared by the upload, promote, rollout, halt, resume,
+// complete, tracks-list, and tracks-create commands.
 package tracks
 
 import (
@@ -19,6 +20,17 @@ const (
 	opTracksGet    = "tracks.get"
 	opTracksList   = "tracks.list"
 	opTracksUpdate = "tracks.update"
+	opTracksCreate = "tracks.create"
+)
+
+// TrackTypeClosedTesting is the only track type edits.tracks.create
+// supports (open / internal track creation has no API path), and
+// FormFactorDefault is the phone form factor. They are exported so the
+// command layer can label and preview a created track without restating
+// the wire strings.
+const (
+	TrackTypeClosedTesting = "CLOSED_TESTING"
+	FormFactorDefault      = "DEFAULT"
 )
 
 // LocalizedText mirrors the API's `LocalizedText` shape: one per locale
@@ -44,6 +56,15 @@ type Release struct {
 type Track struct {
 	Track    string    `json:"track"`
 	Releases []Release `json:"releases"`
+}
+
+// TrackConfig is the edits.tracks.create request body. The API supports
+// exactly one type (CLOSED_TESTING), so gplay hardcodes it; formFactor is
+// DEFAULT (phone) for now (WEAR/AUTOMOTIVE deferred to BACKLOG).
+type TrackConfig struct {
+	Track      string `json:"track"`
+	Type       string `json:"type"`
+	FormFactor string `json:"formFactor"`
 }
 
 // Get fetches the current Track resource at edits.tracks.get. The
@@ -204,6 +225,58 @@ func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, 
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, raw, &api.Error{
 			Operation:  opTracksUpdate,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "decode response: " + err.Error(),
+			Cause:      err,
+		}
+	}
+	return &parsed, raw, nil
+}
+
+// Create POSTs a fresh closed-testing track to edits.tracks.create. The
+// create endpoint supports exactly one type (CLOSED_TESTING), so the body
+// hardcodes it; formFactor is DEFAULT (phone) for now (WEAR/AUTOMOTIVE
+// deferred). Returns the parsed Track and the raw JSON body for the
+// --output json pass-through (ADR-0003). Creating a track that already
+// exists is an API 4xx surfaced verbatim — gplay does not fake idempotency.
+func Create(ctx context.Context, hc *http.Client, pkg, editID, name, formFactor string) (*Track, json.RawMessage, error) {
+	payload, err := json.Marshal(TrackConfig{Track: name, Type: TrackTypeClosedTesting, FormFactor: formFactor})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
+	}
+
+	u := api.AndroidPubBase +
+		"/applications/" + url.PathEscape(pkg) +
+		"/edits/" + url.PathEscape(editID) +
+		"/tracks"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(payload))
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
+		return nil, nil, &api.Error{
+			Operation:  opTracksCreate,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    msg,
+			Reasons:    reasons,
+		}
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	var parsed Track
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, raw, &api.Error{
+			Operation:  opTracksCreate,
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
 			Message:    "decode response: " + err.Error(),
