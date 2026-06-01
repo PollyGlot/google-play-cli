@@ -34,12 +34,12 @@ The textual store-front of an app **for one locale**: `title`, `shortDescription
 
 On disk, each field maps to a fastlane-named file inside the locale directory: `title.txt`, `short_description.txt`, `full_description.txt`, `video.txt` (snake_case, identical to `fastlane supply` so an existing tree is a drop-in). Google's limits — title 30, short 80, full 4000 chars — are enforced offline by `gplay metadata validate`.
 
-Deliberately **excludes** release notes (the per-release "what's new" text): those are not a Listing field on Google Play and gplay owns them under `releases upload --release-notes[-dir]`, not under metadata. It also excludes app-level details (contact email, default language — `edits.details`) and store images (`edits.images`), which are separate API resources and separate (parked) scope.
+Deliberately **excludes** release notes (the per-release "what's new" text): those are not a Listing field on Google Play and gplay owns them under `releases upload --release-notes[-dir]`, not under metadata. It also excludes app-level details (contact email, default language — `edits.details`), a separate app-global API resource owned by the `apps` namespace, and store images (`edits.images`), which are a separate API resource owned by the sibling `metadata images` sub-namespace (see Store image) — never a Listing field.
 
 The canonical on-disk form of a set of Listings is the **metadata tree** (see below).
 
 ### Store front
-The **per-locale** presentation of an app on Google Play: its Listings (text) and, in future scope, its store images (icon, feature graphic, screenshots per locale and form factor). This is the axis the `metadata` command namespace owns. Deliberately distinct from **app-global** configuration — default language, contact details (`edits.details`), country availability (`edits.countryavailability`) — which is keyed by app, not by locale, and belongs with the `apps` namespace (gplay already reads details via `apps info`), never inside the metadata tree.
+The **per-locale** presentation of an app on Google Play: its Listings (text) and its store images (icon, feature graphic, screenshots per locale and form factor — see Store image). This is the axis the `metadata` command namespace owns, with text under the Listing commands and images under the `metadata images` sub-namespace. Deliberately distinct from **app-global** configuration — default language, contact details (`edits.details`), country availability (`edits.countryavailability`) — which is keyed by app, not by locale, and belongs with the `apps` namespace (gplay already reads details via `apps info`), never inside the metadata tree.
 
 The dividing question for any new store-presence surface is "is it keyed by locale?": yes → store front → `metadata`; no → app-global → `apps`.
 
