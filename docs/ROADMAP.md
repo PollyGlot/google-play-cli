@@ -60,11 +60,11 @@ griller puis décomposer via `/to-issues` au moment de les attaquer) :
 | # | Area | Surface API | État |
 |---|---|---|---|
 | ✅ | metadata | Listings textuels (`edits.listings`) | Livré (slices #101–#107) |
-| [#112](https://github.com/PollyGlot/google-play-cli/issues/112) | metadata | Images et screenshots (`edits.images`) — grillé ([ADR-0013](adr/0013-image-slot-reconciliation.md)) → 6 slices #130–#135 | `ready-for-agent` (gate #130 HITL) |
+| ✅ | metadata | Images et screenshots (`edits.images`) — grillé ([ADR-0013](adr/0013-image-slot-reconciliation.md)) → 6 slices #130–#135 | Livré (slices #130–#135) |
 | ✅ | apps | App details — read + set (`edits.details`) | Livré (slices #126/#127) |
 | ✅ | tracks | Country availability — read-only (`edits.countryavailability`) — splittée de #113 ([ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) | Livré (slice #128) |
-| [#114](https://github.com/PollyGlot/google-play-cli/issues/114) | compliance | Data safety (`applications.dataSafety`) | À griller |
-| [#117](https://github.com/PollyGlot/google-play-cli/issues/117) | tracks | Custom closed tracks + testers (`tracks.create` + `edits.testers`) — **dé-parké** du backlog | À griller |
+| ✅ | compliance | Data safety (`applications.dataSafety`) — grillé ([ADR-0014](adr/0014-compliance-namespace-datasafety-write-only.md)) → 3 slices #140–#142 | Livré (slices #140–#142) |
+| ✅ | tracks | Custom closed tracks + testers (`tracks.create` + `edits.testers`) — **dé-parké** du backlog → 4 slices #120–#123 | Livré (slices #120–#123) |
 
 > ⚠️ **Mur dur.** Content rating, public cible, déclarations ads/news n'ont
 > **aucun endpoint** dans l'API Google → restent manuels en console. À
