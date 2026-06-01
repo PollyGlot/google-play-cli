@@ -15,12 +15,14 @@ screenshots per locale and form factor). Its on-disk form is the
 `metadata apply`.
 
 The boundary is deliberate. App-**global** surfaces — default language
-and contact details (`edits.details`), country availability
-(`edits.countryavailability`) — are keyed by app, not locale, carry
-scalar/global semantics, and belong with the `apps` namespace (gplay
-already reads details via `apps info`). They never enter the metadata
-tree. The test for any future store-presence surface is "is it keyed by
-locale?": yes → `metadata`; no → `apps`.
+and contact details (`edits.details`) — are keyed by app, not locale,
+carry scalar/global semantics, and belong with the `apps` namespace
+(gplay already reads details via `apps info`). They never enter the
+metadata tree. The original test here was binary ("is it keyed by
+locale?": yes → `metadata`; no → `apps`). ADR-0012 widens it to a
+three-axis test after finding that `edits.countryavailability` is keyed
+by **track** and read-only: keyed by locale → `metadata`; by app →
+`apps`; by track → `tracks`.
 
 This ADR records both that boundary and the reconciliation model
 `metadata apply` uses — established now with Listings, but designed to
