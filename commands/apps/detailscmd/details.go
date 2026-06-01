@@ -236,5 +236,7 @@ cross-resource identity card (package + title + default language).`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
+	// The bare noun reads (RunE above); `set` writes field-by-field.
+	cmd.AddCommand(NewSetCommand(boot))
 	return cmd
 }
