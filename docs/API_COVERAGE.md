@@ -20,8 +20,8 @@
 
 | | Familles API | Détail |
 |---|---|---|
-| ✅ Livré | **5** surfaces | auth · apps (registre local) · releases/tracks · reviews (7j) · metadata listings |
-| 📋 Planifié | **7** PRD | *first-release :* images · data safety · tracks/testers — *ensuite :* vitals · monetization · reviews-history · apk |
+| ✅ Livré | **6** surfaces | auth · apps (registre local) · releases/tracks · reviews (7j) · metadata listings · data safety |
+| 📋 Planifié | **6** PRD | *first-release :* images · tracks/testers — *ensuite :* vitals · monetization · reviews-history · apk |
 | 🅿️ Backlog | **~7** surfaces | obb/apprecovery · purchases · internal-sharing · custom apps · auto-discovery… |
 | 🚫 / ➖ | **~8** surfaces | integrity · PAD · users/grants · deviceTierConfigs · generatedapks · externaltransactions… |
 
@@ -76,7 +76,7 @@ flowchart TB
 
     subgraph CONF["⚙️ Config & conformité app"]
         direction TB
-        C_data["applications.dataSafety\nPRD #114"]:::planned
+        C_data["applications.dataSafety\nPRD #114 (compliance datasafety)"]:::done
         C_tier["deviceTierConfigs"]:::nongoal
         C_gen["generatedapks (download splits)"]:::nongoal
         C_sys["systemapks"]:::nongoal
@@ -159,7 +159,7 @@ flowchart TB
 
 | Surface API | Ce que ça permet | Statut | Réf |
 |---|---|---|---|
-| `applications.dataSafety` | Déclaration Data Safety form | 📋 | PRD [#114](https://github.com/PollyGlot/google-play-cli/issues/114) |
+| `applications.dataSafety` | Déclaration Data Safety form (write-only : `compliance datasafety validate` / `set`) | ✅ | PRD [#114](https://github.com/PollyGlot/google-play-cli/issues/114) |
 | `applications.deviceTierConfigs` | Tiers d'appareils (Play Asset Delivery) | ➖ | jamais évalué |
 | `generatedapks` | Télécharger les APK splits générés depuis un AAB | ➖ | jamais évalué |
 | `systemapks` | Variantes APK système (préinstall OEM) | ➖ | très niche |
@@ -207,7 +207,7 @@ publier une app de bout en bout. Parcours mappé :
 | Visuels (screenshots, icône, feature graphic) | `edits.images` | 📋 [#112](https://github.com/PollyGlot/google-play-cli/issues/112) |
 | App info (langue défaut, contacts, catégorie) | `edits.details` | 📋 [#113](https://github.com/PollyGlot/google-play-cli/issues/113) |
 | Pays de distribution | `edits.countryavailability` | 📋 [#113](https://github.com/PollyGlot/google-play-cli/issues/113) |
-| Data safety (obligatoire) | `applications.dataSafety` | 📋 [#114](https://github.com/PollyGlot/google-play-cli/issues/114) |
+| Data safety (obligatoire) | `applications.dataSafety` | ✅ [#114](https://github.com/PollyGlot/google-play-cli/issues/114) |
 | Test fermé obligatoire (12 testeurs / 14j) | `tracks.create` + `edits.testers` | 📋 [#117](https://github.com/PollyGlot/google-play-cli/issues/117) |
 | Upload AAB + track + rollout | `bundles` · `tracks` | ✅ |
 | ⚠️ Content rating, public cible, déclarations | — | ❌ pas d'API → manuel console |
