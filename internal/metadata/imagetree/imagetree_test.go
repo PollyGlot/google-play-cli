@@ -163,6 +163,77 @@ func TestRead_absentDir_isEmptyNotError(t *testing.T) {
 	}
 }
 
+// TestWrite_isIdempotent_prunesStaleGallery asserts that re-Writing a slot that
+// SHRANK (a gallery that went from 3 images to 2) removes the stale trailing
+// file, so Read no longer reports a phantom screenshot. This is what keeps a
+// re-`pull` (live shrank) a faithful mirror and `pull → apply` a no-op.
+func TestWrite_isIdempotent_prunesStaleGallery(t *testing.T) {
+	dir := t.TempDir()
+	big := imagetree.Tree{"en-US": {images.PhoneScreenshots: {pngBytes("a"), pngBytes("b"), pngBytes("c")}}}
+	if err := imagetree.Write(dir, big); err != nil {
+		t.Fatalf("Write big: %v", err)
+	}
+	small := imagetree.Tree{"en-US": {images.PhoneScreenshots: {pngBytes("a"), pngBytes("b")}}}
+	if err := imagetree.Write(dir, small); err != nil {
+		t.Fatalf("Write small: %v", err)
+	}
+	// The stale 3.png must be gone.
+	if _, err := os.Stat(filepath.Join(dir, "en-US", "images", "phoneScreenshots", "3.png")); !os.IsNotExist(err) {
+		t.Errorf("stale 3.png should have been pruned on re-write")
+	}
+	got, err := imagetree.Read(dir)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if n := len(got["en-US"][images.PhoneScreenshots]); n != 2 {
+		t.Errorf("gallery should read back 2 images after shrink, got %d (phantom)", n)
+	}
+}
+
+// TestWrite_isIdempotent_prunesStaleSingularExt asserts that re-Writing a
+// singular slot whose extension CHANGED (jpg → png) leaves exactly one file, so
+// Read is deterministic (no dual-ext race).
+func TestWrite_isIdempotent_prunesStaleSingularExt(t *testing.T) {
+	dir := t.TempDir()
+	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.Icon: {jpgBytes("v1")}}}); err != nil {
+		t.Fatalf("Write jpg: %v", err)
+	}
+	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.Icon: {pngBytes("v2")}}}); err != nil {
+		t.Fatalf("Write png: %v", err)
+	}
+	imgDir := filepath.Join(dir, "en-US", "images")
+	if _, err := os.Stat(filepath.Join(imgDir, "icon.jpg")); !os.IsNotExist(err) {
+		t.Errorf("stale icon.jpg should have been pruned when the ext changed to png")
+	}
+	if _, err := os.Stat(filepath.Join(imgDir, "icon.png")); err != nil {
+		t.Errorf("icon.png should be present: %v", err)
+	}
+	got, _ := imagetree.Read(dir)
+	if len(got["en-US"][images.Icon]) != 1 {
+		t.Errorf("singular slot should read back exactly 1 image")
+	}
+}
+
+// TestWrite_keepsStrayNonImageFiles asserts the per-slot prune only removes
+// recognized image files, leaving a hand-added note intact (it is not a
+// destructive RemoveAll of the slot directory).
+func TestWrite_keepsStrayNonImageFiles(t *testing.T) {
+	dir := t.TempDir()
+	gallery := filepath.Join(dir, "en-US", "images", "phoneScreenshots")
+	if err := os.MkdirAll(gallery, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gallery, "NOTES.txt"), []byte("hand notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.PhoneScreenshots: {pngBytes("a")}}}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(gallery, "NOTES.txt")); err != nil {
+		t.Errorf("a stray non-image file must be preserved by the per-slot prune: %v", err)
+	}
+}
+
 // TestExt_sniffsMagic asserts the extension is derived from the image bytes,
 // not any header: PNG → png, JPEG → jpg, unknown → "".
 func TestExt_sniffsMagic(t *testing.T) {

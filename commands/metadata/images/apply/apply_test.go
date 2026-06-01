@@ -318,6 +318,25 @@ func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 	}
 }
 
+// TestRun_unknownLocale_isUsageError asserts a typo'd --locale is refused
+// upfront (exit 2) instead of silently reconciling nothing — the footgun the
+// --type guard already prevents.
+func TestRun_unknownLocale_isUsageError(t *testing.T) {
+	rt := &applyRT{t: t, editID: "e"}
+	rc := newRC(t, rt)
+	// seedIcon writes en-US; ask for en_US (underscore typo).
+	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), DryRun: true, Locales: []string{"en_US"}})
+	if got := exitCodeOf(t, err); got != 2 {
+		t.Errorf("exit = %d, want 2 for unknown --locale", got)
+	}
+	if !strings.Contains(err.Error(), "en_US") {
+		t.Errorf("error should name the bad locale: %v", err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("unknown --locale must be refused before any network, saw %v", rt.calls)
+	}
+}
+
 // TestRun_unknownType_isUsageError asserts a typo'd --type is refused upfront.
 func TestRun_unknownType_isUsageError(t *testing.T) {
 	rt := &applyRT{t: t, editID: "e"}

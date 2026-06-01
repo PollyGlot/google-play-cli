@@ -70,6 +70,15 @@ var recognizedExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true}
 // order. The extension is sniffed per blob (Ext); a blob that is neither PNG
 // nor JPEG is a hard error (the codec cannot synthesize a filename for it) so
 // a corrupt download surfaces loudly rather than landing as `.bin`.
+//
+// Write is idempotent PER MANAGED SLOT: writing a slot that shrank (a gallery
+// from 3 images to 2) or whose singular extension changed (jpg → png) removes
+// the stale recognized image files so the slot resolves to exactly what tr
+// holds — which keeps a re-`pull` a faithful mirror and `pull → apply` a no-op.
+// It is NOT a full RemoveAll: an unrecognized file (a hand-added note) and a
+// slot/locale entirely absent from tr are left untouched, matching the
+// additive stance of the text codec (removing an online-gone slot is apply's
+// job, not pull's).
 func Write(dir string, tr Tree) error {
 	for _, locale := range sortedLocales(tr) {
 		slots := tr[locale]
@@ -102,13 +111,30 @@ func writeSingular(imgDir string, ty images.Type, data []byte) error {
 	if err := os.MkdirAll(imgDir, dirPerm); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(imgDir, string(ty)+"."+ext), data, filePerm)
+	name := string(ty) + "." + ext
+	if err := os.WriteFile(filepath.Join(imgDir, name), data, filePerm); err != nil {
+		return err
+	}
+	// Idempotency: drop a sibling <type>.<otherext> left by a previous write
+	// (e.g. a re-pull where the live image's format changed jpg → png), so the
+	// singular slot resolves to exactly one file and Read stays deterministic.
+	for ext := range recognizedExts {
+		stale := string(ty) + ext
+		if stale == name {
+			continue
+		}
+		if err := os.Remove(filepath.Join(imgDir, stale)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeGallery(galleryDir string, ty images.Type, seq [][]byte) error {
 	if err := os.MkdirAll(galleryDir, dirPerm); err != nil {
 		return err
 	}
+	written := make(map[string]bool, len(seq))
 	for i, data := range seq {
 		ext := Ext(data)
 		if ext == "" {
@@ -119,6 +145,32 @@ func writeGallery(galleryDir string, ty images.Type, seq [][]byte) error {
 		name := fmt.Sprintf("%d.%s", i+1, ext)
 		if err := os.WriteFile(filepath.Join(galleryDir, name), data, filePerm); err != nil {
 			return err
+		}
+		written[name] = true
+	}
+	// Idempotency: prune recognized image files left from a previous, LARGER
+	// write (e.g. a re-pull where the live gallery shrank from 3 to 2), so a
+	// stale N+1.<ext> is not read back as a phantom screenshot and re-uploaded
+	// by apply. Only recognized image files are removed — a hand-added note
+	// stays put (this is not a destructive RemoveAll of the slot directory).
+	return pruneStaleGallery(galleryDir, written)
+}
+
+// pruneStaleGallery removes the recognized image files in galleryDir that are
+// not in keep (the set just written), leaving any unrecognized file untouched.
+func pruneStaleGallery(galleryDir string, keep map[string]bool) error {
+	entries, err := os.ReadDir(galleryDir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() || keep[e.Name()] {
+			continue
+		}
+		if _, ext := splitExt(e.Name()); recognizedExts[ext] {
+			if err := os.Remove(filepath.Join(galleryDir, e.Name())); err != nil && !os.IsNotExist(err) {
+				return err
+			}
 		}
 	}
 	return nil

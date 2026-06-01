@@ -228,9 +228,23 @@ func download(ctx context.Context, hc *http.Client, url string) ([]byte, error) 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, &api.Error{Operation: "images.download", StatusCode: resp.StatusCode, Message: fmt.Sprintf("downloading %s: HTTP %d", url, resp.StatusCode)}
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxImageBytes))
+	b, err := readCapped(resp.Body, maxImageBytes)
 	if err != nil {
-		return nil, &api.Error{Operation: "images.download", Message: "read image: " + err.Error(), Cause: err}
+		return nil, &api.Error{Operation: "images.download", Message: fmt.Sprintf("downloading %s: %v", url, err), Cause: err}
+	}
+	return b, nil
+}
+
+// readCapped reads up to max bytes from r and FAILS if the source has more,
+// rather than silently truncating — a truncated image would be written to disk
+// as a corrupt file. It reads one extra byte to detect the overflow.
+func readCapped(r io.Reader, max int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return nil, fmt.Errorf("read image: %w", err)
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("image exceeds the %d-byte cap", max)
 	}
 	return b, nil
 }

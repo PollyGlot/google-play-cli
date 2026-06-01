@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -194,6 +195,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &dirError{dir: dir, cause: err}
 	}
 
+	// Refuse a --locale absent from the on-disk tree, mirroring the --type
+	// guard: a typo'd locale (en_US vs en-US) is otherwise silently dropped
+	// during reconciliation and the apply does nothing for it.
+	for _, loc := range in.Locales {
+		if _, ok := local[loc]; !ok {
+			return nil, &usageError{msg: fmt.Sprintf("unknown --locale %q (no managed images under %s; on disk: %s)", loc, dir, strings.Join(managedLocales(local), ", "))}
+		}
+	}
+
 	httpClient, err := rc.AuthedClient()
 	if err != nil {
 		return nil, err
@@ -212,6 +222,17 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, classifyEditError(pkg, err)
 	}
 	return Payload{Result: res}, nil
+}
+
+// managedLocales returns the locale codes the on-disk tree manages (has images
+// for), sorted — used to name the available locales when a --locale is unknown.
+func managedLocales(local imagetree.Tree) []string {
+	out := make([]string, 0, len(local))
+	for loc := range local {
+		out = append(out, loc)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // NewCommand returns the cobra command for `gplay metadata images apply`.
