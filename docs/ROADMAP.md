@@ -56,7 +56,7 @@ au moment de l'attaquer. Ordre de priorité :
 
 | Ordre | # | Area | Sujet | État |
 |---|---|---|---|---|
-| 1 | [#50](https://github.com/PollyGlot/google-play-cli/issues/50) | metadata | Listings textuels par locale (`edits.listings`) — remplace le côté texte de `fastlane supply` | Prêt à griller |
+| 1 | [#50](https://github.com/PollyGlot/google-play-cli/issues/50) | metadata | Listings textuels par locale (`edits.listings`) — remplace le côté texte de `fastlane supply` | ✅ Implémenté (slices #101–#107) |
 | 2 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API, service séparé) + mappings ProGuard/R8 | Prêt à griller |
 | 3 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | Prêt à griller |
 | 4 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | Spike d'investigation d'abord (scope OAuth GCS + parseur CSV) |

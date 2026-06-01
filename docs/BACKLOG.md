@@ -25,9 +25,10 @@ Tout ce qui suit est **hors MVP**.
 
 ## Publication (Edits API)
 
-### Listings textuels — `edits.listings`
+### Listings textuels — `edits.listings` — ✅ **livré** (PRD [#50](https://github.com/PollyGlot/google-play-cli/issues/50), slices #101–#107)
 Titre, description courte, description longue, vidéo YouTube, par locale.
-**Pourquoi plus tard :** remplace `fastlane supply` côté texte, utile mais pas bloquant pour un CI qui ne fait qu'uploader des builds. Souvent piloté par un repo de metadata canonique séparé du repo de code, à concevoir une fois le MVP stable.
+**Statut :** implémenté via la famille `gplay metadata list/pull/validate/apply` (modèle de sync additif, [ADR-0011](adr/0011-metadata-apply-sync-model.md)). Section conservée comme rationnel d'origine.
+**Pourquoi c'était reporté :** remplace `fastlane supply` côté texte, utile mais pas bloquant pour un CI qui ne fait qu'uploader des builds. Souvent piloté par un repo de metadata canonique séparé du repo de code, conçu une fois le MVP stable.
 
 ### Images de store — `edits.images`
 Icône, feature graphic, screenshots phone/tablet/TV/Wear/Chromebook, promo graphics.

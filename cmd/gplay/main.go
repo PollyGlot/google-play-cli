@@ -19,6 +19,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
+	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
+	metadatalist "github.com/PollyGlot/google-play-cli/commands/metadata/list"
+	metadatapull "github.com/PollyGlot/google-play-cli/commands/metadata/pull"
+	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
 	releaseslist "github.com/PollyGlot/google-play-cli/commands/releases/list"
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
@@ -151,6 +155,18 @@ replace Fastlane on Android CI pipelines.`,
 	reviews.AddCommand(reviewslist.NewCommand(boot))
 	reviews.AddCommand(reviewsreply.NewCommand(boot))
 	root.AddCommand(reviews)
+
+	// `gplay metadata` — Store front Listings (per-locale text), the
+	// fastlane-supply text side. See PRD #50 / ADR-0011.
+	metadata := &cobra.Command{
+		Use:   "metadata",
+		Short: "Manage Store front Listings (per-locale title/description/video)",
+	}
+	metadata.AddCommand(metadatalist.NewCommand(boot))
+	metadata.AddCommand(metadatapull.NewCommand(boot))
+	metadata.AddCommand(metadatavalidate.NewCommand(boot))
+	metadata.AddCommand(metadataapply.NewCommand(boot))
+	root.AddCommand(metadata)
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
