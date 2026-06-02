@@ -38,6 +38,7 @@ import (
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
+	teamgrantsset "github.com/PollyGlot/google-play-cli/commands/team/grants/set"
 	teampermissions "github.com/PollyGlot/google-play-cli/commands/team/permissions"
 	teamusersadd "github.com/PollyGlot/google-play-cli/commands/team/users/add"
 	teamuserslist "github.com/PollyGlot/google-play-cli/commands/team/users/list"
@@ -208,6 +209,7 @@ replace Fastlane on Android CI pipelines.`,
 		Short: "List and manage members' per-app access",
 	}
 	teamGrants.AddCommand(teamgrantslist.NewCommand(boot))
+	teamGrants.AddCommand(teamgrantsset.NewCommand(boot))
 	team.AddCommand(teamGrants)
 
 	root.AddCommand(team)
