@@ -17,10 +17,17 @@ import (
 // Packages is the per-Account registry of Android package names this Account
 // has been registered against via `gplay apps add`; the field is omitempty so
 // pre-registry config files round-trip unchanged.
+//
+// DeveloperID is the Play Console Developer account this credential
+// administers (ADR-0015) — the org `gplay team` is keyed by. It rides on the
+// Account (not the committed project pin) because the org follows the
+// credential, not the repo, and the API offers no way to discover it; like
+// Packages it is omitempty so pre-team config files round-trip unchanged.
 type Account struct {
-	Name     string   `json:"name"`
-	Active   bool     `json:"active"`
-	Packages []string `json:"packages,omitempty"`
+	Name        string   `json:"name"`
+	Active      bool     `json:"active"`
+	Packages    []string `json:"packages,omitempty"`
+	DeveloperID string   `json:"developerId,omitempty"`
 }
 
 // Global is the on-disk shape of $XDG_CONFIG_HOME/gplay/config.json.
@@ -174,6 +181,13 @@ type Resolved struct {
 	ConfigAccount string
 	Accounts      []Account
 
+	// DeveloperID is the developer-id merged from the in-config layers
+	// (ADR-0015): the active Account's DeveloperID, overridden by the
+	// project-local config.local.json's `developerId`. Empty if neither is
+	// set. The command layer applies the higher-precedence GPLAY_DEVELOPER_ID
+	// env var and --developer-id flag on top (later wins).
+	DeveloperID string
+
 	GlobalPath        string
 	ProjectSharedPath string
 	ProjectLocalPath  string
@@ -185,13 +199,17 @@ type Resolved struct {
 // would silently unmarshal to nil and let through. Committed configs must
 // never carry the field at all (see ADR-0004).
 type projectShared struct {
-	Package string          `json:"package"`
-	Account json.RawMessage `json:"account"`
+	Package     string          `json:"package"`
+	Account     json.RawMessage `json:"account"`
+	DeveloperID json.RawMessage `json:"developerId"`
 }
 
 // projectLocal mirrors the on-disk shape of <repo>/.gplay/config.local.json.
+// DeveloperID is the gitignored, multi-tenant developer-account override
+// (ADR-0015).
 type projectLocal struct {
-	Account string `json:"account"`
+	Account     string `json:"account"`
+	DeveloperID string `json:"developerId"`
 }
 
 // Load runs the cascade. It reads each layer that exists through fsys,
@@ -214,6 +232,7 @@ func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 	r.Accounts = g.Accounts
 	if a, ok := g.Active(); ok {
 		r.ConfigAccount = a.Name
+		r.DeveloperID = a.DeveloperID
 	}
 
 	// Walk up to find the nearest .gplay/ directory. Refuse to descend
@@ -242,6 +261,12 @@ func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 			r.ProjectLocalPath = localPath
 			if pl.Account != "" {
 				r.ConfigAccount = pl.Account
+			}
+			// Project-local developer-id overrides the active Account's — the
+			// multi-tenant/agency case (ADR-0015): one credential invited into
+			// several orgs, the active org pinned per-repo out of version control.
+			if pl.DeveloperID != "" {
+				r.DeveloperID = pl.DeveloperID
 			}
 		}
 	}
@@ -279,6 +304,11 @@ func readProjectShared(fsys FS, path string) (*projectShared, error) {
 	}
 	if len(ps.Account) > 0 {
 		return nil, fmt.Errorf("config: %s: field \"account\" is forbidden in committed config (use .gplay/config.local.json or GPLAY_ACCOUNT)", path)
+	}
+	// A developer-id is credential/org state, not shared repo state — same
+	// rule and reason as the account field (ADR-0015).
+	if len(ps.DeveloperID) > 0 {
+		return nil, fmt.Errorf("config: %s: field \"developerId\" is forbidden in committed config (set it via `gplay auth login --developer-id`, .gplay/config.local.json, or GPLAY_DEVELOPER_ID)", path)
 	}
 	return &ps, nil
 }
