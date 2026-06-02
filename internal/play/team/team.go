@@ -166,10 +166,24 @@ func FindUser(ctx context.Context, hc *http.Client, developerID, email string) (
 	return nil, false, nil
 }
 
+// Write-body types. They deliberately do NOT use omitempty on the permission
+// arrays: a declarative replace must send an explicit [] to clear permissions
+// (the same nil→[] normalisation testers.Update makes), which omitempty would
+// drop, leaving the field absent and the clear a no-op.
+type userWriteBody struct {
+	Email                       string   `json:"email,omitempty"`
+	DeveloperAccountPermissions []string `json:"developerAccountPermissions"`
+}
+
+type grantWriteBody struct {
+	PackageName         string   `json:"packageName,omitempty"`
+	AppLevelPermissions []string `json:"appLevelPermissions"`
+}
+
 // CreateUser invites a member with account-wide permissions (users.create).
 // Returns the raw response body for the ADR-0003 pass-through.
-func CreateUser(ctx context.Context, hc *http.Client, developerID string, u User) (json.RawMessage, error) {
-	return sendJSON(ctx, hc, http.MethodPost, opUsersCreate, developerID, usersBase(developerID), u)
+func CreateUser(ctx context.Context, hc *http.Client, developerID, email string, perms []string) (json.RawMessage, error) {
+	return sendJSON(ctx, hc, http.MethodPost, opUsersCreate, developerID, usersBase(developerID), userWriteBody{Email: email, DeveloperAccountPermissions: nonNil(perms)})
 }
 
 // SetUserPermissions replaces a member's account-wide permissions declaratively
@@ -177,11 +191,8 @@ func CreateUser(ctx context.Context, hc *http.Client, developerID string, u User
 // an explicit array (nil normalised to []) so an empty set clears the
 // permissions rather than omitting the field.
 func SetUserPermissions(ctx context.Context, hc *http.Client, developerID, email string, perms []string) (json.RawMessage, error) {
-	if perms == nil {
-		perms = []string{}
-	}
 	u := userURL(developerID, email) + "?updateMask=developerAccountPermissions"
-	return sendJSON(ctx, hc, http.MethodPatch, opUsersPatch, developerID, u, User{DeveloperAccountPermissions: perms})
+	return sendJSON(ctx, hc, http.MethodPatch, opUsersPatch, developerID, u, userWriteBody{DeveloperAccountPermissions: nonNil(perms)})
 }
 
 // DeleteUser off-boards a member (users.delete), targeted by email path. A
@@ -193,21 +204,23 @@ func DeleteUser(ctx context.Context, hc *http.Client, developerID, email string)
 // CreateGrant grants a member per-app access (grants.create). perms is the
 // resolved appLevelPermissions for the package.
 func CreateGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string, perms []string) (json.RawMessage, error) {
-	if perms == nil {
-		perms = []string{}
-	}
-	g := Grant{PackageName: pkg, AppLevelPermissions: perms}
-	return sendJSON(ctx, hc, http.MethodPost, opGrantsCreate, developerID, grantsBase(developerID, email), g)
+	return sendJSON(ctx, hc, http.MethodPost, opGrantsCreate, developerID, grantsBase(developerID, email), grantWriteBody{PackageName: pkg, AppLevelPermissions: nonNil(perms)})
 }
 
 // PatchGrant replaces an existing grant's app-level permissions declaratively
 // (grants.patch with updateMask=appLevelPermissions).
 func PatchGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string, perms []string) (json.RawMessage, error) {
-	if perms == nil {
-		perms = []string{}
-	}
 	u := grantURL(developerID, email, pkg) + "?updateMask=appLevelPermissions"
-	return sendJSON(ctx, hc, http.MethodPatch, opGrantsPatch, developerID, u, Grant{AppLevelPermissions: perms})
+	return sendJSON(ctx, hc, http.MethodPatch, opGrantsPatch, developerID, u, grantWriteBody{AppLevelPermissions: nonNil(perms)})
+}
+
+// nonNil normalises a nil slice to an empty one so a declarative write emits an
+// explicit [] (clearing the set) rather than null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 // DeleteGrant revokes a member's per-app access (grants.delete), targeted by
