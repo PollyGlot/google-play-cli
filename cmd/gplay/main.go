@@ -37,6 +37,7 @@ import (
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
+	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
 	teampermissions "github.com/PollyGlot/google-play-cli/commands/team/permissions"
 	teamusersadd "github.com/PollyGlot/google-play-cli/commands/team/users/add"
 	teamuserslist "github.com/PollyGlot/google-play-cli/commands/team/users/list"
@@ -201,6 +202,13 @@ replace Fastlane on Android CI pipelines.`,
 	teamUsers.AddCommand(teamusersset.NewCommand(boot))
 	teamUsers.AddCommand(teamusersremove.NewCommand(boot))
 	team.AddCommand(teamUsers)
+
+	teamGrants := &cobra.Command{
+		Use:   "grants",
+		Short: "List and manage members' per-app access",
+	}
+	teamGrants.AddCommand(teamgrantslist.NewCommand(boot))
+	team.AddCommand(teamGrants)
 
 	root.AddCommand(team)
 
