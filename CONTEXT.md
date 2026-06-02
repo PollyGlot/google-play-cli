@@ -122,3 +122,27 @@ A per-command lifecycle marker shown in help output, signalling how far a comman
 
 ### Public preview / GA
 Two named maturity states of the gplay CLI. **Public preview** is the `v0.x` line: publicly installable and usable, an invitation to test and give feedback, with breaking changes still possible — no Public contract promise yet. **GA** (general availability, `v1.0`+) is the state where the Public contract is in force. These are communication-and-promise states, not feature-count thresholds.
+
+### Developer account
+The Play Console organisation that owns apps, keyed by a numeric `developerId`. It is the unit `gplay team` manages: its members (Users) and their permissions. Distinct from **Account** (a gplay credential profile) and from **service account** (the GCP IAM principal a credential authenticates as). A service account is linked to a Developer account on the Play Console — typically one, though an account can in principle invite the same service-account email into several — and a gplay **Account** is the local registration of that service account. It is the first **account-scoped** addressing axis gplay carries: keyed by the org, not by a package or a locale.
+
+_Avoid_: writing "account" unqualified anywhere near `team` — three different things end in "account" here. **Developer account** = the Play Console org; **Account** = the local gplay credential profile; **service account** = the GCP IAM principal.
+
+### User
+A person who is a member of a **Developer account**, identified by email, carrying account-wide `developerAccountPermissions` and optional per-app **Grants**. Managed under `gplay team users`. Explicitly distinct from **Account**: a User is a Play Console teammate, not a credential. The same email may also be a service account's, when a service-account principal is itself invited as a member.
+
+_Avoid_: calling a User an "account" (it is a person/principal *inside* a Developer account), or conflating it with the gplay **Account** that authenticates the call.
+
+### Grant
+A **User**'s access to a single app, carrying `appLevelPermissions` (e.g. reply-to-reviews only on `com.example.foo`). Keyed by (User, package). It is a **field of the User resource** — there is no standalone grants-list endpoint, so a User's grants are read back from the User — and is managed under `gplay team grants`.
+
+_Avoid_: confusing a Grant (one person's per-app access) with a **Tester** (a per-track test audience of Google Groups) — both are "access to an app" but on unrelated axes.
+
+### Permission
+A single capability a **User** or **Grant** can hold, expressed in the API as a `CAN_*` enum — account-wide (`developerAccountPermissions`, the `_GLOBAL`-suffixed family) on a User, or per-app (`appLevelPermissions`) on a Grant. The two families are near-parallel: most app-level values are the account-level one minus the `_GLOBAL` suffix; the account family adds inherently account-wide capabilities (Play Games, managed Play, connected apps). gplay never invents a Permission — it only ever sends values Google defines, and rejects the non-grantable `*_UNSPECIFIED` sentinels.
+
+### Permission alias
+A gplay-friendly, **scope-independent** name for a **Permission** — e.g. `release-production` for `CAN_MANAGE_PUBLIC_APKS` (under `team grants`) or `CAN_MANAGE_PUBLIC_APKS_GLOBAL` (under `team users`). The same alias resolves to the app-level or the account-level enum depending on the command's scope. Aliases are curated for the meaningful, non-deprecated permissions; the raw `CAN_*` enum is **always also accepted**, so a permission gplay has no alias for is never un-grantable. Lets a caller — especially an agent — express intent without memorising Google's vocabulary.
+
+### Role bundle
+A gplay-defined, **frozen** preset that expands to a fixed set of Permissions — `viewer`, `reviewer`, `tester-manager`, `release-manager`, `admin` — selected with `--role`. A convenience over enumerating aliases one by one. *Frozen* means a bundle's membership never changes silently as Google adds permission enums: a new enum joins a bundle only by an explicit, versioned gplay change. Deliberately **excludes** sensitive money capabilities (financial data, orders): those are expressible only as explicit Permissions, never hidden inside a role. Distinct from a **Permission alias** (one Permission) — a Role bundle is a *set*.

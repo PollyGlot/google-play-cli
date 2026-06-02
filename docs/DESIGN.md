@@ -265,6 +265,7 @@ The upstream API payload, if any, is preserved inside `details`.
 | `0` | Success | — |
 | `1` | Generic error (fallback when nothing more specific fits) | No |
 | `2` | CLI misuse (unknown flag, bad value, missing required arg) | No |
+| `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
 | `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
 | `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
