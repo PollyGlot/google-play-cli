@@ -36,6 +36,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
+	teampermissions "github.com/PollyGlot/google-play-cli/commands/team/permissions"
 	testerslist "github.com/PollyGlot/google-play-cli/commands/testers/list"
 	testersset "github.com/PollyGlot/google-play-cli/commands/testers/set"
 	tracksavailability "github.com/PollyGlot/google-play-cli/commands/tracks/availability"
@@ -173,6 +174,19 @@ replace Fastlane on Android CI pipelines.`,
 	testers.AddCommand(testerslist.NewCommand(boot))
 	testers.AddCommand(testersset.NewCommand(boot))
 	root.AddCommand(testers)
+
+	// `gplay team` — manage the Developer account's members (Users) and their
+	// per-app access (Grants). The first gplay surface keyed by the Developer
+	// account rather than a package (ADR-0015). `team`, `users`, and `grants`
+	// are grouping commands (no RunE — print help when bare); the named
+	// `team` (not `users`/`access`) avoids colliding with gplay's Account.
+	// See PRD #147 / ADR-0015/0016/0017 / CONTEXT.md.
+	team := &cobra.Command{
+		Use:   "team",
+		Short: "Manage the Developer account's members and permissions (users, grants)",
+	}
+	team.AddCommand(teampermissions.NewCommand(boot))
+	root.AddCommand(team)
 
 	reviews := &cobra.Command{
 		Use:   "reviews",
