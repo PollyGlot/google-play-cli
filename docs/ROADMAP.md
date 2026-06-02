@@ -83,7 +83,7 @@ toujours en attente délibérée).
 
 | Ordre | # | Area | Sujet | Note |
 |---|---|---|---|---|
-| 1 | [#93](https://github.com/PollyGlot/google-play-cli/issues/93) | arch | Extraire la machinery partagée des `… list` (column registry + render + `resolveColumns`) | ~120–150 lignes dupliquées × 3 (`reviews`/`tracks`/`releases list`) qui dérivent à chaque ajout |
+| ✅ | [#93](https://github.com/PollyGlot/google-play-cli/issues/93) | arch | Extraire la machinery partagée des `… list` (column registry + render + `resolveColumns`) | **Livré** (#148, [ADR-0018](adr/0018-shared-list-table-machinery.md)) — débloque les `team users/grants list` de #147 |
 | 2 | [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | tooling | Snapshot offline du Discovery doc `androidpublisher_v3.json` (+ target de regen) | Levier code-gen agent ; le trigger « surface > ~10 commandes » est franchi |
 
 ## Ensuite — surfaces additives (post first-release)
@@ -96,6 +96,7 @@ gel.
 | 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API) + mappings ProGuard/R8 | Observabilité **post-lancement**, pas first-release |
 | 2 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | **Post-v1** (confirmé) |
 | 3 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | Spike d'investigation d'abord |
+| 4 | [#147](https://github.com/PollyGlot/google-play-cli/issues/147) | team | Team management — users & grants (permissions du compte développeur) | PRD durci (ADR-0015/0016/0017) ; décomposé via `/to-issues` en 9 slices #149–#157 |
 | — | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) | releases | APK upload (`edits.apks`) | Apps **existantes** only — hors thème first-release (AAB obligatoire pour les nouvelles apps depuis 2021) |
 
 Les docs utilisateur ([#116](https://github.com/PollyGlot/google-play-cli/issues/116))
