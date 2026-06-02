@@ -19,10 +19,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -35,14 +35,6 @@ type Input struct {
 	Package string
 	Columns string
 }
-
-// usageError is a CLI-misuse error (no package, unknown column);
-// ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-
-func (e *usageError) ExitCode() int { return 2 }
 
 // packageNotFoundError wraps an edits.insert 404 with a hint pointing at
 // `gplay apps list`. Like trackNotFoundError in `releases list`, it
@@ -205,25 +197,25 @@ const (
 	colVersionCodes = "versionCodes"
 )
 
-// DefaultColumns is the table/markdown column order applied when
-// --columns is unset. Documented in the command's --help.
-var DefaultColumns = []string{colTrack, colKind, colRelease, colStatus, colUserFraction, colVersionCodes}
+// columns is the single source of truth for the tracks table: its
+// declaration order is both the set of valid --columns keys and the default
+// column order. The shared output.ColumnSet owns selection and the
+// table/markdown rendering (docs/adr/0018-shared-list-table-machinery.md).
+var columns = output.NewColumnSet(
+	output.Column[TrackRow]{Key: colTrack, Header: "TRACK", Value: func(r TrackRow) string { return r.Track }},
+	output.Column[TrackRow]{Key: colKind, Header: "KIND", Value: func(r TrackRow) string { return r.Kind }},
+	output.Column[TrackRow]{Key: colRelease, Header: "RELEASE", Value: func(r TrackRow) string { return r.Release }},
+	output.Column[TrackRow]{Key: colStatus, Header: "STATUS", Value: func(r TrackRow) string { return r.Status }},
+	output.Column[TrackRow]{Key: colUserFraction, Header: "USER_FRACTION", Value: formatUserFraction},
+	output.Column[TrackRow]{Key: colVersionCodes, Header: "VERSION_CODES", Value: func(r TrackRow) string { return strings.Join(r.VersionCodes, ",") }},
+)
 
-// columnDef pairs a column's header with the extractor that turns a row
-// into that column's cell value.
-type columnDef struct {
-	header string
-	value  func(TrackRow) string
-}
-
-// columnRegistry is the single source of truth for which columns exist.
-var columnRegistry = map[string]columnDef{
-	colTrack:        {"TRACK", func(r TrackRow) string { return r.Track }},
-	colKind:         {"KIND", func(r TrackRow) string { return r.Kind }},
-	colRelease:      {"RELEASE", func(r TrackRow) string { return r.Release }},
-	colStatus:       {"STATUS", func(r TrackRow) string { return r.Status }},
-	colUserFraction: {"USER_FRACTION", func(r TrackRow) string { return formatUserFraction(r) }},
-	colVersionCodes: {"VERSION_CODES", func(r TrackRow) string { return strings.Join(r.VersionCodes, ",") }},
+// ResolveColumns turns a --columns spec into the validated, ordered columns
+// for a Payload. Run uses it on the command path; it is exported so render
+// tests (and any caller building a Payload directly) share the one column
+// registry rather than hand-rolling a list that could drift from it.
+func ResolveColumns(spec string) ([]output.Column[TrackRow], error) {
+	return columns.Resolve(spec)
 }
 
 // formatUserFraction renders a release's rollout fraction as a percent,
@@ -257,57 +249,21 @@ func formatPercent(f float64) string {
 // one-line-per-track view and Columns the resolved display order
 // (validated in Run, so renderers can trust every key).
 type Payload struct {
-	Raw     json.RawMessage `json:"-"`
-	Rows    []TrackRow      `json:"-"`
-	Columns []string        `json:"-"`
+	Raw     json.RawMessage           `json:"-"`
+	Rows    []TrackRow                `json:"-"`
+	Columns []output.Column[TrackRow] `json:"-"`
 }
 
 // Renderers satisfies output.Renderable with one renderer per Format. The
 // JSON form is the ADR-0003 edits.tracks.list pass-through; table and
-// markdown are human-shaped, one-row-per-track views.
+// markdown are human-shaped, one-row-per-track views drawn by the shared
+// column helper.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
-		Table:    func(w io.Writer) error { return renderTable(w, p) },
+		Table:    func(w io.Writer) error { return output.RenderTable(w, p.Columns, p.Rows) },
 		JSON:     func(w io.Writer) error { return renderJSON(w, p) },
-		Markdown: func(w io.Writer) error { return renderMarkdown(w, p) },
+		Markdown: func(w io.Writer) error { return output.RenderMarkdown(w, p.Columns, p.Rows) },
 	}
-}
-
-// headers returns the selected columns' display headers, in order.
-func (p Payload) headers() []string {
-	h := make([]string, len(p.Columns))
-	for i, k := range p.Columns {
-		h[i] = columnRegistry[k].header
-	}
-	return h
-}
-
-// row extracts the selected columns' cells for one track. An unknown key
-// (possible only via a directly-constructed Payload — Run validates
-// --columns) renders an empty cell rather than calling a nil value func.
-func (p Payload) row(r TrackRow) []string {
-	cells := make([]string, len(p.Columns))
-	for i, k := range p.Columns {
-		if def, ok := columnRegistry[k]; ok {
-			cells[i] = def.value(r)
-		}
-	}
-	return cells
-}
-
-// renderTable writes a tab-aligned table of the selected columns, one row
-// per track.
-func renderTable(w io.Writer, p Payload) error {
-	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, strings.Join(p.headers(), "\t")); err != nil {
-		return err
-	}
-	for _, r := range p.Rows {
-		if _, err := fmt.Fprintln(tw, strings.Join(p.row(r), "\t")); err != nil {
-			return err
-		}
-	}
-	return tw.Flush()
 }
 
 // renderJSON emits the raw edits.tracks.list body verbatim (ADR-0003
@@ -323,41 +279,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// renderMarkdown writes the selected columns as a GitHub-Flavored
-// Markdown table via output.MarkdownTable.
-func renderMarkdown(w io.Writer, p Payload) error {
-	rows := make([][]string, 0, len(p.Rows))
-	for _, r := range p.Rows {
-		rows = append(rows, p.row(r))
-	}
-	return output.MarkdownTable(w, p.headers(), rows)
-}
-
-// resolveColumns turns the --columns spec into a validated, ordered list
-// of canonical column keys. An empty spec yields DefaultColumns; an
-// unknown key is a CLI misuse (exit 2).
-func resolveColumns(spec string) ([]string, error) {
-	if strings.TrimSpace(spec) == "" {
-		return DefaultColumns, nil
-	}
-	parts := strings.Split(spec, ",")
-	cols := make([]string, 0, len(parts))
-	for _, p := range parts {
-		k := strings.TrimSpace(p)
-		if k == "" {
-			continue
-		}
-		if _, ok := columnRegistry[k]; !ok {
-			return nil, &usageError{msg: fmt.Sprintf("unknown column %q (valid: %s)", k, strings.Join(DefaultColumns, ", "))}
-		}
-		cols = append(cols, k)
-	}
-	if len(cols) == 0 {
-		return nil, &usageError{msg: "no valid columns in --columns"}
-	}
-	return cols, nil
-}
-
 // Run is the business function the kernel invokes. It resolves the
 // package, builds an authenticated HTTP client, then opens a read-only
 // Edit and lists every track.
@@ -367,10 +288,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
 	}
 
-	cols, err := resolveColumns(in.Columns)
+	cols, err := ResolveColumns(in.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +352,6 @@ the raw tracks.list payload; --output markdown renders a Markdown table.)`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: track,kind,release,status,userFraction,versionCodes)")
+	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: "+strings.Join(columns.DefaultKeys(), ",")+")")
 	return cmd
 }
