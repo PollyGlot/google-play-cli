@@ -22,6 +22,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	compliancedatasafetyset "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/set"
 	compliancedatasafetyvalidate "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/validate"
+	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
 	metadataimageslist "github.com/PollyGlot/google-play-cli/commands/metadata/images/list"
@@ -36,6 +37,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
+	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
+	teamgrantsrevoke "github.com/PollyGlot/google-play-cli/commands/team/grants/revoke"
+	teamgrantsset "github.com/PollyGlot/google-play-cli/commands/team/grants/set"
+	teampermissions "github.com/PollyGlot/google-play-cli/commands/team/permissions"
+	teamusersadd "github.com/PollyGlot/google-play-cli/commands/team/users/add"
+	teamuserslist "github.com/PollyGlot/google-play-cli/commands/team/users/list"
+	teamusersremove "github.com/PollyGlot/google-play-cli/commands/team/users/remove"
+	teamusersset "github.com/PollyGlot/google-play-cli/commands/team/users/set"
 	testerslist "github.com/PollyGlot/google-play-cli/commands/testers/list"
 	testersset "github.com/PollyGlot/google-play-cli/commands/testers/set"
 	tracksavailability "github.com/PollyGlot/google-play-cli/commands/tracks/availability"
@@ -174,6 +183,39 @@ replace Fastlane on Android CI pipelines.`,
 	testers.AddCommand(testersset.NewCommand(boot))
 	root.AddCommand(testers)
 
+	// `gplay team` — manage the Developer account's members (Users) and their
+	// per-app access (Grants). The first gplay surface keyed by the Developer
+	// account rather than a package (ADR-0015). `team`, `users`, and `grants`
+	// are grouping commands (no RunE — print help when bare); the named
+	// `team` (not `users`/`access`) avoids colliding with gplay's Account.
+	// See PRD #147 / ADR-0015/0016/0017 / CONTEXT.md.
+	team := &cobra.Command{
+		Use:   "team",
+		Short: "Manage the Developer account's members and permissions (users, grants)",
+	}
+	team.AddCommand(teampermissions.NewCommand(boot))
+
+	teamUsers := &cobra.Command{
+		Use:   "users",
+		Short: "List and manage the Developer account's members",
+	}
+	teamUsers.AddCommand(teamuserslist.NewCommand(boot))
+	teamUsers.AddCommand(teamusersadd.NewCommand(boot))
+	teamUsers.AddCommand(teamusersset.NewCommand(boot))
+	teamUsers.AddCommand(teamusersremove.NewCommand(boot))
+	team.AddCommand(teamUsers)
+
+	teamGrants := &cobra.Command{
+		Use:   "grants",
+		Short: "List and manage members' per-app access",
+	}
+	teamGrants.AddCommand(teamgrantslist.NewCommand(boot))
+	teamGrants.AddCommand(teamgrantsset.NewCommand(boot))
+	teamGrants.AddCommand(teamgrantsrevoke.NewCommand(boot))
+	team.AddCommand(teamGrants)
+
+	root.AddCommand(team)
+
 	reviews := &cobra.Command{
 		Use:   "reviews",
 		Short: "Read and reply to user reviews",
@@ -224,6 +266,11 @@ replace Fastlane on Android CI pipelines.`,
 	datasafety.AddCommand(compliancedatasafetyset.NewCommand(boot))
 	compliance.AddCommand(datasafety)
 	root.AddCommand(compliance)
+
+	// `gplay exit-codes` / `gplay help exit-codes` — the semantic exit-code
+	// taxonomy (docs/DESIGN.md §9), built from internal/exit so it cannot
+	// drift from the codes the binary actually returns.
+	root.AddCommand(helpexitcodes.NewCommand())
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",

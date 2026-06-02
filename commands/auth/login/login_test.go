@@ -312,6 +312,29 @@ func TestLogin_activateFalse_onFirstAccount_stillActivates(t *testing.T) {
 	}
 }
 
+// TestLogin_developerID_recordedOnAccount asserts `auth login --developer-id`
+// stores the id on the Account (ADR-0015 / #151 capture point 1) and mentions
+// it on stderr.
+func TestLogin_developerID_recordedOnAccount(t *testing.T) {
+	saPath := writeSA(t, validSAJSON)
+	stdout, stderr, boot := newCmd(t)
+
+	if err := runCmd(t, boot, stdout, stderr, "--service-account", saPath, "--developer-id", "4900000000000000000"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
+	if err != nil {
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
+	}
+	a, ok := cfg.Active()
+	if !ok || a.DeveloperID != "4900000000000000000" {
+		t.Errorf("active account = %+v, want DeveloperID recorded", a)
+	}
+	if !strings.Contains(stderr.String(), "4900000000000000000") {
+		t.Errorf("stderr should mention the recorded developer-id; got %q", stderr.String())
+	}
+}
+
 func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
 	root := t.TempDir()
 	fk := newFakeKeyring(false) // available
