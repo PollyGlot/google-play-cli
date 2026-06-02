@@ -31,9 +31,11 @@ func NewCommand() *cobra.Command {
 func table() string {
 	var b strings.Builder
 	tw := tabwriter.NewWriter(&b, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "CODE\tMEANING\tRETRY-SAFE")
+	// Writes to the tabwriter buffer; any error surfaces at Flush, which is
+	// itself best-effort here (the result feeds a static help string).
+	_, _ = fmt.Fprintln(tw, "CODE\tMEANING\tRETRY-SAFE")
 	for _, d := range exit.Catalog() {
-		fmt.Fprintf(tw, "%d\t%s\t%s\n", d.Code, d.Meaning, d.RetrySafe)
+		_, _ = fmt.Fprintf(tw, "%d\t%s\t%s\n", d.Code, d.Meaning, d.RetrySafe)
 	}
 	_ = tw.Flush()
 	return b.String()
