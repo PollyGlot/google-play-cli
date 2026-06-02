@@ -123,6 +123,21 @@ func (g *Global) RemoveAccount(name string) error {
 	return ErrUnknownAccount
 }
 
+// SetDeveloperID records id as the DeveloperID of the named account, returning
+// false if name is not in the registry. The capture points are
+// `gplay auth login --developer-id` and the `team` type-once persistence
+// (ADR-0015); it always targets the global Account record, never the committed
+// project config.
+func (g *Global) SetDeveloperID(name, id string) bool {
+	for i := range g.Accounts {
+		if g.Accounts[i].Name == name {
+			g.Accounts[i].DeveloperID = id
+			return true
+		}
+	}
+	return false
+}
+
 // SetActive marks one account as Active and clears the flag on every other.
 // Returns ErrUnknownAccount if name is not in the registry.
 func (g *Global) SetActive(name string) error {

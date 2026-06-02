@@ -31,9 +31,10 @@ func (missingFlagError) ExitCode() int { return 2 }
 // hands it through via rc.* — but since the flag is captured at the
 // cobra wrapper level, the closure passes it explicitly here.
 type Input struct {
-	SAPath   string
-	Name     string
-	Activate bool
+	SAPath      string
+	Name        string
+	Activate    bool
+	DeveloperID string
 }
 
 // Run registers the named Account in keystore + config. login emits a
@@ -64,6 +65,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// First Account always activates so the registry is never empty.
 	wasEmpty := len(cfg.Accounts) == 0
 	cfg.AddAccount(name)
+	// Record the Developer account id on this Account if supplied — the
+	// explicit capture point for `gplay team` addressing (ADR-0015 / #151).
+	// login is explicit, so a re-login with --developer-id updates it.
+	devID := strings.TrimSpace(in.DeveloperID)
+	if devID != "" {
+		cfg.SetDeveloperID(name, devID)
+	}
 	if in.Activate || wasEmpty {
 		if err := cfg.SetActive(name); err != nil {
 			return nil, err
@@ -78,6 +86,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	} else {
 		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
 	}
+	if devID != "" {
+		_, _ = fmt.Fprintf(rc.Stderr, "  developer-id %s recorded for `gplay team`\n", devID)
+	}
 	return nil, nil
 }
 
@@ -86,8 +97,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 // persistent flags.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
-		name     string
-		activate bool
+		name        string
+		activate    bool
+		developerID string
 	)
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -108,12 +120,13 @@ so the registry is never left without one when --activate=false is set.)`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			saPath, _ := cmd.Flags().GetString("service-account")
 			return kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
-				return Run(rc, Input{SAPath: saPath, Name: name, Activate: activate})
+				return Run(rc, Input{SAPath: saPath, Name: name, Activate: activate, DeveloperID: developerID})
 			})
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "friendly Account name (default: derived from client_email)")
 	cmd.Flags().BoolVar(&activate, "activate", true, "mark the new Account active (default true)")
+	cmd.Flags().StringVar(&developerID, "developer-id", "", "Play Console Developer account id to record on this Account (for `gplay team`)")
 	return cmd
 }
 

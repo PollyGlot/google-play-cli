@@ -18,17 +18,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/team/teamcmd"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	playteam "github.com/PollyGlot/google-play-cli/internal/play/team"
-	"github.com/PollyGlot/google-play-cli/internal/team/addressing"
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
@@ -151,12 +150,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// resolveDeveloperID applies the ADR-0015 cascade: the --developer-id flag, the
-// GPLAY_DEVELOPER_ID env var, then the config-merged Resolved.DeveloperID.
-func resolveDeveloperID(rc *kernel.RunContext, flag string) (string, error) {
-	return addressing.Resolve(flag, os.Getenv(addressing.EnvDeveloperID), rc.Resolved)
-}
-
 // Run is the business function the kernel invokes. It resolves the
 // developer-id, builds an authenticated client, lists users to completion, and
 // renders.
@@ -166,7 +159,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	developerID, err := resolveDeveloperID(rc, in.DeveloperID)
+	developerID, err := teamcmd.DeveloperID(rc, in.DeveloperID)
 	if err != nil {
 		return nil, err
 	}
