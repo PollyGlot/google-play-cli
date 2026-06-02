@@ -127,6 +127,22 @@ func TestUsersList_paginatesToCompletion(t *testing.T) {
 	}
 }
 
+// TestUsersList_empty_jsonArray asserts an account with no members renders
+// {"users":[]} (not null) — the conventional empty-array shape.
+func TestUsersList_empty_jsonArray(t *testing.T) {
+	rt := teamtest.New(teamtest.UsersList(`{"users":[]}`))
+	rc := teamtest.NewRC(t, rt)
+
+	r, err := listcmd.Run(rc, listcmd.Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := renderJSON(t, r)
+	if !strings.Contains(out, `"users":[]`) || strings.Contains(out, "null") {
+		t.Errorf("empty account should render {\"users\":[]} (not null), got %s", out)
+	}
+}
+
 // TestUsersList_unresolvedDeveloperID_exit10 asserts that with no developer-id
 // anywhere the command fails with exit 10 before any network call.
 func TestUsersList_unresolvedDeveloperID_exit10(t *testing.T) {

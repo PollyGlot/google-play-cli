@@ -138,6 +138,12 @@ func ListUsers(ctx context.Context, hc *http.Client, developerID string) ([]User
 		token = pg.NextPageToken
 	}
 
+	// Normalise to an empty slice so an account with no members marshals as
+	// {"users":[]} rather than {"users":null} — the conventional empty-array
+	// shape a consumer parsing `.users` expects.
+	if rawAll == nil {
+		rawAll = []json.RawMessage{}
+	}
 	merged, err := json.Marshal(struct {
 		Users []json.RawMessage `json:"users"`
 	}{Users: rawAll})

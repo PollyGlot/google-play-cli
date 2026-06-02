@@ -16,7 +16,7 @@ func TestExitCodesHelp_surfacesCode3(t *testing.T) {
 	if cmd.Use != "exit-codes" {
 		t.Fatalf("cmd.Use = %q, want exit-codes", cmd.Use)
 	}
-	for _, want := range []string{"3", "grant-admin", "--confirm", "Safety flag required"} {
+	for _, want := range []string{"3", "--grant-admin", "--confirm", "Safety flag required"} {
 		if !strings.Contains(cmd.Long, want) {
 			t.Errorf("exit-codes help should mention %q\n%s", want, cmd.Long)
 		}
