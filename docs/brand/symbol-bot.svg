@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- gplay — bot variant. Same chevrons + a small "active/automation" badge
+       (bottom-right, inside the circle-safe area) to mark the gplay-bot account. -->
+  <defs>
+    <radialGradient id="mag" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff6ec3" stop-opacity="0.45"/><stop offset="100%" stop-color="#ff6ec3" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blu" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#82afff" stop-opacity="0.42"/><stop offset="100%" stop-color="#82afff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cya" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#96e1f0" stop-opacity="0.30"/><stop offset="100%" stop-color="#96e1f0" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="gdot" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#050507"/>
+  <ellipse cx="712" cy="262" rx="380" ry="320" fill="url(#mag)"/>
+  <ellipse cx="800" cy="612" rx="360" ry="340" fill="url(#blu)"/>
+  <ellipse cx="556" cy="864" rx="320" ry="300" fill="url(#cya)"/>
+
+  <g fill="none" stroke-width="64" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M286 372 L408 512 L286 652" stroke="#82afff" stroke-opacity="0.40"/>
+    <path d="M426 372 L548 512 L426 652" stroke="#96e1f0" stroke-opacity="0.72"/>
+    <path d="M566 372 L688 512 L566 652" stroke="#3DDC84" filter="url(#glow)"/>
+  </g>
+
+  <!-- automation badge: dark cutout + green core -->
+  <circle cx="788" cy="788" r="118" fill="#050507"/>
+  <circle cx="788" cy="788" r="70" fill="#3DDC84" filter="url(#gdot)"/>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- gplay — monochrome ink, transparent. For light backgrounds / print. -->
+  <g fill="none" stroke="#0c0c10" stroke-width="64" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M310 372 L432 512 L310 652" stroke-opacity="0.50"/>
+    <path d="M450 372 L572 512 L450 652" stroke-opacity="0.78"/>
+    <path d="M590 372 L712 512 L590 652" stroke-opacity="1"/>
+  </g>
+</svg>
