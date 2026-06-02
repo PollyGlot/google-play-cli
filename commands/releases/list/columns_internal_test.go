@@ -5,28 +5,10 @@ import (
 	"testing"
 )
 
-// TestDefaultColumns_matchRegistryExactly locks the invariant the rest of
-// the command relies on: every DefaultColumns key is renderable (present
-// in columnRegistry, so renderers never hit a nil value func on the
-// default path), and every registry key is in DefaultColumns (so the
-// unknown-column error message, which lists DefaultColumns as the valid
-// set, stays complete). Drift in either direction fails here at CI time.
-func TestDefaultColumns_matchRegistryExactly(t *testing.T) {
-	for _, k := range DefaultColumns {
-		if _, ok := columnRegistry[k]; !ok {
-			t.Errorf("DefaultColumns has %q with no columnRegistry entry — default render would emit a blank column", k)
-		}
-	}
-	inDefaults := make(map[string]bool, len(DefaultColumns))
-	for _, k := range DefaultColumns {
-		inDefaults[k] = true
-	}
-	for k := range columnRegistry {
-		if !inDefaults[k] {
-			t.Errorf("columnRegistry has %q absent from DefaultColumns — the unknown-column error would under-report it as valid", k)
-		}
-	}
-}
+// The DefaultColumns↔registry invariant these list commands used to assert
+// per-command is now structural in output.ColumnSet (a single ordered list
+// cannot drift from itself) and tested once in internal/output. What stays
+// command-specific is the cell formatting below.
 
 func TestFormatFraction_decimalNeverScientific(t *testing.T) {
 	cases := []struct {

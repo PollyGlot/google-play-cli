@@ -198,12 +198,13 @@ func TestRun_statusOfTrack_happyPath(t *testing.T) {
 // scanning the table cannot confuse it with a healthy inProgress rollout,
 // which is left in its plain API form.
 func TestRenderTable_halted_isVisuallyDistinct(t *testing.T) {
+	cols, _ := status.ResolveColumns("status")
 	p := status.Payload{
 		Releases: []tracks.Release{
 			{Name: "143", Status: "halted", VersionCodes: []string{"143"}, UserFraction: 0.1},
 			{Name: "144", Status: "inProgress", VersionCodes: []string{"144"}, UserFraction: 0.2},
 		},
-		Columns: []string{"status"},
+		Columns: cols,
 	}
 
 	var buf bytes.Buffer
@@ -251,7 +252,7 @@ func TestRenderTable_listsEveryCoexistingRelease(t *testing.T) {
 				{Language: "fr-FR", Text: "Corrections"},
 			}},
 		},
-		Columns: status.DefaultColumns,
+		Columns: mustDefaultColumns(t),
 	}
 
 	var buf bytes.Buffer
@@ -323,9 +324,25 @@ func TestRun_derivesTrackKind(t *testing.T) {
 // promised in --help and the issue's acceptance criteria.
 func TestDefaultColumns_documentedOrder(t *testing.T) {
 	want := []string{"name", "status", "userFraction", "versionCodes", "notes"}
-	if strings.Join(status.DefaultColumns, ",") != strings.Join(want, ",") {
-		t.Errorf("DefaultColumns = %v, want %v", status.DefaultColumns, want)
+	got := make([]string, 0, len(want))
+	for _, c := range mustDefaultColumns(t) {
+		got = append(got, c.Key)
 	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("default columns = %v, want %v", got, want)
+	}
+}
+
+// mustDefaultColumns resolves the default column set for a Payload built
+// directly in a render test, failing the test if resolution errors (it
+// cannot, for the empty spec — this just keeps the call sites terse).
+func mustDefaultColumns(t *testing.T) []output.Column[tracks.Release] {
+	t.Helper()
+	cols, err := status.ResolveColumns("")
+	if err != nil {
+		t.Fatalf("ResolveColumns(\"\"): %v", err)
+	}
+	return cols
 }
 
 // TestRun_columnsOverride_restrictsColumns asserts --columns narrows the
@@ -381,7 +398,7 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 		Releases: []tracks.Release{
 			{Name: "143", Status: "halted", VersionCodes: []string{"143"}, UserFraction: 0.1},
 		},
-		Columns: status.DefaultColumns,
+		Columns: mustDefaultColumns(t),
 	}
 
 	var buf bytes.Buffer

@@ -34,6 +34,8 @@ func TestFor_mapping(t *testing.T) {
 		{"wrapped-no-source", fmt.Errorf("status: %w", resolver.ErrNoSource), 10},
 		{"unknown-account", config.ErrUnknownAccount, 2},
 		{"wrapped-unknown-account", fmt.Errorf("logout: %w", config.ErrUnknownAccount), 2},
+		{"usage-error", &exit.UsageError{Msg: "bad flag"}, 2},
+		{"wrapped-usage-error", fmt.Errorf("list: %w", exit.Usagef("unknown column %q", "bogus")), 2},
 		{"custom-coder", &customCoder{code: 42}, 42},
 		{"generic", errors.New("boom"), 1},
 	}

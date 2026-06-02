@@ -276,6 +276,7 @@ func TestRun_unknownColumn_exit2(t *testing.T) {
 // renders one row per coexisting release with the documented default
 // columns.
 func TestRenderTable_defaultColumns_showsEveryRelease(t *testing.T) {
+	defCols, _ := list.ResolveColumns("")
 	p := list.Payload{
 		Track: "production",
 		Releases: []tracks.Release{
@@ -283,7 +284,7 @@ func TestRenderTable_defaultColumns_showsEveryRelease(t *testing.T) {
 			{Name: "142", Status: "inProgress", VersionCodes: []string{"142"}, UserFraction: 0.1},
 			{Name: "141", Status: "halted", VersionCodes: []string{"141"}, UserFraction: 0.5},
 		},
-		Columns: list.DefaultColumns,
+		Columns: defCols,
 	}
 	var buf bytes.Buffer
 	if err := p.Renderers().Table(&buf); err != nil {
@@ -300,7 +301,8 @@ func TestRenderTable_defaultColumns_showsEveryRelease(t *testing.T) {
 // TestRenderTable_emptyReleases_printsFriendlyMessage asserts the table
 // view does not emit a bare header for a track with no releases.
 func TestRenderTable_emptyReleases_printsFriendlyMessage(t *testing.T) {
-	p := list.Payload{Track: "alpha", Releases: nil, Columns: list.DefaultColumns}
+	defCols, _ := list.ResolveColumns("")
+	p := list.Payload{Track: "alpha", Releases: nil, Columns: defCols}
 	var buf bytes.Buffer
 	if err := p.Renderers().Table(&buf); err != nil {
 		t.Fatalf("Table render: %v", err)
@@ -314,12 +316,13 @@ func TestRenderTable_emptyReleases_printsFriendlyMessage(t *testing.T) {
 // markdown view is a GFM table (header + `---` separator) and that the
 // --columns override restricts the columns rendered.
 func TestRenderMarkdown_isMarkdownTable_respectsColumnsOverride(t *testing.T) {
+	cols, _ := list.ResolveColumns("name,status")
 	p := list.Payload{
 		Track: "production",
 		Releases: []tracks.Release{
 			{Name: "142", Status: "inProgress", VersionCodes: []string{"142"}, UserFraction: 0.1},
 		},
-		Columns: []string{"name", "status"},
+		Columns: cols,
 	}
 	var buf bytes.Buffer
 	if err := p.Renderers().Markdown(&buf); err != nil {
@@ -340,25 +343,8 @@ func TestRenderMarkdown_isMarkdownTable_respectsColumnsOverride(t *testing.T) {
 	}
 }
 
-// TestRender_unknownColumnKey_doesNotPanic guards the exported Payload:
-// Run validates --columns, but a directly-constructed Payload (or a
-// future DefaultColumns drift) must not crash the renderers. An unknown
-// key renders an empty cell, never a nil-func-call panic.
-func TestRender_unknownColumnKey_doesNotPanic(t *testing.T) {
-	p := list.Payload{
-		Track:    "production",
-		Releases: []tracks.Release{{Name: "1", Status: "completed", VersionCodes: []string{"1"}}},
-		Columns:  []string{"name", "bogus"},
-	}
-	var tbl bytes.Buffer
-	if err := p.Renderers().Table(&tbl); err != nil {
-		t.Fatalf("Table render with unknown column: %v", err)
-	}
-	var md bytes.Buffer
-	if err := p.Renderers().Markdown(&md); err != nil {
-		t.Fatalf("Markdown render with unknown column: %v", err)
-	}
-	if !strings.Contains(tbl.String(), "1") {
-		t.Errorf("table output = %q, want the known column's value", tbl.String())
-	}
-}
+// The "unknown column key must not panic" guard these list commands used to
+// carry is now structurally impossible: Payload.Columns is []output.Column,
+// not bare string keys, so a Payload can only hold resolved columns with a
+// non-nil Value. The exit-2 unknown-column path is covered by the command's
+// --columns tests and by internal/output's ColumnSet.Resolve test.

@@ -311,8 +311,16 @@ func TestBuildRows_neverUsedStandardTrack_hasNoRelease(t *testing.T) {
 // promised in --help and the issue's acceptance criteria.
 func TestDefaultColumns_documentedOrder(t *testing.T) {
 	want := []string{"track", "kind", "release", "status", "userFraction", "versionCodes"}
-	if strings.Join(list.DefaultColumns, ",") != strings.Join(want, ",") {
-		t.Errorf("DefaultColumns = %v, want %v", list.DefaultColumns, want)
+	cols, err := list.ResolveColumns("")
+	if err != nil {
+		t.Fatalf("ResolveColumns(\"\"): %v", err)
+	}
+	got := make([]string, len(cols))
+	for i, c := range cols {
+		got[i] = c.Key
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("default columns = %v, want %v", got, want)
 	}
 }
 
@@ -326,7 +334,8 @@ func TestRenderTable_defaultColumns_summarizesEveryTrack(t *testing.T) {
 		{Track: "beta", Releases: []tracks.Release{{Name: "140", Status: "completed", VersionCodes: []string{"140"}, UserFraction: 1.0}}},
 		{Track: "qa-closed", Releases: []tracks.Release{{Name: "99", Status: "draft", VersionCodes: []string{"99"}}}},
 	}
-	p := list.Payload{Rows: list.BuildRows(api), Columns: list.DefaultColumns}
+	defCols, _ := list.ResolveColumns("")
+	p := list.Payload{Rows: list.BuildRows(api), Columns: defCols}
 
 	var buf bytes.Buffer
 	if err := p.Renderers().Table(&buf); err != nil {
@@ -360,7 +369,8 @@ func TestRenderMarkdown_isGFMTable_respectsColumnsOverride(t *testing.T) {
 	api := []tracks.Track{
 		{Track: "production", Releases: []tracks.Release{{Name: "143", Status: "inProgress", VersionCodes: []string{"143"}, UserFraction: 0.1}}},
 	}
-	p := list.Payload{Rows: list.BuildRows(api), Columns: []string{"track", "kind"}}
+	cols, _ := list.ResolveColumns("track,kind")
+	p := list.Payload{Rows: list.BuildRows(api), Columns: cols}
 
 	var buf bytes.Buffer
 	if err := p.Renderers().Markdown(&buf); err != nil {
@@ -494,23 +504,8 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRender_unknownColumnKey_doesNotPanic guards the exported Payload: a
-// directly-constructed Payload with an unknown column must not crash the
-// renderers (it renders an empty cell, never a nil-func-call panic).
-func TestRender_unknownColumnKey_doesNotPanic(t *testing.T) {
-	p := list.Payload{
-		Rows:    []list.TrackRow{{Track: "production", Kind: "standard"}},
-		Columns: []string{"track", "bogus"},
-	}
-	var tbl bytes.Buffer
-	if err := p.Renderers().Table(&tbl); err != nil {
-		t.Fatalf("Table render with unknown column: %v", err)
-	}
-	var md bytes.Buffer
-	if err := p.Renderers().Markdown(&md); err != nil {
-		t.Fatalf("Markdown render with unknown column: %v", err)
-	}
-	if !strings.Contains(tbl.String(), "production") {
-		t.Errorf("table output = %q, want the known column's value", tbl.String())
-	}
-}
+// The "unknown column key must not panic" guard these list commands used to
+// carry is now structurally impossible: Payload.Columns is []output.Column,
+// not bare string keys, so a Payload can only hold resolved columns with a
+// non-nil Value. The exit-2 unknown-column path is covered by the command's
+// --columns tests and by internal/output's ColumnSet.Resolve test.

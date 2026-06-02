@@ -16,10 +16,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -33,16 +33,6 @@ type Input struct {
 	Track   string
 	Columns string
 }
-
-// usageError is a CLI-misuse error (missing --track, no package, unknown
-// column); ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-// Error returns the misuse message.
-func (e *usageError) Error() string { return e.msg }
-
-// ExitCode reports 2 (CLI misuse) per docs/DESIGN.md §9.
-func (e *usageError) ExitCode() int { return 2 }
 
 // trackNotFoundError wraps a tracks.get 404 with an actionable hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
@@ -110,25 +100,26 @@ const (
 	colNotes        = "notes"
 )
 
-// DefaultColumns is the table/markdown column order applied when
-// --columns is unset. Documented in the command's --help.
-var DefaultColumns = []string{colName, colStatus, colUserFraction, colVersionCodes, colNotes}
+// columns is the single source of truth for the status table: its
+// declaration order is both the set of valid --columns keys and the default
+// column order. The shared output.ColumnSet owns selection and the
+// table/markdown rendering; the only status-specific cell is the halted
+// marker carried by the status column's Value (see markStatus and
+// docs/adr/0018-shared-list-table-machinery.md).
+var columns = output.NewColumnSet(
+	output.Column[tracks.Release]{Key: colName, Header: "NAME", Value: func(r tracks.Release) string { return r.Name }},
+	output.Column[tracks.Release]{Key: colStatus, Header: "STATUS", Value: func(r tracks.Release) string { return markStatus(r.Status) }},
+	output.Column[tracks.Release]{Key: colUserFraction, Header: "USER_FRACTION", Value: func(r tracks.Release) string { return formatFraction(r.UserFraction) }},
+	output.Column[tracks.Release]{Key: colVersionCodes, Header: "VERSION_CODES", Value: func(r tracks.Release) string { return strings.Join(r.VersionCodes, ",") }},
+	output.Column[tracks.Release]{Key: colNotes, Header: "NOTES_LOCALES", Value: func(r tracks.Release) string { return strconv.Itoa(len(r.ReleaseNotes)) }},
+)
 
-// columnDef pairs a column's table/markdown header with the extractor
-// that turns a release into that column's cell value.
-type columnDef struct {
-	header string
-	value  func(tracks.Release) string
-}
-
-// columnRegistry is the single source of truth for which columns exist:
-// it maps each canonical --columns key to its header and cell extractor.
-var columnRegistry = map[string]columnDef{
-	colName:         {"NAME", func(r tracks.Release) string { return r.Name }},
-	colStatus:       {"STATUS", func(r tracks.Release) string { return markStatus(r.Status) }},
-	colUserFraction: {"USER_FRACTION", func(r tracks.Release) string { return formatFraction(r.UserFraction) }},
-	colVersionCodes: {"VERSION_CODES", func(r tracks.Release) string { return strings.Join(r.VersionCodes, ",") }},
-	colNotes:        {"NOTES_LOCALES", func(r tracks.Release) string { return strconv.Itoa(len(r.ReleaseNotes)) }},
+// ResolveColumns turns a --columns spec into the validated, ordered columns
+// for a Payload. Run uses it on the command path; it is exported so render
+// tests (and any caller building a Payload directly) share the one column
+// registry rather than hand-rolling a list that could drift from it.
+func ResolveColumns(spec string) ([]output.Column[tracks.Release], error) {
+	return columns.Resolve(spec)
 }
 
 // formatFraction renders a userFraction without trailing zeros (0.1, 0.5,
@@ -175,16 +166,17 @@ func markStatus(s string) string {
 // Kind are gplay-derived context shown above the table — never in the
 // JSON, which stays a faithful tracks.get pass-through.
 type Payload struct {
-	Track    string           `json:"-"`
-	Kind     string           `json:"-"`
-	Releases []tracks.Release `json:"-"`
-	Raw      json.RawMessage  `json:"-"`
-	Columns  []string         `json:"-"`
+	Track    string                          `json:"-"`
+	Kind     string                          `json:"-"`
+	Releases []tracks.Release                `json:"-"`
+	Raw      json.RawMessage                 `json:"-"`
+	Columns  []output.Column[tracks.Release] `json:"-"`
 }
 
 // Renderers satisfies output.Renderable with one renderer per Format.
 // The JSON form is the ADR-0003 tracks.get pass-through; table and
-// markdown are human-shaped views over the same releases.
+// markdown are human-shaped views over the same releases drawn by the
+// shared column helper, each preceded by a track-context line.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
@@ -193,49 +185,18 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// headers returns the selected columns' display headers, in order.
-func (p Payload) headers() []string {
-	h := make([]string, len(p.Columns))
-	for i, k := range p.Columns {
-		h[i] = columnRegistry[k].header
-	}
-	return h
-}
-
-// row extracts the selected columns' cells for one release. An unknown
-// key (possible only via a directly-constructed Payload — Run validates
-// --columns) renders an empty cell rather than calling a nil value func.
-func (p Payload) row(r tracks.Release) []string {
-	cells := make([]string, len(p.Columns))
-	for i, k := range p.Columns {
-		if def, ok := columnRegistry[k]; ok {
-			cells[i] = def.value(r)
-		}
-	}
-	return cells
-}
-
 // renderTable writes a one-line track-context header (track name + the
-// derived standard/custom kind) then a tab-aligned table of the selected
-// columns, one row per release on the track. The header is the "which
-// track, and is it a real one" anchor for the at-a-glance read; it is
-// omitted when Track is unset (a directly-constructed Payload).
+// derived standard/custom kind) then the shared column table, one row per
+// release on the track. The header is the "which track, and is it a real
+// one" anchor for the at-a-glance read; it is omitted when Track is unset
+// (a directly-constructed Payload).
 func renderTable(w io.Writer, p Payload) error {
 	if p.Track != "" {
 		if _, err := fmt.Fprintf(w, "Track: %s (%s)\n", p.Track, p.Kind); err != nil {
 			return err
 		}
 	}
-	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, strings.Join(p.headers(), "\t")); err != nil {
-		return err
-	}
-	for _, r := range p.Releases {
-		if _, err := fmt.Fprintln(tw, strings.Join(p.row(r), "\t")); err != nil {
-			return err
-		}
-	}
-	return tw.Flush()
+	return output.RenderTable(w, p.Columns, p.Releases)
 }
 
 // renderJSON emits the raw tracks.get body verbatim (ADR-0003
@@ -251,23 +212,18 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// renderMarkdown writes the selected columns as a GitHub-Flavored
-// Markdown table via output.MarkdownTable, preceded by the same
-// track-context line as the table view so a pasted report stands on its
-// own without the originating command line. The halted marker carries
-// through the shared column extractors, so a halted rollout stands out in
-// markdown too.
+// renderMarkdown writes the shared column table as GitHub-Flavored
+// Markdown, preceded by the same track-context line as the table view so a
+// pasted report stands on its own without the originating command line. The
+// halted marker carries through the status column's extractor, so a halted
+// rollout stands out in markdown too.
 func renderMarkdown(w io.Writer, p Payload) error {
 	if p.Track != "" {
 		if _, err := fmt.Fprintf(w, "Track: %s (%s)\n\n", p.Track, p.Kind); err != nil {
 			return err
 		}
 	}
-	rows := make([][]string, 0, len(p.Releases))
-	for _, r := range p.Releases {
-		rows = append(rows, p.row(r))
-	}
-	return output.MarkdownTable(w, p.headers(), rows)
+	return output.RenderMarkdown(w, p.Columns, p.Releases)
 }
 
 // isStatus reports whether err carries a *api.Error with the given HTTP
@@ -308,38 +264,13 @@ func classifyEditError(pkg string, err error) error {
 	return err
 }
 
-// resolveColumns turns the --columns spec into a validated, ordered list
-// of canonical column keys. An empty spec yields DefaultColumns; an
-// unknown key is a CLI misuse (exit 2).
-func resolveColumns(spec string) ([]string, error) {
-	if strings.TrimSpace(spec) == "" {
-		return DefaultColumns, nil
-	}
-	parts := strings.Split(spec, ",")
-	cols := make([]string, 0, len(parts))
-	for _, p := range parts {
-		k := strings.TrimSpace(p)
-		if k == "" {
-			continue
-		}
-		if _, ok := columnRegistry[k]; !ok {
-			return nil, &usageError{msg: fmt.Sprintf("unknown column %q (valid: %s)", k, strings.Join(DefaultColumns, ", "))}
-		}
-		cols = append(cols, k)
-	}
-	if len(cols) == 0 {
-		return nil, &usageError{msg: "no valid columns in --columns"}
-	}
-	return cols, nil
-}
-
 // Run is the business function the kernel invokes. It validates inputs,
 // resolves the package, builds an authenticated HTTP client, then opens a
 // read-only Edit and reads the single track.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
-		return nil, &usageError{msg: "missing --track"}
+		return nil, exit.Usagef("missing --track")
 	}
 
 	pkg := strings.TrimSpace(in.Package)
@@ -347,10 +278,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
 	}
 
-	cols, err := resolveColumns(in.Columns)
+	cols, err := ResolveColumns(in.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -420,6 +351,6 @@ tracks.get payload; --output markdown renders a Markdown table.)`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Track, "track", "", "track to inspect (internal, alpha, beta, production, or any closed-track name)")
-	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: name,status,userFraction,versionCodes,notes)")
+	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: "+strings.Join(columns.DefaultKeys(), ",")+")")
 	return cmd
 }

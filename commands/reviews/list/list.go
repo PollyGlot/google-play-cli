@@ -9,16 +9,15 @@ package list
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/reviews/reviewerr"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/reviews"
@@ -35,16 +34,8 @@ type Input struct {
 	Package string
 	Stars   string // --stars selector (e.g. "1", "1-2", "1,3,5"); "" = no filter
 	Limit   int    // --limit cap on the final count; 0 = no cap
-	Columns string // --columns override; "" = DefaultColumns
+	Columns string // --columns override; "" = the default set
 }
-
-// usageError is a CLI-misuse error (no package, bad --stars, unknown
-// column); ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-
-func (e *usageError) ExitCode() int { return 2 }
 
 // Canonical --columns keys. reviewId and stars/locale match the API
 // vocabulary (per ADR-0003 the JSON view is pass-through) so an operator who
@@ -58,9 +49,18 @@ const (
 	colSummary  = "summary"
 )
 
-// DefaultColumns is the table/markdown column order applied when --columns is
-// unset. Documented in the command's --help.
-var DefaultColumns = []string{colDate, colStars, colLocale, colReviewID, colSummary}
+// columns is the single source of truth for the reviews table: its
+// declaration order is both the set of valid --columns keys and the default
+// column order. The shared output.ColumnSet owns selection (--columns
+// parsing) and the table/markdown rendering once shared across list commands
+// (see docs/adr/0018-shared-list-table-machinery.md).
+var columns = output.NewColumnSet(
+	output.Column[reviews.Review]{Key: colDate, Header: "DATE", Value: func(r reviews.Review) string { return formatDate(r.LastModified()) }},
+	output.Column[reviews.Review]{Key: colStars, Header: "STARS", Value: func(r reviews.Review) string { return strconv.Itoa(r.Stars()) }},
+	output.Column[reviews.Review]{Key: colLocale, Header: "LOCALE", Value: func(r reviews.Review) string { return r.Locale() }},
+	output.Column[reviews.Review]{Key: colReviewID, Header: "REVIEW_ID", Value: func(r reviews.Review) string { return r.ReviewID }},
+	output.Column[reviews.Review]{Key: colSummary, Header: "SUMMARY", Value: func(r reviews.Review) string { return summary(r.Text()) }},
+)
 
 // maxSummaryLen caps the SUMMARY cell so a long comment does not blow out the
 // table; the first line is taken, then truncated with an ellipsis.
@@ -68,22 +68,6 @@ const maxSummaryLen = 60
 
 // dateLayout renders a review's last-modified instant compactly in UTC.
 const dateLayout = "2006-01-02 15:04"
-
-// columnDef pairs a column's header with the extractor that turns a review
-// into that column's cell value.
-type columnDef struct {
-	header string
-	value  func(reviews.Review) string
-}
-
-// columnRegistry is the single source of truth for which columns exist.
-var columnRegistry = map[string]columnDef{
-	colDate:     {"DATE", func(r reviews.Review) string { return formatDate(r.LastModified()) }},
-	colStars:    {"STARS", func(r reviews.Review) string { return strconv.Itoa(r.Stars()) }},
-	colLocale:   {"LOCALE", func(r reviews.Review) string { return r.Locale() }},
-	colReviewID: {"REVIEW_ID", func(r reviews.Review) string { return r.ReviewID }},
-	colSummary:  {"SUMMARY", func(r reviews.Review) string { return summary(r.Text()) }},
-}
 
 // formatDate renders t in UTC, or "" for the zero Time (no user comment / no
 // timestamp).
@@ -125,65 +109,19 @@ func firstNonEmptyLine(text string) string {
 // pass-through. Columns is the resolved, validated display order.
 type Payload struct {
 	Reviews []reviews.Review
-	Columns []string
+	Columns []output.Column[reviews.Review]
 }
 
 // Renderers satisfies output.Renderable with one renderer per Format. The
 // JSON form re-emits the surviving reviews under the API's {"reviews":[...]}
-// envelope (ADR-0003); table and markdown are the human-shaped views.
+// envelope (ADR-0003); table and markdown are the human-shaped views drawn
+// by the shared column helper.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
-		Table:    func(w io.Writer) error { return renderTable(w, p) },
+		Table:    func(w io.Writer) error { return output.RenderTable(w, p.Columns, p.Reviews) },
 		JSON:     func(w io.Writer) error { return renderJSON(w, p) },
-		Markdown: func(w io.Writer) error { return renderMarkdown(w, p) },
+		Markdown: func(w io.Writer) error { return output.RenderMarkdown(w, p.Columns, p.Reviews) },
 	}
-}
-
-// headers returns the selected columns' display headers, in order.
-func (p Payload) headers() []string {
-	h := make([]string, len(p.Columns))
-	for i, k := range p.Columns {
-		h[i] = columnRegistry[k].header
-	}
-	return h
-}
-
-// row extracts the selected columns' cells for one review. An unknown key
-// (possible only via a directly-constructed Payload — Run validates
-// --columns) renders an empty cell rather than calling a nil value func.
-func (p Payload) row(r reviews.Review) []string {
-	cells := make([]string, len(p.Columns))
-	for i, k := range p.Columns {
-		if def, ok := columnRegistry[k]; ok {
-			cells[i] = def.value(r)
-		}
-	}
-	return cells
-}
-
-// renderTable writes a tab-aligned table of the selected columns, one row per
-// review.
-func renderTable(w io.Writer, p Payload) error {
-	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, strings.Join(p.headers(), "\t")); err != nil {
-		return err
-	}
-	for _, r := range p.Reviews {
-		if _, err := fmt.Fprintln(tw, strings.Join(p.row(r), "\t")); err != nil {
-			return err
-		}
-	}
-	return tw.Flush()
-}
-
-// renderMarkdown writes the selected columns as a GitHub-Flavored Markdown
-// table via output.MarkdownTable.
-func renderMarkdown(w io.Writer, p Payload) error {
-	rows := make([][]string, 0, len(p.Reviews))
-	for _, r := range p.Reviews {
-		rows = append(rows, p.row(r))
-	}
-	return output.MarkdownTable(w, p.headers(), rows)
 }
 
 // renderJSON wraps the surviving reviews' verbatim JSON objects in the
@@ -200,31 +138,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	}{Reviews: raws})
 }
 
-// resolveColumns turns the --columns spec into a validated, ordered list of
-// canonical column keys. An empty spec yields DefaultColumns; an unknown key
-// is a CLI misuse (exit 2).
-func resolveColumns(spec string) ([]string, error) {
-	if strings.TrimSpace(spec) == "" {
-		return DefaultColumns, nil
-	}
-	parts := strings.Split(spec, ",")
-	cols := make([]string, 0, len(parts))
-	for _, p := range parts {
-		k := strings.TrimSpace(p)
-		if k == "" {
-			continue
-		}
-		if _, ok := columnRegistry[k]; !ok {
-			return nil, &usageError{msg: fmt.Sprintf("unknown column %q (valid: %s)", k, strings.Join(DefaultColumns, ", "))}
-		}
-		cols = append(cols, k)
-	}
-	if len(cols) == 0 {
-		return nil, &usageError{msg: "no valid columns in --columns"}
-	}
-	return cols, nil
-}
-
 // Run is the business function the kernel invokes. It resolves the package,
 // builds an authenticated client, lists every review (auto-paginated), and
 // always warns about the 7-day window.
@@ -234,19 +147,19 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
 	}
 
 	sel, err := filter.Parse(in.Stars)
 	if err != nil {
-		return nil, &usageError{msg: err.Error() + "; " + filter.Hint}
+		return nil, exit.Usagef("%s; %s", err, filter.Hint)
 	}
 
 	if in.Limit < 0 {
-		return nil, &usageError{msg: "invalid --limit: must be >= 0 (0 means no cap)"}
+		return nil, exit.Usagef("invalid --limit: must be >= 0 (0 means no cap)")
 	}
 
-	cols, err := resolveColumns(in.Columns)
+	cols, err := columns.Resolve(in.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -322,6 +235,6 @@ Markdown table.)`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Stars, "stars", "", "client-side star filter: 1, 1-2, or 1,3,5 (each rating 1..5)")
 	cmd.Flags().IntVar(&in.Limit, "limit", 0, "cap the result count after filtering (0 = no cap)")
-	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: date,stars,locale,reviewId,summary)")
+	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: "+strings.Join(columns.DefaultKeys(), ",")+")")
 	return cmd
 }
