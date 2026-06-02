@@ -38,6 +38,7 @@ import (
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
+	teamgrantsrevoke "github.com/PollyGlot/google-play-cli/commands/team/grants/revoke"
 	teamgrantsset "github.com/PollyGlot/google-play-cli/commands/team/grants/set"
 	teampermissions "github.com/PollyGlot/google-play-cli/commands/team/permissions"
 	teamusersadd "github.com/PollyGlot/google-play-cli/commands/team/users/add"
@@ -210,6 +211,7 @@ replace Fastlane on Android CI pipelines.`,
 	}
 	teamGrants.AddCommand(teamgrantslist.NewCommand(boot))
 	teamGrants.AddCommand(teamgrantsset.NewCommand(boot))
+	teamGrants.AddCommand(teamgrantsrevoke.NewCommand(boot))
 	team.AddCommand(teamGrants)
 
 	root.AddCommand(team)
