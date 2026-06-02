@@ -36,7 +36,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
+	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
 	teampermissions "github.com/PollyGlot/google-play-cli/commands/team/permissions"
+	teamusersadd "github.com/PollyGlot/google-play-cli/commands/team/users/add"
 	teamuserslist "github.com/PollyGlot/google-play-cli/commands/team/users/list"
 	testerslist "github.com/PollyGlot/google-play-cli/commands/testers/list"
 	testersset "github.com/PollyGlot/google-play-cli/commands/testers/set"
@@ -193,6 +195,7 @@ replace Fastlane on Android CI pipelines.`,
 		Short: "List and manage the Developer account's members",
 	}
 	teamUsers.AddCommand(teamuserslist.NewCommand(boot))
+	teamUsers.AddCommand(teamusersadd.NewCommand(boot))
 	team.AddCommand(teamUsers)
 
 	root.AddCommand(team)
@@ -247,6 +250,11 @@ replace Fastlane on Android CI pipelines.`,
 	datasafety.AddCommand(compliancedatasafetyset.NewCommand(boot))
 	compliance.AddCommand(datasafety)
 	root.AddCommand(compliance)
+
+	// `gplay exit-codes` / `gplay help exit-codes` — the semantic exit-code
+	// taxonomy (docs/DESIGN.md §9), built from internal/exit so it cannot
+	// drift from the codes the binary actually returns.
+	root.AddCommand(helpexitcodes.NewCommand())
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
