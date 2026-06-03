@@ -34,6 +34,46 @@ func (unavailableKeyring) Get(string, string) (string, error) {
 }
 func (unavailableKeyring) Delete(string, string) error { return errBoom }
 
+// countingKeyring is an in-memory KeyringAPI that tallies every call so a
+// test can assert exactly when (and whether) a run reaches the OS keyring.
+// Its probe succeeds (Set/Delete return nil), so Select picks the keyring
+// backend — the credential round-trips through `store`.
+type countingKeyring struct {
+	store            map[string]string
+	sets, gets, dels int
+}
+
+func newAvailableKeyring() *countingKeyring { return &countingKeyring{store: map[string]string{}} }
+
+func (k *countingKeyring) mapKey(service, user string) string { return service + "\x00" + user }
+
+func (k *countingKeyring) Set(service, user, password string) error {
+	k.sets++
+	if k.store == nil {
+		k.store = map[string]string{}
+	}
+	k.store[k.mapKey(service, user)] = password
+	return nil
+}
+
+func (k *countingKeyring) Get(service, user string) (string, error) {
+	k.gets++
+	v, ok := k.store[k.mapKey(service, user)]
+	if !ok {
+		return "", keystore.ErrKeyringNotFound
+	}
+	return v, nil
+}
+
+func (k *countingKeyring) Delete(service, user string) error {
+	k.dels++
+	delete(k.store, k.mapKey(service, user))
+	return nil
+}
+
+func (k *countingKeyring) calls() int { return k.sets + k.gets + k.dels }
+func (k *countingKeyring) reset()     { k.sets, k.gets, k.dels = 0, 0, 0 }
+
 var errBoom = stringError("keyring unavailable")
 
 type stringError string
@@ -108,8 +148,11 @@ func TestRun_resolvesActiveAccountAndRenders(t *testing.T) {
 	boot.Stdout = &stdout
 
 	err := kernel.Run(boot, kernel.Inputs{Format: output.FormatJSON}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		// Resolution is lazy now: the credential lands only once a command
+		// asks for it (here, explicitly; in production via AuthedClient).
+		rc.EnsureAccount()
 		if rc.Account == nil {
-			t.Fatal("rc.Account is nil after seeded active account")
+			t.Fatal("rc.Account is nil after EnsureAccount on a seeded active account")
 		}
 		if rc.Account.ClientEmail != "ci@p.iam.gserviceaccount.com" {
 			t.Errorf("ClientEmail = %q", rc.Account.ClientEmail)
@@ -129,6 +172,7 @@ func TestRun_noAccount_callsFnWithNilAccount(t *testing.T) {
 	called := false
 	err := kernel.Run(boot, kernel.Inputs{}, func(rc *kernel.RunContext) (output.Renderable, error) {
 		called = true
+		rc.EnsureAccount()
 		if rc.Account != nil {
 			t.Errorf("rc.Account = %+v, want nil when nothing resolves", rc.Account)
 		}
@@ -173,11 +217,68 @@ func TestRun_verbose_logsBackendOnce(t *testing.T) {
 	var stderr bytes.Buffer
 	boot.Stderr = &stderr
 	if err := kernel.Run(boot, kernel.Inputs{Verbose: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		// The backend label is logged when the keystore is first used, not
+		// at boot — force selection twice to prove the log is memoised to
+		// exactly one line.
+		if _, err := rc.Backend(); err != nil {
+			return nil, err
+		}
+		if _, err := rc.Backend(); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if c := strings.Count(stderr.String(), "keystore: using"); c != 1 {
 		t.Errorf("verbose: backend label logged %d times, want 1; stderr=%q", c, stderr.String())
+	}
+}
+
+// TestRun_verbose_preAuthIsProbeFree is the regression guard for the macOS
+// "keychain locked" dialog: a -v command that returns before needing a
+// credential must neither log a backend nor touch the keyring.
+func TestRun_verbose_preAuthIsProbeFree(t *testing.T) {
+	boot := newBoot(t)
+	spy := &countingKeyring{}
+	boot.Keyring = spy
+	var stderr bytes.Buffer
+	boot.Stderr = &stderr
+	if err := kernel.Run(boot, kernel.Inputs{Verbose: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		// Stand in for a validation failure / --help / --dry-run: never
+		// asks for a credential.
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if n := spy.calls(); n != 0 {
+		t.Errorf("pre-auth command touched the keyring %d times, want 0", n)
+	}
+	if strings.Contains(stderr.String(), "keystore: using") {
+		t.Errorf("pre-auth -v should not log a backend; got stderr %q", stderr.String())
+	}
+}
+
+// TestRun_authNeedingCommand_probesKeyring is the positive counterpart:
+// once a command actually resolves a stored credential, the keyring IS
+// reached (probe + Load).
+func TestRun_authNeedingCommand_probesKeyring(t *testing.T) {
+	boot := newBoot(t)
+	spy := newAvailableKeyring()
+	boot.Keyring = spy
+	seedActiveAccount(t, boot) // routes the credential into the spy keyring
+	spy.reset()
+
+	if err := kernel.Run(boot, kernel.Inputs{}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		rc.EnsureAccount()
+		if rc.Account == nil {
+			t.Fatal("rc.Account is nil after EnsureAccount on a seeded keyring Account")
+		}
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if spy.gets == 0 {
+		t.Errorf("auth-needing command never read the keyring; calls=%d", spy.calls())
 	}
 }

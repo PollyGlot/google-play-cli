@@ -65,6 +65,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// per-Account-registry commands (add/list/remove) reject the same
 	// nonsensical inputs with the same exit codes.
 	if rc.AccountName == "" {
+		// Empty name ⟹ only an inline or no-source layer is reachable,
+		// so this resolves the credential without probing the keyring.
+		rc.EnsureAccount()
 		if rc.Account != nil {
 			return nil, &usageError{msg: "apps remove: cannot remove under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}

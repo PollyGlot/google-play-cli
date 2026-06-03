@@ -54,7 +54,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		name = deriveName(sa.ClientEmail)
 	}
 
-	if err := rc.Keystore.Save(rc.Ctx, name, sa.Raw); err != nil {
+	be, err := rc.Backend()
+	if err != nil {
+		return nil, err
+	}
+	if err := be.Save(rc.Ctx, name, sa.Raw); err != nil {
 		return nil, err
 	}
 

@@ -68,8 +68,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// keystore-not-found is tolerated: a prior logout may have
-	// half-completed, or the user wiped the keychain by hand.
-	if err := rc.Keystore.Delete(rc.Ctx, in.Name); err != nil && !errors.Is(err, keystore.ErrNotFound) {
+	// half-completed, or the user wiped the keychain by hand. The backend
+	// is selected here (not at boot) so a logout that fails the --confirm
+	// gate above never probes the keyring.
+	be, err := rc.Backend()
+	if err != nil {
+		return nil, err
+	}
+	if err := be.Delete(rc.Ctx, in.Name); err != nil && !errors.Is(err, keystore.ErrNotFound) {
 		return nil, err
 	}
 

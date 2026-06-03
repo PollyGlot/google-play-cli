@@ -53,10 +53,26 @@ func (p Payload) Renderers() output.Renderers {
 // status keeps RequireAccount=false; rc.Account == nil simply maps to
 // the "no active account" payload.
 func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
+	// status reports auth state, so resolving the credential (and probing
+	// the keystore) is exactly its job — do it now rather than at boot.
+	rc.EnsureAccount()
 	if rc.Account == nil {
 		return Payload{Active: false}, nil
 	}
-	activeName := rc.Resolved.ConfigAccount
+	// rc.AccountName is the credential actually in use — it honours
+	// --account / GPLAY_ACCOUNT overrides, unlike rc.Resolved.ConfigAccount,
+	// which only reflects the cascade. It is empty only for an inline
+	// credential (--service-account / GPLAY_SERVICE_ACCOUNT) that never came
+	// from the keystore, so the backend label is probed only when there IS a
+	// stored Account — keeping the inline/env-override path keyring-free. For
+	// a stored Account EnsureAccount already selected the backend while
+	// loading the credential, so this Backend() call is a memoised no-op.
+	activeName := rc.AccountName
+	if activeName != "" {
+		if _, err := rc.Backend(); err != nil {
+			return nil, err
+		}
+	}
 	p := Payload{
 		Active:      true,
 		Name:        activeName,

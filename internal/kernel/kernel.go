@@ -1,8 +1,12 @@
 // Package kernel owns the per-invocation boot sequence shared by every
 // gplay command: build the Boot once in cmd/gplay/main.go, the cobra
 // layer captures the request-shaped Inputs, and kernel.Run resolves
-// Account / Project / Format once before handing a populated
-// RunContext to the command's business function.
+// Format and the Account *name* once before handing a populated
+// RunContext to the command's business function. The credential bytes and
+// the keystore backend are resolved lazily — only when a command asks for
+// them via RunContext.EnsureAccount / Backend (both reached through
+// AuthedClient) — so a pre-auth command never probes the OS keyring. See
+// RunContext.Backend for why that deferral matters.
 //
 // Each command exposes
 //
@@ -81,18 +85,22 @@ type Inputs struct {
 type RunContext struct {
 	Ctx context.Context
 
-	// Account is the resolved credential. nil when nothing resolved
-	// (status renders an informational message; doctor synthesises a
-	// check-1 failure; login/logout don't need one).
+	// Account is the resolved credential. It is populated lazily by
+	// EnsureAccount (which AuthedClient calls) — zero until a command asks
+	// for it, so reading this field directly only sees a value after an
+	// EnsureAccount / AuthedClient call. nil when nothing resolved (status
+	// renders an informational message; doctor synthesises a check-1
+	// failure; login/logout don't need one).
 	Account *serviceaccount.ServiceAccount
 
-	// AccountName is the local Account name that backs Account, or ""
-	// when the credential came from an ad-hoc source (--service-account
-	// flag or GPLAY_SERVICE_ACCOUNT env var). Commands writing to the
-	// registry must use this (the credential that actually ran the
-	// probe) rather than rc.Resolved.ConfigAccount, which only reflects
-	// the cascade layer and ignores --account/--service-account/env
-	// overrides.
+	// AccountName is the local Account name the credential resolves to, or
+	// "" when the credential came from an ad-hoc source (--service-account
+	// flag or GPLAY_SERVICE_ACCOUNT env var). Unlike Account it is resolved
+	// keystore-free at boot (resolver.ResolveName), so registry-scoping and
+	// --dry-run readers get the name without provoking a keyring probe.
+	// Commands writing to the registry must use this rather than
+	// rc.Resolved.ConfigAccount, which only reflects the cascade layer and
+	// ignores --account/--service-account/env overrides.
 	AccountName string
 
 	// Format is the resolved output Format — never FormatAuto.
@@ -103,7 +111,10 @@ type RunContext struct {
 	// rc.Resolved.Accounts.
 	Resolved *config.Resolved
 
-	// Keystore is the selected backend, resolved once per invocation.
+	// Keystore is the selected backend and KeystoreLabel its stable label.
+	// Both are populated lazily by Backend() (the first keystore use), not
+	// at boot — read them via Backend()/EnsureAccount, not directly, on the
+	// production path.
 	Keystore      keystore.Backend
 	KeystoreLabel string
 
@@ -120,6 +131,27 @@ type RunContext struct {
 	// (status).
 	ConfigPath   string
 	KeystoreRoot string
+
+	// --- lazy keystore/credential resolution (production path) ---
+	//
+	// buildRunContext leaves Account, Keystore and KeystoreLabel zero and
+	// arms these fields instead, so a pre-auth command (a failed --package
+	// / --track / --confirm validation, a --dry-run, --help) never touches
+	// the OS keyring — the probe that pops the macOS "keychain locked"
+	// dialog is deferred until something actually needs a credential
+	// (Backend / EnsureAccount, both reached via AuthedClient). AccountName
+	// is the exception: it is resolved keystore-free up front (see
+	// resolver.ResolveName) because registry scoping and the --dry-run
+	// preview need the name without the bytes.
+	//
+	// A hand-built RunContext (NewForTest) leaves lazy=false with the
+	// public fields pre-populated; the accessors then return them verbatim
+	// and the test suite keeps assigning rc.Account / rc.Keystore directly.
+	lazy           bool
+	keyring        keystore.KeyringAPI
+	resolverInputs resolver.Inputs
+	backendDone    bool
+	accountDone    bool
 }
 
 // NewForTest returns a base RunContext wired from boot+in with NO
@@ -218,44 +250,127 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 	if kr == nil {
 		kr = keystore.DefaultKeyring()
 	}
-	be, label, err := keystore.Select(ctx, keystore.SelectOptions{
-		Keyring:  kr,
-		FileRoot: boot.KeystoreRoot,
+
+	// Keystore selection (the probe) and credential loading are deferred:
+	// see RunContext.Backend / EnsureAccount. Only the Account *name* is
+	// resolved now, and ResolveName is keystore-free — so a pre-auth
+	// command never touches the keyring, while registry-scoping commands
+	// (apps add/list/remove) and the --dry-run preview still get the name
+	// for free. The credential bytes (and the probe) wait until a command
+	// asks for a token.
+	accountName := resolver.ResolveName(resolver.Deps{Resolved: resolved}, in.Resolver)
+
+	return &RunContext{
+		Ctx:            ctx,
+		AccountName:    accountName,
+		Format:         format,
+		Resolved:       resolved,
+		Stdout:         stdout,
+		Stderr:         stderr,
+		Stdin:          boot.Stdin,
+		FS:             fsys,
+		Verbose:        in.Verbose,
+		ConfigPath:     boot.ConfigPath,
+		KeystoreRoot:   boot.KeystoreRoot,
+		lazy:           true,
+		keyring:        kr,
+		resolverInputs: in.Resolver,
+	}, nil
+}
+
+// Backend lazily selects the credential keystore backend, running the OS
+// keyring probe at most once per invocation and memoising the result into
+// rc.Keystore / rc.KeystoreLabel. The verbose "keystore: using <label>"
+// line is emitted here — when the backend is first actually used — rather
+// than unconditionally at boot, so `-v` on a pre-auth command stays quiet
+// and probe-free.
+//
+// A hand-built RunContext (lazy=false) returns the pre-set rc.Keystore
+// unchanged, so login/logout tests keep injecting a backend directly.
+func (rc *RunContext) Backend() (keystore.Backend, error) {
+	if !rc.lazy || rc.backendDone {
+		return rc.Keystore, nil
+	}
+	be, label, err := keystore.Select(rc.Ctx, keystore.SelectOptions{
+		Keyring:  rc.keyring,
+		FileRoot: rc.KeystoreRoot,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if in.Verbose {
-		keystore.LogBackend(stderr, label)
+	rc.Keystore = be
+	rc.KeystoreLabel = label
+	rc.backendDone = true
+	if rc.Verbose {
+		keystore.LogBackend(rc.Stderr, label)
 	}
+	return be, nil
+}
 
-	// Account resolution is best-effort: any error (no source, missing
-	// file, malformed JSON) leaves rc.Account = nil. Commands that
-	// need a credential check rc.Account != nil; commands that don't
-	// (login, logout, list) proceed unaffected. doctor surfaces the
-	// failure via check #1 in its own diagnostic path. The Account
-	// name is captured alongside the credential so registry writers
-	// (apps add) can persist under the Account that actually backs
-	// the probe, not under rc.Resolved.ConfigAccount which only
-	// reflects the cascade layer.
-	sa, accountName, _ := resolver.ResolveWithName(ctx, resolver.Deps{Resolved: resolved, Keystore: be}, in.Resolver)
+// EnsureAccount lazily resolves the active credential into rc.Account,
+// running the keyring probe + Load only when the resolved precedence layer
+// is a stored Account. An inline credential (--service-account /
+// GPLAY_SERVICE_ACCOUNT) loads from the flag/env with no keyring access at
+// all. Resolution is best-effort and idempotent: any error (no source,
+// missing key, malformed JSON) leaves rc.Account nil — the signal commands
+// key off (AuthedClient maps it to exit 10, status/doctor render their own
+// "no active account" path). rc.AccountName is NOT touched; it was already
+// resolved keystore-free at boot.
+//
+// A hand-built RunContext (lazy=false) is a no-op: rc.Account is whatever
+// the test assigned.
+func (rc *RunContext) EnsureAccount() {
+	if !rc.lazy || rc.accountDone {
+		return
+	}
+	rc.accountDone = true
+	// resolverKeystore defers Backend() (and its probe) until the resolver
+	// actually reaches a stored layer and calls Load — inline layers never
+	// touch it.
+	sa, _ := resolver.Resolve(rc.Ctx, resolver.Deps{
+		Resolved: rc.Resolved,
+		Keystore: resolverKeystore{rc: rc},
+	}, rc.resolverInputs)
+	rc.Account = sa
+}
 
-	return &RunContext{
-		Ctx:           ctx,
-		Account:       sa,
-		AccountName:   accountName,
-		Format:        format,
-		Resolved:      resolved,
-		Keystore:      be,
-		KeystoreLabel: label,
-		Stdout:        stdout,
-		Stderr:        stderr,
-		Stdin:         boot.Stdin,
-		FS:            fsys,
-		Verbose:       in.Verbose,
-		ConfigPath:    boot.ConfigPath,
-		KeystoreRoot:  boot.KeystoreRoot,
-	}, nil
+// resolverKeystore is the seam that keeps the resolver's keyring access
+// lazy: it forwards each Backend call through rc.Backend(), so Select (and
+// its probe) fires only when the resolver loads a stored Account. The
+// resolver only ever calls Load today; Save/Delete/List are implemented
+// for interface completeness.
+type resolverKeystore struct{ rc *RunContext }
+
+func (k resolverKeystore) Load(ctx context.Context, name string) ([]byte, error) {
+	be, err := k.rc.Backend()
+	if err != nil {
+		return nil, err
+	}
+	return be.Load(ctx, name)
+}
+
+func (k resolverKeystore) Save(ctx context.Context, name string, data []byte) error {
+	be, err := k.rc.Backend()
+	if err != nil {
+		return err
+	}
+	return be.Save(ctx, name, data)
+}
+
+func (k resolverKeystore) Delete(ctx context.Context, name string) error {
+	be, err := k.rc.Backend()
+	if err != nil {
+		return err
+	}
+	return be.Delete(ctx, name)
+}
+
+func (k resolverKeystore) List(ctx context.Context) ([]string, error) {
+	be, err := k.rc.Backend()
+	if err != nil {
+		return nil, err
+	}
+	return be.List(ctx)
 }
 
 // AuthedClient builds the authenticated *http.Client every API-touching
@@ -274,6 +389,9 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 // Callers with a no-network path (--dry-run, --no-verify) must gate this
 // call behind that branch themselves.
 func (rc *RunContext) AuthedClient() (*http.Client, error) {
+	// First call that genuinely needs a credential: this is where the
+	// keyring probe + Load finally happen (see EnsureAccount), not at boot.
+	rc.EnsureAccount()
 	if rc.Account == nil {
 		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
 	}
