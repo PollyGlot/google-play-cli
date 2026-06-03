@@ -1,4 +1,4 @@
-// Package status implements `gplay tracks status`: a read-only, deep
+// Package view implements `gplay tracks view`: a read-only, deep
 // view of a single track tuned for the "is something wrong right now?"
 // question. It lists every release coexisting on --track (draft,
 // inProgress, halted, completed) one row each, and makes a halted
@@ -6,7 +6,7 @@
 // a read-only Edit, consume internal/play/tracks.Get, and render. The
 // Edit is opened and discarded via edits.WithReadOnlyEdit, never
 // committed.
-package status
+package view
 
 import (
 	"encoding/json"
@@ -318,14 +318,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewCommand returns the cobra command for `gplay tracks status`.
+// NewCommand returns the cobra command for `gplay tracks view`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
 		in         Input
 	)
 	cmd := &cobra.Command{
-		Use:   "status",
+		Use:   "view",
 		Short: "Show the full state of a single track (is anything wrong right now?)",
 		Long: `Show the full state of --track: every release coexisting on it
 (draft, inProgress, halted, completed) one row each, with the track's

@@ -23,6 +23,9 @@ func TestVerbVocabulary_canonicalNames(t *testing.T) {
 		// #163 apps info → apps view
 		{"apps view resolves", []string{"apps", "view"}, false},
 		{"apps info is gone", []string{"apps", "info"}, true},
+		// #164 tracks status → tracks view
+		{"tracks view resolves", []string{"tracks", "view"}, false},
+		{"tracks status is gone", []string{"tracks", "status"}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

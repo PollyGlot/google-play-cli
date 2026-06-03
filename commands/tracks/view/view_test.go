@@ -1,11 +1,11 @@
-// Package status_test exercises `gplay tracks status` at the kernel
+// Package view_test exercises `gplay tracks view` at the kernel
 // level: a RunContext built by hand, a RoundTripper injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // `tracks list` harness, but routes tracks.get (the single-track deep
 // read, GET .../tracks/<name>) instead of tracks.list. The transport
-// FAILS on any PUT or :commit — a read-only status view opens, reads,
+// FAILS on any PUT or :commit — a read-only track view opens, reads,
 // and discards the Edit, never writes or commits it.
-package status_test
+package view_test
 
 import (
 	"bytes"
@@ -25,7 +25,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/PollyGlot/google-play-cli/commands/tracks/status"
+	"github.com/PollyGlot/google-play-cli/commands/tracks/view"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -157,7 +157,7 @@ func TestRun_statusOfTrack_happyPath(t *testing.T) {
 	rt := &statusRT{t: t, editID: "edit-status", trackResp: raw}
 	rc, _ := newRC(t, rt)
 
-	r, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "production"})
+	r, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "production"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -198,8 +198,8 @@ func TestRun_statusOfTrack_happyPath(t *testing.T) {
 // scanning the table cannot confuse it with a healthy inProgress rollout,
 // which is left in its plain API form.
 func TestRenderTable_halted_isVisuallyDistinct(t *testing.T) {
-	cols, _ := status.ResolveColumns("status")
-	p := status.Payload{
+	cols, _ := view.ResolveColumns("status")
+	p := view.Payload{
 		Releases: []tracks.Release{
 			{Name: "143", Status: "halted", VersionCodes: []string{"143"}, UserFraction: 0.1},
 			{Name: "144", Status: "inProgress", VersionCodes: []string{"144"}, UserFraction: 0.2},
@@ -242,7 +242,7 @@ func lineContaining(out, needle string) string {
 // alike — gets its own row under the default columns, and the release-notes
 // locale count is rendered as the count of localized entries.
 func TestRenderTable_listsEveryCoexistingRelease(t *testing.T) {
-	p := status.Payload{
+	p := view.Payload{
 		Releases: []tracks.Release{
 			{Name: "150-draft", Status: "draft", VersionCodes: []string{"150"}},
 			{Name: "143", Status: "inProgress", VersionCodes: []string{"143"}, UserFraction: 0.1},
@@ -300,7 +300,7 @@ func TestRun_derivesTrackKind(t *testing.T) {
 			rt := &statusRT{t: t, editID: "edit-kind", trackResp: raw}
 			rc, _ := newRC(t, rt)
 
-			r, err := status.Run(rc, status.Input{Package: "com.example.app", Track: track})
+			r, err := view.Run(rc, view.Input{Package: "com.example.app", Track: track})
 			if err != nil {
 				t.Fatalf("Run: %v", err)
 			}
@@ -338,7 +338,7 @@ func TestDefaultColumns_documentedOrder(t *testing.T) {
 // cannot, for the empty spec — this just keeps the call sites terse).
 func mustDefaultColumns(t *testing.T) []output.Column[tracks.Release] {
 	t.Helper()
-	cols, err := status.ResolveColumns("")
+	cols, err := view.ResolveColumns("")
 	if err != nil {
 		t.Fatalf("ResolveColumns(\"\"): %v", err)
 	}
@@ -352,7 +352,7 @@ func TestRun_columnsOverride_restrictsColumns(t *testing.T) {
 	rt := &statusRT{t: t, editID: "edit-cols", trackResp: raw}
 	rc, _ := newRC(t, rt)
 
-	r, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "production", Columns: "name,status"})
+	r, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "production", Columns: "name,status"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestRun_columnsOverride_restrictsColumns(t *testing.T) {
 func TestRun_unknownColumn_exit2(t *testing.T) {
 	rt := &statusRT{t: t}
 	rc, _ := newRC(t, rt)
-	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "production", Columns: "name,bogus"})
+	_, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "production", Columns: "name,bogus"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
@@ -392,7 +392,7 @@ func TestRun_unknownColumn_exit2(t *testing.T) {
 // the halted marker carries into it — markdown is a human-facing view, so
 // a halted rollout must stand out there too.
 func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
-	p := status.Payload{
+	p := view.Payload{
 		Track: "production",
 		Kind:  "standard",
 		Releases: []tracks.Release{
@@ -430,7 +430,7 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 // contract — defensive parity with the tracks.list sibling.
 func TestRenderJSON_emptyRaw_errors(t *testing.T) {
 	var buf bytes.Buffer
-	if err := (status.Payload{}).Renderers().JSON(&buf); err == nil {
+	if err := (view.Payload{}).Renderers().JSON(&buf); err == nil {
 		t.Fatalf("JSON render of empty Raw = nil error, want a non-nil error")
 	}
 }
@@ -447,7 +447,7 @@ func TestRun_unknownTrack_exit30WithHint(t *testing.T) {
 	}
 	rc, _ := newRC(t, rt)
 
-	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "nope"})
+	_, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "nope"})
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Errorf("ExitCode() = %d, want 30", code)
 	}
@@ -479,7 +479,7 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	}
 	rc, _ := newRC(t, rt)
 
-	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "production"})
+	_, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "production"})
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Errorf("ExitCode() = %d, want 30", code)
 	}
@@ -503,7 +503,7 @@ func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	}
 	rc, _ := newRC(t, rt)
 
-	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "production"})
+	_, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "production"})
 	if code := exitCodeOf(t, err); code != 11 {
 		t.Errorf("ExitCode() = %d, want 11", code)
 	}
@@ -524,7 +524,7 @@ func TestRun_tracksGetError_discardsEditAndPropagates(t *testing.T) {
 	}
 	rc, _ := newRC(t, rt)
 
-	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "production"})
+	_, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "production"})
 	if code := exitCodeOf(t, err); code != 40 {
 		t.Errorf("ExitCode() = %d, want 40", code)
 	}
@@ -544,7 +544,7 @@ func TestRun_tracksGetError_discardsEditAndPropagates(t *testing.T) {
 func TestRun_missingTrack_exit2(t *testing.T) {
 	rt := &statusRT{t: t}
 	rc, _ := newRC(t, rt)
-	_, err := status.Run(rc, status.Input{Package: "com.example.app"})
+	_, err := view.Run(rc, view.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
@@ -558,7 +558,7 @@ func TestRun_missingTrack_exit2(t *testing.T) {
 func TestRun_missingPackage_exit2(t *testing.T) {
 	rt := &statusRT{t: t}
 	rc, _ := newRC(t, rt)
-	_, err := status.Run(rc, status.Input{Track: "production"})
+	_, err := view.Run(rc, view.Input{Track: "production"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
@@ -575,7 +575,7 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 func TestRun_whitespaceTrack_exit2(t *testing.T) {
 	rt := &statusRT{t: t}
 	rc, _ := newRC(t, rt)
-	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "   "})
+	_, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "   "})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
@@ -589,7 +589,7 @@ func TestRun_whitespaceTrack_exit2(t *testing.T) {
 func TestRun_whitespacePackage_exit2(t *testing.T) {
 	rt := &statusRT{t: t}
 	rc, _ := newRC(t, rt)
-	_, err := status.Run(rc, status.Input{Package: "   ", Track: "production"})
+	_, err := view.Run(rc, view.Input{Package: "   ", Track: "production"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
@@ -604,7 +604,7 @@ func TestRun_noAccount_exit10(t *testing.T) {
 	rt := &statusRT{t: t}
 	rc, _ := newRC(t, rt)
 	rc.Account = nil
-	_, err := status.Run(rc, status.Input{Package: "com.example.app", Track: "production"})
+	_, err := view.Run(rc, view.Input{Package: "com.example.app", Track: "production"})
 	if code := exitCodeOf(t, err); code != 10 {
 		t.Errorf("ExitCode() = %d, want 10", code)
 	}

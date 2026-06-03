@@ -50,7 +50,7 @@ import (
 	tracksavailability "github.com/PollyGlot/google-play-cli/commands/tracks/availability"
 	trackscreate "github.com/PollyGlot/google-play-cli/commands/tracks/create"
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
-	tracksstatus "github.com/PollyGlot/google-play-cli/commands/tracks/status"
+	tracksview "github.com/PollyGlot/google-play-cli/commands/tracks/view"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -166,7 +166,7 @@ replace Fastlane on Android CI pipelines.`,
 		Short: "Inspect and create release tracks (standard and custom closed)",
 	}
 	tracks.AddCommand(trackslist.NewCommand(boot))
-	tracks.AddCommand(tracksstatus.NewCommand(boot))
+	tracks.AddCommand(tracksview.NewCommand(boot))
 	tracks.AddCommand(trackscreate.NewCommand(boot))
 	tracks.AddCommand(tracksavailability.NewCommand(boot))
 	root.AddCommand(tracks)
