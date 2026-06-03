@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
 // Options injects file-system roots so tests can run hermetically against a
@@ -41,11 +42,19 @@ Run from the repo root.`,
 		},
 	}
 	cmd.Flags().StringVar(&pkg, "package", "", "Android package name (e.g. com.example.myapp). Required.")
-	_ = cmd.MarkFlagRequired("package")
 	return cmd
 }
 
 func run(cmd *cobra.Command, opts Options, pkg string) error {
+	// --package has no repo-pin fallback here (init *creates* the pin), so a
+	// missing value is CLI misuse. We validate in-band rather than via cobra's
+	// MarkFlagRequired: that returns a plain error which exit.For maps to the
+	// generic exit 1, whereas docs/DESIGN.md §9 classes a missing required flag
+	// as exit 2. Returning exit.Usagef keeps us on that documented code and
+	// matches how every other command reports a missing required value.
+	if pkg == "" {
+		return exit.Usagef("--package is required (e.g. --package com.example.myapp)")
+	}
 	repoRoot, home, err := resolveRoots(opts)
 	if err != nil {
 		return err

@@ -16,6 +16,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
 // Format is the user-facing output shape requested via --output. The empty
@@ -179,6 +181,12 @@ func Resolve(requested Format, w io.Writer) (Format, error) {
 // give you that format" error. Both the unknown-format and nil-renderer
 // paths route through here so user-visible wording stays uniform and
 // ADR-0005 §"Renderer interface" stays in sync with the code.
+//
+// A bad --output value is CLI misuse, so this returns a *exit.UsageError
+// (ExitCode()=2) per docs/DESIGN.md §9 — the same exit-2 path the sibling
+// --columns validator already uses for an unknown column. Validating the
+// value downstream (here, not in pflag.Set) is why this needs the explicit
+// typing: the root's FlagErrorFunc only sees pflag-level parse errors.
 func unsupportedFormat(f Format) error {
-	return fmt.Errorf("unsupported --output %q (want table, json, or markdown)", string(f))
+	return exit.Usagef("unsupported --output %q (want table, json, or markdown)", string(f))
 }

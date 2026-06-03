@@ -183,6 +183,54 @@ func TestGroupCommands_bareInvocationPrintsHelp(t *testing.T) {
 	}
 }
 
+// TestFlagErrors_areCliMisuse asserts the docs/DESIGN.md §9 contract for the
+// flag-error class: an unknown flag, a bad flag value, or a missing required
+// flag is CLI misuse — exit 2, named in one "gplay: ..." line — not the
+// generic exit 1 cobra hands back for a plain flag-parse error. The root's
+// FlagErrorFunc routes parse errors (unknown flag, bad value) through
+// exit.Usagef, and is inherited down the whole cobra tree so a leaf's parse
+// error maps the same way; `apps init` validates its required --package
+// in-band onto the same exit-2 path. Exercised through the real cobra tree via
+// Execute, which surfaces the error main.go would hand to exit.For.
+//
+// Canonical verbs only, and any multi-token path is kept as SPLIT args (never
+// a contiguous phrase), so the repo-wide verb gate (#168) stays green here.
+func TestFlagErrors_areCliMisuse(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantMsg string // substring the one-line error must contain
+	}{
+		{"unknown-flag-at-root", []string{"--nope"}, "unknown flag"},
+		{"unknown-flag-on-leaf", []string{"apps", "list", "--bogus"}, "unknown flag"},
+		// pflag-level bad value: caught by the root FlagErrorFunc.
+		{"bad-value-at-root", []string{"--verbose=notabool"}, "invalid argument"},
+		// Downstream-validated bad value (--output is resolved in the kernel,
+		// not pflag.Set): typed as a UsageError at its source, so it lands on
+		// the same exit-2 path without the FlagErrorFunc seeing it.
+		{"bad-output-value", []string{"apps", "list", "--output", "xyz"}, "unsupported --output"},
+		{"missing-required-flag", []string{"apps", "init"}, "--package is required"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			root.SetArgs(tc.args)
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("%v: expected a CLI-misuse error, got nil", tc.args)
+			}
+			if code := exit.For(err); code != 2 {
+				t.Errorf("%v: exit code = %d, want 2 (CLI misuse); err=%v", tc.args, code, err)
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Errorf("%v: error = %q, want it to contain %q", tc.args, err, tc.wantMsg)
+			}
+		})
+	}
+}
+
 func TestRootCmd_persistentFlags_serviceAccountAccountAndVerbose(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 
