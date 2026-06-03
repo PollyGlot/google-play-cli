@@ -1,7 +1,7 @@
-// Package availability_test exercises `gplay tracks availability` at the
-// kernel level: a RunContext built by hand, a RoundTripper injected via
+// Package availability_test exercises `gplay tracks availability view` at
+// the kernel level: a RunContext built by hand, a RoundTripper injected via
 // the oauth2.HTTPClient context key, and Run invoked directly. Mirrors
-// the tracks-status harness — the transport FAILS on any PUT/:commit,
+// the tracks-view harness — the transport FAILS on any PUT/:commit,
 // because reading Country availability is read-only (open Edit →
 // countryAvailability.get → discard, never commit). Availability is also
 // read-only at the API level: there is no writer to test.
@@ -308,17 +308,45 @@ func TestRenderMarkdown_showsAvailabilityFields(t *testing.T) {
 	}
 }
 
-// TestNewCommand_requiresTrackFlag is a thin smoke test for the cobra
-// wiring: --track and --package exist, --output exists, and the command
-// is named "availability".
-func TestNewCommand_registersExpectedFlags(t *testing.T) {
-	cmd := availability.NewCommand(kernel.Boot{})
-	for _, name := range []string{"package", "track", "output"} {
-		if cmd.Flags().Lookup(name) == nil {
-			t.Errorf("cobra command missing expected flag --%s", name)
+// TestGroup_bareAvailabilityIsPureNoun asserts the ADR-0019 shape: `tracks
+// availability` is a pure grouping noun (no RunE — the bare command prints
+// help, it never reads), holds the `view` read, and — being read-only at the
+// Developer API level — holds no `set`.
+func TestGroup_bareAvailabilityIsPureNoun(t *testing.T) {
+	group := availability.NewCommand(kernel.Boot{})
+	if got := group.Use; got != "availability" {
+		t.Errorf("group.Use = %q, want %q", got, "availability")
+	}
+	if group.RunE != nil || group.Run != nil {
+		t.Errorf("bare `tracks availability` must not run (it is a grouping noun); RunE set=%t Run set=%t", group.RunE != nil, group.Run != nil)
+	}
+	var hasView, hasSet bool
+	for _, sub := range group.Commands() {
+		switch sub.Name() {
+		case "view":
+			hasView = true
+		case "set":
+			hasSet = true
 		}
 	}
-	if got := cmd.Use; got != "availability" {
-		t.Errorf("cmd.Use = %q, want %q", got, "availability")
+	if !hasView {
+		t.Error("`tracks availability` must hold a `view` subcommand (the read)")
+	}
+	if hasSet {
+		t.Error("`tracks availability` is read-only — it must not gain a `set`")
+	}
+}
+
+// TestViewCommand_hasReadSurface asserts `tracks availability view` is wired
+// as the read: it runs (has a RunE) and exposes --package/--track/--output.
+func TestViewCommand_hasReadSurface(t *testing.T) {
+	view := availability.NewViewCommand(kernel.Boot{})
+	if view.RunE == nil {
+		t.Error("`tracks availability view` must have a RunE (it reads the resource)")
+	}
+	for _, name := range []string{"package", "track", "output"} {
+		if view.Flags().Lookup(name) == nil {
+			t.Errorf("`tracks availability view` missing expected flag --%s", name)
+		}
 	}
 }
