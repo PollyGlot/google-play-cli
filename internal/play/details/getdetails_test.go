@@ -1,7 +1,7 @@
 // Package details_test also exercises the high-level details.GetDetails
-// entry point backing `gplay apps details`: open a read-only Edit, do
+// entry point backing the `apps details` group: open a read-only Edit, do
 // ONLY edits.details.get, discard the Edit. Unlike Get (which backs
-// `apps info` and also hits listings.get), GetDetails touches a SINGLE
+// `apps view` and also hits listings.get), GetDetails touches a SINGLE
 // endpoint, so its raw payload is the details.get body verbatim — a
 // clean ADR-0003 pass-through with no gplay envelope. The transport
 // FAILS on any PUT/PATCH/:commit AND on listings.get: a read of the App

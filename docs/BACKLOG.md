@@ -14,7 +14,7 @@ Ce fichier liste les parties de la Google Play Developer API (et APIs liées) **
 ## MVP (rappel, in-scope)
 
 - Auth — service account → OAuth2 access token
-- `apps list` / `apps info`
+- `apps list` / `apps view`
 - `releases upload` (AAB)
 - `tracks list` / `tracks promote` / `tracks rollout`
 - `reviews list` / `reviews reply`

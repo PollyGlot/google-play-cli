@@ -1,5 +1,5 @@
-// Package detailscmd implements `gplay apps details`, a pure grouping noun
-// over the App details resource — the app-global edits.details record
+// Package detailscmd implements `apps details`, a pure grouping noun over
+// the App details resource — the app-global edits.details record
 // holding defaultLanguage and the user-visible contact email/phone/website.
 //
 // Per ADR-0019 a read always carries a verb, so the group holds two
@@ -239,8 +239,8 @@ cross-resource identity card (package + title + default language).`,
 	return cmd
 }
 
-// NewCommand returns the cobra command for `gplay apps details`: a pure
-// grouping noun (ADR-0019). It has no RunE — the bare command prints help —
+// NewCommand returns the cobra group for `apps details`: a pure grouping
+// noun (ADR-0019). It has no RunE — the bare command prints help —
 // and holds `view` (read) and `set` (write). There is no verb-less read.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{

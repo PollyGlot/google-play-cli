@@ -1,5 +1,5 @@
-// Package availability implements `gplay tracks availability`, a pure
-// grouping noun over the Country availability of a single track — which
+// Package availability implements `tracks availability`, a pure grouping
+// noun over the Country availability of a single track — which
 // countries an app's artifacts are distributed to on --track.
 //
 // Per ADR-0019 a read always carries a verb, so the bare `availability`
@@ -229,9 +229,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewViewCommand returns the cobra command for `gplay tracks availability
-// view`: the read of a track's Country availability. Per ADR-0019 the read
-// carries an explicit verb — the bare `availability` group prints help.
+// NewViewCommand returns the read command `tracks availability view`: it
+// reads a track's Country availability. Per ADR-0019 the read carries an
+// explicit verb — the bare `availability` group prints help.
 func NewViewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
@@ -267,8 +267,8 @@ clean ADR-0003 pass-through — a single endpoint is read).`,
 	return cmd
 }
 
-// NewCommand returns the cobra command for `gplay tracks availability`: a
-// pure grouping noun (ADR-0019). It has no RunE — the bare command prints
+// NewCommand returns the cobra group for `tracks availability`: a pure
+// grouping noun (ADR-0019). It has no RunE — the bare command prints
 // help — and holds only `view`. The resource is read-only at the Developer
 // API level, so there is no `set`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
