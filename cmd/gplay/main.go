@@ -89,23 +89,6 @@ func main() {
 	}
 }
 
-// groupRunE is the RunE for grouping commands that carry no business logic of
-// their own. A bare invocation prints the group help; any leftover token is an
-// unknown subcommand, surfaced as CLI misuse (exit 2). It is a RunE — not an
-// Args validator — on purpose: cobra short-circuits a NON-runnable command to
-// its help text before arg validation runs, so a child group with only an Args
-// hook would still silently help (exit 0) on a removed verb name.
-// Only the root rejects unknown commands by default (via legacyArgs). Giving
-// the group a RunE makes the rejection actually fire, so a hard rename
-// (ADR-0019) fails loudly — a CI step still calling the old name breaks
-// instead of passing.
-func groupRunE(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return cmd.Help()
-	}
-	return exit.Usagef("unknown command %q for %q", args[0], cmd.CommandPath())
-}
-
 func newRootCmd(boot kernel.Boot) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "gplay",
@@ -115,8 +98,16 @@ func newRootCmd(boot kernel.Boot) *cobra.Command {
 Reads service-account credentials, mints OAuth2 tokens, and drives the
 publishing surface (releases, tracks, reviews, vitals). Designed to
 replace Fastlane on Android CI pipelines.`,
+		// The root is a grouping noun like any other (kernel.GroupRunE): bare
+		// `gplay` prints help, `gplay <unknown>` is CLI misuse (exit 2), one
+		// clean `gplay: ...` line (SilenceErrors). Args:ArbitraryArgs routes
+		// the unknown-command case through GroupRunE rather than cobra's
+		// legacyArgs, which would emit a plain error (exit 1) and a second
+		// "Error: ..." line — the inconsistency this harmonisation removes.
+		Args:          cobra.ArbitraryArgs,
+		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
-		SilenceErrors: false,
+		SilenceErrors: true,
 	}
 
 	// Persistent credential-resolution flags (docs/DESIGN.md §1). Every
@@ -139,8 +130,11 @@ replace Fastlane on Android CI pipelines.`,
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "log flow steps to stderr (info level)")
 
 	auth := &cobra.Command{
-		Use:   "auth",
-		Short: "Manage gplay credentials",
+		Use:           "auth",
+		Short:         "Manage gplay credentials",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	auth.AddCommand(login.NewCommand(boot))
 	auth.AddCommand(logout.NewCommand(boot))
@@ -156,7 +150,7 @@ replace Fastlane on Android CI pipelines.`,
 	apps := &cobra.Command{
 		Use:           "apps",
 		Short:         "Manage Android packages registered with gplay",
-		RunE:          groupRunE,
+		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -169,8 +163,11 @@ replace Fastlane on Android CI pipelines.`,
 	root.AddCommand(apps)
 
 	releases := &cobra.Command{
-		Use:   "releases",
-		Short: "Manage app releases (upload, promote, rollout)",
+		Use:           "releases",
+		Short:         "Manage app releases (upload, promote, rollout)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	releases.AddCommand(upload.NewCommand(boot))
 	releases.AddCommand(promote.NewCommand(boot))
@@ -184,7 +181,7 @@ replace Fastlane on Android CI pipelines.`,
 	tracks := &cobra.Command{
 		Use:           "tracks",
 		Short:         "Inspect and create release tracks (standard and custom closed)",
-		RunE:          groupRunE,
+		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -199,8 +196,11 @@ replace Fastlane on Android CI pipelines.`,
 	// `tracks`, mirroring the sibling API resources edits.tracks /
 	// edits.testers. See PRD #117 / docs/DESIGN.md §10.
 	testers := &cobra.Command{
-		Use:   "testers",
-		Short: "Manage the Google Groups authorized to test a track",
+		Use:           "testers",
+		Short:         "Manage the Google Groups authorized to test a track",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	testers.AddCommand(testerslist.NewCommand(boot))
 	testers.AddCommand(testersset.NewCommand(boot))
@@ -209,18 +209,25 @@ replace Fastlane on Android CI pipelines.`,
 	// `gplay team` — manage the Developer account's members (Users) and their
 	// per-app access (Grants). The first gplay surface keyed by the Developer
 	// account rather than a package (ADR-0015). `team`, `users`, and `grants`
-	// are grouping commands (no RunE — print help when bare); the named
-	// `team` (not `users`/`access`) avoids colliding with gplay's Account.
-	// See PRD #147 / ADR-0015/0016/0017 / CONTEXT.md.
+	// are grouping nouns (kernel.GroupRunE — bare prints help, an unknown
+	// subcommand is exit-2 misuse); the named `team` (not `users`/`access`)
+	// avoids colliding with gplay's Account. See PRD #147 / ADR-0015/0016/0017
+	// / CONTEXT.md.
 	team := &cobra.Command{
-		Use:   "team",
-		Short: "Manage the Developer account's members and permissions (users, grants)",
+		Use:           "team",
+		Short:         "Manage the Developer account's members and permissions (users, grants)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	team.AddCommand(teampermissions.NewCommand(boot))
 
 	teamUsers := &cobra.Command{
-		Use:   "users",
-		Short: "List and manage the Developer account's members",
+		Use:           "users",
+		Short:         "List and manage the Developer account's members",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	teamUsers.AddCommand(teamuserslist.NewCommand(boot))
 	teamUsers.AddCommand(teamusersadd.NewCommand(boot))
@@ -231,7 +238,7 @@ replace Fastlane on Android CI pipelines.`,
 	teamGrants := &cobra.Command{
 		Use:           "grants",
 		Short:         "List and manage members' per-app access",
-		RunE:          groupRunE,
+		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -243,8 +250,11 @@ replace Fastlane on Android CI pipelines.`,
 	root.AddCommand(team)
 
 	reviews := &cobra.Command{
-		Use:   "reviews",
-		Short: "Read and reply to user reviews",
+		Use:           "reviews",
+		Short:         "Read and reply to user reviews",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	reviews.AddCommand(reviewslist.NewCommand(boot))
 	reviews.AddCommand(reviewsreply.NewCommand(boot))
@@ -253,8 +263,11 @@ replace Fastlane on Android CI pipelines.`,
 	// `gplay metadata` — Store front Listings (per-locale text), the
 	// fastlane-supply text side. See PRD #50 / ADR-0011.
 	metadata := &cobra.Command{
-		Use:   "metadata",
-		Short: "Manage Store front Listings (per-locale title/description/video)",
+		Use:           "metadata",
+		Short:         "Manage Store front Listings (per-locale title/description/video)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	metadata.AddCommand(metadatalist.NewCommand(boot))
 	metadata.AddCommand(metadatapull.NewCommand(boot))
@@ -265,8 +278,11 @@ replace Fastlane on Android CI pipelines.`,
 	// graphic / screenshots), the fastlane-supply image side. See PRD #112 /
 	// ADR-0013.
 	metadataImages := &cobra.Command{
-		Use:   "images",
-		Short: "Manage Store images (per-locale icon, feature graphic, screenshots)",
+		Use:           "images",
+		Short:         "Manage Store images (per-locale icon, feature graphic, screenshots)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	metadataImages.AddCommand(metadataimageslist.NewCommand(boot))
 	metadataImages.AddCommand(metadataimagespull.NewCommand(boot))
@@ -281,12 +297,18 @@ replace Fastlane on Android CI pipelines.`,
 	// distinct family from the store-presence namespaces. See PRD #114 /
 	// ADR-0014.
 	compliance := &cobra.Command{
-		Use:   "compliance",
-		Short: "Manage an app's regulatory declarations (Data Safety, ...)",
+		Use:           "compliance",
+		Short:         "Manage an app's regulatory declarations (Data Safety, ...)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	datasafety := &cobra.Command{
-		Use:   "datasafety",
-		Short: "Push and validate the app's Data Safety declaration (write-only)",
+		Use:           "datasafety",
+		Short:         "Push and validate the app's Data Safety declaration (write-only)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	datasafety.AddCommand(compliancedatasafetyvalidate.NewCommand(boot))
 	datasafety.AddCommand(compliancedatasafetyset.NewCommand(boot))

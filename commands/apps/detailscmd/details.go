@@ -240,8 +240,10 @@ cross-resource identity card (package + title + default language).`,
 }
 
 // NewCommand returns the cobra group for `apps details`: a pure grouping
-// noun (ADR-0019). It has no RunE — the bare command prints help —
-// and holds `view` (read) and `set` (write). There is no verb-less read.
+// noun (ADR-0019). It holds `view` (read) and `set` (write); there is no
+// verb-less read. kernel.GroupRunE makes the bare command print help while a
+// mistyped or removed subcommand fails loudly as CLI misuse (exit 2) rather
+// than silently printing help with exit 0.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "details",
@@ -252,6 +254,7 @@ and contactWebsite.
 
 ` + "`apps details view`" + ` reads the record; ` + "`apps details set`" + ` writes it
 field-by-field. The bare ` + "`apps details`" + ` command prints this help.`,
+		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

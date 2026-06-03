@@ -34,8 +34,38 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
+
+// GroupRunE is the RunE for a grouping command that carries no business logic
+// of its own (a pure noun like `apps`, `metadata`, `team users`). A bare
+// invocation prints the group help; any leftover token is an unknown
+// subcommand, surfaced as CLI misuse (exit 2 per docs/DESIGN.md §9).
+//
+// It is a RunE — not an Args validator — on purpose: cobra short-circuits a
+// NON-runnable command (no Run/RunE) straight to its help text BEFORE arg
+// validation runs, so a child group with only an Args hook would still
+// silently print help (exit 0) on a mistyped or removed subcommand. Giving the
+// group a RunE makes the rejection actually fire, so a typo — or a hard rename
+// (ADR-0019) where a CI step still calls the old name — breaks loudly instead
+// of "succeeding" with exit 0.
+//
+// cobra's default Args validator (legacyArgs) only rejects unknown commands
+// for the ROOT, never for a child group, which is why every name-group needs
+// this helper for a consistent UX. The root itself, to route through here
+// rather than legacyArgs (which yields a plain error → exit 1, not exit 2),
+// sets Args: cobra.ArbitraryArgs alongside this RunE — see cmd/gplay/main.go.
+//
+// Pair GroupRunE with SilenceUsage:true and SilenceErrors:true on the command
+// so the failure surfaces as the single `gplay: ...` line main.go prints,
+// without cobra's own "Error: ..." + usage dump on top.
+func GroupRunE(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+	return exit.Usagef("unknown command %q for %q", args[0], cmd.CommandPath())
+}
 
 // Boot carries the process-level wiring built once in cmd/gplay/main.go:
 // IO streams, the FS seam, paths the commands read and write. Nothing

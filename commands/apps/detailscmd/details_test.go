@@ -324,13 +324,29 @@ func TestRenderMarkdown_showsAllFourFields(t *testing.T) {
 }
 
 // TestGroup_bareDetailsIsPureNoun asserts the ADR-0019 shape: `apps details`
-// is a pure grouping noun (no RunE — the bare command prints help, it never
-// reads), the read lives under `view`, and `set` stays present. This is the
-// structural guard for #166: a verb-less read would be a regression.
+// is a pure grouping noun — the bare command prints help and never reads (the
+// read lives under `view`), and `set` stays present. Its RunE is the shared
+// grouping RunE (kernel.GroupRunE: help when bare, loud exit-2 misuse on an
+// unknown subcommand), NOT a business reader. This is the structural guard for
+// #166 (a verb-less read would be a regression) plus the loud-failure contract.
 func TestGroup_bareDetailsIsPureNoun(t *testing.T) {
 	group := detailscmd.NewCommand(kernel.Boot{})
-	if group.RunE != nil || group.Run != nil {
-		t.Errorf("bare `apps details` must not run (it is a grouping noun); got RunE set=%t Run set=%t", group.RunE != nil, group.Run != nil)
+	// A grouping noun carries no business Run; its RunE only helps or rejects.
+	if group.Run != nil {
+		t.Error("bare `apps details` must not carry a business Run (it is a grouping noun)")
+	}
+	if group.RunE == nil {
+		t.Fatal("bare `apps details` must have the grouping RunE (help when bare, loud on unknown subcommand)")
+	}
+	// Bare invocation prints help and succeeds — it never performs a read.
+	group.SetOut(io.Discard)
+	if err := group.RunE(group, nil); err != nil {
+		t.Errorf("bare `apps details` should print help and succeed, got err=%v", err)
+	}
+	// An unknown subcommand is rejected loudly, naming the command — not
+	// silently helped with exit 0.
+	if err := group.RunE(group, []string{"nonesuch"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("unknown subcommand of `apps details` should be rejected naming the command; got err=%v", err)
 	}
 	var hasView, hasSet bool
 	for _, sub := range group.Commands() {

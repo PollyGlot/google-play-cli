@@ -9,12 +9,48 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
+
+// TestGroupRunE_bareInvocationPrintsHelp asserts the bare-group contract: with
+// no leftover args, GroupRunE prints the command's help and returns nil (the
+// command exits 0). cobra routes Help() to the command's configured output.
+func TestGroupRunE_bareInvocationPrintsHelp(t *testing.T) {
+	var out bytes.Buffer
+	cmd := &cobra.Command{Use: "grp", Short: "a grouping noun"}
+	cmd.SetOut(&out)
+	if err := kernel.GroupRunE(cmd, nil); err != nil {
+		t.Fatalf("GroupRunE(bare) = %v, want nil (help + exit 0)", err)
+	}
+	if out.Len() == 0 {
+		t.Errorf("GroupRunE(bare) printed no help")
+	}
+}
+
+// TestGroupRunE_unknownSubcommandIsMisuse asserts the unknown-subcommand
+// contract: a leftover token is surfaced as a *exit.UsageError (exit 2 per
+// docs/DESIGN.md §9) whose message names both the unknown token and the group
+// path — so a typo or a removed verb fails loudly rather than silently helping.
+func TestGroupRunE_unknownSubcommandIsMisuse(t *testing.T) {
+	cmd := &cobra.Command{Use: "grp"}
+	err := kernel.GroupRunE(cmd, []string{"nonesuch", "extra"})
+	if err == nil {
+		t.Fatal("GroupRunE(unknown) = nil, want a misuse error")
+	}
+	if code := exit.For(err); code != 2 {
+		t.Errorf("exit.For = %d, want 2 (CLI misuse); err=%v", code, err)
+	}
+	if !strings.Contains(err.Error(), "unknown command") || !strings.Contains(err.Error(), "nonesuch") {
+		t.Errorf("error = %q, want it to name the unknown command %q", err, "nonesuch")
+	}
+}
 
 const fakeSAJSON = `{
   "type": "service_account",
