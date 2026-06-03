@@ -1,10 +1,10 @@
-// Package revoke implements `gplay team grants revoke <email> --package <pkg>`:
-// revoke a member's access to one app via grants.delete, targeted by
+// Package remove implements `gplay team grants remove <email> --package <pkg>`:
+// remove a member's access to one app via grants.delete, targeted by
 // email+package path (no pre-read), WITHOUT removing them from the account.
 // Destructive tier (ADR-0017): refuses without --confirm (exit 3, naming the
 // flag); --dry-run previews the target with no HTTP. CI=true never
 // auto-confirms.
-package revoke
+package remove
 
 import (
 	"bytes"
@@ -51,7 +51,7 @@ type grantNotFoundError struct {
 }
 
 func (e *grantNotFoundError) Error() string {
-	return fmt.Sprintf("%s has no grant on %s to revoke (already revoked, or never granted): %v", e.email, e.pkg, e.cause)
+	return fmt.Sprintf("%s has no grant on %s to remove (already removed, or never granted): %v", e.email, e.pkg, e.cause)
 }
 func (e *grantNotFoundError) Unwrap() error { return e.cause }
 
@@ -68,7 +68,7 @@ func classifyError(developerID, email, pkg string, err error) error {
 	return err
 }
 
-// Payload renders what revoke did (or, on --dry-run, would do).
+// Payload renders what remove did (or, on --dry-run, would do).
 type Payload struct {
 	Email    string
 	Package  string
@@ -87,9 +87,9 @@ func (p Payload) Renderers() output.Renderers {
 
 func (p Payload) verb() string {
 	if p.DryRun {
-		return "would revoke"
+		return "would remove"
 	}
-	return "revoked"
+	return "removed"
 }
 
 func (p Payload) renderTable(w io.Writer) error {
@@ -117,7 +117,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	if len(p.Requires) > 0 {
 		rows = append(rows, []string{"Requires", strings.Join(p.Requires, ", ")})
 	}
-	if _, err := fmt.Fprintf(w, "## team grants revoke%s\n\n", suffix); err != nil {
+	if _, err := fmt.Fprintf(w, "## team grants remove%s\n\n", suffix); err != nil {
 		return err
 	}
 	return output.MarkdownTable(w, []string{"FIELD", "VALUE"}, rows)
@@ -140,9 +140,9 @@ func (p Payload) renderJSON(w io.Writer) error {
 	}
 	return output.WriteJSON(w, struct {
 		OK      bool   `json:"ok"`
-		Revoked string `json:"revoked"`
+		Removed string `json:"removed"`
 		Package string `json:"package"`
-	}{OK: true, Revoked: p.Email, Package: p.Package})
+	}{OK: true, Removed: p.Email, Package: p.Package})
 }
 
 // Run is the business function the kernel invokes. It enforces the destructive
@@ -151,10 +151,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	pkg := strings.TrimSpace(in.Package)
 	if email == "" {
-		return nil, exit.Usagef("missing <email> — usage: gplay team grants revoke <email> --package <pkg> --confirm")
+		return nil, exit.Usagef("missing <email> — usage: gplay team grants remove <email> --package <pkg> --confirm")
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("missing --package <pkg> (the app whose access to revoke)")
+		return nil, exit.Usagef("missing --package <pkg> (the app whose access to remove)")
 	}
 
 	gate := teamcmd.Gate{Destructive: true}
@@ -183,16 +183,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Email: email, Package: pkg, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team grants revoke`.
+// NewCommand returns the cobra command for `gplay team grants remove`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
 		in         Input
 	)
 	cmd := &cobra.Command{
-		Use:   "revoke <email> --package <pkg>",
-		Short: "Revoke a member's access to one app (keeps their membership)",
-		Long: `Revoke <email>'s access to one app (--package) via grants.delete, WITHOUT
+		Use:   "remove <email> --package <pkg>",
+		Short: "Remove a member's access to one app (keeps their membership)",
+		Long: `Remove <email>'s access to one app (--package) via grants.delete, WITHOUT
 removing them from the Developer account — only the per-app grant is deleted.
 To off-board a member entirely, use ` + "`gplay team users remove`" + ` instead.
 
@@ -211,8 +211,8 @@ call.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.DeveloperID, "developer-id", "", "Play Console Developer account id (overrides the active Account's, env, and project-local)")
-	cmd.Flags().StringVar(&in.Package, "package", "", "the app (package name) whose access to revoke")
-	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the revocation (required — this is destructive)")
+	cmd.Flags().StringVar(&in.Package, "package", "", "the app (package name) whose access to remove")
+	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the removal (required — this is destructive)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "preview the target without any HTTP call")
 	return cmd
 }

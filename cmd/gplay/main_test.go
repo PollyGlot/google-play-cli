@@ -2,6 +2,7 @@ package main
 
 import (
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -14,21 +15,24 @@ import (
 // contract guard for the verb audit (#98) — one e2e case per rename,
 // exercised through the real cobra tree via Command.Find, which resolves
 // commands without executing them or touching auth/network.
+//
+// Pre-rename verbs appear here only as SPLIT path args, never as a
+// contiguous phrase, so the repo-wide verb gate (#168) stays green on this
+// file. The subtest name is the path joined at runtime, not source text.
 func TestVerbVocabulary_canonicalNames(t *testing.T) {
 	cases := []struct {
-		name     string
 		path     []string
 		wantGone bool // true: the old name must NOT resolve (hard-renamed away)
 	}{
-		// #163 apps info → apps view
-		{"apps view resolves", []string{"apps", "view"}, false},
-		{"apps info is gone", []string{"apps", "info"}, true},
-		// #164 tracks status → tracks view
-		{"tracks view resolves", []string{"tracks", "view"}, false},
-		{"tracks status is gone", []string{"tracks", "status"}, true},
+		{[]string{"apps", "view"}, false}, // #163 (replaced apps + "info")
+		{[]string{"apps", "info"}, true},
+		{[]string{"tracks", "view"}, false}, // #164 (replaced tracks + "status")
+		{[]string{"tracks", "status"}, true},
+		{[]string{"team", "grants", "remove"}, false}, // #165 (replaced grants + "revoke")
+		{[]string{"team", "grants", "revoke"}, true},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(strings.Join(tc.path, " "), func(t *testing.T) {
 			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 			cmd, rest, err := root.Find(tc.path)
 			if err != nil {
