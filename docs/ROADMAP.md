@@ -85,6 +85,7 @@ toujours en attente délibérée).
 |---|---|---|---|---|
 | ✅ | [#93](https://github.com/PollyGlot/google-play-cli/issues/93) | arch | Extraire la machinery partagée des `… list` (column registry + render + `resolveColumns`) | **Livré** (#148, [ADR-0018](adr/0018-shared-list-table-machinery.md)) — débloque les `team users/grants list` de #147 |
 | 2 | [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | tooling | Snapshot offline du Discovery doc `androidpublisher_v3.json` (+ target de regen) | Levier code-gen agent ; le trigger « surface > ~10 commandes » est franchi |
+| 3 | [#176](https://github.com/PollyGlot/google-play-cli/issues/176) | auth | Surface invalid-credential errors from `EnsureAccount` (absent vs invalide) | PRD durci ([ADR-0020](adr/0020-resolution-error-surfacing.md)) ; décomposé via `/to-issues` en 4 slices #177–#180 (`breaking-change` : exit code d'`auth status`) |
 
 ## Ensuite — surfaces additives (post first-release)
 
