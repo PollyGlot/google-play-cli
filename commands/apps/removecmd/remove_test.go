@@ -443,6 +443,11 @@ func TestRemove_cobra_malformedInlineCredential_exits10NoMutation(t *testing.T) 
 	if !strings.Contains(err.Error(), "could not read credential") {
 		t.Errorf("error should name the real cause; got %q", err.Error())
 	}
+	// No-payload contract: the hard-error path writes nothing to stdout
+	// (data → stdout, errors → stderr).
+	if got := stdout.String(); got != "" {
+		t.Errorf("stdout = %q, want empty on the hard-error path", got)
+	}
 	g, lerr := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, cfgPath)
 	if lerr != nil {
 		t.Fatalf("reload: %v", lerr)

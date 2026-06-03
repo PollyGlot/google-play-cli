@@ -504,13 +504,12 @@ func TestStatus_corruptActiveCredential_malformedJSON_isExit10(t *testing.T) {
 	if !strings.Contains(err.Error(), "could not read credential") {
 		t.Errorf("error %q missing 'could not read credential'", err.Error())
 	}
-	// Nothing is rendered on the error path: no active-account payload.
-	out := stdout.String()
-	if strings.Contains(out, "Active account") {
-		t.Errorf("error path must not render an active-account payload; got %q", out)
-	}
-	if strings.Contains(out, "playci@test-proj.iam.gserviceaccount.com") {
-		t.Errorf("error path must not render the playci email; got %q", out)
+	// Strict no-payload contract: nothing at all reaches stdout on the
+	// hard-error path (data → stdout, errors → stderr). An exact-empty check
+	// also catches a stray `{}` or any other leaked payload that the
+	// substring checks below would miss.
+	if out := stdout.String(); out != "" {
+		t.Fatalf("stdout = %q, want empty on the corrupt-credential error path", out)
 	}
 }
 
