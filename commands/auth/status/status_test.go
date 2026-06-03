@@ -26,6 +26,7 @@ import (
 func TestRun_pureBusiness(t *testing.T) {
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{KeystoreRoot: "/keys"}, kernel.Inputs{})
 	rc.Account = &serviceaccount.ServiceAccount{ClientEmail: "playci@x"}
+	rc.AccountName = "playci" // the credential in use — status keys the name off this
 	rc.Resolved = &config.Resolved{ConfigAccount: "playci"}
 	rc.KeystoreLabel = keystore.BackendFile
 
@@ -422,6 +423,38 @@ func TestStatus_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err.Error(), want)
 		}
+	}
+}
+
+// TestStatus_inlineCredential_reportsEnvOverrideWithoutProbing locks in the
+// fix for the reintroduced keychain probe: an inline GPLAY_SERVICE_ACCOUNT
+// credential resolves without the keystore, so status must report it as an
+// env override and leave the backend label empty rather than probing (which,
+// with this unavailable keyring, would have surfaced "file").
+func TestStatus_inlineCredential_reportsEnvOverrideWithoutProbing(t *testing.T) {
+	boot := newBoot(t, newFakeKeyring(true)) // a probe here would yield "file"
+	t.Setenv(resolver.EnvServiceAccount, validSAJSON)
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "json"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var payload struct {
+		Active  bool   `json:"active"`
+		Name    string `json:"name"`
+		Backend string `json:"backend"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal: %v (raw=%q)", err, stdout.String())
+	}
+	if !payload.Active {
+		t.Errorf("json.active = false, want true for an inline credential")
+	}
+	if payload.Name != "(env override)" {
+		t.Errorf("json.name = %q, want \"(env override)\"", payload.Name)
+	}
+	if payload.Backend != "" {
+		t.Errorf("json.backend = %q, want empty — an inline credential must not probe the keystore", payload.Backend)
 	}
 }
 
