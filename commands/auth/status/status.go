@@ -55,7 +55,15 @@ func (p Payload) Renderers() output.Renderers {
 func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	// status reports auth state, so resolving the credential (and probing
 	// the keystore) is exactly its job — do it now rather than at boot.
-	rc.EnsureAccount()
+	// EnsureAccount splits the two failure shapes (ADR-0020): an *invalid*
+	// credential (malformed JSON, missing field, unreadable file) returns an
+	// exit-10 error, which we surface before rendering so a corrupt active
+	// credential hard-errors rather than masquerading as "no account"; an
+	// *absent* credential returns nil with rc.Account == nil, which maps to
+	// the benign "no active account" payload.
+	if err := rc.EnsureAccount(); err != nil {
+		return nil, err
+	}
 	if rc.Account == nil {
 		return Payload{Active: false}, nil
 	}
