@@ -30,9 +30,9 @@ Titre, description courte, description longue, vidéo YouTube, par locale.
 **Statut :** implémenté via la famille `gplay metadata list/pull/validate/apply` (modèle de sync additif, [ADR-0011](adr/0011-metadata-apply-sync-model.md)). Section conservée comme rationnel d'origine.
 **Pourquoi c'était reporté :** remplace `fastlane supply` côté texte, utile mais pas bloquant pour un CI qui ne fait qu'uploader des builds. Souvent piloté par un repo de metadata canonique séparé du repo de code, conçu une fois le MVP stable.
 
-### Images de store — `edits.images` — 🔼 **PRD [#112](https://github.com/PollyGlot/google-play-cli/issues/112)**
+### Images de store — `edits.images` — ✅ **livré** (PRD [#112](https://github.com/PollyGlot/google-play-cli/issues/112), slices #130–#135)
 Icône, feature graphic, screenshots phone/tablet 7"/tablet 10"/TV/Wear, promo graphics — par locale.
-> **Promu en PRD** (2026-06-01) — la moitié image de `fastlane supply`, modèle de sync calqué sur [ADR-0011](adr/0011-metadata-apply-sync-model.md) + identité par `sha256` ([ADR-0013](adr/0013-image-slot-reconciliation.md)). Section conservée comme rationnel d'origine.
+**Statut :** implémenté via la famille `gplay metadata images list/pull/validate/apply` (+`--prune`) — la moitié image de `fastlane supply`, modèle de sync calqué sur [ADR-0011](adr/0011-metadata-apply-sync-model.md) + identité par `sha256` ([ADR-0013](adr/0013-image-slot-reconciliation.md)). Section conservée comme rationnel d'origine.
 **Hors scope retenu :** (a) **Chromebook screenshots** — non exposé par l'énum `AppImageType` de `androidpublisher v3` (UI Play Console only) ; à ajouter si/quand Google l'expose. (b) **`metadata images clear`** (vider entièrement un slot via `deleteall`) — seul verbe sans équivalent déclaratif, repoussé (ADR-0013 §3). (c) Resize/composition/framing d'images (downstream tooling).
 **Pourquoi c'était reporté :** workflow complexe (validation des dimensions par type, slots par locale et par form factor), gros morceau à part entière. Souvent géré hors CI (designers).
 
@@ -49,26 +49,28 @@ Upload d'APK au lieu d'AAB.
 > **Promu en PRD planifié mais déprioritisé** (2026-06-01) — apps existantes only, voir [ROADMAP.md](ROADMAP.md) « Ensuite ». Section conservée comme rationnel d'origine.
 **Pourquoi plus tard :** Google n'accepte plus de nouveaux APK pour nouvelles apps depuis 2021. AAB-only par défaut, APK ajouté seulement si un user le réclame.
 
-### Testers (groupes internes) — `edits.testers` — 🔼 **dé-parké 2026-06-01**
+### Testers (groupes internes) — `edits.testers` — ✅ **livré** (PRD [#117](https://github.com/PollyGlot/google-play-cli/issues/117), slices #120–#123)
 Gestion des emails de testeurs sur tracks closed.
-> **Promu au thème first-release readiness** (le test fermé est désormais obligatoire avant la 1ère prod pour les nouveaux comptes) — voir [ROADMAP.md](ROADMAP.md). Couplé à la création de custom closed tracks ci-dessous. Section conservée comme rationnel d'origine.
+**Statut :** implémenté via `gplay testers list/set` (le test fermé est désormais obligatoire avant la 1ère prod pour les nouveaux comptes). Couplé à la création de custom closed tracks ci-dessous. Section conservée comme rationnel d'origine.
 **Pourquoi c'était reporté :** workflow secondaire, la plupart des équipes gèrent ça à la main dans Play Console une fois.
 
-### Détails app — `edits.details`
+### Détails app — `edits.details` — ✅ **livré** (PRD [#113](https://github.com/PollyGlot/google-play-cli/issues/113))
 Langue par défaut, email/téléphone/site contact.
-**Pourquoi plus tard :** champs très peu modifiés une fois set.
+**Statut :** implémenté via `gplay apps details` / `apps details set` (read + set) — issues [#126](https://github.com/PollyGlot/google-play-cli/issues/126)/[#127](https://github.com/PollyGlot/google-play-cli/issues/127). Section conservée comme rationnel d'origine.
+**Pourquoi c'était reporté :** champs très peu modifiés une fois set.
 
-### Disponibilité pays — `edits.countryavailability`
+### Disponibilité pays — `edits.countryavailability` — ✅ **livré** (PRD [#113](https://github.com/PollyGlot/google-play-cli/issues/113), read-only)
 Liste des pays où l'app est dispo.
-**Pourquoi plus tard :** changement rare, géré dans la console.
+**Statut :** implémenté via `gplay tracks availability` (read-only, [ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) — issue [#128](https://github.com/PollyGlot/google-play-cli/issues/128). Section conservée comme rationnel d'origine.
+**Pourquoi c'était reporté :** changement rare, géré dans la console.
 
 ### App Recovery — `edits.apprecovery`
 Rollback ciblé d'un release vers une version précédente pour des users impactés.
 **Pourquoi plus tard :** incident response, niche. À considérer si on fait un module "incident" complet.
 
-### Création / gestion de custom closed tracks — `tracks.create` + testers — 🔼 **dé-parké 2026-06-01**
+### Création / gestion de custom closed tracks — `tracks.create` + testers — ✅ **livré** (PRD [#117](https://github.com/PollyGlot/google-play-cli/issues/117), slices #120–#123)
 Créer des tracks closed nommés (`qa-team`, `external-beta`...) et y gérer la liste de testeurs.
-> **Promu au thème first-release readiness** — voir [ROADMAP.md](ROADMAP.md). Section conservée comme rationnel d'origine.
+**Statut :** implémenté via `gplay tracks create` (+ `testers list/set`). Section conservée comme rationnel d'origine.
 **Pourquoi c'était reporté :** le MVP accepte `--track <any-string>` en passthrough donc utiliser un track existant marche déjà. La *création* d'un nouveau closed track et la gestion fine des testeurs sont reportées.
 
 ---
