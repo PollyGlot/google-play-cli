@@ -30,6 +30,9 @@ func TestVerbVocabulary_canonicalNames(t *testing.T) {
 		{[]string{"tracks", "status"}, true},
 		{[]string{"team", "grants", "remove"}, false}, // #165 (replaced grants + "revoke")
 		{[]string{"team", "grants", "revoke"}, true},
+		{[]string{"apps", "details", "view"}, false}, // #166 (read now carries a verb)
+		{[]string{"apps", "details", "set"}, false},  // write unchanged
+		{[]string{"apps", "details"}, false},         // group still resolves (bare → help)
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.path, " "), func(t *testing.T) {
