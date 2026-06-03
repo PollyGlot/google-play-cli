@@ -1,7 +1,7 @@
 // Package list_test exercises `gplay testers list` at the kernel level: a
 // RunContext built by hand, a RoundTripper injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// tracks-status / promote harness so a single seam proves the auth +
+// tracks view / promote harness so a single seam proves the auth +
 // read-only Edit lifecycle wiring for testers list too.
 package list_test
 

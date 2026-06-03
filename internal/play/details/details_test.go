@@ -19,7 +19,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
 )
 
-// infoRT routes the apps-info sequence: edits.insert, edits.details.get,
+// infoRT routes the apps view sequence: edits.insert, edits.details.get,
 // edits.listings.get(defaultLanguage), edits.delete. Configurable status
 // codes on details.get and listings.get exercise the error paths without
 // re-declaring the transport. A PUT or a :commit fails the test — a

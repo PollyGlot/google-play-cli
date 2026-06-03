@@ -259,7 +259,7 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDe
 
 // fetchDetails GETs edits.details.get and returns (raw body,
 // defaultLanguage, contactEmail, err). The raw body is what feeds the
-// `"details"` slot of the apps-info envelope.
+// `"details"` slot of the apps view envelope.
 func fetchDetails(ctx context.Context, hc *http.Client, pkg, editID string) (json.RawMessage, string, string, error) {
 	u := api.AndroidPubBase +
 		"/applications/" + url.PathEscape(pkg) +

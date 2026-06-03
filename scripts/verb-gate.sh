@@ -42,15 +42,16 @@ report() { # <label> <matches>
 }
 
 # 1–3: fully-removed command names (no legitimate use outside the exclusions).
-# Patterns use explicit non-word boundaries ([^[:alnum:]_] / ^ / $) and flexible
-# whitespace ([[:space:]]+) so they match the whole command with any spacing and
-# never a substring inside a larger token (POSIX classes — portable GNU/BSD).
+# Patterns use explicit non-word boundaries ([^[:alnum:]_] / ^ / $) and a
+# flexible separator [[:space:]-]+ that matches BOTH the command form ("apps
+# info") and the hyphenated adjective form ("apps-info envelope") in prose, so
+# neither slips through. POSIX classes only — portable GNU/BSD.
 report "apps info -> apps view" \
-	"$(grep_all -E '(^|[^[:alnum:]_])apps[[:space:]]+info([^[:alnum:]_]|$)')"
+	"$(grep_all -E '(^|[^[:alnum:]_])apps[[:space:]-]+info([^[:alnum:]_]|$)')"
 report "tracks status -> tracks view" \
-	"$(grep_all -E '(^|[^[:alnum:]_])tracks[[:space:]]+status([^[:alnum:]_]|$)')"
+	"$(grep_all -E '(^|[^[:alnum:]_])tracks[[:space:]-]+status([^[:alnum:]_]|$)')"
 report "team grants revoke -> team grants remove" \
-	"$(grep_all -E '(^|[^[:alnum:]_])team[[:space:]]+grants[[:space:]]+revoke([^[:alnum:]_]|$)')"
+	"$(grep_all -E '(^|[^[:alnum:]_])team[[:space:]-]+grants[[:space:]-]+revoke([^[:alnum:]_]|$)')"
 
 # 4–5: bare-read regressions. A `gplay <group>` invocation must carry a verb;
 # the read is `... view` (and, for apps details, the write is `... set`).
