@@ -39,14 +39,14 @@ Deliberately **excludes** release notes (the per-release "what's new" text): tho
 The canonical on-disk form of a set of Listings is the **metadata tree** (see below).
 
 ### Store front
-The **per-locale** presentation of an app on Google Play: its Listings (text) and its store images (icon, feature graphic, screenshots per locale and form factor — see Store image). This is the axis the `metadata` command namespace owns, with text under the Listing commands and images under the `metadata images` sub-namespace. Deliberately distinct from **app-global** configuration — default language and contact details (`edits.details`) — which is keyed by app, not by locale, and belongs with the `apps` namespace (gplay already reads details via `apps info`), never inside the metadata tree.
+The **per-locale** presentation of an app on Google Play: its Listings (text) and its store images (icon, feature graphic, screenshots per locale and form factor — see Store image). This is the axis the `metadata` command namespace owns, with text under the Listing commands and images under the `metadata images` sub-namespace. Deliberately distinct from **app-global** configuration — default language and contact details (`edits.details`) — which is keyed by app, not by locale, and belongs with the `apps` namespace (gplay already reads details via `apps view`), never inside the metadata tree.
 
 The dividing question for any new store-presence surface is its **key axis**: keyed by locale → store front → `metadata`; keyed by app → **App details** → `apps`; keyed by track → **Country availability** → `tracks`.
 
 ### App details
-The app-global configuration block backed by Google's `edits.details` resource: `defaultLanguage` plus the user-visible contact `email`, `phone`, and `website`. Keyed by **app** — one set per package, independent of locale (unlike a Listing) and of track (unlike Country availability). The only writable app-global surface gplay exposes today; read with the bare `apps details`, written field-by-field with `apps details set`.
+The app-global configuration block backed by Google's `edits.details` resource: `defaultLanguage` plus the user-visible contact `email`, `phone`, and `website`. Keyed by **app** — one set per package, independent of locale (unlike a Listing) and of track (unlike Country availability). The only writable app-global surface gplay exposes today; read with `apps details view`, written field-by-field with `apps details set`.
 
-Distinct from **apps info**, the cross-resource *identity card* (package + title + default language, where `title` comes from a Listing, not from details). App details is the full `edits.details` record; `apps info` is a deliberately terse "am I looking at the right app?" check.
+Distinct from **apps view**, the cross-resource *identity card* (package + title + default language, where `title` comes from a Listing, not from details). App details is the full `edits.details` record; `apps view` is a deliberately terse "am I looking at the right app?" check.
 
 _Avoid_: calling these fields "metadata" — metadata is the per-locale Store front.
 

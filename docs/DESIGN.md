@@ -11,6 +11,57 @@ For deeper rationale on the load-bearing choices, see:
 - [ADR-0003 — `--output json` is API pass-through](./adr/0003-json-passthrough.md)
 - [ADR-0004 — Cascading config](./adr/0004-cascading-config.md)
 - [ADR-0005 — TTY-aware output defaults](./adr/0005-tty-aware-output.md)
+- [ADR-0019 — Canonical verb vocabulary](./adr/0019-canonical-verb-vocabulary.md)
+
+---
+
+## 0. Verb vocabulary
+
+Every command verb belongs to one of three categories. The rationale and the
+considered alternatives live in
+[ADR-0019](./adr/0019-canonical-verb-vocabulary.md); this is the normative
+quick-reference.
+
+**1. CRUD grammar** — generic resource verbs, held to strict consistency:
+
+| Gesture | Verb | Example |
+|---|---|---|
+| Read many | `list` | `gplay tracks list` |
+| Read one addressed resource | `view` | `gplay apps view`, `gplay tracks view` |
+| Session / health (no addressed resource) | `status` | `gplay auth status` |
+| Bring a new object into existence | `create` | `gplay tracks create <name>` |
+| Add/remove membership of an existing entity | `add` / `remove` | `gplay apps add`, `gplay team users remove` |
+| Delete a resource / clear a field | `remove` | `gplay team grants remove` |
+| Write/declare state with explicit values | `set` | `gplay apps details set`, `gplay testers set` |
+
+Deciding rules:
+
+- **`view` vs `status`:** `view` reads a resource you point at (`--package`,
+  `--track`, …); `status` reports session/health with nothing pointed at.
+  `auth status` is the only `status`.
+- **`create` vs `add`:** ask "am I making the object *exist*?" Yes → `create`
+  (a closed track). No, it already exists and I am enrolling it in a
+  collection → `add` (registering an app locally, adding a user to the org).
+  gplay cannot create or delete an app on Play, so apps use `add`/`remove`,
+  never `create`/`delete`.
+- **`remove`, never `revoke`:** one delete verb across the surface.
+- **`set`, never `edit`:** writes are declarative/idempotent (full-replace or
+  deterministic patch), non-interactive, and `edit` would collide with the
+  `Edit` transaction concept (`gplay edits …`).
+- **No verb-less reads:** a read always carries `view` (so `apps details view`
+  and `tracks availability view`, not the bare nouns).
+
+**2. Domain verbs** — each names a real gesture no generic verb captures:
+`upload`, `promote`, `rollout`, `halt`, `resume`, `complete`, `reply`, `pull`,
+`apply`, `validate`, `login`/`logout`. Admission test: it must state a domain
+gesture `set`/`create`/`view` could not say honestly. The `releases` rollout
+state machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these
+act on a release's rollout *state*, not on a "rollout" resource, so they are
+not nested.
+
+**3. Reference / diagnostic / scaffold** — meta-commands outside the resource
+grammar, keeping their own names: `version`, `exit-codes`, `auth doctor`,
+`team permissions` (offline catalog), `init`.
 
 ---
 
@@ -178,7 +229,7 @@ The Google Play Developer API has no `apps.list`, so `gplay apps list` reads a
 
 - Populated by `gplay init --package X` (auto-adds) or `gplay apps add X`
 - Stored in `~/.gplay/config.json` alongside Accounts
-- `gplay apps info --package X` still hits the live API (via `edits.details`
+- `gplay apps view --package X` still hits the live API (via `edits.details`
   etc.) — only enumeration is local
 
 Backlog: real discovery via Cloud Resource Manager + IAM (see `BACKLOG.md`).
