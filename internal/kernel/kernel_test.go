@@ -216,7 +216,9 @@ func TestRun_resolvesActiveAccountAndRenders(t *testing.T) {
 	err := kernel.Run(boot, kernel.Inputs{Format: output.FormatJSON}, func(rc *kernel.RunContext) (output.Renderable, error) {
 		// Resolution is lazy now: the credential lands only once a command
 		// asks for it (here, explicitly; in production via AuthedClient).
-		rc.EnsureAccount()
+		if err := rc.EnsureAccount(); err != nil {
+			t.Fatalf("EnsureAccount on a seeded active account = %v, want nil", err)
+		}
 		if rc.Account == nil {
 			t.Fatal("rc.Account is nil after EnsureAccount on a seeded active account")
 		}
@@ -238,7 +240,9 @@ func TestRun_noAccount_callsFnWithNilAccount(t *testing.T) {
 	called := false
 	err := kernel.Run(boot, kernel.Inputs{}, func(rc *kernel.RunContext) (output.Renderable, error) {
 		called = true
-		rc.EnsureAccount()
+		if err := rc.EnsureAccount(); err != nil {
+			t.Errorf("EnsureAccount with nothing configured = %v, want nil (benign absent)", err)
+		}
 		if rc.Account != nil {
 			t.Errorf("rc.Account = %+v, want nil when nothing resolves", rc.Account)
 		}
@@ -336,7 +340,9 @@ func TestRun_authNeedingCommand_probesKeyring(t *testing.T) {
 	spy.reset()
 
 	if err := kernel.Run(boot, kernel.Inputs{}, func(rc *kernel.RunContext) (output.Renderable, error) {
-		rc.EnsureAccount()
+		if err := rc.EnsureAccount(); err != nil {
+			t.Fatalf("EnsureAccount on a seeded keyring Account = %v, want nil", err)
+		}
 		if rc.Account == nil {
 			t.Fatal("rc.Account is nil after EnsureAccount on a seeded keyring Account")
 		}
