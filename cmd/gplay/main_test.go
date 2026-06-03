@@ -1,10 +1,12 @@
 package main
 
 import (
+	"io"
 	"runtime/debug"
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
@@ -59,6 +61,37 @@ func TestVerbVocabulary_canonicalNames(t *testing.T) {
 			}
 			if want := tc.path[len(tc.path)-1]; cmd.Name() != want {
 				t.Fatalf("%v: resolved to leaf %q, want %q", tc.path, cmd.Name(), want)
+			}
+		})
+	}
+}
+
+// TestVerbVocabulary_oldLeafNamesFailLoudly asserts the runtime half of the
+// hard rename: executing a removed leaf verb under its group does not quietly
+// print group help with exit 0 (cobra's default for an unknown subcommand of
+// a child group). The group rejects it as CLI misuse — exit 2, message naming
+// the unknown command — so a CI step still calling the old name breaks.
+func TestVerbVocabulary_oldLeafNamesFailLoudly(t *testing.T) {
+	// Old names kept as SPLIT args (never a contiguous phrase) for the #168 gate.
+	for _, args := range [][]string{
+		{"apps", "info"},
+		{"tracks", "status"},
+		{"team", "grants", "revoke"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			root.SetArgs(args)
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("%v: expected a misuse error, got nil (the old name silently succeeded)", args)
+			}
+			if code := exit.For(err); code != 2 {
+				t.Errorf("%v: exit code = %d, want 2 (CLI misuse); err=%v", args, code, err)
+			}
+			if !strings.Contains(err.Error(), "unknown command") {
+				t.Errorf("%v: error = %q, want it to name the unknown command", args, err)
 			}
 		})
 	}
