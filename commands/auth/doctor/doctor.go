@@ -80,8 +80,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	var worst *authdoctor.CheckResult
 	// doctor's whole job is to exercise auth, so resolve the credential
 	// now (this is where the keyring probe fires for a stored Account).
-	rc.EnsureAccount()
-	if rc.Account == nil {
+	// EnsureAccount splits absent from invalid (ADR-0020, DESIGN §1): an
+	// invalid credential returns the real resolution error, while an
+	// absent one returns nil + nil Account. Surface the real cause in
+	// check 1 when resolution actually failed; keep the generic synthetic
+	// message only for the genuinely-absent case.
+	if err := rc.EnsureAccount(); err != nil {
+		results, worst = synthFailure(err, checks)
+	} else if rc.Account == nil {
 		results, worst = synthFailure(errors.New("no active account; run `gplay auth login`"), checks)
 	} else {
 		results = authdoctor.Run(rc.Ctx, rc.Account, &hc, checks...)
