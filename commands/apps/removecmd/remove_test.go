@@ -21,6 +21,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/removecmd"
 	"github.com/PollyGlot/google-play-cli/internal/apps/registry"
+	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -417,5 +418,46 @@ func TestRun_packageAbsent_isNoOpWithStderrNote(t *testing.T) {
 	}
 	if !registry.Has(g.Accounts, "playci", "com.example.kept") {
 		t.Errorf("existing package was perturbed by a no-op remove; accounts=%+v", g.Accounts)
+	}
+}
+
+// TestRemove_cobra_malformedInlineCredential_exits10NoMutation drives the
+// real cobra command through the production lazy path with a malformed
+// inline GPLAY_SERVICE_ACCOUNT. The AccountName == "" branch must surface
+// the invalid-credential error (exit 10, the real cause) instead of the
+// misdirecting "run gplay auth login" authError — and must NOT mutate the
+// cascade Account's registry (#180, ADR-0020).
+func TestRemove_cobra_malformedInlineCredential_exits10NoMutation(t *testing.T) {
+	t.Setenv(resolver.EnvAccount, "")
+	t.Setenv(resolver.EnvServiceAccount, "{ not valid json")
+	cfgPath := seedGlobal(t, []string{"com.cascade.app"})
+	var stdout, stderr bytes.Buffer
+
+	err := runCmd(t, cfgPath, &stdout, &stderr, "com.cascade.app")
+	if err == nil {
+		t.Fatal("apps remove with a malformed inline credential = nil, want exit 10")
+	}
+	if got := exit.For(err); got != 10 {
+		t.Errorf("exit.For = %d, want 10; err=%v", got, err)
+	}
+	if !strings.Contains(err.Error(), "could not read credential") {
+		t.Errorf("error should name the real cause; got %q", err.Error())
+	}
+	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
+	// error survives, not just the wrapper prefix.
+	if !strings.Contains(err.Error(), "invalid character") {
+		t.Errorf("error should preserve the underlying JSON parse cause; got %q", err.Error())
+	}
+	// No-payload contract: the hard-error path writes nothing to stdout
+	// (data → stdout, errors → stderr).
+	if got := stdout.String(); got != "" {
+		t.Errorf("stdout = %q, want empty on the hard-error path", got)
+	}
+	g, lerr := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, cfgPath)
+	if lerr != nil {
+		t.Fatalf("reload: %v", lerr)
+	}
+	if !registry.Has(g.Accounts, "playci", "com.cascade.app") {
+		t.Error("a malformed inline credential must not mutate the cascade Account's registry")
 	}
 }

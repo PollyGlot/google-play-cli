@@ -99,7 +99,13 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 		// Empty name ⟹ only an inline or no-source layer is reachable,
 		// so resolving the credential here never probes the keyring; the
 		// common stored-Account path keeps `apps list` keystore-free.
-		rc.EnsureAccount()
+		if err := rc.EnsureAccount(); err != nil {
+			// A malformed inline credential (--service-account /
+			// GPLAY_SERVICE_ACCOUNT) fails loudly (exit 10, the real cause)
+			// instead of silently falling back to ConfigAccount below and
+			// listing another Account's packages (ADR-0020).
+			return nil, err
+		}
 		if rc.Account != nil {
 			// Inline credential supplied via --service-account or
 			// GPLAY_SERVICE_ACCOUNT: a real credential resolved, but it

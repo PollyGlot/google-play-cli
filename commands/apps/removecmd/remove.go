@@ -67,7 +67,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if rc.AccountName == "" {
 		// Empty name ⟹ only an inline or no-source layer is reachable,
 		// so this resolves the credential without probing the keyring.
-		rc.EnsureAccount()
+		if err := rc.EnsureAccount(); err != nil {
+			// A present-but-invalid inline credential (--service-account /
+			// GPLAY_SERVICE_ACCOUNT) is a hard error (exit 10, the real
+			// cause) instead of the misdirecting "run gplay auth login"
+			// below — never mutate a fallback Account's registry (ADR-0020).
+			return nil, err
+		}
 		if rc.Account != nil {
 			return nil, &usageError{msg: "apps remove: cannot remove under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}

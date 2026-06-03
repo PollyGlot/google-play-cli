@@ -17,6 +17,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
@@ -132,6 +133,32 @@ func seedActiveAccount(t *testing.T, boot kernel.Boot) {
 		t.Fatal(err)
 	}
 	if err := be.Save(context.Background(), "playci", []byte(validSAJSON)); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Global{}
+	cfg.AddAccount("playci")
+	if err := cfg.SetActive("playci"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seedCorruptAccount mirrors seedActiveAccount but Saves badBytes (instead of
+// validSAJSON) under "playci" into the Select-chosen backend, then writes a
+// global config with "playci" active. It models an active Account whose stored
+// credential is *invalid* (ADR-0020): present but unusable.
+func seedCorruptAccount(t *testing.T, boot kernel.Boot, badBytes []byte) {
+	t.Helper()
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
+		Keyring:  boot.Keyring,
+		FileRoot: boot.KeystoreRoot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := be.Save(context.Background(), "playci", badBytes); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Global{}
@@ -455,6 +482,84 @@ func TestStatus_inlineCredential_reportsEnvOverrideWithoutProbing(t *testing.T) 
 	}
 	if payload.Backend != "" {
 		t.Errorf("json.backend = %q, want empty — an inline credential must not probe the keystore", payload.Backend)
+	}
+}
+
+// TestStatus_corruptActiveCredential_malformedJSON_isExit10 locks in the
+// ADR-0020 invalid path: an active Account whose stored bytes are not valid
+// JSON must hard-error (exit 10) with the "could not read credential" message
+// and render no payload — status must not paper over a corrupt credential.
+func TestStatus_corruptActiveCredential_malformedJSON_isExit10(t *testing.T) {
+	boot := newBoot(t, newFakeKeyring(true))
+	seedCorruptAccount(t, boot, []byte("{ not valid json"))
+	var stdout, stderr bytes.Buffer
+
+	err := runCmd(t, boot, &stdout, &stderr, "--output", "json")
+	if err == nil {
+		t.Fatal("expected an error for a corrupt active credential, got nil")
+	}
+	if code := exit.For(err); code != 10 {
+		t.Errorf("exit.For(err) = %d, want 10", code)
+	}
+	if !strings.Contains(err.Error(), "could not read credential") {
+		t.Errorf("error %q missing 'could not read credential'", err.Error())
+	}
+	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
+	// error survives, not just the wrapper prefix.
+	if !strings.Contains(err.Error(), "invalid character") {
+		t.Errorf("error %q should preserve the underlying JSON parse cause", err.Error())
+	}
+	// Strict no-payload contract: nothing at all reaches stdout on the
+	// hard-error path (data → stdout, errors → stderr). An exact-empty check
+	// also catches a stray `{}` or any other leaked payload that the
+	// substring checks below would miss.
+	if out := stdout.String(); out != "" {
+		t.Fatalf("stdout = %q, want empty on the corrupt-credential error path", out)
+	}
+}
+
+// TestStatus_corruptActiveCredential_missingField_namesTheCause checks that the
+// typed cause survives the credentialError wrapping (Unwrap): a service account
+// missing client_email surfaces exit 10 with the field name in the message.
+func TestStatus_corruptActiveCredential_missingField_namesTheCause(t *testing.T) {
+	boot := newBoot(t, newFakeKeyring(true))
+	seedCorruptAccount(t, boot, []byte(`{"type":"service_account"}`))
+	var stdout, stderr bytes.Buffer
+
+	err := runCmd(t, boot, &stdout, &stderr, "--output", "json")
+	if err == nil {
+		t.Fatal("expected an error for a credential missing client_email, got nil")
+	}
+	if code := exit.For(err); code != 10 {
+		t.Errorf("exit.For(err) = %d, want 10", code)
+	}
+	if !strings.Contains(err.Error(), "client_email") {
+		t.Errorf("error %q should name the missing field client_email", err.Error())
+	}
+}
+
+// TestStatus_loggedOutActiveAccount_staysExitZero covers the ADR-0020 absent
+// path: a config naming "playci" active but with no key in the store resolves
+// to ErrNotFound (benign), so status exits 0 with "No active account" rather
+// than erroring. The unavailable keyring forces the file backend; no key file
+// exists, so Load returns ErrNotFound.
+func TestStatus_loggedOutActiveAccount_staysExitZero(t *testing.T) {
+	boot := newBoot(t, newFakeKeyring(true))
+	cfg := &config.Global{}
+	cfg.AddAccount("playci")
+	if err := cfg.SetActive("playci"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "table"); err != nil {
+		t.Fatalf("Execute: expected nil error (absent credential), got %v", err)
+	}
+	if !strings.Contains(stdout.String(), "No active account") {
+		t.Errorf("stdout missing 'No active account' line; got %q", stdout.String())
 	}
 }
 

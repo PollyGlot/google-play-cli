@@ -82,7 +82,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		// An empty name means the resolver can only reach an inline or
 		// no-source layer, so EnsureAccount here is keystore-free — it
 		// never probes for a stored Account.
-		rc.EnsureAccount()
+		if err := rc.EnsureAccount(); err != nil {
+			// A present-but-invalid inline credential (--service-account /
+			// GPLAY_SERVICE_ACCOUNT) is a hard error (exit 10, the real
+			// cause) instead of the misdirecting "run gplay auth login"
+			// below — never register the package under a fallback Account
+			// (ADR-0020).
+			return nil, err
+		}
 		if rc.Account != nil {
 			return nil, &usageError{msg: "apps add: cannot register under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}

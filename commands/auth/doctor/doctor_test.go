@@ -634,6 +634,76 @@ func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
 	}
 }
 
+// TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause asserts
+// the ADR-0020 behavioral delta: a corrupt active credential (missing a
+// required field) makes check 1 surface the REAL resolution cause —
+// the field-named hint — not the synthetic "no active account" message.
+func TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause(t *testing.T) {
+	boot := newBoot(t)
+	// Valid JSON, accepted by the keystore, but missing client_email so
+	// resolution fails with a MissingFieldError on the production path.
+	seedActiveAccount(t, boot, []byte(`{"type":"service_account"}`))
+
+	var stdout, stderr bytes.Buffer
+	runErr := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "table")
+	if runErr == nil {
+		t.Fatal("Execute: expected error on corrupt active credential, got nil")
+	}
+	if got := exit.For(runErr); got != 10 {
+		t.Errorf("exit.For(err) = %d, want 10", got)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `missing required field "client_email"`) {
+		t.Errorf("check 1 must surface the real cause (field-named hint); got:\n%s", out)
+	}
+	if strings.Contains(out, "no active account") {
+		t.Errorf("check 1 must not fall back to the synthetic absent message; got:\n%s", out)
+	}
+	// The checklist is rendered exactly once: no double-report of check 1.
+	if n := strings.Count(out, "Service account JSON is valid"); n != 1 {
+		t.Errorf("check-1 name appears %d times, want exactly 1; got:\n%s", n, out)
+	}
+}
+
+// TestDoctor_corruptActiveCred_malformedJSON_hintCarriesCause asserts that
+// when the active credential is malformed JSON, check 1's hint carries the
+// underlying resolution cause ("could not read credential: ...").
+func TestDoctor_corruptActiveCred_malformedJSON_hintCarriesCause(t *testing.T) {
+	boot := newBoot(t)
+	seedActiveAccount(t, boot, []byte("{ not json"))
+
+	var stdout, stderr bytes.Buffer
+	runErr := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "table")
+	if runErr == nil {
+		t.Fatal("Execute: expected error on malformed active credential, got nil")
+	}
+	if got := exit.For(runErr); got != 10 {
+		t.Errorf("exit.For(err) = %d, want 10", got)
+	}
+	if out := stdout.String(); !strings.Contains(out, "could not read credential") {
+		t.Errorf("check 1 hint must carry the resolution cause; got:\n%s", out)
+	}
+}
+
+// TestDoctor_absentCred_check1IsGenericSynthetic is a regression guard: with
+// no credential at all (absent), check 1 keeps the generic synthetic "no
+// active account" message rather than a resolution-error cause.
+func TestDoctor_absentCred_check1IsGenericSynthetic(t *testing.T) {
+	boot := newBoot(t) // no seeding → genuinely absent
+
+	var stdout, stderr bytes.Buffer
+	runErr := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "table")
+	if runErr == nil {
+		t.Fatal("Execute: expected error when no credential is present, got nil")
+	}
+	if got := exit.For(runErr); got != 10 {
+		t.Errorf("exit.For(err) = %d, want 10", got)
+	}
+	if out := stdout.String(); !strings.Contains(out, "no active account") {
+		t.Errorf("absent case must keep the generic synthetic message; got:\n%s", out)
+	}
+}
+
 func TestDoctor_withoutPackage_runsOnlyThreeChecks(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))

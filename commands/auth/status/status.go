@@ -55,7 +55,15 @@ func (p Payload) Renderers() output.Renderers {
 func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	// status reports auth state, so resolving the credential (and probing
 	// the keystore) is exactly its job — do it now rather than at boot.
-	rc.EnsureAccount()
+	// EnsureAccount splits the two failure shapes (ADR-0020): an *invalid*
+	// credential (malformed JSON, missing field, unreadable file) returns an
+	// exit-10 error, which we surface before rendering so a corrupt active
+	// credential hard-errors rather than masquerading as "no account"; an
+	// *absent* credential returns nil with rc.Account == nil, which maps to
+	// the benign "no active account" payload.
+	if err := rc.EnsureAccount(); err != nil {
+		return nil, err
+	}
 	if rc.Account == nil {
 		return Payload{Active: false}, nil
 	}
@@ -93,6 +101,13 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Print the active Account, the keystore backend, and where the credential lives",
+		// Now that status has a real error path (a corrupt active credential
+		// returns exit 10, #178), silence cobra's usage banner and error echo
+		// so a runtime failure surfaces as main.go's single `gplay: ...` line
+		// on stderr — never a usage dump on stdout. Matches every other leaf
+		// command (doctor, apps, ...).
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{})
