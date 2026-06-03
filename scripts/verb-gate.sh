@@ -42,19 +42,22 @@ report() { # <label> <matches>
 }
 
 # 1–3: fully-removed command names (no legitimate use outside the exclusions).
+# Patterns use explicit non-word boundaries ([^[:alnum:]_] / ^ / $) and flexible
+# whitespace ([[:space:]]+) so they match the whole command with any spacing and
+# never a substring inside a larger token (POSIX classes — portable GNU/BSD).
 report "apps info -> apps view" \
-	"$(grep_all -E 'apps info')"
+	"$(grep_all -E '(^|[^[:alnum:]_])apps[[:space:]]+info([^[:alnum:]_]|$)')"
 report "tracks status -> tracks view" \
-	"$(grep_all -E 'tracks status')"
+	"$(grep_all -E '(^|[^[:alnum:]_])tracks[[:space:]]+status([^[:alnum:]_]|$)')"
 report "team grants revoke -> team grants remove" \
-	"$(grep_all -E 'team grants revoke')"
+	"$(grep_all -E '(^|[^[:alnum:]_])team[[:space:]]+grants[[:space:]]+revoke([^[:alnum:]_]|$)')"
 
 # 4–5: bare-read regressions. A `gplay <group>` invocation must carry a verb;
 # the read is `... view` (and, for apps details, the write is `... set`).
 report "gplay apps details (read must be 'apps details view')" \
-	"$(grep_all -oE 'gplay apps details( [a-z-]+)?' | grep -vE 'gplay apps details (view|set)$' || true)"
+	"$(grep_all -oE 'gplay[[:space:]]+apps[[:space:]]+details([[:space:]]+[a-z-]+)?' | grep -vE 'gplay[[:space:]]+apps[[:space:]]+details[[:space:]]+(view|set)$' || true)"
 report "gplay tracks availability (read must be 'tracks availability view')" \
-	"$(grep_all -oE 'gplay tracks availability( [a-z-]+)?' | grep -vE 'gplay tracks availability view$' || true)"
+	"$(grep_all -oE 'gplay[[:space:]]+tracks[[:space:]]+availability([[:space:]]+[a-z-]+)?' | grep -vE 'gplay[[:space:]]+tracks[[:space:]]+availability[[:space:]]+view$' || true)"
 
 if [ "$fail" -ne 0 ]; then
 	echo "verb-gate: FAILED — use the canonical verbs (docs/adr/0019-canonical-verb-vocabulary.md)." >&2

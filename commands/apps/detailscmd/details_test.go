@@ -359,4 +359,15 @@ func TestViewCommand_hasReadSurface(t *testing.T) {
 	if view.Flags().Lookup("package") == nil {
 		t.Error("`apps details view` must expose --package")
 	}
+	// Per the repo contract, every command supports --output with table/json/
+	// markdown — lock that on the read surface too.
+	out := view.Flags().Lookup("output")
+	if out == nil {
+		t.Fatal("`apps details view` must expose --output")
+	}
+	for _, want := range []string{"table", "json", "markdown"} {
+		if !strings.Contains(out.Usage, want) {
+			t.Errorf("--output usage missing %q; got %q", want, out.Usage)
+		}
+	}
 }
