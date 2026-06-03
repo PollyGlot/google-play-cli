@@ -40,7 +40,7 @@ as a CodeRabbit review learning on PR #172). The reversal is small in
 spirit: `auth doctor`'s `internal/auth/doctor.ResolutionFailure(err)` was
 *already* built to render the real resolution error as its check-1 hint —
 it was simply being fed a synthetic `errors.New("no active account")`
-instead of the cause `EnsureAccount` had thrown away. The accueil for the
+instead of the cause `EnsureAccount` had thrown away. The handler for the
 error already exists; this ADR just stops starving it.
 
 The sibling CLI `asc` (App Store Connect) was used as a precedent. Its
