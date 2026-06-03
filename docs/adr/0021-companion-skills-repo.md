@@ -89,31 +89,40 @@ Skills ship **now, in 0.x**. The "CLI 1.0 + skills v1 ship together" coupling fr
 skills pin to are frozen by ADR-0019 independently of the 1.0 milestone, so there
 is no contract risk in shipping skills before any 1.0 gel.
 
-### 5. CI guards correctness, including command drift
+### 5. Anti-drift is editorial — the skills repo carries no CI
 
-Beyond linting `SKILL.md` frontmatter, CI checks that every `gplay …` command
-string referenced in a `SKILL.md` resolves to a **real** command — a drift gate
-analogous to the repo-wide grep gate of #168. This is what keeps published skills
-honest as the CLI evolves: without it, a renamed or removed command silently
-breaks every agent that loaded the skill.
+This section originally specified a CI guard: a `SKILL.md` frontmatter lint plus
+a command-drift gate (every `gplay …` string cited in a skill must resolve to a
+**real** command, which needs a `gplay` binary in the skills-repo CI). That is
+**reversed** — the companion repo is **docs-only and runs no CI**.
+
+Drift is prevented editorially instead: every skill is authored `--help`-first
+against the live binary and pinned to the ADR-0019 vocabulary, and that is
+checked at review time. A frontmatter lint was bootstrapped with the repo
+(slice #183) and then removed; the command-drift gate (#184) was closed
+won't-do. The rationale: a hand-curated docs repo of nine files does not earn a
+CI pipeline (nor a `gplay` binary inside it), and `--help`-first authoring plus
+the frozen ADR-0019 names already give the same protection. The frontmatter
+contract from §3 survives as README authoring guidance, enforced by review —
+not a gate.
 
 ## Consequences
 
 - `/to-issues` decomposes #53 into a tracer-bullet first slice (bootstrap repo +
-  README/install + `gplay-release-flow` + frontmatter lint), then one slice per
-  remaining skill, plus the drift gate — ~11 slices, filed on
-  `PollyGlot/google-play-cli` (the sibling repo is not bootstrapped yet; slice 1
-  *is* the bootstrap).
+  README/install + `gplay-release-flow`), then one slice per remaining skill,
+  filed on `PollyGlot/google-play-cli` (slice 1 *is* the bootstrap). The
+  frontmatter-lint that shipped with the bootstrap and the separate drift-gate
+  slice (#184) were both dropped per §5 — the repo is docs-only.
 - `CLAUDE.md` "Skills structure" and `AGENTS.md` "gplay skills" are corrected to
   the canonical names (`gplay-track-management` → `gplay-tracks`; the speculative
   `gplay-subscription-management` stays gated) and expanded to the 9-skill roster.
 - `ROADMAP.md` stops listing #53 under Parking.
 - "Skill" / "companion skills repo" are tooling/meta terms, not Play-domain nouns,
   so they do **not** enter `CONTEXT.md` — the glossary stays domain-only.
-- The drift gate requires a `gplay` binary in the skills-repo CI (install the
-  latest release, or `go install`). A real cost, accepted: it is the only thing
-  that makes "published skill" a durable contract rather than a snapshot that
-  rots.
+- The skills repo runs **no CI**, so there is no `gplay` binary in any
+  skills-repo pipeline. What keeps a "published skill" durable instead is review
+  discipline (§5): `--help`-first authoring against the live binary plus the
+  frozen ADR-0019 names, checked when a skill change is reviewed.
 
 ## Considered options
 
@@ -126,7 +135,13 @@ breaks every agent that loaded the skill.
   right altitude for v1 is one-per-namespace; finer workflow skills are additive
   later, not a launch requirement.
 - **Freeze flag lists inside each `SKILL.md`.** Rejected: they drift; `--help` is
-  the live source and the drift gate covers command *names*.
+  the live source, and command *names* stay honest via `--help`-first authoring
+  and the ADR-0019 freeze (no drift-gate CI — see §5).
+- **A CI drift gate + frontmatter lint** (§5 as first written). Adopted, then
+  reversed: a frontmatter lint shipped with the bootstrap and was removed, and
+  the drift gate (#184) was closed won't-do. A docs-only repo of nine
+  hand-written files does not justify a CI pipeline (or a `gplay` binary in it);
+  review plus `--help`-first authoring covers it. See §5.
 - **Ship a `gplay install-skills` CLI command** (asc has `asc install-skills`).
   Parked: it is a CLI feature in *this* repo, separate from bootstrapping the
   skills repo; `npx skills add` suffices now.
