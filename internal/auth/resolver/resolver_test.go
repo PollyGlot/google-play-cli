@@ -285,6 +285,58 @@ func TestResolve_noSourceHint(t *testing.T) {
 	}
 }
 
+// explodingKeystore fails the test if any Backend method is called: it
+// guards the promise that ResolveName never touches the keystore.
+type explodingKeystore struct{ t *testing.T }
+
+func (e explodingKeystore) Save(context.Context, string, []byte) error {
+	e.t.Fatal("ResolveName must not call keystore.Save")
+	return nil
+}
+func (e explodingKeystore) Load(context.Context, string) ([]byte, error) {
+	e.t.Fatal("ResolveName must not call keystore.Load")
+	return nil, nil
+}
+func (e explodingKeystore) Delete(context.Context, string) error {
+	e.t.Fatal("ResolveName must not call keystore.Delete")
+	return nil
+}
+func (e explodingKeystore) List(context.Context) ([]string, error) {
+	e.t.Fatal("ResolveName must not call keystore.List")
+	return nil, nil
+}
+
+func TestResolveName_precedenceAndKeystoreFree(t *testing.T) {
+	deps := resolver.Deps{
+		Resolved: &config.Resolved{ConfigAccount: "cascade"},
+		Keystore: explodingKeystore{t: t}, // any access fails the test
+	}
+	cases := []struct {
+		name string
+		in   resolver.Inputs
+		want string
+	}{
+		{"service-account flag → inline, no name", resolver.Inputs{ServiceAccountFlag: "/sa.json", AccountFlag: "acct"}, ""},
+		{"account flag", resolver.Inputs{AccountFlag: "acct", EnvAccount: "env"}, "acct"},
+		{"env service-account → inline, no name", resolver.Inputs{EnvServiceAccount: "{...}", EnvAccount: "env"}, ""},
+		{"env account", resolver.Inputs{EnvAccount: "env"}, "env"},
+		{"cascade ConfigAccount", resolver.Inputs{}, "cascade"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolver.ResolveName(deps, tc.in); got != tc.want {
+				t.Errorf("ResolveName = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveName_nilResolved_isEmpty(t *testing.T) {
+	if got := resolver.ResolveName(resolver.Deps{}, resolver.Inputs{}); got != "" {
+		t.Errorf("ResolveName with nil Resolved = %q, want \"\"", got)
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

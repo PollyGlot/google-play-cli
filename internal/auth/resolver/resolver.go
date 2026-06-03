@@ -136,6 +136,37 @@ func ResolveWithName(ctx context.Context, deps Deps, in Inputs) (*serviceaccount
 	return sa, deps.Resolved.ConfigAccount, nil
 }
 
+// ResolveName returns the local Account name the credential WOULD resolve
+// to, WITHOUT touching the keystore. It walks the same precedence chain
+// as ResolveWithName (docs/DESIGN.md §1) but stops at the name — the
+// inline-credential layers (--service-account / GPLAY_SERVICE_ACCOUNT)
+// have no local name and yield "".
+//
+// This is the cheap half of resolution: callers that only need the name
+// (registry scoping in `apps add/list/remove`, the `--dry-run` preview)
+// use it to avoid the OS-keyring probe that loading the credential bytes
+// would trigger. The credential itself stays deferred until something
+// actually needs a token (kernel.RunContext.EnsureAccount / AuthedClient).
+//
+// Keep this in lock-step with ResolveWithName's precedence: the two share
+// one order, only their payload (name vs. name+credential) differs.
+func ResolveName(deps Deps, in Inputs) string {
+	switch {
+	case in.ServiceAccountFlag != "": // layer 1: inline, no name
+		return ""
+	case in.AccountFlag != "": // layer 2
+		return in.AccountFlag
+	case in.EnvServiceAccount != "": // layer 3: inline, no name
+		return ""
+	case in.EnvAccount != "": // layer 4
+		return in.EnvAccount
+	case deps.Resolved != nil: // layer 5: cascade
+		return deps.Resolved.ConfigAccount
+	default:
+		return ""
+	}
+}
+
 // loadStoredAccount loads a credential from the keystore by name and
 // parses it as a service account.
 func loadStoredAccount(ctx context.Context, ks keystore.Backend, name string) (*serviceaccount.ServiceAccount, error) {

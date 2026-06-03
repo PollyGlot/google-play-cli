@@ -79,6 +79,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		//      Such credentials have no local Account name to register
 		//      the package under; that path is unsupported for `apps
 		//      add` because the registry is per-Account.
+		// An empty name means the resolver can only reach an inline or
+		// no-source layer, so EnsureAccount here is keystore-free — it
+		// never probes for a stored Account.
+		rc.EnsureAccount()
 		if rc.Account != nil {
 			return nil, &usageError{msg: "apps add: cannot register under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}

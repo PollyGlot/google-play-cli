@@ -53,8 +53,16 @@ func (p Payload) Renderers() output.Renderers {
 // status keeps RequireAccount=false; rc.Account == nil simply maps to
 // the "no active account" payload.
 func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
+	// status reports auth state, so resolving the credential (and probing
+	// the keystore) is exactly its job — do it now rather than at boot.
+	rc.EnsureAccount()
 	if rc.Account == nil {
 		return Payload{Active: false}, nil
+	}
+	// Force backend selection so KeystoreLabel is populated even for an
+	// env-override credential, whose resolution never touched the keystore.
+	if _, err := rc.Backend(); err != nil {
+		return nil, err
 	}
 	activeName := rc.Resolved.ConfigAccount
 	p := Payload{

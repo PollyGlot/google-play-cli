@@ -78,6 +78,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	var results []authdoctor.CheckResult
 	var worst *authdoctor.CheckResult
+	// doctor's whole job is to exercise auth, so resolve the credential
+	// now (this is where the keyring probe fires for a stored Account).
+	rc.EnsureAccount()
 	if rc.Account == nil {
 		results, worst = synthFailure(errors.New("no active account; run `gplay auth login`"), checks)
 	} else {

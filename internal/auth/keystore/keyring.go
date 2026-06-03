@@ -186,9 +186,16 @@ type SelectOptions struct {
 
 // Select picks the credential backend for this process. It probes the
 // keyring with a Set+Delete round-trip; on any error it falls back to
-// the file backend. The probe is cheap (one tiny namespaced key); call
-// once per invocation from the kernel and pass the result down. No
-// process-level caching is involved — each call is independent.
+// the file backend. No process-level caching is involved — each call is
+// independent.
+//
+// The probe is a real keyring access: on a locked macOS login keychain it
+// can surface the system "keychain wants to unlock" dialog. The kernel
+// therefore does NOT call Select at boot — it defers it behind
+// kernel.RunContext.Backend so the probe fires only once a command
+// actually needs a credential (login/logout/status, or any AuthedClient
+// caller). A pre-auth command that fails validation or runs --dry-run
+// never reaches here.
 //
 // ctx is threaded for future cancellation support; the probe itself
 // is synchronous today.

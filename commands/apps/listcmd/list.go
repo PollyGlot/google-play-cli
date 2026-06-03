@@ -96,6 +96,10 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	}
 	account := rc.AccountName
 	if account == "" {
+		// Empty name ⟹ only an inline or no-source layer is reachable,
+		// so resolving the credential here never probes the keyring; the
+		// common stored-Account path keeps `apps list` keystore-free.
+		rc.EnsureAccount()
 		if rc.Account != nil {
 			// Inline credential supplied via --service-account or
 			// GPLAY_SERVICE_ACCOUNT: a real credential resolved, but it
