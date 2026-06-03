@@ -110,6 +110,18 @@ replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 
+	// Flag-parse failures (unknown flag, bad value) reach us as plain cobra
+	// errors, which exit.For would map to the generic exit 1 — but
+	// docs/DESIGN.md §9 classes them as CLI misuse (exit 2), the same bucket
+	// as the unknown-subcommand case GroupRunE already covers. Wrapping the
+	// error in exit.Usagef (a *exit.UsageError, ExitCode()=2) at the root fixes
+	// the whole tree at once: cobra's FlagErrorFunc is inherited down the parent
+	// chain, so every leaf's parse error routes through here. SilenceErrors on
+	// the root keeps the output to main's single "gplay: ..." line.
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return exit.Usagef("%s", err)
+	})
+
 	// Persistent credential-resolution flags (docs/DESIGN.md §1). Every
 	// subcommand inherits these via the cobra parent chain — login reads
 	// the same --service-account everyone else does, so the contract stays
