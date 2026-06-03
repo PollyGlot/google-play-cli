@@ -107,27 +107,41 @@ reviews) — the rest lives in [`docs/BACKLOG.md`](docs/BACKLOG.md).
 ## Skills structure (second repo)
 
 Each skill = a folder with a `SKILL.md` (markdown instructions for AI
-agents):
+agents). The roster, naming, and contract are fixed by
+[ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
+namespace, plus a `gplay-cli-usage` foundation — covering the whole live
+surface, not a minimal set.
 
 ```
 skills/
-  gplay-release-flow/
+  gplay-cli-usage/          ← cross-cutting conventions (foundation)
     SKILL.md
-  gplay-reviews/
+  gplay-setup/              ← auth onboarding
     SKILL.md
-  gplay-vitals/
+  gplay-apps/               ← apps registry + details
     SKILL.md
-  gplay-metadata-sync/
+  gplay-release-flow/       ← upload / promote / rollout
     SKILL.md
-  gplay-track-management/
+  gplay-tracks/             ← tracks + testers
     SKILL.md
-  gplay-subscription-management/
+  gplay-reviews/            ← reviews list / reply
+    SKILL.md
+  gplay-metadata-sync/      ← listings + images
+    SKILL.md
+  gplay-compliance/         ← data safety
+    SKILL.md
+  gplay-team/               ← users / grants / permissions
     SKILL.md
 ```
 
+Gated (no skill until the surface lands): `gplay-vitals`
+([#49](https://github.com/PollyGlot/google-play-cli/issues/49)),
+`gplay-subscription-management`
+([#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+
 Install pattern:
 ```bash
-npx skills add <username>/google-play-cli-skills
+npx skills add PollyGlot/google-play-cli-skills
 ```
 
 ## Project structure (CLI repo)
