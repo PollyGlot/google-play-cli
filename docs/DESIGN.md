@@ -80,6 +80,21 @@ In order, first match wins:
 If nothing resolves: exit code `10` with a message pointing at `gplay auth login`
 and the env var docs.
 
+**Absent vs. invalid.** Resolution has two distinct failure modes, and gplay
+keeps them apart ([ADR-0020](adr/0020-resolution-error-surfacing.md)):
+
+- **Absent** — no source is configured (none of layers 1–5 yield one), or the
+  named/active Account has no key in the store. This is a benign state: a
+  command that consumes a credential exits `10` ("run `gplay auth login`"),
+  but `gplay auth status` reports "No active account" and exits `0`, and
+  read-only `apps list` still works off the local registry.
+- **Invalid** — a credential *was* provided but its bytes are unusable
+  (malformed JSON, a missing required field, an unreadable file, a keystore
+  read error). This is always an error: exit `10` with the underlying cause
+  in the message (`could not read credential: <cause>`), on **every** command
+  — including `auth status`, which no longer masks a corrupt active credential
+  as "No active account".
+
 ### `gplay auth doctor`
 
 Runs these checks in order, stopping on the first hard failure:
