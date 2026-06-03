@@ -12,8 +12,8 @@
 //
 // Because GetDetails reads a SINGLE endpoint, --output json is the
 // details.get body verbatim: a clean ADR-0003 pass-through with no gplay
-// envelope (unlike `apps info`, which merges details+listing and carries
-// a documented exception). `apps info` stays the terse cross-resource
+// envelope (unlike `apps view`, which merges details+listing and carries
+// a documented exception). `apps view` stays the terse cross-resource
 // identity card; `apps details` is the full edits.details record.
 package detailscmd
 
@@ -223,7 +223,7 @@ repo's .gplay/config.json pin when --package is omitted.
 
 --output json returns the edits.details.get body verbatim (a clean
 ADR-0003 pass-through — a single endpoint is read, so there is no gplay
-envelope). This is distinct from ` + "`gplay apps info`" + `, the terse
+envelope). This is distinct from ` + "`gplay apps view`" + `, the terse
 cross-resource identity card (package + title + default language).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,

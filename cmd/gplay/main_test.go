@@ -7,6 +7,51 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
+// TestVerbVocabulary_canonicalNames asserts the ADR-0019 verb renames at
+// the user-facing command-tree level: the canonical names resolve to a
+// command, and the pre-rename names are gone (a hard rename leaves no
+// alias, so the old verb is not a registered subcommand). This is the
+// contract guard for the verb audit (#98) — one e2e case per rename,
+// exercised through the real cobra tree via Command.Find, which resolves
+// commands without executing them or touching auth/network.
+func TestVerbVocabulary_canonicalNames(t *testing.T) {
+	cases := []struct {
+		name     string
+		path     []string
+		wantGone bool // true: the old name must NOT resolve (hard-renamed away)
+	}{
+		// #163 apps info → apps view
+		{"apps view resolves", []string{"apps", "view"}, false},
+		{"apps info is gone", []string{"apps", "info"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			cmd, rest, err := root.Find(tc.path)
+			if err != nil {
+				t.Fatalf("Find(%v): unexpected error: %v", tc.path, err)
+			}
+			if tc.wantGone {
+				// The old verb must stay unconsumed (Find stops at the parent
+				// group and leaves the unknown name in rest). If rest is empty
+				// the old name still resolved — the hard rename is incomplete.
+				if len(rest) == 0 {
+					t.Fatalf("%v: expected the old name to be unresolved (a hard rename leaves no alias), but it resolved to %q", tc.path, cmd.CommandPath())
+				}
+				return
+			}
+			// The canonical name must resolve fully: nothing left unconsumed,
+			// and the resolved leaf carries the final path element as its name.
+			if len(rest) != 0 {
+				t.Fatalf("%v: expected to resolve fully, but %v was left unconsumed (resolved %q)", tc.path, rest, cmd.CommandPath())
+			}
+			if want := tc.path[len(tc.path)-1]; cmd.Name() != want {
+				t.Fatalf("%v: resolved to leaf %q, want %q", tc.path, cmd.Name(), want)
+			}
+		})
+	}
+}
+
 func TestRootCmd_persistentFlags_serviceAccountAccountAndVerbose(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 

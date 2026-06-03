@@ -184,7 +184,7 @@ func TestRun_happyPath(t *testing.T) {
 
 // TestRun_usesPin_whenNoFlag asserts that without --package the command
 // falls back to rc.Resolved.Pin (the .gplay/config.json pin), matching
-// the same precedence rule as `gplay apps info` / `tracks status`.
+// the same precedence rule as `gplay apps view` / `tracks status`.
 func TestRun_usesPin_whenNoFlag(t *testing.T) {
 	rt := &readRT{
 		t:       t,
