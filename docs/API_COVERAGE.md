@@ -121,8 +121,8 @@ flowchart TB
 | `edits.tracks` | Releases, promote, rollout, halt/resume/complete | ✅ | PRD #4/#5 |
 | `edits.listings` | Titre, descriptions, vidéo YouTube par locale | ✅ | PRD [#50](https://github.com/PollyGlot/google-play-cli/issues/50) |
 | `edits.images` | Screenshots, icône, feature graphic par locale/format | ✅ | PRD [#112](https://github.com/PollyGlot/google-play-cli/issues/112) — `metadata images` (list/pull/validate/apply) |
-| `edits.details` | Langue par défaut, email/tel/site contact (read + set) | ✅ | PRD #113 — `apps details` / `apps details set` ([#126](https://github.com/PollyGlot/google-play-cli/issues/126)/[#127](https://github.com/PollyGlot/google-play-cli/issues/127)) |
-| `edits.countryavailability` | Pays de distribution par track (read-only) | ✅ | PRD #113 — `tracks availability` ([#128](https://github.com/PollyGlot/google-play-cli/issues/128), [ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) |
+| `edits.details` | Langue par défaut, email/tel/site contact (read + set) | ✅ | PRD #113 — `apps details view` / `apps details set` ([#126](https://github.com/PollyGlot/google-play-cli/issues/126)/[#127](https://github.com/PollyGlot/google-play-cli/issues/127)) |
+| `edits.countryavailability` | Pays de distribution par track (read-only) | ✅ | PRD #113 — `tracks availability view` ([#128](https://github.com/PollyGlot/google-play-cli/issues/128), [ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) |
 | `edits.deobfuscationfiles` | Upload `mapping.txt` (dé-obfuscation crashes) | 📋 | couplé vitals [#49](https://github.com/PollyGlot/google-play-cli/issues/49) |
 | `edits.apks` | Upload APK legacy | 📋 | PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118) — apps existantes only, **plus tard** (AAB obligatoire pour les nouvelles apps depuis 2021) |
 | `edits.expansionfiles` | OBB / fichiers d'expansion | 🅿️ | legacy, remplacé par PAD |

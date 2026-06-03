@@ -190,8 +190,8 @@ their access at once.
 
 This is destructive and irreversible, so it refuses without --confirm (exit 3,
 naming the flag); CI=true never auto-confirms. Use --dry-run to preview the
-target with no HTTP call. To revoke a member's access to a single app without
-off-boarding them, use ` + "`gplay team grants revoke`" + ` instead.`,
+target with no HTTP call. To remove a member's access to a single app without
+off-boarding them, use ` + "`gplay team grants remove`" + ` instead.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

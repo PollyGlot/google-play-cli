@@ -11,10 +11,10 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/detailscmd"
-	"github.com/PollyGlot/google-play-cli/commands/apps/infocmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/removecmd"
+	"github.com/PollyGlot/google-play-cli/commands/apps/viewcmd"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
@@ -38,7 +38,7 @@ import (
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
-	teamgrantsrevoke "github.com/PollyGlot/google-play-cli/commands/team/grants/revoke"
+	teamgrantsremove "github.com/PollyGlot/google-play-cli/commands/team/grants/remove"
 	teamgrantsset "github.com/PollyGlot/google-play-cli/commands/team/grants/set"
 	teampermissions "github.com/PollyGlot/google-play-cli/commands/team/permissions"
 	teamusersadd "github.com/PollyGlot/google-play-cli/commands/team/users/add"
@@ -50,7 +50,7 @@ import (
 	tracksavailability "github.com/PollyGlot/google-play-cli/commands/tracks/availability"
 	trackscreate "github.com/PollyGlot/google-play-cli/commands/tracks/create"
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
-	tracksstatus "github.com/PollyGlot/google-play-cli/commands/tracks/status"
+	tracksview "github.com/PollyGlot/google-play-cli/commands/tracks/view"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -87,6 +87,23 @@ func main() {
 		fmt.Fprintln(os.Stderr, "gplay:", err)
 		os.Exit(exit.For(err))
 	}
+}
+
+// groupRunE is the RunE for grouping commands that carry no business logic of
+// their own. A bare invocation prints the group help; any leftover token is an
+// unknown subcommand, surfaced as CLI misuse (exit 2). It is a RunE — not an
+// Args validator — on purpose: cobra short-circuits a NON-runnable command to
+// its help text before arg validation runs, so a child group with only an Args
+// hook would still silently help (exit 0) on a removed verb name.
+// Only the root rejects unknown commands by default (via legacyArgs). Giving
+// the group a RunE makes the rejection actually fire, so a hard rename
+// (ADR-0019) fails loudly — a CI step still calling the old name breaks
+// instead of passing.
+func groupRunE(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+	return exit.Usagef("unknown command %q for %q", args[0], cmd.CommandPath())
 }
 
 func newRootCmd(boot kernel.Boot) *cobra.Command {
@@ -137,13 +154,16 @@ replace Fastlane on Android CI pipelines.`,
 	root.AddCommand(initcmd.NewCommand(initcmd.Options{}))
 
 	apps := &cobra.Command{
-		Use:   "apps",
-		Short: "Manage Android packages registered with gplay",
+		Use:           "apps",
+		Short:         "Manage Android packages registered with gplay",
+		RunE:          groupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	apps.AddCommand(initcmd.NewCommand(initcmd.Options{}))
 	apps.AddCommand(addcmd.NewCommand(boot))
 	apps.AddCommand(listcmd.NewCommand(boot))
-	apps.AddCommand(infocmd.NewCommand(boot))
+	apps.AddCommand(viewcmd.NewCommand(boot))
 	apps.AddCommand(detailscmd.NewCommand(boot))
 	apps.AddCommand(removecmd.NewCommand(boot))
 	root.AddCommand(apps)
@@ -162,11 +182,14 @@ replace Fastlane on Android CI pipelines.`,
 	root.AddCommand(releases)
 
 	tracks := &cobra.Command{
-		Use:   "tracks",
-		Short: "Inspect and create release tracks (standard and custom closed)",
+		Use:           "tracks",
+		Short:         "Inspect and create release tracks (standard and custom closed)",
+		RunE:          groupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	tracks.AddCommand(trackslist.NewCommand(boot))
-	tracks.AddCommand(tracksstatus.NewCommand(boot))
+	tracks.AddCommand(tracksview.NewCommand(boot))
 	tracks.AddCommand(trackscreate.NewCommand(boot))
 	tracks.AddCommand(tracksavailability.NewCommand(boot))
 	root.AddCommand(tracks)
@@ -206,12 +229,15 @@ replace Fastlane on Android CI pipelines.`,
 	team.AddCommand(teamUsers)
 
 	teamGrants := &cobra.Command{
-		Use:   "grants",
-		Short: "List and manage members' per-app access",
+		Use:           "grants",
+		Short:         "List and manage members' per-app access",
+		RunE:          groupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	teamGrants.AddCommand(teamgrantslist.NewCommand(boot))
 	teamGrants.AddCommand(teamgrantsset.NewCommand(boot))
-	teamGrants.AddCommand(teamgrantsrevoke.NewCommand(boot))
+	teamGrants.AddCommand(teamgrantsremove.NewCommand(boot))
 	team.AddCommand(teamGrants)
 
 	root.AddCommand(team)

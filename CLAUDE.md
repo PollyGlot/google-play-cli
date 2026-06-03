@@ -78,7 +78,7 @@ gplay auth status
 gplay auth doctor
 
 gplay apps list
-gplay apps info --package com.example.myapp
+gplay apps view --package com.example.myapp
 
 gplay releases upload app.aab --package com.example.myapp --track internal
 gplay releases list --package com.example.myapp --track production
@@ -86,7 +86,7 @@ gplay releases promote --package com.example.myapp --from internal --to alpha
 gplay releases rollout --package com.example.myapp --track production --to 0.10
 
 gplay tracks list --package com.example.myapp
-gplay tracks status --package com.example.myapp --track production
+gplay tracks view --package com.example.myapp --track production
 
 gplay reviews list --package com.example.myapp --stars 1-2
 gplay reviews reply --review-id REVIEW_ID --reply "Thank you..."

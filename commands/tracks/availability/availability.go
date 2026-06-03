@@ -1,15 +1,18 @@
-// Package availability implements `gplay tracks availability`: a
-// read-only view of the Country availability of a single track — which
-// countries an app's artifacts are distributed to on --track. It is thin
-// glue: resolve --package, open a read-only Edit, consume
+// Package availability implements `tracks availability`, a pure grouping
+// noun over the Country availability of a single track — which
+// countries an app's artifacts are distributed to on --track.
+//
+// Per ADR-0019 a read always carries a verb, so the bare `availability`
+// only prints help and the read lives under `tracks availability view`.
+// The read is thin glue: resolve --package, open a read-only Edit, consume
 // internal/play/countryavailability.Get, and render. The Edit is opened
 // and discarded via edits.WithReadOnlyEdit, never committed.
 //
 // The resource is read-only at the API level (no insert/patch/update) and
 // keyed by TRACK, not by app — so --track is REQUIRED (no implicit
-// production default) and gplay introduces no availability writer. See
-// ADR-0012. A user who wants to CHANGE where an app is available is
-// pointed at the Play Console.
+// production default) and gplay introduces no availability writer (the
+// group holds only `view`, no `set`). See ADR-0012. A user who wants to
+// CHANGE where an app is available is pointed at the Play Console.
 package availability
 
 import (
@@ -226,14 +229,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewCommand returns the cobra command for `gplay tracks availability`.
-func NewCommand(boot kernel.Boot) *cobra.Command {
+// NewViewCommand returns the read command `tracks availability view`: it
+// reads a track's Country availability. Per ADR-0019 the read carries an
+// explicit verb — the bare `availability` group prints help.
+func NewViewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
 		in         Input
 	)
 	cmd := &cobra.Command{
-		Use:   "availability",
+		Use:   "view",
 		Short: "Show the Country availability of a track (read-only)",
 		Long: `Show which countries an app's artifacts are distributed to on --track:
 syncWithProduction, restOfWorld, and the list of targeted countries (CLDR
@@ -259,5 +264,27 @@ clean ADR-0003 pass-through — a single endpoint is read).`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Track, "track", "", "track whose Country availability to read (required; e.g. production)")
+	return cmd
+}
+
+// NewCommand returns the cobra group for `tracks availability`: a pure
+// grouping noun (ADR-0019). It has no RunE — the bare command prints
+// help — and holds only `view`. The resource is read-only at the Developer
+// API level, so there is no `set`.
+func NewCommand(boot kernel.Boot) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "availability",
+		Short: "Read a track's Country availability (read-only)",
+		Long: `Group for a track's Country availability — which countries an app's
+artifacts are distributed to on a track.
+
+` + "`tracks availability view`" + ` reads it. The resource is read-only at the
+Developer API level, so there is no writer; to CHANGE where an app is
+available, use the Play Console. The bare ` + "`tracks availability`" + ` command
+prints this help.`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	cmd.AddCommand(NewViewCommand(boot))
 	return cmd
 }

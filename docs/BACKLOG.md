@@ -14,7 +14,7 @@ Ce fichier liste les parties de la Google Play Developer API (et APIs liées) **
 ## MVP (rappel, in-scope)
 
 - Auth — service account → OAuth2 access token
-- `apps list` / `apps info`
+- `apps list` / `apps view`
 - `releases upload` (AAB)
 - `tracks list` / `tracks promote` / `tracks rollout`
 - `reviews list` / `reviews reply`
@@ -56,12 +56,12 @@ Gestion des emails de testeurs sur tracks closed.
 
 ### Détails app — `edits.details` — ✅ **livré** (PRD [#113](https://github.com/PollyGlot/google-play-cli/issues/113))
 Langue par défaut, email/téléphone/site contact.
-**Statut :** implémenté via `gplay apps details` / `apps details set` (read + set) — issues [#126](https://github.com/PollyGlot/google-play-cli/issues/126)/[#127](https://github.com/PollyGlot/google-play-cli/issues/127). Section conservée comme rationnel d'origine.
+**Statut :** implémenté via `gplay apps details view` / `apps details set` (read + set) — issues [#126](https://github.com/PollyGlot/google-play-cli/issues/126)/[#127](https://github.com/PollyGlot/google-play-cli/issues/127). Section conservée comme rationnel d'origine.
 **Pourquoi c'était reporté :** champs très peu modifiés une fois set.
 
 ### Disponibilité pays — `edits.countryavailability` — ✅ **livré** (PRD [#113](https://github.com/PollyGlot/google-play-cli/issues/113), read-only)
 Liste des pays où l'app est dispo.
-**Statut :** implémenté via `gplay tracks availability` (read-only, [ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) — issue [#128](https://github.com/PollyGlot/google-play-cli/issues/128). Section conservée comme rationnel d'origine.
+**Statut :** implémenté via `gplay tracks availability view` (read-only, [ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) — issue [#128](https://github.com/PollyGlot/google-play-cli/issues/128). Section conservée comme rationnel d'origine.
 **Pourquoi c'était reporté :** changement rare, géré dans la console.
 
 ### App Recovery — `edits.apprecovery`

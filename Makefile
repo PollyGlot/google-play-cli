@@ -1,4 +1,4 @@
-.PHONY: help build test lint format install-hooks tidy clean release-snapshot
+.PHONY: help build test lint verb-gate format install-hooks tidy clean release-snapshot
 
 # Project metadata
 BINARY := gplay
@@ -16,6 +16,9 @@ test: ## Run tests
 
 lint: ## Run golangci-lint
 	golangci-lint run ./...
+
+verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
+	@bash scripts/verb-gate.sh
 
 format: ## Run gofmt + goimports on the whole tree
 	gofmt -w .

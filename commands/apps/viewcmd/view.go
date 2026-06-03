@@ -1,4 +1,4 @@
-// Package infocmd implements `gplay apps info`: a read-only sanity
+// Package viewcmd implements `gplay apps view`: a read-only sanity
 // check on what the active service account sees for a given app.
 // Opens a Google Play Edit, reads details.get + listings.get on the
 // app's default language, discards the Edit, and renders the trio
@@ -10,7 +10,7 @@
 // internal/play/details.Get, and render. The Edit is opened and
 // discarded inside details.Get via edits.WithReadOnlyEdit; nothing is
 // ever committed.
-package infocmd
+package viewcmd
 
 import (
 	"encoding/json"
@@ -52,11 +52,11 @@ func (e *validationError) ExitCode() int { return 20 }
 // addcmd.validatePackage: non-empty + at least one dot (Google Play
 // uses reverse-DNS package names, so a missing dot is a typo). Kept
 // local rather than imported from addcmd to keep its message wording
-// scoped to "apps info" — the two commands surface their errors with
+// scoped to "apps view" — the two commands surface their errors with
 // their own command prefix, which is the project's convention.
 func validatePackage(pkg string) error {
 	if !strings.Contains(pkg, ".") {
-		return &validationError{msg: fmt.Sprintf("apps info: %q is not a valid Android package name (must contain a dot, e.g. com.example.myapp)", pkg)}
+		return &validationError{msg: fmt.Sprintf("apps view: %q is not a valid Android package name (must contain a dot, e.g. com.example.myapp)", pkg)}
 	}
 	return nil
 }
@@ -86,7 +86,7 @@ func (p Payload) Renderers() output.Renderers {
 }
 
 // renderTable writes a `Field  Value` two-column table. The package
-// header sits above so a reader of `gplay apps info` knows immediately
+// header sits above so a reader of `gplay apps view` knows immediately
 // which app they are looking at.
 func renderTable(w io.Writer, p Payload) error {
 	if _, err := fmt.Fprintf(w, "PACKAGE: %s\n", p.Package); err != nil {
@@ -161,14 +161,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewCommand returns the cobra command for `gplay apps info`.
+// NewCommand returns the cobra command for `gplay apps view`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
 		in         Input
 	)
 	cmd := &cobra.Command{
-		Use:   "info",
+		Use:   "view",
 		Short: "Show default language, title, and contact email for an app",
 		Long: `Show the app's defaultLanguage, title (on the default language),
 and contactEmail — the minimum needed to confirm "yes, I'm looking at the

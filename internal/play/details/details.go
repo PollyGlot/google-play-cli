@@ -5,7 +5,7 @@
 //     --release-notes text). It does one GET on edits.details.get and
 //     returns just the defaultLanguage string.
 //
-//   - Get is the high-level entry point used by `gplay apps info`. It
+//   - Get is the high-level entry point used by `gplay apps view`. It
 //     opens a read-only Edit on its own, fetches details.get +
 //     listings.get(defaultLanguage), and discards the Edit. Returns the
 //     typed *Details plus the raw JSON envelope
@@ -31,7 +31,7 @@ const (
 	opListingsGet  = "listings.get"
 )
 
-// Details surfaces the three fields `gplay apps info` displays — the
+// Details surfaces the three fields `gplay apps view` displays — the
 // minimum needed to confirm "yes, I'm looking at the right app".
 // defaultLanguage and contactEmail come from edits.details.get;
 // title comes from edits.listings.get on the default language.
@@ -41,9 +41,9 @@ type Details struct {
 	ContactEmail    string `json:"contactEmail"`
 }
 
-// AppDetails is the full edits.details resource backing `gplay apps
-// details`: the app-global App details record. Unlike Details (the
-// cross-resource identity card behind apps info, which borrows title
+// AppDetails is the full edits.details resource backing the `apps details`
+// group: the app-global App details record. Unlike Details (the
+// cross-resource identity card behind apps view, which borrows title
 // from a Listing), AppDetails is exactly the four fields the
 // edits.details resource owns. json tags mirror the API verbatim so the
 // --output json pass-through (ADR-0003) carries the upstream field names
@@ -107,7 +107,7 @@ func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, 
 // the typed *Details and the raw JSON envelope. The envelope shape is
 // {"details": <details.get verbatim>, "listing": <listings.get verbatim>}
 // — an explicit exception to ADR-0003 documented in the ADR's
-// Exceptions section, because apps info combines two endpoints.
+// Exceptions section, because apps view combines two endpoints.
 //
 // Errors propagate as *api.Error so the gplay exit-code taxonomy maps
 // transparently: 403 → 11, 404 → 30, 5xx → 40, network → 50. The Edit
@@ -259,7 +259,7 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDe
 
 // fetchDetails GETs edits.details.get and returns (raw body,
 // defaultLanguage, contactEmail, err). The raw body is what feeds the
-// `"details"` slot of the apps-info envelope.
+// `"details"` slot of the apps view envelope.
 func fetchDetails(ctx context.Context, hc *http.Client, pkg, editID string) (json.RawMessage, string, string, error) {
 	u := api.AndroidPubBase +
 		"/applications/" + url.PathEscape(pkg) +

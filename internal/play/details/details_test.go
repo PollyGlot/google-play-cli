@@ -1,7 +1,7 @@
 // Package details_test exercises the high-level details.Get entry
 // point: open an Edit (read-only), fetch details.get + listings.get on
 // the default language, discard the Edit. The transport NEVER sees a
-// PUT or a :commit — `apps info` is read-only by construction.
+// PUT or a :commit — `apps view` is read-only by construction.
 package details_test
 
 import (
@@ -19,7 +19,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
 )
 
-// infoRT routes the apps-info sequence: edits.insert, edits.details.get,
+// infoRT routes the apps view sequence: edits.insert, edits.details.get,
 // edits.listings.get(defaultLanguage), edits.delete. Configurable status
 // codes on details.get and listings.get exercise the error paths without
 // re-declaring the transport. A PUT or a :commit fails the test — a
@@ -59,7 +59,7 @@ func (r *infoRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		return jsonResp(code, r.listing), nil
 	}
-	r.t.Fatalf("unexpected request (apps info is read-only): %s %s", req.Method, req.URL)
+	r.t.Fatalf("unexpected request (apps view is read-only): %s %s", req.Method, req.URL)
 	return nil, nil
 }
 
@@ -87,7 +87,7 @@ func exitCodeOf(t *testing.T, err error) int {
 // insert → details.get → listings.get(defaultLanguage) → delete. The
 // returned *Details surfaces defaultLanguage, title, contactEmail; the
 // raw payload is the gplay envelope {"details":..,"listing":..} (an
-// explicit exception to ADR-0003 — apps info combines two endpoints).
+// explicit exception to ADR-0003 — apps view combines two endpoints).
 func TestGet_happyPath(t *testing.T) {
 	detailsBody := `{"contactEmail":"hi@example.com","contactPhone":"+1","contactWebsite":"https://x","defaultLanguage":"en-US"}`
 	listingBody := `{"language":"en-US","title":"MyApp","shortDescription":"hi","fullDescription":"world","video":""}`
@@ -132,7 +132,7 @@ func TestGet_happyPath(t *testing.T) {
 	}
 
 	// The raw envelope is the gplay-shaped {"details":..,"listing":..}
-	// — explicit exception to ADR-0003 because apps info merges two
+	// — explicit exception to ADR-0003 because apps view merges two
 	// endpoints. Each sub-object must be the upstream body verbatim so
 	// jq/--output json consumers see the API field names unchanged.
 	var env struct {

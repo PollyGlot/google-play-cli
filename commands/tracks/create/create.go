@@ -64,7 +64,7 @@ func (e *forbiddenError) Unwrap() error { return e.cause }
 // or not registered) with a hint pointing at `gplay apps list`. It
 // carries no ExitCode of its own so the wrapped *api.Error (404 → exit
 // 30) stays authoritative through the Coder chain, mirroring the sibling
-// `gplay tracks status` / `tracks list`.
+// `gplay tracks view` / `tracks list`.
 type packageNotFoundError struct {
 	pkg   string
 	cause error

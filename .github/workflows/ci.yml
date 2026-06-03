@@ -52,6 +52,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verb vocabulary gate (ADR-0019)
+        run: bash scripts/verb-gate.sh
+
       - name: Verify required files exist
         run: |
           set -euo pipefail

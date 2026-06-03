@@ -1,7 +1,7 @@
-// Package detailscmd_test exercises `gplay apps details` (the bare-noun
+// Package detailscmd_test exercises `gplay apps details view` (the record
 // read) at the kernel level: a RunContext built by hand, a RoundTripper
 // injected via the oauth2.HTTPClient context key, and Run invoked
-// directly. Mirrors the apps-info harness — the transport FAILS on any
+// directly. Mirrors the apps-view harness — the transport FAILS on any
 // PUT/PATCH/:commit AND on listings.get, because reading App details is a
 // read-only, single-endpoint operation (open Edit → details.get →
 // discard, never commit, never a second endpoint).
@@ -184,7 +184,7 @@ func TestRun_happyPath(t *testing.T) {
 
 // TestRun_usesPin_whenNoFlag asserts that without --package the command
 // falls back to rc.Resolved.Pin (the .gplay/config.json pin), matching
-// the same precedence rule as `gplay apps info` / `tracks status`.
+// the same precedence rule as `gplay apps view` / `tracks view`.
 func TestRun_usesPin_whenNoFlag(t *testing.T) {
 	rt := &readRT{
 		t:       t,
@@ -319,6 +319,55 @@ func TestRenderMarkdown_showsAllFourFields(t *testing.T) {
 	for _, want := range []string{"en-US", "hi@example.com", "+1 555 0100", "https://x.example"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("markdown output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestGroup_bareDetailsIsPureNoun asserts the ADR-0019 shape: `apps details`
+// is a pure grouping noun (no RunE — the bare command prints help, it never
+// reads), the read lives under `view`, and `set` stays present. This is the
+// structural guard for #166: a verb-less read would be a regression.
+func TestGroup_bareDetailsIsPureNoun(t *testing.T) {
+	group := detailscmd.NewCommand(kernel.Boot{})
+	if group.RunE != nil || group.Run != nil {
+		t.Errorf("bare `apps details` must not run (it is a grouping noun); got RunE set=%t Run set=%t", group.RunE != nil, group.Run != nil)
+	}
+	var hasView, hasSet bool
+	for _, sub := range group.Commands() {
+		switch sub.Name() {
+		case "view":
+			hasView = true
+		case "set":
+			hasSet = true
+		}
+	}
+	if !hasView {
+		t.Error("`apps details` must hold a `view` subcommand (the record read)")
+	}
+	if !hasSet {
+		t.Error("`apps details` must keep its `set` subcommand (the write)")
+	}
+}
+
+// TestViewCommand_hasReadSurface asserts `apps details view` is wired as the
+// read: it runs (has a RunE) and exposes --package.
+func TestViewCommand_hasReadSurface(t *testing.T) {
+	view := detailscmd.NewViewCommand(kernel.Boot{})
+	if view.RunE == nil {
+		t.Error("`apps details view` must have a RunE (it reads the record)")
+	}
+	if view.Flags().Lookup("package") == nil {
+		t.Error("`apps details view` must expose --package")
+	}
+	// Per the repo contract, every command supports --output with table/json/
+	// markdown — lock that on the read surface too.
+	out := view.Flags().Lookup("output")
+	if out == nil {
+		t.Fatal("`apps details view` must expose --output")
+	}
+	for _, want := range []string{"table", "json", "markdown"} {
+		if !strings.Contains(out.Usage, want) {
+			t.Errorf("--output usage missing %q; got %q", want, out.Usage)
 		}
 	}
 }

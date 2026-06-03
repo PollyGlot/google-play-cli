@@ -1,11 +1,101 @@
 package main
 
 import (
+	"io"
 	"runtime/debug"
+	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
+
+// TestVerbVocabulary_canonicalNames asserts the ADR-0019 verb renames at
+// the user-facing command-tree level: the canonical names resolve to a
+// command, and the pre-rename names are gone (a hard rename leaves no
+// alias, so the old verb is not a registered subcommand). This is the
+// contract guard for the verb audit (#98) — one e2e case per rename,
+// exercised through the real cobra tree via Command.Find, which resolves
+// commands without executing them or touching auth/network.
+//
+// Pre-rename verbs appear here only as SPLIT path args, never as a
+// contiguous phrase, so the repo-wide verb gate (#168) stays green on this
+// file. The subtest name is the path joined at runtime, not source text.
+func TestVerbVocabulary_canonicalNames(t *testing.T) {
+	cases := []struct {
+		path     []string
+		wantGone bool // true: the old name must NOT resolve (hard-renamed away)
+	}{
+		{[]string{"apps", "view"}, false}, // #163 (replaced apps + "info")
+		{[]string{"apps", "info"}, true},
+		{[]string{"tracks", "view"}, false}, // #164 (replaced tracks + "status")
+		{[]string{"tracks", "status"}, true},
+		{[]string{"team", "grants", "remove"}, false}, // #165 (replaced grants + "revoke")
+		{[]string{"team", "grants", "revoke"}, true},
+		{[]string{"apps", "details", "view"}, false},        // #166 (read now carries a verb)
+		{[]string{"apps", "details", "set"}, false},         // write unchanged
+		{[]string{"apps", "details"}, false},                // group still resolves (bare → help)
+		{[]string{"tracks", "availability", "view"}, false}, // #167 (read now carries a verb)
+		{[]string{"tracks", "availability"}, false},         // group still resolves (bare → help)
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.path, " "), func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			cmd, rest, err := root.Find(tc.path)
+			if err != nil {
+				t.Fatalf("Find(%v): unexpected error: %v", tc.path, err)
+			}
+			if tc.wantGone {
+				// The old verb must stay unconsumed (Find stops at the parent
+				// group and leaves the unknown name in rest). If rest is empty
+				// the old name still resolved — the hard rename is incomplete.
+				if len(rest) == 0 {
+					t.Fatalf("%v: expected the old name to be unresolved (a hard rename leaves no alias), but it resolved to %q", tc.path, cmd.CommandPath())
+				}
+				return
+			}
+			// The canonical name must resolve fully: nothing left unconsumed,
+			// and the resolved leaf carries the final path element as its name.
+			if len(rest) != 0 {
+				t.Fatalf("%v: expected to resolve fully, but %v was left unconsumed (resolved %q)", tc.path, rest, cmd.CommandPath())
+			}
+			if want := tc.path[len(tc.path)-1]; cmd.Name() != want {
+				t.Fatalf("%v: resolved to leaf %q, want %q", tc.path, cmd.Name(), want)
+			}
+		})
+	}
+}
+
+// TestVerbVocabulary_oldLeafNamesFailLoudly asserts the runtime half of the
+// hard rename: executing a removed leaf verb under its group does not quietly
+// print group help with exit 0 (cobra's default for an unknown subcommand of
+// a child group). The group rejects it as CLI misuse — exit 2, message naming
+// the unknown command — so a CI step still calling the old name breaks.
+func TestVerbVocabulary_oldLeafNamesFailLoudly(t *testing.T) {
+	// Old names kept as SPLIT args (never a contiguous phrase) for the #168 gate.
+	for _, args := range [][]string{
+		{"apps", "info"},
+		{"tracks", "status"},
+		{"team", "grants", "revoke"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			root.SetArgs(args)
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("%v: expected a misuse error, got nil (the old name silently succeeded)", args)
+			}
+			if code := exit.For(err); code != 2 {
+				t.Errorf("%v: exit code = %d, want 2 (CLI misuse); err=%v", args, code, err)
+			}
+			if !strings.Contains(err.Error(), "unknown command") {
+				t.Errorf("%v: error = %q, want it to name the unknown command", args, err)
+			}
+		})
+	}
+}
 
 func TestRootCmd_persistentFlags_serviceAccountAccountAndVerbose(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
