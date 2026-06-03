@@ -529,4 +529,10 @@ func TestList_cobra_malformedInlineCredential_exits10NotFallback(t *testing.T) {
 	if strings.Contains(stdout.String(), "com.cascade.app") {
 		t.Errorf("a malformed inline credential must not list the cascade Account's packages; got %q", stdout.String())
 	}
+	// Stronger no-payload guard: nothing at all reaches stdout on the
+	// hard-error path (data → stdout, errors → stderr). This also catches a
+	// partial/leaked render that happened to omit the cascade package name.
+	if stdout.Len() != 0 {
+		t.Errorf("hard-error path must render no payload to stdout; got %q", stdout.String())
+	}
 }
