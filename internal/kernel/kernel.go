@@ -22,6 +22,7 @@ package kernel
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -182,6 +183,12 @@ type RunContext struct {
 	resolverInputs resolver.Inputs
 	backendDone    bool
 	accountDone    bool
+	// accountErr memoises the invalid-credential outcome of EnsureAccount
+	// (ADR-0020). It is nil for both the valid and the benign-absent cases;
+	// non-nil only when a credential was provided but unusable. Guarded by
+	// accountDone so a repeat call returns the same result without a second
+	// keyring probe.
+	accountErr error
 }
 
 // NewForTest returns a base RunContext wired from boot+in with NO
@@ -341,28 +348,70 @@ func (rc *RunContext) Backend() (keystore.Backend, error) {
 // running the keyring probe + Load only when the resolved precedence layer
 // is a stored Account. An inline credential (--service-account /
 // GPLAY_SERVICE_ACCOUNT) loads from the flag/env with no keyring access at
-// all. Resolution is best-effort and idempotent: any error (no source,
-// missing key, malformed JSON) leaves rc.Account nil — the signal commands
-// key off (AuthedClient maps it to exit 10, status/doctor render their own
-// "no active account" path). rc.AccountName is NOT touched; it was already
-// resolved keystore-free at boot.
+// all. rc.AccountName is NOT touched; it was already resolved keystore-free
+// at boot.
 //
-// A hand-built RunContext (lazy=false) is a no-op: rc.Account is whatever
-// the test assigned.
-func (rc *RunContext) EnsureAccount() {
+// Resolution splits two states (ADR-0020, DESIGN §1):
+//
+//   - Absent — resolution fails with resolver.ErrNoSource or
+//     keystore.ErrNotFound (no source configured, or the active/named
+//     Account has no key in the store: logged out, or never stored).
+//     EnsureAccount returns nil and leaves rc.Account nil — the benign
+//     signal status/doctor/apps list key off.
+//   - Invalid — any other resolution error (malformed JSON, a missing
+//     required field, an unreadable file, a non-NotFound keystore/IO
+//     error). EnsureAccount wraps it in a credentialError (ExitCode 10,
+//     "could not read credential: <cause>") and returns it; rc.Account
+//     stays nil. This is the single chokepoint for the exit-10 guarantee.
+//
+// The outcome is memoised on rc.accountErr, guarded by accountDone, so
+// repeat calls (a command calling it directly, then AuthedClient) return
+// the same result with no extra keyring probe.
+//
+// A hand-built RunContext (lazy=false) is a no-op returning nil: rc.Account
+// is whatever the test assigned.
+func (rc *RunContext) EnsureAccount() error {
 	if !rc.lazy || rc.accountDone {
-		return
+		return rc.accountErr
 	}
 	rc.accountDone = true
 	// resolverKeystore defers Backend() (and its probe) until the resolver
 	// actually reaches a stored layer and calls Load — inline layers never
 	// touch it.
-	sa, _ := resolver.Resolve(rc.Ctx, resolver.Deps{
+	sa, err := resolver.Resolve(rc.Ctx, resolver.Deps{
 		Resolved: rc.Resolved,
 		Keystore: resolverKeystore{rc: rc},
 	}, rc.resolverInputs)
+	if err != nil {
+		// Absent bucket: no credential is configured at all, or the
+		// named/active Account has no key in the store. Benign — leave
+		// rc.Account nil and return nil so the no-account paths still fire.
+		if errors.Is(err, resolver.ErrNoSource) || errors.Is(err, keystore.ErrNotFound) {
+			return nil
+		}
+		// Invalid bucket: a credential was provided but its bytes are
+		// unusable. Wrap once, here, so the exit-10 guarantee lives in one
+		// place rather than scattered across serviceaccount/keystore.
+		rc.accountErr = &credentialError{cause: err}
+		return rc.accountErr
+	}
 	rc.Account = sa
+	return nil
 }
+
+// credentialError is the kernel-level chokepoint for the "credential was
+// provided but is unusable" state (ADR-0020). It carries ExitCode()=10
+// (DESIGN §9, "SA invalid") and the message "could not read credential:
+// <cause>", wrapping the cause with Unwrap so the typed error underneath
+// (e.g. serviceaccount.MissingFieldError and its field name) stays
+// reachable via errors.As. The exit-10 guarantee for an invalid credential
+// lives here and only here — serviceaccount and keystore do NOT each carry
+// their own Coder for this.
+type credentialError struct{ cause error }
+
+func (e *credentialError) Error() string { return "could not read credential: " + e.cause.Error() }
+func (e *credentialError) ExitCode() int { return 10 }
+func (e *credentialError) Unwrap() error { return e.cause }
 
 // resolverKeystore is the seam that keeps the resolver's keyring access
 // lazy: it forwards each Backend call through rc.Backend(), so Select (and
@@ -415,13 +464,18 @@ func (k resolverKeystore) List(ctx context.Context) ([]string, error) {
 // covers BOTH the /token exchange and the subsequent androidpublisher calls.
 // This is the test seam the command tests rely on.
 //
-// A nil Account yields an *authError (exit code 10 per docs/DESIGN.md §9).
-// Callers with a no-network path (--dry-run, --no-verify) must gate this
-// call behind that branch themselves.
+// An invalid credential propagates the credentialError verbatim (real
+// cause + exit 10). An absent one yields an *authError (exit code 10 per
+// docs/DESIGN.md §9). Callers with a no-network path (--dry-run,
+// --no-verify) must gate this call behind that branch themselves.
 func (rc *RunContext) AuthedClient() (*http.Client, error) {
 	// First call that genuinely needs a credential: this is where the
 	// keyring probe + Load finally happen (see EnsureAccount), not at boot.
-	rc.EnsureAccount()
+	// A present-but-invalid credential surfaces its real cause here; an
+	// absent one falls through to the authError login hint below.
+	if err := rc.EnsureAccount(); err != nil {
+		return nil, err
+	}
 	if rc.Account == nil {
 		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
 	}
