@@ -443,6 +443,11 @@ func TestRemove_cobra_malformedInlineCredential_exits10NoMutation(t *testing.T) 
 	if !strings.Contains(err.Error(), "could not read credential") {
 		t.Errorf("error should name the real cause; got %q", err.Error())
 	}
+	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
+	// error survives, not just the wrapper prefix.
+	if !strings.Contains(err.Error(), "invalid character") {
+		t.Errorf("error should preserve the underlying JSON parse cause; got %q", err.Error())
+	}
 	// No-payload contract: the hard-error path writes nothing to stdout
 	// (data → stdout, errors → stderr).
 	if got := stdout.String(); got != "" {

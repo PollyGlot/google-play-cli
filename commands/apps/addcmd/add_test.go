@@ -341,6 +341,11 @@ func TestRun_malformedInlineCredential_exits10NotRegistered(t *testing.T) {
 	if !strings.Contains(runErr.Error(), "could not read credential") {
 		t.Errorf("error should name the real cause; got %q", runErr.Error())
 	}
+	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
+	// error survives, not just the wrapper prefix.
+	if !strings.Contains(runErr.Error(), "invalid character") {
+		t.Errorf("error should preserve the underlying JSON parse cause; got %q", runErr.Error())
+	}
 	g2, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, cfgPath)
 	if err != nil {
 		t.Fatalf("reload: %v", err)

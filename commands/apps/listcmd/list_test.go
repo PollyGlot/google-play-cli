@@ -526,6 +526,11 @@ func TestList_cobra_malformedInlineCredential_exits10NotFallback(t *testing.T) {
 	if !strings.Contains(err.Error(), "could not read credential") {
 		t.Errorf("error should name the real cause; got %q", err.Error())
 	}
+	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
+	// error survives, not just the wrapper prefix.
+	if !strings.Contains(err.Error(), "invalid character") {
+		t.Errorf("error should preserve the underlying JSON parse cause; got %q", err.Error())
+	}
 	if strings.Contains(stdout.String(), "com.cascade.app") {
 		t.Errorf("a malformed inline credential must not list the cascade Account's packages; got %q", stdout.String())
 	}

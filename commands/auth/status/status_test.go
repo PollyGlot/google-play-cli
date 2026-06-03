@@ -504,6 +504,11 @@ func TestStatus_corruptActiveCredential_malformedJSON_isExit10(t *testing.T) {
 	if !strings.Contains(err.Error(), "could not read credential") {
 		t.Errorf("error %q missing 'could not read credential'", err.Error())
 	}
+	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
+	// error survives, not just the wrapper prefix.
+	if !strings.Contains(err.Error(), "invalid character") {
+		t.Errorf("error %q should preserve the underlying JSON parse cause", err.Error())
+	}
 	// Strict no-payload contract: nothing at all reaches stdout on the
 	// hard-error path (data → stdout, errors → stderr). An exact-empty check
 	// also catches a stray `{}` or any other leaked payload that the
