@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
+	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -500,5 +501,32 @@ func TestPayload_markdownTable(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("markdown missing %q; got:\n%s", want, out)
 		}
+	}
+}
+
+// TestList_cobra_malformedInlineCredential_exits10NotFallback drives the
+// real cobra command through the production lazy path with a malformed
+// inline GPLAY_SERVICE_ACCOUNT. The AccountName == "" branch must surface
+// the invalid-credential error (exit 10, the real cause) instead of
+// silently falling back to ConfigAccount and listing the cascade Account's
+// packages (#180, ADR-0020).
+func TestList_cobra_malformedInlineCredential_exits10NotFallback(t *testing.T) {
+	t.Setenv(resolver.EnvAccount, "")
+	t.Setenv(resolver.EnvServiceAccount, "{ not valid json")
+	cfgPath := seedGlobal(t, []string{"com.cascade.app"})
+	var stdout, stderr bytes.Buffer
+
+	err := runCmd(t, cfgPath, &stdout, &stderr, "--output", "json")
+	if err == nil {
+		t.Fatal("apps list with a malformed inline credential = nil, want exit 10")
+	}
+	if got := exit.For(err); got != 10 {
+		t.Errorf("exit.For = %d, want 10; err=%v", got, err)
+	}
+	if !strings.Contains(err.Error(), "could not read credential") {
+		t.Errorf("error should name the real cause; got %q", err.Error())
+	}
+	if strings.Contains(stdout.String(), "com.cascade.app") {
+		t.Errorf("a malformed inline credential must not list the cascade Account's packages; got %q", stdout.String())
 	}
 }

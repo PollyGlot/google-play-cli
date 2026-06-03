@@ -24,10 +24,12 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
 	"github.com/PollyGlot/google-play-cli/internal/apps/registry"
+	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
 // validateRT terminates the OAuth2 /token exchange so token.Source
@@ -306,5 +308,44 @@ func TestRun_happyPath_validatesAndPersists(t *testing.T) {
 	}
 	if rt.tokenHits == 0 {
 		t.Errorf("expected /token exchange; calls=%v", rt.calls)
+	}
+}
+
+// TestRun_malformedInlineCredential_exits10NotRegistered drives the
+// production lazy path (kernel.Run → buildRunContext) with a malformed
+// inline --service-account. The AccountName == "" branch must surface the
+// invalid-credential error (exit 10, the real cause) instead of the
+// misdirecting "run gplay auth login" authError — and the package must NOT
+// be registered under the cascade Account (#180, ADR-0020).
+func TestRun_malformedInlineCredential_exits10NotRegistered(t *testing.T) {
+	t.Setenv(resolver.EnvServiceAccount, "")
+	t.Setenv(resolver.EnvAccount, "")
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, "config.json")
+	g := &config.Global{Accounts: []config.Account{{Name: "playci", Active: true}}}
+	if err := g.Save(context.Background(), config.OSFS{}, cfgPath); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
+	boot := kernel.Boot{ConfigPath: cfgPath, KeystoreRoot: filepath.Join(root, "accounts")}
+	in := kernel.Inputs{Resolver: resolver.Inputs{ServiceAccountFlag: "{ not valid json"}}
+	runErr := kernel.Run(boot, in, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return addcmd.Run(rc, addcmd.Input{Package: "com.example.app", NoVerify: true})
+	})
+	if runErr == nil {
+		t.Fatal("apps add with a malformed inline credential = nil, want exit 10")
+	}
+	if got := exit.For(runErr); got != 10 {
+		t.Errorf("exit.For = %d, want 10; err=%v", got, runErr)
+	}
+	if !strings.Contains(runErr.Error(), "could not read credential") {
+		t.Errorf("error should name the real cause; got %q", runErr.Error())
+	}
+	g2, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, cfgPath)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if registry.Has(g2.Accounts, "playci", "com.example.app") {
+		t.Error("a malformed inline credential must not register the package under the cascade Account")
 	}
 }
