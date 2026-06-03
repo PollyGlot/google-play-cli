@@ -6,9 +6,14 @@ app administration via CLI and AI agent skills.
 
 ## gplay skills
 
-Agent Skills for `gplay` workflows (release flow, reviews, vitals, metadata,
-track management, subscriptions) live in a sibling repo:
-`<org>/google-play-cli-skills`. Not yet published.
+Agent Skills that teach an AI agent to drive `gplay` live in the sibling repo
+`PollyGlot/google-play-cli-skills`. The roster, naming, and `SKILL.md` contract
+are fixed by [ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per
+shipped namespace (`gplay-setup`, `gplay-apps`, `gplay-release-flow`,
+`gplay-tracks`, `gplay-reviews`, `gplay-metadata-sync`, `gplay-compliance`,
+`gplay-team`) plus a `gplay-cli-usage` foundation; vitals and subscriptions are
+gated until their surfaces land. Bootstrap tracked in
+[#53](https://github.com/PollyGlot/google-play-cli/issues/53). Not yet published.
 
 ## Project status
 
