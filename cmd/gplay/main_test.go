@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"runtime/debug"
 	"strings"
@@ -92,6 +93,91 @@ func TestVerbVocabulary_oldLeafNamesFailLoudly(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "unknown command") {
 				t.Errorf("%v: error = %q, want it to name the unknown command", args, err)
+			}
+		})
+	}
+}
+
+// groupPaths is the full set of grouping nouns in the command tree — pure
+// nouns that carry no business logic, whose only job is to hold subcommands
+// (and, when bare, print help). The empty path is the root. Every entry must
+// behave identically: bare → help (exit 0), unknown subcommand → loud CLI
+// misuse (exit 2). Kept as SPLIT path elements (never a contiguous phrase) so
+// the #168 verb gate stays green on this file.
+var groupPaths = [][]string{
+	{}, // root (gplay)
+	{"auth"},
+	{"apps"},
+	{"apps", "details"},
+	{"releases"},
+	{"tracks"},
+	{"tracks", "availability"},
+	{"testers"},
+	{"team"},
+	{"team", "users"},
+	{"team", "grants"},
+	{"reviews"},
+	{"metadata"},
+	{"metadata", "images"},
+	{"compliance"},
+	{"compliance", "datasafety"},
+}
+
+// TestGroupCommands_unknownSubcommandFailsLoudly asserts the UX contract for
+// EVERY grouping noun (and the root): a mistyped or unknown subcommand is
+// rejected as CLI misuse — exit 2, message naming the unknown command — never
+// the cobra default of silently printing group help with exit 0. This is the
+// generalisation of TestVerbVocabulary_oldLeafNamesFailLoudly (which guards
+// the specific ADR-0019 renames) to the whole tree, so a typo against any
+// group breaks loudly instead of "succeeding".
+func TestGroupCommands_unknownSubcommandFailsLoudly(t *testing.T) {
+	// An invented token that is not a subcommand of any group (and not a
+	// pre-rename verb, so the #168 gate is untouched).
+	const bogus = "nonesuch"
+	for _, path := range groupPaths {
+		args := append(append([]string{}, path...), bogus)
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			root.SetArgs(args)
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("%v: expected a misuse error, got nil (the group silently printed help)", args)
+			}
+			if code := exit.For(err); code != 2 {
+				t.Errorf("%v: exit code = %d, want 2 (CLI misuse); err=%v", args, code, err)
+			}
+			if !strings.Contains(err.Error(), "unknown command") {
+				t.Errorf("%v: error = %q, want it to name the unknown command", args, err)
+			}
+		})
+	}
+}
+
+// TestGroupCommands_bareInvocationPrintsHelp asserts the other half of the
+// grouping-noun contract: a bare group (no subcommand) prints its help and
+// exits cleanly (nil error → exit 0). Giving every group a RunE for the
+// unknown-subcommand case must not regress the bare case into an error.
+func TestGroupCommands_bareInvocationPrintsHelp(t *testing.T) {
+	for _, path := range groupPaths {
+		name := strings.Join(path, " ")
+		if name == "" {
+			name = "(root)"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			root.SetArgs(path)
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(io.Discard)
+			if err := root.Execute(); err != nil {
+				t.Fatalf("%v: bare group should print help and succeed, got err=%v", path, err)
+			}
+			// Help goes to stdout; a non-empty body confirms we printed help
+			// rather than silently doing nothing.
+			if out.Len() == 0 {
+				t.Errorf("%v: bare group produced no help output", path)
 			}
 		})
 	}

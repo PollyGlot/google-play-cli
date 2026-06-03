@@ -309,16 +309,32 @@ func TestRenderMarkdown_showsAvailabilityFields(t *testing.T) {
 }
 
 // TestGroup_bareAvailabilityIsPureNoun asserts the ADR-0019 shape: `tracks
-// availability` is a pure grouping noun (no RunE — the bare command prints
-// help, it never reads), holds the `view` read, and — being read-only at the
-// Developer API level — holds no `set`.
+// availability` is a pure grouping noun — the bare command prints help and
+// never reads (the read lives under `view`) and, being read-only at the
+// Developer API level, holds no `set`. Its RunE is the shared grouping RunE
+// (kernel.GroupRunE: help when bare, loud exit-2 misuse on an unknown
+// subcommand), NOT a business reader.
 func TestGroup_bareAvailabilityIsPureNoun(t *testing.T) {
 	group := availability.NewCommand(kernel.Boot{})
 	if got := group.Use; got != "availability" {
 		t.Errorf("group.Use = %q, want %q", got, "availability")
 	}
-	if group.RunE != nil || group.Run != nil {
-		t.Errorf("bare `tracks availability` must not run (it is a grouping noun); RunE set=%t Run set=%t", group.RunE != nil, group.Run != nil)
+	// A grouping noun carries no business Run; its RunE only helps or rejects.
+	if group.Run != nil {
+		t.Error("bare `tracks availability` must not carry a business Run (it is a grouping noun)")
+	}
+	if group.RunE == nil {
+		t.Fatal("bare `tracks availability` must have the grouping RunE (help when bare, loud on unknown subcommand)")
+	}
+	// Bare invocation prints help and succeeds — it never performs a read.
+	group.SetOut(io.Discard)
+	if err := group.RunE(group, nil); err != nil {
+		t.Errorf("bare `tracks availability` should print help and succeed, got err=%v", err)
+	}
+	// An unknown subcommand is rejected loudly, naming the command — not
+	// silently helped with exit 0.
+	if err := group.RunE(group, []string{"nonesuch"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("unknown subcommand of `tracks availability` should be rejected naming the command; got err=%v", err)
 	}
 	var hasView, hasSet bool
 	for _, sub := range group.Commands() {

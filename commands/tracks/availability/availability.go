@@ -268,9 +268,10 @@ clean ADR-0003 pass-through — a single endpoint is read).`,
 }
 
 // NewCommand returns the cobra group for `tracks availability`: a pure
-// grouping noun (ADR-0019). It has no RunE — the bare command prints
-// help — and holds only `view`. The resource is read-only at the Developer
-// API level, so there is no `set`.
+// grouping noun (ADR-0019) holding only `view` (the resource is read-only at
+// the Developer API level, so there is no `set`). kernel.GroupRunE makes the
+// bare command print help while a mistyped subcommand fails loudly as CLI
+// misuse (exit 2) rather than silently printing help with exit 0.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "availability",
@@ -282,6 +283,7 @@ artifacts are distributed to on a track.
 Developer API level, so there is no writer; to CHANGE where an app is
 available, use the Play Console. The bare ` + "`tracks availability`" + ` command
 prints this help.`,
+		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
