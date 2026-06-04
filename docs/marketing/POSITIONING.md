@@ -69,8 +69,8 @@ the project.
 
 ### 1. Standalone Go binary
 One file. No Ruby. No Node. No Python. Drop it in your Docker image,
-your `~/.local/bin`, your runner. `go install` works. Homebrew formula
-coming.
+your `~/.local/bin`, your runner. `go install`, Homebrew, and the
+install script all work today.
 
 ### 2. JSON is the Google API verbatim
 `--output json` returns the raw Google Play Developer API response
@@ -118,56 +118,55 @@ angle for each.
 
 ---
 
-## What's shipped today (v0.1.0-alpha.2 — May 26, 2026)
+## What's shipped today (public preview, `0.x`)
 
-**Auth** — full lifecycle
-- `gplay auth login --service-account ./sa.json`
-- `gplay auth logout / status / list / doctor`
-- OS-native keystore (Keychain on macOS, libsecret on Linux, Credential
-  Manager on Windows)
+A broad surface is live. The authoritative, always-current list is
+`gplay --help` and the [CHANGELOG](../../CHANGELOG.md) — this section stays
+categorical on purpose so it doesn't drift version-to-version.
 
-**Releases**
-- `gplay releases upload <aab> --track <X> [--user-fraction N] [--dry-run]`
-- `gplay releases promote --from <X> --to <Y>`
-- `gplay releases rollout --to <fraction>`
-- `gplay releases halt / resume / complete`
-- `gplay releases list`
-
-**Apps** (local registry, API-validated)
-- `gplay apps add <package>` (validates against the API on add)
-- `gplay apps list / info / remove`
-
-**Foundations**
-- Cascading config: global → project (`.gplay/config.json`) → local
-  override → env vars → flags
-- TTY-aware output dispatcher (table / json / markdown)
-- Cobra-based CLI, semantic exit codes throughout
+- **Auth** — full lifecycle (`login / logout / status / list / doctor`),
+  OS-native keystore (Keychain / libsecret / Windows Credential Manager).
+- **Apps** — local registry, API-validated (`add / list / view / remove`)
+  plus App details read + set (`apps details`).
+- **Releases** — `upload`, `promote`, `rollout` with the staged-rollout state
+  machine (`halt / resume / complete`), `list`.
+- **Tracks** — `list / view`, custom closed-track `create`, country
+  `availability` (read-only).
+- **Reviews** — `list / reply` (documented 7-day API window).
+- **Metadata** — store listings *and* images, sync model (`list / pull /
+  validate / apply`).
+- **Compliance** — Data Safety declaration (write-only `datasafety`).
+- **Team** — Developer-account `users` and per-app `grants` + permissions.
+- **Testers** — Google Groups authorized on closed tracks (`list / set`).
+- **Foundations** — cascading config, TTY-aware output (table / json /
+  markdown), semantic exit codes throughout.
 
 ## What's coming next
 
-- `gplay tracks list / status` (read-only)
-- `gplay reviews list / reply` (with 7-day API window documented)
-- Then: vitals (crashes/ANR), metadata sync, IAP, subscriptions —
-  see [BACKLOG.md](../BACKLOG.md)
+- Vitals (crashes / ANR, Reporting API) — [#49](https://github.com/PollyGlot/google-play-cli/issues/49)
+- Monetization (subscriptions v2, IAP, RevenueCat sync) — post-v1,
+  [#51](https://github.com/PollyGlot/google-play-cli/issues/51)
+- Reviews history beyond 7 days (CSV reports) — [#94](https://github.com/PollyGlot/google-play-cli/issues/94)
+- See [ROADMAP.md](../ROADMAP.md) and [BACKLOG.md](../BACKLOG.md).
 
 ## What's deliberately *not* coming soon
 
 (So we don't over-promise.)
-- Custom closed-track creation
-- ProGuard mappings upload
-- APK legacy support
-- Anything outside MVP — by design, see [ROADMAP.md](../ROADMAP.md)
+- APK legacy upload (existing apps only) — AAB-first by design
+- OBB / expansion files, App Recovery, internal app sharing
+- Anything in [BACKLOG.md](../BACKLOG.md) marked out-of-scope, by design
 
 ---
 
 ## The vision
 
-`gplay` is the **CLI half** of a two-repo plan. The other half:
+`gplay` is the **CLI half** of a two-repo project. The other half is **live**:
 
-**`google-play-cli-skills`** — a companion repo of `SKILL.md` files
-that Claude Code and similar agents load to drive `gplay`
-autonomously. Release flows, review triage, vitals dashboards — all
-agent-orchestrable. Install with `npx skills add <user>/google-play-cli-skills`.
+**[`PollyGlot/google-play-cli-skills`](https://github.com/PollyGlot/google-play-cli-skills)**
+— a companion repo of `SKILL.md` files that Claude Code and similar agents
+load to drive `gplay` autonomously. Release flows, review triage, metadata
+sync, compliance, team management — all agent-orchestrable today. Install with
+`npx skills add PollyGlot/google-play-cli-skills`.
 
 The long-term goal: be the canonical way to drive Google Play from
 anything that isn't a browser.
@@ -208,7 +207,7 @@ collaborative.
 
 ## Status & honesty
 
-- **v0.1.0-alpha.2.** Pre-1.0 by design. Breaking changes expected.
+- **Public preview, `0.x`.** Pre-1.0 by design. Breaking changes expected.
 - The goal is to get the *surface* right before stabilizing.
 - Built in public. Issues + PRs welcome.
 - This is the author's first OSS project — feedback on the project

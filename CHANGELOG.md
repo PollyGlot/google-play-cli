@@ -56,8 +56,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 * graduate release to 0.1.0 ([#84](https://github.com/PollyGlot/google-play-cli/issues/84)) ([46399bc](https://github.com/PollyGlot/google-play-cli/commit/46399bc50bee85d7028eedf744c0995adf18d34b))
 
-## [Unreleased]
-
 ## [0.1.0-alpha.2] — 2026-05-26
 
 Second pre-release. Lands the core Fastlane-replacement surface
@@ -138,6 +136,5 @@ The following commands from the roadmap are **not** included yet:
 
 These ship incrementally on the road to `v0.1.0` stable.
 
-[Unreleased]: https://github.com/PollyGlot/google-play-cli/compare/v0.1.0-alpha.2...HEAD
 [0.1.0-alpha.2]: https://github.com/PollyGlot/google-play-cli/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/PollyGlot/google-play-cli/releases/tag/v0.1.0-alpha.1

@@ -19,12 +19,13 @@ you'd build today if you started fresh — one static binary, no runtime,
 JSON output that matches the Google Play Developer API verbatim, semantic
 exit codes, safe production defaults.
 
-> **Public preview — pre-1.0.** The full MVP surface is implemented: auth,
-> apps, releases, tracks, and reviews. This is an invitation to test and give
-> feedback — breaking changes are still possible before `v1.0`, where
-> per-command stability labels will mark what's frozen. See
-> [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally out of scope and
-> [ADR-0010](docs/adr/0010-versioning-public-contract-and-ga.md) for the
+> **Public preview — pre-1.0.** A broad surface is already implemented: auth,
+> apps, releases, tracks, reviews, metadata (listings + images), compliance
+> (Data Safety), team (users + grants), and closed-track testers. This is an
+> invitation to test and give feedback — breaking changes are still possible
+> before `v1.0`, where per-command stability labels will mark what's frozen.
+> See [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally out of scope
+> and [ADR-0010](docs/adr/0010-versioning-public-contract-and-ga.md) for the
 > versioning policy.
 
 ## Why
@@ -99,15 +100,12 @@ gplay reviews list --package com.example.myapp --stars 1-2
 gplay reviews reply --review-id REVIEW_ID --reply "Thanks for the feedback!"
 ```
 
-See [docs/BACKLOG.md](docs/BACKLOG.md) for the full roadmap and what is
-intentionally out of scope.
-
 ## How it's set up
 
-The repo is documentation-first by design. Before writing significant code,
-the decisions are pinned in place so contributors and agents converge:
+Documentation-first: decisions are pinned before code so contributors and
+agents converge.
 
-- [**CLAUDE.md**](CLAUDE.md) — project context and roadmap.
+- [**CLAUDE.md**](CLAUDE.md) — project context.
 - [**AGENTS.md**](AGENTS.md) — instructions for AI agents working in this
   repo. Reads CLAUDE.md, CONTEXT.md, DESIGN.md before generating code.
 - [**CONTEXT.md**](CONTEXT.md) — glossary of canonical terms (Edit,
@@ -119,12 +117,35 @@ the decisions are pinned in place so contributors and agents converge:
   pipeline (GitHub Actions example).
 - [**docs/adr/**](docs/adr/) — Architecture Decision Records.
 
-## Skills repo (planned)
+## Agent skills
 
-Agent skills that drive `gplay` from natural-language prompts will live in a
-companion repo: `PollyGlot/google-play-cli-skills`. Each skill is a folder
-with a `SKILL.md` file that documents the intent, the gplay commands it
-runs, and the safety rails it enforces.
+Agent skills that drive `gplay` from natural-language prompts live in a
+companion repo:
+[**PollyGlot/google-play-cli-skills**](https://github.com/PollyGlot/google-play-cli-skills).
+Each skill is a folder with a `SKILL.md` file that documents the intent, the
+gplay commands it runs, and the safety rails it enforces. The roster is fixed
+by [ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
+namespace, plus a `gplay-cli-usage` foundation.
+
+```bash
+npx skills add PollyGlot/google-play-cli-skills
+```
+
+| Skill | Drives |
+|---|---|
+| `gplay-cli-usage` | Cross-cutting conventions (foundation) |
+| `gplay-setup` | Auth onboarding |
+| `gplay-apps` | Apps registry + details |
+| `gplay-release-flow` | upload / promote / rollout |
+| `gplay-tracks` | Tracks + testers |
+| `gplay-reviews` | reviews list / reply |
+| `gplay-metadata-sync` | Listings + images |
+| `gplay-compliance` | Data Safety |
+| `gplay-team` | users / grants / permissions |
+
+`gplay-vitals` and `gplay-subscription-management` are gated until those CLI
+surfaces land ([#49](https://github.com/PollyGlot/google-play-cli/issues/49),
+[#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
 
 ## Contributing
 
