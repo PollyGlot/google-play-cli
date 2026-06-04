@@ -96,8 +96,8 @@ func newRootCmd(boot kernel.Boot) *cobra.Command {
 		Long: `gplay — fast, lightweight CLI for the Google Play Developer API.
 
 Reads service-account credentials, mints OAuth2 tokens, and drives the
-publishing surface (releases, tracks, reviews, vitals). Designed to
-replace Fastlane on Android CI pipelines.`,
+publishing surface (releases, tracks, reviews, metadata, compliance,
+team). Designed to replace Fastlane on Android CI pipelines.`,
 		// The root is a grouping noun like any other (kernel.GroupRunE): bare
 		// `gplay` prints help, `gplay <unknown>` is CLI misuse (exit 2), one
 		// clean `gplay: ...` line (SilenceErrors). Args:ArbitraryArgs routes
