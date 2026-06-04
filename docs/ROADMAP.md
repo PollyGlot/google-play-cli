@@ -27,30 +27,22 @@ Toute la surface MVP est implémentée et mergée dans `main` :
 | Area | Commandes | PRD |
 |---|---|---|
 | auth | login / logout / status / list / doctor | [#2](https://github.com/PollyGlot/google-play-cli/issues/2) ✅ |
-| apps | add / list / info / remove + init | [#3](https://github.com/PollyGlot/google-play-cli/issues/3) ✅ |
+| apps | add / list / view / details / remove + init | [#3](https://github.com/PollyGlot/google-play-cli/issues/3) ✅ |
 | releases | upload / promote / rollout / list | [#4](https://github.com/PollyGlot/google-play-cli/issues/4) ✅ |
-| tracks | list / status (read-only) | [#5](https://github.com/PollyGlot/google-play-cli/issues/5) ✅ |
+| tracks | list / view / create / availability | [#5](https://github.com/PollyGlot/google-play-cli/issues/5) ✅ |
 | reviews | list / reply | [#6](https://github.com/PollyGlot/google-play-cli/issues/6) ✅ |
 | output | dispatcher TTY-aware + markdown | [#26](https://github.com/PollyGlot/google-play-cli/issues/26) ✅ |
 
-Statut produit : **public preview (`0.x`)**. La `v0.2.0` (reviews) est sortie.
-On reste délibérément en `0.x` — voir le mode de livraison ci-dessous. **Pas de
-bascule 1.0 planifiée à court terme.**
-
 ## Mode de livraison — `0.x` rolling, gel 1.0 différé
 
-**Décision (2026-06-01).** On ne planifie **pas** le gel 1.0 à court terme. On
-reste en `0.x` et on **shippe large** : plusieurs features/correctifs par
-version mineure, breaking changes permis (SemVer `0.x`, voir
-[ADR-0008](adr/0008-release-pipeline.md)). La politique de stabilité de
-[ADR-0010](adr/0010-versioning-public-contract-and-ga.md) (Public contract,
-stability labels, GA) **reste valable mais en sommeil** : on décidera du moment
-du gel 1.0 une fois la surface « first-release readiness » stabilisée —
-**désormais le cas** (thème livré ci-dessous). Le trigger de la checklist de
-durcissement
-([#98](https://github.com/PollyGlot/google-play-cli/issues/98)) est donc franchi,
-mais on la garde **en attente délibérée** : on continue à shipper l'outillage
-interne et la surface additive avant de décider du gel.
+**Décision (2026-06-01).** Pas de gel 1.0 à court terme : on reste en `0.x` et on
+**shippe large** (plusieurs features/correctifs par mineure, breaking changes
+permis — SemVer `0.x`, [ADR-0008](adr/0008-release-pipeline.md)). La politique de
+stabilité [ADR-0010](adr/0010-versioning-public-contract-and-ga.md) reste valable
+mais **en sommeil**. Le trigger de la checklist de durcissement
+[#98](https://github.com/PollyGlot/google-play-cli/issues/98) est franchi, gardé
+en **attente délibérée** : on continue à shipper l'outillage interne et la surface
+additive avant de décider du gel.
 
 ## Thème livré ✅ — First-release readiness
 
@@ -75,18 +67,16 @@ ligne est **livrée** — les 6 surfaces ci-dessous sont shippées et mergées e
 
 ## Thème actif — Durcissement interne & outillage agent
 
-First-release readiness étant livré, le thème actif bascule vers le
-**durcissement interne** plutôt que l'élargissement de surface : de petits
-chantiers à haute confiance qui réduisent la dette et outillent les agents, sans
-engager le débat du gel 1.0 ([#98](https://github.com/PollyGlot/google-play-cli/issues/98),
-toujours en attente délibérée).
+First-release readiness livré, le thème bascule vers le **durcissement interne**
+plutôt que l'élargissement de surface : petits chantiers à haute confiance qui
+réduisent la dette et outillent les agents.
 
 | Ordre | # | Area | Sujet | Note |
 |---|---|---|---|---|
 | ✅ | [#93](https://github.com/PollyGlot/google-play-cli/issues/93) | arch | Extraire la machinery partagée des `… list` (column registry + render + `resolveColumns`) | **Livré** (#148, [ADR-0018](adr/0018-shared-list-table-machinery.md)) — débloque les `team users/grants list` de #147 |
 | 2 | [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | tooling | Snapshot offline du Discovery doc `androidpublisher_v3.json` (+ target de regen) | Levier code-gen agent ; le trigger « surface > ~10 commandes » est franchi |
-| 3 | [#176](https://github.com/PollyGlot/google-play-cli/issues/176) | auth | Surface invalid-credential errors from `EnsureAccount` (absent vs invalide) | PRD durci ([ADR-0020](adr/0020-resolution-error-surfacing.md)) ; décomposé via `/to-issues` en 4 slices #177–#180 (`breaking-change` : exit code d'`auth status`) |
-| 4 | [#53](https://github.com/PollyGlot/google-play-cli/issues/53) | skills | Bootstrap repo `google-play-cli-skills` + roster comprehensive (9 skills, toute la surface livrée) | PRD grillé ([ADR-0021](adr/0021-companion-skills-repo.md)) ; décomposé via `/to-issues` en 10 slices #183–#192 |
+| ✅ | [#176](https://github.com/PollyGlot/google-play-cli/issues/176) | auth | Surface invalid-credential errors from `EnsureAccount` (absent vs invalide) | **Livré** (#182, slices #177–#180, [ADR-0020](adr/0020-resolution-error-surfacing.md)) — `breaking-change` : exit code d'`auth status` |
+| ✅ | [#53](https://github.com/PollyGlot/google-play-cli/issues/53) | skills | Bootstrap repo `google-play-cli-skills` + roster comprehensive (9 skills, toute la surface livrée) | **Livré** — [`PollyGlot/google-play-cli-skills`](https://github.com/PollyGlot/google-play-cli-skills) public (slices #183–#192, [ADR-0021](adr/0021-companion-skills-repo.md)) |
 
 ## Ensuite — surfaces additives (post first-release)
 

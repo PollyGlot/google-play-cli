@@ -2,220 +2,103 @@
 
 ## What this project is
 
-A CLI tool for the Google Play Developer API. The goal is to replace
+A CLI tool for the Google Play Developer API, in Go. Goal: replace
 Fastlane/Ruby on Android CI pipelines and enable autonomous app
 administration via CLI and AI agent skills.
 
-Two repos planned:
-1. **`gplay`** — the CLI itself (this repo)
-2. **`google-play-cli-skills`** — agent skills (SKILL.md files) for AI
-   agents like Claude Code
+Two repos:
+1. **`gplay`** — the CLI (this repo).
+2. **`google-play-cli-skills`** — agent skills (`SKILL.md` files). Live &
+   public: https://github.com/PollyGlot/google-play-cli-skills
 
-## Existing alternatives we looked at
+**Why Go:** one static binary, zero runtime deps, fast cold start (matters in
+CI loops), trivial cross-platform distribution (Homebrew, `install.sh`).
 
-- https://github.com/Vacxe/google-play-cli — **Kotlin** wrapper around
-  the official Google Play Java library; partial API coverage.
-- GPC by yasserstudio (https://github.com/yasserstudio/gpc) —
-  TypeScript, covers all 217 API endpoints, ships **both** as
-  `npm install` and as a standalone binary via an install script.
-
-Neither covers the "native Go cold start + MVP-scoped + agent-first
-design + companion skills" sweet spot that this project aims for.
-
-## Language & stack
-
-**Go**:
-- Standalone binary, zero runtime dependencies for end users
-- Easy cross-platform distribution via Homebrew and `install.sh`
-- Fast cold start (critical in CI loops)
-- Single static binary fits container-based CI images perfectly
+**Prior art:** [Vacxe/google-play-cli](https://github.com/Vacxe/google-play-cli)
+(Kotlin, wraps the official Java SDK, partial coverage) and
+[GPC/yasserstudio](https://github.com/yasserstudio/gpc) (TypeScript, all 217
+endpoints). Neither hits the "native Go + agent-first + companion skills" spot.
 
 ## Authentication
 
-Google Play uses **Service Account + OAuth2**:
-1. User creates a Service Account in Google Cloud Console
-2. Downloads a `service_account.json`
-3. CLI reads that JSON, signs a JWT, exchanges it for a short-lived
-   OAuth2 access token
-4. Uses that token for all API calls
-
-Environment variable: `GPLAY_SERVICE_ACCOUNT` (path to JSON or JSON
-content directly).
+Service Account + OAuth2: gplay reads a `service_account.json`, signs a JWT,
+exchanges it for a short-lived access token, and uses that for all API calls.
+Credential source via `GPLAY_SERVICE_ACCOUNT` (path or inline JSON) — full
+resolution precedence in [`docs/DESIGN.md`](docs/DESIGN.md) §1.
 
 ## Google Play Developer API
 
-- Base URL: `https://androidpublisher.googleapis.com/androidpublisher/v3`
-- Docs: https://developers.google.com/android-publisher
-- REST reference: https://developers.google.com/android-publisher/api-ref/rest
-- Key concept: **Edits model** — transactional workflow: `insert edit` →
-  make changes → `commit edit`
-- gplay speaks the API directly over HTTP from `internal/play/api/`. We
-  do **not** depend on `google.golang.org/api/androidpublisher/v3` (the
-  auto-generated official Go SDK). See
-  [`docs/adr/0007-raw-http-not-google-go-sdk.md`](docs/adr/0007-raw-http-not-google-go-sdk.md)
-  for the why.
-- Reporting API (vitals) lives on a **separate** service:
-  `androidvitals.googleapis.com`
+- Base: `https://androidpublisher.googleapis.com/androidpublisher/v3`
+  ([REST reference](https://developers.google.com/android-publisher/api-ref/rest)).
+- **Edits model:** transactional `insert edit` → change → `commit edit`. gplay
+  abstracts this in implicit mode; explicit mode allows batching.
+- gplay speaks the API directly over HTTP from `internal/play/api/` — **not**
+  via the official Go SDK. See [ADR-0007](docs/adr/0007-raw-http-not-google-go-sdk.md).
+- Reporting API (vitals) is a **separate** service: `androidvitals.googleapis.com`.
 
 ## CLI design principles
 
-- **JSON-first output**: `table` default in TTY, `json` when piped/CI
-- **No interactive prompts** in CI mode
-- **`--dry-run`** on all write operations
-- **`--output`** flag: `table`, `json`, `markdown`
-- **`--package`** flag: Android package name (e.g. `com.example.myapp`)
-- TTY-aware (detect if stdout is a terminal)
-- Semantic exit codes (see `docs/DESIGN.md` for the full table)
-- `--confirm` for destructive actions
+TTY-aware output (`table` in TTY, `json` piped/CI; `--output table|json|markdown`),
+no interactive prompts in CI, `--dry-run` on writes, `--confirm` for destructive
+actions, `--package` targeting, semantic exit codes. Full conventions:
+[`docs/DESIGN.md`](docs/DESIGN.md).
 
-Full conventions live in [`docs/DESIGN.md`](docs/DESIGN.md).
+## Shipped surface
 
-## Planned command structure
+Broad and growing — run `gplay --help` for the live tree (it's the source of
+truth, not this file). Today: auth, apps (registry + details), releases
+(upload/promote/rollout), tracks (list/view/create/availability), reviews,
+metadata (listings + images), compliance datasafety, team (users + grants),
+closed-track testers. Out-of-scope: [`docs/BACKLOG.md`](docs/BACKLOG.md);
+planned-vs-shipped: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-```
-gplay auth login --service-account /path/to/service_account.json
-gplay auth status
-gplay auth doctor
+## Skills (companion repo)
 
-gplay apps list
-gplay apps view --package com.example.myapp
-
-gplay releases upload app.aab --package com.example.myapp --track internal
-gplay releases list --package com.example.myapp --track production
-gplay releases promote --package com.example.myapp --from internal --to alpha
-gplay releases rollout --package com.example.myapp --track production --to 0.10
-
-gplay tracks list --package com.example.myapp
-gplay tracks view --package com.example.myapp --track production
-
-gplay reviews list --package com.example.myapp --stars 1-2
-gplay reviews reply --review-id REVIEW_ID --reply "Thank you..."
-
-gplay vitals crashes --package com.example.myapp --version 142
-gplay vitals anr --package com.example.myapp
-
-gplay metadata list --package com.example.myapp
-gplay metadata apply --package com.example.myapp --dir ./metadata --dry-run
-
-gplay subscriptions list --package com.example.myapp
-gplay iap list --package com.example.myapp
-```
-
-Scope today is the strict MVP (auth, apps, releases upload, tracks,
-reviews) — the rest lives in [`docs/BACKLOG.md`](docs/BACKLOG.md).
-
-## Skills structure (second repo)
-
-Each skill = a folder with a `SKILL.md` (markdown instructions for AI
-agents). The roster, naming, and contract are fixed by
-[ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
-namespace, plus a `gplay-cli-usage` foundation — covering the whole live
-surface, not a minimal set.
-
-```
-skills/
-  gplay-cli-usage/          ← cross-cutting conventions (foundation)
-    SKILL.md
-  gplay-setup/              ← auth onboarding
-    SKILL.md
-  gplay-apps/               ← apps registry + details
-    SKILL.md
-  gplay-release-flow/       ← upload / promote / rollout
-    SKILL.md
-  gplay-tracks/             ← tracks + testers
-    SKILL.md
-  gplay-reviews/            ← reviews list / reply
-    SKILL.md
-  gplay-metadata-sync/      ← listings + images
-    SKILL.md
-  gplay-compliance/         ← data safety
-    SKILL.md
-  gplay-team/               ← users / grants / permissions
-    SKILL.md
-```
-
-Gated (no skill until the surface lands): `gplay-vitals`
+One skill per shipped namespace plus a `gplay-cli-usage` foundation — roster
+and `SKILL.md` contract fixed by [ADR-0021](docs/adr/0021-companion-skills-repo.md):
+`gplay-cli-usage`, `gplay-setup`, `gplay-apps`, `gplay-release-flow`,
+`gplay-tracks`, `gplay-reviews`, `gplay-metadata-sync`, `gplay-compliance`,
+`gplay-team`. Gated until their surface lands: `gplay-vitals`
 ([#49](https://github.com/PollyGlot/google-play-cli/issues/49)),
-`gplay-subscription-management`
-([#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+`gplay-subscription-management` ([#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+Install: `npx skills add PollyGlot/google-play-cli-skills`.
 
-Install pattern:
-```bash
-npx skills add PollyGlot/google-play-cli-skills
-```
-
-## Project structure (CLI repo)
+## Repo layout
 
 ```
-google-play-cli/
-  go.mod
-  Makefile
-  CLAUDE.md              ← this file
-  AGENTS.md              ← agent-specific instructions
-  CONTEXT.md             ← canonical domain glossary
-  cmd/
-    gplay/
-      main.go            ← entry point (supports `go install`)
-  commands/
-    auth/
-    apps/
-    releases/
-    tracks/
-    reviews/
-    vitals/
-    metadata/
-    subscriptions/
-  internal/
-    auth/                ← OAuth2 service account logic
-    client/              ← HTTP client wrapper
-    output/              ← table/json/markdown formatters
-    config/              ← config file management
-  docs/
-    DESIGN.md            ← cross-command CLI conventions
-    BACKLOG.md           ← deferred API surfaces
-    CI_CD.md             ← how to wire gplay into a CI pipeline
-    adr/                 ← architecture decision records
+cmd/gplay/        ← entry point (supports `go install`)
+commands/         ← one package per command group (auth, apps, releases, …)
+internal/
+  auth/           ← service account → OAuth2 token, keystore
+  play/api/       ← raw HTTP client for the Developer API
+  output/         ← table/json/markdown dispatcher
+  config/         ← cascading config
+docs/
+  DESIGN.md       ← cross-command conventions
+  BACKLOG.md      ← deferred API surfaces
+  ROADMAP.md      ← planned-vs-shipped state
+  CI_CD.md        ← wiring gplay into CI
+  adr/            ← architecture decision records
+CONTEXT.md        ← canonical domain glossary
+AGENTS.md         ← agent-specific instructions
 ```
 
-## Priority order for implementation
+## Agent workflow docs
 
-1. Auth (service account → OAuth2 token)
-2. `apps list` (smoke test that auth works — backed by local registry)
-3. `releases upload` (core CI use case, replaces Fastlane supply)
-4. `tracks list / promote` (release management)
-5. `reviews list / reply`
-
-Anything beyond #5 is explicitly deferred (see `docs/BACKLOG.md`).
-
-## Agent skills
-
-### Issue tracker
-
-Issues vivent dans GitHub Issues sur `PollyGlot/google-play-cli`. Quatre
-types co-existent via labels `type:prd` / `type:slice` / `type:arch` /
-`type:parking`. Voir [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)
-et [`docs/ROADMAP.md`](docs/ROADMAP.md) pour la vue d'ensemble.
-
-### Triage labels
-
-Mapping des cinq rôles canoniques + labels locaux (`type:*`, `area:*`,
-`priority:*`). Voir [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md).
-
-### Domain docs
-
-Single-context : `CONTEXT.md` à la racine + `docs/adr/`. Voir
-[`docs/agents/domain.md`](docs/agents/domain.md).
+- **Issue tracker** — GitHub Issues on `PollyGlot/google-play-cli`, four types
+  via labels `type:prd|slice|arch|parking`. See
+  [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md) and
+  [`docs/ROADMAP.md`](docs/ROADMAP.md).
+- **Triage labels** — five canonical roles + local labels. See
+  [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md).
+- **Domain** — single-context: `CONTEXT.md` + `docs/adr/`. See
+  [`docs/agents/domain.md`](docs/agents/domain.md).
 
 ## Notes
 
-- The Edits model means most publishing operations need 3 steps: create
-  edit, make changes, commit edit. The CLI abstracts this transparently
-  in implicit mode; explicit mode is available for batching.
-- Rate limits: don't publish more than once per day for alpha/beta, less
-  for production.
-- Do **not** add `google.golang.org/api/androidpublisher/v3` as a
-  dependency. gplay hand-rolls the HTTP calls in `internal/play/api/`
-  on purpose — see
-  [`docs/adr/0007-raw-http-not-google-go-sdk.md`](docs/adr/0007-raw-http-not-google-go-sdk.md).
-- For auth, do use `golang.org/x/oauth2/google` (small, focused, has no
-  equivalent worth hand-rolling — see ADR-0007 "What about auth?").
+- Rate limits: don't publish more than once/day for alpha/beta, less for
+  production.
+- Do **not** add `google.golang.org/api/androidpublisher/v3` — gplay
+  hand-rolls the HTTP on purpose ([ADR-0007](docs/adr/0007-raw-http-not-google-go-sdk.md)).
+  For auth, **do** use `golang.org/x/oauth2/google` (small, focused, no
+  worthwhile hand-rolled equivalent — ADR-0007 "What about auth?").

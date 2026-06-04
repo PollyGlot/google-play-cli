@@ -340,8 +340,7 @@ The upstream API payload, if any, is preserved inside `details`.
 | `50` | Network (timeout, DNS, refused) | **Yes** |
 | `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
 
-Documented in `gplay help exit-codes` (or equivalent) and in `docs/CI_CD.md`
-when that exists.
+Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
 
 ---
 
