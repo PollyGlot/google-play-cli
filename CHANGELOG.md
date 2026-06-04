@@ -5,6 +5,16 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1](https://github.com/PollyGlot/google-play-cli/compare/v0.4.0...v0.4.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* **auth:** defer keystore probe until a credential is actually needed ([#172](https://github.com/PollyGlot/google-play-cli/issues/172)) ([ca77148](https://github.com/PollyGlot/google-play-cli/commit/ca77148f892e4228112e5276df2ff72160568a32))
+* **auth:** surface invalid-credential errors from EnsureAccount (absent vs invalid) ([#176](https://github.com/PollyGlot/google-play-cli/issues/176)) ([#182](https://github.com/PollyGlot/google-play-cli/issues/182)) ([ac4f9d7](https://github.com/PollyGlot/google-play-cli/commit/ac4f9d77d660a1d76bc150a95443eefa1a94f2b5))
+* **cli:** map invalid-flag errors to exit 2 (CLI misuse, §9) ([#175](https://github.com/PollyGlot/google-play-cli/issues/175)) ([9c9b3de](https://github.com/PollyGlot/google-play-cli/commit/9c9b3de4d5ed11ff60d5c245c0d868ca02869566))
+* **cli:** reject unknown subcommands on every group and the root (exit 2) ([#173](https://github.com/PollyGlot/google-play-cli/issues/173)) ([82c1711](https://github.com/PollyGlot/google-play-cli/commit/82c17110b22c44cc0f0731eefdec96c6621a9481))
+
 ## [0.4.0](https://github.com/PollyGlot/google-play-cli/compare/v0.3.0...v0.4.0) (2026-06-02)
 
 
