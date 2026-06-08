@@ -123,9 +123,11 @@ func TestQueryByID_json(t *testing.T) {
 	if len(m.Parameters) != 3 || m.Parameters[0].Name != "editId" {
 		t.Errorf("parameters = %+v, want 3 sorted (editId first)", m.Parameters)
 	}
-	// The skeleton does not inline-expand schemas: schemas section is empty.
-	if len(v.Schemas) != 0 {
-		t.Errorf("skeleton should not populate schemas, got %v", v.Schemas)
+	// A matched method inline-expands its request/response schema one hop, so
+	// the synthesized slice carries Track (detailed one-hop coverage lives in
+	// TestInlineExpansion_oneHop).
+	if _, ok := v.Schemas["Track"]; !ok {
+		t.Errorf("expected one-hop expansion to carry Track, got %v", v.Schemas)
 	}
 }
 

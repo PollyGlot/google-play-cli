@@ -291,6 +291,14 @@ shape, including its per-endpoint envelope (`{"reviews":[...]}`,
 `{"tracks":[...]}`, etc.). Exception: `apps list` (no API source) uses
 `{"apps":[...]}`.
 
+**Scope.** The pass-through guarantee applies to commands that *wrap a
+Developer API call* — their JSON is the API's response, unowned by gplay.
+**Offline reference commands wrap no API call and synthesise their own JSON**
+(`team permissions`, `schema`): the shape is gplay's, documented per command,
+and free to evolve (a `schema` is additionally `[experimental]`). Pass-through
+is a promise about *not reshaping the API*, not a promise that every `--output
+json` is an API echo.
+
 ### `--output table`
 
 Columns are chosen for readability — not pass-through. Each command's
