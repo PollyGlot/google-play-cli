@@ -1,4 +1,4 @@
-.PHONY: help build test lint verb-gate format install-hooks tidy clean release-snapshot
+.PHONY: help build test lint verb-gate format install-hooks tidy clean release-snapshot discovery-update
 
 # Project metadata
 BINARY := gplay
@@ -31,6 +31,9 @@ install-hooks: ## Install local pre-commit hook
 	@cp -f .githooks/pre-commit .git/hooks/pre-commit 2>/dev/null || true
 	@chmod +x .git/hooks/pre-commit 2>/dev/null || true
 	@echo "hooks installed (no-op if .githooks/pre-commit does not exist yet)"
+
+discovery-update: ## Regenerate offline Discovery snapshots under docs/discovery/ (network, run on demand)
+	go run ./internal/discovery/cmd/discovery-update
 
 release-snapshot: ## Local GoReleaser snapshot (no publish) — sanity-check the config
 	goreleaser release --snapshot --clean --skip=publish,sign,sbom
