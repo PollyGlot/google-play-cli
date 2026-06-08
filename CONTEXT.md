@@ -146,3 +146,10 @@ A gplay-friendly, **scope-independent** name for a **Permission** — e.g. `rele
 
 ### Role bundle
 A gplay-defined, **frozen** preset that expands to a fixed set of Permissions — `viewer`, `reviewer`, `tester-manager`, `release-manager`, `admin` — selected with `--role`. A convenience over enumerating aliases one by one. *Frozen* means a bundle's membership never changes silently as Google adds permission enums: a new enum joins a bundle only by an explicit, versioned gplay change. Deliberately **excludes** sensitive money capabilities (financial data, orders): those are expressible only as explicit Permissions, never hidden inside a role. Distinct from a **Permission alias** (one Permission) — a Role bundle is a *set*.
+
+### Discovery snapshot
+An offline, version-pinned copy of a Google API's **Discovery document** — Google's own machine-readable description of an API's *shape*: its methods, their request/response schemas, parameters and enums. It is a schema/contract, **not** data and **not** a changelog. gplay keeps one per service (`androidpublisher` today; the separate `androidvitals` Reporting service is its own snapshot, never conflated) so an agent or maintainer can answer "does this method exist, what's its request shape" by querying a local file instead of hitting the network.
+
+It is a **query-only reference** (`jq`/`grep`), never read whole nor loaded into agent context, and never compiled into the binary (gplay speaks the API by hand — [ADR-0007](./docs/adr/0007-raw-http-not-google-go-sdk.md)). A single snapshot is a point-in-time photo; the *history* of Google's changes emerges from the file's git diffs, not from keeping multiple versions.
+
+_Avoid_: calling it an "SDK" or implying the binary depends on it (it does not — it is dev/agent tooling), or treating one service's snapshot as covering another (each Google service has its own).
