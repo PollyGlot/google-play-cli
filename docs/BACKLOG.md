@@ -163,6 +163,10 @@ Mapping détaillé `fastlane supply` ↔ `gplay`, options par options, avec exem
 `docs/CI_CD.md` ne couvre que GitHub Actions en MVP. Bitrise, GitLab CI, CircleCI, Jenkins à venir.
 **Pourquoi plus tard :** patterns identiques modulo l'injection de secrets. Ajouter les exemples concrets quand un user d'un provider donné en a besoin.
 
-### Snapshot Discovery doc offline (`docs/discovery/androidpublisher_v3.json`)
-Google publie un Discovery doc machine-readable pour l'API. L'embarquer dans le repo accélère le lookup d'endpoints pour les agents (validation de flags, génération de skeleton, etc.) sans hit réseau.
-**Pourquoi plus tard :** marginal au MVP. Utile dès qu'on commence à étendre la couverture API et que les agents font du code-gen contre le schéma.
+### Snapshot Discovery doc offline (`docs/discovery/androidpublisher_v3.json`) — 🔼 **promu** ([#52](https://github.com/PollyGlot/google-play-cli/issues/52), ready-for-agent)
+Google publie un Discovery doc machine-readable pour l'API. L'embarquer dans le repo accélère le lookup d'endpoints pour les agents (validation de flags, etc.) sans hit réseau.
+**Statut :** snapshot normalisé `query-only` + `paths.txt` + regen Go + test d'intégrité offline — fondation des outils schema (terme **Discovery snapshot** dans `CONTEXT.md`).
+
+### Lentille « commande gplay » pour `gplay schema` — sous-feature de [#199](https://github.com/PollyGlot/google-play-cli/issues/199)
+`gplay schema` ([#199](https://github.com/PollyGlot/google-play-cli/issues/199)) indexe la surface API par **method id natif** ([ADR-0022](adr/0022-schema-index-keyed-by-api-method.md)). Une couche complémentaire indexerait plutôt par **commande gplay** (`tracks set`, `metadata apply`) pour répondre « quels champs puis-je envoyer à `tracks set` ».
+**Pourquoi plus tard :** non dérivable du Discovery snapshot — le mapping commande→appels API vit dans le code de gplay et est lossy/N:1 (`metadata apply` = N `listings.patch` ; `apps view` = `details.get` + `listings.get`). C'est une feature séparée qui se pose *au-dessus* de l'index keyé par method id, pas un remplacement. Le besoin immédiat est déjà couvert par `gplay <cmd> --help` + les skills.
