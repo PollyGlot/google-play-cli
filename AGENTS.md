@@ -59,7 +59,7 @@ interface** — the CLI is self-documenting (`gplay --help`, `gplay releases
 
 Primary reference: <https://developers.google.com/android-publisher/api-ref/rest>.
 For endpoint/schema lookups, prefer the offline Discovery snapshot at
-[`docs/discovery/androidpublisher_v3.json`](docs/discovery/) — Google's
+[`docs/discovery/androidpublisher_v3.json`](docs/discovery/androidpublisher_v3.json) — Google's
 Discovery doc is the canonical machine-readable v3 schema. **Query it, never
 read it whole**: `grep docs/discovery/paths.txt` for "does method X exist",
 `jq` the snapshot for a method's request shape (see
