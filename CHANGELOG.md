@@ -5,6 +5,14 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/PollyGlot/google-play-cli/compare/v0.4.1...v0.5.0) (2026-06-08)
+
+
+### Features
+
+* **discovery:** offline androidpublisher v3 snapshot + tooling ([#52](https://github.com/PollyGlot/google-play-cli/issues/52)) ([#197](https://github.com/PollyGlot/google-play-cli/issues/197)) ([0819019](https://github.com/PollyGlot/google-play-cli/commit/0819019f74a1bfb387ced07fcde3268776f452d6))
+* **schema:** gplay schema — embedded offline API introspection ([#199](https://github.com/PollyGlot/google-play-cli/issues/199), [#200](https://github.com/PollyGlot/google-play-cli/issues/200), [#201](https://github.com/PollyGlot/google-play-cli/issues/201)) ([#203](https://github.com/PollyGlot/google-play-cli/issues/203)) ([a4b3920](https://github.com/PollyGlot/google-play-cli/commit/a4b39209f5daca058d54bd46b2477e9bdc2b0ba0))
+
 ## [0.4.1](https://github.com/PollyGlot/google-play-cli/compare/v0.4.0...v0.4.1) (2026-06-04)
 
 
