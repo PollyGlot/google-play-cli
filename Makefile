@@ -1,4 +1,4 @@
-.PHONY: help build test lint verb-gate format install-hooks tidy clean release-snapshot discovery-update
+.PHONY: help build test lint verb-gate format install-hooks tidy clean release-snapshot discovery-update schema-index-update
 
 # Project metadata
 BINARY := gplay
@@ -34,6 +34,9 @@ install-hooks: ## Install local pre-commit hook
 
 discovery-update: ## Regenerate offline Discovery snapshots under docs/discovery/ (network, run on demand)
 	go run ./internal/discovery/cmd/discovery-update
+
+schema-index-update: ## Derive the embedded Schema index from the committed Discovery snapshot (offline)
+	go run ./internal/discovery/cmd/schema-index-update
 
 release-snapshot: ## Local GoReleaser snapshot (no publish) — sanity-check the config
 	goreleaser release --snapshot --clean --skip=publish,sign,sbom
