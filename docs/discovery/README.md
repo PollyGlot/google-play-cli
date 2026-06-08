@@ -1,0 +1,52 @@
+# Discovery snapshots
+
+Offline, version-pinned snapshots of Google API **Discovery documents** — the
+canonical machine-readable schema for each REST API gplay speaks. They let
+agents and maintainers answer *"does this method exist / what's its request
+shape?"* from a local file, with **no network and no WebFetch** of Google's HTML
+reference.
+
+## Files
+
+| File | What it is |
+|------|-----------|
+| `androidpublisher_v3.json` | Pinned, normalized snapshot of the Android Publisher v3 Discovery doc. |
+| `paths.txt` | Derived existence-check index — one `id⇥method⇥path` line per API method. |
+
+**Generated — do not hand-edit.** Both files are produced by
+`make discovery-update`; an offline integrity test (`go test ./...`) fails if
+either is hand-edited or left stale.
+
+## Query, never read whole
+
+These are `jq`/`grep` targets, **not** prose to load into context. Reading the
+whole snapshot wastes tokens — query it:
+
+```bash
+# Does a method exist? (token-frugal: grep the small index)
+grep '^androidpublisher.edits.tracks.update' docs/discovery/paths.txt
+
+# What's a method's request schema?
+jq '.resources.edits.resources.tracks.methods.update.request' \
+  docs/discovery/androidpublisher_v3.json
+
+# List every method id
+cut -f1 docs/discovery/paths.txt
+```
+
+## Regenerating
+
+```bash
+make discovery-update   # fetches upstream, normalizes, re-derives paths.txt
+```
+
+The tool prints each snapshot's `revision` — cite it in the regen commit
+message. Snapshots are normalized (sorted keys, `etag` stripped) so each regen
+produces a minimal, reviewable diff.
+
+- **Source:** `https://androidpublisher.googleapis.com/$discovery/rest?version=v3`
+- **Last synced:** 2026-06-08 (`androidpublisher_v3` revision `20260608`)
+
+Freshness is **not** a per-PR gate — upstream drift is normal and must never
+block an unrelated PR. A human runs `make discovery-update` on demand. See
+[#52](https://github.com/PollyGlot/google-play-cli/issues/52).
