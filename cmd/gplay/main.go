@@ -37,6 +37,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
+	schemacmd "github.com/PollyGlot/google-play-cli/commands/schema"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
 	teamgrantsremove "github.com/PollyGlot/google-play-cli/commands/team/grants/remove"
 	teamgrantsset "github.com/PollyGlot/google-play-cli/commands/team/grants/set"
@@ -326,6 +327,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	datasafety.AddCommand(compliancedatasafetyset.NewCommand(boot))
 	compliance.AddCommand(datasafety)
 	root.AddCommand(compliance)
+
+	// `gplay schema` — OFFLINE, no-auth, `[experimental]` introspection of the
+	// Android Publisher API surface from an embedded Schema index (ADR-0022).
+	// A top-level reference/diagnostic meta-command (ADR-0019), not keyed by a
+	// package or the Developer account. See PRD #199.
+	root.AddCommand(schemacmd.NewCommand(boot))
 
 	// `gplay exit-codes` / `gplay help exit-codes` — the semantic exit-code
 	// taxonomy (docs/DESIGN.md §9), built from internal/exit so it cannot
