@@ -162,7 +162,3 @@ Mapping détaillé `fastlane supply` ↔ `gplay`, options par options, avec exem
 ### Exemples CI/CD multi-providers
 `docs/CI_CD.md` ne couvre que GitHub Actions en MVP. Bitrise, GitLab CI, CircleCI, Jenkins à venir.
 **Pourquoi plus tard :** patterns identiques modulo l'injection de secrets. Ajouter les exemples concrets quand un user d'un provider donné en a besoin.
-
-### Snapshot Discovery doc offline (`docs/discovery/androidpublisher_v3.json`)
-Google publie un Discovery doc machine-readable pour l'API. L'embarquer dans le repo accélère le lookup d'endpoints pour les agents (validation de flags, génération de skeleton, etc.) sans hit réseau.
-**Pourquoi plus tard :** marginal au MVP. Utile dès qu'on commence à étendre la couverture API et que les agents font du code-gen contre le schéma.

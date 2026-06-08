@@ -59,9 +59,11 @@ interface** — the CLI is self-documenting (`gplay --help`, `gplay releases
 
 Primary reference: <https://developers.google.com/android-publisher/api-ref/rest>.
 For endpoint/schema lookups, prefer the offline Discovery snapshot at
-`docs/discovery/androidpublisher_v3.json` **once it exists**
-([#52](https://github.com/PollyGlot/google-play-cli/issues/52)) — Google's
-Discovery doc is the canonical machine-readable v3 schema. Notes:
+[`docs/discovery/androidpublisher_v3.json`](docs/discovery/) — Google's
+Discovery doc is the canonical machine-readable v3 schema. **Query it, never
+read it whole**: `grep docs/discovery/paths.txt` for "does method X exist",
+`jq` the snapshot for a method's request shape (see
+[`docs/discovery/README.md`](docs/discovery/README.md)). Notes:
 
 - The Reporting API (vitals) is a **separate** service
   (`androidvitals.googleapis.com`) with its own Discovery doc — don't conflate.
