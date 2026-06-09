@@ -47,10 +47,10 @@ and chat agents.
 The split is strict and scriptable:
 
 - **stdout** carries data only — the requested output, nothing else.
-- **stderr** carries logs, warnings, and errors. `-v`/`--verbose` adds
-  info-level flow steps (the Edit ID, the deduced versionCode, each API
-  call) and works in any position: `gplay -v auth status` or
-  `gplay auth status -v`.
+- **stderr** carries logs, warnings, and errors. `--verbose` (short form
+  `-v`) adds info-level flow steps (the Edit ID, the deduced versionCode,
+  each API call) and works in any position: `gplay --verbose auth status` or
+  `gplay auth status --verbose`.
 
 Errors are **never** pass-through. They print on stderr as:
 

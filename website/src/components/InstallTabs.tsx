@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 type Tab = {
   id: string;
@@ -38,6 +38,37 @@ const TABS: Tab[] = [
 export default function InstallTabs() {
   const [active, setActive] = useState(TABS[0]);
   const [copied, setCopied] = useState(false);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const select = (tab: Tab) => {
+    setActive(tab);
+    setCopied(false);
+  };
+
+  // Roving focus per the WAI-ARIA tabs pattern: arrows/Home/End move focus
+  // and selection together.
+  const onKeyDown = (event: React.KeyboardEvent, index: number) => {
+    let next: number;
+    switch (event.key) {
+      case 'ArrowRight':
+        next = (index + 1) % TABS.length;
+        break;
+      case 'ArrowLeft':
+        next = (index - 1 + TABS.length) % TABS.length;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = TABS.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    select(TABS[next]);
+    tabRefs.current[next]?.focus();
+  };
 
   const copy = async () => {
     try {
@@ -52,15 +83,19 @@ export default function InstallTabs() {
   return (
     <div className="w-full">
       <div role="tablist" aria-label="Installation methods" className="flex flex-wrap gap-1">
-        {TABS.map((tab) => (
+        {TABS.map((tab, index) => (
           <button
             key={tab.id}
-            role="tab"
-            aria-selected={active.id === tab.id}
-            onClick={() => {
-              setActive(tab);
-              setCopied(false);
+            ref={(el) => {
+              tabRefs.current[index] = el;
             }}
+            role="tab"
+            id={`install-tab-${tab.id}`}
+            aria-selected={active.id === tab.id}
+            aria-controls={`install-panel-${tab.id}`}
+            tabIndex={active.id === tab.id ? 0 : -1}
+            onClick={() => select(tab)}
+            onKeyDown={(event) => onKeyDown(event, index)}
             className={`rounded-t-md px-4 py-2 font-mono text-sm transition-colors ${
               active.id === tab.id
                 ? 'bg-zinc-900 text-brand'
@@ -71,7 +106,12 @@ export default function InstallTabs() {
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="rounded-b-md rounded-tr-md border border-zinc-800 bg-zinc-900 p-4">
+      <div
+        role="tabpanel"
+        id={`install-panel-${active.id}`}
+        aria-labelledby={`install-tab-${active.id}`}
+        className="rounded-b-md rounded-tr-md border border-zinc-800 bg-zinc-900 p-4"
+      >
         <div className="flex items-start justify-between gap-3">
           <code className="block overflow-x-auto py-1 font-mono text-sm leading-relaxed text-zinc-100">
             {active.id === 'binaries' ? (

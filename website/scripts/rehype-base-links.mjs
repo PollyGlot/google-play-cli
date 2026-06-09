@@ -15,7 +15,12 @@ export default function rehypeBaseLinks({ base }) {
       typeof node.properties?.href === 'string'
     ) {
       const href = node.properties.href;
-      if (href.startsWith('/') && !href.startsWith('//') && !href.startsWith(`${prefix}/`)) {
+      if (
+        href.startsWith('/') &&
+        !href.startsWith('//') &&
+        href !== prefix &&
+        !href.startsWith(`${prefix}/`)
+      ) {
         node.properties.href = prefix + href;
       }
     }

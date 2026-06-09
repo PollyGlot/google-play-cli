@@ -60,8 +60,11 @@ jobs:
             --release-notes-dir ./whatsnew
 ```
 
-With `CI=true` (set by every major CI provider), gplay automatically emits
-JSON, so captured logs stay machine-parseable.
+JSON output needs no flag in CI: gplay emits JSON when stdout is not a TTY
+(piped/captured output) **or** when `CI=true` is set — each condition
+triggers it on its own, and CI runners satisfy both. An explicit
+`--output table` remains the override if you ever want human-shaped logs.
+See [output formats](/docs/concepts/output-formats/).
 
 ## Retry on transient failures
 
