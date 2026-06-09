@@ -23,11 +23,11 @@ A named credential profile registered in gplay. One Account = one Google Cloud s
 Distinct from Google's "service account" (the GCP-side IAM principal): an `Account` in gplay is the **local registration** of a service account, with a human-friendly name and the active flag.
 
 ### Project
-A repo-local pinning of a gplay invocation to a specific Android package. Created by `gplay init --package com.example.myapp`, which writes `.gplay/project.json` at the repo root. Any subsequent gplay command run inside that tree (walking up to find `.gplay/`) defaults its target to that package, so `--package` becomes optional.
+A repo-local pinning of a gplay invocation to a specific Android package. Created by `gplay init --package com.example.myapp`, which writes `.gplay/config.json` at the repo root. Any subsequent gplay command run inside that tree (walking up to find `.gplay/`) defaults its target to that package, so `--package` becomes optional.
 
 A Project pins a **package only** — not an Account. Account resolution stays separate (config-wide active or env/flag).
 
-Coexists in `.gplay/` with `edit-<package>.json` (open explicit Edit, see above). `.gplay/` is meant to be committed for `project.json` and gitignored for `edit-*.json` (transient).
+Coexists in `.gplay/` with `edit-<package>.json` (open explicit Edit, see above). `.gplay/` is meant to be committed for `config.json` and gitignored for `edit-*.json` (transient).
 
 ### Listing
 The textual store-front of an app **for one locale**: `title`, `shortDescription`, `fullDescription`, and an optional promo `video` URL. Backed by Google's `edits.listings` resource. A locale that has any of these is said to "have a Listing"; `deletegroup` removes a locale's Listing entirely.
