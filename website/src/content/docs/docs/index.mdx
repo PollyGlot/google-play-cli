@@ -1,0 +1,71 @@
+---
+title: What is gplay?
+description: gplay is a single-binary Go CLI for the Google Play Developer API — upload releases, manage tracks, sync store listings, reply to reviews, and administer your team from CI pipelines or AI agents.
+---
+
+**gplay** is a fast, dependency-free command-line interface for the
+[Google Play Developer API](https://developers.google.com/android-publisher).
+It drives the publishing surface of Google Play — releases, tracks, reviews,
+store listings, compliance declarations, and team permissions — from your
+terminal, your CI pipeline, or an AI agent.
+
+Every team shipping an Android app eventually hits the same wall: Fastlane
+`supply` drags a Ruby runtime into the CI image, prints output meant for
+humans, and exits with generic codes that make retry logic guesswork. gplay
+is what you'd build today if you started fresh.
+
+## Why gplay
+
+- **One static binary.** Written in Go, zero runtime dependencies — no Ruby,
+  no Node, no Python. One file in your CI image, fast cold start.
+- **Built for CI and agents.** TTY-aware output (`table` for humans, `json`
+  in pipes and CI), no interactive prompts, explicit flags, and
+  [semantic exit codes](/docs/concepts/exit-codes/) that tell scripts whether
+  a retry is safe.
+- **API-faithful JSON.** `--output json` returns the raw Google Play
+  Developer API response shape — no custom envelope to learn. The Google
+  docs *are* the schema docs. See
+  [output formats](/docs/concepts/output-formats/).
+- **Safe by default on production.** Uploading or promoting to the
+  `production` track creates a `draft` release unless you explicitly pass
+  `--complete` or `--staged <fraction>`. A typo can't ship to 100% of users.
+
+## What it covers today
+
+| Namespace | What it does |
+| --- | --- |
+| `gplay auth` | Service-account credentials: login, status, doctor, multiple accounts |
+| `gplay apps` | Local app registry, app details (contact info, default language) |
+| `gplay releases` | Upload AABs, promote between tracks, staged rollouts (halt/resume/complete) |
+| `gplay tracks` | List, inspect, and create release tracks; country availability |
+| `gplay testers` | Declare the Google Groups authorized to test a track |
+| `gplay reviews` | Read recent user reviews and reply to them |
+| `gplay metadata` | Sync store listings (per-locale text) and store images with your repo |
+| `gplay compliance` | Push and validate the Data Safety declaration |
+| `gplay team` | Manage Play Console users and their per-app permission grants |
+| `gplay schema` | Offline introspection of the Android Publisher API surface |
+
+The full, generated command reference lives at
+[CLI reference](/docs/reference/) — one page per command, produced from the
+binary's own `--help` output.
+
+## Status: public preview
+
+gplay is **pre-1.0**. The surface above is implemented and usable today, and
+this is an invitation to test and give feedback — breaking changes are still
+possible before `v1.0`, where per-command stability labels will mark what's
+frozen. Development is documentation-first: design conventions and
+architecture decision records are public in the
+[GitHub repository](https://github.com/PollyGlot/google-play-cli).
+
+## Next steps
+
+1. [Install gplay](/docs/getting-started/installation/)
+2. [Set up a service account](/docs/getting-started/service-account/)
+3. [Run your first commands](/docs/getting-started/quickstart/)
+
+## Not affiliated with Google
+
+gplay is an independent open-source project (MIT license). It uses the public
+Google Play Developer API and is not endorsed by, affiliated with, or
+sponsored by Google LLC. "Google Play" is a trademark of Google LLC.
