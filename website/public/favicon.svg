@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- gplay — favicon. Single bold green chevron on a dark rounded tile.
+       Simplified from the 3-chevron mark so it stays crisp at 16px. -->
+  <defs>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#050507"/>
+  <rect x="6" y="6" width="500" height="500" rx="108" fill="none" stroke="#3DDC84" stroke-opacity="0.18" stroke-width="4"/>
+  <path d="M196 150 L330 256 L196 362" fill="none" stroke="#3DDC84"
+        stroke-width="58" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+</svg>

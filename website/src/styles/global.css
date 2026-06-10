@@ -1,0 +1,18 @@
+/* Tailwind 4 + Starlight, per the official @astrojs/starlight-tailwind setup.
+   Preflight is deliberately not imported: Starlight owns base styles for the
+   docs, and the landing page styles itself with utilities. */
+@layer base, starlight, theme, components, utilities;
+
+@import '@astrojs/starlight-tailwind';
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@theme {
+  /* gplay brand palette (docs/marketing visual system) */
+  --color-brand: #3ddc84;
+  --color-brand-dim: #2bb46b;
+  --color-ink: #050507;
+  --color-iris-blue: #82afff;
+  --color-iris-cyan: #96e1f0;
+  --color-iris-pink: #ff6ec3;
+}
