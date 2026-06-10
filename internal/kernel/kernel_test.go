@@ -3,11 +3,17 @@ package kernel_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +24,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 // TestGroupRunE_bareInvocationPrintsHelp asserts the bare-group contract: with
@@ -546,6 +553,281 @@ func TestEnsureAccount_idempotent_memoisesInvalidError(t *testing.T) {
 	}
 }
 
+// ---- GPLAY_READONLY policy + exit 4 (#211 / ADR-0024) ----
+//
+// These assert the policy contract: under GPLAY_READONLY a mutating, non-dry-run
+// command is refused with exit 4 BEFORE its business function runs (so before
+// credential resolution and any network I/O), while read commands and --dry-run
+// of mutating commands still run. Refusal is driven by Inputs.{Readonly,
+// Mutating,DryRun}; the RunCobra test exercises the annotation + env wiring.
+
+// TestRun_readonly_refusesMutatingCommand_exit4 proves the refusal fires before
+// fn (the fn would make a network call; it must never be reached), with the
+// dedicated exit code 4.
+func TestRun_readonly_refusesMutatingCommand_exit4(t *testing.T) {
+	boot := newBoot(t)
+	called := false
+	err := kernel.Run(boot, kernel.Inputs{Readonly: true, Mutating: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if err == nil {
+		t.Fatal("mutating command under GPLAY_READONLY = nil, want exit 4")
+	}
+	if got := exit.For(err); got != 4 {
+		t.Errorf("exit.For = %d, want 4 (policy); err=%v", got, err)
+	}
+	if !strings.Contains(err.Error(), kernel.EnvReadonly) {
+		t.Errorf("refusal message should name %s; got %q", kernel.EnvReadonly, err.Error())
+	}
+	if called {
+		t.Error("business fn ran — refusal must happen BEFORE fn (no credential resolution, no network)")
+	}
+}
+
+func TestRun_readonly_jsonEnvelope_exitCode4(t *testing.T) {
+	boot := newBoot(t)
+	var stdout bytes.Buffer
+	boot.Stdout = &stdout
+	_ = kernel.Run(boot, kernel.Inputs{Format: output.FormatJSON, Readonly: true, Mutating: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, nil
+	})
+	env := decodeOneEnvelope(t, stdout.String())
+	if env.Error.ExitCode != 4 {
+		t.Errorf("envelope exitCode = %d, want 4", env.Error.ExitCode)
+	}
+}
+
+func TestRun_readonly_allowsDryRunOfMutatingCommand(t *testing.T) {
+	boot := newBoot(t)
+	called := false
+	err := kernel.Run(boot, kernel.Inputs{Readonly: true, Mutating: true, DryRun: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("--dry-run of a mutating command under GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("--dry-run must still run the business fn (it never writes)")
+	}
+}
+
+func TestRun_readonly_allowsReadCommand(t *testing.T) {
+	boot := newBoot(t)
+	called := false
+	err := kernel.Run(boot, kernel.Inputs{Readonly: true, Mutating: false}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("read command under GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("a read command must still run under GPLAY_READONLY")
+	}
+}
+
+func TestRun_notReadonly_runsMutatingCommand(t *testing.T) {
+	boot := newBoot(t)
+	called := false
+	err := kernel.Run(boot, kernel.Inputs{Readonly: false, Mutating: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("mutating command without GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("without the policy a mutating command must run normally")
+	}
+}
+
+// TestRunCobra_readonly_marksAndEnforces wires the whole chain: a cobra command
+// declared mutating (MarkMutating) + GPLAY_READONLY=1 in the env is refused
+// (exit 4) without reaching the business fn — proving the annotation and env
+// reading in FromCobra connect to the Run-time enforcement.
+func TestRunCobra_readonly_marksAndEnforces(t *testing.T) {
+	t.Setenv(kernel.EnvReadonly, "1")
+	boot := newBoot(t)
+	cmd := kernel.MarkMutating(&cobra.Command{Use: "write"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	called := false
+	err := kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if got := exit.For(err); got != 4 {
+		t.Fatalf("exit.For = %d, want 4; err=%v", got, err)
+	}
+	if called {
+		t.Error("MarkMutating + GPLAY_READONLY must refuse before the fn runs")
+	}
+}
+
+func TestRunCobra_readonly_unmarkedReadCommandRuns(t *testing.T) {
+	t.Setenv(kernel.EnvReadonly, "1")
+	boot := newBoot(t)
+	cmd := &cobra.Command{Use: "read"} // NOT marked mutating
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	called := false
+	if err := kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("unmarked read command under GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("an unmarked (read) command must run under GPLAY_READONLY")
+	}
+}
+
+// ---- JSON error envelope on failure (#210 / ADR-0023) ----
+//
+// These drive the production kernel.Run path and assert the external contract:
+// under --output json a failure emits exactly one {"error":{...}} object on
+// stdout carrying the semantic exit code, message, and (when present) the
+// upstream reasons[] / safety requires[] — while exit codes and the table /
+// markdown / success paths are untouched.
+
+type envelopeShape struct {
+	Error struct {
+		ExitCode int      `json:"exitCode"`
+		Message  string   `json:"message"`
+		Reasons  []string `json:"reasons"`
+		Requires []string `json:"requires"`
+	} `json:"error"`
+}
+
+// runWithErr runs fn (returning err) through kernel.Run under the given format
+// and returns the captured stdout plus the error Run surfaced.
+func runWithErr(t *testing.T, format output.Format, fn func(rc *kernel.RunContext) (output.Renderable, error)) (string, error) {
+	t.Helper()
+	boot := newBoot(t)
+	var stdout bytes.Buffer
+	boot.Stdout = &stdout
+	err := kernel.Run(boot, kernel.Inputs{Format: format}, fn)
+	return stdout.String(), err
+}
+
+func decodeOneEnvelope(t *testing.T, stdout string) envelopeShape {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	var env envelopeShape
+	if err := dec.Decode(&env); err != nil {
+		t.Fatalf("stdout is not a well-formed JSON envelope: %v\nstdout=%q", err, stdout)
+	}
+	if dec.More() {
+		t.Fatalf("stdout carried more than one JSON value:\n%s", stdout)
+	}
+	return env
+}
+
+func TestRun_jsonFailure_apiError_writesEnvelopeWithReasons(t *testing.T) {
+	apiErr := &api.Error{Operation: "edits.commit", Package: "com.example.app", StatusCode: 409, Message: "conflict", Reasons: []string{"editAlreadyExists"}}
+	stdout, err := runWithErr(t, output.FormatJSON, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, apiErr
+	})
+	if got := exit.For(err); got != 60 {
+		t.Errorf("exit code = %d, want 60 (unchanged); err=%v", got, err)
+	}
+	env := decodeOneEnvelope(t, stdout)
+	if env.Error.ExitCode != 60 {
+		t.Errorf("envelope exitCode = %d, want 60", env.Error.ExitCode)
+	}
+	if len(env.Error.Reasons) != 1 || env.Error.Reasons[0] != "editAlreadyExists" {
+		t.Errorf("envelope reasons = %v, want [editAlreadyExists]", env.Error.Reasons)
+	}
+}
+
+func TestRun_jsonFailure_safetyRefusal_writesEnvelopeWithRequires(t *testing.T) {
+	stdout, err := runWithErr(t, output.FormatJSON, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, exit.SafetyFlag("confirm", "this is destructive; pass --confirm")
+	})
+	if got := exit.For(err); got != 3 {
+		t.Errorf("exit code = %d, want 3 (unchanged)", got)
+	}
+	env := decodeOneEnvelope(t, stdout)
+	if env.Error.ExitCode != 3 {
+		t.Errorf("envelope exitCode = %d, want 3", env.Error.ExitCode)
+	}
+	if len(env.Error.Requires) != 1 || env.Error.Requires[0] != "confirm" {
+		t.Errorf("envelope requires = %v, want [confirm]", env.Error.Requires)
+	}
+}
+
+func TestRun_jsonFailure_usageError_writesEnvelope(t *testing.T) {
+	stdout, err := runWithErr(t, output.FormatJSON, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, exit.Usagef("missing --to")
+	})
+	if got := exit.For(err); got != 2 {
+		t.Errorf("exit code = %d, want 2", got)
+	}
+	env := decodeOneEnvelope(t, stdout)
+	if env.Error.ExitCode != 2 {
+		t.Errorf("envelope exitCode = %d, want 2", env.Error.ExitCode)
+	}
+	if env.Error.Message == "" {
+		t.Errorf("envelope message should be present")
+	}
+}
+
+func TestRun_tableFailure_noEnvelope(t *testing.T) {
+	stdout, err := runWithErr(t, output.FormatTable, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, exit.Usagef("missing --to")
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if stdout != "" {
+		t.Errorf("table-format failure must leave stdout empty; got %q", stdout)
+	}
+}
+
+// TestRun_jsonFailure_selfRendered_noDoubleEnvelope guards the doctor case: a
+// command that writes its own output to stdout then returns an error must NOT
+// get an envelope appended (which would yield two JSON objects on stdout).
+func TestRun_jsonFailure_selfRendered_noDoubleEnvelope(t *testing.T) {
+	stdout, _ := runWithErr(t, output.FormatJSON, func(rc *kernel.RunContext) (output.Renderable, error) {
+		// Stand in for doctor: render a JSON checklist, then fail.
+		if _, werr := io.WriteString(rc.Stdout, `{"checks":[{"ok":false}]}`+"\n"); werr != nil {
+			t.Fatalf("write: %v", werr)
+		}
+		return nil, exit.Usagef("a check failed")
+	})
+	// Exactly one JSON value — the command's own — survives; no appended envelope.
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	var first map[string]any
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("stdout not valid JSON: %v\n%s", err, stdout)
+	}
+	if _, isEnvelope := first["error"]; isEnvelope {
+		t.Errorf("self-rendered output was replaced by an envelope:\n%s", stdout)
+	}
+	if dec.More() {
+		t.Errorf("an envelope was appended after the command's own output:\n%s", stdout)
+	}
+}
+
+func TestRun_jsonSuccess_noEnvelope(t *testing.T) {
+	boot := newBoot(t)
+	var stdout bytes.Buffer
+	boot.Stdout = &stdout
+	if err := kernel.Run(boot, kernel.Inputs{Format: output.FormatJSON}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return fakePayload{msg: "ok"}, nil
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(stdout.String(), `"error"`) {
+		t.Errorf("success path must not emit an error envelope; got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"msg":"ok"`) {
+		t.Errorf("success payload missing; got %q", stdout.String())
+	}
+}
+
 // TestAuthedClient_invalidCredential_propagatesCauseAndExit10 locks in the
 // AuthedClient half of #177: a present-but-invalid credential surfaces its
 // real cause (exit 10), not the generic "no Account resolved" login hint.
@@ -566,6 +848,115 @@ func TestAuthedClient_invalidCredential_propagatesCauseAndExit10(t *testing.T) {
 		return nil, nil
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+}
+
+// signedAccount returns a ServiceAccount backed by a freshly generated RSA key,
+// so AuthedClient / UploadClient can build a real OAuth2 token source (lazily —
+// no network) and the returned client's deadline can be inspected.
+func signedAccount(t *testing.T) *serviceaccount.ServiceAccount {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
+	raw, err := json.Marshal(map[string]any{
+		"type":         "service_account",
+		"project_id":   "test-proj",
+		"private_key":  string(pemBytes),
+		"client_email": "ci@test-proj.iam.gserviceaccount.com",
+		"token_uri":    "https://oauth2.googleapis.com/token",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	sa, err := serviceaccount.Parse(raw)
+	if err != nil {
+		t.Fatalf("serviceaccount.Parse: %v", err)
+	}
+	return sa
+}
+
+// TestAuthedClient_defaultControlPlaneTimeout: with no --timeout, a
+// control-plane client carries the 60s default deadline (#209).
+func TestAuthedClient_defaultControlPlaneTimeout(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
+	rc.Account = signedAccount(t)
+	hc, err := rc.AuthedClient()
+	if err != nil {
+		t.Fatalf("AuthedClient: %v", err)
+	}
+	if hc.Timeout != 60*time.Second {
+		t.Errorf("AuthedClient default timeout = %v, want 60s", hc.Timeout)
+	}
+}
+
+// TestAuthedClient_timeoutOverride: --timeout overrides the control-plane
+// default on the returned client.
+func TestAuthedClient_timeoutOverride(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{Timeout: 5 * time.Second})
+	rc.Account = signedAccount(t)
+	hc, err := rc.AuthedClient()
+	if err != nil {
+		t.Fatalf("AuthedClient: %v", err)
+	}
+	if hc.Timeout != 5*time.Second {
+		t.Errorf("AuthedClient with --timeout=5s = %v, want 5s", hc.Timeout)
+	}
+}
+
+// TestAuthedClient_retry_movesDeadlineToMiddleware: with --retry, the
+// per-request deadline moves off the client onto the retry middleware (which
+// applies it per attempt), so client.Timeout is 0. Without --retry it stays on
+// the client (asserted above).
+func TestAuthedClient_retry_movesDeadlineToMiddleware(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{Timeout: 5 * time.Second, Retry: 2})
+	rc.Account = signedAccount(t)
+	hc, err := rc.AuthedClient()
+	if err != nil {
+		t.Fatalf("AuthedClient: %v", err)
+	}
+	if hc.Timeout != 0 {
+		t.Errorf("with --retry the deadline is per-attempt in the middleware; client.Timeout = %v, want 0", hc.Timeout)
+	}
+}
+
+// TestUploadClient_exemptFromDefault: a media-upload client has NO deadline
+// when --timeout is unset, so a large transfer is never killed by the short
+// control-plane default.
+func TestUploadClient_exemptFromDefault(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
+	rc.Account = signedAccount(t)
+	hc, err := rc.UploadClient()
+	if err != nil {
+		t.Fatalf("UploadClient: %v", err)
+	}
+	if hc.Timeout != 0 {
+		t.Errorf("UploadClient default timeout = %v, want 0 (unbounded)", hc.Timeout)
+	}
+}
+
+// TestUploadClient_honorsExplicitTimeout: an explicit --timeout DOES bound an
+// upload client (the override applies to every request, uploads included).
+func TestUploadClient_honorsExplicitTimeout(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{Timeout: 7 * time.Second})
+	rc.Account = signedAccount(t)
+	hc, err := rc.UploadClient()
+	if err != nil {
+		t.Fatalf("UploadClient: %v", err)
+	}
+	if hc.Timeout != 7*time.Second {
+		t.Errorf("UploadClient with --timeout=7s = %v, want 7s", hc.Timeout)
 	}
 }
 

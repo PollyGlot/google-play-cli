@@ -36,6 +36,9 @@ func TestFor_mapping(t *testing.T) {
 		{"wrapped-unknown-account", fmt.Errorf("logout: %w", config.ErrUnknownAccount), 2},
 		{"usage-error", &exit.UsageError{Msg: "bad flag"}, 2},
 		{"wrapped-usage-error", fmt.Errorf("list: %w", exit.Usagef("unknown column %q", "bogus")), 2},
+		{"policy-error", &exit.PolicyError{Msg: "refused by GPLAY_READONLY"}, 4},
+		{"wrapped-policy-error", fmt.Errorf("run: %w", exit.Policyf("refused by %s", "GPLAY_READONLY")), 4},
+		{"safety-flag-error", exit.SafetyFlag("confirm", "pass --confirm"), 3},
 		{"custom-coder", &customCoder{code: 42}, 42},
 		{"generic", errors.New("boom"), 1},
 	}

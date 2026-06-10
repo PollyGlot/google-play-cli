@@ -29,6 +29,37 @@ has been granted access to your Play Console app. One-time setup:
 > invited on the app in Play Console**. `gplay auth doctor` is built to
 > catch this.
 
+### Grant least privilege — one scoped account per job
+
+The real authority boundary for CI and agent use is the **Play Console
+permission set of the service account**, not the flags a workflow passes. Don't
+mint one admin-everything account and reuse it everywhere: grant each workflow
+*only* the permissions its commands need, and mint a **separate service account
+per archetype** so a leaked key from (say) a metadata job can't publish a
+release.
+
+| Archetype | gplay commands it runs | Play Console permissions to grant |
+|---|---|---|
+| **Read-only reporting** (dashboards, **AI agents**) | `apps list/view`, `tracks list/view`, `releases list`, `reviews list`, `team … list`, `metadata pull`, `schema` | **"View app information and download bulk reports (read-only)"** — and, for vitals, "View app quality information (Android vitals)" |
+| **Release-only** | `releases upload/promote/rollout/halt/resume/complete`, `tracks create`, `testers set` | "Release to production, exclude devices, and use Play App Signing"; "Release apps to testing tracks"; "Manage testing tracks and edit tester lists" |
+| **Metadata-only** | `metadata apply`, `metadata images apply`, `apps details set` | "Manage store presence" |
+| **Reviews** | `reviews reply` | "Reply to reviews" |
+| **Team administration** | `team users add/set/remove`, `team grants set/remove` | Account-level **"Admin (all permissions)"** — managing users and their access is an account-level capability; grant it to the *narrowest* set of automations |
+
+Two reinforcing controls, use both:
+
+- **A read-only service account** for every dashboard and AI agent. With only
+  "View app information (read-only)" granted, a mutating call fails at the API
+  with **exit 11** (authorization) even if something tries one.
+- **`GPLAY_READONLY=1`** in the agent/dashboard environment. This refuses every
+  mutating command *before* any network call (**exit 4**), so the boundary
+  holds in the harness regardless of the flags an agent chooses — defence in
+  depth on top of the scoped credential. See [DESIGN §8](DESIGN.md#8-verbosity-and-logging)
+  and [ADR-0024](adr/0024-readonly-environment-policy.md).
+
+Verify any scoped account end-to-end with
+`gplay auth doctor --package <your.package>` before wiring it into a job.
+
 ## 2. Inject the credential into CI
 
 In CI, **never** use `gplay auth login`. Always pass the credential through
@@ -82,6 +113,28 @@ jobs:
             --release-notes-dir ./whatsnew
 ```
 
+### Credential hygiene — env var, never a flag
+
+Pass the credential through **`GPLAY_SERVICE_ACCOUNT` (env)**, never through the
+`--service-account` flag, when the value is inline JSON:
+
+- A flag value lands in **shell history** and is visible in the **process
+  listing** (`ps`, `/proc/<pid>/cmdline`) to any other process on the runner —
+  your private key, exposed.
+- An env var is not in `ps` output and not in shell history.
+
+`--service-account` is for a **path** in interactive/local use; in CI the
+credential is inline JSON in the environment. (`gplay auth login` is also
+out — it writes the key to the runner's keystore; see §2.)
+
+> **GitHub Actions secret masking.** A value stored as a repository/organization
+> **secret** and referenced as `${{ secrets.GPLAY_SERVICE_ACCOUNT }}` is
+> registered for log masking — if it ever surfaces in a log line, Actions
+> redacts it as `***`. Masking is best-effort, not a license to print it:
+> multi-line JSON can defeat line-based masking, so still never `echo` the
+> credential. Storing the JSON as a **variable** (`vars.*`) instead of a secret
+> gets you no masking at all.
+
 ## 3. Typical release flow
 
 A staged rollout to production usually looks like this, spread across one
@@ -119,8 +172,32 @@ table is in [`DESIGN.md`](DESIGN.md#9-exit-codes); the short version:
 - `10`, `11`, `20`, `30`, `60` → won't get better by retrying; surface the
   error
 - `2` → CLI usage bug in your workflow
+- `4` → denied by `GPLAY_READONLY`; **not** retryable, and not fixable by a flag
 
-Example shell wrapper:
+> An exit 30 or 60 carrying the `editAlreadyExists` reason is the orphaned-Edit
+> case — a stale Edit left open by a hard-killed run. Don't blind-retry it; see
+> [§7 Troubleshooting: orphaned Edits](#7-troubleshooting-orphaned-edits-editalreadyexists).
+
+### Prefer `--retry` over a hand-rolled loop
+
+The transient classes above (transport errors, 5xx, 429) are exactly what the
+global **`--retry N`** flag handles for you — so you don't re-implement the loop
+in every pipeline:
+
+```bash
+# Retry transient failures up to 3 times with exponential backoff + jitter;
+# 429 honors Retry-After. Non-transient failures (auth, validation, conflict)
+# fail fast. With --retry, --timeout bounds each attempt.
+gplay releases upload app.aab --package com.example.myapp --track internal \
+  --retry 3 --timeout 2m
+```
+
+`--retry` defaults to `0` (no retry — today's behavior). It **never** retries
+`edits.commit` (a duplicate could double-publish) or non-transient 4xx, so it is
+safe to leave on. A retried upload re-sends its bundle from a fresh reader.
+
+If you still want shell-level control (e.g. to retry across *separate* commands,
+or to add alerting), branch on the exit code yourself:
 
 ```bash
 for attempt in 1 2 3; do
@@ -135,7 +212,53 @@ done
 exit 1
 ```
 
-## 5. Migration from `fastlane supply`
+## 5. Verify a release before trusting it
+
+The checksums and binaries on the release page share one origin, so a checksum
+check alone proves integrity, not provenance — an origin compromise falsifies
+both together. Each release therefore ships two origin-independent proofs you
+can gate on before letting `gplay` into a pipeline:
+
+- a **GitHub build-provenance attestation** over every archive, and
+- a **keyless cosign signature** over `checksums.txt` (which transitively
+  covers every archive it lists).
+
+Pin a verification step into the job that installs `gplay`:
+
+```yaml
+      - name: Install and verify gplay
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: v0.5.0
+        run: |
+          set -euo pipefail
+          base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"
+          archive="gplay_${VERSION#v}_linux_amd64.tar.gz"
+          curl -fsSLO "$base/$archive"
+
+          # Provenance: built by this repo's release workflow.
+          gh attestation verify "$archive" -R PollyGlot/google-play-cli
+
+          # Signature over the checksum file, then the archive against it.
+          curl -fsSLO "$base/checksums.txt"
+          curl -fsSLO "$base/checksums.txt.sigstore.json"
+          cosign verify-blob checksums.txt \
+            --bundle checksums.txt.sigstore.json \
+            --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          sha256sum -c <(grep " $archive$" checksums.txt)
+
+          tar -xzf "$archive" gplay && sudo install -m0755 gplay /usr/local/bin/gplay
+```
+
+`gh attestation verify` needs only the GitHub CLI (preinstalled on GitHub
+runners) and `GH_TOKEN`; `cosign verify-blob` needs `cosign` on `PATH`
+(`sigstore/cosign-installer`). Either one alone is a meaningful gate; running
+both is belt-and-suspenders. The `install.sh` one-liner already verifies the
+SHA-256 against `checksums.txt` and fails closed (see the README), so for many
+pipelines the attestation check above is the only thing you need to add.
+
+## 6. Migration from `fastlane supply`
 
 Coming from Fastlane, the single most common surprise is that
 `gplay releases upload --track production` does **not** publish 100% by
@@ -146,3 +269,69 @@ other track the behavior matches Fastlane (`completed` at 100%).
 
 Fully detailed migration table: backlog item, to be added once the MVP is
 stable and real migrators give feedback on the pitfalls.
+
+## 7. Troubleshooting: orphaned Edits (`editAlreadyExists`)
+
+Every mutating Play command runs inside an **Edit** — a transaction gplay opens
+(`edits.insert`), changes, and commits implicitly. On any normal failure gplay
+auto-discards the open Edit before returning, so nothing is left behind. But a
+**hard kill** — `SIGKILL`, an OOM, a CI runner eviction or job-timeout — between
+insert and commit kills gplay *before* its cleanup can run, leaving an
+**orphaned Edit open on the Play side**. In-process cleanup cannot cover a hard
+kill, by definition.
+
+### What you'll see
+
+The next mutating run's `edits.insert` is rejected because an Edit is already
+open. gplay surfaces it with the discriminating `editAlreadyExists` reason and a
+message naming the remediation:
+
+```text
+gplay: an Edit is already open on com.example.myapp (wait ~24h for it to expire,
+or release it via the Google Play Console): edits.insert on com.example.myapp:
+... [reason: editAlreadyExists]
+```
+
+Exit code follows the upstream status (see the [exit-code table](DESIGN.md#9-exit-codes)):
+
+- **exit 30** — the usual case (`400` + `editAlreadyExists`): API misuse,
+  recoverable.
+- **exit 60** — when Google ships the reason on a rate-limited response
+  (`429` + `editAlreadyExists`): state conflict.
+
+Either way the cause is the same orphaned Edit, and **retrying immediately will
+keep failing** — don't put this behind a blind retry loop.
+
+### How to recover (with today's command surface)
+
+There is no gplay command to discard an orphaned Edit yet (that's the parked
+explicit-edits mode, [#48](https://github.com/PollyGlot/google-play-cli/issues/48)).
+Two recovery paths exist today:
+
+1. **Wait for Play-side expiry.** An open Edit auto-expires after **~24h**.
+   After that, the next run's `edits.insert` succeeds with no intervention. Best
+   when the pipeline is not time-critical.
+2. **Release it via the Google Play Console (immediate).** Open the app in the
+   Play Console; a stale/pending Edit can be discarded there, after which
+   re-running gplay succeeds right away.
+
+Confirm access is otherwise healthy with
+`gplay auth doctor --package <your.package>` — it opens and discards a throwaway
+Edit, so once the orphan is gone it round-trips cleanly.
+
+### In a pipeline, meanwhile
+
+- **Branch on the exit code, don't blind-retry.** Treat exit 30 / 60 with an
+  `editAlreadyExists` reason as "needs the orphan cleared", not "retry now". The
+  JSON error envelope (`--output json`) exposes `reasons: ["editAlreadyExists"]`
+  on stdout so an agent can detect it precisely.
+- **Don't use `--keep-edit-on-failure` in CI.** That flag *intentionally* keeps
+  the Edit open on failure (for local debugging) and reports its ID; in a
+  pipeline it manufactures exactly this orphaned-Edit situation.
+- **Prevent it where you can:** give jobs a generous step timeout so the runner
+  doesn't evict gplay mid-commit, and avoid `kill -9` on the process.
+
+The structural fix — explicit `edits begin/commit/discard` so a pipeline can
+adopt and discard an Edit by ID — is tracked in
+[#48](https://github.com/PollyGlot/google-play-cli/issues/48) and intentionally
+parked; this runbook covers recovery with the commands that exist today.

@@ -5,8 +5,12 @@
 #   curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
 #
 # Environment variables:
-#   GPLAY_INSTALL_DIR  — directory to install into (default: $HOME/.local/bin)
-#   GPLAY_VERSION      — version to install (default: latest)
+#   GPLAY_INSTALL_DIR        — directory to install into (default: $HOME/.local/bin)
+#   GPLAY_VERSION            — version to install (default: latest)
+#   GPLAY_INSTALL_NO_VERIFY  — set to 1 to SKIP checksum verification (prints a
+#                              prominent warning). The only bypass for the
+#                              fail-closed checksum gate — use for air-gapped or
+#                              mirrored installs only. Any other value verifies.
 
 set -eu
 
@@ -69,19 +73,30 @@ if ! curl -fsSL "$url" -o "$tmp/$archive"; then
   die "download failed. Is $VERSION published for $os/$arch? See $REPO/releases."
 fi
 
-log "verifying checksum"
-checksums_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt"
-if curl -fsSL "$checksums_url" -o "$tmp/checksums.txt"; then
-  expected="$(grep " $archive$" "$tmp/checksums.txt" | awk '{print $1}' || true)"
-  if [ -n "$expected" ]; then
-    actual="$(shasum -a 256 "$tmp/$archive" 2>/dev/null | awk '{print $1}' \
-              || sha256sum "$tmp/$archive" | awk '{print $1}')"
-    [ "$expected" = "$actual" ] || die "checksum mismatch (expected $expected, got $actual)"
-  else
-    warn "no checksum entry for $archive (continuing)"
-  fi
+# Verification is fail-closed: any state where the archive cannot be verified
+# aborts the install — a missing checksums.txt, a checksums.txt with no entry
+# for this archive, or a checksum mismatch. This closes the downgrade-by-
+# omission attack, where an adversary who can influence the download path simply
+# withholds the checksum to turn the old "warn and continue" into a silent
+# unverified install. GPLAY_INSTALL_NO_VERIFY=1 is the single, greppable bypass.
+if [ "${GPLAY_INSTALL_NO_VERIFY:-}" = "1" ]; then
+  warn "GPLAY_INSTALL_NO_VERIFY=1 — SKIPPING checksum verification."
+  warn "    The archive will be installed UNVERIFIED. Use only for trusted"
+  warn "    mirrors or air-gapped installs."
 else
-  warn "no checksums.txt for $VERSION (continuing without verification)"
+  log "verifying checksum"
+  checksums_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt"
+  if ! curl -fsSL "$checksums_url" -o "$tmp/checksums.txt"; then
+    die "could not fetch checksums.txt for $VERSION — refusing to install unverified. Set GPLAY_INSTALL_NO_VERIFY=1 to bypass (air-gapped/mirrored installs only)."
+  fi
+  expected="$(grep " $archive$" "$tmp/checksums.txt" | awk '{print $1}' || true)"
+  if [ -z "$expected" ]; then
+    die "no checksum entry for $archive in checksums.txt — refusing to install unverified. Set GPLAY_INSTALL_NO_VERIFY=1 to bypass (air-gapped/mirrored installs only)."
+  fi
+  actual="$(shasum -a 256 "$tmp/$archive" 2>/dev/null | awk '{print $1}' \
+            || sha256sum "$tmp/$archive" | awk '{print $1}')"
+  [ "$expected" = "$actual" ] || die "checksum mismatch (expected $expected, got $actual)"
+  log "checksum OK"
 fi
 
 log "extracting"

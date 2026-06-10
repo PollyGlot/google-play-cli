@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/oauth2"
 
@@ -375,6 +376,94 @@ func TestRun_forbidden_exit11_withReplyHint(t *testing.T) {
 	}
 }
 
+// timeoutRT serves the /token exchange instantly but blocks the reviews.list
+// call until the request context is canceled — standing in for a hung upstream
+// connection. A well-behaved transport observes ctx cancellation, which is how
+// the kernel-applied deadline (the global --timeout / 60s default) interrupts
+// the request.
+type timeoutRT struct{}
+
+func (timeoutRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+	}
+	<-req.Context().Done()
+	return nil, req.Context().Err()
+}
+
+// TestRun_timeout_mapsToExit50 drives `reviews list` against a transport whose
+// API call hangs, with a tight global --timeout. The kernel-applied deadline
+// must interrupt the request, and the transport-level failure must surface as
+// exit 50 (network) — bounded well under the would-be hang, not stalling until
+// a runner-level kill.
+func TestRun_timeout_mapsToExit50(t *testing.T) {
+	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	if err != nil {
+		t.Fatalf("serviceaccount.Parse: %v", err)
+	}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: timeoutRT{}})
+	boot := kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	rc := kernel.NewForTest(ctx, boot, kernel.Inputs{Format: output.FormatJSON, Timeout: 150 * time.Millisecond})
+	rc.Account = sa
+
+	start := time.Now()
+	_, err = Run(rc, Input{Package: "com.example.app"})
+	elapsed := time.Since(start)
+
+	if code := exitCodeOf(t, err); code != 50 {
+		t.Fatalf("hung request should map to exit 50 (network), got %d (err: %v)", code, err)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("request was not bounded by the 150ms --timeout; took %v", elapsed)
+	}
+}
+
+// retryRT serves the /token exchange, then fails the first reviews.list call
+// with a 500 and serves a valid page on the second — exercising the kernel's
+// --retry wiring end-to-end through a real command.
+type retryRT struct {
+	body           string
+	reviewAttempts int
+}
+
+func (r *retryRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+	}
+	r.reviewAttempts++
+	if r.reviewAttempts == 1 {
+		return jsonResp(500, `{"error":{"code":500,"message":"backend hiccup"}}`), nil
+	}
+	return jsonResp(200, r.body), nil
+}
+
+// TestRun_retry_recoversFrom5xx drives `reviews list` with --retry 1 against a
+// transport whose first API call 500s and second succeeds: the command must
+// recover and return the payload (proving Inputs.Retry layers the retry
+// middleware onto the authed client).
+func TestRun_retry_recoversFrom5xx(t *testing.T) {
+	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	if err != nil {
+		t.Fatalf("serviceaccount.Parse: %v", err)
+	}
+	rt := &retryRT{body: twoReviewsBody}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	boot := kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	rc := kernel.NewForTest(ctx, boot, kernel.Inputs{Format: output.FormatJSON, Retry: 1})
+	rc.Account = sa
+
+	r, err := Run(rc, Input{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run with --retry should recover from a 500, got %v", err)
+	}
+	if rt.reviewAttempts != 2 {
+		t.Errorf("reviews.list attempts = %d, want 2 (1 retry after the 500)", rt.reviewAttempts)
+	}
+	if got := ids(r.(Payload)); len(got) != 2 {
+		t.Errorf("recovered payload should hold both reviews, got %v", got)
+	}
+}
+
 func TestRun_unknownPackage_exit30(t *testing.T) {
 	rt := &listRT{t: t, reviewCode: 404, errBody: `{"error":{"code":404,"message":"not found"}}`}
 	rc, _, _ := newRC(t, rt)
@@ -382,6 +471,79 @@ func TestRun_unknownPackage_exit30(t *testing.T) {
 	_, err := Run(rc, Input{Package: "com.example.nope"})
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Fatalf("404 should map to exit 30, got %d (err: %v)", code, err)
+	}
+}
+
+// TestRun_hostileReviewText_tableSanitized_jsonByteFaithful is the #213
+// demonstration case: a user-generated review whose text carries ANSI escape
+// sequences and control bytes must be NEUTRALIZED in table/markdown output (no
+// escape can reach the terminal), yet pass through BYTE-FAITHFULLY in JSON so
+// machine consumers see the data exactly as the API returned it (ADR-0003).
+func TestRun_hostileReviewText_tableSanitized_jsonByteFaithful(t *testing.T) {
+	// Real ESC/BEL/control bytes plus legitimate multi-byte content.
+	const hostileText = "\x1b[31mRED\x1b[0m\x07 visit evil.example \x1b]0;pwn\x07 café 日本 🎉"
+	raw, err := json.Marshal(map[string]any{
+		"reviews": []any{map[string]any{
+			"reviewId": "r1",
+			"comments": []any{map[string]any{
+				"userComment": map[string]any{
+					"text":             hostileText,
+					"starRating":       5,
+					"reviewerLanguage": "en",
+					"lastModified":     map[string]any{"seconds": "1700000000"},
+				},
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal hostile body: %v", err)
+	}
+	rt := &listRT{t: t, pages: []string{string(raw)}}
+	rc, _, _ := newRC(t, rt)
+
+	r, err := Run(rc, Input{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Table: no escape/BEL byte survives; legitimate content remains.
+	var tbuf bytes.Buffer
+	if err := output.Render(&tbuf, output.FormatTable, r.Renderers()); err != nil {
+		t.Fatalf("Render table: %v", err)
+	}
+	tab := tbuf.String()
+	if strings.ContainsRune(tab, '\x1b') || strings.ContainsRune(tab, '\x07') {
+		t.Errorf("table output still carries an escape/BEL byte:\n%q", tab)
+	}
+	for _, want := range []string{"RED", "café", "日本", "🎉"} {
+		if !strings.Contains(tab, want) {
+			t.Errorf("table output lost legitimate content %q:\n%q", want, tab)
+		}
+	}
+
+	// JSON: byte-faithful — decoding the output yields the original text,
+	// control bytes and all (no sanitization on the machine path).
+	var jbuf bytes.Buffer
+	if err := output.Render(&jbuf, output.FormatJSON, r.Renderers()); err != nil {
+		t.Fatalf("Render JSON: %v", err)
+	}
+	var env struct {
+		Reviews []struct {
+			Comments []struct {
+				UserComment struct {
+					Text string `json:"text"`
+				} `json:"userComment"`
+			} `json:"comments"`
+		} `json:"reviews"`
+	}
+	if err := json.Unmarshal(jbuf.Bytes(), &env); err != nil {
+		t.Fatalf("JSON output not decodable: %v\n%s", err, jbuf.String())
+	}
+	if len(env.Reviews) != 1 || len(env.Reviews[0].Comments) != 1 {
+		t.Fatalf("unexpected JSON shape: %s", jbuf.String())
+	}
+	if got := env.Reviews[0].Comments[0].UserComment.Text; got != hostileText {
+		t.Errorf("JSON text not byte-faithful:\n got  %q\n want %q", got, hostileText)
 	}
 }
 

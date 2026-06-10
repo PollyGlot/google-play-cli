@@ -86,6 +86,11 @@ feat(tracks)!: rename --percentage to --rollout in releases promote
 - **New canonical term** (a new domain noun) → add to `CONTEXT.md`.
 - **Irreversible / surprising decision** → add an ADR under `docs/adr/`.
 - **Feature you decided to defer** → add to `docs/BACKLOG.md` with rationale.
+- **New command that mutates Google Play state** → wrap it with
+  `kernel.MarkMutating(...)` at its registration site, so the `GPLAY_READONLY`
+  policy refuses it (exit 4, ADR-0024). The mutating-registry guard test in
+  `cmd/gplay` fails if a write command is left unmarked (or a read command is
+  wrongly marked). Read commands and `--dry-run` paths stay unmarked.
 
 ## Code review
 
@@ -96,6 +101,21 @@ The reviewer checks:
 2. Tests cover the new behavior (RoundTripper-mocked, see AGENTS.md).
 3. `--help` text and output for new flags follow `docs/DESIGN.md`.
 4. No accidental scope creep from the backlog.
+
+## GitHub Actions are SHA-pinned
+
+Every third-party action in `.github/workflows/` is pinned to a **full commit
+SHA** with a trailing version comment, e.g.:
+
+```yaml
+- uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+```
+
+A moving tag (`@v6`) can be force-pushed or hijacked; a SHA cannot. When adding
+or editing a workflow, pin new actions the same way (resolve the tag with
+`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). Dependabot
+(`.github/dependabot.yml`, weekly) proposes SHA bumps with a refreshed comment —
+review and merge those rather than hand-editing pins.
 
 ## Code of Conduct
 

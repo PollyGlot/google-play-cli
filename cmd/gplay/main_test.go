@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
@@ -226,6 +228,86 @@ func TestFlagErrors_areCliMisuse(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.wantMsg) {
 				t.Errorf("%v: error = %q, want it to contain %q", tc.args, err, tc.wantMsg)
+			}
+		})
+	}
+}
+
+// TestMutatingRegistry_pinsWriteCommands is the completeness guard for the
+// GPLAY_READONLY policy (#211 / ADR-0024): it pins exactly which leaf commands
+// carry the mutating annotation (kernel.MarkMutating). A new write command that
+// forgets MarkMutating, or a read command wrongly marked, fails here — so the
+// policy's authority boundary cannot silently rot as the tree grows. Resolved
+// through the real cobra tree via Command.Find (no execution, no auth/network).
+//
+// Multi-token paths are kept as SPLIT args (never a contiguous phrase) so the
+// repo-wide verb gate (#168) stays green on this file.
+func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
+	mutating := [][]string{
+		{"releases", "upload"},
+		{"releases", "promote"},
+		{"releases", "rollout"},
+		{"releases", "halt"},
+		{"releases", "resume"},
+		{"releases", "complete"},
+		{"tracks", "create"},
+		{"testers", "set"},
+		{"team", "users", "add"},
+		{"team", "users", "set"},
+		{"team", "users", "remove"},
+		{"team", "grants", "set"},
+		{"team", "grants", "remove"},
+		{"reviews", "reply"},
+		{"metadata", "apply"},
+		{"metadata", "images", "apply"},
+		{"compliance", "datasafety", "set"},
+		{"apps", "details", "set"},
+	}
+	// Reads (and local-only registry/credential ops) must stay UNmarked — the
+	// policy only blocks mutations of Google Play state, so dashboards and
+	// agents can still observe and plan with a production credential.
+	readOnly := [][]string{
+		{"releases", "list"},
+		{"tracks", "list"},
+		{"tracks", "view"},
+		{"tracks", "availability", "view"},
+		{"testers", "list"},
+		{"team", "users", "list"},
+		{"team", "grants", "list"},
+		{"team", "permissions"},
+		{"reviews", "list"},
+		{"metadata", "list"},
+		{"metadata", "pull"},
+		{"metadata", "images", "list"},
+		{"apps", "list"},
+		{"apps", "view"},
+		{"apps", "details", "view"},
+		{"auth", "status"},
+		{"auth", "login"},
+		{"schema"},
+	}
+
+	find := func(t *testing.T, path []string) *cobra.Command {
+		t.Helper()
+		root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+		cmd, rest, err := root.Find(path)
+		if err != nil || len(rest) != 0 {
+			t.Fatalf("Find(%v) did not resolve fully: rest=%v err=%v", path, rest, err)
+		}
+		return cmd
+	}
+
+	for _, p := range mutating {
+		t.Run("mutating/"+strings.Join(p, " "), func(t *testing.T) {
+			if !kernel.IsMutating(find(t, p)) {
+				t.Errorf("%v must be marked mutating (kernel.MarkMutating) — GPLAY_READONLY would not refuse it", p)
+			}
+		})
+	}
+	for _, p := range readOnly {
+		t.Run("read/"+strings.Join(p, " "), func(t *testing.T) {
+			if kernel.IsMutating(find(t, p)) {
+				t.Errorf("%v is marked mutating but is a read/local command — GPLAY_READONLY would wrongly refuse it", p)
 			}
 		})
 	}

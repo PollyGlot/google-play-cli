@@ -26,6 +26,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
@@ -37,6 +39,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
 // GroupRunE is the RunE for a grouping command that carries no business logic
@@ -66,6 +69,43 @@ func GroupRunE(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 	return exit.Usagef("unknown command %q for %q", args[0], cmd.CommandPath())
+}
+
+// mutatingAnnotation is the cobra annotation key a write command sets to declare
+// itself subject to the GPLAY_READONLY policy. One key, set in one place per
+// command (MarkMutating), is the whole registry — there are no per-command
+// readonly checks scattered through the business functions (ADR-0024).
+const mutatingAnnotation = "gplay.mutating"
+
+// MarkMutating declares cmd as a mutating (write) command and returns it, so
+// it composes inline at registration: `releases.AddCommand(kernel.MarkMutating(
+// upload.NewCommand(boot)))`. Under GPLAY_READONLY a marked command is refused
+// (exit 4) unless invoked with --dry-run. Every new write command MUST be
+// marked — see CONTRIBUTING.
+func MarkMutating(cmd *cobra.Command) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[mutatingAnnotation] = "true"
+	return cmd
+}
+
+// IsMutating reports whether cmd was declared mutating via MarkMutating.
+func IsMutating(cmd *cobra.Command) bool {
+	return cmd != nil && cmd.Annotations[mutatingAnnotation] == "true"
+}
+
+// EnvReadonly is the GPLAY_READONLY policy switch. It reports whether the env
+// var holds a truthy value (1/true/yes/on, case-insensitive); anything else
+// (unset, "0", "false", …) leaves writes allowed.
+const EnvReadonly = "GPLAY_READONLY"
+
+func envReadonlyEnforced() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvReadonly))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // Boot carries the process-level wiring built once in cmd/gplay/main.go:
@@ -109,6 +149,34 @@ type Inputs struct {
 
 	// Verbose mirrors the --verbose persistent flag.
 	Verbose bool
+
+	// Timeout mirrors the global --timeout persistent flag: an explicit
+	// per-request deadline applied to every API call (control-plane AND media
+	// upload). Zero means "unset" — control-plane calls then fall back to the
+	// 60s default while uploads stay unbounded. See RunContext.AuthedClient /
+	// UploadClient.
+	Timeout time.Duration
+
+	// Retry mirrors the global --retry persistent flag: the number of automatic
+	// retries (transport errors / 5xx / 429) layered onto the authed client.
+	// Zero (the default) is today's behavior — no retry. When set, --timeout
+	// becomes a per-attempt bound.
+	Retry int
+
+	// Mutating reports whether the invoked command is declared as a write
+	// command (MarkMutating). Read commands leave it false. Used together with
+	// Readonly to enforce the GPLAY_READONLY policy (ADR-0024).
+	Mutating bool
+
+	// DryRun mirrors the command's --dry-run flag (false when the command has
+	// none). A --dry-run of a mutating command never writes, so it is exempt
+	// from the read-only refusal.
+	DryRun bool
+
+	// Readonly is the resolved GPLAY_READONLY environment policy (FromCobra
+	// reads the env). When true, a mutating, non-dry-run command is refused
+	// before credential resolution and any network I/O.
+	Readonly bool
 }
 
 // RunContext is the post-resolution snapshot a command's business
@@ -157,6 +225,15 @@ type RunContext struct {
 
 	Verbose bool
 
+	// Timeout is the resolved global --timeout (zero when unset). AuthedClient
+	// and UploadClient read it to bound their requests; see those methods for
+	// the control-plane default and the media-upload exemption.
+	Timeout time.Duration
+
+	// Retry is the resolved global --retry (zero when unset). AuthedClient /
+	// UploadClient layer a retry transport when it is > 0.
+	Retry int
+
 	// ConfigPath, KeystoreRoot mirror Boot for commands that write to
 	// them (login, logout) or compute the credential's on-disk path
 	// (status).
@@ -183,6 +260,11 @@ type RunContext struct {
 	resolverInputs resolver.Inputs
 	backendDone    bool
 	accountDone    bool
+	// outCounter wraps Stdout on the production (kernel.Run) path so the JSON
+	// error-envelope emitter can tell whether the command already wrote output
+	// of its own (doctor's self-rendered checklist) before appending an
+	// envelope. nil on the NewForTest path. See maybeWriteErrorEnvelope.
+	outCounter *countingWriter
 	// accountErr memoises the invalid-credential outcome of EnsureAccount
 	// (ADR-0020). It is nil for both the valid and the benign-absent cases;
 	// non-nil only when a credential was provided but unusable. Guarded by
@@ -214,6 +296,8 @@ func NewForTest(ctx context.Context, boot Boot, in Inputs) *RunContext {
 		Stdin:        boot.Stdin,
 		FS:           fsys,
 		Verbose:      in.Verbose,
+		Timeout:      in.Timeout,
+		Retry:        in.Retry,
 		ConfigPath:   boot.ConfigPath,
 		KeystoreRoot: boot.KeystoreRoot,
 		Format:       in.Format,
@@ -235,14 +319,62 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 	if err != nil {
 		return err
 	}
+	// GPLAY_READONLY policy (ADR-0024): refuse a mutating, non-dry-run command
+	// here — after the local config/format resolution buildRunContext does, but
+	// BEFORE fn runs, so before any credential bytes are loaded (EnsureAccount
+	// is lazy, reached only via fn → AuthedClient) and before any network I/O.
+	// The authority boundary is the environment, not the flags fn would parse.
+	if in.Readonly && in.Mutating && !in.DryRun {
+		refusal := exit.Policyf(
+			"refused by %s: this command mutates Google Play state and is blocked by the read-only environment policy. This is not resolvable by adding a flag — unset %s to allow writes, or run with --dry-run to preview.",
+			EnvReadonly, EnvReadonly)
+		rc.maybeWriteErrorEnvelope(refusal)
+		return refusal
+	}
 	payload, runErr := fn(rc)
 	if runErr != nil {
+		// Under --output json, serialize the failure as a structured envelope
+		// on stdout so an agent/CI consumer can branch without scraping stderr
+		// (ADR-0023). main still prints the human line to stderr and exits with
+		// exit.For(runErr) — exit codes and stderr are unchanged.
+		rc.maybeWriteErrorEnvelope(runErr)
 		return runErr
 	}
 	if payload == nil {
 		return nil
 	}
 	return output.Render(rc.Stdout, rc.Format, payload.Renderers())
+}
+
+// maybeWriteErrorEnvelope writes the JSON error envelope to stdout when the
+// resolved format is JSON AND the failing command produced no stdout of its
+// own. The byte-count guard is what keeps a self-rendering command (doctor
+// writes its checklist then returns an error) from getting a second JSON
+// object appended — there it has already emitted to stdout, so the envelope is
+// suppressed. The write is best-effort: the authoritative signal is the error
+// main prints to stderr and the exit code, both unaffected by a failure here.
+func (rc *RunContext) maybeWriteErrorEnvelope(err error) {
+	if rc.Format != output.FormatJSON {
+		return
+	}
+	if rc.outCounter != nil && rc.outCounter.n > 0 {
+		return
+	}
+	_ = output.WriteErrorEnvelope(rc.Stdout, err)
+}
+
+// countingWriter forwards every write to w while tallying the bytes written —
+// the kernel uses the tally to decide whether a failing command already
+// produced stdout (see maybeWriteErrorEnvelope).
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // RunCobra is the canonical entrypoint for a cobra RunE: it copies
@@ -297,16 +429,23 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 	// asks for a token.
 	accountName := resolver.ResolveName(resolver.Deps{Resolved: resolved}, in.Resolver)
 
+	// Wrap stdout in a byte counter so the JSON error-envelope emitter can tell
+	// whether a failing command already wrote its own output (ADR-0023).
+	cw := &countingWriter{w: stdout}
+
 	return &RunContext{
 		Ctx:            ctx,
 		AccountName:    accountName,
 		Format:         format,
 		Resolved:       resolved,
-		Stdout:         stdout,
+		Stdout:         cw,
+		outCounter:     cw,
 		Stderr:         stderr,
 		Stdin:          boot.Stdin,
 		FS:             fsys,
 		Verbose:        in.Verbose,
+		Timeout:        in.Timeout,
+		Retry:          in.Retry,
 		ConfigPath:     boot.ConfigPath,
 		KeystoreRoot:   boot.KeystoreRoot,
 		lazy:           true,
@@ -452,23 +591,64 @@ func (k resolverKeystore) List(ctx context.Context) ([]string, error) {
 	return be.List(ctx)
 }
 
-// AuthedClient builds the authenticated *http.Client every API-touching
-// command uses to reach the Google Play Developer API. It performs the
-// auth handshake that was previously copy-pasted at each call site: it
-// requires a resolved Account, mints an OAuth2 token source from it, and
-// returns an oauth2-wrapped client.
+// defaultControlPlaneTimeout bounds a single control-plane API request (and the
+// OAuth2 token exchange it triggers). 60s is generous for the small JSON calls
+// the Edits / tracks / reviews / team surfaces make, yet turns a hung
+// connection into a fast exit 50 (network) instead of stalling a CI job until
+// the runner-level kill. Media uploads are exempt (see UploadClient); the
+// global --timeout overrides both (RunContext.Timeout). See docs/DESIGN.md §8.
+const defaultControlPlaneTimeout = 60 * time.Second
+
+// AuthedClient builds the authenticated *http.Client every control-plane
+// command uses to reach the Google Play Developer API. It performs the auth
+// handshake that was previously copy-pasted at each call site: it requires a
+// resolved Account, mints an OAuth2 token source from it, and returns an
+// oauth2-wrapped client.
+//
+// The returned client carries a per-request deadline: rc.Timeout when the
+// global --timeout was set, else defaultControlPlaneTimeout. A hung connection
+// therefore fails the request once the deadline elapses; the play modules wrap
+// that transport-level error as api.Error{StatusCode:0}, which maps to exit 50.
 //
 // The base transport is read from rc.Ctx's oauth2.HTTPClient value (falling
-// back to http.DefaultClient), and that same value is threaded into the
-// context oauth2.NewClient receives — so a single test-injected RoundTripper
-// covers BOTH the /token exchange and the subsequent androidpublisher calls.
-// This is the test seam the command tests rely on.
+// back to http.DefaultClient), and that same value (wrapped with the deadline)
+// is threaded into the context oauth2.NewClient receives — so a single
+// test-injected RoundTripper covers BOTH the /token exchange and the
+// subsequent androidpublisher calls, and the deadline bounds both. This is the
+// test seam the command tests rely on.
 //
 // An invalid credential propagates the credentialError verbatim (real
 // cause + exit 10). An absent one yields an *authError (exit code 10 per
 // docs/DESIGN.md §9). Callers with a no-network path (--dry-run,
 // --no-verify) must gate this call behind that branch themselves.
 func (rc *RunContext) AuthedClient() (*http.Client, error) {
+	return rc.authedClient(rc.controlPlaneTimeout())
+}
+
+// UploadClient is AuthedClient for media-upload commands (bundles, images):
+// a multi-hundred-MB transfer must not be killed by the short control-plane
+// default, so the returned client carries NO deadline — UNLESS the global
+// --timeout was set explicitly (rc.Timeout), which then bounds every request
+// including the upload. Same auth handshake and test seam as AuthedClient.
+func (rc *RunContext) UploadClient() (*http.Client, error) {
+	// rc.Timeout is 0 (no deadline) unless --timeout was passed; uploads honor
+	// only the explicit override, never the 60s control-plane default.
+	return rc.authedClient(rc.Timeout)
+}
+
+// controlPlaneTimeout resolves the deadline for a control-plane request: the
+// explicit --timeout when set, else the 60s default.
+func (rc *RunContext) controlPlaneTimeout() time.Duration {
+	if rc.Timeout > 0 {
+		return rc.Timeout
+	}
+	return defaultControlPlaneTimeout
+}
+
+// authedClient is the shared body of AuthedClient / UploadClient. timeout==0
+// yields a client with no deadline; timeout>0 bounds both the /token exchange
+// and the API request by it.
+func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) {
 	// First call that genuinely needs a credential: this is where the
 	// keyring probe + Load finally happen (see EnsureAccount), not at boot.
 	// A present-but-invalid credential surfaces its real cause here; an
@@ -479,17 +659,36 @@ func (rc *RunContext) AuthedClient() (*http.Client, error) {
 	if rc.Account == nil {
 		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
 	}
-	// Thread the base client into the context BEFORE building the token
-	// source: jwt.Config.TokenSource captures the context it is given and
-	// reuses it for the /token mint/refresh calls. Deriving ctx first means
-	// one injected client (the test seam, or http.DefaultClient in prod)
-	// covers both the /token exchange and the androidpublisher calls.
-	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, baseHTTPClient(rc.Ctx))
+	// The /token exchange runs through the context's HTTP client (jwt.Config
+	// captures the context it is given), so bound it with the same deadline by
+	// wrapping the base client — WITHOUT mutating the shared base or
+	// http.DefaultClient — before threading it into the context the token
+	// source captures. timeout==0 leaves the wrapper deadline-free.
+	base := baseHTTPClient(rc.Ctx)
+	timedBase := &http.Client{Transport: base.Transport, Timeout: timeout}
+	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, timedBase)
 	ts, err := token.Source(ctx, rc.Account)
 	if err != nil {
 		return nil, &authError{msg: "could not build token source: " + err.Error()}
 	}
-	return oauth2.NewClient(ctx, ts), nil
+	// oauth2.NewClient sets the returned client's Base to the (unwrapped) base
+	// transport.
+	client := oauth2.NewClient(ctx, ts)
+	if rc.Retry > 0 {
+		// --retry: a transport middleware retries transport errors / 5xx / 429
+		// (honoring Retry-After) with exponential backoff + jitter. It owns the
+		// per-ATTEMPT deadline (so a retry sequence can outlast a single
+		// timeout), so the per-request client.Timeout stays unset here.
+		client.Transport = transport.WithRetry(client.Transport, transport.RetryOptions{
+			MaxRetries: rc.Retry,
+			Timeout:    timeout,
+		})
+		return client, nil
+	}
+	// No retry: the per-request deadline lives on the client (the oauth2
+	// client's Base is the unwrapped base transport, so it can't live there).
+	client.Timeout = timeout
+	return client, nil
 }
 
 // baseHTTPClient extracts the transport used as the underlying client for
@@ -522,10 +721,20 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	saFlag, _ := cmd.Flags().GetString("service-account")
 	acctFlag, _ := cmd.Flags().GetString("account")
+	timeout, _ := cmd.Flags().GetDuration("timeout")
+	retry, _ := cmd.Flags().GetInt("retry")
+	// GetBool returns (false, err) when the command has no --dry-run flag; the
+	// error is ignored on purpose — "no dry-run flag" means "not a dry run".
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	return Inputs{
-		Ctx:     cmd.Context(),
-		Format:  output.Format(format),
-		Verbose: verbose,
+		Ctx:      cmd.Context(),
+		Format:   output.Format(format),
+		Verbose:  verbose,
+		Timeout:  timeout,
+		Retry:    retry,
+		Mutating: IsMutating(cmd),
+		DryRun:   dryRun,
+		Readonly: envReadonlyEnforced(),
 		Resolver: resolver.Inputs{
 			ServiceAccountFlag: saFlag,
 			AccountFlag:        acctFlag,

@@ -204,7 +204,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 
-	httpClient, err := rc.AuthedClient()
+	// UploadClient, not AuthedClient: image bytes (icons, feature graphics,
+	// screenshots) are media uploads, exempt from the 60s control-plane default
+	// (honors an explicit --timeout). See kernel.RunContext.UploadClient.
+	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return nil, err
 	}

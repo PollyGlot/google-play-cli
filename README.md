@@ -59,6 +59,45 @@ brew install PollyGlot/tap/gplay
 curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
 ```
 
+The install script **verifies the downloaded archive's SHA-256 against the
+release `checksums.txt` and fails closed**: a missing `checksums.txt`, a
+checksum file with no entry for your platform's archive, or a mismatch all
+abort the install (so an adversary who can influence the download path cannot
+defeat verification by withholding the checksum). For air-gapped or mirrored
+installs where the checksum file is unreachable, set
+`GPLAY_INSTALL_NO_VERIFY=1` to bypass — it prints a prominent warning and is
+greppable in your CI config. To independently verify a release with cosign or
+GitHub attestations, see [Verify a release](#verify-a-release) below.
+
+## Verify a release
+
+Every release publishes a cosign signature over `checksums.txt` and a GitHub
+build-provenance attestation over each archive — two independent ways to
+confirm an artifact really came from this repo's release pipeline before you
+trust it in CI.
+
+```bash
+# 1. Build-provenance attestation (needs the GitHub CLI; no extra download).
+#    Proves the archive was built by this repo's release workflow.
+gh attestation verify gplay_<version>_<os>_<arch>.tar.gz \
+  -R PollyGlot/google-play-cli
+
+# 2. cosign signature over checksums.txt (needs cosign). The checksum file
+#    transitively covers every archive it lists, so verify it, then check
+#    your archive against it.
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+shasum -a 256 -c <(grep " gplay_<version>_<os>_<arch>.tar.gz$" checksums.txt)
+```
+
+Download `checksums.txt` and `checksums.txt.sigstore.json` from the same
+[release](https://github.com/PollyGlot/google-play-cli/releases) as the
+archive. The install script already checks the SHA-256 against `checksums.txt`
+and [fails closed](#install); these commands add provenance and signature
+verification on top.
+
 ## Quick start
 
 ```bash

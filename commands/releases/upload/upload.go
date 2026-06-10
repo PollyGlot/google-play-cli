@@ -176,7 +176,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	var httpClient *http.Client
 	if !in.DryRun {
 		var err error
-		httpClient, err = rc.AuthedClient()
+		// UploadClient, not AuthedClient: the AAB transfer can be hundreds of
+		// MB, so it is exempt from the 60s control-plane default (honors an
+		// explicit --timeout). See kernel.RunContext.UploadClient.
+		httpClient, err = rc.UploadClient()
 		if err != nil {
 			return nil, err
 		}

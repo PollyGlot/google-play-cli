@@ -12,6 +12,8 @@ For deeper rationale on the load-bearing choices, see:
 - [ADR-0004 — Cascading config](./adr/0004-cascading-config.md)
 - [ADR-0005 — TTY-aware output defaults](./adr/0005-tty-aware-output.md)
 - [ADR-0019 — Canonical verb vocabulary](./adr/0019-canonical-verb-vocabulary.md)
+- [ADR-0023 — JSON error envelope on failure](./adr/0023-json-error-envelope.md)
+- [ADR-0024 — `GPLAY_READONLY` environment policy](./adr/0024-readonly-environment-policy.md)
 
 ---
 
@@ -305,15 +307,45 @@ Columns are chosen for readability — not pass-through. Each command's
 default columns are documented in its `--help`. `--columns col1,col2,...`
 lets the caller override.
 
-### Errors
+### Control-sequence sanitization (human formats only)
 
-Errors are **never** pass-through. Shape on stderr:
+API-returned strings are often user-generated (review text, store-listing
+copy). The **table and markdown** renderers strip ANSI escape sequences (CSI,
+OSC) and C0/C1 control characters from every cell, centrally at the render
+boundary — so a hostile value cannot inject color/cursor/title sequences into a
+terminal or CI log. The sanitization is rune-based: legitimate multi-byte
+content (accents, CJK, emoji) is untouched. **`--output json` is never
+sanitized** — machine consumers get the bytes verbatim (ADR-0003); fidelity
+lives on the JSON path, safety on the human path.
+
+### Errors (`--output json` error envelope, ADR-0023)
+
+Errors are **never** pass-through. The human-readable line always goes to
+**stderr** (DESIGN §8). Under `--output json` a failing command *additionally*
+writes a single structured envelope to **stdout**, so an agent/CI consumer can
+branch on the failure without scraping stderr:
 
 ```json
-{"error":{"code":"<symbolic>","message":"<human>","details":{...}}}
+{
+  "error": {
+    "exitCode": 60,
+    "message": "edits.commit on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
+    "reasons": ["editAlreadyExists"],
+    "requires": ["confirm"]
+  }
+}
 ```
 
-The upstream API payload, if any, is preserved inside `details`.
+- `exitCode` / `message` are always present; `exitCode` mirrors the process
+  exit code (§9).
+- `reasons` carries the upstream `error.errors[].reason` values when an API
+  envelope was parsed; omitted otherwise.
+- `requires` names the missing safety flag on an exit-3 refusal (extends the
+  ADR-0017 dry-run `requires` to failure time); omitted otherwise.
+
+Under `table` / `markdown` a failure leaves stdout empty (error → stderr only).
+Exit codes and stderr are unchanged by the envelope. The envelope shape is part
+of the public contract (ADR-0010); see [ADR-0023](./adr/0023-json-error-envelope.md).
 
 ---
 
@@ -330,6 +362,61 @@ The upstream API payload, if any, is preserved inside `details`.
 - Color is auto in TTY, disabled in pipes, disabled if `NO_COLOR` env or
   `--no-color` is set.
 
+### Request timeouts (`--timeout`)
+
+Every API call carries a deadline so a hung connection fails the step in
+seconds instead of stalling a CI job until the runner-level kill:
+
+- **Control-plane calls** (Edits, tracks, reviews, metadata, team, …) get a
+  **60s default** deadline, applied once where the kernel builds the
+  authenticated HTTP client — every command inherits it, no per-command
+  plumbing.
+- **Media uploads** (`releases upload`, `metadata images apply`) are **exempt
+  from the default**: a multi-hundred-MB transfer is never killed by the short
+  control-plane bound.
+- The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
+  `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
+  Unset (`0`) means "60s for control-plane, unbounded for uploads".
+
+A deadline-exceeded failure is a transport-level error and maps to **exit 50**
+(network), the retry-safe bucket — so the same CI wrapper that retries a DNS
+blip retries a timeout.
+
+### Opt-in retry (`--retry`)
+
+The global **`--retry N`** flag (default `0` = no retry) layers a transport
+middleware on the authed client that retries the transient classes — transport
+errors, HTTP 5xx, and 429 (honoring `Retry-After`) — with exponential backoff
+plus jitter. Non-transient 4xx (auth, validation) and `edits.commit` (a
+duplicate could double-publish) are never retried, so it is safe to leave on.
+When `--retry` is set, `--timeout` becomes a **per-attempt** bound rather than a
+single per-request one; request bodies are recreated per attempt (uploads
+re-send from a fresh reader). Details and CI examples: [`CI_CD.md`](CI_CD.md#4-exit-codes--retry-vs-fail).
+
+### Read-only policy (`GPLAY_READONLY`, ADR-0024)
+
+`--confirm` / `--grant-admin` are advisory for an AI agent that holds the
+credential — it can pass them itself. `GPLAY_READONLY` is the
+environment-enforced authority boundary a harness can impose independent of the
+model's flag choices:
+
+- When `GPLAY_READONLY` is **truthy** (`1`/`true`/`yes`/`on`), every command
+  that mutates Google Play state is **refused with exit 4** — *before*
+  credential resolution and any network I/O, regardless of the flags passed.
+  Exit 4 is distinct from exit 3 on purpose: it is **not** resolvable by adding
+  a flag (the message says so); the caller must change the environment.
+- **Read commands and `--dry-run` of mutating commands still run**, so
+  dashboards and agents can observe and plan with a production credential.
+- Which commands mutate is a single registration-time annotation
+  (`kernel.MarkMutating`), not an ad-hoc per-command check — see CONTRIBUTING.
+- Scope: the policy blocks **Google Play mutations**. Local-only operations
+  (credential `auth login`/`logout`, the local app registry) are not Play
+  writes and are not gated. Fine-grained allowlists (`GPLAY_ALLOW`) are a
+  future follow-up, out of scope here.
+
+Under `--output json` the refusal is emitted as the standard error envelope
+(exit code 4) on stdout (§7 / ADR-0023).
+
 ---
 
 ## 9. Exit codes
@@ -340,6 +427,7 @@ The upstream API payload, if any, is preserved inside `details`.
 | `1` | Generic error (fallback when nothing more specific fits) | No |
 | `2` | CLI misuse (unknown flag, bad value, missing required arg) | No |
 | `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
+| `4` | Denied by environment policy (`GPLAY_READONLY`) — a mutating command was refused; the message names the env var | No — **not** resolvable by adding a flag; change the environment |
 | `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
 | `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |

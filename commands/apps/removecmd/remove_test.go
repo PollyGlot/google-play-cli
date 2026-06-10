@@ -448,10 +448,11 @@ func TestRemove_cobra_malformedInlineCredential_exits10NoMutation(t *testing.T) 
 	if !strings.Contains(err.Error(), "invalid character") {
 		t.Errorf("error should preserve the underlying JSON parse cause; got %q", err.Error())
 	}
-	// No-payload contract: the hard-error path writes nothing to stdout
-	// (data → stdout, errors → stderr).
-	if got := stdout.String(); got != "" {
-		t.Errorf("stdout = %q, want empty on the hard-error path", got)
+	// Under --output json (auto-resolved off a non-TTY) a failure emits the
+	// structured error envelope on stdout (ADR-0023) — the error only, never a
+	// data payload. The no-mutation contract below is the load-bearing guard.
+	if out := stdout.String(); !strings.Contains(out, `"exitCode": 10`) {
+		t.Errorf("json hard-error path should emit the exit-10 error envelope; got %q", out)
 	}
 	g, lerr := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, cfgPath)
 	if lerr != nil {
