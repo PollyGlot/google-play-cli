@@ -142,6 +142,13 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	//   gplay auth status -v   (interactive-friendly: option after)
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "log flow steps to stderr (info level)")
 
+	// Global per-request timeout (docs/DESIGN.md §8). Zero (the default) means
+	// the kernel applies a 60s deadline to control-plane API calls and leaves
+	// media uploads unbounded; an explicit value bounds every request,
+	// including uploads. The kernel reads it via FromCobra → Inputs.Timeout.
+	root.PersistentFlags().Duration("timeout", 0,
+		"per-request API timeout, e.g. 30s or 2m (default: 60s for control-plane calls, none for uploads)")
+
 	auth := &cobra.Command{
 		Use:           "auth",
 		Short:         "Manage gplay credentials",

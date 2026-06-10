@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/oauth2"
 
@@ -372,6 +373,48 @@ func TestRun_forbidden_exit11_withReplyHint(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Reply to reviews") {
 		t.Errorf("403 error should hint at the 'Reply to reviews' permission; got %q", err.Error())
+	}
+}
+
+// timeoutRT serves the /token exchange instantly but blocks the reviews.list
+// call until the request context is canceled — standing in for a hung upstream
+// connection. A well-behaved transport observes ctx cancellation, which is how
+// the kernel-applied deadline (the global --timeout / 60s default) interrupts
+// the request.
+type timeoutRT struct{}
+
+func (timeoutRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+	}
+	<-req.Context().Done()
+	return nil, req.Context().Err()
+}
+
+// TestRun_timeout_mapsToExit50 drives `reviews list` against a transport whose
+// API call hangs, with a tight global --timeout. The kernel-applied deadline
+// must interrupt the request, and the transport-level failure must surface as
+// exit 50 (network) — bounded well under the would-be hang, not stalling until
+// a runner-level kill.
+func TestRun_timeout_mapsToExit50(t *testing.T) {
+	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	if err != nil {
+		t.Fatalf("serviceaccount.Parse: %v", err)
+	}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: timeoutRT{}})
+	boot := kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	rc := kernel.NewForTest(ctx, boot, kernel.Inputs{Format: output.FormatJSON, Timeout: 150 * time.Millisecond})
+	rc.Account = sa
+
+	start := time.Now()
+	_, err = Run(rc, Input{Package: "com.example.app"})
+	elapsed := time.Since(start)
+
+	if code := exitCodeOf(t, err); code != 50 {
+		t.Fatalf("hung request should map to exit 50 (network), got %d (err: %v)", code, err)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("request was not bounded by the 150ms --timeout; took %v", elapsed)
 	}
 }
 

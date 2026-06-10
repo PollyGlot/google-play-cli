@@ -26,6 +26,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
@@ -109,6 +110,13 @@ type Inputs struct {
 
 	// Verbose mirrors the --verbose persistent flag.
 	Verbose bool
+
+	// Timeout mirrors the global --timeout persistent flag: an explicit
+	// per-request deadline applied to every API call (control-plane AND media
+	// upload). Zero means "unset" — control-plane calls then fall back to the
+	// 60s default while uploads stay unbounded. See RunContext.AuthedClient /
+	// UploadClient.
+	Timeout time.Duration
 }
 
 // RunContext is the post-resolution snapshot a command's business
@@ -156,6 +164,11 @@ type RunContext struct {
 	FS config.FS
 
 	Verbose bool
+
+	// Timeout is the resolved global --timeout (zero when unset). AuthedClient
+	// and UploadClient read it to bound their requests; see those methods for
+	// the control-plane default and the media-upload exemption.
+	Timeout time.Duration
 
 	// ConfigPath, KeystoreRoot mirror Boot for commands that write to
 	// them (login, logout) or compute the credential's on-disk path
@@ -214,6 +227,7 @@ func NewForTest(ctx context.Context, boot Boot, in Inputs) *RunContext {
 		Stdin:        boot.Stdin,
 		FS:           fsys,
 		Verbose:      in.Verbose,
+		Timeout:      in.Timeout,
 		ConfigPath:   boot.ConfigPath,
 		KeystoreRoot: boot.KeystoreRoot,
 		Format:       in.Format,
@@ -307,6 +321,7 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 		Stdin:          boot.Stdin,
 		FS:             fsys,
 		Verbose:        in.Verbose,
+		Timeout:        in.Timeout,
 		ConfigPath:     boot.ConfigPath,
 		KeystoreRoot:   boot.KeystoreRoot,
 		lazy:           true,
@@ -452,23 +467,64 @@ func (k resolverKeystore) List(ctx context.Context) ([]string, error) {
 	return be.List(ctx)
 }
 
-// AuthedClient builds the authenticated *http.Client every API-touching
-// command uses to reach the Google Play Developer API. It performs the
-// auth handshake that was previously copy-pasted at each call site: it
-// requires a resolved Account, mints an OAuth2 token source from it, and
-// returns an oauth2-wrapped client.
+// defaultControlPlaneTimeout bounds a single control-plane API request (and the
+// OAuth2 token exchange it triggers). 60s is generous for the small JSON calls
+// the Edits / tracks / reviews / team surfaces make, yet turns a hung
+// connection into a fast exit 50 (network) instead of stalling a CI job until
+// the runner-level kill. Media uploads are exempt (see UploadClient); the
+// global --timeout overrides both (RunContext.Timeout). See docs/DESIGN.md §8.
+const defaultControlPlaneTimeout = 60 * time.Second
+
+// AuthedClient builds the authenticated *http.Client every control-plane
+// command uses to reach the Google Play Developer API. It performs the auth
+// handshake that was previously copy-pasted at each call site: it requires a
+// resolved Account, mints an OAuth2 token source from it, and returns an
+// oauth2-wrapped client.
+//
+// The returned client carries a per-request deadline: rc.Timeout when the
+// global --timeout was set, else defaultControlPlaneTimeout. A hung connection
+// therefore fails the request once the deadline elapses; the play modules wrap
+// that transport-level error as api.Error{StatusCode:0}, which maps to exit 50.
 //
 // The base transport is read from rc.Ctx's oauth2.HTTPClient value (falling
-// back to http.DefaultClient), and that same value is threaded into the
-// context oauth2.NewClient receives — so a single test-injected RoundTripper
-// covers BOTH the /token exchange and the subsequent androidpublisher calls.
-// This is the test seam the command tests rely on.
+// back to http.DefaultClient), and that same value (wrapped with the deadline)
+// is threaded into the context oauth2.NewClient receives — so a single
+// test-injected RoundTripper covers BOTH the /token exchange and the
+// subsequent androidpublisher calls, and the deadline bounds both. This is the
+// test seam the command tests rely on.
 //
 // An invalid credential propagates the credentialError verbatim (real
 // cause + exit 10). An absent one yields an *authError (exit code 10 per
 // docs/DESIGN.md §9). Callers with a no-network path (--dry-run,
 // --no-verify) must gate this call behind that branch themselves.
 func (rc *RunContext) AuthedClient() (*http.Client, error) {
+	return rc.authedClient(rc.controlPlaneTimeout())
+}
+
+// UploadClient is AuthedClient for media-upload commands (bundles, images):
+// a multi-hundred-MB transfer must not be killed by the short control-plane
+// default, so the returned client carries NO deadline — UNLESS the global
+// --timeout was set explicitly (rc.Timeout), which then bounds every request
+// including the upload. Same auth handshake and test seam as AuthedClient.
+func (rc *RunContext) UploadClient() (*http.Client, error) {
+	// rc.Timeout is 0 (no deadline) unless --timeout was passed; uploads honor
+	// only the explicit override, never the 60s control-plane default.
+	return rc.authedClient(rc.Timeout)
+}
+
+// controlPlaneTimeout resolves the deadline for a control-plane request: the
+// explicit --timeout when set, else the 60s default.
+func (rc *RunContext) controlPlaneTimeout() time.Duration {
+	if rc.Timeout > 0 {
+		return rc.Timeout
+	}
+	return defaultControlPlaneTimeout
+}
+
+// authedClient is the shared body of AuthedClient / UploadClient. timeout==0
+// yields a client with no deadline; timeout>0 bounds both the /token exchange
+// and the API request by it.
+func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) {
 	// First call that genuinely needs a credential: this is where the
 	// keyring probe + Load finally happen (see EnsureAccount), not at boot.
 	// A present-but-invalid credential surfaces its real cause here; an
@@ -479,17 +535,24 @@ func (rc *RunContext) AuthedClient() (*http.Client, error) {
 	if rc.Account == nil {
 		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
 	}
-	// Thread the base client into the context BEFORE building the token
-	// source: jwt.Config.TokenSource captures the context it is given and
-	// reuses it for the /token mint/refresh calls. Deriving ctx first means
-	// one injected client (the test seam, or http.DefaultClient in prod)
-	// covers both the /token exchange and the androidpublisher calls.
-	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, baseHTTPClient(rc.Ctx))
+	// The /token exchange runs through the context's HTTP client (jwt.Config
+	// captures the context it is given), so bound it with the same deadline by
+	// wrapping the base client — WITHOUT mutating the shared base or
+	// http.DefaultClient — before threading it into the context the token
+	// source captures. timeout==0 leaves the wrapper deadline-free.
+	base := baseHTTPClient(rc.Ctx)
+	timedBase := &http.Client{Transport: base.Transport, Timeout: timeout}
+	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, timedBase)
 	ts, err := token.Source(ctx, rc.Account)
 	if err != nil {
 		return nil, &authError{msg: "could not build token source: " + err.Error()}
 	}
-	return oauth2.NewClient(ctx, ts), nil
+	// oauth2.NewClient sets the returned client's Base to the (unwrapped) base
+	// transport, so the API request's deadline must live on the client we hand
+	// back, not just on timedBase.
+	client := oauth2.NewClient(ctx, ts)
+	client.Timeout = timeout
+	return client, nil
 }
 
 // baseHTTPClient extracts the transport used as the underlying client for
@@ -522,10 +585,12 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	saFlag, _ := cmd.Flags().GetString("service-account")
 	acctFlag, _ := cmd.Flags().GetString("account")
+	timeout, _ := cmd.Flags().GetDuration("timeout")
 	return Inputs{
 		Ctx:     cmd.Context(),
 		Format:  output.Format(format),
 		Verbose: verbose,
+		Timeout: timeout,
 		Resolver: resolver.Inputs{
 			ServiceAccountFlag: saFlag,
 			AccountFlag:        acctFlag,

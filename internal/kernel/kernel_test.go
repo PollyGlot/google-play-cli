@@ -3,11 +3,17 @@ package kernel_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -566,6 +572,98 @@ func TestAuthedClient_invalidCredential_propagatesCauseAndExit10(t *testing.T) {
 		return nil, nil
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+}
+
+// signedAccount returns a ServiceAccount backed by a freshly generated RSA key,
+// so AuthedClient / UploadClient can build a real OAuth2 token source (lazily —
+// no network) and the returned client's deadline can be inspected.
+func signedAccount(t *testing.T) *serviceaccount.ServiceAccount {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
+	raw, err := json.Marshal(map[string]any{
+		"type":         "service_account",
+		"project_id":   "test-proj",
+		"private_key":  string(pemBytes),
+		"client_email": "ci@test-proj.iam.gserviceaccount.com",
+		"token_uri":    "https://oauth2.googleapis.com/token",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	sa, err := serviceaccount.Parse(raw)
+	if err != nil {
+		t.Fatalf("serviceaccount.Parse: %v", err)
+	}
+	return sa
+}
+
+// TestAuthedClient_defaultControlPlaneTimeout: with no --timeout, a
+// control-plane client carries the 60s default deadline (#209).
+func TestAuthedClient_defaultControlPlaneTimeout(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
+	rc.Account = signedAccount(t)
+	hc, err := rc.AuthedClient()
+	if err != nil {
+		t.Fatalf("AuthedClient: %v", err)
+	}
+	if hc.Timeout != 60*time.Second {
+		t.Errorf("AuthedClient default timeout = %v, want 60s", hc.Timeout)
+	}
+}
+
+// TestAuthedClient_timeoutOverride: --timeout overrides the control-plane
+// default on the returned client.
+func TestAuthedClient_timeoutOverride(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{Timeout: 5 * time.Second})
+	rc.Account = signedAccount(t)
+	hc, err := rc.AuthedClient()
+	if err != nil {
+		t.Fatalf("AuthedClient: %v", err)
+	}
+	if hc.Timeout != 5*time.Second {
+		t.Errorf("AuthedClient with --timeout=5s = %v, want 5s", hc.Timeout)
+	}
+}
+
+// TestUploadClient_exemptFromDefault: a media-upload client has NO deadline
+// when --timeout is unset, so a large transfer is never killed by the short
+// control-plane default.
+func TestUploadClient_exemptFromDefault(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
+	rc.Account = signedAccount(t)
+	hc, err := rc.UploadClient()
+	if err != nil {
+		t.Fatalf("UploadClient: %v", err)
+	}
+	if hc.Timeout != 0 {
+		t.Errorf("UploadClient default timeout = %v, want 0 (unbounded)", hc.Timeout)
+	}
+}
+
+// TestUploadClient_honorsExplicitTimeout: an explicit --timeout DOES bound an
+// upload client (the override applies to every request, uploads included).
+func TestUploadClient_honorsExplicitTimeout(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{Timeout: 7 * time.Second})
+	rc.Account = signedAccount(t)
+	hc, err := rc.UploadClient()
+	if err != nil {
+		t.Fatalf("UploadClient: %v", err)
+	}
+	if hc.Timeout != 7*time.Second {
+		t.Errorf("UploadClient with --timeout=7s = %v, want 7s", hc.Timeout)
 	}
 }
 

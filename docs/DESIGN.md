@@ -330,6 +330,26 @@ The upstream API payload, if any, is preserved inside `details`.
 - Color is auto in TTY, disabled in pipes, disabled if `NO_COLOR` env or
   `--no-color` is set.
 
+### Request timeouts (`--timeout`)
+
+Every API call carries a deadline so a hung connection fails the step in
+seconds instead of stalling a CI job until the runner-level kill:
+
+- **Control-plane calls** (Edits, tracks, reviews, metadata, team, …) get a
+  **60s default** deadline, applied once where the kernel builds the
+  authenticated HTTP client — every command inherits it, no per-command
+  plumbing.
+- **Media uploads** (`releases upload`, `metadata images apply`) are **exempt
+  from the default**: a multi-hundred-MB transfer is never killed by the short
+  control-plane bound.
+- The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
+  `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
+  Unset (`0`) means "60s for control-plane, unbounded for uploads".
+
+A deadline-exceeded failure is a transport-level error and maps to **exit 50**
+(network), the retry-safe bucket — so the same CI wrapper that retries a DNS
+blip retries a timeout.
+
 ---
 
 ## 9. Exit codes
