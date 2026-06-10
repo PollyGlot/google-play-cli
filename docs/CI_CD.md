@@ -29,6 +29,37 @@ has been granted access to your Play Console app. One-time setup:
 > invited on the app in Play Console**. `gplay auth doctor` is built to
 > catch this.
 
+### Grant least privilege — one scoped account per job
+
+The real authority boundary for CI and agent use is the **Play Console
+permission set of the service account**, not the flags a workflow passes. Don't
+mint one admin-everything account and reuse it everywhere: grant each workflow
+*only* the permissions its commands need, and mint a **separate service account
+per archetype** so a leaked key from (say) a metadata job can't publish a
+release.
+
+| Archetype | gplay commands it runs | Play Console permissions to grant |
+|---|---|---|
+| **Read-only reporting** (dashboards, **AI agents**) | `apps list/view`, `tracks list/view`, `releases list`, `reviews list`, `team … list`, `metadata pull`, `schema` | **"View app information and download bulk reports (read-only)"** — and, for vitals, "View app quality information (Android vitals)" |
+| **Release-only** | `releases upload/promote/rollout/halt/resume/complete`, `tracks create`, `testers set` | "Release to production, exclude devices, and use Play App Signing"; "Release apps to testing tracks"; "Manage testing tracks and edit tester lists" |
+| **Metadata-only** | `metadata apply`, `metadata images apply`, `apps details set` | "Manage store presence" |
+| **Reviews** | `reviews reply` | "Reply to reviews" |
+| **Team administration** | `team users add/set/remove`, `team grants set/remove` | Account-level **"Admin (all permissions)"** — managing users and their access is an account-level capability; grant it to the *narrowest* set of automations |
+
+Two reinforcing controls, use both:
+
+- **A read-only service account** for every dashboard and AI agent. With only
+  "View app information (read-only)" granted, a mutating call fails at the API
+  with **exit 11** (authorization) even if something tries one.
+- **`GPLAY_READONLY=1`** in the agent/dashboard environment. This refuses every
+  mutating command *before* any network call (**exit 4**), so the boundary
+  holds in the harness regardless of the flags an agent chooses — defence in
+  depth on top of the scoped credential. See [DESIGN §8](DESIGN.md#8-verbosity-and-logging)
+  and [ADR-0024](adr/0024-readonly-environment-policy.md).
+
+Verify any scoped account end-to-end with
+`gplay auth doctor --package <your.package>` before wiring it into a job.
+
 ## 2. Inject the credential into CI
 
 In CI, **never** use `gplay auth login`. Always pass the credential through
@@ -81,6 +112,28 @@ jobs:
             --track internal \
             --release-notes-dir ./whatsnew
 ```
+
+### Credential hygiene — env var, never a flag
+
+Pass the credential through **`GPLAY_SERVICE_ACCOUNT` (env)**, never through the
+`--service-account` flag, when the value is inline JSON:
+
+- A flag value lands in **shell history** and is visible in the **process
+  listing** (`ps`, `/proc/<pid>/cmdline`) to any other process on the runner —
+  your private key, exposed.
+- An env var is not in `ps` output and not in shell history.
+
+`--service-account` is for a **path** in interactive/local use; in CI the
+credential is inline JSON in the environment. (`gplay auth login` is also
+out — it writes the key to the runner's keystore; see §2.)
+
+> **GitHub Actions secret masking.** A value stored as a repository/organization
+> **secret** and referenced as `${{ secrets.GPLAY_SERVICE_ACCOUNT }}` is
+> registered for log masking — if it ever surfaces in a log line, Actions
+> redacts it as `***`. Masking is best-effort, not a license to print it:
+> multi-line JSON can defeat line-based masking, so still never `echo` the
+> credential. Storing the JSON as a **variable** (`vars.*`) instead of a secret
+> gets you no masking at all.
 
 ## 3. Typical release flow
 
