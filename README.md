@@ -59,6 +59,16 @@ brew install PollyGlot/tap/gplay
 curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
 ```
 
+The install script **verifies the downloaded archive's SHA-256 against the
+release `checksums.txt` and fails closed**: a missing `checksums.txt`, a
+checksum file with no entry for your platform's archive, or a mismatch all
+abort the install (so an adversary who can influence the download path cannot
+defeat verification by withholding the checksum). For air-gapped or mirrored
+installs where the checksum file is unreachable, set
+`GPLAY_INSTALL_NO_VERIFY=1` to bypass — it prints a prominent warning and is
+greppable in your CI config. To independently verify a release with cosign or
+GitHub attestations, see [Verify a release](#verify-a-release) below.
+
 ## Quick start
 
 ```bash
