@@ -77,6 +77,7 @@ réduisent la dette et outillent les agents.
 | 2 | [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | tooling | Snapshot offline du Discovery doc `androidpublisher_v3.json` (+ target de regen) | Levier code-gen agent ; le trigger « surface > ~10 commandes » est franchi |
 | ✅ | [#176](https://github.com/PollyGlot/google-play-cli/issues/176) | auth | Surface invalid-credential errors from `EnsureAccount` (absent vs invalide) | **Livré** (#182, slices #177–#180, [ADR-0020](adr/0020-resolution-error-surfacing.md)) — `breaking-change` : exit code d'`auth status` |
 | ✅ | [#53](https://github.com/PollyGlot/google-play-cli/issues/53) | skills | Bootstrap repo `google-play-cli-skills` + roster comprehensive (9 skills, toute la surface livrée) | **Livré** — [`PollyGlot/google-play-cli-skills`](https://github.com/PollyGlot/google-play-cli-skills) public (slices #183–#192, [ADR-0021](adr/0021-companion-skills-repo.md)) |
+| 3 | [#206](https://github.com/PollyGlot/google-play-cli/issues/206) | platform | PRD Operational hardening — install vérifié, runtime borné, autorité imposable par l'environnement | Issu de l'audit archi/sécurité (2026-06-10) ; décomposé en 11 slices [#207–#217](https://github.com/PollyGlot/google-play-cli/issues/206) — P0 : #207–#209 ; #215 bloquée par #209 |
 
 ## Ensuite — surfaces additives (post first-release)
 
