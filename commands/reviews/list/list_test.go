@@ -428,6 +428,79 @@ func TestRun_unknownPackage_exit30(t *testing.T) {
 	}
 }
 
+// TestRun_hostileReviewText_tableSanitized_jsonByteFaithful is the #213
+// demonstration case: a user-generated review whose text carries ANSI escape
+// sequences and control bytes must be NEUTRALIZED in table/markdown output (no
+// escape can reach the terminal), yet pass through BYTE-FAITHFULLY in JSON so
+// machine consumers see the data exactly as the API returned it (ADR-0003).
+func TestRun_hostileReviewText_tableSanitized_jsonByteFaithful(t *testing.T) {
+	// Real ESC/BEL/control bytes plus legitimate multi-byte content.
+	const hostileText = "\x1b[31mRED\x1b[0m\x07 visit evil.example \x1b]0;pwn\x07 café 日本 🎉"
+	raw, err := json.Marshal(map[string]any{
+		"reviews": []any{map[string]any{
+			"reviewId": "r1",
+			"comments": []any{map[string]any{
+				"userComment": map[string]any{
+					"text":             hostileText,
+					"starRating":       5,
+					"reviewerLanguage": "en",
+					"lastModified":     map[string]any{"seconds": "1700000000"},
+				},
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal hostile body: %v", err)
+	}
+	rt := &listRT{t: t, pages: []string{string(raw)}}
+	rc, _, _ := newRC(t, rt)
+
+	r, err := Run(rc, Input{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Table: no escape/BEL byte survives; legitimate content remains.
+	var tbuf bytes.Buffer
+	if err := output.Render(&tbuf, output.FormatTable, r.Renderers()); err != nil {
+		t.Fatalf("Render table: %v", err)
+	}
+	tab := tbuf.String()
+	if strings.ContainsRune(tab, '\x1b') || strings.ContainsRune(tab, '\x07') {
+		t.Errorf("table output still carries an escape/BEL byte:\n%q", tab)
+	}
+	for _, want := range []string{"RED", "café", "日本", "🎉"} {
+		if !strings.Contains(tab, want) {
+			t.Errorf("table output lost legitimate content %q:\n%q", want, tab)
+		}
+	}
+
+	// JSON: byte-faithful — decoding the output yields the original text,
+	// control bytes and all (no sanitization on the machine path).
+	var jbuf bytes.Buffer
+	if err := output.Render(&jbuf, output.FormatJSON, r.Renderers()); err != nil {
+		t.Fatalf("Render JSON: %v", err)
+	}
+	var env struct {
+		Reviews []struct {
+			Comments []struct {
+				UserComment struct {
+					Text string `json:"text"`
+				} `json:"userComment"`
+			} `json:"comments"`
+		} `json:"reviews"`
+	}
+	if err := json.Unmarshal(jbuf.Bytes(), &env); err != nil {
+		t.Fatalf("JSON output not decodable: %v\n%s", err, jbuf.String())
+	}
+	if len(env.Reviews) != 1 || len(env.Reviews[0].Comments) != 1 {
+		t.Fatalf("unexpected JSON shape: %s", jbuf.String())
+	}
+	if got := env.Reviews[0].Comments[0].UserComment.Text; got != hostileText {
+		t.Errorf("JSON text not byte-faithful:\n got  %q\n want %q", got, hostileText)
+	}
+}
+
 func TestRun_emptyResult_isNotAnError_butStillWarns(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{`{"reviews":[]}`}}
 	rc, _, stderr := newRC(t, rt)

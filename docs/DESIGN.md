@@ -307,6 +307,17 @@ Columns are chosen for readability — not pass-through. Each command's
 default columns are documented in its `--help`. `--columns col1,col2,...`
 lets the caller override.
 
+### Control-sequence sanitization (human formats only)
+
+API-returned strings are often user-generated (review text, store-listing
+copy). The **table and markdown** renderers strip ANSI escape sequences (CSI,
+OSC) and C0/C1 control characters from every cell, centrally at the render
+boundary — so a hostile value cannot inject color/cursor/title sequences into a
+terminal or CI log. The sanitization is rune-based: legitimate multi-byte
+content (accents, CJK, emoji) is untouched. **`--output json` is never
+sanitized** — machine consumers get the bytes verbatim (ADR-0003); fidelity
+lives on the JSON path, safety on the human path.
+
 ### Errors (`--output json` error envelope, ADR-0023)
 
 Errors are **never** pass-through. The human-readable line always goes to

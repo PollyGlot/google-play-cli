@@ -119,11 +119,15 @@ func headers[T any](cols []Column[T]) []string {
 }
 
 // row extracts cols' cells for one item, in order. Columns reaching here
-// come from Resolve, so every Value is non-nil.
+// come from Resolve, so every Value is non-nil. Each cell is sanitized
+// (sanitizeCell) because column values often carry untrusted API strings
+// (review text, listing copy): this is the central table render boundary where
+// ANSI escapes and control characters are neutralized for human output. The
+// JSON renderer does not pass through here, so it stays byte-faithful (ADR-0003).
 func row[T any](cols []Column[T], item T) []string {
 	cells := make([]string, len(cols))
 	for i, c := range cols {
-		cells[i] = c.Value(item)
+		cells[i] = sanitizeCell(c.Value(item))
 	}
 	return cells
 }

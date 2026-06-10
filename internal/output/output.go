@@ -145,13 +145,16 @@ func MarkdownTable(w io.Writer, headers []string, rows [][]string) error {
 	return nil
 }
 
-// joinCells escapes any literal `|` in each cell to `\|` (the GitHub
-// Flavored Markdown convention) before joining with ` | `. Centralising
-// the escape here keeps every caller of MarkdownTable safe by default.
+// joinCells sanitizes each cell (sanitizeCell — strips ANSI escapes and control
+// characters, the central markdown render boundary for untrusted API strings)
+// and escapes any literal `|` to `\|` (the GitHub Flavored Markdown convention)
+// before joining with ` | `. Centralising both here keeps every caller of
+// MarkdownTable safe by default. JSON output does not pass through here, so it
+// stays byte-faithful (ADR-0003).
 func joinCells(cells []string) string {
 	escaped := make([]string, len(cells))
 	for i, c := range cells {
-		escaped[i] = strings.ReplaceAll(c, "|", `\|`)
+		escaped[i] = strings.ReplaceAll(sanitizeCell(c), "|", `\|`)
 	}
 	return strings.Join(escaped, " | ")
 }
