@@ -912,6 +912,23 @@ func TestAuthedClient_timeoutOverride(t *testing.T) {
 	}
 }
 
+// TestAuthedClient_retry_movesDeadlineToMiddleware: with --retry, the
+// per-request deadline moves off the client onto the retry middleware (which
+// applies it per attempt), so client.Timeout is 0. Without --retry it stays on
+// the client (asserted above).
+func TestAuthedClient_retry_movesDeadlineToMiddleware(t *testing.T) {
+	boot := newBoot(t)
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{Timeout: 5 * time.Second, Retry: 2})
+	rc.Account = signedAccount(t)
+	hc, err := rc.AuthedClient()
+	if err != nil {
+		t.Fatalf("AuthedClient: %v", err)
+	}
+	if hc.Timeout != 0 {
+		t.Errorf("with --retry the deadline is per-attempt in the middleware; client.Timeout = %v, want 0", hc.Timeout)
+	}
+}
+
 // TestUploadClient_exemptFromDefault: a media-upload client has NO deadline
 // when --timeout is unset, so a large transfer is never killed by the short
 // control-plane default.

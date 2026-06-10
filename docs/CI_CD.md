@@ -172,8 +172,28 @@ table is in [`DESIGN.md`](DESIGN.md#9-exit-codes); the short version:
 - `10`, `11`, `20`, `30`, `60` → won't get better by retrying; surface the
   error
 - `2` → CLI usage bug in your workflow
+- `4` → denied by `GPLAY_READONLY`; **not** retryable, and not fixable by a flag
 
-Example shell wrapper:
+### Prefer `--retry` over a hand-rolled loop
+
+The transient classes above (transport errors, 5xx, 429) are exactly what the
+global **`--retry N`** flag handles for you — so you don't re-implement the loop
+in every pipeline:
+
+```bash
+# Retry transient failures up to 3 times with exponential backoff + jitter;
+# 429 honors Retry-After. Non-transient failures (auth, validation, conflict)
+# fail fast. With --retry, --timeout bounds each attempt.
+gplay releases upload app.aab --package com.example.myapp --track internal \
+  --retry 3 --timeout 2m
+```
+
+`--retry` defaults to `0` (no retry — today's behavior). It **never** retries
+`edits.commit` (a duplicate could double-publish) or non-transient 4xx, so it is
+safe to leave on. A retried upload re-sends its bundle from a fresh reader.
+
+If you still want shell-level control (e.g. to retry across *separate* commands,
+or to add alerting), branch on the exit code yourself:
 
 ```bash
 for attempt in 1 2 3; do

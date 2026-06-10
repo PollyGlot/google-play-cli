@@ -418,6 +418,52 @@ func TestRun_timeout_mapsToExit50(t *testing.T) {
 	}
 }
 
+// retryRT serves the /token exchange, then fails the first reviews.list call
+// with a 500 and serves a valid page on the second — exercising the kernel's
+// --retry wiring end-to-end through a real command.
+type retryRT struct {
+	body           string
+	reviewAttempts int
+}
+
+func (r *retryRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+	}
+	r.reviewAttempts++
+	if r.reviewAttempts == 1 {
+		return jsonResp(500, `{"error":{"code":500,"message":"backend hiccup"}}`), nil
+	}
+	return jsonResp(200, r.body), nil
+}
+
+// TestRun_retry_recoversFrom5xx drives `reviews list` with --retry 1 against a
+// transport whose first API call 500s and second succeeds: the command must
+// recover and return the payload (proving Inputs.Retry layers the retry
+// middleware onto the authed client).
+func TestRun_retry_recoversFrom5xx(t *testing.T) {
+	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	if err != nil {
+		t.Fatalf("serviceaccount.Parse: %v", err)
+	}
+	rt := &retryRT{body: twoReviewsBody}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	boot := kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	rc := kernel.NewForTest(ctx, boot, kernel.Inputs{Format: output.FormatJSON, Retry: 1})
+	rc.Account = sa
+
+	r, err := Run(rc, Input{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run with --retry should recover from a 500, got %v", err)
+	}
+	if rt.reviewAttempts != 2 {
+		t.Errorf("reviews.list attempts = %d, want 2 (1 retry after the 500)", rt.reviewAttempts)
+	}
+	if got := ids(r.(Payload)); len(got) != 2 {
+		t.Errorf("recovered payload should hold both reviews, got %v", got)
+	}
+}
+
 func TestRun_unknownPackage_exit30(t *testing.T) {
 	rt := &listRT{t: t, reviewCode: 404, errBody: `{"error":{"code":404,"message":"not found"}}`}
 	rc, _, _ := newRC(t, rt)

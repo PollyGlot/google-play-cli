@@ -382,6 +382,17 @@ A deadline-exceeded failure is a transport-level error and maps to **exit 50**
 (network), the retry-safe bucket — so the same CI wrapper that retries a DNS
 blip retries a timeout.
 
+### Opt-in retry (`--retry`)
+
+The global **`--retry N`** flag (default `0` = no retry) layers a transport
+middleware on the authed client that retries the transient classes — transport
+errors, HTTP 5xx, and 429 (honoring `Retry-After`) — with exponential backoff
+plus jitter. Non-transient 4xx (auth, validation) and `edits.commit` (a
+duplicate could double-publish) are never retried, so it is safe to leave on.
+When `--retry` is set, `--timeout` becomes a **per-attempt** bound rather than a
+single per-request one; request bodies are recreated per attempt (uploads
+re-send from a fresh reader). Details and CI examples: [`CI_CD.md`](CI_CD.md#4-exit-codes--retry-vs-fail).
+
 ### Read-only policy (`GPLAY_READONLY`, ADR-0024)
 
 `--confirm` / `--grant-admin` are advisory for an AI agent that holds the

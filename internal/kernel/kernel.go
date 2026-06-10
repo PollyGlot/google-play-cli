@@ -39,6 +39,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
 // GroupRunE is the RunE for a grouping command that carries no business logic
@@ -156,6 +157,12 @@ type Inputs struct {
 	// UploadClient.
 	Timeout time.Duration
 
+	// Retry mirrors the global --retry persistent flag: the number of automatic
+	// retries (transport errors / 5xx / 429) layered onto the authed client.
+	// Zero (the default) is today's behavior — no retry. When set, --timeout
+	// becomes a per-attempt bound.
+	Retry int
+
 	// Mutating reports whether the invoked command is declared as a write
 	// command (MarkMutating). Read commands leave it false. Used together with
 	// Readonly to enforce the GPLAY_READONLY policy (ADR-0024).
@@ -223,6 +230,10 @@ type RunContext struct {
 	// the control-plane default and the media-upload exemption.
 	Timeout time.Duration
 
+	// Retry is the resolved global --retry (zero when unset). AuthedClient /
+	// UploadClient layer a retry transport when it is > 0.
+	Retry int
+
 	// ConfigPath, KeystoreRoot mirror Boot for commands that write to
 	// them (login, logout) or compute the credential's on-disk path
 	// (status).
@@ -286,6 +297,7 @@ func NewForTest(ctx context.Context, boot Boot, in Inputs) *RunContext {
 		FS:           fsys,
 		Verbose:      in.Verbose,
 		Timeout:      in.Timeout,
+		Retry:        in.Retry,
 		ConfigPath:   boot.ConfigPath,
 		KeystoreRoot: boot.KeystoreRoot,
 		Format:       in.Format,
@@ -433,6 +445,7 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 		FS:             fsys,
 		Verbose:        in.Verbose,
 		Timeout:        in.Timeout,
+		Retry:          in.Retry,
 		ConfigPath:     boot.ConfigPath,
 		KeystoreRoot:   boot.KeystoreRoot,
 		lazy:           true,
@@ -659,9 +672,21 @@ func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) 
 		return nil, &authError{msg: "could not build token source: " + err.Error()}
 	}
 	// oauth2.NewClient sets the returned client's Base to the (unwrapped) base
-	// transport, so the API request's deadline must live on the client we hand
-	// back, not just on timedBase.
+	// transport.
 	client := oauth2.NewClient(ctx, ts)
+	if rc.Retry > 0 {
+		// --retry: a transport middleware retries transport errors / 5xx / 429
+		// (honoring Retry-After) with exponential backoff + jitter. It owns the
+		// per-ATTEMPT deadline (so a retry sequence can outlast a single
+		// timeout), so the per-request client.Timeout stays unset here.
+		client.Transport = transport.WithRetry(client.Transport, transport.RetryOptions{
+			MaxRetries: rc.Retry,
+			Timeout:    timeout,
+		})
+		return client, nil
+	}
+	// No retry: the per-request deadline lives on the client (the oauth2
+	// client's Base is the unwrapped base transport, so it can't live there).
 	client.Timeout = timeout
 	return client, nil
 }
@@ -697,6 +722,7 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 	saFlag, _ := cmd.Flags().GetString("service-account")
 	acctFlag, _ := cmd.Flags().GetString("account")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
+	retry, _ := cmd.Flags().GetInt("retry")
 	// GetBool returns (false, err) when the command has no --dry-run flag; the
 	// error is ignored on purpose — "no dry-run flag" means "not a dry run".
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -705,6 +731,7 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 		Format:   output.Format(format),
 		Verbose:  verbose,
 		Timeout:  timeout,
+		Retry:    retry,
 		Mutating: IsMutating(cmd),
 		DryRun:   dryRun,
 		Readonly: envReadonlyEnforced(),

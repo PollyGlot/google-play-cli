@@ -149,6 +149,14 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	root.PersistentFlags().Duration("timeout", 0,
 		"per-request API timeout, e.g. 30s or 2m (default: 60s for control-plane calls, none for uploads)")
 
+	// Global opt-in retry (docs/CI_CD.md §4). Default 0 = today's behavior (no
+	// retry). When > 0 the kernel layers a retry transport that retries
+	// transport errors / 5xx / 429 (honoring Retry-After) with exponential
+	// backoff + jitter; --timeout then bounds each attempt. The kernel reads it
+	// via FromCobra → Inputs.Retry.
+	root.PersistentFlags().Int("retry", 0,
+		"retry transient failures (transport errors, 5xx, 429) up to N times with exponential backoff (default: 0, no retry)")
+
 	auth := &cobra.Command{
 		Use:           "auth",
 		Short:         "Manage gplay credentials",
