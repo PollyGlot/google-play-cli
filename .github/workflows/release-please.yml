@@ -53,6 +53,12 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      # A called reusable workflow can only use permissions the caller grants.
+      # release.yml's goreleaser job requests attestations:write to publish
+      # build-provenance; without it here GitHub rejects the run at startup
+      # ("requesting 'attestations: write', but is only allowed 'attestations:
+      # none'") on every push to main, before the `if` is even evaluated.
+      attestations: write
     # GITHUB_TOKEN is forwarded to called workflows automatically; only the tap
     # PAT needs to be passed explicitly.
     secrets:
