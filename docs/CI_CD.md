@@ -174,6 +174,10 @@ table is in [`DESIGN.md`](DESIGN.md#9-exit-codes); the short version:
 - `2` → CLI usage bug in your workflow
 - `4` → denied by `GPLAY_READONLY`; **not** retryable, and not fixable by a flag
 
+> An exit 30 or 60 carrying the `editAlreadyExists` reason is the orphaned-Edit
+> case — a stale Edit left open by a hard-killed run. Don't blind-retry it; see
+> [§7 Troubleshooting: orphaned Edits](#7-troubleshooting-orphaned-edits-editalreadyexists).
+
 ### Prefer `--retry` over a hand-rolled loop
 
 The transient classes above (transport errors, 5xx, 429) are exactly what the
@@ -265,3 +269,69 @@ other track the behavior matches Fastlane (`completed` at 100%).
 
 Fully detailed migration table: backlog item, to be added once the MVP is
 stable and real migrators give feedback on the pitfalls.
+
+## 7. Troubleshooting: orphaned Edits (`editAlreadyExists`)
+
+Every mutating Play command runs inside an **Edit** — a transaction gplay opens
+(`edits.insert`), changes, and commits implicitly. On any normal failure gplay
+auto-discards the open Edit before returning, so nothing is left behind. But a
+**hard kill** — `SIGKILL`, an OOM, a CI runner eviction or job-timeout — between
+insert and commit kills gplay *before* its cleanup can run, leaving an
+**orphaned Edit open on the Play side**. In-process cleanup cannot cover a hard
+kill, by definition.
+
+### What you'll see
+
+The next mutating run's `edits.insert` is rejected because an Edit is already
+open. gplay surfaces it with the discriminating `editAlreadyExists` reason and a
+message naming the remediation:
+
+```
+gplay: an Edit is already open on com.example.myapp (wait ~24h for it to expire,
+or release it via the Google Play Console): edits.insert on com.example.myapp:
+... [reason: editAlreadyExists]
+```
+
+Exit code follows the upstream status (see the [exit-code table](DESIGN.md#9-exit-codes)):
+
+- **exit 30** — the usual case (`400` + `editAlreadyExists`): API misuse,
+  recoverable.
+- **exit 60** — when Google ships the reason on a rate-limited response
+  (`429` + `editAlreadyExists`): state conflict.
+
+Either way the cause is the same orphaned Edit, and **retrying immediately will
+keep failing** — don't put this behind a blind retry loop.
+
+### How to recover (with today's command surface)
+
+There is no gplay command to discard an orphaned Edit yet (that's the parked
+explicit-edits mode, [#48](https://github.com/PollyGlot/google-play-cli/issues/48)).
+Two recovery paths exist today:
+
+1. **Wait for Play-side expiry.** An open Edit auto-expires after **~24h**.
+   After that, the next run's `edits.insert` succeeds with no intervention. Best
+   when the pipeline is not time-critical.
+2. **Release it via the Google Play Console (immediate).** Open the app in the
+   Play Console; a stale/pending Edit can be discarded there, after which
+   re-running gplay succeeds right away.
+
+Confirm access is otherwise healthy with
+`gplay auth doctor --package <your.package>` — it opens and discards a throwaway
+Edit, so once the orphan is gone it round-trips cleanly.
+
+### In a pipeline, meanwhile
+
+- **Branch on the exit code, don't blind-retry.** Treat exit 30 / 60 with an
+  `editAlreadyExists` reason as "needs the orphan cleared", not "retry now". The
+  JSON error envelope (`--output json`) exposes `reasons: ["editAlreadyExists"]`
+  on stdout so an agent can detect it precisely.
+- **Don't use `--keep-edit-on-failure` in CI.** That flag *intentionally* keeps
+  the Edit open on failure (for local debugging) and reports its ID; in a
+  pipeline it manufactures exactly this orphaned-Edit situation.
+- **Prevent it where you can:** give jobs a generous step timeout so the runner
+  doesn't evict gplay mid-commit, and avoid `kill -9` on the process.
+
+The structural fix — explicit `edits begin/commit/discard` so a pipeline can
+adopt and discard an Edit by ID — is tracked in
+[#48](https://github.com/PollyGlot/google-play-cli/issues/48) and intentionally
+parked; this runbook covers recovery with the commands that exist today.
