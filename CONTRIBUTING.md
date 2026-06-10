@@ -102,6 +102,21 @@ The reviewer checks:
 3. `--help` text and output for new flags follow `docs/DESIGN.md`.
 4. No accidental scope creep from the backlog.
 
+## GitHub Actions are SHA-pinned
+
+Every third-party action in `.github/workflows/` is pinned to a **full commit
+SHA** with a trailing version comment, e.g.:
+
+```yaml
+- uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+```
+
+A moving tag (`@v6`) can be force-pushed or hijacked; a SHA cannot. When adding
+or editing a workflow, pin new actions the same way (resolve the tag with
+`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). Dependabot
+(`.github/dependabot.yml`, weekly) proposes SHA bumps with a refreshed comment —
+review and merge those rather than hand-editing pins.
+
 ## Code of Conduct
 
 This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Be
