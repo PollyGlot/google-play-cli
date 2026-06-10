@@ -26,6 +26,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -67,6 +68,43 @@ func GroupRunE(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 	return exit.Usagef("unknown command %q for %q", args[0], cmd.CommandPath())
+}
+
+// mutatingAnnotation is the cobra annotation key a write command sets to declare
+// itself subject to the GPLAY_READONLY policy. One key, set in one place per
+// command (MarkMutating), is the whole registry — there are no per-command
+// readonly checks scattered through the business functions (ADR-0024).
+const mutatingAnnotation = "gplay.mutating"
+
+// MarkMutating declares cmd as a mutating (write) command and returns it, so
+// it composes inline at registration: `releases.AddCommand(kernel.MarkMutating(
+// upload.NewCommand(boot)))`. Under GPLAY_READONLY a marked command is refused
+// (exit 4) unless invoked with --dry-run. Every new write command MUST be
+// marked — see CONTRIBUTING.
+func MarkMutating(cmd *cobra.Command) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[mutatingAnnotation] = "true"
+	return cmd
+}
+
+// IsMutating reports whether cmd was declared mutating via MarkMutating.
+func IsMutating(cmd *cobra.Command) bool {
+	return cmd != nil && cmd.Annotations[mutatingAnnotation] == "true"
+}
+
+// EnvReadonly is the GPLAY_READONLY policy switch. It reports whether the env
+// var holds a truthy value (1/true/yes/on, case-insensitive); anything else
+// (unset, "0", "false", …) leaves writes allowed.
+const EnvReadonly = "GPLAY_READONLY"
+
+func envReadonlyEnforced() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvReadonly))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // Boot carries the process-level wiring built once in cmd/gplay/main.go:
@@ -117,6 +155,21 @@ type Inputs struct {
 	// 60s default while uploads stay unbounded. See RunContext.AuthedClient /
 	// UploadClient.
 	Timeout time.Duration
+
+	// Mutating reports whether the invoked command is declared as a write
+	// command (MarkMutating). Read commands leave it false. Used together with
+	// Readonly to enforce the GPLAY_READONLY policy (ADR-0024).
+	Mutating bool
+
+	// DryRun mirrors the command's --dry-run flag (false when the command has
+	// none). A --dry-run of a mutating command never writes, so it is exempt
+	// from the read-only refusal.
+	DryRun bool
+
+	// Readonly is the resolved GPLAY_READONLY environment policy (FromCobra
+	// reads the env). When true, a mutating, non-dry-run command is refused
+	// before credential resolution and any network I/O.
+	Readonly bool
 }
 
 // RunContext is the post-resolution snapshot a command's business
@@ -253,6 +306,18 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 	rc, err := buildRunContext(boot, in)
 	if err != nil {
 		return err
+	}
+	// GPLAY_READONLY policy (ADR-0024): refuse a mutating, non-dry-run command
+	// here — after the local config/format resolution buildRunContext does, but
+	// BEFORE fn runs, so before any credential bytes are loaded (EnsureAccount
+	// is lazy, reached only via fn → AuthedClient) and before any network I/O.
+	// The authority boundary is the environment, not the flags fn would parse.
+	if in.Readonly && in.Mutating && !in.DryRun {
+		refusal := exit.Policyf(
+			"refused by %s: this command mutates Google Play state and is blocked by the read-only environment policy. This is not resolvable by adding a flag — unset %s to allow writes, or run with --dry-run to preview.",
+			EnvReadonly, EnvReadonly)
+		rc.maybeWriteErrorEnvelope(refusal)
+		return refusal
 	}
 	payload, runErr := fn(rc)
 	if runErr != nil {
@@ -632,11 +697,17 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 	saFlag, _ := cmd.Flags().GetString("service-account")
 	acctFlag, _ := cmd.Flags().GetString("account")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
+	// GetBool returns (false, err) when the command has no --dry-run flag; the
+	// error is ignored on purpose — "no dry-run flag" means "not a dry run".
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	return Inputs{
-		Ctx:     cmd.Context(),
-		Format:  output.Format(format),
-		Verbose: verbose,
-		Timeout: timeout,
+		Ctx:      cmd.Context(),
+		Format:   output.Format(format),
+		Verbose:  verbose,
+		Timeout:  timeout,
+		Mutating: IsMutating(cmd),
+		DryRun:   dryRun,
+		Readonly: envReadonlyEnforced(),
 		Resolver: resolver.Inputs{
 			ServiceAccountFlag: saFlag,
 			AccountFlag:        acctFlag,

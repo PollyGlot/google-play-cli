@@ -13,6 +13,7 @@ For deeper rationale on the load-bearing choices, see:
 - [ADR-0005 — TTY-aware output defaults](./adr/0005-tty-aware-output.md)
 - [ADR-0019 — Canonical verb vocabulary](./adr/0019-canonical-verb-vocabulary.md)
 - [ADR-0023 — JSON error envelope on failure](./adr/0023-json-error-envelope.md)
+- [ADR-0024 — `GPLAY_READONLY` environment policy](./adr/0024-readonly-environment-policy.md)
 
 ---
 
@@ -370,6 +371,30 @@ A deadline-exceeded failure is a transport-level error and maps to **exit 50**
 (network), the retry-safe bucket — so the same CI wrapper that retries a DNS
 blip retries a timeout.
 
+### Read-only policy (`GPLAY_READONLY`, ADR-0024)
+
+`--confirm` / `--grant-admin` are advisory for an AI agent that holds the
+credential — it can pass them itself. `GPLAY_READONLY` is the
+environment-enforced authority boundary a harness can impose independent of the
+model's flag choices:
+
+- When `GPLAY_READONLY` is **truthy** (`1`/`true`/`yes`/`on`), every command
+  that mutates Google Play state is **refused with exit 4** — *before*
+  credential resolution and any network I/O, regardless of the flags passed.
+  Exit 4 is distinct from exit 3 on purpose: it is **not** resolvable by adding
+  a flag (the message says so); the caller must change the environment.
+- **Read commands and `--dry-run` of mutating commands still run**, so
+  dashboards and agents can observe and plan with a production credential.
+- Which commands mutate is a single registration-time annotation
+  (`kernel.MarkMutating`), not an ad-hoc per-command check — see CONTRIBUTING.
+- Scope: the policy blocks **Google Play mutations**. Local-only operations
+  (credential `auth login`/`logout`, the local app registry) are not Play
+  writes and are not gated. Fine-grained allowlists (`GPLAY_ALLOW`) are a
+  future follow-up, out of scope here.
+
+Under `--output json` the refusal is emitted as the standard error envelope
+(exit code 4) on stdout (§7 / ADR-0023).
+
 ---
 
 ## 9. Exit codes
@@ -380,6 +405,7 @@ blip retries a timeout.
 | `1` | Generic error (fallback when nothing more specific fits) | No |
 | `2` | CLI misuse (unknown flag, bad value, missing required arg) | No |
 | `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
+| `4` | Denied by environment policy (`GPLAY_READONLY`) — a mutating command was refused; the message names the env var | No — **not** resolvable by adding a flag; change the environment |
 | `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
 | `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |

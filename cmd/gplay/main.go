@@ -189,12 +189,15 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	releases.AddCommand(upload.NewCommand(boot))
-	releases.AddCommand(promote.NewCommand(boot))
-	releases.AddCommand(rollout.NewRolloutCommand(boot))
-	releases.AddCommand(rollout.NewHaltCommand(boot))
-	releases.AddCommand(rollout.NewResumeCommand(boot))
-	releases.AddCommand(rollout.NewCompleteCommand(boot))
+	// Mutating release commands are marked so GPLAY_READONLY refuses them
+	// (exit 4) unless run with --dry-run (kernel.MarkMutating / ADR-0024).
+	// releases list is a read and stays unmarked.
+	releases.AddCommand(kernel.MarkMutating(upload.NewCommand(boot)))
+	releases.AddCommand(kernel.MarkMutating(promote.NewCommand(boot)))
+	releases.AddCommand(kernel.MarkMutating(rollout.NewRolloutCommand(boot)))
+	releases.AddCommand(kernel.MarkMutating(rollout.NewHaltCommand(boot)))
+	releases.AddCommand(kernel.MarkMutating(rollout.NewResumeCommand(boot)))
+	releases.AddCommand(kernel.MarkMutating(rollout.NewCompleteCommand(boot)))
 	releases.AddCommand(releaseslist.NewCommand(boot))
 	root.AddCommand(releases)
 
@@ -207,7 +210,9 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	tracks.AddCommand(trackslist.NewCommand(boot))
 	tracks.AddCommand(tracksview.NewCommand(boot))
-	tracks.AddCommand(trackscreate.NewCommand(boot))
+	tracks.AddCommand(kernel.MarkMutating(trackscreate.NewCommand(boot)))
+	// `tracks availability` is read-only at the API level (only `view`, no
+	// writer), so the group stays unmarked.
 	tracks.AddCommand(tracksavailability.NewCommand(boot))
 	root.AddCommand(tracks)
 
@@ -223,7 +228,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	testers.AddCommand(testerslist.NewCommand(boot))
-	testers.AddCommand(testersset.NewCommand(boot))
+	testers.AddCommand(kernel.MarkMutating(testersset.NewCommand(boot)))
 	root.AddCommand(testers)
 
 	// `gplay team` — manage the Developer account's members (Users) and their
@@ -250,9 +255,9 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	teamUsers.AddCommand(teamuserslist.NewCommand(boot))
-	teamUsers.AddCommand(teamusersadd.NewCommand(boot))
-	teamUsers.AddCommand(teamusersset.NewCommand(boot))
-	teamUsers.AddCommand(teamusersremove.NewCommand(boot))
+	teamUsers.AddCommand(kernel.MarkMutating(teamusersadd.NewCommand(boot)))
+	teamUsers.AddCommand(kernel.MarkMutating(teamusersset.NewCommand(boot)))
+	teamUsers.AddCommand(kernel.MarkMutating(teamusersremove.NewCommand(boot)))
 	team.AddCommand(teamUsers)
 
 	teamGrants := &cobra.Command{
@@ -263,8 +268,8 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	teamGrants.AddCommand(teamgrantslist.NewCommand(boot))
-	teamGrants.AddCommand(teamgrantsset.NewCommand(boot))
-	teamGrants.AddCommand(teamgrantsremove.NewCommand(boot))
+	teamGrants.AddCommand(kernel.MarkMutating(teamgrantsset.NewCommand(boot)))
+	teamGrants.AddCommand(kernel.MarkMutating(teamgrantsremove.NewCommand(boot)))
 	team.AddCommand(teamGrants)
 
 	root.AddCommand(team)
@@ -277,7 +282,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	reviews.AddCommand(reviewslist.NewCommand(boot))
-	reviews.AddCommand(reviewsreply.NewCommand(boot))
+	reviews.AddCommand(kernel.MarkMutating(reviewsreply.NewCommand(boot)))
 	root.AddCommand(reviews)
 
 	// `gplay metadata` — Store front Listings (per-locale text), the
@@ -292,7 +297,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	metadata.AddCommand(metadatalist.NewCommand(boot))
 	metadata.AddCommand(metadatapull.NewCommand(boot))
 	metadata.AddCommand(metadatavalidate.NewCommand(boot))
-	metadata.AddCommand(metadataapply.NewCommand(boot))
+	metadata.AddCommand(kernel.MarkMutating(metadataapply.NewCommand(boot)))
 
 	// `gplay metadata images` — Store images (per-locale icon / feature
 	// graphic / screenshots), the fastlane-supply image side. See PRD #112 /
@@ -307,7 +312,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	metadataImages.AddCommand(metadataimageslist.NewCommand(boot))
 	metadataImages.AddCommand(metadataimagespull.NewCommand(boot))
 	metadataImages.AddCommand(metadataimagesvalidate.NewCommand(boot))
-	metadataImages.AddCommand(metadataimagesapply.NewCommand(boot))
+	metadataImages.AddCommand(kernel.MarkMutating(metadataimagesapply.NewCommand(boot)))
 	metadata.AddCommand(metadataImages)
 	root.AddCommand(metadata)
 
@@ -331,7 +336,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	datasafety.AddCommand(compliancedatasafetyvalidate.NewCommand(boot))
-	datasafety.AddCommand(compliancedatasafetyset.NewCommand(boot))
+	datasafety.AddCommand(kernel.MarkMutating(compliancedatasafetyset.NewCommand(boot)))
 	compliance.AddCommand(datasafety)
 	root.AddCommand(compliance)
 

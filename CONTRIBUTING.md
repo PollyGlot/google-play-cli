@@ -86,6 +86,11 @@ feat(tracks)!: rename --percentage to --rollout in releases promote
 - **New canonical term** (a new domain noun) → add to `CONTEXT.md`.
 - **Irreversible / surprising decision** → add an ADR under `docs/adr/`.
 - **Feature you decided to defer** → add to `docs/BACKLOG.md` with rationale.
+- **New command that mutates Google Play state** → wrap it with
+  `kernel.MarkMutating(...)` at its registration site, so the `GPLAY_READONLY`
+  policy refuses it (exit 4, ADR-0024). The mutating-registry guard test in
+  `cmd/gplay` fails if a write command is left unmarked (or a read command is
+  wrongly marked). Read commands and `--dry-run` paths stay unmarked.
 
 ## Code review
 

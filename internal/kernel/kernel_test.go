@@ -553,6 +553,137 @@ func TestEnsureAccount_idempotent_memoisesInvalidError(t *testing.T) {
 	}
 }
 
+// ---- GPLAY_READONLY policy + exit 4 (#211 / ADR-0024) ----
+//
+// These assert the policy contract: under GPLAY_READONLY a mutating, non-dry-run
+// command is refused with exit 4 BEFORE its business function runs (so before
+// credential resolution and any network I/O), while read commands and --dry-run
+// of mutating commands still run. Refusal is driven by Inputs.{Readonly,
+// Mutating,DryRun}; the RunCobra test exercises the annotation + env wiring.
+
+// TestRun_readonly_refusesMutatingCommand_exit4 proves the refusal fires before
+// fn (the fn would make a network call; it must never be reached), with the
+// dedicated exit code 4.
+func TestRun_readonly_refusesMutatingCommand_exit4(t *testing.T) {
+	boot := newBoot(t)
+	called := false
+	err := kernel.Run(boot, kernel.Inputs{Readonly: true, Mutating: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if err == nil {
+		t.Fatal("mutating command under GPLAY_READONLY = nil, want exit 4")
+	}
+	if got := exit.For(err); got != 4 {
+		t.Errorf("exit.For = %d, want 4 (policy); err=%v", got, err)
+	}
+	if !strings.Contains(err.Error(), kernel.EnvReadonly) {
+		t.Errorf("refusal message should name %s; got %q", kernel.EnvReadonly, err.Error())
+	}
+	if called {
+		t.Error("business fn ran — refusal must happen BEFORE fn (no credential resolution, no network)")
+	}
+}
+
+func TestRun_readonly_jsonEnvelope_exitCode4(t *testing.T) {
+	boot := newBoot(t)
+	var stdout bytes.Buffer
+	boot.Stdout = &stdout
+	_ = kernel.Run(boot, kernel.Inputs{Format: output.FormatJSON, Readonly: true, Mutating: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, nil
+	})
+	env := decodeOneEnvelope(t, stdout.String())
+	if env.Error.ExitCode != 4 {
+		t.Errorf("envelope exitCode = %d, want 4", env.Error.ExitCode)
+	}
+}
+
+func TestRun_readonly_allowsDryRunOfMutatingCommand(t *testing.T) {
+	boot := newBoot(t)
+	called := false
+	err := kernel.Run(boot, kernel.Inputs{Readonly: true, Mutating: true, DryRun: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("--dry-run of a mutating command under GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("--dry-run must still run the business fn (it never writes)")
+	}
+}
+
+func TestRun_readonly_allowsReadCommand(t *testing.T) {
+	boot := newBoot(t)
+	called := false
+	err := kernel.Run(boot, kernel.Inputs{Readonly: true, Mutating: false}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("read command under GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("a read command must still run under GPLAY_READONLY")
+	}
+}
+
+func TestRun_notReadonly_runsMutatingCommand(t *testing.T) {
+	boot := newBoot(t)
+	called := false
+	err := kernel.Run(boot, kernel.Inputs{Readonly: false, Mutating: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("mutating command without GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("without the policy a mutating command must run normally")
+	}
+}
+
+// TestRunCobra_readonly_marksAndEnforces wires the whole chain: a cobra command
+// declared mutating (MarkMutating) + GPLAY_READONLY=1 in the env is refused
+// (exit 4) without reaching the business fn — proving the annotation and env
+// reading in FromCobra connect to the Run-time enforcement.
+func TestRunCobra_readonly_marksAndEnforces(t *testing.T) {
+	t.Setenv(kernel.EnvReadonly, "1")
+	boot := newBoot(t)
+	cmd := kernel.MarkMutating(&cobra.Command{Use: "write"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	called := false
+	err := kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	})
+	if got := exit.For(err); got != 4 {
+		t.Fatalf("exit.For = %d, want 4; err=%v", got, err)
+	}
+	if called {
+		t.Error("MarkMutating + GPLAY_READONLY must refuse before the fn runs")
+	}
+}
+
+func TestRunCobra_readonly_unmarkedReadCommandRuns(t *testing.T) {
+	t.Setenv(kernel.EnvReadonly, "1")
+	boot := newBoot(t)
+	cmd := &cobra.Command{Use: "read"} // NOT marked mutating
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	called := false
+	if err := kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("unmarked read command under GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("an unmarked (read) command must run under GPLAY_READONLY")
+	}
+}
+
 // ---- JSON error envelope on failure (#210 / ADR-0023) ----
 //
 // These drive the production kernel.Run path and assert the external contract:

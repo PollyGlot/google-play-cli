@@ -259,6 +259,9 @@ field-by-field. The bare ` + "`apps details`" + ` command prints this help.`,
 		SilenceErrors: true,
 	}
 	cmd.AddCommand(NewViewCommand(boot))
-	cmd.AddCommand(NewSetCommand(boot))
+	// `apps details set` writes the edits.details record, so it is a mutating
+	// command refused under GPLAY_READONLY (kernel.MarkMutating / ADR-0024);
+	// `apps details view` is a read and stays unmarked.
+	cmd.AddCommand(kernel.MarkMutating(NewSetCommand(boot)))
 	return cmd
 }

@@ -9,6 +9,7 @@
 //	1  — generic (fallback when nothing else fits)
 //	2  — CLI misuse, unknown account
 //	3  — safety flag required (well-formed, but a named --confirm/--grant-admin is missing)
+//	4  — denied by environment policy (GPLAY_READONLY); not resolvable by adding a flag
 //	10 — auth (SA invalid, token refused, scope missing, no source)
 //	11 — authorization (403 from the API)
 //	20 — client-side validation
