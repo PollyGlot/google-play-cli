@@ -22,6 +22,11 @@ builds:
     goarch:
       - amd64
       - arm64
+    # -trimpath strips the builder's filesystem paths from the binary, so
+    # releases don't embed local GOPATH/module-cache directories and builds
+    # are more reproducible (ADR-0008 release pipeline; PRD #206).
+    flags:
+      - -trimpath
     ldflags:
       - -s -w
       - -X main.version={{.Version}}

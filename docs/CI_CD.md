@@ -135,7 +135,53 @@ done
 exit 1
 ```
 
-## 5. Migration from `fastlane supply`
+## 5. Verify a release before trusting it
+
+The checksums and binaries on the release page share one origin, so a checksum
+check alone proves integrity, not provenance — an origin compromise falsifies
+both together. Each release therefore ships two origin-independent proofs you
+can gate on before letting `gplay` into a pipeline:
+
+- a **GitHub build-provenance attestation** over every archive, and
+- a **keyless cosign signature** over `checksums.txt` (which transitively
+  covers every archive it lists).
+
+Pin a verification step into the job that installs `gplay`:
+
+```yaml
+      - name: Install and verify gplay
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: v0.5.0
+        run: |
+          set -euo pipefail
+          base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"
+          archive="gplay_${VERSION#v}_linux_amd64.tar.gz"
+          curl -fsSLO "$base/$archive"
+
+          # Provenance: built by this repo's release workflow.
+          gh attestation verify "$archive" -R PollyGlot/google-play-cli
+
+          # Signature over the checksum file, then the archive against it.
+          curl -fsSLO "$base/checksums.txt"
+          curl -fsSLO "$base/checksums.txt.sigstore.json"
+          cosign verify-blob checksums.txt \
+            --bundle checksums.txt.sigstore.json \
+            --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          sha256sum -c <(grep " $archive$" checksums.txt)
+
+          tar -xzf "$archive" gplay && sudo install -m0755 gplay /usr/local/bin/gplay
+```
+
+`gh attestation verify` needs only the GitHub CLI (preinstalled on GitHub
+runners) and `GH_TOKEN`; `cosign verify-blob` needs `cosign` on `PATH`
+(`sigstore/cosign-installer`). Either one alone is a meaningful gate; running
+both is belt-and-suspenders. The `install.sh` one-liner already verifies the
+SHA-256 against `checksums.txt` and fails closed (see the README), so for many
+pipelines the attestation check above is the only thing you need to add.
+
+## 6. Migration from `fastlane supply`
 
 Coming from Fastlane, the single most common surprise is that
 `gplay releases upload --track production` does **not** publish 100% by

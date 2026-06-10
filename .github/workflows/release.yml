@@ -31,7 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write  # OIDC token for keyless cosign signing
+      id-token: write       # OIDC token for keyless cosign signing + attestations
+      attestations: write   # publish GitHub build-provenance attestations
     steps:
       - name: Validate ref is a tag
         env:
@@ -71,3 +72,16 @@ jobs:
           # PAT with `contents: write` on PollyGlot/homebrew-tap.
           # Without this secret, the brew step will fail — the release itself still publishes.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      # Publish GitHub build-provenance attestations over the archives GoReleaser
+      # wrote to dist/. This gives consumers an origin-independent way to verify a
+      # binary was built by THIS repo's release workflow — `gh attestation verify
+      # <archive> -R PollyGlot/google-play-cli` — complementing the cosign
+      # signature over checksums.txt (which shares the same origin as the
+      # binaries). See docs/CI_CD.md "Verify a release".
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
