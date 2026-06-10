@@ -24,6 +24,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 // TestGroupRunE_bareInvocationPrintsHelp asserts the bare-group contract: with
@@ -549,6 +550,150 @@ func TestEnsureAccount_idempotent_memoisesInvalidError(t *testing.T) {
 		return nil, nil
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+}
+
+// ---- JSON error envelope on failure (#210 / ADR-0023) ----
+//
+// These drive the production kernel.Run path and assert the external contract:
+// under --output json a failure emits exactly one {"error":{...}} object on
+// stdout carrying the semantic exit code, message, and (when present) the
+// upstream reasons[] / safety requires[] — while exit codes and the table /
+// markdown / success paths are untouched.
+
+type envelopeShape struct {
+	Error struct {
+		ExitCode int      `json:"exitCode"`
+		Message  string   `json:"message"`
+		Reasons  []string `json:"reasons"`
+		Requires []string `json:"requires"`
+	} `json:"error"`
+}
+
+// runWithErr runs fn (returning err) through kernel.Run under the given format
+// and returns the captured stdout plus the error Run surfaced.
+func runWithErr(t *testing.T, format output.Format, fn func(rc *kernel.RunContext) (output.Renderable, error)) (string, error) {
+	t.Helper()
+	boot := newBoot(t)
+	var stdout bytes.Buffer
+	boot.Stdout = &stdout
+	err := kernel.Run(boot, kernel.Inputs{Format: format}, fn)
+	return stdout.String(), err
+}
+
+func decodeOneEnvelope(t *testing.T, stdout string) envelopeShape {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	var env envelopeShape
+	if err := dec.Decode(&env); err != nil {
+		t.Fatalf("stdout is not a well-formed JSON envelope: %v\nstdout=%q", err, stdout)
+	}
+	if dec.More() {
+		t.Fatalf("stdout carried more than one JSON value:\n%s", stdout)
+	}
+	return env
+}
+
+func TestRun_jsonFailure_apiError_writesEnvelopeWithReasons(t *testing.T) {
+	apiErr := &api.Error{Operation: "edits.commit", Package: "com.example.app", StatusCode: 409, Message: "conflict", Reasons: []string{"editAlreadyExists"}}
+	stdout, err := runWithErr(t, output.FormatJSON, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, apiErr
+	})
+	if got := exit.For(err); got != 60 {
+		t.Errorf("exit code = %d, want 60 (unchanged); err=%v", got, err)
+	}
+	env := decodeOneEnvelope(t, stdout)
+	if env.Error.ExitCode != 60 {
+		t.Errorf("envelope exitCode = %d, want 60", env.Error.ExitCode)
+	}
+	if len(env.Error.Reasons) != 1 || env.Error.Reasons[0] != "editAlreadyExists" {
+		t.Errorf("envelope reasons = %v, want [editAlreadyExists]", env.Error.Reasons)
+	}
+}
+
+func TestRun_jsonFailure_safetyRefusal_writesEnvelopeWithRequires(t *testing.T) {
+	stdout, err := runWithErr(t, output.FormatJSON, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, exit.SafetyFlag("confirm", "this is destructive; pass --confirm")
+	})
+	if got := exit.For(err); got != 3 {
+		t.Errorf("exit code = %d, want 3 (unchanged)", got)
+	}
+	env := decodeOneEnvelope(t, stdout)
+	if env.Error.ExitCode != 3 {
+		t.Errorf("envelope exitCode = %d, want 3", env.Error.ExitCode)
+	}
+	if len(env.Error.Requires) != 1 || env.Error.Requires[0] != "confirm" {
+		t.Errorf("envelope requires = %v, want [confirm]", env.Error.Requires)
+	}
+}
+
+func TestRun_jsonFailure_usageError_writesEnvelope(t *testing.T) {
+	stdout, err := runWithErr(t, output.FormatJSON, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, exit.Usagef("missing --to")
+	})
+	if got := exit.For(err); got != 2 {
+		t.Errorf("exit code = %d, want 2", got)
+	}
+	env := decodeOneEnvelope(t, stdout)
+	if env.Error.ExitCode != 2 {
+		t.Errorf("envelope exitCode = %d, want 2", env.Error.ExitCode)
+	}
+	if env.Error.Message == "" {
+		t.Errorf("envelope message should be present")
+	}
+}
+
+func TestRun_tableFailure_noEnvelope(t *testing.T) {
+	stdout, err := runWithErr(t, output.FormatTable, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, exit.Usagef("missing --to")
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if stdout != "" {
+		t.Errorf("table-format failure must leave stdout empty; got %q", stdout)
+	}
+}
+
+// TestRun_jsonFailure_selfRendered_noDoubleEnvelope guards the doctor case: a
+// command that writes its own output to stdout then returns an error must NOT
+// get an envelope appended (which would yield two JSON objects on stdout).
+func TestRun_jsonFailure_selfRendered_noDoubleEnvelope(t *testing.T) {
+	stdout, _ := runWithErr(t, output.FormatJSON, func(rc *kernel.RunContext) (output.Renderable, error) {
+		// Stand in for doctor: render a JSON checklist, then fail.
+		if _, werr := io.WriteString(rc.Stdout, `{"checks":[{"ok":false}]}`+"\n"); werr != nil {
+			t.Fatalf("write: %v", werr)
+		}
+		return nil, exit.Usagef("a check failed")
+	})
+	// Exactly one JSON value — the command's own — survives; no appended envelope.
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	var first map[string]any
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("stdout not valid JSON: %v\n%s", err, stdout)
+	}
+	if _, isEnvelope := first["error"]; isEnvelope {
+		t.Errorf("self-rendered output was replaced by an envelope:\n%s", stdout)
+	}
+	if dec.More() {
+		t.Errorf("an envelope was appended after the command's own output:\n%s", stdout)
+	}
+}
+
+func TestRun_jsonSuccess_noEnvelope(t *testing.T) {
+	boot := newBoot(t)
+	var stdout bytes.Buffer
+	boot.Stdout = &stdout
+	if err := kernel.Run(boot, kernel.Inputs{Format: output.FormatJSON}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return fakePayload{msg: "ok"}, nil
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(stdout.String(), `"error"`) {
+		t.Errorf("success path must not emit an error envelope; got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"msg":"ok"`) {
+		t.Errorf("success payload missing; got %q", stdout.String())
 	}
 }
 

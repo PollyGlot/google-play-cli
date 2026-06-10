@@ -509,12 +509,13 @@ func TestStatus_corruptActiveCredential_malformedJSON_isExit10(t *testing.T) {
 	if !strings.Contains(err.Error(), "invalid character") {
 		t.Errorf("error %q should preserve the underlying JSON parse cause", err.Error())
 	}
-	// Strict no-payload contract: nothing at all reaches stdout on the
-	// hard-error path (data → stdout, errors → stderr). An exact-empty check
-	// also catches a stray `{}` or any other leaked payload that the
-	// substring checks below would miss.
-	if out := stdout.String(); out != "" {
-		t.Fatalf("stdout = %q, want empty on the corrupt-credential error path", out)
+	// Under --output json a failure emits the structured error envelope on
+	// stdout (ADR-0023): it must be exactly that (exit 10 + the real cause) and
+	// must NOT paper over the corrupt credential with a status payload. The
+	// exit-10 envelope assertion below would not hold if status had instead
+	// rendered a fabricated `{}`/account payload (that path returns exit 0).
+	if out := stdout.String(); !strings.Contains(out, `"exitCode": 10`) {
+		t.Fatalf("json hard-error path should emit the exit-10 error envelope; got %q", out)
 	}
 }
 

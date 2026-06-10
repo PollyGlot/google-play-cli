@@ -12,6 +12,7 @@ For deeper rationale on the load-bearing choices, see:
 - [ADR-0004 — Cascading config](./adr/0004-cascading-config.md)
 - [ADR-0005 — TTY-aware output defaults](./adr/0005-tty-aware-output.md)
 - [ADR-0019 — Canonical verb vocabulary](./adr/0019-canonical-verb-vocabulary.md)
+- [ADR-0023 — JSON error envelope on failure](./adr/0023-json-error-envelope.md)
 
 ---
 
@@ -305,15 +306,34 @@ Columns are chosen for readability — not pass-through. Each command's
 default columns are documented in its `--help`. `--columns col1,col2,...`
 lets the caller override.
 
-### Errors
+### Errors (`--output json` error envelope, ADR-0023)
 
-Errors are **never** pass-through. Shape on stderr:
+Errors are **never** pass-through. The human-readable line always goes to
+**stderr** (DESIGN §8). Under `--output json` a failing command *additionally*
+writes a single structured envelope to **stdout**, so an agent/CI consumer can
+branch on the failure without scraping stderr:
 
 ```json
-{"error":{"code":"<symbolic>","message":"<human>","details":{...}}}
+{
+  "error": {
+    "exitCode": 60,
+    "message": "edits.commit on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
+    "reasons": ["editAlreadyExists"],
+    "requires": ["confirm"]
+  }
+}
 ```
 
-The upstream API payload, if any, is preserved inside `details`.
+- `exitCode` / `message` are always present; `exitCode` mirrors the process
+  exit code (§9).
+- `reasons` carries the upstream `error.errors[].reason` values when an API
+  envelope was parsed; omitted otherwise.
+- `requires` names the missing safety flag on an exit-3 refusal (extends the
+  ADR-0017 dry-run `requires` to failure time); omitted otherwise.
+
+Under `table` / `markdown` a failure leaves stdout empty (error → stderr only).
+Exit codes and stderr are unchanged by the envelope. The envelope shape is part
+of the public contract (ADR-0010); see [ADR-0023](./adr/0023-json-error-envelope.md).
 
 ---
 

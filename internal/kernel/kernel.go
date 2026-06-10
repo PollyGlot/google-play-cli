@@ -196,6 +196,11 @@ type RunContext struct {
 	resolverInputs resolver.Inputs
 	backendDone    bool
 	accountDone    bool
+	// outCounter wraps Stdout on the production (kernel.Run) path so the JSON
+	// error-envelope emitter can tell whether the command already wrote output
+	// of its own (doctor's self-rendered checklist) before appending an
+	// envelope. nil on the NewForTest path. See maybeWriteErrorEnvelope.
+	outCounter *countingWriter
 	// accountErr memoises the invalid-credential outcome of EnsureAccount
 	// (ADR-0020). It is nil for both the valid and the benign-absent cases;
 	// non-nil only when a credential was provided but unusable. Guarded by
@@ -251,12 +256,48 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 	}
 	payload, runErr := fn(rc)
 	if runErr != nil {
+		// Under --output json, serialize the failure as a structured envelope
+		// on stdout so an agent/CI consumer can branch without scraping stderr
+		// (ADR-0023). main still prints the human line to stderr and exits with
+		// exit.For(runErr) — exit codes and stderr are unchanged.
+		rc.maybeWriteErrorEnvelope(runErr)
 		return runErr
 	}
 	if payload == nil {
 		return nil
 	}
 	return output.Render(rc.Stdout, rc.Format, payload.Renderers())
+}
+
+// maybeWriteErrorEnvelope writes the JSON error envelope to stdout when the
+// resolved format is JSON AND the failing command produced no stdout of its
+// own. The byte-count guard is what keeps a self-rendering command (doctor
+// writes its checklist then returns an error) from getting a second JSON
+// object appended — there it has already emitted to stdout, so the envelope is
+// suppressed. The write is best-effort: the authoritative signal is the error
+// main prints to stderr and the exit code, both unaffected by a failure here.
+func (rc *RunContext) maybeWriteErrorEnvelope(err error) {
+	if rc.Format != output.FormatJSON {
+		return
+	}
+	if rc.outCounter != nil && rc.outCounter.n > 0 {
+		return
+	}
+	_ = output.WriteErrorEnvelope(rc.Stdout, err)
+}
+
+// countingWriter forwards every write to w while tallying the bytes written —
+// the kernel uses the tally to decide whether a failing command already
+// produced stdout (see maybeWriteErrorEnvelope).
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // RunCobra is the canonical entrypoint for a cobra RunE: it copies
@@ -311,12 +352,17 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 	// asks for a token.
 	accountName := resolver.ResolveName(resolver.Deps{Resolved: resolved}, in.Resolver)
 
+	// Wrap stdout in a byte counter so the JSON error-envelope emitter can tell
+	// whether a failing command already wrote its own output (ADR-0023).
+	cw := &countingWriter{w: stdout}
+
 	return &RunContext{
 		Ctx:            ctx,
 		AccountName:    accountName,
 		Format:         format,
 		Resolved:       resolved,
-		Stdout:         stdout,
+		Stdout:         cw,
+		outCounter:     cw,
 		Stderr:         stderr,
 		Stdin:          boot.Stdin,
 		FS:             fsys,
