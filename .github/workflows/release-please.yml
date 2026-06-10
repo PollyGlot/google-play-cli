@@ -28,6 +28,14 @@ jobs:
         with:
           app-id: ${{ secrets.GPLAY_APP_ID }}
           private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
+          # Scope the App token to least privilege rather than inheriting the
+          # installation's blanket permissions: this repo only, and just the two
+          # scopes release-please needs (open/maintain the release PR, push the
+          # release commit + tag). PRD #206 pipeline hygiene.
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         id: rp

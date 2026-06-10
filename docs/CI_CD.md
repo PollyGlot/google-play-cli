@@ -286,7 +286,7 @@ The next mutating run's `edits.insert` is rejected because an Edit is already
 open. gplay surfaces it with the discriminating `editAlreadyExists` reason and a
 message naming the remediation:
 
-```
+```text
 gplay: an Edit is already open on com.example.myapp (wait ~24h for it to expire,
 or release it via the Google Play Console): edits.insert on com.example.myapp:
 ... [reason: editAlreadyExists]

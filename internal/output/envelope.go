@@ -32,10 +32,12 @@ type ErrorEnvelope struct {
 //     (e.g. "editAlreadyExists", "rateLimitExceeded") when an API envelope was
 //     parsed — the discriminating signal behind a shared HTTP status. Omitted
 //     when absent.
-//   - Requires names the missing safety-acknowledgment flag(s) on an exit-3
-//     refusal (--confirm / --grant-admin), extending the dry-run `requires`
-//     preview of ADR-0017 to failure time so exit-3 recovery stays
-//     deterministic. Omitted when the failure is not a safety refusal.
+//   - Requires names the missing safety-acknowledgment flag on an exit-3
+//     refusal (--confirm / --grant-admin). A safety refusal carries exactly one
+//     flag today, emitted as a single-element list to match the list shape of
+//     the ADR-0017 dry-run `requires` preview (carried to failure time so
+//     exit-3 recovery stays deterministic). Omitted when the failure is not a
+//     safety refusal.
 type ErrorDetail struct {
 	ExitCode int      `json:"exitCode"`
 	Message  string   `json:"message"`
