@@ -33,6 +33,36 @@ but a named safety acknowledgment (`--confirm`, `--grant-admin`) is
 missing — and the error names it. An agent can surface the decision to a
 human, or re-run with the flag if its policy allows.
 
+Under `--output json`, a failure also writes a structured envelope to stdout
+(`{"error":{"exitCode","message","reasons","requires"}}`), so the failure is
+parseable without scraping stderr — and `requires` names the missing flag at
+failure time, not just in a dry-run. See
+[output formats](/docs/concepts/output-formats/).
+
+## The read-only authority boundary — `GPLAY_READONLY`
+
+`--confirm` and `--grant-admin` are *advisory*: an agent that holds the
+credential can pass them itself. `GPLAY_READONLY` is the boundary a **harness**
+imposes regardless of what the model chooses. When it is truthy
+(`1`/`true`/`yes`/`on`), every command that mutates Google Play state is
+refused with **exit 4** — *before* credential resolution and any network
+call — while read commands and `--dry-run` of mutating commands still run. So
+an agent can observe and plan against a production credential, but cannot
+publish unless the environment lets it.
+
+Exit 4 is deliberately distinct from exit 3: it is **not** resolvable by
+adding a flag (the message says so). Pair it with a read-only service account
+for defence in depth — see the [CI/CD guide](/docs/guides/ci-cd/).
+
+## Bounded runtime — `--timeout` and `--retry`
+
+Two global flags make unattended runs predictable. `--timeout <duration>`
+bounds each API request (control-plane calls default to 60s; uploads are
+exempt unless you set it). `--retry N` retries the transient classes
+(transport errors, 5xx, 429 honouring `Retry-After`) with exponential
+backoff, and never retries non-transient 4xx or `edits.commit`. Both are safe
+defaults for an agent to set on every call.
+
 ## Rehearse before writing
 
 Every write command accepts `--dry-run`: validate inputs and preview the
@@ -42,7 +72,7 @@ flags the live write would need:
 
 ```sh
 gplay team users add dev@example.com --role admin --dry-run --output json
-# → { ..., "requires": ["--grant-admin"] }
+# → { ..., "requires": ["grant-admin"] }
 ```
 
 So an agent can discover the gate *before* tripping it.

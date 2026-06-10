@@ -29,6 +29,18 @@ API call: `gplay apps list` (a local registry; there is no `apps.list`
 endpoint) and the offline reference commands (`team permissions`,
 `schema`).
 
+## Control-sequence sanitization (human formats only)
+
+API strings are often user-generated (review text, store-listing copy). The
+`table` and `markdown` renderers strip ANSI escape sequences and control
+characters from every cell, so a hostile value can't inject colour, cursor,
+or terminal-title sequences into your terminal or CI log. The stripping is
+rune-based — accents, CJK, and emoji pass through untouched.
+
+`--output json` is **never** sanitized: machine consumers get the bytes
+verbatim (that's the pass-through promise). Fidelity lives on the JSON path,
+safety on the human path.
+
 ## `table`
 
 Columns are chosen for readability, not pass-through. Each command's default
@@ -52,13 +64,31 @@ The split is strict and scriptable:
   each API call) and works in any position: `gplay --verbose auth status` or
   `gplay auth status --verbose`.
 
-Errors are **never** pass-through. They print on stderr as:
+Errors are **never** pass-through. A human-readable line always goes to
+stderr. Under `--output json`, a failing command *additionally* writes one
+structured envelope to **stdout**, so an agent or CI consumer can branch on
+the failure without scraping stderr:
 
 ```json
-{"error": {"code": "<symbolic>", "message": "<human>", "details": {}}}
+{
+  "error": {
+    "exitCode": 60,
+    "message": "edits.commit on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
+    "reasons": ["editAlreadyExists"],
+    "requires": ["confirm"]
+  }
+}
 ```
 
-with any upstream API payload preserved inside `details`.
+- `exitCode` and `message` are always present; `exitCode` mirrors the process
+  [exit code](/docs/concepts/exit-codes/).
+- `reasons` carries the upstream `error.errors[].reason` values when an API
+  envelope was parsed; omitted otherwise.
+- `requires` names the missing safety flag on an exit-3 refusal; omitted
+  otherwise.
+
+Under `table` / `markdown` a failure leaves stdout empty — the error goes to
+stderr only. The envelope shape is part of gplay's public contract.
 
 ## Related
 

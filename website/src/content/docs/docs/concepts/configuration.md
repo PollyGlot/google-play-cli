@@ -53,6 +53,17 @@ would break every teammate, so the loader **rejects** it with an error
 naming the offending file. Put it in `config.local.json`, the
 `GPLAY_ACCOUNT` env var, or the `--account` flag instead.
 
+## Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `GPLAY_SERVICE_ACCOUNT` | Service-account credential — a file path or inline JSON. The right choice in CI. |
+| `GPLAY_ACCOUNT` | Name of a stored Account to use. |
+| `GPLAY_READONLY` | When truthy (`1`/`true`/`yes`/`on`), refuse every command that mutates Google Play state (exit `4`) before any network call. Read commands and `--dry-run` still run. See [gplay for AI agents](/docs/agents/agent-guide/). |
+| `GPLAY_INSTALL_NO_VERIFY` | Read by the install script only: bypass the SHA-256 checksum verification (air-gapped / mirrored installs). Prints a warning. See [installation](/docs/getting-started/installation/). |
+| `CI` | When `true`, output defaults to JSON. See [output formats](/docs/concepts/output-formats/). |
+| `NO_COLOR` | Disable colour in output. |
+
 ## Related
 
 - [Authentication & accounts](/docs/concepts/authentication/)

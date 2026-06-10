@@ -19,7 +19,21 @@ content inline**. Inline is the right choice in CI — no temp file, no
 private key written to disk.
 
 Store the entire service-account JSON as a repository secret named
-`GPLAY_SERVICE_ACCOUNT`.
+`GPLAY_SERVICE_ACCOUNT`, then pass it through the **environment**, never the
+`--service-account` flag: an inline-JSON flag value lands in shell history and
+in the process listing (`ps`, `/proc/<pid>/cmdline`), exposing your private
+key. An env var is in neither. (`--service-account` is for a *path* in local
+use.)
+
+:::tip[Least privilege]
+The real authority boundary is the service account's **Play Console
+permission set**, not the flags a job passes. Mint a separate, narrowly-scoped
+account per job archetype — a leaked metadata-job key then can't publish a
+release. Give dashboards and AI agents a **read-only** account, and add
+`GPLAY_READONLY=1` to their environment as defence in depth: every mutating
+command is refused with exit `4` before any network call, whatever flags the
+agent chooses. See [gplay for AI agents](/docs/agents/agent-guide/).
+:::
 
 ## GitHub Actions workflow
 
@@ -46,7 +60,9 @@ jobs:
           java-version: '17'
       - run: ./gradlew bundleRelease
 
-      # Install gplay.
+      # Install gplay (the script verifies the archive checksum and fails
+      # closed). To also gate on provenance/signature, see "Verify the install"
+      # below.
       - run: curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
 
       # Verify auth before any mutating call.
@@ -66,10 +82,25 @@ triggers it on its own, and CI runners satisfy both. An explicit
 `--output table` remains the override if you ever want human-shaped logs.
 See [output formats](/docs/concepts/output-formats/).
 
-## Retry on transient failures
+## Bound and retry transient failures
 
-Exit codes `40` (API 5xx) and `50` (network) are safe to retry; everything
-else is terminal:
+Prefer the built-in `--retry` over a hand-rolled loop. It retries the
+transient classes (transport errors, 5xx, 429 honouring `Retry-After`) with
+exponential backoff, and never retries non-transient 4xx or `edits.commit`:
+
+```bash
+gplay releases upload app.aab --package com.example.myapp --track internal \
+  --retry 3 --timeout 2m
+```
+
+`--timeout` bounds each request (60s default for control-plane calls; uploads
+exempt unless set), so a hung connection fails in seconds instead of stalling
+the job. With `--retry`, it's a per-attempt bound.
+
+When you need shell-level control — retrying across *separate* commands, or
+adding alerting — branch on the [exit code](/docs/concepts/exit-codes/)
+yourself (`40`/`50` are retry-safe; `4`, from `GPLAY_READONLY`, is not, and
+isn't fixable by a flag):
 
 ```bash
 for attempt in 1 2 3; do
@@ -97,7 +128,42 @@ A common shape across workflows:
 Google rate-limits publishing; as a rule of thumb, don't publish to
 alpha/beta more than once a day, and less often to production.
 
+## Verify the install in CI
+
+To gate the pipeline on artifact provenance, install from the release
+archive and verify it before running anything:
+
+```yaml
+      - name: Install and verify gplay
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: v0.5.0
+        run: |
+          set -euo pipefail
+          base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"
+          archive="gplay_${VERSION#v}_linux_amd64.tar.gz"
+          curl -fsSLO "$base/$archive"
+
+          # Provenance: built by this repo's release workflow.
+          gh attestation verify "$archive" -R PollyGlot/google-play-cli
+
+          # Signature over the checksum file, then the archive against it.
+          curl -fsSLO "$base/checksums.txt"
+          curl -fsSLO "$base/checksums.txt.sigstore.json"
+          cosign verify-blob checksums.txt \
+            --bundle checksums.txt.sigstore.json \
+            --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          shasum -a 256 -c <(grep " $archive$" checksums.txt)
+
+          tar -xzf "$archive" && sudo install gplay /usr/local/bin/
+```
+
+See [Verify a release](/docs/getting-started/installation/) for the
+standalone commands.
+
 ## Related
 
 - [Release flow](/docs/guides/release-flow/)
 - [Authentication & accounts](/docs/concepts/authentication/)
+- [gplay for AI agents](/docs/agents/agent-guide/)

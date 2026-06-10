@@ -22,6 +22,13 @@ Downloads the right pre-built binary for your OS and architecture:
 curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
 ```
 
+The script **verifies the downloaded archive's SHA-256 against the release
+`checksums.txt` and fails closed** — a missing checksum file, no entry for
+your platform, or a mismatch all abort the install. For air-gapped or
+mirrored installs where the checksum file is unreachable, set
+`GPLAY_INSTALL_NO_VERIFY=1` to bypass (it prints a warning and stays greppable
+in your CI config).
+
 ## go install
 
 With a Go toolchain installed:
@@ -35,6 +42,28 @@ go install github.com/PollyGlot/google-play-cli/cmd/gplay@latest
 Archives for Linux, macOS, and Windows (amd64 and arm64), with checksums and
 signatures, are on the
 [GitHub releases page](https://github.com/PollyGlot/google-play-cli/releases).
+
+## Verify a release
+
+Every release ships two origin-independent proofs you can gate on before
+trusting `gplay` in a pipeline: a **GitHub build-provenance attestation** over
+each archive, and a **keyless cosign signature** over `checksums.txt`.
+
+```sh
+# Provenance — proves the archive was built by this repo's release workflow.
+gh attestation verify gplay_<version>_<os>_<arch>.tar.gz \
+  -R PollyGlot/google-play-cli
+
+# cosign signature over checksums.txt, then the archive against it.
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+shasum -a 256 -c <(grep " gplay_<version>_<os>_<arch>.tar.gz$" checksums.txt)
+```
+
+A ready-to-paste CI step that installs and verifies in one shot is in the
+[CI/CD guide](/docs/guides/ci-cd/).
 
 ## Verify the install
 
