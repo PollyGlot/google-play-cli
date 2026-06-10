@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pages: write # configure-pages needs it to auto-enable Pages (enablement: true)
+      pages: read # configure-pages reads the Pages config (enabled once, out of band)
     steps:
       - uses: actions/checkout@v6
         with:
@@ -60,8 +60,6 @@ jobs:
         run: npm run build
 
       - uses: actions/configure-pages@v6
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v5
         with:
