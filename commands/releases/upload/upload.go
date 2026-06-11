@@ -76,7 +76,7 @@ func showsUserFraction(status string, userFraction float64) bool {
 
 func renderTable(w io.Writer, r *orchestrator.Result) error {
 	if _, err := fmt.Fprintf(w,
-		"versionCode: %d\ntrack:        %s\nstatus:       %s\n",
+		"versionCode:  %d\ntrack:        %s\nstatus:       %s\n",
 		r.VersionCode, r.Track, r.Status,
 	); err != nil {
 		return err
