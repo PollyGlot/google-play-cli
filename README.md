@@ -56,7 +56,7 @@ go install github.com/PollyGlot/google-play-cli/cmd/gplay@latest
 brew install PollyGlot/tap/gplay
 
 # Install script
-curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
+curl -fsSL https://gplay.sh/install | sh
 ```
 
 The install script **verifies the downloaded archive's SHA-256 against the

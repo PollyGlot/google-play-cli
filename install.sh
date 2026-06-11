@@ -2,7 +2,7 @@
 # Install script for gplay — the Google Play Developer CLI.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
+#   curl -fsSL https://gplay.sh/install | sh
 #
 # Environment variables:
 #   GPLAY_INSTALL_DIR        — directory to install into (default: $HOME/.local/bin)

@@ -92,7 +92,7 @@ release:
     ```bash
     brew install PollyGlot/tap/gplay
     # or
-    curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
+    curl -fsSL https://gplay.sh/install | sh
     ```
 
 brews:
