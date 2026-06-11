@@ -25,7 +25,7 @@ git checkout -b feat/short-description
 
 # ... change code ...
 
-make format    # (will exist once the Go scaffold lands)
+make format
 make lint
 make test
 
