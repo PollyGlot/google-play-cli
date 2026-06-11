@@ -14,9 +14,10 @@ which puts the website on this same Worker (see the update note below).
 (issue #86, listed as out of scope below) is served from **this same Worker**
 via static assets. The deploy automation described under "When and how the
 Worker is deployed" was consolidated into `deploy-site.yml` accordingly. The
-repository root `README.md`, `.goreleaser.yaml`, and `install.sh` header still point at the raw
-GitHub URL and flip to `gplay.sh` in a separate PR only once the domain is
-verified live (issue #85).
+repository root `README.md`, `.goreleaser.yaml`, and `install.sh` header now
+point at `https://gplay.sh/install` (flipped once the domain went live — issue
+#85). The Worker still proxies `install.sh` from the raw GitHub URL on `main`,
+which also stays a working fallback.
 
 ## Why
 
