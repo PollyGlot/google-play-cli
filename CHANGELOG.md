@@ -5,6 +5,20 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/PollyGlot/google-play-cli/compare/v0.5.0...v0.6.0) (2026-06-11)
+
+
+### Features
+
+* **platform:** operational hardening — verified install, bounded runtime, environment-enforced authority ([#206](https://github.com/PollyGlot/google-play-cli/issues/206)) ([#219](https://github.com/PollyGlot/google-play-cli/issues/219)) ([8dc8b66](https://github.com/PollyGlot/google-play-cli/commit/8dc8b66b9b5c9730d411fc6ea28b2ffb88e739d1))
+* **website:** gplay site — Astro/Starlight landing + full docs ([#86](https://github.com/PollyGlot/google-play-cli/issues/86)) ([#204](https://github.com/PollyGlot/google-play-cli/issues/204)) ([80a1955](https://github.com/PollyGlot/google-play-cli/commit/80a1955e5703ab68535c9b4c756abdedb35cb8d7))
+* **website:** serve gplay.sh site + docs from a Cloudflare Worker, retire GitHub Pages ([#86](https://github.com/PollyGlot/google-play-cli/issues/86)) ([#228](https://github.com/PollyGlot/google-play-cli/issues/228)) ([2e42890](https://github.com/PollyGlot/google-play-cli/commit/2e4289015315f0668fce1bfe790002706073256d))
+
+
+### Bug Fixes
+
+* **ci:** grant attestations:write to release-please's reusable-workflow caller ([#225](https://github.com/PollyGlot/google-play-cli/issues/225)) ([6cd0fd1](https://github.com/PollyGlot/google-play-cli/commit/6cd0fd1bdceaf75c6abf69ff876a9a70618763df)), closes [#219](https://github.com/PollyGlot/google-play-cli/issues/219)
+
 ## [0.5.0](https://github.com/PollyGlot/google-play-cli/compare/v0.4.1...v0.5.0) (2026-06-08)
 
 
