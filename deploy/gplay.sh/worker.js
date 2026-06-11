@@ -94,6 +94,21 @@ async function handle(request, env) {
       });
     }
 
+    // Structured install-attribution log. Workers Logs indexes object fields,
+    // so the Observability query builder can group hits by user agent (curl vs
+    // CI vs browser) and by network owner (e.g. GitHub-hosted runners show up
+    // under Microsoft/Azure). Deliberately no IP: AS org + country is enough
+    // to attribute traffic without storing anything personal.
+    console.log({
+      event: "install_hit",
+      method: request.method,
+      path: pathname,
+      userAgent: request.headers.get("user-agent") || "",
+      referer: request.headers.get("referer") || "",
+      country: request.cf?.country || "",
+      asOrganization: request.cf?.asOrganization || "",
+    });
+
     const upstream = await fetch(RAW_INSTALL_URL, {
       method: request.method,
       cf: { cacheTtl: CACHE_SECONDS, cacheEverything: true },
