@@ -1,8 +1,7 @@
 # gplay — Project Context
 
 A Go CLI for the Google Play Developer API — one static binary, built for CI
-and AI agents, replacing Fastlane/Ruby. Companion agent skills live in the
-public sibling repo `PollyGlot/google-play-cli-skills`. Pre-1.0.
+and AI agents, replacing Fastlane/Ruby. Pre-1.0.
 
 ## Read these first
 
@@ -23,17 +22,30 @@ public sibling repo `PollyGlot/google-play-cli-skills`. Pre-1.0.
   ([ADR-0002](docs/adr/0002-safe-production-defaults.md)).
 - **`--output json` is API pass-through** — mirrors the response verbatim
   ([ADR-0003](docs/adr/0003-json-passthrough.md)). **stdout = data, stderr = logs.**
-- **Tests never touch the network** — mock with a `testRoundTripper`
-  (`http.RoundTripper`) via `option.WithHTTPClient(...)`. No mock generation.
 - **Discovery snapshot is query-only** — `grep docs/discovery/paths.txt` or `jq`
   the snapshot to check a method's shape. Never read it whole.
 
-## Working in the repo
+## Skills (companion repo)
+
+Agent skills that drive `gplay` from natural-language prompts live in the public
+sibling repo `PollyGlot/google-play-cli-skills` — one per shipped namespace plus
+a `gplay-cli-usage` foundation. Install:
+`npx skills add PollyGlot/google-play-cli-skills`.
+
+## Build & test
 
 - **The CLI is self-documenting** — run `--help` to confirm the interface
   before coding or testing. Don't memorize commands.
+- **Tests never touch the network** — mock with a `testRoundTripper`
+  (`http.RoundTripper`) via `option.WithHTTPClient(...)`. No mock generation.
 - **Gate before every PR** (CI + pre-commit enforce): `make format lint test
   verb-gate` (verb-gate blocks pre-rename verbs, ADR-0019).
-- **Adding a command:** in scope? (check `BACKLOG.md`) → new noun? (add to
-  `CONTEXT.md`) → apply the relevant `DESIGN.md` section → test first
-  (RoundTripper-mocked) → update `--help`.
+
+## Adding a command
+
+1. **In scope?** Check `docs/BACKLOG.md` — surface the decision, don't silently
+   promote a backlog item.
+2. **Term check.** New domain noun → confirm/add in `CONTEXT.md`, no synonyms.
+3. **Conventions.** Apply the relevant `docs/DESIGN.md` section.
+4. **Test first**, RoundTripper-mocked.
+5. **Update `--help`** and command docs (use `CONTEXT.md` terms).
