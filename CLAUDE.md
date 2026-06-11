@@ -81,20 +81,13 @@ lands. Install: `npx skills add PollyGlot/google-play-cli-skills`.
 
 ## Build & test
 
-```bash
-make build       # → ./bin/gplay
-make test        # go test ./... (RoundTripper-mocked, no network)
-make lint        # golangci-lint run ./...
-make format      # gofmt
-make verb-gate   # fail if a pre-rename verb (ADR-0019) reappears
-```
-
-Tests **never** make outbound network calls. Mock pattern: a `testRoundTripper`
-func (implements `http.RoundTripper`) injected via `option.WithHTTPClient(...)`;
-each test wires the synthetic response it needs. No mock generation.
+Tests **never** make outbound network calls — mock via a `testRoundTripper`
+func (`http.RoundTripper`) injected with `option.WithHTTPClient(...)`; each test
+wires its own synthetic response. No mock generation.
 
 **Gate before every PR** (pre-commit hook + CI enforce it): `make format`,
-`make lint`, `make test`.
+`make lint`, `make test`, and `make verb-gate` (ADR-0019 — blocks a pre-rename
+verb reappearing).
 
 ## Adding a command
 
