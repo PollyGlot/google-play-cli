@@ -11,8 +11,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ### Features
 
 * **platform:** operational hardening — verified install, bounded runtime, environment-enforced authority ([#206](https://github.com/PollyGlot/google-play-cli/issues/206)) ([#219](https://github.com/PollyGlot/google-play-cli/issues/219)) ([8dc8b66](https://github.com/PollyGlot/google-play-cli/commit/8dc8b66b9b5c9730d411fc6ea28b2ffb88e739d1))
-* **website:** gplay site — Astro/Starlight landing + full docs ([#86](https://github.com/PollyGlot/google-play-cli/issues/86)) ([#204](https://github.com/PollyGlot/google-play-cli/issues/204)) ([80a1955](https://github.com/PollyGlot/google-play-cli/commit/80a1955e5703ab68535c9b4c756abdedb35cb8d7))
-* **website:** serve gplay.sh site + docs from a Cloudflare Worker, retire GitHub Pages ([#86](https://github.com/PollyGlot/google-play-cli/issues/86)) ([#228](https://github.com/PollyGlot/google-play-cli/issues/228)) ([2e42890](https://github.com/PollyGlot/google-play-cli/commit/2e4289015315f0668fce1bfe790002706073256d))
 
 
 ### Bug Fixes
