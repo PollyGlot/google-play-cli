@@ -6,6 +6,11 @@ compatibility_date = "2026-05-01"
 # URL competing with the canonical domain).
 workers_dev = false
 
+# Workers Logs in the dashboard (invocations, errors, upstream 502s on
+# /install). Free-tier sampling is fine at this traffic.
+[observability]
+enabled = true
+
 # The Astro site (landing + docs) is built into website/dist and served as
 # Worker static assets. `run_worker_first` makes the handler in worker.js run
 # ahead of asset serving so it can intercept /install and the docs/www
