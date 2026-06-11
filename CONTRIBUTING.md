@@ -124,5 +124,5 @@ kind, be specific, focus on the work.
 
 ## Reporting security issues
 
-**Do not open a public issue.** Email `paul.trinko95@gmail.com` or use
-GitHub's private vulnerability reporting. See [SECURITY.md](.github/SECURITY.md).
+**Do not open a public issue.** Use GitHub's private vulnerability reporting.
+See [SECURITY.md](.github/SECURITY.md).

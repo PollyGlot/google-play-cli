@@ -11,7 +11,7 @@ channel so questions and bugs don't get crossed.
 | Idea, feature proposal, design feedback | [Discussions → Ideas](https://github.com/PollyGlot/google-play-cli/discussions/categories/ideas) |
 | Something that worked yesterday is broken today | [Open an issue](https://github.com/PollyGlot/google-play-cli/issues/new?template=bug_report.yml) |
 | Concrete missing feature | [Open an issue](https://github.com/PollyGlot/google-play-cli/issues/new?template=feature_request.yml) (check [`docs/BACKLOG.md`](docs/BACKLOG.md) first) |
-| Security vulnerability | **Do NOT open a public issue.** [Private advisory](https://github.com/PollyGlot/google-play-cli/security/advisories/new) or `paul.trinko95@gmail.com` |
+| Security vulnerability | **Do NOT open a public issue.** [Private advisory](https://github.com/PollyGlot/google-play-cli/security/advisories/new) |
 
 ## Before opening an issue
 

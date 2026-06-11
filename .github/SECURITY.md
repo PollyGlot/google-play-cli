@@ -9,13 +9,11 @@ fixes. Once 1.0 ships, this policy will be updated with an LTS column.
 
 **Please do not open a public GitHub issue for security reports.**
 
-Two private channels are available, pick whichever is convenient:
-
-1. **GitHub Private Vulnerability Reporting** —
-   [open an advisory](https://github.com/PollyGlot/google-play-cli/security/advisories/new).
-   Preferred — keeps the conversation in the repo with proper coordination.
-2. **Email** — `paul.trinko95@gmail.com`. Use the subject line `[gplay
-   security] <short summary>`.
+Report privately through **GitHub Private Vulnerability Reporting** —
+[open an advisory](https://github.com/PollyGlot/google-play-cli/security/advisories/new).
+It keeps the report private and in the repo with proper coordination. If you
+can't use GitHub advisories, reach the maintainer privately via their
+[GitHub profile](https://github.com/PollyGlot).
 
 Please include:
 
