@@ -1,7 +1,10 @@
 name = "gplay-site"
 main = "worker.js"
 compatibility_date = "2026-05-01"
-workers_dev = true
+# Served only through the gplay.sh custom domains. workers_dev is OFF so the
+# Worker has no public *.workers.dev URL (avoids a second, account-named public
+# URL competing with the canonical domain).
+workers_dev = false
 
 # The Astro site (landing + docs) is built into website/dist and served as
 # Worker static assets. `run_worker_first` makes the handler in worker.js run

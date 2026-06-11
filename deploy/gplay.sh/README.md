@@ -81,13 +81,14 @@ cd deploy/gplay.sh
 npx wrangler deploy
 ```
 
-Without a custom domain this publishes to
-`https://gplay-site.<your-subdomain>.workers.dev`. Smoke-test the install chain
-and the site before touching DNS:
+`workers_dev = false`, so the Worker has **no public `*.workers.dev` URL** — it
+is reachable only through its custom domains. To smoke-test before binding DNS,
+temporarily set `workers_dev = true` (or toggle the Worker URL on in the
+dashboard → Domains), test, then turn it back off:
 
 ```bash
-curl -fsSL https://gplay-site.<your-subdomain>.workers.dev/install | sh
-open  https://gplay-site.<your-subdomain>.workers.dev/
+curl -fsSL https://gplay-site.<subdomain>.workers.dev/install | sh
+open  https://gplay-site.<subdomain>.workers.dev/
 ```
 
 ## Attaching the gplay.sh domains (one-time, manual)
