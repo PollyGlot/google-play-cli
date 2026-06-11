@@ -19,7 +19,7 @@ brew install PollyGlot/tap/gplay
 Downloads the right pre-built binary for your OS and architecture:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
+curl -fsSL https://gplay.sh/install | sh
 ```
 
 The script **verifies the downloaded archive's SHA-256 against the release
@@ -80,7 +80,7 @@ truth for what your installed version supports.
 In a CI pipeline, the install script is usually the fastest option:
 
 ```yaml
-- run: curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
+- run: curl -fsSL https://gplay.sh/install | sh
 ```
 
 See the [CI/CD guide](/docs/guides/ci-cd/) for a complete GitHub Actions

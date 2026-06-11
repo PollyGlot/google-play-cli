@@ -17,8 +17,7 @@ const TABS: Tab[] = [
   {
     id: 'script',
     label: 'Install script',
-    command:
-      'curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh',
+    command: 'curl -fsSL https://gplay.sh/install | sh',
     note: 'Detects your OS and architecture; ideal for CI images.',
   },
   {

@@ -63,7 +63,7 @@ jobs:
       # Install gplay (the script verifies the archive checksum and fails
       # closed). To also gate on provenance/signature, see "Verify the install"
       # below.
-      - run: curl -fsSL https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh | sh
+      - run: curl -fsSL https://gplay.sh/install | sh
 
       # Verify auth before any mutating call.
       - run: gplay auth doctor --package com.example.myapp

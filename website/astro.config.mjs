@@ -6,12 +6,12 @@ import tailwindcss from '@tailwindcss/vite';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import rehypeBaseLinks from './scripts/rehype-base-links.mjs';
 
-// Interim hosting is GitHub Pages project hosting (draft/beta — issue #86).
-// When the gplay.sh domain is live, deploy with:
-//   SITE_URL=https://gplay.sh SITE_BASE=/
-// and everything (canonical URLs, sitemap, llms.txt, internal links) follows.
-const SITE = process.env.SITE_URL ?? 'https://pollyglot.github.io';
-const BASE = (process.env.SITE_BASE ?? '/google-play-cli').replace(/\/$/, '');
+// The site is served from gplay.sh (a Cloudflare Worker with static assets —
+// see deploy/gplay.sh/ and ADR-0025). SITE_URL/SITE_BASE stay overridable so a
+// preview build can target a different origin/base; everything (canonical URLs,
+// sitemap, llms.txt, internal links) follows from the pair.
+const SITE = process.env.SITE_URL ?? 'https://gplay.sh';
+const BASE = (process.env.SITE_BASE ?? '/').replace(/\/$/, '');
 
 export default defineConfig({
   site: SITE,

@@ -19,15 +19,19 @@ hand). If `bin/gplay` is missing, the script builds it with `go build`.
 
 ## Hosting
 
-Interim hosting is **GitHub Pages** (`.github/workflows/website.yml`):
-deploys on push to `main` touching `website/`, on every published release
-(to refresh the generated reference), and manually via *workflow dispatch*.
+The site is served from **gplay.sh** by a single Cloudflare Worker that carries
+the built site as static assets and also serves the dynamic `/install`
+endpoint. `dist/` is uploaded by `.github/workflows/deploy-site.yml` on push to
+`main` touching `website/` or `deploy/gplay.sh/`, on every published release (to
+refresh the generated reference), and via *workflow dispatch*. The Worker, its
+config, and the docs/www redirects live in [`deploy/gplay.sh/`](../deploy/gplay.sh/).
+Rationale: [ADR-0025](../docs/adr/0025-website-served-from-install-worker.md).
 
-The site/base pair defaults to `https://pollyglot.github.io` +
-`/google-play-cli`. When the `gplay.sh` domain is live, deploy with:
+The site/base pair defaults to `https://gplay.sh` + `/`. Override it for a
+preview build on a different origin:
 
 ```sh
-SITE_URL=https://gplay.sh SITE_BASE=/ npm run build
+SITE_URL=https://preview.example.com SITE_BASE=/ npm run build
 ```
 
 Canonical URLs, sitemap, robots.txt, llms.txt, and every internal link
