@@ -102,7 +102,7 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/PollyGlot/google-play-cli"
+    homepage: "https://gplay.sh"
     description: "Fast, lightweight CLI for the Google Play Developer API."
     license: "MIT"
     test: |
