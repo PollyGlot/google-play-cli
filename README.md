@@ -20,13 +20,14 @@ you'd build today if you started fresh — one static binary, no runtime,
 JSON output that matches the Google Play Developer API verbatim, semantic
 exit codes, safe production defaults.
 
+**Two ways to drive it:** the raw CLI (flags, scripts, CI) or
+[agent skills](#agent-skills) that run it from natural-language prompts.
+
 > **Public preview — pre-1.0.** A broad surface is already implemented: auth,
-> apps, releases, tracks, reviews, metadata (listings + images), compliance
-> (Data Safety), team (users + grants), and closed-track testers. This is an
-> invitation to test and give feedback — breaking changes are still possible
-> before `v1.0`, where per-command stability labels will mark what's frozen.
-> See [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally out of scope
-> and [ADR-0010](docs/adr/0010-versioning-public-contract-and-ga.md) for the
+> apps, releases, tracks, reviews, metadata, compliance (Data Safety), team,
+> and closed-track testers. Breaking changes are still possible before `v1.0`.
+> See [docs/BACKLOG.md](docs/BACKLOG.md) for what's out of scope and
+> [ADR-0010](docs/adr/0010-versioning-public-contract-and-ga.md) for the
 > versioning policy.
 
 ## Why
@@ -60,17 +61,110 @@ brew install PollyGlot/tap/gplay
 curl -fsSL https://gplay.sh/install | sh
 ```
 
-The install script **verifies the downloaded archive's SHA-256 against the
-release `checksums.txt` and fails closed**: a missing `checksums.txt`, a
-checksum file with no entry for your platform's archive, or a mismatch all
-abort the install (so an adversary who can influence the download path cannot
-defeat verification by withholding the checksum). For air-gapped or mirrored
-installs where the checksum file is unreachable, set
-`GPLAY_INSTALL_NO_VERIFY=1` to bypass — it prints a prominent warning and is
-greppable in your CI config. To independently verify a release with cosign or
-GitHub attestations, see [Verify a release](#verify-a-release) below.
+The install script verifies the archive's SHA-256 against the release
+`checksums.txt` and **fails closed** — a missing, incomplete, or mismatched
+checksum aborts the install. Set `GPLAY_INSTALL_NO_VERIFY=1` to bypass (prints
+a warning, greppable in CI). To add cosign and provenance checks on top, see
+[Verify a release](#verify-a-release).
+
+## Quick start
+
+```bash
+# Point gplay at a Google Cloud service account JSON.
+gplay auth login --service-account ./service_account.json
+
+# List configured accounts and see which one is active.
+gplay auth list
+gplay auth status
+
+# Verify the SA actually has access to your app.
+gplay auth doctor --package com.example.myapp
+
+# Bootstrap a project-local config (cascading: project → user → defaults).
+gplay init
+```
+
+Full command reference: `gplay --help` (or `gplay <subcommand> --help`).
+
+## Agent skills
+
+`gplay` is built to be driven by AI agents, not just typed by hand. Agent
+skills turn a natural-language prompt into the right `gplay` invocation, with
+the safety rails baked in:
+
+> *"Promote the latest internal build of com.example.myapp to beta."*
+> → the `gplay-release-flow` skill runs `gplay releases promote --from
+> internal --to beta` for you.
+
+Skills live in a companion repo —
+[**PollyGlot/google-play-cli-skills**](https://github.com/PollyGlot/google-play-cli-skills).
+Each is a folder with a `SKILL.md` documenting its intent, the commands it
+runs, and the rails it enforces. The roster is fixed by
+[ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
+namespace, plus a `gplay-cli-usage` foundation.
+
+```bash
+npx skills add PollyGlot/google-play-cli-skills
+```
+
+| Skill | Drives |
+|---|---|
+| `gplay-cli-usage` | Cross-cutting conventions (foundation) |
+| `gplay-setup` | Auth onboarding |
+| `gplay-apps` | Apps registry + details |
+| `gplay-release-flow` | upload / promote / rollout |
+| `gplay-tracks` | Tracks + testers |
+| `gplay-reviews` | reviews list / reply |
+| `gplay-metadata-sync` | Listings + images |
+| `gplay-compliance` | Data Safety |
+| `gplay-team` | users / grants / permissions |
+
+`gplay-vitals` and `gplay-subscription-management` are gated until those CLI
+surfaces land ([#49](https://github.com/PollyGlot/google-play-cli/issues/49),
+[#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+
+## The Fastlane-replacement surface
+
+The CLI the skills above drive — all working today (public preview):
+
+```bash
+# Upload an AAB to the internal track, with localized release notes.
+gplay releases upload app.aab \
+  --package com.example.myapp \
+  --track internal \
+  --release-notes-dir ./whatsnew
+
+# Promote the latest internal build to beta.
+gplay releases promote --package com.example.myapp --from internal --to beta
+
+# Stage a production rollout, then advance it.
+gplay releases rollout --package com.example.myapp --track production --to 0.10
+
+# Read the most recent reviews (API exposes the last 7 days only) and reply.
+gplay reviews list --package com.example.myapp --stars 1-2
+gplay reviews reply --review-id REVIEW_ID --reply "Thanks for the feedback!"
+```
+
+## How it's set up
+
+Documentation-first: decisions are pinned before code so contributors and
+agents converge.
+
+- [**CLAUDE.md**](CLAUDE.md) — project context and agent working
+  instructions (read order, conventions, build/test, PR gate).
+- [**CONTEXT.md**](CONTEXT.md) — glossary of canonical terms (Edit,
+  Account, Project, ...). Use them verbatim.
+- [**docs/DESIGN.md**](docs/DESIGN.md) — CLI conventions across commands
+  (auth precedence, exit codes, output format, verbosity, edit lifecycle).
+- [**docs/BACKLOG.md**](docs/BACKLOG.md) — explicitly out-of-scope features.
+- [**docs/CI_CD.md**](docs/CI_CD.md) — how to wire `gplay` into a CI
+  pipeline (GitHub Actions example).
+- [**docs/adr/**](docs/adr/) — Architecture Decision Records.
 
 ## Verify a release
+
+<details>
+<summary>Confirm an artifact came from this repo's release pipeline (cosign + provenance).</summary>
 
 Every release publishes a cosign signature over `checksums.txt` and a GitHub
 build-provenance attestation over each archive — two independent ways to
@@ -99,93 +193,7 @@ archive. The install script already checks the SHA-256 against `checksums.txt`
 and [fails closed](#install); these commands add provenance and signature
 verification on top.
 
-## Quick start
-
-```bash
-# Point gplay at a Google Cloud service account JSON.
-gplay auth login --service-account ./service_account.json
-
-# List configured accounts and see which one is active.
-gplay auth list
-gplay auth status
-
-# Verify the SA actually has access to your app.
-gplay auth doctor --package com.example.myapp
-
-# Bootstrap a project-local config (cascading: project → user → defaults).
-gplay init
-```
-
-Full command reference: `gplay --help` (or `gplay <subcommand> --help`).
-
-### The Fastlane-replacement surface
-
-These all work today (public preview):
-
-```bash
-# Upload an AAB to the internal track, with localized release notes.
-gplay releases upload app.aab \
-  --package com.example.myapp \
-  --track internal \
-  --release-notes-dir ./whatsnew
-
-# Promote the latest internal build to beta.
-gplay releases promote --package com.example.myapp --from internal --to beta
-
-# Stage a production rollout, then advance it.
-gplay releases rollout --package com.example.myapp --track production --to 0.10
-
-# Read the most recent reviews (API exposes the last 7 days only) and reply.
-gplay reviews list --package com.example.myapp --stars 1-2
-gplay reviews reply --review-id REVIEW_ID --reply "Thanks for the feedback!"
-```
-
-## How it's set up
-
-Documentation-first: decisions are pinned before code so contributors and
-agents converge.
-
-- [**CLAUDE.md**](CLAUDE.md) — project context.
-- [**AGENTS.md**](AGENTS.md) — instructions for AI agents working in this
-  repo. Reads CLAUDE.md, CONTEXT.md, DESIGN.md before generating code.
-- [**CONTEXT.md**](CONTEXT.md) — glossary of canonical terms (Edit,
-  Account, Project, ...). Use them verbatim.
-- [**docs/DESIGN.md**](docs/DESIGN.md) — CLI conventions across commands
-  (auth precedence, exit codes, output format, verbosity, edit lifecycle).
-- [**docs/BACKLOG.md**](docs/BACKLOG.md) — explicitly out-of-scope features.
-- [**docs/CI_CD.md**](docs/CI_CD.md) — how to wire `gplay` into a CI
-  pipeline (GitHub Actions example).
-- [**docs/adr/**](docs/adr/) — Architecture Decision Records.
-
-## Agent skills
-
-Agent skills that drive `gplay` from natural-language prompts live in a
-companion repo:
-[**PollyGlot/google-play-cli-skills**](https://github.com/PollyGlot/google-play-cli-skills).
-Each skill is a folder with a `SKILL.md` file that documents the intent, the
-gplay commands it runs, and the safety rails it enforces. The roster is fixed
-by [ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
-namespace, plus a `gplay-cli-usage` foundation.
-
-```bash
-npx skills add PollyGlot/google-play-cli-skills
-```
-
-| Skill | Drives |
-|---|---|
-| `gplay-cli-usage` | Cross-cutting conventions (foundation) |
-| `gplay-setup` | Auth onboarding |
-| `gplay-apps` | Apps registry + details |
-| `gplay-release-flow` | upload / promote / rollout |
-| `gplay-tracks` | Tracks + testers |
-| `gplay-reviews` | reviews list / reply |
-| `gplay-metadata-sync` | Listings + images |
-| `gplay-compliance` | Data Safety |
-| `gplay-team` | users / grants / permissions |
-
-`gplay-vitals` and `gplay-subscription-management` are gated until those CLI
-surfaces land ([#49](https://github.com/PollyGlot/google-play-cli/issues/49),
-[#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+</details>
 
 ## Contributing
 

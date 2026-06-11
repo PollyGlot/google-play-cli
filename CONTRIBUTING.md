@@ -5,7 +5,7 @@ fast and contributions are very welcome.
 
 ## Before you start
 
-1. **Read [AGENTS.md](AGENTS.md) first.** It lists the docs to read in order
+1. **Read [CLAUDE.md](CLAUDE.md) first.** It lists the docs to read in order
    and the conventions used across every command. Most "should I do X or Y?"
    questions have an answer in `docs/DESIGN.md` or the ADRs.
 2. **Cross-check [docs/BACKLOG.md](docs/BACKLOG.md).** If the feature you
@@ -25,7 +25,7 @@ git checkout -b feat/short-description
 
 # ... change code ...
 
-make format    # (will exist once the Go scaffold lands)
+make format
 make lint
 make test
 
@@ -55,7 +55,7 @@ Prefixes we use:
 |---|---|
 | `feat:` | New user-facing functionality, command, or flag |
 | `fix:` | Bug fix that changes user-facing behavior |
-| `docs:` | README, ADRs, AGENTS.md, glossary, comments-only changes |
+| `docs:` | README, ADRs, CLAUDE.md, glossary, comments-only changes |
 | `refactor:` | Internal restructuring with no behavior change |
 | `test:` | Tests added or improved |
 | `chore:` | Tooling, CI, dependencies, release plumbing |
@@ -119,7 +119,7 @@ Every PR needs at least one approval (admin can bypass in early bootstrap).
 The reviewer checks:
 
 1. The change matches the docs (or updates them).
-2. Tests cover the new behavior (RoundTripper-mocked, see AGENTS.md).
+2. Tests cover the new behavior (RoundTripper-mocked, see CLAUDE.md).
 3. `--help` text and output for new flags follow `docs/DESIGN.md`.
 4. No accidental scope creep from the backlog.
 

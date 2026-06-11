@@ -31,7 +31,7 @@ func scopeWired(rt http.RoundTripper) (*http.Client, *transport.ScopeObserver) {
 	return &http.Client{Transport: wrapped}, obs
 }
 
-// roundTripperFunc is the canonical pattern documented in AGENTS.md: a
+// roundTripperFunc is the canonical pattern documented in CLAUDE.md: a
 // function type that implements http.RoundTripper, so each test wires
 // up the response shape it needs without a wrapper interface.
 type roundTripperFunc func(req *http.Request) (*http.Response, error)

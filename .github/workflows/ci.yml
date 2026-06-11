@@ -89,7 +89,6 @@ jobs:
           missing=0
           for f in \
             CLAUDE.md \
-            AGENTS.md \
             CONTEXT.md \
             CONTRIBUTING.md \
             CODE_OF_CONDUCT.md \

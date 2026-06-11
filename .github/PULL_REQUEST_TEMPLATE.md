@@ -1,7 +1,7 @@
 <!--
 Thanks for the contribution!
 Before opening:
-  - Read AGENTS.md and docs/DESIGN.md if you're touching a CLI convention.
+  - Read CLAUDE.md and docs/DESIGN.md if you're touching a CLI convention.
   - For anything bigger than a typo, an issue should exist first — link it below.
 -->
 

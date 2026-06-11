@@ -23,7 +23,6 @@ signaler leur absence en préambule.
 ```text
 /
 ├── CONTEXT.md
-├── AGENTS.md
 ├── CLAUDE.md
 ├── docs/
 │   ├── DESIGN.md
