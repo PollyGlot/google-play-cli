@@ -79,6 +79,27 @@ chore(ci): bump golangci-lint to v6
 feat(tracks)!: rename --percentage to --rollout in releases promote
 ```
 
+### Website / `gplay.sh` commits don't bump the CLI
+
+release-please derives the version bump from the commit **type** (`feat` →
+minor, `fix` → patch), **not** from the files touched — the scope is invisible
+to it. So `feat(website): ...` is treated as a feature of the `gplay` binary:
+it bumps the version, writes a line into `CHANGELOG.md`, and the merged release
+PR tags a build that ships no CLI change.
+
+The site is decoupled by design — it deploys on its own pipeline
+([`deploy-site.yml`](.github/workflows/deploy-site.yml), triggered by
+`website/**` + `deploy/gplay.sh/**` and on `release: published`), so a
+site-only change is **not** a `feat`/`fix` of the binary. Type those commits:
+
+| Use | For |
+|---|---|
+| `docs(website):` | Site content, copy, docs pages |
+| `chore(website):` / `build(website):` | Worker, `wrangler.toml`, site CI/tooling |
+
+None of those bump the version or land in the CLI `CHANGELOG.md`. Reserve
+`feat`/`fix` for changes to the CLI itself.
+
 ## What goes where
 
 - **CLI convention or cross-command behavior change** → also update
