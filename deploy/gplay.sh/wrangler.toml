@@ -12,6 +12,11 @@ workers_dev = false
 # hostnames; everything it doesn't intercept it hands back to env.ASSETS.
 # The directory is resolved relative to this file → repo-root/website/dist, so
 # `npm run build` in website/ must run before `wrangler deploy`.
+# Workers Logs: keeps invocation logs and exceptions queryable from the
+# dashboard — without it the Worker fails blind (e.g. silent 1101s).
+[observability]
+enabled = true
+
 [assets]
 directory = "../../website/dist"
 binding = "ASSETS"
