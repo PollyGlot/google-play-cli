@@ -1,0 +1,82 @@
+name: Deploy gplay.sh
+
+# Builds the gplay website and deploys it to Cloudflare as one Worker that
+# serves both the static site (website/dist, uploaded as Worker static assets)
+# and the dynamic /install endpoint. Replaces the former GitHub Pages workflow.
+#
+# The CLI reference pages are generated at build time from the compiled gplay
+# binary (website/scripts/gen-reference.mjs), so a published release also
+# redeploys the site to keep the reference in sync with the shipped surface.
+#
+# Custom-domain binding (gplay.sh / www / docs.gplay.sh) is done manually, never
+# here: the deploy token is scoped to Workers Scripts:Edit only and cannot edit
+# DNS or routes. See docs/adr/0009-install-distribution-vanity-domain.md and
+# docs/adr/0025-website-served-from-install-worker.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'deploy/gplay.sh/**'
+      - '.github/workflows/deploy-site.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-gplay-sh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build site and deploy Worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Build gplay (source of the generated CLI reference)
+        run: make build
+
+      - name: Install site dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build site
+        working-directory: website
+        # Defaults already target the apex (astro.config.mjs), but pin them here
+        # so the deployed build is explicit and self-documenting.
+        env:
+          SITE_URL: https://gplay.sh
+          SITE_BASE: /
+        run: npm run build
+
+      - name: Deploy Worker + static assets
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          # Minimal scope: account-level `Workers Scripts:Edit` (covers the
+          # static-assets upload). The custom-domain binding, which needs zone
+          # DNS/Routes edit, is done once, manually — those permissions never
+          # live in repo secrets. See ADR-0009.
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Passed explicitly so wrangler doesn't auto-discover the account via
+          # /memberships (which the minimal token can't do). Account ID is
+          # config, not a credential, kept out of the public wrangler.toml as a
+          # GitHub Actions variable. See ADR-0009.
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: deploy/gplay.sh

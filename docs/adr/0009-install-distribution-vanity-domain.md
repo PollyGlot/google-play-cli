@@ -5,10 +5,16 @@ Cloudflare Worker that proxies [`install.sh`](../../install.sh) from the repo's
 `main` branch as `text/plain`. The Worker, its config, and deploy notes live in
 [`deploy/gplay.sh/`](../../deploy/gplay.sh/).
 
-Status: accepted in principle. The `gplay.sh` domain is not yet registered, so
-the README and `.goreleaser.yaml` still point at the raw GitHub URL; they flip
-to `gplay.sh` in a separate PR only once the domain is verified live. Remaining
-work is tracked in issue #85; a full doc site (rejected below) in issue #86.
+Status: accepted. The install-proxy decision below stands as written.
+
+**Update — [ADR-0025](./0025-website-served-from-install-worker.md):** the
+`gplay.sh` domain is now registered and on Cloudflare, and the full website
+(issue #86, listed as out of scope below) is served from **this same Worker**
+via static assets. The deploy automation described under "When and how the
+Worker is deployed" was consolidated into `deploy-site.yml` accordingly. The
+README, `.goreleaser.yaml`, and `install.sh` header still point at the raw
+GitHub URL and flip to `gplay.sh` in a separate PR only once the domain is
+verified live (issue #85).
 
 ## Why
 
@@ -55,8 +61,10 @@ work is tracked in issue #85; a full doc site (rejected below) in issue #86.
   `asc` appears to do). Rejected: reintroduces drift between the served script
   and `install.sh` in the repo.
 - **A full landing site at `gplay.sh`** (docs, wall-of-apps, like `asccli.sh`).
-  Out of scope here — a much larger, orthogonal effort tracked separately. This
-  ADR covers only the install endpoint.
+  Out of scope *for this ADR* — a much larger, orthogonal effort tracked as
+  issue #86. Now decided in
+  [ADR-0025](./0025-website-served-from-install-worker.md): the site rides on
+  this same Worker as static assets.
 
 ## When and how the Worker is deployed
 
@@ -69,10 +77,12 @@ that warrant a Deploy are edits to `worker.js` / `wrangler.toml` (e.g. attaching
 `gplay.sh` custom domain, adjusting cache or routes) — expected to happen a handful
 of times in the project's life.
 
-Deployment is automated via `.github/workflows/deploy-worker.yml`, gated on
+Deployment was originally automated via `deploy-worker.yml`, gated on
 `push: main` **path-filtered to `deploy/gplay.sh/**`**. The trigger is the *path*,
-not the *kind of merge*: the workflow stays dormant on the vast majority of PRs and
-fires only on the rare Worker-code change.
+not the *kind of merge*: the workflow stayed dormant on the vast majority of PRs and
+fired only on the rare Worker-code change. (Since [ADR-0025](./0025-website-served-from-install-worker.md)
+this is `deploy-site.yml`, which additionally fires on `website/**` and on
+published releases because the Worker now carries the site assets too.)
 
 ### Why automate something that runs twice a year
 

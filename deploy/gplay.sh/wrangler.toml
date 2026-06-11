@@ -1,21 +1,30 @@
-name = "gplay-install"
+name = "gplay-site"
 main = "worker.js"
 compatibility_date = "2026-05-01"
 workers_dev = true
 
-# account_id is intentionally NOT set here. CI passes it via the
-# `accountId` input of cloudflare/wrangler-action, sourced from the GitHub
-# Actions variable `vars.CLOUDFLARE_ACCOUNT_ID`, so the account ID stays out of
-# this public file. For a local `wrangler deploy`, export CLOUDFLARE_ACCOUNT_ID
-# (or run `wrangler login`, which discovers the account). See
-# docs/adr/0009-install-distribution-vanity-domain.md.
+# The Astro site (landing + docs) is built into website/dist and served as
+# Worker static assets. `run_worker_first` makes the handler in worker.js run
+# ahead of asset serving so it can intercept /install and the docs/www
+# hostnames; everything it doesn't intercept it hands back to env.ASSETS.
+# The directory is resolved relative to this file → repo-root/website/dist, so
+# `npm run build` in website/ must run before `wrangler deploy`.
+[assets]
+directory = "../../website/dist"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+not_found_handling = "404-page"
+run_worker_first = true
 
-# No custom route yet. `wrangler deploy` publishes to
-#   https://gplay-install.<your-subdomain>.workers.dev
-#
-# Once gplay.sh is registered and its nameservers point at this Cloudflare
-# account, bind the apex as a custom domain and redeploy:
-#
-# routes = [
-#   { pattern = "gplay.sh", custom_domain = true },
-# ]
+# account_id is intentionally NOT set here (kept out of this public file). CI
+# passes it via the `accountId` input of cloudflare/wrangler-action, sourced
+# from the GitHub Actions variable `vars.CLOUDFLARE_ACCOUNT_ID`. For a local
+# `wrangler deploy`, export CLOUDFLARE_ACCOUNT_ID (or run `wrangler login`,
+# which discovers the account). See ADR-0009.
+
+# Custom domains are bound MANUALLY, never from CI: attaching gplay.sh,
+# www.gplay.sh, and docs.gplay.sh as custom domains needs zone DNS/Routes edit
+# permissions that the minimal CI token (Workers Scripts:Edit) deliberately
+# lacks (ADR-0009). Bind them once in the Cloudflare dashboard — Workers &
+# Pages → gplay-site → Settings → Domains & Routes — and traffic flows without
+# any routes block here. See deploy/gplay.sh/README.md.

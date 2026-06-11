@@ -5,9 +5,7 @@ import type { APIRoute } from 'astro';
 // named individually so the intent survives any future tightening of the
 // catch-all rule.
 //
-// Note: on GitHub Pages project hosting this file is served under the
-// project base path, where most crawlers won't look for it. It becomes the
-// real /robots.txt once the site moves to the gplay.sh apex.
+// Served at the gplay.sh apex as the real /robots.txt.
 
 const AI_CRAWLERS = [
   'GPTBot',
@@ -30,7 +28,7 @@ const AI_CRAWLERS = [
 
 export const GET: APIRoute = ({ site }) => {
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-  const origin = site?.origin ?? 'https://pollyglot.github.io';
+  const origin = site?.origin ?? 'https://gplay.sh';
 
   const lines = [
     ...AI_CRAWLERS.flatMap((bot) => [`User-agent: ${bot}`, 'Allow: /', '']),
