@@ -20,13 +20,14 @@ you'd build today if you started fresh — one static binary, no runtime,
 JSON output that matches the Google Play Developer API verbatim, semantic
 exit codes, safe production defaults.
 
+**Two ways to drive it:** the raw CLI (flags, scripts, CI) or
+[agent skills](#agent-skills) that run it from natural-language prompts.
+
 > **Public preview — pre-1.0.** A broad surface is already implemented: auth,
-> apps, releases, tracks, reviews, metadata (listings + images), compliance
-> (Data Safety), team (users + grants), and closed-track testers. This is an
-> invitation to test and give feedback — breaking changes are still possible
-> before `v1.0`, where per-command stability labels will mark what's frozen.
-> See [docs/BACKLOG.md](docs/BACKLOG.md) for what's intentionally out of scope
-> and [ADR-0010](docs/adr/0010-versioning-public-contract-and-ga.md) for the
+> apps, releases, tracks, reviews, metadata, compliance (Data Safety), team,
+> and closed-track testers. Breaking changes are still possible before `v1.0`.
+> See [docs/BACKLOG.md](docs/BACKLOG.md) for what's out of scope and
+> [ADR-0010](docs/adr/0010-versioning-public-contract-and-ga.md) for the
 > versioning policy.
 
 ## Why
@@ -60,44 +61,11 @@ brew install PollyGlot/tap/gplay
 curl -fsSL https://gplay.sh/install | sh
 ```
 
-The install script **verifies the downloaded archive's SHA-256 against the
-release `checksums.txt` and fails closed**: a missing `checksums.txt`, a
-checksum file with no entry for your platform's archive, or a mismatch all
-abort the install (so an adversary who can influence the download path cannot
-defeat verification by withholding the checksum). For air-gapped or mirrored
-installs where the checksum file is unreachable, set
-`GPLAY_INSTALL_NO_VERIFY=1` to bypass — it prints a prominent warning and is
-greppable in your CI config. To independently verify a release with cosign or
-GitHub attestations, see [Verify a release](#verify-a-release) below.
-
-## Verify a release
-
-Every release publishes a cosign signature over `checksums.txt` and a GitHub
-build-provenance attestation over each archive — two independent ways to
-confirm an artifact really came from this repo's release pipeline before you
-trust it in CI.
-
-```bash
-# 1. Build-provenance attestation (needs the GitHub CLI; no extra download).
-#    Proves the archive was built by this repo's release workflow.
-gh attestation verify gplay_<version>_<os>_<arch>.tar.gz \
-  -R PollyGlot/google-play-cli
-
-# 2. cosign signature over checksums.txt (needs cosign). The checksum file
-#    transitively covers every archive it lists, so verify it, then check
-#    your archive against it.
-cosign verify-blob checksums.txt \
-  --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
-shasum -a 256 -c <(grep " gplay_<version>_<os>_<arch>.tar.gz$" checksums.txt)
-```
-
-Download `checksums.txt` and `checksums.txt.sigstore.json` from the same
-[release](https://github.com/PollyGlot/google-play-cli/releases) as the
-archive. The install script already checks the SHA-256 against `checksums.txt`
-and [fails closed](#install); these commands add provenance and signature
-verification on top.
+The install script verifies the archive's SHA-256 against the release
+`checksums.txt` and **fails closed** — a missing, incomplete, or mismatched
+checksum aborts the install. Set `GPLAY_INSTALL_NO_VERIFY=1` to bypass (prints
+a warning, greppable in CI). To add cosign and provenance checks on top, see
+[Verify a release](#verify-a-release).
 
 ## Quick start
 
@@ -118,9 +86,46 @@ gplay init
 
 Full command reference: `gplay --help` (or `gplay <subcommand> --help`).
 
-### The Fastlane-replacement surface
+## Agent skills
 
-These all work today (public preview):
+`gplay` is built to be driven by AI agents, not just typed by hand. Agent
+skills turn a natural-language prompt into the right `gplay` invocation, with
+the safety rails baked in:
+
+> *"Promote the latest internal build of com.example.myapp to beta."*
+> → the `gplay-release-flow` skill runs `gplay releases promote --from
+> internal --to beta` for you.
+
+Skills live in a companion repo —
+[**PollyGlot/google-play-cli-skills**](https://github.com/PollyGlot/google-play-cli-skills).
+Each is a folder with a `SKILL.md` documenting its intent, the commands it
+runs, and the rails it enforces. The roster is fixed by
+[ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
+namespace, plus a `gplay-cli-usage` foundation.
+
+```bash
+npx skills add PollyGlot/google-play-cli-skills
+```
+
+| Skill | Drives |
+|---|---|
+| `gplay-cli-usage` | Cross-cutting conventions (foundation) |
+| `gplay-setup` | Auth onboarding |
+| `gplay-apps` | Apps registry + details |
+| `gplay-release-flow` | upload / promote / rollout |
+| `gplay-tracks` | Tracks + testers |
+| `gplay-reviews` | reviews list / reply |
+| `gplay-metadata-sync` | Listings + images |
+| `gplay-compliance` | Data Safety |
+| `gplay-team` | users / grants / permissions |
+
+`gplay-vitals` and `gplay-subscription-management` are gated until those CLI
+surfaces land ([#49](https://github.com/PollyGlot/google-play-cli/issues/49),
+[#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+
+## The Fastlane-replacement surface
+
+The CLI the skills above drive — all working today (public preview):
 
 ```bash
 # Upload an AAB to the internal track, with localized release notes.
@@ -156,35 +161,39 @@ agents converge.
   pipeline (GitHub Actions example).
 - [**docs/adr/**](docs/adr/) — Architecture Decision Records.
 
-## Agent skills
+## Verify a release
 
-Agent skills that drive `gplay` from natural-language prompts live in a
-companion repo:
-[**PollyGlot/google-play-cli-skills**](https://github.com/PollyGlot/google-play-cli-skills).
-Each skill is a folder with a `SKILL.md` file that documents the intent, the
-gplay commands it runs, and the safety rails it enforces. The roster is fixed
-by [ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
-namespace, plus a `gplay-cli-usage` foundation.
+<details>
+<summary>Confirm an artifact came from this repo's release pipeline (cosign + provenance).</summary>
+
+Every release publishes a cosign signature over `checksums.txt` and a GitHub
+build-provenance attestation over each archive — two independent ways to
+confirm an artifact really came from this repo's release pipeline before you
+trust it in CI.
 
 ```bash
-npx skills add PollyGlot/google-play-cli-skills
+# 1. Build-provenance attestation (needs the GitHub CLI; no extra download).
+#    Proves the archive was built by this repo's release workflow.
+gh attestation verify gplay_<version>_<os>_<arch>.tar.gz \
+  -R PollyGlot/google-play-cli
+
+# 2. cosign signature over checksums.txt (needs cosign). The checksum file
+#    transitively covers every archive it lists, so verify it, then check
+#    your archive against it.
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+shasum -a 256 -c <(grep " gplay_<version>_<os>_<arch>.tar.gz$" checksums.txt)
 ```
 
-| Skill | Drives |
-|---|---|
-| `gplay-cli-usage` | Cross-cutting conventions (foundation) |
-| `gplay-setup` | Auth onboarding |
-| `gplay-apps` | Apps registry + details |
-| `gplay-release-flow` | upload / promote / rollout |
-| `gplay-tracks` | Tracks + testers |
-| `gplay-reviews` | reviews list / reply |
-| `gplay-metadata-sync` | Listings + images |
-| `gplay-compliance` | Data Safety |
-| `gplay-team` | users / grants / permissions |
+Download `checksums.txt` and `checksums.txt.sigstore.json` from the same
+[release](https://github.com/PollyGlot/google-play-cli/releases) as the
+archive. The install script already checks the SHA-256 against `checksums.txt`
+and [fails closed](#install); these commands add provenance and signature
+verification on top.
 
-`gplay-vitals` and `gplay-subscription-management` are gated until those CLI
-surfaces land ([#49](https://github.com/PollyGlot/google-play-cli/issues/49),
-[#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+</details>
 
 ## Contributing
 
