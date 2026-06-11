@@ -19,6 +19,15 @@ CI loops), trivial cross-platform distribution (Homebrew, `install.sh`).
 [GPC/yasserstudio](https://github.com/yasserstudio/gpc) (TypeScript, all 217
 endpoints). Neither hits the "native Go + agent-first + companion skills" spot.
 
+## Read these, in order
+
+1. **`CONTEXT.md`** — glossary of canonical terms (`Edit`, `Account`, `Project`,
+   …). **Use them verbatim** in code, comments, help. No synonyms.
+2. **`docs/DESIGN.md`** — single source of truth for cross-command behavior
+   (auth precedence, exit codes, output, verbosity, edit lifecycle).
+3. **`docs/BACKLOG.md`** — out-of-scope surfaces; check before suggesting "add X".
+4. **`docs/adr/`** — irreversible / surprising decisions with rationale.
+
 ## Authentication
 
 Service Account + OAuth2: gplay reads a `service_account.json`, signs a JWT,
@@ -35,13 +44,20 @@ resolution precedence in [`docs/DESIGN.md`](docs/DESIGN.md) §1.
 - gplay speaks the API directly over HTTP from `internal/play/api/` — **not**
   via the official Go SDK. See [ADR-0007](docs/adr/0007-raw-http-not-google-go-sdk.md).
 - Reporting API (vitals) is a **separate** service: `androidvitals.googleapis.com`.
+- For "does method X exist / what's its request shape", **query** the offline
+  Discovery snapshot — `grep docs/discovery/paths.txt`, `jq` the snapshot (see
+  [`docs/discovery/README.md`](docs/discovery/README.md)). Never read it whole.
 
 ## CLI design principles
 
-TTY-aware output (`table` in TTY, `json` piped/CI; `--output table|json|markdown`),
-no interactive prompts in CI, `--dry-run` on writes, `--confirm` for destructive
-actions, `--package` targeting, semantic exit codes. Full conventions:
-[`docs/DESIGN.md`](docs/DESIGN.md).
+Full conventions in [`docs/DESIGN.md`](docs/DESIGN.md). Load-bearing ones:
+
+- TTY-aware output: `table` interactive, `json` piped/CI; `--output table|json|markdown`.
+- **`production` releases default to `draft`** (ADR-0002).
+- **`--output json` is API pass-through** — mirrors the response shape verbatim (ADR-0003).
+- **stdout = data, stderr = logs.** Always.
+- No interactive prompts in CI; `--dry-run` on writes, `--confirm` for destructive ops.
+- `--package` targeting, semantic exit codes.
 
 ## Shipped surface
 
@@ -52,16 +68,43 @@ metadata (listings + images), compliance datasafety, team (users + grants),
 closed-track testers. Out-of-scope: [`docs/BACKLOG.md`](docs/BACKLOG.md);
 planned-vs-shipped: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
+**The CLI is self-documenting** — run `--help` (`gplay …`, `gplay releases
+upload --help`) to confirm the exact interface before implementing or testing.
+Do not memorize commands.
+
 ## Skills (companion repo)
 
 One skill per shipped namespace plus a `gplay-cli-usage` foundation — roster
-and `SKILL.md` contract fixed by [ADR-0021](docs/adr/0021-companion-skills-repo.md):
-`gplay-cli-usage`, `gplay-setup`, `gplay-apps`, `gplay-release-flow`,
-`gplay-tracks`, `gplay-reviews`, `gplay-metadata-sync`, `gplay-compliance`,
-`gplay-team`. Gated until their surface lands: `gplay-vitals`
-([#49](https://github.com/PollyGlot/google-play-cli/issues/49)),
-`gplay-subscription-management` ([#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
-Install: `npx skills add PollyGlot/google-play-cli-skills`.
+and `SKILL.md` contract fixed by [ADR-0021](docs/adr/0021-companion-skills-repo.md);
+`gplay-vitals` and `gplay-subscription-management` gated until their surface
+lands. Install: `npx skills add PollyGlot/google-play-cli-skills`.
+
+## Build & test
+
+```bash
+make build       # → ./bin/gplay
+make test        # go test ./... (RoundTripper-mocked, no network)
+make lint        # golangci-lint run ./...
+make format      # gofmt
+make verb-gate   # fail if a pre-rename verb (ADR-0019) reappears
+```
+
+Tests **never** make outbound network calls. Mock pattern: a `testRoundTripper`
+func (implements `http.RoundTripper`) injected via `option.WithHTTPClient(...)`;
+each test wires the synthetic response it needs. No mock generation.
+
+**Gate before every PR** (pre-commit hook + CI enforce it): `make format`,
+`make lint`, `make test`.
+
+## Adding a command
+
+1. **In scope?** Cross-check `docs/BACKLOG.md` — surface the decision, don't
+   silently promote a backlog item.
+2. **Term check.** New domain noun → confirm/add in `CONTEXT.md`, no synonyms.
+3. **Conventions.** Apply the relevant `docs/DESIGN.md` section; a deviation is
+   its own documented decision.
+4. **Test first**, RoundTripper-mocked; fixtures in `testdata/` past a few lines.
+5. **Update `--help`** and command docs — long descriptions use `CONTEXT.md` terms.
 
 ## Repo layout
 
@@ -79,20 +122,9 @@ docs/
   ROADMAP.md      ← planned-vs-shipped state
   CI_CD.md        ← wiring gplay into CI
   adr/            ← architecture decision records
+  agents/         ← issue tracker, triage labels, domain workflow
 CONTEXT.md        ← canonical domain glossary
-AGENTS.md         ← agent-specific instructions
 ```
-
-## Agent workflow docs
-
-- **Issue tracker** — GitHub Issues on `PollyGlot/google-play-cli`, four types
-  via labels `type:prd|slice|arch|parking`. See
-  [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md) and
-  [`docs/ROADMAP.md`](docs/ROADMAP.md).
-- **Triage labels** — five canonical roles + local labels. See
-  [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md).
-- **Domain** — single-context: `CONTEXT.md` + `docs/adr/`. See
-  [`docs/agents/domain.md`](docs/agents/domain.md).
 
 ## Notes
 
@@ -100,5 +132,6 @@ AGENTS.md         ← agent-specific instructions
   production.
 - Do **not** add `google.golang.org/api/androidpublisher/v3` — gplay
   hand-rolls the HTTP on purpose ([ADR-0007](docs/adr/0007-raw-http-not-google-go-sdk.md)).
-  For auth, **do** use `golang.org/x/oauth2/google` (small, focused, no
-  worthwhile hand-rolled equivalent — ADR-0007 "What about auth?").
+  For auth, **do** use `golang.org/x/oauth2/google` (ADR-0007 "What about auth?").
+- Agent workflow docs (issue tracker, triage labels, domain) live in
+  [`docs/agents/`](docs/agents/).

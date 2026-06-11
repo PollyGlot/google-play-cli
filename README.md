@@ -145,9 +145,8 @@ gplay reviews reply --review-id REVIEW_ID --reply "Thanks for the feedback!"
 Documentation-first: decisions are pinned before code so contributors and
 agents converge.
 
-- [**CLAUDE.md**](CLAUDE.md) — project context.
-- [**AGENTS.md**](AGENTS.md) — instructions for AI agents working in this
-  repo. Reads CLAUDE.md, CONTEXT.md, DESIGN.md before generating code.
+- [**CLAUDE.md**](CLAUDE.md) — project context and agent working
+  instructions (read order, conventions, build/test, PR gate).
 - [**CONTEXT.md**](CONTEXT.md) — glossary of canonical terms (Edit,
   Account, Project, ...). Use them verbatim.
 - [**docs/DESIGN.md**](docs/DESIGN.md) — CLI conventions across commands

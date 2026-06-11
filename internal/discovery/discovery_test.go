@@ -95,7 +95,7 @@ func TestRenderPaths_walksNestedResourcesSortedByID(t *testing.T) {
 }
 
 // TestFetch_hitsDiscoveryURLAndReturnsBody exercises Fetch against a loopback
-// httptest server (no outbound network, per AGENTS.md).
+// httptest server (no outbound network, per CLAUDE.md).
 func TestFetch_hitsDiscoveryURLAndReturnsBody(t *testing.T) {
 	var gotPath, gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

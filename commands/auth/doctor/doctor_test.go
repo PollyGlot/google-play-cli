@@ -61,7 +61,7 @@ func TestRun_pureBusiness(t *testing.T) {
 	}
 }
 
-// roundTripperFunc — canonical AGENTS.md pattern.
+// roundTripperFunc — canonical CLAUDE.md pattern.
 type roundTripperFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
