@@ -21,7 +21,7 @@ the site from the same Worker).
 
 | Request | Behaviour |
 | --- | --- |
-| `GET /install` (or `/install.sh`) | proxies `install.sh` from `main`, `text/plain`, 5 min cache |
+| `GET`/`HEAD` `/install` (or `/install.sh`) | proxies `install.sh` from `main`, `text/plain`, 5 min cache |
 | `docs.gplay.sh/<path>` | 301 → `https://gplay.sh/docs/<path>` |
 | `www.gplay.sh/<path>` | 301 → `https://gplay.sh/<path>` |
 | anything else | the static Astro site (landing + docs), with its own 404 page |

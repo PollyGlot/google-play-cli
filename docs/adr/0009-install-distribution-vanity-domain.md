@@ -5,14 +5,16 @@ Cloudflare Worker that proxies [`install.sh`](../../install.sh) from the repo's
 `main` branch as `text/plain`. The Worker, its config, and deploy notes live in
 [`deploy/gplay.sh/`](../../deploy/gplay.sh/).
 
-Status: accepted. The install-proxy decision below stands as written.
+Status: accepted (the install-proxy decision below stands as written);
+**extended — not superseded — by [ADR-0025](./0025-website-served-from-install-worker.md)**,
+which puts the website on this same Worker (see the update note below).
 
 **Update — [ADR-0025](./0025-website-served-from-install-worker.md):** the
 `gplay.sh` domain is now registered and on Cloudflare, and the full website
 (issue #86, listed as out of scope below) is served from **this same Worker**
 via static assets. The deploy automation described under "When and how the
 Worker is deployed" was consolidated into `deploy-site.yml` accordingly. The
-README, `.goreleaser.yaml`, and `install.sh` header still point at the raw
+repository root `README.md`, `.goreleaser.yaml`, and `install.sh` header still point at the raw
 GitHub URL and flip to `gplay.sh` in a separate PR only once the domain is
 verified live (issue #85).
 

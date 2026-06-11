@@ -39,7 +39,10 @@ export default {
       target.hostname = APEX;
       if (hostname === DOCS_HOST) {
         const rest = pathname === "/" ? "" : pathname;
-        target.pathname = rest.startsWith("/docs") ? rest : `/docs${rest}`;
+        // Only an exact /docs or a /docs/… path is already canonical, so
+        // lookalikes like /docs2 still get the /docs prefix.
+        const isCanonicalDocsPath = rest === "/docs" || rest.startsWith("/docs/");
+        target.pathname = isCanonicalDocsPath ? rest : `/docs${rest}`;
       }
       return Response.redirect(target.toString(), 301);
     }
