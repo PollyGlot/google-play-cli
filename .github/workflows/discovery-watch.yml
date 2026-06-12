@@ -1,0 +1,106 @@
+name: Discovery Watch
+
+# Weekly check of Google's Discovery documents against the offline snapshots
+# under docs/discovery/. When Google publishes a new revision, this opens (or
+# refreshes) a rolling PR with the regenerated snapshot + schema index. The PR
+# body carries the paths.txt diff, so a surface change (new/removed methods)
+# is visible at a glance — that diff is the trigger to grill the new surface
+# under the maximal-coverage policy (ADR-0026).
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  watch:
+    name: Refresh Discovery snapshots
+    runs-on: ubuntu-latest
+    steps:
+      # Same gplay App token pattern as release-please: a PR opened with the
+      # default GITHUB_TOKEN would not trigger CI on itself.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ secrets.GPLAY_APP_ID }}
+          private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Regenerate snapshots and schema index
+        run: make discovery-update schema-index-update
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No Discovery changes — snapshots are current."
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          if git diff --quiet -- docs/discovery/paths.txt; then
+            echo "kind=revision-only" >> "$GITHUB_OUTPUT"
+          else
+            echo "kind=surface" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo 'paths_diff<<PATHS_EOF'
+            git diff -- docs/discovery/paths.txt | head -200
+            echo 'PATHS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or refresh the rolling PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          KIND: ${{ steps.diff.outputs.kind }}
+          PATHS_DIFF: ${{ steps.diff.outputs.paths_diff }}
+        run: |
+          set -euo pipefail
+          BRANCH=chore/discovery-refresh
+          git config user.name "gplay[bot]"
+          git config user.email "gplay[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add docs/discovery/ commands/schema/schema_index.json
+          if [ "$KIND" = "surface" ]; then
+            TITLE="chore(discovery): API surface changed — refresh snapshots"
+          else
+            TITLE="chore(discovery): refresh snapshots (revision bump only)"
+          fi
+          git commit -m "$TITLE"
+          git push -f origin "$BRANCH"
+          {
+            echo "## Summary"
+            if [ "$KIND" = "surface" ]; then
+              echo "- Google changed the **method surface** of a Discovery document. Review the diff below — under [ADR-0026](../blob/main/docs/adr/0026-maximal-admin-api-coverage.md) a new admin surface is in scope and should get a slice or PRD."
+              echo
+              echo '```diff'
+              echo "$PATHS_DIFF"
+              echo '```'
+            else
+              echo "- Revision bump only — no method or schema changes. Safe to merge."
+            fi
+            echo
+            echo "_Opened automatically by the Discovery Watch workflow._"
+          } > /tmp/pr-body.md
+          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md
+          else
+            gh pr create --title "$TITLE" --body-file /tmp/pr-body.md --base main --head "$BRANCH"
+          fi
