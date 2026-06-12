@@ -84,12 +84,23 @@ réduisent la dette et outillent les agents.
 Planifiées, mais derrière le thème actif. Toujours en `0.x`, sans attendre de
 gel.
 
+> **Politique de couverture ([ADR-0026](adr/0026-maximal-admin-api-coverage.md), 2026-06-13) :**
+> toute **Admin API** Play est in scope en totalité (Android Publisher complet,
+> Reporting API, Games Services Publishing, Custom Apps). Seules les APIs
+> *runtime* (Play Integrity, vérification d'achats temps réel) restent exclues,
+> par nature. Les nouvelles surfaces shippent `[experimental]` d'abord
+> ([ADR-0010](adr/0010-versioning-public-contract-and-ga.md)).
+
 | Ordre | # | Area | Sujet | Note |
 |---|---|---|---|---|
-| 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API) + mappings ProGuard/R8 | Observabilité **post-lancement**, pas first-release |
+| 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API) + mappings ProGuard/R8 | Observabilité **post-lancement** — débloque les dashboards agent/Cowork |
 | 2 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | **Post-v1** (confirmé) |
 | 3 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | Spike d'investigation d'abord |
 | 4 | [#147](https://github.com/PollyGlot/google-play-cli/issues/147) | team | Team management — users & grants (permissions du compte développeur) | PRD durci (ADR-0015/0016/0017) ; décomposé via `/to-issues` en 9 slices #149–#157 |
+| 5 | [#243](https://github.com/PollyGlot/google-play-cli/issues/243) | releases+ | Publisher long tail — internal app sharing, app recovery, device tier configs, expansion files | **PRD draft** (ADR-0026) — à griller puis `/to-issues` |
+| 5b | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | **PRD draft** (ADR-0026) — splitté de #243 : seul bloc money-touching, grilling write-safety dédié |
+| 6 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) | games | Games Services configuration (`gamesConfiguration`) — achievements & leaderboards | **PRD draft** (ADR-0026) — API séparée, à griller |
+| 7 | [#242](https://github.com/PollyGlot/google-play-cli/issues/242) | customapps | Custom apps — publication privée managed Google Play (`playcustomapp`) | **PRD draft** (ADR-0026) — seule API qui crée une app |
 | — | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) | releases | APK upload (`edits.apks`) | Apps **existantes** only — hors thème first-release (AAB obligatoire pour les nouvelles apps depuis 2021) |
 
 Les docs utilisateur ([#116](https://github.com/PollyGlot/google-play-cli/issues/116))

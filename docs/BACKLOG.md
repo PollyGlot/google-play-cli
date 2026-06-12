@@ -1,6 +1,12 @@
 # Backlog — surfaces API reportées après MVP
 
-Ce fichier liste les parties de la Google Play Developer API (et APIs liées) **délibérément reportées** au-delà du MVP de `gplay`. Chaque entrée note ce que la surface permet et pourquoi elle est différée. Ce n'est ni un glossaire (voir `CONTEXT.md`) ni une décision tranchée (voir `docs/adr/`) — juste un registre du scope.
+Ce fichier liste les parties de la Google Play Developer API (et APIs liées) **pas encore livrées** par `gplay`. Chaque entrée note ce que la surface permet et son ordonnancement. Ce n'est ni un glossaire (voir `CONTEXT.md`) ni une décision tranchée (voir `docs/adr/`) — juste un registre du scope.
+
+> **Changement de politique ([ADR-0026](adr/0026-maximal-admin-api-coverage.md), 2026-06-13).**
+> Toute **Admin API** Play (opération du développeur sur son app) est désormais
+> **in scope en totalité** — ce registre ordonne, il ne gatekeep plus. Les seules
+> exclusions restantes sont **par nature** : les APIs *runtime* (Play Integrity,
+> vérification d'achats temps réel), inutilisables depuis un terminal.
 
 > Plusieurs surfaces listées ici ont depuis été **livrées** (marquées ✅) ou
 > promues en **PRD planifié** ; leurs sections sont conservées pour le rationnel
@@ -34,9 +40,9 @@ Icône, feature graphic, screenshots phone/tablet 7"/tablet 10"/TV/Wear, promo g
 Upload du fichier `mapping.txt` pour dé-obfusquer les crashes côté Play Console.
 **Pourquoi plus tard :** crucial dès qu'on regarde les crashes — donc à coupler avec vitals. Sera ajouté quand on attaque vitals.
 
-### Fichiers OBB / expansion — `edits.expansionfiles`
+### Fichiers OBB / expansion — `edits.expansionfiles` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
 Mécanisme legacy pour distribuer >150 MB d'assets hors APK.
-**Pourquoi plus tard :** legacy, remplacé par Play Asset Delivery. À ne faire que sur demande explicite.
+**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)), dernier bloc du PRD « Publisher long tail » (legacy, labelé comme tel).
 
 ### APK legacy — `edits.apks` — 🔼 **PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118) (plus tard, hors first-release)**
 Upload d'APK au lieu d'AAB.
@@ -55,9 +61,9 @@ Langue par défaut, email/téléphone/site contact.
 Liste des pays où l'app est dispo.
 **Statut :** `gplay tracks availability view` (read-only, [ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) — [#128](https://github.com/PollyGlot/google-play-cli/issues/128).
 
-### App Recovery — `edits.apprecovery`
-Rollback ciblé d'un release vers une version précédente pour des users impactés.
-**Pourquoi plus tard :** incident response, niche. À considérer si on fait un module "incident" complet.
+### App Recovery — `apprecovery` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
+Remédiation ciblée poussant les users impactés vers une version saine.
+**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)), bloc du PRD « Publisher long tail ».
 
 ### Création / gestion de custom closed tracks — `tracks.create` + testers — ✅ **livré** (PRD [#117](https://github.com/PollyGlot/google-play-cli/issues/117), slices #120–#123)
 Créer des tracks closed nommés (`qa-team`, `external-beta`...) et y gérer la liste de testeurs.
@@ -75,9 +81,15 @@ CRUD des produits in-app non-abonnement.
 Abonnements, base plans, offers, pricing par territoire.
 **Pourquoi plus tard :** API très récente et complexe (3 niveaux imbriqués). Gros morceau à part entière, mérite son propre module et probablement sa propre paire de skills `gplay-subscription-management` + un skill de synchronisation avec RevenueCat.
 
-### Vérification d'achats — `purchases.products` / `purchases.subscriptionsv2` / `purchases.voidedpurchases`
+### Orders — `orders.get` / `orders.batchget` / `orders.refund` — 🔼 **PRD draft [#245](https://github.com/PollyGlot/google-play-cli/issues/245)**
+Lecture d'une commande par order ID (diagnostic support/litige) et refund (write money-moving).
+**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) — PRD dédié, splitté du long tail [#243](https://github.com/PollyGlot/google-play-cli/issues/243) : seule surface qui touche à l'argent, grilling write-safety à part (ADR-0016/0017).
+
+### Vérification d'achats — `purchases.products` / `purchases.subscriptionsv2`
 Validation côté serveur des tokens de purchase.
-**Pourquoi plus tard :** c'est une API serveur, pas un usage CLI naturel. À n'exposer que si un cas concret le réclame (debug d'un litige par exemple).
+**Statut ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) :** exclu **par nature** du sweep de couverture — c'est une surface *runtime* (le backend valide des tokens en serving). Un read de *debug* ponctuel (litige) pourra exister plus tard comme diagnostic explicitement cadré, hors couverture.
+
+**Cas limite — `purchases.voidedpurchases.list` :** endpoint de *liste* (achats annulés/remboursés, anti-fraude) qu'on interroge côté admin, sans token device — admin-leaning, pas runtime. À trancher au grilling du PRD Orders [#245](https://github.com/PollyGlot/google-play-cli/issues/245) (même famille commerce).
 
 ---
 
@@ -115,17 +127,25 @@ Upload AAB de 100+ MB. Google supporte l'upload résumable. Sur erreur réseau a
 
 ## Autres surfaces
 
-### Internal app sharing — `internalappsharingartifacts`
+### Internal app sharing — `internalappsharingartifacts` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
 Upload d'un AAB/APK pour partage par lien (ne passe pas par un track).
-**Pourquoi plus tard :** workflow QA spécifique, pas universel.
+**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)), bloc du PRD « Publisher long tail ».
 
-### Custom Apps / Managed Google Play — `customapps`
-Distribution privée d'apps à des organisations.
-**Pourquoi plus tard :** niche entreprise, hors usage standard.
+### Device tier configs — `applications.deviceTierConfigs` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
+Configs de targeting device pour la delivery par tiers (create/get/list).
+**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)), bloc du PRD « Publisher long tail ».
 
-### Play Integrity API
-Vérification serveur de l'intégrité de l'install.
-**Pourquoi plus tard :** **probablement non-goal** pour un CLI. C'est une API consommée par un backend en runtime, pas un outil d'administration. À reconfirmer si un cas pratique se présente.
+### Custom apps / managed Google Play — `playcustomapp` — 🔼 **PRD draft [#242](https://github.com/PollyGlot/google-play-cli/issues/242)**
+Distribution privée d'apps à des organisations — la **seule** API capable de créer une app.
+**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) ; API séparée (`playcustomapp`), namespace `customapps` planifié.
+
+### Games Services — `gamesConfiguration` — 🔼 **PRD draft [#241](https://github.com/PollyGlot/google-play-cli/issues/241)**
+Configuration des achievements et leaderboards Play Games Services (CRUD + localisation + icônes).
+**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) ; API séparée (Play Games Services *Publishing* API — la partie runtime des Games Services reste exclue par nature), namespace `games` planifié.
+
+### Play Integrity API — ❌ **non-goal par nature ([ADR-0026](adr/0026-maximal-admin-api-coverage.md))**
+Vérification serveur, par requête, qu'un appel au backend vient d'un binaire et d'un device authentiques.
+**Statut :** exclu définitivement — API *runtime* (token éphémère généré on-device, consommé côté serveur) : structurellement inutilisable depuis un terminal ou un agent. La seule API développeur Play que gplay n'enveloppera jamais.
 
 ### Play Asset Delivery (PAD)
 Distribution d'assets dynamiques (install-time, fast-follow, on-demand).

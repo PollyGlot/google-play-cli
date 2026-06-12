@@ -9,7 +9,9 @@ and AI agents, replacing Fastlane/Ruby. Pre-1.0.
    `Project`, …). Use them **verbatim**; no synonyms.
 2. **`docs/DESIGN.md`** — single source of truth for cross-command behavior
    (auth precedence, exit codes, output, verbosity, edit lifecycle).
-3. **`docs/BACKLOG.md`** — out-of-scope surfaces; check before adding "X".
+3. **`docs/BACKLOG.md`** — not-yet-shipped surfaces and their ordering. Every
+   Play **admin** API is in scope (ADR-0026); only runtime surfaces (Play
+   Integrity, real-time purchase verification) are excluded by nature.
 4. **`docs/adr/`** — the surprising / irreversible decisions and their why.
 
 ## Non-obvious rules (what breaks if you guess)
