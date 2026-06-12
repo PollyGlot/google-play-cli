@@ -147,6 +147,30 @@ A gplay-friendly, **scope-independent** name for a **Permission** — e.g. `rele
 ### Role bundle
 A gplay-defined, **frozen** preset that expands to a fixed set of Permissions — `viewer`, `reviewer`, `tester-manager`, `release-manager`, `admin` — selected with `--role`. A convenience over enumerating aliases one by one. *Frozen* means a bundle's membership never changes silently as Google adds permission enums: a new enum joins a bundle only by an explicit, versioned gplay change. Deliberately **excludes** sensitive money capabilities (financial data, orders): those are expressible only as explicit Permissions, never hidden inside a role. Distinct from a **Permission alias** (one Permission) — a Role bundle is a *set*.
 
+### Admin API
+A Google API a developer (or their agent/CI) calls **about** their app — configuration, publication, distribution, reporting, team. The scope test of [ADR-0026](docs/adr/0026-maximal-admin-api-coverage.md): every Play admin API is in gplay's scope in full. Opposed to a **runtime API**, one the app or its backend calls while **serving end users** (per-request, often with device-generated ephemeral tokens) — structurally unusable from a terminal and therefore out of scope by nature, not by priority.
+
+_Avoid_: arguing a surface out of scope because it is "niche" or "nobody will find it" — under ADR-0026 the only exclusion test is admin vs runtime.
+
+### Android Publisher API
+The core Google Play Developer API (`androidpublisher`, v3) — the service gplay has wrapped from day one. Owns publication (the Edit model: listings, images, details, tracks, releases, testers), monetization (in-app products, subscriptions), distribution extras (internal app sharing, device tier configs, app recovery), compliance (Data Safety) and reviews. ~137 methods. One of several Play admin APIs — not a synonym for "the Play API".
+
+### Play Developer Reporting API
+The separate Google service (`playdeveloperreporting`) for **post-launch observability**: crash and ANR rates, error reports and counts, slow start/rendering, wakeups/wakelocks, anomalies. Same service-account auth as the Android Publisher API but a distinct service with its own Discovery snapshot. The data source for the planned `vitals` namespace. Only useful with deobfuscation mappings uploaded (`edits.deobfuscationfiles`, an Android Publisher resource).
+
+_Avoid_: conflating it with the Android Publisher API or assuming one Discovery snapshot covers both.
+
+### Play Games Services Publishing API
+The Google service (`gamesConfiguration`) for configuring a game's Play Games Services resources — achievements and leaderboards (CRUD, localization, images). An Admin API (developer configures their game), distinct from the Play Games Services *runtime* APIs the game itself calls (sign-in, score submission), which are out of scope.
+
+### Custom app
+A private Android app distributed only to one organisation through **managed Google Play**, created via the Play Custom App Publishing API (`playcustomapp`) — the one API path that can *create* an app record (public apps can only be created in the Play Console). An Admin API surface, in scope under [ADR-0026](docs/adr/0026-maximal-admin-api-coverage.md), planned as the `customapps` namespace.
+
+### Play Integrity API
+Google's **runtime** API for verifying, per request, that a call to the developer's backend comes from a genuine app binary on a genuine device. The canonical example of a nature-excluded surface ([ADR-0026](docs/adr/0026-maximal-admin-api-coverage.md)): the verification token is generated on-device and consumed server-side within minutes — no terminal or agent session can hold one, so a gplay wrapper would be structurally unusable.
+
+_Avoid_: listing Play Integrity in any coverage plan or skill; it is the one Play developer API gplay deliberately never wraps.
+
 ### Discovery snapshot
 An offline, version-pinned copy of a Google API's **Discovery document** — Google's own machine-readable description of an API's *shape*: its methods, their request/response schemas, parameters and enums. It is a schema/contract, **not** data and **not** a changelog. gplay keeps one per service (`androidpublisher` today; the separate `androidvitals` Reporting service is its own snapshot, never conflated) so an agent or maintainer can answer "does this method exist, what's its request shape" by querying a local file instead of hitting the network.
 
