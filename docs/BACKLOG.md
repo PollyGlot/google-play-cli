@@ -85,9 +85,11 @@ Abonnements, base plans, offers, pricing par territoire.
 Lecture d'une commande par order ID (diagnostic support/litige) et refund (write money-moving).
 **Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) — PRD dédié, splitté du long tail [#243](https://github.com/PollyGlot/google-play-cli/issues/243) : seule surface qui touche à l'argent, grilling write-safety à part (ADR-0016/0017).
 
-### Vérification d'achats — `purchases.products` / `purchases.subscriptionsv2` / `purchases.voidedpurchases`
+### Vérification d'achats — `purchases.products` / `purchases.subscriptionsv2`
 Validation côté serveur des tokens de purchase.
-**Statut ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) :** exclu **par nature** du sweep de couverture — c'est une API *runtime* (le backend valide des tokens en serving). Un read de *debug* ponctuel (litige) pourra exister plus tard comme diagnostic explicitement cadré, hors couverture.
+**Statut ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) :** exclu **par nature** du sweep de couverture — c'est une surface *runtime* (le backend valide des tokens en serving). Un read de *debug* ponctuel (litige) pourra exister plus tard comme diagnostic explicitement cadré, hors couverture.
+
+**Cas limite — `purchases.voidedpurchases.list` :** endpoint de *liste* (achats annulés/remboursés, anti-fraude) qu'on interroge côté admin, sans token device — admin-leaning, pas runtime. À trancher au grilling du PRD Orders [#245](https://github.com/PollyGlot/google-play-cli/issues/245) (même famille commerce).
 
 ---
 

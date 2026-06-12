@@ -14,7 +14,7 @@ or never will.
 | API | Service | What it owns | gplay |
 |---|---|---|---|
 | **Android Publisher** | `androidpublisher` | Publication (listings, images, releases, tracks, testers), monetization, reviews, compliance, team | **Core — covered**, long tail planned |
-| **Play Developer Reporting** | `playdeveloperreporting` | Post-launch observability: crash/ANR rates, errors, slow start/rendering, battery | Planned (`vitals`) |
+| **Play Developer Reporting** | `playdeveloperreporting` | Post-launch observability: crash/ANR rates, errors, slow start/rendering, wakeups/wakelocks | Planned (`vitals`) |
 | **Play Games Services Publishing** | `gamesConfiguration` | Achievements & leaderboards configuration for games | Planned (`games`) |
 | **Play Custom App Publishing** | `playcustomapp` | Private enterprise apps via managed Google Play — the only API that can *create* an app | Planned (`customapps`) |
 | **Play Integrity** | `playintegrity` | Runtime device/binary verification | **Never** (see below) |
