@@ -65,24 +65,29 @@ ligne est **livrée** — les 6 surfaces ci-dessous sont shippées et mergées e
 > **documenter**, pas à automatiser. La promesse « prépa complète depuis le
 > CLI » s'arrête là.
 
-## Thème actif — Durcissement interne & outillage agent
+## Thème livré ✅ — Durcissement interne & outillage agent
 
-First-release readiness livré, le thème bascule vers le **durcissement interne**
-plutôt que l'élargissement de surface : petits chantiers à haute confiance qui
-réduisent la dette et outillent les agents.
+First-release readiness livré, ce thème a durci l'interne plutôt que d'élargir la
+surface : petits chantiers à haute confiance réduisant la dette et outillant les
+agents. **Entièrement clos (02–10 juin 2026)** — install vérifié, runtime borné,
+autorité imposable par l'environnement, introspection de schéma embarquée.
 
 | Ordre | # | Area | Sujet | Note |
 |---|---|---|---|---|
 | ✅ | [#93](https://github.com/PollyGlot/google-play-cli/issues/93) | arch | Extraire la machinery partagée des `… list` (column registry + render + `resolveColumns`) | **Livré** (#148, [ADR-0018](adr/0018-shared-list-table-machinery.md)) — débloque les `team users/grants list` de #147 |
-| 2 | [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | tooling | Snapshot offline du Discovery doc `androidpublisher_v3.json` (+ target de regen) | Levier code-gen agent ; le trigger « surface > ~10 commandes » est franchi |
+| ✅ | [#52](https://github.com/PollyGlot/google-play-cli/issues/52) | tooling | Snapshot offline du Discovery doc `androidpublisher_v3.json` (+ target de regen) | **Livré** (clos 2026-06-08) — Discovery snapshot + `gplay schema` embarqué (#199–#201) |
 | ✅ | [#176](https://github.com/PollyGlot/google-play-cli/issues/176) | auth | Surface invalid-credential errors from `EnsureAccount` (absent vs invalide) | **Livré** (#182, slices #177–#180, [ADR-0020](adr/0020-resolution-error-surfacing.md)) — `breaking-change` : exit code d'`auth status` |
 | ✅ | [#53](https://github.com/PollyGlot/google-play-cli/issues/53) | skills | Bootstrap repo `google-play-cli-skills` + roster comprehensive (9 skills, toute la surface livrée) | **Livré** — [`PollyGlot/google-play-cli-skills`](https://github.com/PollyGlot/google-play-cli-skills) public (slices #183–#192, [ADR-0021](adr/0021-companion-skills-repo.md)) |
-| 3 | [#206](https://github.com/PollyGlot/google-play-cli/issues/206) | platform | PRD Operational hardening — install vérifié, runtime borné, autorité imposable par l'environnement | Issu de l'audit archi/sécurité (2026-06-10) ; décomposé en 11 slices [#207–#217](https://github.com/PollyGlot/google-play-cli/issues/206) — P0 : #207–#209 ; #215 bloquée par #209 |
+| ✅ | [#206](https://github.com/PollyGlot/google-play-cli/issues/206) | platform | PRD Operational hardening — install vérifié, runtime borné, autorité imposable par l'environnement | **Livré** (clos 2026-06-10) — 11 slices #207–#217 (timeout/`--retry`, `GPLAY_READONLY`, JSON error envelope, sanitization) |
 
-## Ensuite — surfaces additives (post first-release)
+## Thème actif — Couverture admin maximale (ADR-0026)
 
-Planifiées, mais derrière le thème actif. Toujours en `0.x`, sans attendre de
-gel.
+Durcissement interne clos, le thème bascule vers la **couverture des admin APIs
+restantes** : compléter la surface jusqu'à ce que toute opération admin Play soit
+pilotable depuis le CLI. Toujours en `0.x`, sans attendre de gel. **Tête de
+file : vitals [#49](https://github.com/PollyGlot/google-play-cli/issues/49)**
+(observabilité post-lancement) — l'étape qui complète l'arc *publier → durcir →
+observer*.
 
 > **Politique de couverture ([ADR-0026](adr/0026-maximal-admin-api-coverage.md), 2026-06-13) :**
 > toute **Admin API** Play est in scope en totalité (Android Publisher complet,
@@ -91,20 +96,23 @@ gel.
 > par nature. Les nouvelles surfaces shippent `[experimental]` d'abord
 > ([ADR-0010](adr/0010-versioning-public-contract-and-ga.md)).
 
-| Ordre | # | Area | Sujet | Note |
-|---|---|---|---|---|
-| 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API) + mappings ProGuard/R8 | Observabilité **post-lancement** — débloque les dashboards agent/Cowork |
-| 2 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | **Post-v1** (confirmé) |
-| 3 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | Spike d'investigation d'abord |
-| 4 | [#147](https://github.com/PollyGlot/google-play-cli/issues/147) | team | Team management — users & grants (permissions du compte développeur) | PRD durci (ADR-0015/0016/0017) ; décomposé via `/to-issues` en 9 slices #149–#157 |
-| 5 | [#243](https://github.com/PollyGlot/google-play-cli/issues/243) | releases+ | Publisher long tail — internal app sharing, app recovery, device tier configs, expansion files | **PRD draft** (ADR-0026) — à griller puis `/to-issues` |
-| 5b | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | **PRD draft** (ADR-0026) — splitté de #243 : seul bloc money-touching, grilling write-safety dédié |
-| 6 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) | games | Games Services configuration (`gamesConfiguration`) — achievements & leaderboards | **PRD draft** (ADR-0026) — API séparée, à griller |
-| 7 | [#242](https://github.com/PollyGlot/google-play-cli/issues/242) | customapps | Custom apps — publication privée managed Google Play (`playcustomapp`) | **PRD draft** (ADR-0026) — seule API qui crée une app |
-| — | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) | releases | APK upload (`edits.apks`) | Apps **existantes** only — hors thème first-release (AAB obligatoire pour les nouvelles apps depuis 2021) |
+| Ordre | # | Area | Sujet | Prio | Note |
+|---|---|---|---|---|---|
+| 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API) + mappings ProGuard/R8 | **medium** | Tête de file — observabilité post-lancement, débloque les dashboards agent/Cowork ; à griller → `/to-issues` |
+| 2 | [#243](https://github.com/PollyGlot/google-play-cli/issues/243) | releases+ | Publisher long tail — internal app sharing, app recovery, device tier configs, expansion files | **medium** | **PRD draft** (ADR-0026) — même service (Android Publisher), additif faible risque ; à griller → `/to-issues` |
+| 3 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | low | **PRD draft** (ADR-0026) — splitté de #243 : seul bloc money-touching, grilling write-safety dédié |
+| 4 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) | games | Games Services configuration (`gamesConfiguration`) — achievements & leaderboards | low | **PRD draft** (ADR-0026) — API séparée, à griller |
+| 5 | [#242](https://github.com/PollyGlot/google-play-cli/issues/242) | customapps | Custom apps — publication privée managed Google Play (`playcustomapp`) | low | **PRD draft** (ADR-0026) — seule API qui crée une app |
+| post-v1 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | low | **Post-v1** (confirmé) — énorme, 3 niveaux imbriqués |
+| post-v1 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | low | Spike d'investigation d'abord (auth GCS, scope OAuth distinct) |
+| — | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) | releases | APK upload (`edits.apks`) | low | Apps **existantes** only (AAB obligatoire pour les nouvelles depuis 2021) |
+| ✅ | [#147](https://github.com/PollyGlot/google-play-cli/issues/147) | team | Team management — users & grants | — | **Livré** (clos 2026-06-02) — 9 slices #149–#157 (ADR-0015/0016/0017) |
 
-Les docs utilisateur ([#116](https://github.com/PollyGlot/google-play-cli/issues/116))
-avancent en parallèle, sans dépendre du gel 1.0.
+**Chantiers transverses en parallèle** (hors couverture API) : convention de
+confirmation `✓` sur les mutations ([#238](https://github.com/PollyGlot/google-play-cli/issues/238)
+en cours, [#247](https://github.com/PollyGlot/google-play-cli/issues/247) suivi),
+et le quick win dé-parké [#162](https://github.com/PollyGlot/google-play-cli/issues/162)
+(`team users view`, débloqué par la clôture de #98).
 
 ## Parking (post-MVP)
 
