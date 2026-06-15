@@ -280,3 +280,39 @@ func TestNewCommand_hasConfirm(t *testing.T) {
 		t.Error("missing --confirm flag")
 	}
 }
+
+// TestConfirm_emitsConfirmationOnStderr asserts a committed data-safety POST
+// prints a single ✓ line on stderr (DESIGN §8) naming the package, alongside
+// the stdout payload.
+func TestConfirm_emitsConfirmationOnStderr(t *testing.T) {
+	hdr := strings.Join([]string{"a", "b"}, ",")
+	path := writeCSV(t, hdr+"\n1,2\n")
+	rt := &liveRT{t: t, postResp: `{"safetyLabels":"echo"}`}
+	rc := newLiveRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := setcmd.Run(rc, setcmd.Input{Package: "com.example.app", File: path, Confirm: true}); err != nil {
+		t.Fatalf("set --confirm: %v", err)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "com.example.app") {
+		t.Errorf("datasafety set ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestDryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
+func TestDryRun_noConfirmationOnStderr(t *testing.T) {
+	hdr := strings.Join([]string{"a", "b"}, ",")
+	path := writeCSV(t, hdr+"\n1,2\n")
+	rc, _ := newOfflineRC(t)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := setcmd.Run(rc, setcmd.Input{Package: "com.example.app", File: path, DryRun: true}); err != nil {
+		t.Fatalf("dry-run: %v", err)
+	}
+	if strings.Contains(stderr.String(), "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}

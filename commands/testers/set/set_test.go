@@ -308,3 +308,51 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 		t.Errorf("cmd.Use = %q, want %q", got, "set")
 	}
 }
+
+// TestRun_setGroups_emitsConfirmationOnStderr asserts a committed testers set
+// prints a single ✓ line on stderr (DESIGN §8) naming the track, alongside the
+// stdout payload.
+func TestRun_setGroups_emitsConfirmationOnStderr(t *testing.T) {
+	rt := &setRT{
+		t:                 t,
+		editID:            "edit-set",
+		testersUpdateResp: `{"googleGroups":["a@googlegroups.com","b@googlegroups.com"]}`,
+	}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := set.Run(rc, set.Input{
+		Package:   "com.example.app",
+		Track:     "qa-team",
+		Groups:    []string{"a@googlegroups.com", "b@googlegroups.com"},
+		GroupsSet: true,
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "qa-team") {
+		t.Errorf("testers set ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
+func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
+	rt := &setRT{t: t}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := set.Run(rc, set.Input{
+		Package:   "com.example.app",
+		Track:     "qa-team",
+		Groups:    []string{"a@googlegroups.com"},
+		GroupsSet: true,
+		DryRun:    true,
+	}); err != nil {
+		t.Fatalf("dry-run: %v", err)
+	}
+	if strings.Contains(stderr.String(), "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}

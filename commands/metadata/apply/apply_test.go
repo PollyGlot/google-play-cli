@@ -324,3 +324,40 @@ func TestRun_noAccount_exit10(t *testing.T) {
 		t.Errorf("expected 0 HTTP calls before auth, saw %v", rt.calls)
 	}
 }
+
+// TestRun_applyConfirm_emitsConfirmationOnStderr asserts a committed apply
+// prints a single ✓ line on stderr (DESIGN §8) naming the package, alongside
+// the stdout payload.
+func TestRun_applyConfirm_emitsConfirmationOnStderr(t *testing.T) {
+	dir := writeTree(t, listing.Tree{"fr-FR": ml("fr-FR", "title", "Bonjour", "full", "Desc")})
+	rt := &applyRT{t: t, editID: "e7",
+		listingsBody: `{"listings":[{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`}
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "com.x") {
+		t.Errorf("apply ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
+func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
+	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "New", "full", "Body")})
+	rt := &applyRT{t: t, editID: "e1",
+		listingsBody: `{"listings":[]}`}
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, DryRun: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(stderr.String(), "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}

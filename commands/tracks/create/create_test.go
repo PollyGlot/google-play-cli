@@ -268,3 +268,40 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 		t.Errorf("cmd.Use = %q, want %q", got, "create <name>")
 	}
 }
+
+// TestRun_happyPath_emitsConfirmationOnStderr asserts a committed track create
+// prints a single ✓ line on stderr (DESIGN §8) naming the new track, alongside
+// the stdout payload.
+func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
+	rt := &createRT{
+		t:               t,
+		editID:          "edit-create-cli",
+		trackCreateResp: `{"track":"qa-team","releases":[]}`,
+	}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "qa-team"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "qa-team") {
+		t.Errorf("track create ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
+func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
+	rt := &createRT{t: t}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "qa-team", DryRun: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(stderr.String(), "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}

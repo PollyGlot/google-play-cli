@@ -346,3 +346,36 @@ func TestRun_unknownType_isUsageError(t *testing.T) {
 		t.Errorf("exit = %d, want 2 for unknown --type", got)
 	}
 }
+
+// TestRun_realApply_emitsConfirmationOnStderr asserts a committed image apply
+// prints a single ✓ line on stderr (DESIGN §8) naming the package and the
+// upload/delete tally, alongside the stdout payload.
+func TestRun_realApply_emitsConfirmationOnStderr(t *testing.T) {
+	rt := &applyRT{t: t, editID: "e"}
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), Confirm: true, Types: []string{"icon"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "com.example.app") || !strings.Contains(got, "uploaded") {
+		t.Errorf("images apply ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
+func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
+	rt := &applyRT{t: t, editID: "e"}
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), DryRun: true, Types: []string{"icon"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(stderr.String(), "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}
