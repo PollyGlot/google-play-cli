@@ -118,6 +118,7 @@ L'API `reviews.list` ne retourne que les 7 derniers jours. Pour l'historique lon
 ### Découverte réelle des apps via Cloud Resource Manager + IAM
 Le MVP utilise un registre local (`~/.gplay/config.json`) parce qu'il n'y a pas d'`apps.list` dans la Developer API. Pour découvrir automatiquement les apps qu'un SA peut administrer, il faut interroger les Cloud Resource Manager / IAM APIs.
 **Pourquoi plus tard :** alourdit le setup (scopes OAuth additionnels, permissions GCP), casse la promesse "donne juste le SA JSON". Faisable si quelqu'un en a vraiment besoin.
+**Piste plus légère (2026-06-15) :** la **Play Developer Reporting API** (`playdeveloperreporting`, voir vitals [#49](https://github.com/PollyGlot/google-play-cli/issues/49), [ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)) expose **`apps.search`** — énumération des apps accessibles au service account, *sans* Cloud Resource Manager ni scope GCP, juste le scope `playdeveloperreporting` qu'on câblera de toute façon pour vitals. Candidat sérieux pour un vrai `apps list`/discovery remplaçant le registre local — à évaluer une fois vitals livré.
 
 ### `releases upload` resumable + retry intelligent
 Upload AAB de 100+ MB. Google supporte l'upload résumable. Sur erreur réseau au milieu, on peut reprendre.

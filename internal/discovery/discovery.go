@@ -21,7 +21,7 @@ import (
 
 // Service identifies one Discovery document to snapshot. The tooling is
 // multi-doc by design: Services declares the list, and adding a service later
-// (e.g. androidvitals for #49) is a one-line append.
+// (e.g. playdeveloperreporting for #49) is a one-line append.
 type Service struct {
 	Name    string // canonical service name, e.g. "androidpublisher"
 	Host    string // API host, e.g. "androidpublisher.googleapis.com"

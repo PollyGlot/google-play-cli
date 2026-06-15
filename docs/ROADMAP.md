@@ -98,7 +98,8 @@ observer*.
 
 | Ordre | # | Area | Sujet | Prio | Note |
 |---|---|---|---|---|---|
-| 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Crashes/ANR (Reporting API) + mappings ProGuard/R8 | **medium** | Tête de file — observabilité post-lancement, débloque les dashboards agent/Cowork ; à griller → `/to-issues` |
+| 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Vitals (metric sets + errors + anomalies) — Reporting API, read-only | **medium** | **Grillé** ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)) — service `playdeveloperreporting`/v1beta1, 2ᵉ scope OAuth, modèle hybride ; prêt pour `/to-issues` |
+| 1b | [#250](https://github.com/PollyGlot/google-play-cli/issues/250) | releases | Mappings ProGuard/R8 (`edits.deobfuscationfiles`) — `upload --mapping` + `releases mappings upload` | **medium** | Splitté de #49 ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)) — Edit publisher, pas du reporting ; couplé à `vitals errors` |
 | 2 | [#243](https://github.com/PollyGlot/google-play-cli/issues/243) | releases+ | Publisher long tail — internal app sharing, app recovery, device tier configs, expansion files | **medium** | **PRD draft** (ADR-0026) — même service (Android Publisher), additif faible risque ; à griller → `/to-issues` |
 | 3 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | low | **PRD draft** (ADR-0026) — splitté de #243 : seul bloc money-touching, grilling write-safety dédié |
 | 4 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) | games | Games Services configuration (`gamesConfiguration`) — achievements & leaderboards | low | **PRD draft** (ADR-0026) — API séparée, à griller |
