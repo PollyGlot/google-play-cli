@@ -1,4 +1,4 @@
-.PHONY: help build test lint verb-gate format install-hooks tidy clean release-snapshot discovery-update schema-index-update
+.PHONY: help build test lint verb-gate format install-hooks tidy clean release-snapshot discovery-update schema-index-update stats
 
 # Project metadata
 BINARY := gplay
@@ -43,3 +43,6 @@ release-snapshot: ## Local GoReleaser snapshot (no publish) — sanity-check the
 
 clean: ## Remove build artifacts
 	rm -rf bin dist
+
+stats: ## Show download stats from GitHub Releases (read-only; needs gh)
+	@bash scripts/stats.sh

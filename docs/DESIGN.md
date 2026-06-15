@@ -362,6 +362,33 @@ of the public contract (ADR-0010); see [ADR-0023](./adr/0023-json-error-envelope
 - Color is auto in TTY, disabled in pipes, disabled if `NO_COLOR` env or
   `--no-color` is set.
 
+### Success confirmation (`✓`)
+
+A command that **successfully mutates Google Play state** emits a single `✓`
+line on **stderr** once the change is committed — the success counterpart to the
+`WARN:` and progress lines above. It is emitted **in addition to** the command's
+stdout payload, so a human-legible success marker survives `--output json` and
+piping (where stdout is machine data and the table view is absent).
+
+- The line leans only on canonical terms (`track`, `status`, `versionCode`,
+  `userFraction`); it never names the Play "release" object — the glossary's
+  **Release** is the CLI's own distribution (CONTEXT.md), a different thing.
+- `userFraction` is rendered as a percentage and only when `status` is
+  `inProgress` (a partial rollout — the one case where the fraction informs).
+- `--dry-run` never emits it: `✓` means *committed*. A dry-run already prints
+  its plan to stdout.
+- It is written through a single helper (`rc.Confirmf`) so `--quiet` can suppress
+  every `✓` in one place once that flag lands.
+- Wording is **not** part of the Public contract (§7) — it is free to evolve.
+
+`releases upload/promote/rollout/halt/resume/complete` are the first commands to
+carry it; the remaining payload-bearing mutations (`metadata apply`,
+`metadata images apply`, `apps details set`, `compliance datasafety set`,
+`tracks create`, `testers set`) follow the same rule. Commands that mutate only
+**local** state and have no stdout payload (`auth login/logout`, `apps
+add/remove/init`, `team`) already emit a `✓` as their sole output; this rule
+brings the payload-bearing mutations in line.
+
 ### Request timeouts (`--timeout`)
 
 Every API call carries a deadline so a hung connection fails the step in
