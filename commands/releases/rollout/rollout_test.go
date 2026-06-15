@@ -401,3 +401,104 @@ func assertExit(t *testing.T, err error, want int) {
 		t.Errorf("ExitCode() = %d, want %d", coder.ExitCode(), want)
 	}
 }
+
+// confirmStderr runs fn with a stderr buffer wired onto rc and returns what
+// landed there — the shared setup for the ✓-confirmation tests below.
+func confirmStderr(t *testing.T, rt http.RoundTripper, fn func(rc *kernel.RunContext) error) string {
+	t.Helper()
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+	if err := fn(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	return stderr.String()
+}
+
+// TestRunRollout_emitsConfirmationWithUserFractionPercent asserts a committed
+// rollout prints a ✓ line on stderr (DESIGN §8) naming the track and rendering
+// the new userFraction as a percentage (status inProgress).
+func TestRunRollout_emitsConfirmationWithUserFractionPercent(t *testing.T) {
+	rt := &stateRT{
+		t:                  t,
+		editID:             "edit-rollout-cli",
+		trackGetResp:       `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.01}]}`,
+		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.2}]}`,
+	}
+	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
+		_, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", To: "0.2", ToSet: true, Confirm: true})
+		return err
+	})
+	if !strings.HasPrefix(got, "✓ ") {
+		t.Errorf("stderr missing ✓ confirmation line:\n%s", got)
+	}
+	for _, want := range []string{"production", "20%"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("✓ line %q missing %q", got, want)
+		}
+	}
+}
+
+// TestRunHalt_emitsConfirmation asserts halt prints a ✓ line naming the track
+// and the halted status (no userFraction — only inProgress shows it).
+func TestRunHalt_emitsConfirmation(t *testing.T) {
+	rt := &stateRT{
+		t:                  t,
+		editID:             "edit-halt-cli",
+		trackGetResp:       oneInProgressRelease,
+		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"halted","versionCodes":["142"],"userFraction":0.05}]}`,
+	}
+	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
+		_, err := rollout.RunHalt(rc, rollout.Input{Package: "com.example.app", Track: "production"})
+		return err
+	})
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "halted") || !strings.Contains(got, "production") {
+		t.Errorf("halt ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestRunResume_emitsConfirmation asserts resume prints a ✓ line.
+func TestRunResume_emitsConfirmation(t *testing.T) {
+	rt := &stateRT{
+		t:                  t,
+		editID:             "edit-resume-cli",
+		trackGetResp:       `{"track":"production","releases":[{"name":"142","status":"halted","versionCodes":["142"],"userFraction":0.05}]}`,
+		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.05}]}`,
+	}
+	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
+		_, err := rollout.RunResume(rc, rollout.Input{Package: "com.example.app", Track: "production", Confirm: true})
+		return err
+	})
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "resumed") || !strings.Contains(got, "production") {
+		t.Errorf("resume ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestRunComplete_emitsConfirmation asserts complete prints a ✓ line.
+func TestRunComplete_emitsConfirmation(t *testing.T) {
+	rt := &stateRT{
+		t:                  t,
+		editID:             "edit-complete-cli",
+		trackGetResp:       oneInProgressRelease,
+		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
+	}
+	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
+		_, err := rollout.RunComplete(rc, rollout.Input{Package: "com.example.app", Track: "production", Confirm: true})
+		return err
+	})
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "completed") || !strings.Contains(got, "production") {
+		t.Errorf("complete ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestRunRollout_dryRun_noConfirmation asserts --dry-run never emits a ✓.
+func TestRunRollout_dryRun_noConfirmation(t *testing.T) {
+	rt := &stateRT{t: t, editID: "edit-dry", trackGetResp: oneInProgressRelease}
+	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
+		_, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", To: "0.2", ToSet: true, DryRun: true})
+		return err
+	})
+	if strings.Contains(got, "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", got)
+	}
+}

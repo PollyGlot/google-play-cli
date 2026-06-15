@@ -11,7 +11,7 @@ import (
 // RunResume drives orchestrator.Resume: flip a halted release back to
 // inProgress, leaving its userFraction unchanged.
 func RunResume(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	return runState(rc, in, 0, orchestrator.Resume)
+	return runState(rc, in, 0, "resumed", orchestrator.Resume)
 }
 
 // NewResumeCommand returns the cobra command for `gplay releases resume`.

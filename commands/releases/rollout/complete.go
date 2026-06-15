@@ -11,7 +11,7 @@ import (
 // RunComplete drives orchestrator.Complete: ramp the latest release to a
 // full rollout (userFraction=1.0, status=completed).
 func RunComplete(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	return runState(rc, in, 0, orchestrator.Complete)
+	return runState(rc, in, 0, "completed", orchestrator.Complete)
 }
 
 // NewCompleteCommand returns the cobra command for `gplay releases complete`.

@@ -11,7 +11,7 @@ import (
 // RunHalt drives orchestrator.Halt: freeze the latest release's rollout
 // (status=halted) while preserving its userFraction.
 func RunHalt(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	return runState(rc, in, 0, orchestrator.Halt)
+	return runState(rc, in, 0, "halted", orchestrator.Halt)
 }
 
 // NewHaltCommand returns the cobra command for `gplay releases halt`.

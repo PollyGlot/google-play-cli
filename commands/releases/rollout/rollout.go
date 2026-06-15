@@ -119,7 +119,9 @@ type stateFunc func(ctx context.Context, hc *http.Client, opts orchestrator.Stat
 // the chosen orchestrator function. userFraction is meaningful only for
 // rollout (0 for halt / resume / complete, which the orchestrator ignores).
 // Per-verb validation (rollout's --to) runs in the verb's own Run before this.
-func runState(rc *kernel.RunContext, in Input, userFraction float64, call stateFunc) (output.Renderable, error) {
+// action is the past-tense transition word ("set" / "halted" / "resumed" /
+// "completed") for the ✓ confirmation line.
+func runState(rc *kernel.RunContext, in Input, userFraction float64, action string, call stateFunc) (output.Renderable, error) {
 	pkg := in.Package
 	if pkg == "" && rc.Resolved != nil {
 		pkg = rc.Resolved.Pin
@@ -156,6 +158,16 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, call stateF
 	if err != nil {
 		return nil, err
 	}
+	// DESIGN §8: a committed transition prints one ✓ line on stderr (never on a
+	// --dry-run). userFraction is shown only when status is inProgress.
+	if !in.DryRun {
+		extra := ""
+		if result.Status == "inProgress" {
+			extra = ", userFraction " + output.Percent(result.UserFraction)
+		}
+		rc.Confirmf("rollout %s on track %q (versionCode %d, status %s%s)",
+			action, in.Track, result.VersionCode, result.Status, extra)
+	}
 	return Payload{Result: result}, nil
 }
 
@@ -173,7 +185,7 @@ func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if fraction <= 0 || fraction > 1.0 {
 		return nil, &usageError{msg: "--to fraction must be in (0, 1] (e.g. 0.05, 0.20)"}
 	}
-	return runState(rc, in, fraction, orchestrator.Rollout)
+	return runState(rc, in, fraction, "set", orchestrator.Rollout)
 }
 
 // bindCommonFlags registers the flags every verb shares (output, package,

@@ -339,3 +339,46 @@ func TestRun_mutuallyExclusiveStatusFlags_returnsExit2(t *testing.T) {
 		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
 	}
 }
+
+// TestRun_happyPath_emitsConfirmationOnStderr asserts a committed promote
+// prints a single ✓ line on stderr (DESIGN §8) carrying the versionCode and
+// both tracks, alongside the stdout payload.
+func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
+	rt := &promoteRT{
+		t:                  t,
+		editID:             "edit-promote-cli",
+		sourceTrackGetResp: `{"track":"internal","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
+		trackUpdateRawResp: `{"track":"beta","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
+	}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := promote.Run(rc, promote.Input{Package: "com.example.app", FromTrack: "internal", ToTrack: "beta"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "✓ ") {
+		t.Errorf("stderr missing ✓ confirmation line:\n%s", got)
+	}
+	for _, want := range []string{"142", "internal", "beta"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("✓ line %q missing %q", got, want)
+		}
+	}
+}
+
+// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
+func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
+	rt := &promoteRT{t: t}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := promote.Run(rc, promote.Input{Package: "com.example.app", FromTrack: "internal", ToTrack: "beta", DryRun: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(stderr.String(), "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}
