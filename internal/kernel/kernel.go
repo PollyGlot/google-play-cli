@@ -23,6 +23,7 @@ package kernel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -344,6 +345,24 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 		return nil
 	}
 	return output.Render(rc.Stdout, rc.Format, payload.Renderers())
+}
+
+// Confirmf emits a single success-confirmation line on stderr, prefixed with
+// the ✓ marker and terminated by a newline (DESIGN §8). It is the one funnel
+// every payload-bearing mutation routes its committed-success line through, so
+// a future --quiet flag can suppress them all in one place. Callers pass the
+// message body only — no ✓, no trailing newline — and lean on canonical terms
+// (track, status, versionCode, userFraction), never naming the Play "release"
+// object. It is never called on a --dry-run: ✓ means the change was committed.
+//
+// The write is best-effort (the command's exit code and stdout payload are the
+// authoritative signals) and a nil Stderr — possible on a hand-built
+// RunContext — is a no-op rather than a panic.
+func (rc *RunContext) Confirmf(format string, args ...any) {
+	if rc.Stderr == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(rc.Stderr, "✓ "+format+"\n", args...)
 }
 
 // maybeWriteErrorEnvelope writes the JSON error envelope to stdout when the

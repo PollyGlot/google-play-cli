@@ -981,3 +981,30 @@ func TestAuthedClient_absent_keepsLoginHint(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 }
+
+// TestConfirmf_writesCheckmarkLineToStderr asserts rc.Confirmf prepends the
+// ✓ marker, appends a newline, formats its args, and writes the result to
+// stderr only — never stdout. Per DESIGN §8 the success line is a stderr log
+// line that must survive --output json (where stdout is verbatim API data).
+func TestConfirmf_writesCheckmarkLineToStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	rc := kernel.NewForTest(context.Background(),
+		kernel.Boot{Stdout: &stdout, Stderr: &stderr}, kernel.Inputs{})
+
+	rc.Confirmf("uploaded versionCode %d to track %q", 42, "internal")
+
+	if got, want := stderr.String(), "✓ uploaded versionCode 42 to track \"internal\"\n"; got != want {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("Confirmf wrote %q to stdout; the ✓ line must go to stderr only", stdout.String())
+	}
+}
+
+// TestConfirmf_nilStderrIsSafe asserts Confirmf is a no-op (no panic) when a
+// hand-built RunContext leaves Stderr nil — the kernel paths always wire it,
+// but the helper must not assume so.
+func TestConfirmf_nilStderrIsSafe(t *testing.T) {
+	rc := &kernel.RunContext{} // Stderr deliberately nil
+	rc.Confirmf("should not panic")
+}
