@@ -284,6 +284,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, classifyEditError(pkg, err)
 	}
+	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
+	// --dry-run), reporting how many locales were patched (and pruned, if any).
+	if !in.DryRun {
+		detail := fmt.Sprintf("%d locale(s) patched", len(res.Patched))
+		if len(res.Pruned) > 0 {
+			detail += fmt.Sprintf(", %d pruned", len(res.Pruned))
+		}
+		rc.Confirmf("metadata applied to %q (%s)", res.Package, detail)
+	}
 	return Payload{Result: res}, nil
 }
 

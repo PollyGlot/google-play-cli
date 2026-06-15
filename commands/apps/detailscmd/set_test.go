@@ -464,3 +464,45 @@ func TestNewSetCommand_registersExpectedFlags(t *testing.T) {
 		t.Errorf("cmd.Use = %q, want %q", got, "set")
 	}
 }
+
+// TestSet_emitsConfirmationOnStderr asserts a committed details patch prints a
+// single ✓ line on stderr (DESIGN §8) naming the package, alongside its stdout
+// payload.
+func TestSet_emitsConfirmationOnStderr(t *testing.T) {
+	rt := &setRT{t: t, editID: "edit-set"}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := detailscmd.RunSet(rc, detailscmd.SetInput{
+		Package:         "com.example.app",
+		ContactEmail:    "new@example.com",
+		ContactEmailSet: true,
+	}); err != nil {
+		t.Fatalf("RunSet: %v", err)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "✓ ") || !strings.Contains(got, "com.example.app") {
+		t.Errorf("details set ✓ line wrong:\n%s", got)
+	}
+}
+
+// TestSet_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
+func TestSet_dryRun_noConfirmationOnStderr(t *testing.T) {
+	rt := &setRT{t: t}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := detailscmd.RunSet(rc, detailscmd.SetInput{
+		Package:         "com.example.app",
+		ContactEmail:    "new@example.com",
+		ContactEmailSet: true,
+		DryRun:          true,
+	}); err != nil {
+		t.Fatalf("RunSet: %v", err)
+	}
+	if strings.Contains(stderr.String(), "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}

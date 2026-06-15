@@ -317,6 +317,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, classifyEditError(pkg, err)
 	}
 
+	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The
+	// --dry-run path returned above, so this only runs after a real update.
+	rc.Confirmf("testers set on track %q (%d group(s))", in.Track, len(parsed.GoogleGroups))
 	return Payload{
 		Track:  in.Track,
 		Groups: parsed.GoogleGroups,

@@ -368,3 +368,72 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 		t.Errorf("cmd.Use = %q, want %q", got, "upload <aab>")
 	}
 }
+
+// TestRun_happyPath_emitsConfirmationOnStderr asserts a committed upload
+// prints a single ✓ success line on stderr (DESIGN §8) carrying the
+// versionCode, track, and status — in addition to the stdout payload.
+func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &uploadRT{
+		t:                  t,
+		editID:             "edit-xyz",
+		versionCode:        142,
+		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
+	}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: aab}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "✓ ") {
+		t.Errorf("stderr missing ✓ confirmation line:\n%s", got)
+	}
+	for _, want := range []string{"142", "internal", "completed"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("✓ line %q missing %q", got, want)
+		}
+	}
+}
+
+// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓:
+// the marker means committed, and a dry-run only previews to stdout.
+func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &uploadRT{t: t}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: aab, DryRun: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(stderr.String(), "✓") {
+		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}
+
+// TestRun_inProgressRollout_confirmationShowsUserFractionPercent asserts the
+// ✓ line renders userFraction as a percentage when status is inProgress —
+// the one status where the fraction informs (DESIGN §8).
+func TestRun_inProgressRollout_confirmationShowsUserFractionPercent(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt := &uploadRT{
+		t:                  t,
+		editID:             "edit-staged",
+		versionCode:        77,
+		trackUpdateRawResp: `{"track":"beta","releases":[{"name":"77","status":"inProgress","versionCodes":["77"],"userFraction":0.05}]}`,
+	}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "beta", AABPath: aab, StagedFraction: 0.05, StagedFractionSet: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "5%") {
+		t.Errorf("✓ line should render userFraction 0.05 as 5%%; stderr=%q", stderr.String())
+	}
+}

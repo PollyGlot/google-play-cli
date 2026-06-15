@@ -216,6 +216,17 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		// (and the exit code) passes through untouched.
 		return nil, trackhint.Classify(in.Track, err)
 	}
+	// DESIGN §8: a committed mutation prints one ✓ line on stderr (never on a
+	// --dry-run). userFraction is shown only when status is inProgress, the
+	// one status where a partial rollout fraction informs.
+	if !in.DryRun {
+		extra := ""
+		if result.Status == "inProgress" {
+			extra = ", userFraction " + output.Percent(result.UserFraction)
+		}
+		rc.Confirmf("uploaded versionCode %d to track %q (status %s%s)",
+			result.VersionCode, result.Track, result.Status, extra)
+	}
 	return Payload{Result: result}, nil
 }
 

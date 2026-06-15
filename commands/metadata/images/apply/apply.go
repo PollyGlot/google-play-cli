@@ -224,6 +224,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, classifyEditError(pkg, err)
 	}
+	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
+	// --dry-run), reporting the upload/delete/reorder tally.
+	if !in.DryRun {
+		s := res.Diff.Summary
+		rc.Confirmf("images applied to %q (%d uploaded, %d deleted, %d reordered)",
+			res.Package, s.Upload, s.Delete, s.Reorder)
+	}
 	return Payload{Result: res}, nil
 }
 

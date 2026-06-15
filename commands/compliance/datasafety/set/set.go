@@ -348,6 +348,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, classifyError(pkg, err)
 	}
 
+	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The
+	// --dry-run path returned above, so this only runs after a real POST.
+	rc.Confirmf("data safety submitted for %q (%d rows)", pkg, rep.Rows)
 	return Payload{
 		Package:  pkg,
 		Account:  rc.AccountName,
