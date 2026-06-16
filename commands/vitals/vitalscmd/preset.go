@@ -130,9 +130,15 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	return cmd
 }
 
-// Presets is the declared list of opinionated metric-set commands. #259 ships
-// crashes/anr; #260 appends the remaining five.
+// Presets is the declared list of opinionated metric-set commands — one per
+// queryable metric set (the seven read-only signals). Adding a metric set to
+// the registry without a preset here fails TestPresets_coverEveryMetricSet.
 var Presets = []PresetSpec{
 	{Use: "crashes", Short: "Crash rate for a package (vitals crashrate preset)", Set: "crashrate"},
 	{Use: "anr", Short: "ANR (App Not Responding) rate for a package (vitals anrrate preset)", Set: "anrrate"},
+	{Use: "slowstart", Short: "Slow cold-start rate for a package (vitals slowstartrate preset)", Set: "slowstartrate"},
+	{Use: "slowrendering", Short: "Slow rendering (janky frames) rate for a package (vitals slowrenderingrate preset)", Set: "slowrenderingrate"},
+	{Use: "excessivewakeup", Short: "Excessive wakeup rate for a package (vitals excessivewakeuprate preset)", Set: "excessivewakeuprate"},
+	{Use: "lmk", Short: "Low-memory-kill rate for a package (vitals lmkrate preset)", Set: "lmkrate"},
+	{Use: "stuckbgwakelock", Short: "Stuck background wakelock rate for a package (vitals stuckbackgroundwakelockrate preset)", Set: "stuckbackgroundwakelockrate"},
 }

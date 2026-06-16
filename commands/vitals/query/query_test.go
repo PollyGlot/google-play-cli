@@ -23,6 +23,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
 
 // queryRT covers the OAuth2 /token exchange and the metric-set :query POST.
@@ -171,6 +172,26 @@ func TestRun_crashrate_endToEnd(t *testing.T) {
 	// Freshness note on stderr citing the freshest datapoint.
 	if !strings.Contains(stderr.String(), "2026-06-02") {
 		t.Errorf("stderr missing freshness note: %q", stderr.String())
+	}
+}
+
+// TestRun_everyMetricSetReachable proves the generic command reaches every
+// registered metric set (#260): each `vitals query <set>` issues its `:query`
+// to that set's own REST resource.
+func TestRun_everyMetricSetReachable(t *testing.T) {
+	for _, ms := range vitals.MetricSets() {
+		ms := ms
+		t.Run(ms.Name, func(t *testing.T) {
+			rt := &queryRT{t: t, respBody: `{"rows":[]}`}
+			rc, _, _ := newRC(t, rt)
+			if _, err := Run(rc, Input{MetricSet: ms.Name, Package: "com.example.app"}); err != nil {
+				t.Fatalf("Run(%s): %v", ms.Name, err)
+			}
+			want := "/apps/com.example.app/" + ms.Resource + ":query"
+			if !strings.HasSuffix(rt.queryURL, want) {
+				t.Errorf("query %s URL = %q, want suffix %q", ms.Name, rt.queryURL, want)
+			}
+		})
 	}
 }
 

@@ -148,6 +148,42 @@ func TestPresets_referenceRealMetricSets(t *testing.T) {
 	}
 }
 
+// TestPresets_coverEveryMetricSet asserts every queryable metric set has an
+// opinionated preset (#260 completes the set: all seven). A new metric set added
+// to the registry without a preset fails here.
+func TestPresets_coverEveryMetricSet(t *testing.T) {
+	covered := map[string]bool{}
+	for _, spec := range Presets {
+		covered[spec.Set] = true
+	}
+	for _, ms := range vitals.MetricSets() {
+		if !covered[ms.Name] {
+			t.Errorf("metric set %q has no preset command", ms.Name)
+		}
+	}
+}
+
+// TestRunPreset_everyPresetHitsItsResource is the table-driven proof that each
+// preset issues its `:query` to the metric set's own REST resource (#260: the
+// five additional metric sets, alongside crashes/anr).
+func TestRunPreset_everyPresetHitsItsResource(t *testing.T) {
+	for _, spec := range Presets {
+		spec := spec
+		t.Run(spec.Use, func(t *testing.T) {
+			rt := &presetRT{}
+			rc := newRC(t, rt)
+			ms := set(t, spec.Set)
+			if _, err := runPreset(rc, ms, presetInput{Package: "com.example.app"}); err != nil {
+				t.Fatalf("runPreset: %v", err)
+			}
+			want := "/apps/com.example.app/" + ms.Resource + ":query"
+			if !strings.HasSuffix(rt.queryURL, want) {
+				t.Errorf("preset %q URL = %q, want suffix %q", spec.Use, rt.queryURL, want)
+			}
+		})
+	}
+}
+
 func exitCode(t *testing.T, err error) int {
 	t.Helper()
 	if err == nil {
