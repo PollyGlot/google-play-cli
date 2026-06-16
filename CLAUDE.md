@@ -47,11 +47,15 @@ a `gplay-cli-usage` foundation. Install:
 
 - **Docs-only PRs: merge without asking.** If a PR changes *only* documentation
   — Markdown and doc assets (`*.md`: `README`, `CLAUDE.md`, `CONTEXT.md`,
-  everything under `docs/` incl. ROADMAP/BACKLOG/DESIGN/ADRs) — you may
-  squash-merge it to `main` yourself once required CI checks are green, no
-  confirmation needed. **Docs-only means zero non-doc files**: any change to
-  `*.go`, `Makefile`, `.github/**`, `go.mod`/`go.sum`, or install/release
-  scripts disqualifies the PR — those still need explicit approval before merge.
+  everything under `docs/` incl. ROADMAP/BACKLOG/DESIGN/ADRs) — squash-merge it
+  to `main` yourself, no confirmation needed. `main` is review-protected, so the
+  sanctioned mechanism is the admin override `gh pr merge <n> --admin --squash`
+  — but **only after you have confirmed every CI check is green** (`--admin`
+  bypasses required checks too, so you are the gate; never override a failing or
+  pending run). **Docs-only means zero non-doc files**: any change to `*.go`,
+  `Makefile`, `.github/**`, `go.mod`/`go.sum`, or install/release scripts
+  disqualifies the PR — those still need explicit approval and a normal reviewed
+  merge.
 
 ## Adding a command
 
