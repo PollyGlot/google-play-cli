@@ -5,6 +5,21 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/PollyGlot/google-play-cli/compare/v0.6.0...v0.7.0) (2026-06-16)
+
+
+### Features
+
+* ✓ success-confirmation on all payload-bearing Play-API mutations (DESIGN §8) ([#256](https://github.com/PollyGlot/google-play-cli/issues/256)) ([ec9c4a0](https://github.com/PollyGlot/google-play-cli/commit/ec9c4a0d2ac664024b078bc4dfcc8a98770d05b9))
+* **releases:** upload ProGuard/R8 mappings — edits.deobfuscationfiles (PRD [#250](https://github.com/PollyGlot/google-play-cli/issues/250)) ([#264](https://github.com/PollyGlot/google-play-cli/issues/264)) ([4d84dc2](https://github.com/PollyGlot/google-play-cli/commit/4d84dc270d89a9c43ace1a4985f00bf3cf2295ec))
+* **vitals:** Play Developer Reporting — crashes/ANR, errors, anomalies (PRD [#49](https://github.com/PollyGlot/google-play-cli/issues/49)) ([#263](https://github.com/PollyGlot/google-play-cli/issues/263)) ([cb8cc2e](https://github.com/PollyGlot/google-play-cli/commit/cb8cc2edba6e35ddfc9e997c0c8378558a03fb02))
+
+
+### Bug Fixes
+
+* **releases:** align versionCode value with other table keys ([#239](https://github.com/PollyGlot/google-play-cli/issues/239)) ([f8c31a5](https://github.com/PollyGlot/google-play-cli/commit/f8c31a58d4866691109668dcf93f7ba8a96a17a3))
+* **releases:** reject non-regular AAB paths as exit 20, not transport errors ([#265](https://github.com/PollyGlot/google-play-cli/issues/265)) ([68e6cfa](https://github.com/PollyGlot/google-play-cli/commit/68e6cfa5a74b7e38a9e7e530c80fba07fb5a2119))
+
 ## [0.6.0](https://github.com/PollyGlot/google-play-cli/compare/v0.5.0...v0.6.0) (2026-06-11)
 
 
