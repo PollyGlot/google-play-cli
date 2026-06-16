@@ -36,6 +36,7 @@ type playRT struct {
 	insertHandler  func(req *http.Request) (*http.Response, error)
 	detailsHandler func(req *http.Request) (*http.Response, error)
 	bundleHandler  func(req *http.Request) (*http.Response, error)
+	deobfHandler   func(req *http.Request) (*http.Response, error)
 	trackHandler   func(req *http.Request) (*http.Response, error)
 	commitHandler  func(req *http.Request) (*http.Response, error)
 	deleteHandler  func(req *http.Request) (*http.Response, error)
@@ -43,6 +44,7 @@ type playRT struct {
 	// Recorded for assertions.
 	calls          []string
 	trackUpdateReq []byte
+	deobfReqBody   []byte
 }
 
 func (p *playRT) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -73,6 +75,12 @@ func (p *playRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		body := fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, p.versionCode)
 		return jsonResp(200, body), nil
+	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
+		if p.deobfHandler != nil {
+			return p.deobfHandler(req)
+		}
+		p.deobfReqBody, _ = io.ReadAll(req.Body)
+		return jsonResp(200, `{"deobfuscationFile":{"symbolType":"proguard"}}`), nil
 	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/tracks/"):
 		if p.trackHandler != nil {
 			return p.trackHandler(req)
@@ -731,5 +739,145 @@ func TestUpload_dryRun_productionSafeDefault(t *testing.T) {
 	}
 	if result.Status != "draft" {
 		t.Errorf("result.Status = %q, want draft", result.Status)
+	}
+}
+
+// writeFakeMapping creates a non-empty mapping.txt in t.TempDir(). The
+// mock RoundTripper does not validate the bytes — bundles/mappings just
+// need os.Open to succeed.
+func writeFakeMapping(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "mapping.txt")
+	if err := os.WriteFile(p, []byte("com.example.Foo -> a.a:\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return p
+}
+
+// TestUpload_withMapping_uploadsMappingInSameEdit asserts that supplying
+// a MappingPath uploads the ProGuard mapping inside the SAME edit, keyed
+// by the versionCode bundles.upload returned, between the bundle upload
+// and the track update — one edit, one commit (#250).
+func TestUpload_withMapping_uploadsMappingInSameEdit(t *testing.T) {
+	aab := writeFakeAAB(t)
+	mapping := writeFakeMapping(t)
+	rt := &playRT{
+		t:                  t,
+		editID:             "edit-xyz",
+		versionCode:        142,
+		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
+	}
+	hc := &http.Client{Transport: rt}
+
+	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package:     "com.example.app",
+		Track:       "internal",
+		AABPath:     aab,
+		MappingPath: mapping,
+	})
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+
+	wantPaths := []string{
+		"POST /androidpublisher/v3/applications/com.example.app/edits",
+		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
+		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/apks/142/deobfuscationFiles/proguard",
+		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-xyz/tracks/internal",
+		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-xyz:commit",
+	}
+	if len(rt.calls) != len(wantPaths) {
+		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantPaths))
+	}
+	for i, want := range wantPaths {
+		if rt.calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		}
+	}
+	if len(rt.deobfReqBody) == 0 {
+		t.Error("deobfuscationfiles.upload received an empty body; want the mapping bytes")
+	}
+	if !result.MappingUploaded {
+		t.Error("result.MappingUploaded = false, want true after a --mapping upload")
+	}
+}
+
+// TestUpload_dryRun_withMapping_validatesMappingFile asserts a dry-run
+// with --mapping validates the mapping is readable (exit 20 when absent)
+// and performs no HTTP when present.
+func TestUpload_dryRun_withMapping_validatesMappingFile(t *testing.T) {
+	aab := writeFakeAAB(t)
+
+	// Missing mapping → dry-run validation failure (exit 20), no HTTP.
+	rt := &playRT{t: t}
+	hc := &http.Client{Transport: rt}
+	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package:     "com.example.app",
+		Track:       "internal",
+		AABPath:     aab,
+		MappingPath: "/no/such/mapping.txt",
+		DryRun:      true,
+	})
+	if err == nil {
+		t.Fatal("dry-run returned nil error for a missing mapping")
+	}
+	if got := exitCode(err); got != 20 {
+		t.Errorf("exit code = %d, want 20; err=%v", got, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("dry-run hit the network: %v", rt.calls)
+	}
+
+	// Present mapping → dry-run succeeds with no HTTP.
+	mapping := writeFakeMapping(t)
+	rt2 := &playRT{t: t}
+	hc2 := &http.Client{Transport: rt2}
+	if _, err := orchestrator.Upload(context.Background(), hc2, orchestrator.Opts{
+		Package:     "com.example.app",
+		Track:       "internal",
+		AABPath:     aab,
+		MappingPath: mapping,
+		DryRun:      true,
+	}); err != nil {
+		t.Fatalf("dry-run with a present mapping: %v", err)
+	}
+	if len(rt2.calls) != 0 {
+		t.Errorf("dry-run hit the network: %v", rt2.calls)
+	}
+}
+
+// exitCode extracts a gplay exit code from err via the Coder contract,
+// defaulting to 1 when none is present.
+func exitCode(err error) int {
+	var c interface{ ExitCode() int }
+	if errors.As(err, &c) {
+		return c.ExitCode()
+	}
+	return 1
+}
+
+// TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP asserts that a
+// dry-run `releases upload --mapping <dir>` rejects a non-regular mapping
+// path as exit 20 — parity with the live path (PR #264 review).
+func TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP(t *testing.T) {
+	aab := writeFakeAAB(t)
+	dir := t.TempDir()
+	rt := &playRT{t: t}
+	hc := &http.Client{Transport: rt}
+	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package:     "com.example.app",
+		Track:       "internal",
+		AABPath:     aab,
+		MappingPath: dir,
+		DryRun:      true,
+	})
+	if err == nil {
+		t.Fatal("dry-run accepted a directory --mapping path")
+	}
+	if got := exitCode(err); got != 20 {
+		t.Errorf("exit code = %d, want 20; err=%v", got, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("dry-run hit the network: %v", rt.calls)
 	}
 }

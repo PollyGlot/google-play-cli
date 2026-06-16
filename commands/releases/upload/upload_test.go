@@ -76,6 +76,8 @@ func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
 	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/bundles"):
 		return jsonResp(200, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, r.versionCode)), nil
+	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
+		return jsonResp(200, `{"deobfuscationFile":{"symbolType":"proguard"}}`), nil
 	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/tracks/"):
 		body, _ := io.ReadAll(req.Body)
 		r.trackUpdateReq = body
@@ -358,6 +360,7 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 		"keep-edit-on-failure",
 		"confirm",
 		"dry-run",
+		"mapping",
 		"output",
 	} {
 		if cmd.Flags().Lookup(name) == nil {
@@ -435,5 +438,63 @@ func TestRun_inProgressRollout_confirmationShowsUserFractionPercent(t *testing.T
 	}
 	if !strings.Contains(stderr.String(), "5%") {
 		t.Errorf("✓ line should render userFraction 0.05 as 5%%; stderr=%q", stderr.String())
+	}
+}
+
+// writeFakeMapping creates a non-empty mapping.txt. The RoundTripper does
+// not validate the bytes — mappings.Upload just needs os.Open to succeed.
+func writeFakeMapping(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "mapping.txt")
+	if err := os.WriteFile(p, []byte("com.example.Foo -> a.a:\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return p
+}
+
+// TestRun_withMapping_uploadsMappingInSameEditAndConfirms asserts that
+// `releases upload --mapping <file>` uploads the ProGuard mapping inside
+// the same Edit (keyed by the bundle's versionCode) and that the ✓
+// confirmation line reflects the mapping (#250).
+func TestRun_withMapping_uploadsMappingInSameEditAndConfirms(t *testing.T) {
+	aab := writeFakeAAB(t)
+	mapping := writeFakeMapping(t)
+	rt := &uploadRT{
+		t:                  t,
+		editID:             "edit-xyz",
+		versionCode:        142,
+		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
+	}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := upload.Run(rc, upload.Input{
+		Package: "com.example.app",
+		Track:   "internal",
+		AABPath: aab,
+		Mapping: mapping,
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	wantSequence := []string{
+		"POST /token",
+		"POST /androidpublisher/v3/applications/com.example.app/edits",
+		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
+		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/apks/142/deobfuscationFiles/proguard",
+		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-xyz/tracks/internal",
+		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-xyz:commit",
+	}
+	if len(rt.calls) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	}
+	for i, want := range wantSequence {
+		if rt.calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		}
+	}
+	if !strings.Contains(stderr.String(), "mapping") {
+		t.Errorf("✓ line should mention the uploaded mapping; stderr=%q", stderr.String())
 	}
 }
