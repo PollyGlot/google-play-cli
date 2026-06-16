@@ -36,9 +36,9 @@ Icône, feature graphic, screenshots phone/tablet 7"/tablet 10"/TV/Wear, promo g
 **Statut :** `gplay metadata images list/pull/validate/apply` (+`--prune`) — sync calqué sur [ADR-0011](adr/0011-metadata-apply-sync-model.md) + identité par `sha256` ([ADR-0013](adr/0013-image-slot-reconciliation.md)).
 **Hors scope retenu :** (a) **Chromebook screenshots** — non exposé par l'énum `AppImageType` de `androidpublisher v3` (UI Play Console only) ; à ajouter si/quand Google l'expose. (b) **`metadata images clear`** (vider entièrement un slot via `deleteall`) — seul verbe sans équivalent déclaratif, repoussé (ADR-0013 §3). (c) Resize/composition/framing d'images (downstream tooling).
 
-### Mappings ProGuard/R8 — `edits.deobfuscationfiles`
-Upload du fichier `mapping.txt` pour dé-obfusquer les crashes côté Play Console.
-**Pourquoi plus tard :** crucial dès qu'on regarde les crashes — donc à coupler avec vitals. Sera ajouté quand on attaque vitals.
+### Mappings ProGuard/R8 — `edits.deobfuscationfiles` — ✅ **livré** ([#250](https://github.com/PollyGlot/google-play-cli/issues/250), éclaté du PRD vitals [#49](https://github.com/PollyGlot/google-play-cli/issues/49))
+Upload du fichier `mapping.txt` pour dé-obfusquer les crashes côté Play vitals.
+**Statut :** `gplay releases upload --mapping <mapping.txt>` (dans le même Edit que l'AAB) et `gplay releases mappings upload <mapping.txt> --version-code N` (après coup, pour une version déjà publiée). Surface sous `releases`, pas `vitals` : un Mapping est un upload d'Edit Android Publisher, pas une lecture du service Reporting ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md) / `CONTEXT.md` § Mapping). Types lus de l'énum Discovery (`proguard` / `nativeCode`).
 
 ### Fichiers OBB / expansion — `edits.expansionfiles` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
 Mécanisme legacy pour distribuer >150 MB d'assets hors APK.
