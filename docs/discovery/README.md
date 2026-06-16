@@ -11,7 +11,8 @@ reference.
 | File | What it is |
 |------|-----------|
 | `androidpublisher_v3.json` | Pinned, normalized snapshot of the Android Publisher v3 Discovery doc. |
-| `paths.txt` | Derived existence-check index — one `id⇥method⇥path` line per API method. |
+| `playdeveloperreporting_v1beta1.json` | Pinned, normalized snapshot of the Play Developer Reporting v1beta1 Discovery doc — the read-only crashes/ANR vitals service (#49), a distinct host and OAuth scope. |
+| `paths.txt` | Derived existence-check index — one `id⇥method⇥path` line per API method, across **both** services (ids carry their service prefix). |
 
 **Generated — do not hand-edit.** Both files are produced by
 `make discovery-update`; an offline integrity test (`go test ./...`) fails if
@@ -44,8 +45,10 @@ The tool prints each snapshot's `revision` — cite it in the regen commit
 message. Snapshots are normalized (sorted keys, `etag` stripped) so each regen
 produces a minimal, reviewable diff.
 
-- **Source:** `https://androidpublisher.googleapis.com/$discovery/rest?version=v3`
-- **Last synced:** 2026-06-08 (`androidpublisher_v3` revision `20260608`)
+- **Sources:**
+  - `https://androidpublisher.googleapis.com/$discovery/rest?version=v3`
+  - `https://playdeveloperreporting.googleapis.com/$discovery/rest?version=v1beta1`
+- **Last synced:** `androidpublisher_v3` revision `20260613`; `playdeveloperreporting_v1beta1` revision `20260611`
 
 Freshness is **not** a per-PR gate — upstream drift is normal and must never
 block an unrelated PR. A human runs `make discovery-update` on demand. See
