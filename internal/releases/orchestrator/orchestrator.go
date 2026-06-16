@@ -371,8 +371,15 @@ func dryRunResult(opts Opts) (*Result, error) {
 	}
 
 	if opts.MappingPath != "" {
-		if _, err := os.Stat(opts.MappingPath); err != nil {
+		st, err := os.Stat(opts.MappingPath)
+		if err != nil {
 			return nil, &dryRunError{msg: "mapping not accessible: " + err.Error()}
+		}
+		// Parity with the live path (mappings.Upload): a directory passes
+		// Stat but cannot be streamed, so reject non-regular files here too
+		// — otherwise --dry-run would green-light what the live upload rejects.
+		if !st.Mode().IsRegular() {
+			return nil, &dryRunError{msg: "mapping is not a regular file: " + opts.MappingPath}
 		}
 	}
 

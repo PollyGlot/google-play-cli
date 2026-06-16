@@ -202,3 +202,27 @@ func TestUploadMapping_uploadFails_discardsEdit(t *testing.T) {
 		t.Errorf("no edits.delete after a failed upload; calls=%v", rt.calls)
 	}
 }
+
+// TestUploadMapping_dryRun_directoryPath_exit20_noHTTP asserts dry-run
+// rejects a non-regular mapping path (a directory) as exit 20 — parity
+// with the live path, which cannot stream a directory (PR #264 review).
+func TestUploadMapping_dryRun_directoryPath_exit20_noHTTP(t *testing.T) {
+	dir := t.TempDir()
+	rt := &playRT{t: t}
+	hc := &http.Client{Transport: rt}
+	_, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
+		Package:     "com.example.app",
+		VersionCode: 142,
+		MappingPath: dir,
+		DryRun:      true,
+	})
+	if err == nil {
+		t.Fatal("dry-run accepted a directory mapping path")
+	}
+	if got := exitCode(err); got != 20 {
+		t.Errorf("exit code = %d, want 20; err=%v", got, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("dry-run hit the network: %v", rt.calls)
+	}
+}

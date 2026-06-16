@@ -855,3 +855,29 @@ func exitCode(err error) int {
 	}
 	return 1
 }
+
+// TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP asserts that a
+// dry-run `releases upload --mapping <dir>` rejects a non-regular mapping
+// path as exit 20 — parity with the live path (PR #264 review).
+func TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP(t *testing.T) {
+	aab := writeFakeAAB(t)
+	dir := t.TempDir()
+	rt := &playRT{t: t}
+	hc := &http.Client{Transport: rt}
+	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package:     "com.example.app",
+		Track:       "internal",
+		AABPath:     aab,
+		MappingPath: dir,
+		DryRun:      true,
+	})
+	if err == nil {
+		t.Fatal("dry-run accepted a directory --mapping path")
+	}
+	if got := exitCode(err); got != 20 {
+		t.Errorf("exit code = %d, want 20; err=%v", got, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("dry-run hit the network: %v", rt.calls)
+	}
+}

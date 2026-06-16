@@ -146,3 +146,29 @@ func TestUpload_apiError_surfacesAPIError(t *testing.T) {
 		t.Errorf("StatusCode = %d, want 403", apiErr.StatusCode)
 	}
 }
+
+// TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP asserts a
+// non-regular path (a directory) is rejected as a client-side validation
+// error (exit 20) BEFORE any HTTP — os.Open+Stat both succeed on a
+// directory, so without an explicit regular-file guard it would only fail
+// later as a transport error (exit 50). Regression for the PR #264 review.
+func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {
+	dir := t.TempDir() // a directory, not a regular file
+	transport := &rt{}
+	hc := &http.Client{Transport: transport}
+
+	_, err := mappings.Upload(context.Background(), hc, "com.example.app", "edit-1", 142, mappings.TypeProguard, dir)
+	if err == nil {
+		t.Fatal("Upload accepted a directory as a mapping path")
+	}
+	if got := exit.For(err); got != 20 {
+		t.Errorf("exit.For(err) = %d, want 20; err=%v", got, err)
+	}
+	var ioErr *mappings.LocalIOError
+	if !errors.As(err, &ioErr) {
+		t.Errorf("error %v is not *mappings.LocalIOError", err)
+	}
+	if transport.gotMethod != "" {
+		t.Errorf("uploader hit the network for a directory path: %s %s", transport.gotMethod, transport.gotPath)
+	}
+}

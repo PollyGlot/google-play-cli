@@ -80,8 +80,15 @@ func UploadMapping(ctx context.Context, hc *http.Client, opts MappingOpts) (*Map
 	}
 
 	if opts.DryRun {
-		if _, err := os.Stat(opts.MappingPath); err != nil {
+		st, err := os.Stat(opts.MappingPath)
+		if err != nil {
 			return nil, &dryRunError{msg: "mapping not accessible: " + err.Error()}
+		}
+		// Parity with the live path (mappings.Upload): a directory passes
+		// Stat but cannot be streamed, so reject non-regular files in
+		// dry-run too, keeping --dry-run and live behavior aligned.
+		if !st.Mode().IsRegular() {
+			return nil, &dryRunError{msg: "mapping is not a regular file: " + opts.MappingPath}
 		}
 		return &MappingResult{VersionCode: opts.VersionCode, FileType: fileType}, nil
 	}
