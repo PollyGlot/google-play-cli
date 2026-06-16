@@ -43,6 +43,16 @@ a `gplay-cli-usage` foundation. Install:
 - **Gate before every PR** (CI + pre-commit enforce): `make format lint test
   verb-gate` (verb-gate blocks pre-rename verbs, ADR-0019).
 
+## Pull requests
+
+- **Docs-only PRs: merge without asking.** If a PR changes *only* documentation
+  — Markdown and doc assets (`*.md`: `README`, `CLAUDE.md`, `CONTEXT.md`,
+  everything under `docs/` incl. ROADMAP/BACKLOG/DESIGN/ADRs) — you may
+  squash-merge it to `main` yourself once required CI checks are green, no
+  confirmation needed. **Docs-only means zero non-doc files**: any change to
+  `*.go`, `Makefile`, `.github/**`, `go.mod`/`go.sum`, or install/release
+  scripts disqualifies the PR — those still need explicit approval before merge.
+
 ## Adding a command
 
 1. **In scope?** Check `docs/BACKLOG.md` — surface the decision, don't silently
