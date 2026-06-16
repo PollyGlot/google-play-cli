@@ -32,6 +32,7 @@ import (
 	metadatapull "github.com/PollyGlot/google-play-cli/commands/metadata/pull"
 	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
 	releaseslist "github.com/PollyGlot/google-play-cli/commands/releases/list"
+	releasesmappings "github.com/PollyGlot/google-play-cli/commands/releases/mappings"
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
@@ -212,6 +213,21 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	releases.AddCommand(kernel.MarkMutating(rollout.NewResumeCommand(boot)))
 	releases.AddCommand(kernel.MarkMutating(rollout.NewCompleteCommand(boot)))
 	releases.AddCommand(releaseslist.NewCommand(boot))
+
+	// `gplay releases mappings` — ProGuard/R8 deobfuscation mappings, the
+	// publisher-Edit side of vitals symbolication (CONTEXT.md / ADR-0027 /
+	// #250). It lives under releases (not vitals) because a Mapping is an
+	// androidpublisher Edit upload, not a read from the Reporting service.
+	// Only the upload leaf mutates Play state.
+	mappings := &cobra.Command{
+		Use:           "mappings",
+		Short:         "Manage ProGuard/R8 deobfuscation mappings (symbolicate Play vitals crash stacks)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	mappings.AddCommand(kernel.MarkMutating(releasesmappings.NewCommand(boot)))
+	releases.AddCommand(mappings)
 	root.AddCommand(releases)
 
 	tracks := &cobra.Command{
