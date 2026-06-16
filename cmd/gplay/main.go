@@ -53,6 +53,7 @@ import (
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
 	tracksview "github.com/PollyGlot/google-play-cli/commands/tracks/view"
 	vitalsquery "github.com/PollyGlot/google-play-cli/commands/vitals/query"
+	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -309,6 +310,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	vitals.AddCommand(kernel.WithScope(vitalsquery.NewCommand(boot), token.ReportingScope))
+	// Opinionated metric-set presets (vitals crashes, vitals anr, …) — built
+	// from a data list so the family stays consistent; each requests the
+	// least-privilege reporting scope like every other vitals leaf.
+	for _, spec := range vitalscmd.Presets {
+		vitals.AddCommand(kernel.WithScope(vitalscmd.NewPresetCommand(boot, spec), token.ReportingScope))
+	}
 	root.AddCommand(vitals)
 
 	// `gplay metadata` — Store front Listings (per-locale text), the

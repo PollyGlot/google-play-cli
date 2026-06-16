@@ -15,10 +15,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"golang.org/x/oauth2"
 
+	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -151,7 +151,7 @@ func TestRun_crashrate_endToEnd(t *testing.T) {
 		t.Errorf("token scope = %q, want %q", rt.tokenScopes, token.ReportingScope)
 	}
 
-	p := r.(Payload)
+	p := r.(vitalscmd.Payload)
 	if len(p.Timeline.Rows) != 2 {
 		t.Fatalf("timeline rows = %d, want 2", len(p.Timeline.Rows))
 	}
@@ -209,42 +209,6 @@ func TestRun_unknownPeriod_isUsageError(t *testing.T) {
 	_, err := Run(rc, Input{MetricSet: "crashrate", Package: "com.example.app", Period: "WEEKLY"})
 	if code := exitCode(t, err); code != 2 {
 		t.Errorf("exit = %d, want 2 (usage)", code)
-	}
-}
-
-func TestBuildBody_dailyIsDateOnly(t *testing.T) {
-	now := time.Date(2026, 6, 16, 13, 30, 0, 0, time.UTC)
-	body, err := buildBody([]string{"crashRate"}, []string{"versionCode"}, "DAILY", 28*24*time.Hour, now)
-	if err != nil {
-		t.Fatalf("buildBody: %v", err)
-	}
-	var parsed struct {
-		Metrics      []string `json:"metrics"`
-		Dimensions   []string `json:"dimensions"`
-		TimelineSpec struct {
-			AggregationPeriod string         `json:"aggregationPeriod"`
-			StartTime         map[string]int `json:"startTime"`
-			EndTime           map[string]int `json:"endTime"`
-		} `json:"timelineSpec"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if parsed.TimelineSpec.AggregationPeriod != "DAILY" {
-		t.Errorf("period = %q", parsed.TimelineSpec.AggregationPeriod)
-	}
-	// End is today (date-only), start is 28 days earlier.
-	if parsed.TimelineSpec.EndTime["day"] != 16 || parsed.TimelineSpec.EndTime["month"] != 6 {
-		t.Errorf("endTime = %v, want 2026-06-16", parsed.TimelineSpec.EndTime)
-	}
-	if _, hasHours := parsed.TimelineSpec.EndTime["hours"]; hasHours {
-		t.Errorf("DAILY endTime must be date-only, got hours: %v", parsed.TimelineSpec.EndTime)
-	}
-	if parsed.TimelineSpec.StartTime["day"] != 19 || parsed.TimelineSpec.StartTime["month"] != 5 {
-		t.Errorf("startTime = %v, want 2026-05-19 (28d before)", parsed.TimelineSpec.StartTime)
-	}
-	if len(parsed.Dimensions) != 1 || parsed.Dimensions[0] != "versionCode" {
-		t.Errorf("dimensions = %v", parsed.Dimensions)
 	}
 }
 
