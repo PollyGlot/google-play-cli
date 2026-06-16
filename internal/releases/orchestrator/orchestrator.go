@@ -17,6 +17,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/bundles"
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
+	"github.com/PollyGlot/google-play-cli/internal/play/mappings"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 )
@@ -145,6 +146,13 @@ type Opts struct {
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
 
+	// MappingPath, when set, uploads a ProGuard/R8 deobfuscation file (a
+	// Mapping) alongside the AAB in the SAME Edit, keyed by the versionCode
+	// the bundle upload returns. Empty means no mapping is uploaded. This
+	// is the `releases upload --mapping` common case (#250); symbolicating
+	// obfuscated crash stacks in Play vitals depends on it.
+	MappingPath string
+
 	// Confirm gates production-impacting writes. Required when Track is
 	// "production" AND Status would publish to real users (Completed or
 	// InProgress). Draft / safe-default production uploads do not need
@@ -169,6 +177,11 @@ type Result struct {
 	DefaultLanguage  string          `json:"defaultLanguage,omitempty"`
 	Locales          []string        `json:"locales,omitempty"`
 	RawTrackResponse json.RawMessage `json:"-"`
+
+	// MappingUploaded reports whether a ProGuard/R8 mapping was uploaded
+	// alongside the AAB (the --mapping path, #250). The ✓ confirmation
+	// line surfaces it; the JSON pass-through stays the tracks.update body.
+	MappingUploaded bool `json:"-"`
 }
 
 // Upload performs the upload flow inside a single Edit:
@@ -247,6 +260,18 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 			return err
 		}
 		result.VersionCode = versionCode
+
+		// Upload the ProGuard/R8 mapping in the SAME edit once the
+		// versionCode is known. A failure here aborts the edit (auto-
+		// discard via WithEdit) so we never commit a release whose mapping
+		// silently failed to attach — the whole point is readable crash
+		// stacks (#250).
+		if opts.MappingPath != "" {
+			if _, err := mappings.Upload(ctx, hc, opts.Package, editID, versionCode, mappings.TypeProguard, opts.MappingPath); err != nil {
+				return err
+			}
+			result.MappingUploaded = true
+		}
 
 		release := buildRelease(versionCode, opts)
 		release.ReleaseNotes = localized
@@ -342,6 +367,12 @@ func dryRunResult(opts Opts) (*Result, error) {
 	if opts.AABPath != "" {
 		if _, err := os.Stat(opts.AABPath); err != nil {
 			return nil, &dryRunError{msg: "AAB not accessible: " + err.Error()}
+		}
+	}
+
+	if opts.MappingPath != "" {
+		if _, err := os.Stat(opts.MappingPath); err != nil {
+			return nil, &dryRunError{msg: "mapping not accessible: " + err.Error()}
 		}
 	}
 

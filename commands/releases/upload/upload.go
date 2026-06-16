@@ -24,6 +24,7 @@ type Input struct {
 	Package           string
 	Track             string
 	AABPath           string
+	Mapping           string
 	ReleaseNotes      string
 	ReleaseNotesDir   string
 	Draft             bool
@@ -202,6 +203,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Package:           pkg,
 		Track:             in.Track,
 		AABPath:           in.AABPath,
+		MappingPath:       in.Mapping,
 		Status:            status,
 		UserFraction:      in.StagedFraction,
 		ReleaseNotes:      in.ReleaseNotes,
@@ -224,6 +226,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if result.Status == "inProgress" {
 			extra = ", userFraction " + output.Percent(result.UserFraction)
 		}
+		if result.MappingUploaded {
+			extra += ", mapping uploaded"
+		}
 		rc.Confirmf("uploaded versionCode %d to track %q (status %s%s)",
 			result.VersionCode, result.Track, result.Status, extra)
 	}
@@ -244,6 +249,11 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 
 Performs the full Edit lifecycle in one call:
   edits.insert → bundles.upload → tracks.update → edits.commit
+
+Pass --mapping <mapping.txt> to upload the AAB's ProGuard/R8 deobfuscation
+file in the same Edit, so Play vitals can symbolicate obfuscated crash
+stacks. To attach a mapping to an already-published version, use
+gplay releases mappings upload instead.
 
 Targeting production defaults to a draft release (ADR-0002) unless
 --complete or --staged is supplied. Any string is accepted as --track
@@ -267,6 +277,7 @@ so closed-test tracks with custom names just work.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name)")
+	cmd.Flags().StringVar(&in.Mapping, "mapping", "", "ProGuard/R8 deobfuscation file (mapping.txt) uploaded with the AAB so Play vitals can symbolicate obfuscated crash stacks")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "release notes text (applied to the app's default language)")
 	cmd.Flags().StringVar(&in.ReleaseNotesDir, "release-notes-dir", "", "directory of <locale>.txt files (with optional default.txt fallback)")
 	cmd.Flags().BoolVar(&in.Draft, "draft", false, "force the release status to draft")
