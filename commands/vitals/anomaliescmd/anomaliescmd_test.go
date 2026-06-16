@@ -43,14 +43,23 @@ func (r *anomRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func saJSON(t *testing.T) []byte {
 	t.Helper()
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	}
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, _ := json.Marshal(map[string]any{
+	raw, err := json.Marshal(map[string]any{
 		"type": "service_account", "project_id": "p",
 		"private_key": string(pemBytes), "client_email": "ci@p.iam.gserviceaccount.com",
 		"token_uri": "https://oauth2.googleapis.com/token",
 	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
 	return raw
 }
 
@@ -92,11 +101,14 @@ func TestRun_listsAnomalies_withSinceWindow(t *testing.T) {
 func TestRun_rawFilterOverridesSince(t *testing.T) {
 	rc, rt, _ := newRC(t, `{"anomalies":[]}`)
 	raw := `activeBetween("2026-01-01T00:00:00Z", UNBOUNDED)`
-	if _, err := Run(rc, Input{Package: "com.example.app", Filter: raw}); err != nil {
+	// Both --since AND --filter are set: --filter must win, so the raw
+	// (UNBOUNDED) predicate reaches the API and the --since-derived
+	// activeBetween window is NOT used.
+	if _, err := Run(rc, Input{Package: "com.example.app", Since: "7d", Filter: raw}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if !strings.Contains(rt.lastURL, "UNBOUNDED") {
-		t.Errorf("explicit --filter should reach the API: %q", rt.lastURL)
+		t.Errorf("explicit --filter should override --since and reach the API: %q", rt.lastURL)
 	}
 }
 

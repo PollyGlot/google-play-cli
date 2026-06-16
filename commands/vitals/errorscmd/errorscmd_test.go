@@ -43,14 +43,23 @@ func (r *errorsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func saJSON(t *testing.T) []byte {
 	t.Helper()
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	}
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, _ := json.Marshal(map[string]any{
+	raw, err := json.Marshal(map[string]any{
 		"type": "service_account", "project_id": "p",
 		"private_key": string(pemBytes), "client_email": "ci@p.iam.gserviceaccount.com",
 		"token_uri": "https://oauth2.googleapis.com/token",
 	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
 	return raw
 }
 

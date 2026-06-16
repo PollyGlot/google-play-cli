@@ -68,6 +68,32 @@ func TestBuildBody_hourlyCarriesHour_andFilter(t *testing.T) {
 	}
 }
 
+// TestBuildBody_hourlyMidnightKeepsZeroHour pins the *int fix: an HOURLY window
+// whose boundary lands on midnight must carry an explicit "hours":0, not omit it
+// (which would send a date-only datetime for an HOURLY request).
+func TestBuildBody_hourlyMidnightKeepsZeroHour(t *testing.T) {
+	now := time.Date(2026, 6, 16, 0, 30, 0, 0, time.UTC) // 00:30 → end truncates to 00:00
+	body, err := buildBody([]string{"crashRate"}, nil, "HOURLY", "", time.Hour, now)
+	if err != nil {
+		t.Fatalf("buildBody: %v", err)
+	}
+	var parsed struct {
+		TimelineSpec struct {
+			EndTime map[string]json.RawMessage `json:"endTime"`
+		} `json:"timelineSpec"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	h, ok := parsed.TimelineSpec.EndTime["hours"]
+	if !ok {
+		t.Fatalf("HOURLY midnight endTime must include the hours field: %v", parsed.TimelineSpec.EndTime)
+	}
+	if string(h) != "0" {
+		t.Errorf("endTime hours = %s, want 0", h)
+	}
+}
+
 func TestParseSince(t *testing.T) {
 	cases := []struct {
 		in      string

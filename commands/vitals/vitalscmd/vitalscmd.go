@@ -213,11 +213,17 @@ func ParseSince(spec string) (time.Duration, error) {
 // fields are left unset (the API requires it) and the timezone is left unset so
 // the metric set's default applies (America/Los_Angeles for DAILY, UTC for
 // HOURLY) — see the TimelineSpec prose in the snapshot.
+//
+// Hours is a *int, not an int: an HOURLY window whose boundary lands on
+// midnight (hour 0) must still carry `"hours":0`. With a bare int + omitempty,
+// hour 0 would be dropped, sending a date-only datetime for an HOURLY request —
+// indistinguishable from the DAILY (date-only) shape. The pointer omits only
+// the DAILY case (nil) and keeps an explicit 0 for HOURLY.
 type dateTime struct {
-	Year  int `json:"year"`
-	Month int `json:"month"`
-	Day   int `json:"day"`
-	Hours int `json:"hours,omitempty"`
+	Year  int  `json:"year"`
+	Month int  `json:"month"`
+	Day   int  `json:"day"`
+	Hours *int `json:"hours,omitempty"`
 }
 
 // buildBody assembles the `:query` request body for the given window. endTime is
@@ -253,7 +259,8 @@ func buildBody(metrics, dimensions []string, period, filter string, since time.D
 func toDateTime(t time.Time, hourly bool) dateTime {
 	d := dateTime{Year: t.Year(), Month: int(t.Month()), Day: t.Day()}
 	if hourly {
-		d.Hours = t.Hour()
+		h := t.Hour()
+		d.Hours = &h
 	}
 	return d
 }
