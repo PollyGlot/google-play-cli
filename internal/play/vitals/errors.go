@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -24,76 +23,59 @@ func ErrorCountSet() MetricSet {
 }
 
 // SearchOptions bounds an errors `:search` (issues or reports): an AIP-160
-// Filter, the [Start,End) interval, an optional PageSize and OrderBy. The
-// interval is sent as date-only datapoints in the metric set's default
-// timezone.
+// Filter, the [Start,End) interval, an OrderBy, and a total Limit (0 = every
+// page). The interval is sent as date-only datapoints in the metric set's
+// default timezone. The call auto-paginates to Limit (or to exhaustion).
 type SearchOptions struct {
-	Filter   string
-	Start    time.Time
-	End      time.Time
-	PageSize int
-	OrderBy  string
+	Filter  string
+	Start   time.Time
+	End     time.Time
+	Limit   int
+	OrderBy string
 }
 
 const (
 	opSearchIssues  = "playdeveloperreporting.vitals.errors.issues.search"
 	opSearchReports = "playdeveloperreporting.vitals.errors.reports.search"
+
+	// Per-page sizes: the documented maxima, to minimise round-trips. The API
+	// caps to these regardless, and the loop follows nextPageToken to Limit.
+	pageMaxIssues  = 1000
+	pageMaxReports = 100
 )
 
-// SearchErrorIssues issues errors.issues.search (GET) for pkg and returns the
-// verbatim 2xx body (the clustered error issues) for the JSON pass-through.
+// SearchErrorIssues issues errors.issues.search (GET) for pkg, following
+// nextPageToken to opts.Limit (0 = all), and returns the rebuilt
+// {errorIssues:[...]} envelope (items verbatim) for the JSON pass-through.
 func SearchErrorIssues(ctx context.Context, hc *http.Client, pkg string, opts SearchOptions) (json.RawMessage, error) {
-	return searchErrors(ctx, hc, opSearchIssues, "errorIssues", pkg, opts)
+	return searchErrors(ctx, hc, opSearchIssues, "errorIssues", pageMaxIssues, pkg, opts)
 }
 
-// SearchErrorReports issues errors.reports.search (GET) for pkg and returns the
-// verbatim 2xx body (individual error reports / stack traces).
+// SearchErrorReports issues errors.reports.search (GET) for pkg, following
+// nextPageToken to opts.Limit, and returns the rebuilt {errorReports:[...]}
+// envelope (individual reports / stack traces).
 func SearchErrorReports(ctx context.Context, hc *http.Client, pkg string, opts SearchOptions) (json.RawMessage, error) {
-	return searchErrors(ctx, hc, opSearchReports, "errorReports", pkg, opts)
+	return searchErrors(ctx, hc, opSearchReports, "errorReports", pageMaxReports, pkg, opts)
 }
 
-// searchErrors is the shared GET `:search` call for the errors sub-resources.
-func searchErrors(ctx context.Context, hc *http.Client, op, resource, pkg string, opts SearchOptions) (json.RawMessage, error) {
-	u := api.ReportingBase + "/apps/" + url.PathEscape(pkg) + "/" + resource + ":search"
-	q := url.Values{}
+// searchErrors is the shared, auto-paginating GET `:search` for the errors
+// sub-resources.
+func searchErrors(ctx context.Context, hc *http.Client, op, itemsKey string, pageSize int, pkg string, opts SearchOptions) (json.RawMessage, error) {
+	base := url.Values{}
 	if opts.Filter != "" {
-		q.Set("filter", opts.Filter)
+		base.Set("filter", opts.Filter)
 	}
 	if opts.OrderBy != "" {
-		q.Set("orderBy", opts.OrderBy)
-	}
-	if opts.PageSize > 0 {
-		q.Set("pageSize", strconv.Itoa(opts.PageSize))
+		base.Set("orderBy", opts.OrderBy)
 	}
 	if !opts.Start.IsZero() {
-		setIntervalDate(q, "interval.startTime", opts.Start)
+		setIntervalDate(base, "interval.startTime", opts.Start)
 	}
 	if !opts.End.IsZero() {
-		setIntervalDate(q, "interval.endTime", opts.End)
+		setIntervalDate(base, "interval.endTime", opts.End)
 	}
-	if enc := q.Encode(); enc != "" {
-		u += "?" + enc
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(errBody, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response: " + readErr.Error(), Cause: readErr}
-	}
-	return raw, nil
+	baseURL := api.ReportingBase + "/apps/" + url.PathEscape(pkg) + "/" + itemsKey + ":search"
+	return paginateGET(ctx, hc, op, pkg, baseURL, base, itemsKey, pageSize, opts.Limit)
 }
 
 // setIntervalDate writes the date-only google.type.DateTime query params for an

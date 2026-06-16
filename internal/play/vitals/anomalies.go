@@ -4,24 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-const opListAnomalies = "playdeveloperreporting.anomalies.list"
+const (
+	opListAnomalies  = "playdeveloperreporting.anomalies.list"
+	pageMaxAnomalies = 100
+)
 
 // AnomalyListOptions bounds an anomalies.list call: an AIP-160 Filter (the
 // window is expressed as an `activeBetween(...)` filter — see ActiveBetween) and
-// a PageSize.
+// a total Limit (0 = every page). The call auto-paginates to Limit.
 type AnomalyListOptions struct {
-	Filter   string
-	PageSize int
+	Filter string
+	Limit  int
 }
 
 // ActiveBetween builds the anomalies `activeBetween("start", "end")` filter from
@@ -32,40 +33,17 @@ func ActiveBetween(start, end time.Time) string {
 		start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339))
 }
 
-// ListAnomalies issues anomalies.list (GET) for pkg and returns the verbatim 2xx
-// body (Play-detected metric anomalies) for the JSON pass-through.
+// ListAnomalies issues anomalies.list (GET) for pkg, following nextPageToken to
+// opts.Limit (0 = all), and returns the rebuilt {anomalies:[...]} envelope
+// (items verbatim) for the JSON pass-through. The API default page is only 10,
+// so a single page would silently under-report.
 func ListAnomalies(ctx context.Context, hc *http.Client, pkg string, opts AnomalyListOptions) (json.RawMessage, error) {
-	u := api.ReportingBase + "/apps/" + url.PathEscape(pkg) + "/anomalies"
-	q := url.Values{}
+	base := url.Values{}
 	if opts.Filter != "" {
-		q.Set("filter", opts.Filter)
+		base.Set("filter", opts.Filter)
 	}
-	if opts.PageSize > 0 {
-		q.Set("pageSize", strconv.Itoa(opts.PageSize))
-	}
-	if enc := q.Encode(); enc != "" {
-		u += "?" + enc
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, &api.Error{Operation: opListAnomalies, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: opListAnomalies, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(errBody, resp.StatusCode)
-		return nil, &api.Error{Operation: opListAnomalies, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: opListAnomalies, Package: pkg, StatusCode: resp.StatusCode, Message: "read response: " + readErr.Error(), Cause: readErr}
-	}
-	return raw, nil
+	baseURL := api.ReportingBase + "/apps/" + url.PathEscape(pkg) + "/anomalies"
+	return paginateGET(ctx, hc, opListAnomalies, pkg, baseURL, base, "anomalies", pageMaxAnomalies, opts.Limit)
 }
 
 // Anomaly is the render-ready subset of a Play-detected metric anomaly: which
@@ -124,8 +102,8 @@ func lastPathSegment(s string) string {
 // period renders the anomaly's [start, end) window compactly; an unset endpoint
 // is omitted.
 func period(start, end apiDateTime) string {
-	s := start.format()
-	e := end.format()
+	s := start.format(false)
+	e := end.format(false)
 	switch {
 	case s != "" && e != "":
 		return s + " → " + e

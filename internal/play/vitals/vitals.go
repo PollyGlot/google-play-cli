@@ -92,11 +92,62 @@ func MetricSetNames() []string {
 
 const opQuery = "playdeveloperreporting.vitals.query"
 
-// Query issues the metric set's `:query` POST for pkg with the given request
-// body and returns the verbatim 2xx response for the ADR-0003 JSON
-// pass-through. A non-2xx becomes an *api.Error carrying the status, so the
-// shared classifier maps 403 → exit 11, 404 → exit 30, etc.
+// Query issues the metric set's `:query` POST for pkg, following the response's
+// nextPageToken to completion, and returns a rebuilt {rows:[...]} envelope
+// (rows verbatim — an ADR-0003 pass-through across the merged pages). The
+// metric-set `:query` caps at 1000 rows per page, so a high-cardinality slice
+// (e.g. by country over a wide window) would otherwise be silently truncated. A
+// non-2xx becomes an *api.Error carrying the status, so the shared classifier
+// maps 403 → exit 11, 404 → exit 30, etc.
 func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body []byte) (json.RawMessage, error) {
+	// Decode the caller's request into a field map so the continuation
+	// pageToken can be injected without reshaping the other fields (metrics,
+	// timelineSpec, …) — they pass through verbatim.
+	req := map[string]json.RawMessage{}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			return nil, &api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
+		}
+	}
+
+	rows := make([]json.RawMessage, 0)
+	seen := map[string]struct{}{}
+	token := ""
+	for {
+		if token != "" {
+			tok, _ := json.Marshal(token)
+			req["pageToken"] = tok
+		} else {
+			delete(req, "pageToken")
+		}
+		pageBody, err := json.Marshal(req)
+		if err != nil {
+			return nil, &api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
+		}
+		raw, err := queryPage(ctx, hc, set, pkg, pageBody)
+		if err != nil {
+			return nil, err
+		}
+		pageRows, next, derr := decodePage(raw, "rows")
+		if derr != nil {
+			return nil, &api.Error{Operation: opQuery, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
+		}
+		rows = append(rows, pageRows...)
+		if next == "" {
+			break
+		}
+		if _, dup := seen[next]; dup {
+			return nil, tokenLoopError(opQuery, pkg, "vitals :query")
+		}
+		seen[next] = struct{}{}
+		token = next
+	}
+	return rebuildEnvelope("rows", rows)
+}
+
+// queryPage issues a single `:query` POST and returns the verbatim 2xx page
+// body or an *api.Error.
+func queryPage(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body []byte) (json.RawMessage, error) {
 	u := api.ReportingBase + "/apps/" + url.PathEscape(pkg) + "/" + set.Resource + ":query"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
@@ -248,12 +299,16 @@ type apiDateTime struct {
 	Minutes int `json:"minutes"`
 }
 
-func (d apiDateTime) format() string {
+// format renders the datapoint date, appending the HH:MM time when hourly (so
+// an HOURLY timeline's midnight bucket reads "… 00:00" consistently with every
+// other hour) or when a non-zero time is present. A zero Year is an unset
+// datapoint (e.g. an open-ended anomaly window) and renders empty.
+func (d apiDateTime) format(hourly bool) string {
 	if d.Year == 0 {
-		return "" // unset datapoint (e.g. an open-ended anomaly window)
+		return ""
 	}
 	s := fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day)
-	if d.Hours != 0 || d.Minutes != 0 {
+	if hourly || d.Hours != 0 || d.Minutes != 0 {
 		s += fmt.Sprintf(" %02d:%02d", d.Hours, d.Minutes)
 	}
 	return s
@@ -290,9 +345,10 @@ type apiMetricValue struct {
 func ParseTimeline(body []byte) (Timeline, error) {
 	var resp struct {
 		Rows []struct {
-			StartTime  apiDateTime         `json:"startTime"`
-			Dimensions []apiDimensionValue `json:"dimensions"`
-			Metrics    []apiMetricValue    `json:"metrics"`
+			StartTime         apiDateTime         `json:"startTime"`
+			AggregationPeriod string              `json:"aggregationPeriod"`
+			Dimensions        []apiDimensionValue `json:"dimensions"`
+			Metrics           []apiMetricValue    `json:"metrics"`
 		} `json:"rows"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
@@ -301,7 +357,7 @@ func ParseTimeline(body []byte) (Timeline, error) {
 	tl := Timeline{Rows: make([]Row, 0, len(resp.Rows))}
 	for _, r := range resp.Rows {
 		row := Row{
-			Date:       r.StartTime.format(),
+			Date:       r.StartTime.format(r.AggregationPeriod == "HOURLY"),
 			Dimensions: make(map[string]string, len(r.Dimensions)),
 			Metrics:    make(map[string]string, len(r.Metrics)),
 		}

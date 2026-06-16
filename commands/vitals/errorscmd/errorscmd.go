@@ -26,6 +26,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
+	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
 // mappingsNote documents the obfuscation degradation (#250) on the views that
@@ -93,9 +94,15 @@ type countsInput struct {
 }
 
 // runCounts queries the errorCount metric set, reusing the shared metric-set
-// orchestration (the errors.counts set is queryable like any rate set).
+// orchestration (the errors.counts set is queryable like any rate set). Note
+// errorCount does not support every --by dimension (no countryCode), so the
+// set-aware PresetParams rejects `--by country` with the valid set for errors.
 func runCounts(rc *kernel.RunContext, in countsInput) (output.Renderable, error) {
-	p, err := vitalscmd.PresetParams(vitals.ErrorCountSet(), in.Package, in.Version, in.By, in.Since, in.Period)
+	idx, err := schemaindex.Embedded()
+	if err != nil {
+		return nil, err
+	}
+	p, err := vitalscmd.PresetParams(idx, vitals.ErrorCountSet(), in.Package, in.Version, in.By, in.Since, in.Period)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +136,7 @@ one versionCode. Read-only; --output json mirrors the API response verbatim.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension: "+vitalscmd.ByChoices())
+	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension ("+vitalscmd.ByChoices()+"; availability depends on the metric set)")
 	cmd.Flags().StringVar(&in.Version, "version", "", "filter to a single versionCode")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")
@@ -181,7 +188,7 @@ func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error)
 		return nil, err
 	}
 	raw, err := vitals.SearchErrorIssues(rc.Ctx, hc, pkg, vitals.SearchOptions{
-		Filter: in.Filter, Start: start, End: end, PageSize: in.Limit, OrderBy: in.OrderBy,
+		Filter: in.Filter, Start: start, End: end, Limit: in.Limit, OrderBy: in.OrderBy,
 	})
 	if err != nil {
 		return nil, err
@@ -225,7 +232,7 @@ Read-only; --output json mirrors the API response verbatim.`,
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "AIP-160 filter, e.g. \"errorIssueType = CRASH\" or \"versionCode = 123\"")
 	cmd.Flags().StringVar(&in.OrderBy, "order-by", "", "sort order, e.g. \"errorReportCount desc\"")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max issues to return (0 = API default)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max issues to return (0 = all, no cap)")
 	return cmd
 }
 
@@ -273,7 +280,7 @@ func runReports(rc *kernel.RunContext, in reportsInput) (output.Renderable, erro
 		return nil, err
 	}
 	raw, err := vitals.SearchErrorReports(rc.Ctx, hc, pkg, vitals.SearchOptions{
-		Filter: in.Filter, Start: start, End: end, PageSize: in.Limit,
+		Filter: in.Filter, Start: start, End: end, Limit: in.Limit,
 	})
 	if err != nil {
 		return nil, err
@@ -317,7 +324,7 @@ Read-only; --output json mirrors the API response verbatim.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "AIP-160 filter, e.g. \"versionCode = 123\"")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max reports to return (0 = API default)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max reports to return (0 = all, no cap)")
 	return cmd
 }
 

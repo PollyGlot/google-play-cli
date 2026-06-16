@@ -70,6 +70,31 @@ func TestSearchErrorIssues_issuesGET(t *testing.T) {
 	}
 }
 
+// TestSearchErrorIssues_encodesFilterOrderByPageSize pins the search query
+// shaping: --filter, --order-by and the per-page size must reach the wire under
+// their exact API param names (a refactor emitting page_size would silently
+// break the call otherwise).
+func TestSearchErrorIssues_encodesFilterOrderByPageSize(t *testing.T) {
+	var gotURL string
+	hc := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotURL = r.URL.String()
+		return jsonResp(200, `{"errorIssues":[]}`), nil
+	})}
+	_, err := vitals.SearchErrorIssues(context.Background(), hc, "com.example.app", vitals.SearchOptions{
+		Filter:  "errorIssueType = CRASH",
+		OrderBy: "errorReportCount desc",
+		Limit:   25,
+	})
+	if err != nil {
+		t.Fatalf("SearchErrorIssues: %v", err)
+	}
+	for _, want := range []string{"filter=", "orderBy=", "pageSize=25"} {
+		if !strings.Contains(gotURL, want) {
+			t.Errorf("URL %q missing %q", gotURL, want)
+		}
+	}
+}
+
 func TestSearchErrorReports_reportsGETAndParse(t *testing.T) {
 	hc := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		if !strings.Contains(r.URL.Path, "/errorReports:search") {

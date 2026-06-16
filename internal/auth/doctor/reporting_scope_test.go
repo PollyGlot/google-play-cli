@@ -46,6 +46,47 @@ func TestCheckReportingScope_happyPath_observesReportingScope(t *testing.T) {
 	}
 }
 
+// TestScopeChain_reportingNotContaminatedByAndroidPublisher runs the real
+// default ordering — CheckScope (androidpublisher) then CheckReportingScope —
+// through ONE shared ScopeObserver, the way `auth doctor` does. The observer
+// only records the most recent token exchange, so this pins the invariant the
+// reporting check's honesty depends on: its own exchange must overwrite the
+// observer before the read-back, so the prior androidpublisher exchange does not
+// make the reporting check pass on a stale scope (a false least-privilege OK).
+func TestScopeChain_reportingNotContaminatedByAndroidPublisher(t *testing.T) {
+	sa := makeSignedSA(t)
+	rt := roundTripperFunc(func(_ *http.Request) (*http.Response, error) {
+		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+		}, nil
+	})
+	hc, obs := scopeWired(rt)
+
+	results := doctor.Run(context.Background(), sa, hc,
+		doctor.CheckScope(obs), doctor.CheckReportingScope(obs))
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2", len(results))
+	}
+	for i, r := range results {
+		if !r.Passed {
+			t.Errorf("check[%d] failed: %+v", i, r)
+		}
+	}
+	// After the chain the observer reflects the LAST (reporting) exchange.
+	found := false
+	for _, s := range obs.Scopes() {
+		if s == token.ReportingScope {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("observed scopes %v should reflect the reporting exchange, not the prior androidpublisher one", obs.Scopes())
+	}
+}
+
 // TestCheckReportingScope_nilObserver_reportsWiringBug mirrors CheckScope: a
 // missing observer is a gplay wiring bug, not a credential problem.
 func TestCheckReportingScope_nilObserver_reportsWiringBug(t *testing.T) {

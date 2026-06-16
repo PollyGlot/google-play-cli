@@ -35,8 +35,8 @@ func TestListAnomalies_getAndParse(t *testing.T) {
 		}]}`), nil
 	})}
 	raw, err := vitals.ListAnomalies(context.Background(), hc, "com.example.app", vitals.AnomalyListOptions{
-		Filter:   vitals.ActiveBetween(time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 16, 0, 0, 0, 0, time.UTC)),
-		PageSize: 50,
+		Filter: vitals.ActiveBetween(time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 16, 0, 0, 0, 0, time.UTC)),
+		Limit:  50,
 	})
 	if err != nil {
 		t.Fatalf("ListAnomalies: %v", err)

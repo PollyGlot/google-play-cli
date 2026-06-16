@@ -11,6 +11,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
+	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
 // PresetSpec describes one opinionated `gplay vitals <name>` command: a fixed
@@ -32,8 +33,9 @@ var byDimension = map[string]string{
 	"country":     "countryCode",
 }
 
-// ByChoices is the pipe-joined list of valid --by values, for help text and
-// error messages. Shared by the presets and `vitals errors counts`.
+// ByChoices is the pipe-joined list of all --by keys, for the (set-independent)
+// flag help. Which keys actually apply depends on the metric set — see
+// ByChoicesFor for the set-aware list used in error messages.
 func ByChoices() string {
 	keys := make([]string, 0, len(byDimension))
 	for k := range byDimension {
@@ -43,16 +45,46 @@ func ByChoices() string {
 	return strings.Join(keys, "|")
 }
 
+// ByChoicesFor is the pipe-joined list of --by keys whose mapped dimension the
+// given metric set actually supports (read from the snapshot). Not every set
+// supports every dimension — e.g. errorCount has no countryCode — so this is
+// what an actionable "--by not available" error lists.
+func ByChoicesFor(idx schemaindex.Index, set vitals.MetricSet) string {
+	supported := vitals.SupportedDimensions(idx, set)
+	keys := make([]string, 0, len(byDimension))
+	for k, dim := range byDimension {
+		if contains(supported, dim) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, "|")
+}
+
+func contains(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
 // PresetParams resolves the friendly preset flags (--by, --version) into Params
-// for a metric set: --by maps to the API dimension, --version to a versionCode
-// filter. It is shared by the opinionated presets and by `vitals errors counts`
-// (whose set is reached the same way). A bad --by or --version is CLI misuse.
-func PresetParams(set vitals.MetricSet, pkg, version, by, since, period string) (Params, error) {
+// for a metric set: --by maps to the API dimension (validated against THIS set's
+// supported dimensions, since not every set supports every one), --version to a
+// versionCode filter. Shared by the opinionated presets and `vitals errors
+// counts`. A bad --by or --version is CLI misuse; the --by error names the
+// user's token (e.g. `country`), not the internal API dimension.
+func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by, since, period string) (Params, error) {
 	var dimensions []string
 	if by != "" {
 		dim, ok := byDimension[by]
 		if !ok {
 			return Params{}, exit.Usagef("unknown --by %q (valid: %s)", by, ByChoices())
+		}
+		if !contains(vitals.SupportedDimensions(idx, set), dim) {
+			return Params{}, exit.Usagef("--by %q is not available for %s (valid: %s)", by, set.Name, ByChoicesFor(idx, set))
 		}
 		dimensions = []string{dim}
 	}
@@ -87,7 +119,11 @@ type presetInput struct {
 // Execute. Metrics are left empty so the set's primary metric is used — the
 // whole point of a preset is that the common case needs no metric knowledge.
 func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (output.Renderable, error) {
-	p, err := PresetParams(set, in.Package, in.Version, in.By, in.Since, in.Period)
+	idx, err := schemaindex.Embedded()
+	if err != nil {
+		return nil, err
+	}
+	p, err := PresetParams(idx, set, in.Package, in.Version, in.By, in.Since, in.Period)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +172,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Version, "version", "", "filter to a single versionCode")
-	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension: "+ByChoices())
+	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension ("+ByChoices()+"; availability depends on the metric set)")
 	cmd.Flags().StringVar(&in.Since, "since", DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")
 	return cmd

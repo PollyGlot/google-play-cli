@@ -161,6 +161,43 @@ func TestParseTimeline(t *testing.T) {
 	}
 }
 
+// TestParseTimeline_hourlyMidnightCarriesTime asserts the 00:00 bucket of an
+// HOURLY timeline renders with the time suffix, consistent with every other
+// hour (the row's aggregationPeriod drives it).
+func TestParseTimeline_hourlyMidnightCarriesTime(t *testing.T) {
+	body := []byte(`{"rows":[
+	  {"startTime":{"year":2026,"month":6,"day":1,"hours":0},"aggregationPeriod":"HOURLY","metrics":[{"metric":"crashRate","decimalValue":{"value":"0.01"}}]},
+	  {"startTime":{"year":2026,"month":6,"day":1,"hours":13},"aggregationPeriod":"HOURLY","metrics":[{"metric":"crashRate","decimalValue":{"value":"0.02"}}]}
+	]}`)
+	tl, err := vitals.ParseTimeline(body)
+	if err != nil {
+		t.Fatalf("ParseTimeline: %v", err)
+	}
+	if tl.Rows[0].Date != "2026-06-01 00:00" {
+		t.Errorf("midnight HOURLY date = %q, want 2026-06-01 00:00", tl.Rows[0].Date)
+	}
+	if tl.Rows[1].Date != "2026-06-01 13:00" {
+		t.Errorf("13:00 HOURLY date = %q, want 2026-06-01 13:00", tl.Rows[1].Date)
+	}
+}
+
+// TestQuery_emptyBodyTolerated asserts an empty 2xx page body does not surface
+// as a decode error — it yields an empty {rows:[]} envelope.
+func TestQuery_emptyBodyTolerated(t *testing.T) {
+	set, _ := vitals.MetricSetByName("crashrate")
+	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})}
+	raw, err := vitals.Query(context.Background(), hc, set, "com.example.app", []byte(`{"metrics":["crashRate"]}`))
+	if err != nil {
+		t.Fatalf("Query on empty body: %v", err)
+	}
+	tl, err := vitals.ParseTimeline(raw)
+	if err != nil || !tl.Empty() {
+		t.Errorf("empty body should yield an empty timeline, got %d rows / err %v", len(tl.Rows), err)
+	}
+}
+
 func contains(ss []string, want string) bool {
 	for _, s := range ss {
 		if s == want {

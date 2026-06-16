@@ -73,7 +73,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := vitals.ListAnomalies(rc.Ctx, hc, pkg, vitals.AnomalyListOptions{Filter: filter, PageSize: in.Limit})
+	raw, err := vitals.ListAnomalies(rc.Ctx, hc, pkg, vitals.AnomalyListOptions{Filter: filter, Limit: in.Limit})
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +135,6 @@ the metric set, anomalous metric and value, period, and dimensions.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 90d")
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "raw AIP-160 filter (overrides --since), e.g. an activeBetween(...) with UNBOUNDED")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max anomalies to return (0 = API default)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max anomalies to return (0 = all, no cap)")
 	return cmd
 }

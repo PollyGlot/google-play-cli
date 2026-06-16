@@ -79,6 +79,52 @@ func TestRunCounts_queriesErrorCountSet(t *testing.T) {
 	}
 }
 
+// TestRunCounts_byCountry_rejectedFriendly pins the set-aware --by behavior:
+// the errorCount set has no countryCode dimension, so `--by country` must be
+// rejected (exit 2) with a message naming the user's token "country" (not the
+// internal "countryCode") and listing only the set's valid choices.
+func TestRunCounts_byCountry_rejectedFriendly(t *testing.T) {
+	rc, _, _ := newRC(t, `{}`)
+	_, err := runCounts(rc, countsInput{Package: "com.example.app", By: "country"})
+	if err == nil {
+		t.Fatal("--by country must be rejected for errors counts")
+	}
+	var coder interface{ ExitCode() int }
+	if !errorsAs(err, &coder) || coder.ExitCode() != 2 {
+		t.Fatalf("want exit 2, got %v", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `"country"`) {
+		t.Errorf("error should name the user's --by token: %q", msg)
+	}
+	if strings.Contains(msg, "countryCode") {
+		t.Errorf("error must not leak the internal API dimension name: %q", msg)
+	}
+	if !strings.Contains(msg, "device") || !strings.Contains(msg, "versionCode") {
+		t.Errorf("error should list the set's valid --by choices: %q", msg)
+	}
+}
+
+// TestRunCounts_byDevice_isAccepted confirms a dimension the errorCount set DOES
+// support (--by device → deviceModel) passes validation and issues the query.
+func TestRunCounts_byDevice_isAccepted(t *testing.T) {
+	rc, rt, _ := newRC(t, `{"rows":[]}`)
+	if _, err := runCounts(rc, countsInput{Package: "com.example.app", By: "device"}); err != nil {
+		t.Fatalf("--by device should be accepted for errors counts: %v", err)
+	}
+	if !strings.Contains(rt.lastURL, "errorCountMetricSet:query") {
+		t.Errorf("expected a query call, got %q", rt.lastURL)
+	}
+}
+
+func errorsAs(err error, target *interface{ ExitCode() int }) bool {
+	if c, ok := err.(interface{ ExitCode() int }); ok {
+		*target = c
+		return true
+	}
+	return false
+}
+
 func TestRunIssues_searchesAndWarnsAboutMappings(t *testing.T) {
 	body := `{"errorIssues":[{"type":"CRASH","cause":"NullPointerException","location":"A.b","errorReportCount":"7","distinctUsers":"5","lastErrorReportTime":"2026-06-15T10:00:00Z"}]}`
 	rc, rt, stderr := newRC(t, body)
