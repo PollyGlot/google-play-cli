@@ -249,6 +249,9 @@ type apiDateTime struct {
 }
 
 func (d apiDateTime) format() string {
+	if d.Year == 0 {
+		return "" // unset datapoint (e.g. an open-ended anomaly window)
+	}
 	s := fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day)
 	if d.Hours != 0 || d.Minutes != 0 {
 		s += fmt.Sprintf(" %02d:%02d", d.Hours, d.Minutes)

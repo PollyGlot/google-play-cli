@@ -52,6 +52,7 @@ import (
 	trackscreate "github.com/PollyGlot/google-play-cli/commands/tracks/create"
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
 	tracksview "github.com/PollyGlot/google-play-cli/commands/tracks/view"
+	vitalsanomalies "github.com/PollyGlot/google-play-cli/commands/vitals/anomaliescmd"
 	vitalserrors "github.com/PollyGlot/google-play-cli/commands/vitals/errorscmd"
 	vitalsquery "github.com/PollyGlot/google-play-cli/commands/vitals/query"
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
@@ -320,6 +321,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// `vitals errors` — counts / issues / reports. The group's leaves carry the
 	// reporting scope themselves (see errorscmd.NewCommand), so it is added bare.
 	vitals.AddCommand(vitalserrors.NewCommand(boot))
+	vitals.AddCommand(kernel.WithScope(vitalsanomalies.NewCommand(boot), token.ReportingScope))
 	root.AddCommand(vitals)
 
 	// `gplay metadata` — Store front Listings (per-locale text), the
