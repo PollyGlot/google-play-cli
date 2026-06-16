@@ -15,7 +15,6 @@
 package schema
 
 import (
-	_ "embed"
 	"fmt"
 	"io"
 	"sort"
@@ -27,16 +26,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
-
-// indexJSON is the embedded Schema index — a committed, deterministic
-// projection of the Discovery snapshot (regenerate via `make
-// schema-index-update`). Embedding it is what makes `gplay schema` work offline
-// straight from `go install` with no build-time generation (precedent:
-// internal/compliance/datasafety embeds reference.csv). It is inert reference
-// data, not an API-calling dependency, so it does not contradict ADR-0007.
-//
-//go:embed schema_index.json
-var indexJSON []byte
 
 // Input is the request-shaped struct cobra builds from flags and args.
 type Input struct {
@@ -403,7 +392,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 // query writes a note to stderr and still returns a (empty) Renderable so the
 // command exits 0 — "found nothing" is not a failure.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	idx, err := schemaindex.Load(indexJSON)
+	idx, err := schemaindex.Embedded()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded schema index: %w", err)
 	}

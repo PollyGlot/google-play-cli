@@ -169,16 +169,36 @@ func deriveProperty(p discoveryProperty) Property {
 	return out
 }
 
-// Render derives the index from a normalized snapshot and marshals it to the
-// committed/embedded form: 2-space indent, HTML escaping off (descriptions
-// carry URLs and punctuation verbatim — ADR-0003), map keys emitted in sorted
-// order by encoding/json, and a trailing newline. Render is deterministic, so
-// `make schema-index-update` and the integrity test agree byte-for-byte.
-func Render(normalized []byte) ([]byte, error) {
-	idx, err := Derive(normalized)
-	if err != nil {
-		return nil, err
+// Merge folds several derived indexes into one. Methods are keyed by their
+// service-prefixed RPC id and schemas by type name, so entries from distinct
+// services (androidpublisher, playdeveloperreporting) coexist with no
+// collision. The merged Revision is the FIRST input's revision — the primary
+// service's stamp — keeping a single, deterministic top-level value (the index
+// is keyed by id, not by revision, so this is a label only). Inputs are merged
+// in slice order; with a stable Services order the result is deterministic.
+func Merge(indexes ...Index) Index {
+	out := Index{
+		Methods: map[string]Method{},
+		Schemas: map[string]Schema{},
 	}
+	for i, idx := range indexes {
+		if i == 0 {
+			out.Revision = idx.Revision
+		}
+		for id, m := range idx.Methods {
+			out.Methods[id] = m
+		}
+		for name, s := range idx.Schemas {
+			out.Schemas[name] = s
+		}
+	}
+	return out
+}
+
+// marshal renders an Index to the committed/embedded form: 2-space indent, HTML
+// escaping off (descriptions carry URLs and punctuation verbatim — ADR-0003),
+// map keys emitted in sorted order by encoding/json, and a trailing newline.
+func marshal(idx Index) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -187,4 +207,33 @@ func Render(normalized []byte) ([]byte, error) {
 		return nil, fmt.Errorf("encode schema index: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// Render derives the index from a single normalized snapshot and marshals it to
+// the committed/embedded form. Render is deterministic, so `make
+// schema-index-update` and the integrity test agree byte-for-byte. Use
+// RenderAll for the multi-service index the binary actually embeds.
+func Render(normalized []byte) ([]byte, error) {
+	idx, err := Derive(normalized)
+	if err != nil {
+		return nil, err
+	}
+	return marshal(idx)
+}
+
+// RenderAll derives and Merges every normalized snapshot into one multi-service
+// index, then marshals it. This is the generator `make schema-index-update`
+// runs and the offline integrity gate re-runs, so a re-render of the same
+// committed snapshots (in the same order) is byte-identical to the embedded
+// index.
+func RenderAll(snapshots [][]byte) ([]byte, error) {
+	indexes := make([]Index, 0, len(snapshots))
+	for _, snap := range snapshots {
+		idx, err := Derive(snap)
+		if err != nil {
+			return nil, err
+		}
+		indexes = append(indexes, idx)
+	}
+	return marshal(Merge(indexes...))
 }

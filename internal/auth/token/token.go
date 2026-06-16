@@ -21,6 +21,13 @@ import (
 // https://developers.google.com/android-publisher/authorization
 const AndroidPublisherScope = "https://www.googleapis.com/auth/androidpublisher"
 
+// ReportingScope is the OAuth2 scope required to talk to the Play Developer
+// Reporting API — the read-only post-launch quality service (crashes/ANR
+// vitals, #49). It is a DISTINCT scope from AndroidPublisherScope: `gplay
+// vitals` commands request only this one (least privilege), and the publishing
+// surface never requests it.
+const ReportingScope = "https://www.googleapis.com/auth/playdeveloperreporting"
+
 // AuthError wraps an HTTP error from the OAuth2 token endpoint so callers
 // (and the command layer) can map it to exit code 10.
 type AuthError struct {
@@ -38,12 +45,19 @@ func (e *AuthError) Unwrap() error { return e.Cause }
 // ExitCode satisfies exit.Coder: a refused JWT exchange is an auth failure.
 func (*AuthError) ExitCode() int { return 10 }
 
-// Source returns an oauth2.TokenSource that lazily mints access tokens for
-// the AndroidPublisherScope by signing a JWT with the service-account key
-// and exchanging it at sa.TokenURI. Errors from the exchange are wrapped in
-// *AuthError when the HTTP status indicates an auth failure.
-func Source(ctx context.Context, sa *serviceaccount.ServiceAccount) (oauth2.TokenSource, error) {
-	cfg, err := google.JWTConfigFromJSON(sa.Raw, AndroidPublisherScope)
+// Source returns an oauth2.TokenSource that lazily mints access tokens for the
+// requested scopes by signing a JWT with the service-account key and exchanging
+// it at sa.TokenURI. When no scope is passed it defaults to
+// AndroidPublisherScope — the publishing surface's contract — so existing
+// callers are unaffected; a `gplay vitals` command passes ReportingScope for
+// least-privilege access to the read-only reporting service (#49). Errors from
+// the exchange are wrapped in *AuthError when the HTTP status indicates an auth
+// failure.
+func Source(ctx context.Context, sa *serviceaccount.ServiceAccount, scopes ...string) (oauth2.TokenSource, error) {
+	if len(scopes) == 0 {
+		scopes = []string{AndroidPublisherScope}
+	}
+	cfg, err := google.JWTConfigFromJSON(sa.Raw, scopes...)
 	if err != nil {
 		return nil, err
 	}

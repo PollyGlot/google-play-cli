@@ -52,7 +52,9 @@ import (
 	trackscreate "github.com/PollyGlot/google-play-cli/commands/tracks/create"
 	trackslist "github.com/PollyGlot/google-play-cli/commands/tracks/list"
 	tracksview "github.com/PollyGlot/google-play-cli/commands/tracks/view"
+	vitalsquery "github.com/PollyGlot/google-play-cli/commands/vitals/query"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
+	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
@@ -292,6 +294,22 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	reviews.AddCommand(reviewslist.NewCommand(boot))
 	reviews.AddCommand(kernel.MarkMutating(reviewsreply.NewCommand(boot)))
 	root.AddCommand(reviews)
+
+	// `gplay vitals` — read-only post-launch quality signals (crashes/ANR and
+	// the other metric sets) from the Play Developer Reporting API. A DISTINCT
+	// Google service: every leaf is wrapped with kernel.WithScope so it mints a
+	// least-privilege playdeveloperreporting-scoped token, never androidpublisher
+	// (ADR-0027 / #49). The whole namespace is read-only, so nothing is marked
+	// mutating.
+	vitals := &cobra.Command{
+		Use:           "vitals",
+		Short:         "Read post-launch quality signals (crashes, ANRs, …) from Play vitals",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	vitals.AddCommand(kernel.WithScope(vitalsquery.NewCommand(boot), token.ReportingScope))
+	root.AddCommand(vitals)
 
 	// `gplay metadata` — Store front Listings (per-locale text), the
 	// fastlane-supply text side. See PRD #50 / ADR-0011.

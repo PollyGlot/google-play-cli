@@ -1,6 +1,7 @@
 // Command schema-index-update derives the embedded Schema index
-// (commands/schema/schema_index.json) from the committed Discovery snapshot
-// under docs/discovery/ (issue #200). It is OFFLINE — it makes no network call;
+// (internal/schemaindex/schema_index.json) from the committed Discovery
+// snapshots under docs/discovery/ (issue #200). It is OFFLINE — it makes no
+// network call;
 // `make discovery-update` is the separate, networked step that refreshes the
 // snapshot this reads.
 //
@@ -23,15 +24,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// service is the single v1 surface: androidpublisher v3 (D2). The index is
-// keyed by native method id, whose leading segment is the service
-// discriminator, so adding a second service later (vitals, #49) is a data add,
-// not a schema change.
-var service = discovery.Service{Name: "androidpublisher", Host: "androidpublisher.googleapis.com", Version: "v3"}
-
 func main() {
-	snapDir := flag.String("snapshots", filepath.Join("docs", "discovery"), "directory the committed Discovery snapshot is read from")
-	out := flag.String("out", filepath.Join("commands", "schema", "schema_index.json"), "path to write the derived Schema index to")
+	snapDir := flag.String("snapshots", filepath.Join("docs", "discovery"), "directory the committed Discovery snapshots are read from")
+	out := flag.String("out", filepath.Join("internal", "schemaindex", "schema_index.json"), "path to write the derived Schema index to")
 	flag.Parse()
 
 	if err := run(*snapDir, *out); err != nil {
@@ -40,14 +35,22 @@ func main() {
 	}
 }
 
+// run derives the embedded index from EVERY committed Discovery snapshot
+// declared in discovery.Services (androidpublisher v3 + playdeveloperreporting
+// v1beta1, #49). The index is keyed by native method id, whose leading segment
+// is the service discriminator, so the services merge with no collision.
 func run(snapDir, out string) error {
-	snapPath := filepath.Join(snapDir, service.SnapshotFilename())
-	snapshot, err := os.ReadFile(snapPath)
-	if err != nil {
-		return fmt.Errorf("read snapshot %s: %w (run `make discovery-update` first)", snapPath, err)
+	var snapshots [][]byte
+	for _, svc := range discovery.Services {
+		snapPath := filepath.Join(snapDir, svc.SnapshotFilename())
+		snapshot, err := os.ReadFile(snapPath)
+		if err != nil {
+			return fmt.Errorf("read snapshot %s: %w (run `make discovery-update` first)", snapPath, err)
+		}
+		snapshots = append(snapshots, snapshot)
 	}
 
-	index, err := schemaindex.Render(snapshot)
+	index, err := schemaindex.RenderAll(snapshots)
 	if err != nil {
 		return err
 	}

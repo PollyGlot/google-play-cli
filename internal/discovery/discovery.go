@@ -28,9 +28,13 @@ type Service struct {
 	Version string // API version, e.g. "v3"
 }
 
-// Services is the declared snapshot set. v1 = androidpublisher v3 only.
+// Services is the declared snapshot set. androidpublisher v3 is the primary
+// publishing surface; playdeveloperreporting v1beta1 is the read-only
+// post-launch quality service (crashes/ANR vitals, #49) — a distinct host and
+// OAuth scope, snapshotted the same way.
 var Services = []Service{
 	{Name: "androidpublisher", Host: "androidpublisher.googleapis.com", Version: "v3"},
+	{Name: "playdeveloperreporting", Host: "playdeveloperreporting.googleapis.com", Version: "v1beta1"},
 }
 
 // SnapshotFilename is the per-service snapshot file name, e.g.

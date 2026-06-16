@@ -121,9 +121,10 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 1. Service account JSON is valid
 2. OAuth2 access token can be minted
 3. Token carries the androidpublisher scope
-4. (Per --package) edits.insert + edits.delete round-trip on the package
+4. Token can be minted for the playdeveloperreporting scope (vitals)
+5. (Per --package) edits.insert + edits.delete round-trip on the package
 
-Checks 1–3 run once. Check 4 runs once per --package value passed (in
+Checks 1–4 run once. Check 5 runs once per --package value passed (in
 order). Checks run in order and the chain stops on the first failure;
 subsequent checks are reported as skipped. Use --output json to get a
 structured []CheckResult for scripting.`,

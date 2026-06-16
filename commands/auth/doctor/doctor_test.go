@@ -56,8 +56,8 @@ func TestRun_pureBusiness(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
 		t.Fatalf("unmarshal: %v (raw=%q)", err, stdout.String())
 	}
-	if len(parsed) != 3 {
-		t.Errorf("len(results) = %d, want 3", len(parsed))
+	if len(parsed) != 4 {
+		t.Errorf("len(results) = %d, want 4", len(parsed))
 	}
 }
 
@@ -318,7 +318,7 @@ func ctxWithRT(fn roundTripperFunc) context.Context {
 	return context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fn})
 }
 
-func TestDoctor_happyPath_prints3CheckmarksAndExits0(t *testing.T) {
+func TestDoctor_happyPath_prints4CheckmarksAndExits0(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))
 
@@ -332,8 +332,8 @@ func TestDoctor_happyPath_prints3CheckmarksAndExits0(t *testing.T) {
 
 	combined := stdout.String() + stderr.String()
 	checks := strings.Count(combined, "✅")
-	if checks != 3 {
-		t.Errorf("checkmark count = %d, want 3; combined output:\n%s", checks, combined)
+	if checks != 4 {
+		t.Errorf("checkmark count = %d, want 4; combined output:\n%s", checks, combined)
 	}
 	if strings.Contains(combined, "❌") {
 		t.Errorf("combined output contains ❌ on happy path:\n%s", combined)
@@ -354,8 +354,8 @@ func TestDoctor_defaultNonTTY_emitsJSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
 		t.Fatalf("non-TTY default should be JSON; got %q (err=%v)", stdout.String(), err)
 	}
-	if len(parsed) != 3 {
-		t.Errorf("expected 3 results in auto-JSON default, got %d", len(parsed))
+	if len(parsed) != 4 {
+		t.Errorf("expected 4 results in auto-JSON default, got %d", len(parsed))
 	}
 }
 
@@ -493,8 +493,8 @@ func TestDoctor_jsonOutput_passesThroughCheckResults(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
 		t.Fatalf("Unmarshal: %v (raw=%q)", err, stdout.String())
 	}
-	if len(parsed) != 3 {
-		t.Fatalf("len(parsed) = %d, want 3", len(parsed))
+	if len(parsed) != 4 {
+		t.Fatalf("len(parsed) = %d, want 4", len(parsed))
 	}
 	for i, r := range parsed {
 		if !r.Passed {
@@ -549,13 +549,13 @@ func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
 		t.Fatalf("Unmarshal: %v (raw=%q)", err, stdout.String())
 	}
-	if len(parsed) != 3 {
-		t.Fatalf("len(parsed) = %d, want 3", len(parsed))
+	if len(parsed) != 4 {
+		t.Fatalf("len(parsed) = %d, want 4", len(parsed))
 	}
 	if parsed[0].Passed || parsed[0].Skipped {
 		t.Errorf("result[0] = %+v, want first check failed (Passed=false Skipped=false)", parsed[0])
 	}
-	for i := 1; i < 3; i++ {
+	for i := 1; i < 4; i++ {
 		if !parsed[i].Skipped {
 			t.Errorf("result[%d].Skipped = false, want true", i)
 		}
@@ -565,7 +565,7 @@ func TestDoctor_jsonOutput_failingCheck_includesSkippedRest(t *testing.T) {
 	}
 }
 
-func TestDoctor_twoPackages_bothPassing_returns5ResultsAndExit0(t *testing.T) {
+func TestDoctor_twoPackages_bothPassing_returns6ResultsAndExit0(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))
 
@@ -593,20 +593,21 @@ func TestDoctor_twoPackages_bothPassing_returns5ResultsAndExit0(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
 		t.Fatalf("Unmarshal: %v (raw=%q)", err, stdout.String())
 	}
-	if len(parsed) != 5 {
-		t.Fatalf("len(parsed) = %d, want 5 (3 non-API + 2 per-package)", len(parsed))
+	if len(parsed) != 6 {
+		t.Fatalf("len(parsed) = %d, want 6 (4 non-API + 2 per-package)", len(parsed))
 	}
 	for i, r := range parsed {
 		if !r.Passed {
 			t.Errorf("result[%d] %s: Passed=false (%+v)", i, r.Name, r)
 		}
 	}
-	// Check 4 entries must each carry the package name in their Name.
-	if !strings.Contains(parsed[3].Name, "com.example.app1") {
-		t.Errorf("parsed[3].Name = %q, want to contain com.example.app1", parsed[3].Name)
+	// The per-package round-trip entries (after the 4 non-API checks) must each
+	// carry the package name in their Name.
+	if !strings.Contains(parsed[4].Name, "com.example.app1") {
+		t.Errorf("parsed[4].Name = %q, want to contain com.example.app1", parsed[4].Name)
 	}
-	if !strings.Contains(parsed[4].Name, "com.example.app2") {
-		t.Errorf("parsed[4].Name = %q, want to contain com.example.app2", parsed[4].Name)
+	if !strings.Contains(parsed[5].Name, "com.example.app2") {
+		t.Errorf("parsed[5].Name = %q, want to contain com.example.app2", parsed[5].Name)
 	}
 }
 
@@ -704,7 +705,7 @@ func TestDoctor_absentCred_check1IsGenericSynthetic(t *testing.T) {
 	}
 }
 
-func TestDoctor_withoutPackage_runsOnlyThreeChecks(t *testing.T) {
+func TestDoctor_withoutPackage_runsOnlyFourChecks(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))
 
@@ -717,7 +718,7 @@ func TestDoctor_withoutPackage_runsOnlyThreeChecks(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if len(parsed) != 3 {
-		t.Errorf("len(parsed) = %d, want 3 (no --package → only non-API checks)", len(parsed))
+	if len(parsed) != 4 {
+		t.Errorf("len(parsed) = %d, want 4 (no --package → only non-API checks)", len(parsed))
 	}
 }
