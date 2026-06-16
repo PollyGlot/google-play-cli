@@ -881,3 +881,30 @@ func TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP(t *testing.T) {
 		t.Errorf("dry-run hit the network: %v", rt.calls)
 	}
 }
+
+// TestUpload_dryRun_aabIsDirectory_exit20_noHTTP asserts that a dry-run
+// `releases upload` rejects a non-regular AAB path (a directory) as exit
+// 20 — parity with the live path (bundles.Upload), which cannot stream a
+// directory. os.Stat succeeds on a directory, so without a regular-file
+// guard dry-run would green-light what the live upload rejects as a
+// transport error (exit 50).
+func TestUpload_dryRun_aabIsDirectory_exit20_noHTTP(t *testing.T) {
+	dir := t.TempDir() // a directory, not a regular file
+	rt := &playRT{t: t}
+	hc := &http.Client{Transport: rt}
+	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
+		Package: "com.example.app",
+		Track:   "internal",
+		AABPath: dir,
+		DryRun:  true,
+	})
+	if err == nil {
+		t.Fatal("dry-run accepted a directory AAB path")
+	}
+	if got := exitCode(err); got != 20 {
+		t.Errorf("exit code = %d, want 20; err=%v", got, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("dry-run hit the network: %v", rt.calls)
+	}
+}

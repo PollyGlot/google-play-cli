@@ -365,8 +365,15 @@ const dryRunDefaultLangPlaceholder = "(default-language-at-upload-time)"
 // structural validation via a placeholder DefaultLanguage.
 func dryRunResult(opts Opts) (*Result, error) {
 	if opts.AABPath != "" {
-		if _, err := os.Stat(opts.AABPath); err != nil {
+		st, err := os.Stat(opts.AABPath)
+		if err != nil {
 			return nil, &dryRunError{msg: "AAB not accessible: " + err.Error()}
+		}
+		// Parity with the live path (bundles.Upload): a directory passes
+		// Stat but cannot be streamed, so reject non-regular files here too
+		// — otherwise --dry-run would green-light what the live upload rejects.
+		if !st.Mode().IsRegular() {
+			return nil, &dryRunError{msg: "AAB is not a regular file: " + opts.AABPath}
 		}
 	}
 

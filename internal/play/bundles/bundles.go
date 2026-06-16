@@ -57,6 +57,16 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (
 	if err != nil {
 		return 0, &LocalIOError{Path: aabPath, Cause: err}
 	}
+	// A directory (or fifo / device) passes os.Open + Stat but cannot be
+	// streamed as a request body: the transport would surface it as an
+	// *api.Error (exit 50, transport) instead of the client-side
+	// *LocalIOError (exit 20) this path is for, and Size() would be wrong
+	// for ContentLength. Reject anything but a regular file up front. A
+	// symlink to a regular file is fine — os.Open already followed it, so
+	// info describes the target, not the link.
+	if !info.Mode().IsRegular() {
+		return 0, &LocalIOError{Path: aabPath, Cause: fmt.Errorf("not a regular file")}
+	}
 
 	u := api.UploadBase +
 		"/applications/" + url.PathEscape(pkg) +
