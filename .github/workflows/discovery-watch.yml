@@ -77,7 +77,7 @@ jobs:
           git config user.name "gplay[bot]"
           git config user.email "gplay[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
-          git add docs/discovery/ commands/schema/schema_index.json
+          git add docs/discovery/ internal/schemaindex/schema_index.json
           if [ "$KIND" = "surface" ]; then
             TITLE="chore(discovery): API surface changed — refresh snapshots"
           else

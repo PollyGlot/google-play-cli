@@ -53,6 +53,7 @@ func DefaultChecks(obs *transport.ScopeObserver) []Check {
 		CheckSAJSONValid(),
 		CheckOAuth2Mint(),
 		CheckScope(obs),
+		CheckReportingScope(obs),
 	}
 }
 
@@ -195,6 +196,68 @@ func CheckScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
 				}
 			}
 
+			scopes := obs.Scopes()
+			for _, s := range scopes {
+				if s == required {
+					return CheckResult{Passed: true}
+				}
+			}
+			return CheckResult{
+				Passed:   false,
+				ExitCode: exitAuth,
+				Hint:     "token exchange did not request scope " + required + " (observed: " + strings.Join(scopes, ", ") + "); this indicates a bug in gplay's auth wiring",
+			}
+		},
+	}
+}
+
+// CheckReportingScope asserts that a token can be minted for the
+// playdeveloperreporting scope — the DISTINCT, read-only scope the `gplay
+// vitals` commands request (#49). It mints a reporting-scoped token source and
+// confirms the JWT exchange both succeeds AND requested that scope (read back
+// from obs). Like CheckScope it is a wiring + credential check: a valid
+// service-account key can always mint a token for the requested scope, so a
+// failure here means either the credential cannot sign the exchange or gplay
+// failed to request the scope. (API-level access to the reporting service, if
+// the SA is not granted it, still surfaces as a 403 at call time.)
+//
+// obs may be nil — the check then reports a wiring bug. The optional
+// requiredScope variadic exists for the scope-drift test; production callers
+// pass only obs and the check pins to token.ReportingScope.
+func CheckReportingScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
+	required := token.ReportingScope
+	if len(requiredScope) > 0 {
+		required = requiredScope[0]
+	}
+	return Check{
+		Name:     "Token can be minted for the playdeveloperreporting scope",
+		ExitCode: exitAuth,
+		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) CheckResult {
+			if obs == nil {
+				return CheckResult{
+					Passed:   false,
+					ExitCode: exitAuth,
+					Hint:     "scope check requires a ScopeObserver; this indicates a bug in gplay's auth wiring",
+				}
+			}
+			if hc != nil {
+				ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
+			}
+			ts, err := token.Source(ctx, sa, token.ReportingScope)
+			if err != nil {
+				return CheckResult{
+					Passed:   false,
+					ExitCode: exitAuth,
+					Hint:     "could not build reporting token source: " + err.Error(),
+				}
+			}
+			if _, err := ts.Token(); err != nil {
+				return CheckResult{
+					Passed:   false,
+					ExitCode: exitAuth,
+					Hint:     "token endpoint refused the reporting-scope JWT exchange (" + err.Error() + "); verify the service account key is valid",
+				}
+			}
 			scopes := obs.Scopes()
 			for _, s := range scopes {
 				if s == required {

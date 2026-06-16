@@ -96,6 +96,36 @@ func IsMutating(cmd *cobra.Command) bool {
 	return cmd != nil && cmd.Annotations[mutatingAnnotation] == "true"
 }
 
+// scopeAnnotation is the cobra annotation key a command sets to request a
+// non-default OAuth scope for its token exchange. Like mutatingAnnotation it is
+// declared in one place per command (WithScope) and read in one place
+// (FromCobra → Inputs.Scope), so the per-command least-privilege policy is a
+// small registry, not a check scattered through business functions.
+const scopeAnnotation = "gplay.scope"
+
+// WithScope declares that cmd's API calls require oauthScope rather than the
+// default androidpublisher scope, and returns it so it composes inline at
+// registration: `vitals.AddCommand(kernel.WithScope(query.NewCommand(boot),
+// token.ReportingScope))`. It is the reporting-scope analogue of MarkMutating.
+// A command left unmarked requests the default androidpublisher scope (#49).
+func WithScope(cmd *cobra.Command, oauthScope string) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[scopeAnnotation] = oauthScope
+	return cmd
+}
+
+// ScopeFor returns the OAuth scope cmd declared via WithScope, or "" when it
+// declared none — the sentinel the kernel resolves to the default
+// androidpublisher scope (token.Source's zero-scope default).
+func ScopeFor(cmd *cobra.Command) string {
+	if cmd == nil {
+		return ""
+	}
+	return cmd.Annotations[scopeAnnotation]
+}
+
 // EnvReadonly is the GPLAY_READONLY policy switch. It reports whether the env
 // var holds a truthy value (1/true/yes/on, case-insensitive); anything else
 // (unset, "0", "false", …) leaves writes allowed.
@@ -178,6 +208,12 @@ type Inputs struct {
 	// reads the env). When true, a mutating, non-dry-run command is refused
 	// before credential resolution and any network I/O.
 	Readonly bool
+
+	// Scope is the OAuth scope the invoked command requested via WithScope, or
+	// "" for the default androidpublisher scope. AuthedClient threads it into
+	// the token exchange so a `vitals` command mints a least-privilege
+	// reporting-scoped token (#49).
+	Scope string
 }
 
 // RunContext is the post-resolution snapshot a command's business
@@ -234,6 +270,11 @@ type RunContext struct {
 	// Retry is the resolved global --retry (zero when unset). AuthedClient /
 	// UploadClient layer a retry transport when it is > 0.
 	Retry int
+
+	// Scope is the OAuth scope the command requested via WithScope ("" = the
+	// default androidpublisher scope). authedClient passes it to token.Source so
+	// a `vitals` command mints a least-privilege reporting-scoped token (#49).
+	Scope string
 
 	// ConfigPath, KeystoreRoot mirror Boot for commands that write to
 	// them (login, logout) or compute the credential's on-disk path
@@ -299,6 +340,7 @@ func NewForTest(ctx context.Context, boot Boot, in Inputs) *RunContext {
 		Verbose:      in.Verbose,
 		Timeout:      in.Timeout,
 		Retry:        in.Retry,
+		Scope:        in.Scope,
 		ConfigPath:   boot.ConfigPath,
 		KeystoreRoot: boot.KeystoreRoot,
 		Format:       in.Format,
@@ -465,6 +507,7 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 		Verbose:        in.Verbose,
 		Timeout:        in.Timeout,
 		Retry:          in.Retry,
+		Scope:          in.Scope,
 		ConfigPath:     boot.ConfigPath,
 		KeystoreRoot:   boot.KeystoreRoot,
 		lazy:           true,
@@ -655,6 +698,17 @@ func (rc *RunContext) UploadClient() (*http.Client, error) {
 	return rc.authedClient(rc.Timeout)
 }
 
+// scopes returns the OAuth scope list to mint a token for: a one-element slice
+// when the command requested a non-default scope via WithScope, else nil — the
+// signal token.Source reads as "default to androidpublisher". Keeping the empty
+// case nil means the publishing path passes exactly what it always did.
+func (rc *RunContext) scopes() []string {
+	if rc.Scope == "" {
+		return nil
+	}
+	return []string{rc.Scope}
+}
+
 // controlPlaneTimeout resolves the deadline for a control-plane request: the
 // explicit --timeout when set, else the 60s default.
 func (rc *RunContext) controlPlaneTimeout() time.Duration {
@@ -686,7 +740,10 @@ func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) 
 	base := baseHTTPClient(rc.Ctx)
 	timedBase := &http.Client{Transport: base.Transport, Timeout: timeout}
 	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, timedBase)
-	ts, err := token.Source(ctx, rc.Account)
+	// rc.Scope is "" for the default androidpublisher surface; a vitals command
+	// (WithScope) passes the reporting scope. token.Source treats no scope as the
+	// androidpublisher default, so the publishing path is unchanged.
+	ts, err := token.Source(ctx, rc.Account, rc.scopes()...)
 	if err != nil {
 		return nil, &authError{msg: "could not build token source: " + err.Error()}
 	}
@@ -754,6 +811,7 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 		Mutating: IsMutating(cmd),
 		DryRun:   dryRun,
 		Readonly: envReadonlyEnforced(),
+		Scope:    ScopeFor(cmd),
 		Resolver: resolver.Inputs{
 			ServiceAccountFlag: saFlag,
 			AccountFlag:        acctFlag,

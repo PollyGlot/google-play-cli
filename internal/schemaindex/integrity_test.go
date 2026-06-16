@@ -10,9 +10,15 @@ import (
 )
 
 // Paths relative to this package (go test runs with the package dir as cwd).
+// The embedded index is multi-service: it merges every committed snapshot
+// (androidpublisher v3 + playdeveloperreporting v1beta1, #49), so the freshness
+// gate re-derives from both, in the same order discovery.Services declares them.
 var (
-	snapshotPath = filepath.Join("..", "..", "docs", "discovery", "androidpublisher_v3.json")
-	indexPath    = filepath.Join("..", "..", "commands", "schema", "schema_index.json")
+	snapshotPaths = []string{
+		filepath.Join("..", "..", "docs", "discovery", "androidpublisher_v3.json"),
+		filepath.Join("..", "..", "docs", "discovery", "playdeveloperreporting_v1beta1.json"),
+	}
+	indexPath = filepath.Join("schema_index.json")
 )
 
 // methodFloor is a deliberately loose lower bound: the androidpublisher v3
@@ -21,26 +27,33 @@ var (
 const methodFloor = 120
 
 // sentinelMethods must survive any regeneration — a cheap guard against a
-// truncated or wrong-service index.
+// truncated or wrong-service index. They span both snapshotted services so a
+// dropped service (or a wrong merge order) is caught.
 var sentinelMethods = []string{
 	"androidpublisher.edits.commit",
 	"androidpublisher.edits.insert",
 	"androidpublisher.edits.tracks.update",
 	"androidpublisher.reviews.list",
+	"playdeveloperreporting.vitals.crashrate.query",
 }
 
 // TestEmbeddedIndexMatchesSnapshot is the freshness gate (D10): the committed
-// index must be byte-equal to a re-derivation from the committed snapshot. A
+// index must be byte-equal to a re-derivation from the committed snapshots. A
 // stale index left behind after a snapshot refresh — or a hand-edit — fails
-// here, with no network and no new CI step.
+// here, with no network and no new CI step. The re-derivation merges every
+// committed snapshot in declared order (RenderAll), matching the generator.
 func TestEmbeddedIndexMatchesSnapshot(t *testing.T) {
-	snapshot, err := os.ReadFile(snapshotPath)
-	if err != nil {
-		t.Fatalf("read snapshot: %v (run `make discovery-update`)", err)
+	var snapshots [][]byte
+	for _, p := range snapshotPaths {
+		snap, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read snapshot %s: %v (run `make discovery-update`)", p, err)
+		}
+		snapshots = append(snapshots, snap)
 	}
-	want, err := schemaindex.Render(snapshot)
+	want, err := schemaindex.RenderAll(snapshots)
 	if err != nil {
-		t.Fatalf("Render: %v", err)
+		t.Fatalf("RenderAll: %v", err)
 	}
 	got, err := os.ReadFile(indexPath)
 	if err != nil {

@@ -13,6 +13,13 @@ const (
 	// Used by bundles.upload (and, later, deobfuscationfiles).
 	UploadBase = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3"
 
+	// ReportingBase is the data-plane base URL for the Play Developer Reporting
+	// API v1beta1 — a DISTINCT Google service (its own host and OAuth scope)
+	// carrying the read-only post-launch quality surface (crashes/ANR vitals,
+	// anomalies, error reports; #49). Resource paths hang off this base, e.g.
+	// `/apps/{package}/crashRateMetricSet:query`.
+	ReportingBase = "https://playdeveloperreporting.googleapis.com/v1beta1"
+
 	// MaxAPIErrorBodyRead caps how many bytes of a non-2xx androidpublisher
 	// response body we hold in memory while parsing the error envelope.
 	// Error payloads are tiny ({"error":{"code":...,"message":"..."}});

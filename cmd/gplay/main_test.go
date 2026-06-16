@@ -9,9 +9,53 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
+
+// TestVitalsLeavesAreReportingScoped is the end-to-end least-privilege guard for
+// PRD #49: EVERY leaf command under `gplay vitals` (query, the seven presets,
+// errors counts/issues/reports, anomalies) must request the playdeveloperreporting
+// scope via kernel.WithScope. A dropped wrapper anywhere in the registration
+// (main.go or errorscmd.NewCommand) makes that leaf silently fall back to the
+// androidpublisher scope — this walks the real command tree and catches it.
+func TestVitalsLeavesAreReportingScoped(t *testing.T) {
+	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+
+	var vitals *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "vitals" {
+			vitals = c
+			break
+		}
+	}
+	if vitals == nil {
+		t.Fatal("no `vitals` command registered")
+	}
+
+	leaves := 0
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		kids := c.Commands()
+		if len(kids) == 0 {
+			leaves++
+			if got := kernel.ScopeFor(c); got != token.ReportingScope {
+				t.Errorf("leaf %q scope = %q, want the reporting scope", c.CommandPath(), got)
+			}
+			return
+		}
+		for _, k := range kids {
+			walk(k)
+		}
+	}
+	walk(vitals)
+
+	// query + 7 presets + errors{counts,issues,reports} + anomalies = 12.
+	if leaves < 12 {
+		t.Errorf("walked %d vitals leaves, want >= 12 (did the tree shrink?)", leaves)
+	}
+}
 
 // TestVerbVocabulary_canonicalNames asserts the ADR-0019 verb renames at
 // the user-facing command-tree level: the canonical names resolve to a

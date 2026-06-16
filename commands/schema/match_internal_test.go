@@ -9,7 +9,7 @@ import (
 
 func testIndex(t *testing.T) schemaindex.Index {
 	t.Helper()
-	idx, err := schemaindex.Load(indexJSON)
+	idx, err := schemaindex.Embedded()
 	if err != nil {
 		t.Fatalf("load embedded index: %v", err)
 	}

@@ -4,11 +4,11 @@
 //
 // Unlike internal/discovery (build-and-maintenance tooling that is never
 // compiled into the binary), this package IS compiled in: it carries the index
-// data types, the deterministic derive/render logic, and the loader the
-// embedded `commands/schema/schema_index.json` is parsed with. It imports only
-// the standard library — no net/http, no Google SDK — so embedding it does not
-// contradict ADR-0007: the index is inert reference data, not an API-calling
-// dependency.
+// data types, the deterministic derive/render logic, the embedded
+// `schema_index.json` itself (Embedded), and the loader it is parsed with. It
+// imports only the standard library — no net/http, no Google SDK — so embedding
+// it does not contradict ADR-0007: the index is inert reference data, not an
+// API-calling dependency.
 //
 // The index is the normalized two-section shape locked by the PRD (#199):
 //
@@ -22,7 +22,29 @@
 //     there is no duplication and no arbitrary depth-truncation.
 package schemaindex
 
-import "encoding/json"
+import (
+	_ "embed"
+	"encoding/json"
+)
+
+// embeddedJSON is the committed, multi-service Schema index compiled into the
+// binary — a deterministic projection of every Discovery snapshot under
+// docs/discovery/ (regenerate via `make schema-index-update`). It lives here,
+// in the shared index package rather than in any one command, so every
+// in-binary consumer reads the SAME index: `gplay schema` introspection and the
+// vitals metric/dimension validation (#49) both call Embedded(). Embedding it
+// is what makes those features work offline straight from `go install` with no
+// build-time generation; it is inert reference data, not an API-calling
+// dependency, so it does not contradict ADR-0007.
+//
+//go:embed schema_index.json
+var embeddedJSON []byte
+
+// Embedded loads the index compiled into the binary. It is the single accessor
+// every in-binary consumer uses, so the embedded bytes are parsed in one place.
+func Embedded() (Index, error) {
+	return Load(embeddedJSON)
+}
 
 // Index is the whole Schema index: a Methods section and a Schemas dictionary,
 // plus the upstream Discovery revision stamp it was derived from.
