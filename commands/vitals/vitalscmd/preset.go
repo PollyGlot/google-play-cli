@@ -32,13 +32,46 @@ var byDimension = map[string]string{
 	"country":     "countryCode",
 }
 
-func byChoices() string {
+// ByChoices is the pipe-joined list of valid --by values, for help text and
+// error messages. Shared by the presets and `vitals errors counts`.
+func ByChoices() string {
 	keys := make([]string, 0, len(byDimension))
 	for k := range byDimension {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	return strings.Join(keys, "|")
+}
+
+// PresetParams resolves the friendly preset flags (--by, --version) into Params
+// for a metric set: --by maps to the API dimension, --version to a versionCode
+// filter. It is shared by the opinionated presets and by `vitals errors counts`
+// (whose set is reached the same way). A bad --by or --version is CLI misuse.
+func PresetParams(set vitals.MetricSet, pkg, version, by, since, period string) (Params, error) {
+	var dimensions []string
+	if by != "" {
+		dim, ok := byDimension[by]
+		if !ok {
+			return Params{}, exit.Usagef("unknown --by %q (valid: %s)", by, ByChoices())
+		}
+		dimensions = []string{dim}
+	}
+	filter := ""
+	if version != "" {
+		n, err := strconv.Atoi(strings.TrimSpace(version))
+		if err != nil || n <= 0 {
+			return Params{}, exit.Usagef("invalid --version %q (want a positive versionCode, e.g. 123)", version)
+		}
+		filter = "versionCode = " + strconv.Itoa(n)
+	}
+	return Params{
+		Set:        set,
+		Package:    pkg,
+		Dimensions: dimensions,
+		Period:     period,
+		Since:      since,
+		Filter:     filter,
+	}, nil
 }
 
 // presetInput is the flag surface shared by every preset.
@@ -54,32 +87,11 @@ type presetInput struct {
 // Execute. Metrics are left empty so the set's primary metric is used — the
 // whole point of a preset is that the common case needs no metric knowledge.
 func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (output.Renderable, error) {
-	var dimensions []string
-	if in.By != "" {
-		dim, ok := byDimension[in.By]
-		if !ok {
-			return nil, exit.Usagef("unknown --by %q (valid: %s)", in.By, byChoices())
-		}
-		dimensions = []string{dim}
+	p, err := PresetParams(set, in.Package, in.Version, in.By, in.Since, in.Period)
+	if err != nil {
+		return nil, err
 	}
-
-	filter := ""
-	if in.Version != "" {
-		n, err := strconv.Atoi(strings.TrimSpace(in.Version))
-		if err != nil || n <= 0 {
-			return nil, exit.Usagef("invalid --version %q (want a positive versionCode, e.g. 123)", in.Version)
-		}
-		filter = "versionCode = " + strconv.Itoa(n)
-	}
-
-	return Execute(rc, Params{
-		Set:        set,
-		Package:    in.Package,
-		Dimensions: dimensions,
-		Period:     in.Period,
-		Since:      in.Since,
-		Filter:     filter,
-	})
+	return Execute(rc, p)
 }
 
 // NewPresetCommand builds the cobra command for one preset. It panics at
@@ -108,7 +120,7 @@ over the default 28-day DAILY window.
   gplay vitals ` + spec.Use + ` --by versionCode --version 123
   gplay vitals ` + spec.Use + ` --since 7d --period DAILY
 
---by slices the timeline (` + byChoices() + `); --version filters to one
+--by slices the timeline (` + ByChoices() + `); --version filters to one
 versionCode. This is a READ-ONLY surface on the Play Developer Reporting
 service. --output json mirrors the API response verbatim; a freshness note is
 printed to stderr so an empty window is not mistaken for zero.`,
@@ -124,7 +136,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Version, "version", "", "filter to a single versionCode")
-	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension: "+byChoices())
+	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension: "+ByChoices())
 	cmd.Flags().StringVar(&in.Since, "since", DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")
 	return cmd
