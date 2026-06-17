@@ -55,11 +55,19 @@ Deciding rules:
 
 **2. Domain verbs** — each names a real gesture no generic verb captures:
 `upload`, `promote`, `rollout`, `halt`, `resume`, `complete`, `reply`, `pull`,
-`apply`, `validate`, `login`/`logout`. Admission test: it must state a domain
-gesture `set`/`create`/`view` could not say honestly. The `releases` rollout
-state machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these
-act on a release's rollout *state*, not on a "rollout" resource, so they are
-not nested.
+`apply`, `validate`, `login`/`logout`, and the App Recovery trio `deploy`,
+`cancel`, `add-targeting`. Admission test: it must state a domain gesture
+`set`/`create`/`view` could not say honestly. The `releases` rollout state
+machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these act on a
+release's rollout *state*, not on a "rollout" resource, so they are not nested.
+The recovery trio was admitted under this test and recorded in
+[ADR-0030](./adr/0030-android-publisher-long-tail-surfaces.md): `deploy`
+(activate a draft, ≠ `create`/`set`), `cancel` (terminate to status CANCELED,
+≠ `remove` which deletes), and `add-targeting` (append-only audience widening,
+≠ `set` which would imply replace/narrow). `add-targeting` is the lone
+hyphenated domain verb — a deliberate, narrow exception for legibility (it
+mirrors the API method `addTargeting`), not licence for hyphenated verbs
+generally.
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
 grammar, keeping their own names: `version`, `exit-codes`, `install-skills`

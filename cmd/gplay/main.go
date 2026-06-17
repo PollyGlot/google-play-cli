@@ -34,7 +34,10 @@ import (
 	metadatalist "github.com/PollyGlot/google-play-cli/commands/metadata/list"
 	metadatapull "github.com/PollyGlot/google-play-cli/commands/metadata/pull"
 	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
+	recoveryaddtargeting "github.com/PollyGlot/google-play-cli/commands/recovery/add-targeting"
+	recoverycancel "github.com/PollyGlot/google-play-cli/commands/recovery/cancel"
 	recoverycreate "github.com/PollyGlot/google-play-cli/commands/recovery/create"
+	recoverydeploy "github.com/PollyGlot/google-play-cli/commands/recovery/deploy"
 	recoverylist "github.com/PollyGlot/google-play-cli/commands/recovery/list"
 	releaseslist "github.com/PollyGlot/google-play-cli/commands/releases/list"
 	releasesmappings "github.com/PollyGlot/google-play-cli/commands/releases/mappings"
@@ -315,6 +318,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	recoveryGroup.AddCommand(kernel.MarkMutating(recoverycreate.NewCommand(boot)))
 	recoveryGroup.AddCommand(recoverylist.NewCommand(boot))
+	// The production-impacting lifecycle leaves (deploy/cancel/add-targeting)
+	// each require --confirm (exit 3 if missing) — new domain verbs admitted
+	// under ADR-0019 §2 / recorded in ADR-0030.
+	recoveryGroup.AddCommand(kernel.MarkMutating(recoverydeploy.NewCommand(boot)))
+	recoveryGroup.AddCommand(kernel.MarkMutating(recoverycancel.NewCommand(boot)))
+	recoveryGroup.AddCommand(kernel.MarkMutating(recoveryaddtargeting.NewCommand(boot)))
 	root.AddCommand(recoveryGroup)
 
 	// `gplay team` — manage the Developer account's members (Users) and their
