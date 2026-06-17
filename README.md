@@ -67,6 +67,51 @@ checksum aborts the install. Set `GPLAY_INSTALL_NO_VERIFY=1` to bypass (prints
 a warning, greppable in CI). To add cosign and provenance checks on top, see
 [Verify a release](#verify-a-release).
 
+## Agent skills
+
+`gplay` is built to be driven by AI agents, not just typed by hand. Agent
+skills turn a natural-language prompt into the right `gplay` invocation, with
+the safety rails baked in:
+
+> *"Promote the latest internal build of com.example.myapp to beta."*
+> → the `gplay-release-flow` skill runs `gplay releases promote --from
+> internal --to beta` for you.
+
+Install them in one step — the **one** gplay command that needs Node/npx:
+
+```bash
+gplay install-skills
+```
+
+That wraps the skills CLI (`npx skills add PollyGlot/google-play-cli-skills
+--global --agent '*' --yes`), installing every skill for every detected agent.
+No Node? Run that `npx` line yourself, or browse the skills by hand. (Driving
+the Play API itself stays Node-free — `install-skills` is a workstation
+convenience, never on the CI path.)
+
+Skills live in a companion repo —
+[**PollyGlot/google-play-cli-skills**](https://github.com/PollyGlot/google-play-cli-skills).
+Each is a folder with a `SKILL.md` documenting its intent, the commands it
+runs, and the rails it enforces. The roster is fixed by
+[ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
+namespace, plus a `gplay-cli-usage` foundation.
+
+| Skill | Drives |
+|---|---|
+| `gplay-cli-usage` | Cross-cutting conventions (foundation) |
+| `gplay-setup` | Auth onboarding |
+| `gplay-apps` | Apps registry + details |
+| `gplay-release-flow` | upload / promote / rollout |
+| `gplay-tracks` | Tracks + testers |
+| `gplay-reviews` | reviews list / reply |
+| `gplay-metadata-sync` | Listings + images |
+| `gplay-compliance` | Data Safety |
+| `gplay-team` | users / grants / permissions |
+
+`gplay-vitals` and `gplay-subscription-management` are gated until those CLI
+surfaces land ([#49](https://github.com/PollyGlot/google-play-cli/issues/49),
+[#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+
 ## Quick start
 
 ```bash
@@ -85,43 +130,6 @@ gplay init
 ```
 
 Full command reference: `gplay --help` (or `gplay <subcommand> --help`).
-
-## Agent skills
-
-`gplay` is built to be driven by AI agents, not just typed by hand. Agent
-skills turn a natural-language prompt into the right `gplay` invocation, with
-the safety rails baked in:
-
-> *"Promote the latest internal build of com.example.myapp to beta."*
-> → the `gplay-release-flow` skill runs `gplay releases promote --from
-> internal --to beta` for you.
-
-Skills live in a companion repo —
-[**PollyGlot/google-play-cli-skills**](https://github.com/PollyGlot/google-play-cli-skills).
-Each is a folder with a `SKILL.md` documenting its intent, the commands it
-runs, and the rails it enforces. The roster is fixed by
-[ADR-0021](docs/adr/0021-companion-skills-repo.md): one skill per shipped
-namespace, plus a `gplay-cli-usage` foundation.
-
-```bash
-npx skills add PollyGlot/google-play-cli-skills
-```
-
-| Skill | Drives |
-|---|---|
-| `gplay-cli-usage` | Cross-cutting conventions (foundation) |
-| `gplay-setup` | Auth onboarding |
-| `gplay-apps` | Apps registry + details |
-| `gplay-release-flow` | upload / promote / rollout |
-| `gplay-tracks` | Tracks + testers |
-| `gplay-reviews` | reviews list / reply |
-| `gplay-metadata-sync` | Listings + images |
-| `gplay-compliance` | Data Safety |
-| `gplay-team` | users / grants / permissions |
-
-`gplay-vitals` and `gplay-subscription-management` are gated until those CLI
-surfaces land ([#49](https://github.com/PollyGlot/google-play-cli/issues/49),
-[#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
 
 ## The Fastlane-replacement surface
 
