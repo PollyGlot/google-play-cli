@@ -42,9 +42,24 @@ onto root-absolute Markdown links).
 
 - `/llms.txt`, `/llms-small.txt`, `/llms-full.txt` — via `starlight-llms-txt`,
   including the full generated command reference as a custom set.
+- **Markdown twins** — `src/pages/[...slug].md.ts` emits a `<page>.md` copy of
+  every docs page (e.g. `/docs/reference/apps.md`). The Worker serves these
+  under content negotiation when an agent sends `Accept: text/markdown`, and
+  they are directly fetchable too.
+- **Agent Skills Discovery index** — `/.well-known/agent-skills/index.json`
+  (RFC v0.2.0) advertises the companion skills (PollyGlot/google-play-cli-skills,
+  ADR-0021). Regenerate with `npm run gen:skills` against a local clone of the
+  skills repo, then commit (see `scripts/gen-agent-skills.mjs`).
+- **`Link` headers** (RFC 8288) on every HTML document point agents at the docs,
+  `llms.txt`, and the skills index (set in the Worker).
 - `/robots.txt` — generated endpoint, explicitly allowing AI crawlers.
 - JSON-LD (`SoftwareApplication`, `FAQPage`, `WebSite`) on the landing page.
 - Sitemap + per-page meta descriptions via Starlight.
+
+The discovery surfaces (Markdown negotiation, `Link` headers, skills index) and
+the surfaces deliberately **not** published — OAuth/OIDC, MCP server card,
+RFC 9727 API catalog — are reasoned through in
+[ADR-0029](../docs/adr/0029-agent-discovery-surface.md).
 
 ## Content rules
 

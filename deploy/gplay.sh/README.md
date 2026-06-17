@@ -24,11 +24,19 @@ the site from the same Worker).
 | `GET`/`HEAD` `/install` (or `/install.sh`) | proxies `install.sh` from `main`, `text/plain`, 5 min cache |
 | `docs.gplay.sh/<path>` | 301 → `https://gplay.sh/docs/<path>` |
 | `www.gplay.sh/<path>` | 301 → `https://gplay.sh/<path>` |
+| `GET` any page with `Accept: text/markdown` | the page's Markdown twin (docs `*.md`, or `llms.txt` for `/`), `text/markdown` |
 | anything else | the static Astro site (landing + docs), with its own 404 page |
 
+Every HTML document also carries an agent-discovery `Link` header (RFC 8288)
+pointing at the docs, `llms.txt`, and the Agent Skills Discovery index served at
+`/.well-known/agent-skills/index.json`. The discovery surfaces — and the ones
+deliberately **not** published (OAuth/OIDC, MCP, RFC 9727 API catalog) — are
+reasoned through in
+[ADR-0029](../../docs/adr/0029-agent-discovery-surface.md).
+
 `run_worker_first = true` in [`wrangler.toml`](wrangler.toml) is what lets the
-handler intercept `/install` and the docs/www hostnames before falling through
-to asset serving.
+handler intercept `/install`, the docs/www hostnames, and Markdown negotiation
+before falling through to asset serving.
 
 ## Deploy
 

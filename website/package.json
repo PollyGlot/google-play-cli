@@ -9,6 +9,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "gen": "node scripts/gen-reference.mjs",
+    "gen:skills": "node scripts/gen-agent-skills.mjs",
     "prebuild": "node scripts/gen-reference.mjs",
     "predev": "node scripts/gen-reference.mjs"
   },

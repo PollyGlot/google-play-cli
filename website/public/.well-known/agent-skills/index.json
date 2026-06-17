@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+  "skills": [
+    {
+      "name": "gplay-cli-usage",
+      "type": "skill-md",
+      "description": "The cross-cutting conventions every gplay command shares — credential/account resolution order, package targeting and `.gplay/` pinning, output formats (table/json/markdown), semantic exit codes, the `--dry-run`/`--confirm` safety gates, stdout-is-data/stderr-is-logs, and the implicit Edit lifecycle. Use when running or designing any gplay command, wiring gplay into CI, branching on its exit codes, introspecting the Android Publisher API surface offline with `gplay schema`, or building a more specific gplay workflow on top of these rules.",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-cli-usage/SKILL.md",
+      "digest": "sha256:dd4eeaa1cc5b5a3ce276a5c214eb6143123a636e3455e85297bd9f2b1709a313"
+    },
+    {
+      "name": "gplay-apps",
+      "type": "skill-md",
+      "description": "Manage the apps gplay knows about and their app-level details — register a package in gplay's local registry with `apps add` (which validates access against the Play API), list/view/remove registered apps, pin one to the repo with `apps init`, and read or patch app details (default language, contact email/phone/website) with `apps details view` / `apps details set`. Use when onboarding a new package into gplay, checking which apps are registered, or editing an app's default language or contact info.",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-apps/SKILL.md",
+      "digest": "sha256:01aae28af35074c49d7ae30ee05f23c152cbc391d1eea75a7f91a88971d00947"
+    },
+    {
+      "name": "gplay-compliance",
+      "type": "skill-md",
+      "description": "Push and validate an app's Google Play Data Safety declaration with gplay — `compliance datasafety validate` (offline structural check of the canonical CSV) and `compliance datasafety set` (POST the declaration live). Use when updating the Data Safety form from a versioned CSV or gating it in CI. Note this is the ONLY Play compliance surface with an API — content rating, target audience, and ads/news declarations have no endpoint and stay manual in the Play Console.",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-compliance/SKILL.md",
+      "digest": "sha256:61b31556a5ce6ecbb203e11d1de8f68890fa885bd38926fad61f642ebdcc3e96"
+    },
+    {
+      "name": "gplay-metadata-sync",
+      "type": "skill-md",
+      "description": "Sync a Google Play store listing — per-locale title/description/video text and per-locale images (icon, feature graphic, screenshots) — between a local on-disk tree and Play, using gplay's pull → edit → validate → apply model. Covers `metadata list/pull/validate/apply` and `metadata images list/pull/validate/apply`. Use when editing store listings or screenshots, migrating listing text into version control, localizing a listing, or gating a listing change in CI before it goes live.",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-metadata-sync/SKILL.md",
+      "digest": "sha256:0a4a01458f92323fad9ca9bfbc83587e112e43b77ce00b01ad0bb17a308de7a9"
+    },
+    {
+      "name": "gplay-release-flow",
+      "type": "skill-md",
+      "description": "Ship Android releases through Google Play with the gplay CLI — upload an AAB to a track, promote a build up the track ladder without re-uploading, run and steer a staged production rollout (halt / resume / complete), and inspect what is live on a track. Use when uploading a build, cutting or shipping a release, promoting internal → alpha → beta → production, starting/ramping/pausing/finishing a staged rollout, or checking which releases sit on a track.",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-release-flow/SKILL.md",
+      "digest": "sha256:5b3533bbfd5675e0b0e2f51be24416d44c74a9cb2277d1c50590719833accf77"
+    },
+    {
+      "name": "gplay-reviews",
+      "type": "skill-md",
+      "description": "List recent Google Play user reviews and post developer replies with gplay — `reviews list` (filter by star rating, cap the count, pick columns) and `reviews reply` (one review at a time, or a batch of replies from a TSV file or stdin). Use when triaging recent reviews, filtering low-star feedback, replying to a user, or bulk-answering many reviews in CI. Note the API only exposes the last 7 days of reviews.",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-reviews/SKILL.md",
+      "digest": "sha256:cbbdec9ef66965648270bf165e128014b24010821b33bee21e3f72b0bf7685c5"
+    },
+    {
+      "name": "gplay-setup",
+      "type": "skill-md",
+      "description": "Onboard gplay authentication from zero — point it at a Google Play service-account JSON (via GPLAY_SERVICE_ACCOUNT or --service-account), register it with `auth login`, verify the wiring with `auth status` / `auth doctor`, and manage stored accounts with `auth list` / `auth logout`. Use when setting up gplay auth for the first time, switching or rotating service accounts, or diagnosing why an authenticated gplay command fails with an auth error (exit 10/11).",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-setup/SKILL.md",
+      "digest": "sha256:0c6817ab6dbbd7ccbf9202ffd9d48309593889df1f684ebde3af8413f8e246b7"
+    },
+    {
+      "name": "gplay-team",
+      "type": "skill-md",
+      "description": "Manage a Google Play Developer account's members and their permissions with gplay — account-wide members (`team users add/list/remove/set`), per-app access grants (`team grants list/remove/set`), and the offline permission catalog (`team permissions`). Permissions are expressed as friendly role bundles or aliases, with a named safety gate for conferring admin. Use when inviting or off-boarding a member, granting or adjusting per-app access, or looking up which permission alias or role bundle to use.",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-team/SKILL.md",
+      "digest": "sha256:e6fbe52cb97a4219cb1850fcabc740b4836239802f5ab511e387f79ac8891107"
+    },
+    {
+      "name": "gplay-tracks",
+      "type": "skill-md",
+      "description": "Inspect and manage Google Play release tracks and their testers with gplay — list tracks, view one track's full state, create custom closed-testing tracks, read a track's country availability (read-only), and replace the Google Groups authorized to test a closed track. Use when checking what's on a track, creating a closed track before an upload, auditing where an app is distributed, or wiring up the tester audience for a closed test.",
+      "url": "https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills/gplay-tracks/SKILL.md",
+      "digest": "sha256:ce6b95b70cbc4599f7208dd67f6199cb8343f672495dc7ae03d1e7b74266917a"
+    }
+  ]
+}
