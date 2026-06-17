@@ -47,6 +47,7 @@ import (
 	teamuserslist "github.com/PollyGlot/google-play-cli/commands/team/users/list"
 	teamusersremove "github.com/PollyGlot/google-play-cli/commands/team/users/remove"
 	teamusersset "github.com/PollyGlot/google-play-cli/commands/team/users/set"
+	teamusersview "github.com/PollyGlot/google-play-cli/commands/team/users/view"
 	testerslist "github.com/PollyGlot/google-play-cli/commands/testers/list"
 	testersset "github.com/PollyGlot/google-play-cli/commands/testers/set"
 	tracksavailability "github.com/PollyGlot/google-play-cli/commands/tracks/availability"
@@ -284,6 +285,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	teamUsers.AddCommand(teamuserslist.NewCommand(boot))
+	teamUsers.AddCommand(teamusersview.NewCommand(boot))
 	teamUsers.AddCommand(kernel.MarkMutating(teamusersadd.NewCommand(boot)))
 	teamUsers.AddCommand(kernel.MarkMutating(teamusersset.NewCommand(boot)))
 	teamUsers.AddCommand(kernel.MarkMutating(teamusersremove.NewCommand(boot)))
