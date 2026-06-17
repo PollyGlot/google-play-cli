@@ -205,3 +205,8 @@ _Avoid_: calling it a "release" (it publishes to no track and creates no [Releas
 
 ### Sharing artifact
 The `InternalAppSharingArtifact` resource an [Internal App Sharing](#internal-app-sharing) upload returns: `{ downloadUrl, certificateFingerprint, sha256 }`. The `downloadUrl` is the shareable install link (the field the human view leads with); `certificateFingerprint` is the SHA-256 of the signing certificate; `sha256` is the artifact's content hash. Passed through verbatim on `--output json` (ADR-0003).
+
+### Device tier config
+An app-scoped, **immutable** Android Publisher resource (`applications.deviceTierConfigs`) describing device-targeting criteria for tiered content delivery: named **device groups** (each a set of device selectors over RAM, device IDs, SoCs, system features), an ordered **device tier set** (tiers by descending priority level), and **user country sets**. Created once with a server-assigned int64 `deviceTierConfigId`; read by id or listed (newest first). Lives **outside** the Edit lifecycle, like the [Data Safety declaration](#data-safety-declaration) and the [Recovery](#recovery-recovery-action). The API exposes only create/get/list — **no update/patch/delete** — so a create can never overwrite an existing config. gplay namespace: `device-tiers` (`create` / `view` / `list`), [ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md).
+
+_Avoid_: filing it under `tracks` (it joins no Edit) or `apps` (that namespace is the local registry; a config is created server-side, so `create` is honest, not `add`).

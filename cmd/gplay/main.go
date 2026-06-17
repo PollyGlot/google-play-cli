@@ -22,6 +22,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	compliancedatasafetyset "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/set"
 	compliancedatasafetyvalidate "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/validate"
+	devicetierscreate "github.com/PollyGlot/google-play-cli/commands/device-tiers/create"
+	devicetierslist "github.com/PollyGlot/google-play-cli/commands/device-tiers/list"
+	devicetiersview "github.com/PollyGlot/google-play-cli/commands/device-tiers/view"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
@@ -275,6 +278,24 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	testers.AddCommand(testerslist.NewCommand(boot))
 	testers.AddCommand(kernel.MarkMutating(testersset.NewCommand(boot)))
 	root.AddCommand(testers)
+
+	// `gplay device-tiers` — Device Tier Configs (applications.deviceTierConfigs),
+	// device-targeting for tiered content delivery. A new top-level namespace,
+	// app-scoped and OUTSIDE the Edit lifecycle (no editId) — not under `tracks`
+	// (an Edit surface) nor `apps` (the local registry). The resource is
+	// immutable (create/get/list only), so `create` is the only mutating leaf.
+	// See ADR-0030 / PRD #243 / CONTEXT.md (Device tier config).
+	deviceTiers := &cobra.Command{
+		Use:           "device-tiers",
+		Short:         "Manage device tier configs (device-targeting for tiered delivery)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	deviceTiers.AddCommand(kernel.MarkMutating(devicetierscreate.NewCommand(boot)))
+	deviceTiers.AddCommand(devicetiersview.NewCommand(boot))
+	deviceTiers.AddCommand(devicetierslist.NewCommand(boot))
+	root.AddCommand(deviceTiers)
 
 	// `gplay team` — manage the Developer account's members (Users) and their
 	// per-app access (Grants). The first gplay surface keyed by the Developer
