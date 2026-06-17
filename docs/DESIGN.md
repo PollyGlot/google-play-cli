@@ -399,8 +399,9 @@ seconds instead of stalling a CI job until the runner-level kill:
   **60s default** deadline, applied once where the kernel builds the
   authenticated HTTP client — every command inherits it, no per-command
   plumbing.
-- **Media uploads** (`releases upload`, `metadata images apply`) are **exempt
-  from the default**: a multi-hundred-MB transfer is never killed by the short
+- **Media uploads** (`releases upload`, `releases sharing upload`,
+  `releases expansion-files upload`, `metadata images apply`) are **exempt from
+  the default**: a multi-hundred-MB transfer is never killed by the short
   control-plane bound.
 - The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
   `--timeout 2m`) overrides both — it bounds *every* request, uploads included.

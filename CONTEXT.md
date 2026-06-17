@@ -197,3 +197,11 @@ The unit the [Play Developer Reporting API](#play-developer-reporting-api) expos
 A ProGuard/R8 **deobfuscation file** (`mapping.txt`) uploaded so Play can symbolicate an app's obfuscated crash stack traces — without it, [Vitals](#vitals) error reports are unreadable. Backed by Google's `edits.deobfuscationfiles` resource: an **Android Publisher** [Edit](#edit) artifact keyed by `versionCode`, uploaded with the same scope and Edit model as a release upload (not the Reporting service). Despite being functionally coupled to Vitals, it is architecturally a publisher Edit upload, so gplay surfaces it under `releases` (`releases upload --mapping`, `releases mappings upload`), never under the read-only `vitals` namespace.
 
 _Avoid_: filing a Mapping under `vitals` — `vitals` is read-only reporting; a Mapping is a publisher Edit upload.
+
+### Internal App Sharing
+A Google Play distribution channel (the `internalappsharingartifacts` resource) for uploading an APK or AAB and getting back a **private, shareable download link** that an authorized tester follows into the Play Store to install — bypassing tracks, releases, and the Edit lifecycle entirely. A QA/preview workflow, **not** a Release. gplay surfaces it under `releases sharing upload` ([ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md)): the channel distinction lives in the `sharing` noun, the gesture stays the canonical `upload` (the API methods are `uploadapk`/`uploadbundle`). APK vs AAB is auto-detected by extension, with a `--format apk|bundle` override.
+
+_Avoid_: calling it a "release" (it publishes to no track and creates no [Release](#release)) or folding it under a track-keyed surface.
+
+### Sharing artifact
+The `InternalAppSharingArtifact` resource an [Internal App Sharing](#internal-app-sharing) upload returns: `{ downloadUrl, certificateFingerprint, sha256 }`. The `downloadUrl` is the shareable install link (the field the human view leads with); `certificateFingerprint` is the SHA-256 of the signing certificate; `sha256` is the artifact's content hash. Passed through verbatim on `--output json` (ADR-0003).

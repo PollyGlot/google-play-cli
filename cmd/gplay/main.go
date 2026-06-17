@@ -35,6 +35,7 @@ import (
 	releasesmappings "github.com/PollyGlot/google-play-cli/commands/releases/mappings"
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
+	sharingupload "github.com/PollyGlot/google-play-cli/commands/releases/sharing/upload"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
@@ -228,6 +229,21 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	mappings.AddCommand(kernel.MarkMutating(releasesmappings.NewCommand(boot)))
 	releases.AddCommand(mappings)
+
+	// `gplay releases sharing` — Internal App Sharing (internalappsharingartifacts).
+	// A grouping noun under releases, mirroring `releases mappings`: a non-track
+	// upload that bypasses the Edit lifecycle entirely and mints a private,
+	// shareable install link (CONTEXT.md / ADR-0030 / PRD #243). The single
+	// `upload` leaf mutates Play state (creates an artifact), so it is marked.
+	sharing := &cobra.Command{
+		Use:           "sharing",
+		Short:         "Upload builds to Internal App Sharing (private shareable links)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	sharing.AddCommand(kernel.MarkMutating(sharingupload.NewCommand(boot)))
+	releases.AddCommand(sharing)
 	root.AddCommand(releases)
 
 	tracks := &cobra.Command{
