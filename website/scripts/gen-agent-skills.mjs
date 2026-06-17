@@ -44,7 +44,7 @@ const FOUNDATION = 'gplay-cli-usage';
 // Minimal frontmatter reader: the two keys we need (name, description) are each
 // a single line. Good enough — this is not a general YAML parser.
 function frontmatterField(text, key) {
-  const fm = text.match(/^---\n([\s\S]*?)\n---/);
+  const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!fm) throw new Error('missing frontmatter');
   const line = fm[1].match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
   if (!line) throw new Error(`missing frontmatter key: ${key}`);

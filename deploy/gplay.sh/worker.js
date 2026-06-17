@@ -148,7 +148,7 @@ async function handle(request, env) {
   // website/src/pages/[...slug].md.ts); the landing page's Markdown view is the
   // generated llms.txt. Anything without a Markdown twin falls through to HTML.
   if (request.method === "GET" && acceptsMarkdownFirst(request.headers.get("accept"))) {
-    const markdown = await serveMarkdown(url, env);
+    const markdown = await serveMarkdown(request, url, env);
     if (markdown) return markdown;
   }
 
@@ -191,23 +191,38 @@ function markdownCandidates(pathname) {
   return [`${trimmed}.md`, `${trimmed}/index.md`];
 }
 
-async function serveMarkdown(url, env) {
+async function serveMarkdown(request, url, env) {
+  // Forward conditional headers so the asset layer can answer 304 Not Modified
+  // on the Markdown twin and revalidation actually works end to end.
+  const conditional = new Headers();
+  for (const h of ["if-none-match", "if-modified-since"]) {
+    const value = request.headers.get(h);
+    if (value) conditional.set(h, value);
+  }
+
   for (const candidate of markdownCandidates(url.pathname)) {
     const assetUrl = new URL(url);
     assetUrl.pathname = candidate;
     assetUrl.search = "";
-    const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
-    if (asset.ok) {
-      return new Response(asset.body, {
-        status: 200,
-        headers: {
-          "content-type": "text/markdown; charset=utf-8",
-          "cache-control": `public, max-age=${CACHE_SECONDS}`,
-          vary: "Accept",
-          link: LINK_HEADER,
-        },
-      });
+    const asset = await env.ASSETS.fetch(
+      new Request(assetUrl, { method: "GET", headers: conditional }),
+    );
+    if (asset.status !== 200 && asset.status !== 304) continue; // try next / fall through
+
+    // Clone the asset response so its cache validators (ETag/Last-Modified)
+    // survive, then override only the headers that make this a negotiated
+    // Markdown reply. A 304 carries no body and keeps the asset's content-type
+    // untouched (it must echo the original representation's validators).
+    const out = new Response(asset.status === 304 ? null : asset.body, asset);
+    if (asset.status === 200) {
+      out.headers.set("content-type", "text/markdown; charset=utf-8");
     }
+    out.headers.set("cache-control", `public, max-age=${CACHE_SECONDS}`);
+    const vary = out.headers.get("vary");
+    out.headers.set("vary", vary ? `${vary}, Accept` : "Accept");
+    const link = out.headers.get("link");
+    out.headers.set("link", link ? `${link}, ${LINK_HEADER}` : LINK_HEADER);
+    return out;
   }
   return null;
 }
@@ -219,7 +234,8 @@ function decorateDocument(response) {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/html")) return response;
   const decorated = new Response(response.body, response);
-  decorated.headers.set("link", LINK_HEADER);
+  const link = decorated.headers.get("link");
+  decorated.headers.set("link", link ? `${link}, ${LINK_HEADER}` : LINK_HEADER);
   const vary = decorated.headers.get("vary");
   decorated.headers.set("vary", vary ? `${vary}, Accept` : "Accept");
   return decorated;
