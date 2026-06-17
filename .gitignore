@@ -5,6 +5,9 @@
 *.test
 *.out
 
+# Wrangler local dev cache (Cloudflare Worker)
+.wrangler/
+
 # Go
 vendor/
 *.prof

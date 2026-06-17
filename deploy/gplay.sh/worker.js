@@ -26,6 +26,18 @@ const APEX = "gplay.sh";
 const DOCS_HOST = "docs.gplay.sh";
 const WWW_HOST = "www.gplay.sh";
 
+// Agent-discovery Link header (RFC 8288), set on every HTML document. Points
+// agents at the human/API docs (service-doc), the LLM-oriented site dump
+// (describedby → llms.txt), and the Agent Skills Discovery index. Root-relative
+// targets resolve against the request URL. The skills relation is an extension
+// relation type (a URI, per RFC 8288 §2.1.2) since no IANA-registered relation
+// covers it.
+const LINK_HEADER = [
+  '</docs/>; rel="service-doc"; type="text/html"',
+  '</llms.txt>; rel="describedby"; type="text/plain"',
+  '</.well-known/agent-skills/index.json>; rel="https://schemas.agentskills.io/discovery"; type="application/json"',
+].join(", ");
+
 // Applied to every response (static assets, /install, redirects). No
 // Content-Security-Policy here: Astro/Starlight inject inline scripts, so a
 // strict script-src would break the site — CSP needs its own tested change.
@@ -131,7 +143,84 @@ async function handle(request, env) {
     });
   }
 
+  // Markdown for Agents: when a GET prefers text/markdown, hand back the page's
+  // Markdown rather than its HTML. Docs pages have a built `.md` twin (see
+  // website/src/pages/[...slug].md.ts); the landing page's Markdown view is the
+  // generated llms.txt. Anything without a Markdown twin falls through to HTML.
+  if (request.method === "GET" && acceptsMarkdownFirst(request.headers.get("accept"))) {
+    const markdown = await serveMarkdown(url, env);
+    if (markdown) return markdown;
+  }
+
   // Static site (landing + docs). The assets binding handles HTML routing,
   // trailing slashes, and the 404 page (see wrangler.toml [assets]).
-  return env.ASSETS.fetch(request);
+  const response = await env.ASSETS.fetch(request);
+  return decorateDocument(response);
+}
+
+// True when the client lists text/markdown (or text/x-markdown) and ranks it at
+// least as high as text/html. Browsers never send text/markdown, so HTML
+// rendering for humans is unaffected; only agents that ask for it opt in.
+function acceptsMarkdownFirst(accept) {
+  if (!accept) return false;
+  let markdownQ = -1;
+  let htmlQ = -1;
+  for (const part of accept.split(",")) {
+    const [rawType, ...params] = part.trim().split(";");
+    const type = rawType.trim().toLowerCase();
+    let q = 1;
+    for (const p of params) {
+      const m = p.trim().match(/^q=([0-9.]+)$/i);
+      if (m) q = parseFloat(m[1]);
+    }
+    if (type === "text/markdown" || type === "text/x-markdown") {
+      markdownQ = Math.max(markdownQ, q);
+    } else if (type === "text/html") {
+      htmlQ = Math.max(htmlQ, q);
+    }
+  }
+  return markdownQ > 0 && markdownQ >= htmlQ;
+}
+
+// Resolve the Markdown twin of a request path from the static-asset bundle.
+function markdownCandidates(pathname) {
+  if (pathname === "/" || pathname === "/index.html") return ["/llms.txt"];
+  const trimmed = pathname.replace(/\.html$/, "").replace(/\/$/, "");
+  // The .md endpoint emits at the entry id: leaf pages as `<path>.md`, index
+  // pages as `<path>/index.md` — try both so /docs/ resolves too.
+  return [`${trimmed}.md`, `${trimmed}/index.md`];
+}
+
+async function serveMarkdown(url, env) {
+  for (const candidate of markdownCandidates(url.pathname)) {
+    const assetUrl = new URL(url);
+    assetUrl.pathname = candidate;
+    assetUrl.search = "";
+    const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
+    if (asset.ok) {
+      return new Response(asset.body, {
+        status: 200,
+        headers: {
+          "content-type": "text/markdown; charset=utf-8",
+          "cache-control": `public, max-age=${CACHE_SECONDS}`,
+          vary: "Accept",
+          link: LINK_HEADER,
+        },
+      });
+    }
+  }
+  return null;
+}
+
+// Tag HTML documents with the agent-discovery Link header and `Vary: Accept`
+// (the latter so caches keep the Markdown and HTML representations distinct).
+// Non-document assets (CSS, JS, images) are left untouched.
+function decorateDocument(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/html")) return response;
+  const decorated = new Response(response.body, response);
+  decorated.headers.set("link", LINK_HEADER);
+  const vary = decorated.headers.get("vary");
+  decorated.headers.set("vary", vary ? `${vary}, Accept` : "Accept");
+  return decorated;
 }
