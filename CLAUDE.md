@@ -57,6 +57,22 @@ a `gplay-cli-usage` foundation. Install:
   disqualifies the PR — those still need explicit approval and a normal reviewed
   merge.
 
+## Commit types & releases
+
+- **Site/docs/CI-only changes use `docs(...)` or `chore(...)` — never `feat`/
+  `fix`.** release-please is one root package (`release-type: simple`,
+  [`release-please-config.json`](release-please-config.json)) and bumps the CLI
+  version off the conventional-commit **type**, blind to scope and changed
+  paths: a `feat(...)` → minor, a `fix(...)` → patch, *whatever it touched*. So
+  `feat(site): …` cuts a CLI release whose binary is byte-identical to the
+  previous one and whose changelog credits a non-CLI "feature". Reserve `feat`/
+  `fix` for changes to the shipped binary; type everything under `website/`,
+  `docs/`, `.github/`, and other non-binary surfaces as `docs`/`chore`/`ci`.
+- **Nothing is lost by doing this.** The site deploys on its own
+  (`deploy-site.yml` triggers on the `website/**`/`deploy/gplay.sh/**` *path*,
+  not the commit type), so a `docs`/`chore` site commit still ships — it just
+  doesn't bump the CLI version. A version bump should mean the binary changed.
+
 ## Adding a command
 
 1. **In scope?** Check `docs/BACKLOG.md` — surface the decision, don't silently
