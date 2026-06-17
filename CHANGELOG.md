@@ -5,6 +5,13 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0](https://github.com/PollyGlot/google-play-cli/compare/v0.7.0...v0.8.0) (2026-06-17)
+
+
+### Features
+
+* **site:** agent-discovery surfaces — Markdown negotiation, Link headers, skills index ([#268](https://github.com/PollyGlot/google-play-cli/issues/268)) ([f33d5ff](https://github.com/PollyGlot/google-play-cli/commit/f33d5ff47e69f743f1df6b0dc12cb97fe1aaecd3))
+
 ## [0.7.0](https://github.com/PollyGlot/google-play-cli/compare/v0.6.0...v0.7.0) (2026-06-16)
 
 
