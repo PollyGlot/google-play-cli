@@ -34,6 +34,8 @@ import (
 	metadatalist "github.com/PollyGlot/google-play-cli/commands/metadata/list"
 	metadatapull "github.com/PollyGlot/google-play-cli/commands/metadata/pull"
 	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
+	recoverycreate "github.com/PollyGlot/google-play-cli/commands/recovery/create"
+	recoverylist "github.com/PollyGlot/google-play-cli/commands/recovery/list"
 	releaseslist "github.com/PollyGlot/google-play-cli/commands/releases/list"
 	releasesmappings "github.com/PollyGlot/google-play-cli/commands/releases/mappings"
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
@@ -296,6 +298,24 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	deviceTiers.AddCommand(devicetiersview.NewCommand(boot))
 	deviceTiers.AddCommand(devicetierslist.NewCommand(boot))
 	root.AddCommand(deviceTiers)
+
+	// `gplay recovery` — App Recovery (apprecovery): targeted incident-response
+	// remediation that pushes users impacted by a bad release back to a safe app
+	// version. A new top-level namespace, app-scoped and OUTSIDE the Edit
+	// lifecycle (own appRecoveryId, draft→active→canceled) — the inverse of why
+	// `releases mappings` lives under releases. The draft/read leaves are here;
+	// the production-impacting lifecycle leaves (deploy/cancel/add-targeting)
+	// require --confirm. See ADR-0030 / PRD #243 / CONTEXT.md (Recovery).
+	recoveryGroup := &cobra.Command{
+		Use:           "recovery",
+		Short:         "Manage app recovery actions (incident-response remediation for a bad release)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	recoveryGroup.AddCommand(kernel.MarkMutating(recoverycreate.NewCommand(boot)))
+	recoveryGroup.AddCommand(recoverylist.NewCommand(boot))
+	root.AddCommand(recoveryGroup)
 
 	// `gplay team` — manage the Developer account's members (Users) and their
 	// per-app access (Grants). The first gplay surface keyed by the Developer

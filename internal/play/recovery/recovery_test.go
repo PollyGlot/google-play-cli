@@ -1,0 +1,111 @@
+package recovery_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
+	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
+)
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func resp(status int, body string) *http.Response {
+	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+}
+
+const draftBody = `{"appRecoveryId":"555","status":"RECOVERY_STATUS_DRAFT","createTime":"2026-06-18T00:00:00Z"}`
+
+// TestCreate_buildsTargeting_noEdit asserts the draft POST carries the version +
+// user targeting and hits the appRecoveries collection (no /edits/).
+func TestCreate_buildsTargeting_noEdit(t *testing.T) {
+	var gotURL string
+	var gotBody []byte
+	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotURL = r.URL.String()
+		gotBody, _ = io.ReadAll(r.Body)
+		return resp(200, draftBody), nil
+	})
+	hc := &http.Client{Transport: rt}
+
+	a, raw, err := recovery.Create(context.Background(), hc, "com.example.app", recovery.CreateOpts{
+		VersionCodes: []int64{142}, Regions: []string{"US", "FR"}, RemoteInAppUpdate: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if !strings.HasSuffix(gotURL, "/applications/com.example.app/appRecoveries") || strings.Contains(gotURL, "/edits/") {
+		t.Errorf("url %q should be the appRecoveries collection with no Edit", gotURL)
+	}
+	var req struct {
+		RemoteInAppUpdate struct {
+			IsRemoteInAppUpdateRequested bool `json:"isRemoteInAppUpdateRequested"`
+		} `json:"remoteInAppUpdate"`
+		Targeting struct {
+			Regions struct {
+				RegionCode []string `json:"regionCode"`
+			} `json:"regions"`
+			VersionList struct {
+				VersionCodes []int64 `json:"versionCodes"`
+			} `json:"versionList"`
+		} `json:"targeting"`
+	}
+	if err := json.Unmarshal(gotBody, &req); err != nil {
+		t.Fatalf("request body not parseable: %v\n%s", err, gotBody)
+	}
+	if !req.RemoteInAppUpdate.IsRemoteInAppUpdateRequested {
+		t.Error("remoteInAppUpdate should be requested")
+	}
+	if len(req.Targeting.Regions.RegionCode) != 2 || req.Targeting.VersionList.VersionCodes[0] != 142 {
+		t.Errorf("targeting = %+v, want regions [US FR] + versionCodes [142]", req.Targeting)
+	}
+	if a.AppRecoveryID != "555" || a.Status != "RECOVERY_STATUS_DRAFT" {
+		t.Errorf("action = %+v, want draft 555", a)
+	}
+	if strings.TrimSpace(string(raw)) != draftBody {
+		t.Errorf("raw = %s, want verbatim", raw)
+	}
+}
+
+// TestList_sendsVersionCode asserts the required versionCode query param and the
+// parsed actions.
+func TestList_sendsVersionCode(t *testing.T) {
+	var gotURL string
+	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotURL = r.URL.String()
+		return resp(200, `{"recoveryActions":[{"appRecoveryId":"1","status":"RECOVERY_STATUS_ACTIVE"}]}`), nil
+	})
+	hc := &http.Client{Transport: rt}
+	lr, _, err := recovery.List(context.Background(), hc, "com.example.app", 142)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if !strings.Contains(gotURL, "versionCode=142") {
+		t.Errorf("url %q missing versionCode=142", gotURL)
+	}
+	if len(lr.RecoveryActions) != 1 || lr.RecoveryActions[0].AppRecoveryID != "1" {
+		t.Errorf("list = %+v, want one action", lr)
+	}
+}
+
+// TestErrors_mapExitCodes asserts api.Error exit mapping.
+func TestErrors_mapExitCodes(t *testing.T) {
+	for _, tc := range []struct{ status, want int }{{403, 11}, {404, 30}, {500, 40}} {
+		rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			return resp(tc.status, `{"error":{"message":"nope"}}`), nil
+		})
+		hc := &http.Client{Transport: rt}
+		_, _, err := recovery.List(context.Background(), hc, "com.example.app", 1)
+		var apiErr *api.Error
+		if !errors.As(err, &apiErr) || apiErr.ExitCode() != tc.want {
+			t.Errorf("status %d → %v, want exit %d", tc.status, err, tc.want)
+		}
+	}
+}

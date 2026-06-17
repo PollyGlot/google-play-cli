@@ -210,3 +210,13 @@ The `InternalAppSharingArtifact` resource an [Internal App Sharing](#internal-ap
 An app-scoped, **immutable** Android Publisher resource (`applications.deviceTierConfigs`) describing device-targeting criteria for tiered content delivery: named **device groups** (each a set of device selectors over RAM, device IDs, SoCs, system features), an ordered **device tier set** (tiers by descending priority level), and **user country sets**. Created once with a server-assigned int64 `deviceTierConfigId`; read by id or listed (newest first). Lives **outside** the Edit lifecycle, like the [Data Safety declaration](#data-safety-declaration) and the [Recovery](#recovery-recovery-action). The API exposes only create/get/list — **no update/patch/delete** — so a create can never overwrite an existing config. gplay namespace: `device-tiers` (`create` / `view` / `list`), [ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md).
 
 _Avoid_: filing it under `tracks` (it joins no Edit) or `apps` (that namespace is the local registry; a config is created server-side, so `create` is honest, not `add`).
+
+### Recovery (Recovery action)
+An **app recovery action** (Google's `apprecovery` resource): a targeted incident-response remediation that pushes users impacted by a bad release back to a safe app version via a remote in-app update. It has its own `appRecoveryId` and a **draft → active → canceled** lifecycle, independent of the [Edit](#edit) model (no `editId`), and is addressed by package + `versionCode`. gplay surfaces it under the top-level `recovery` namespace ([ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md)): `create` (a harmless draft), `list`, then the production-impacting `deploy` (activate — `--confirm`), `cancel` (irreversible — `--confirm`), and `add-targeting` (widen the audience — `--confirm`). There is no `recovery view` — the API exposes only `list`.
+
+_Avoid_: synonyms like "rollback", "remediation", or "hotfix" — the canonical noun is **Recovery**; and filing it under `releases` (it is non-Edit, the inverse of why [Mapping](#mapping) lives there).
+
+### Targeting (of a Recovery)
+The audience selector of a [Recovery](#recovery-recovery-action): which app **versions** (a versionCode list/range) and which **users** (all-users, CLDR regions, and/or Android SDK levels) the remediation applies to. Set at `create`; afterwards it can only be **widened** via `recovery add-targeting` — the API's `addTargeting` is **append-only** (it never narrows or removes). To shrink the blast radius you must `cancel` and recreate.
+
+_Avoid_: implying `add-targeting` can narrow or replace targeting (it is append-only) — that is why the verb is `add-targeting`, not `set`.
