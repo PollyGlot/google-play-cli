@@ -144,5 +144,7 @@ not a gate.
   review plus `--help`-first authoring covers it. See §5.
 - **Ship a `gplay install-skills` CLI command** (asc has `asc install-skills`).
   Parked: it is a CLI feature in *this* repo, separate from bootstrapping the
-  skills repo; `npx skills add` suffices now.
+  skills repo; `npx skills add` suffices now. **Later adopted** in
+  [ADR-0028](0028-install-skills-command.md): field feedback showed agents do not
+  discover `npx skills add` unprompted, invalidating the "suffices now" premise.
 - **Wait for 1.0.** Rejected — see §4.

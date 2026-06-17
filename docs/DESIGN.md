@@ -62,7 +62,8 @@ act on a release's rollout *state*, not on a "rollout" resource, so they are
 not nested.
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
-grammar, keeping their own names: `version`, `exit-codes`, `auth doctor`,
+grammar, keeping their own names: `version`, `exit-codes`, `install-skills`
+([ADR-0028](./adr/0028-install-skills-command.md)), `auth doctor`,
 `team permissions` (offline catalog), `init`.
 
 ---
