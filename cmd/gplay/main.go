@@ -23,6 +23,7 @@ import (
 	compliancedatasafetyset "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/set"
 	compliancedatasafetyvalidate "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/validate"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
+	"github.com/PollyGlot/google-play-cli/commands/installskills"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
 	metadataimageslist "github.com/PollyGlot/google-play-cli/commands/metadata/images/list"
@@ -405,6 +406,13 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// taxonomy (docs/DESIGN.md §9), built from internal/exit so it cannot
 	// drift from the codes the binary actually returns.
 	root.AddCommand(helpexitcodes.NewCommand())
+
+	// `gplay install-skills` — install the companion agent skills via
+	// `npx skills add` (ADR-0028 / #266). A flat category-3 meta-command; the
+	// one gplay command that needs Node/npx (a dev-workstation convenience, off
+	// the CI/runtime path, so the "no Node" pillar holds). Surfaced in root
+	// --help so an agent told to "install gplay" can discover it.
+	root.AddCommand(installskills.NewCommand(installskills.Options{}))
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
