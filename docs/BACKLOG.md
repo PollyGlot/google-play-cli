@@ -40,9 +40,9 @@ Icône, feature graphic, screenshots phone/tablet 7"/tablet 10"/TV/Wear, promo g
 Upload du fichier `mapping.txt` pour dé-obfusquer les crashes côté Play vitals.
 **Statut :** `gplay releases upload --mapping <mapping.txt>` (dans le même Edit que l'AAB) et `gplay releases mappings upload <mapping.txt> --version-code N` (après coup, pour une version déjà publiée). Surface sous `releases`, pas `vitals` : un Mapping est un upload d'Edit Android Publisher, pas une lecture du service Reporting ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md) / `CONTEXT.md` § Mapping). Types lus de l'énum Discovery (`proguard` / `nativeCode`).
 
-### Fichiers OBB / expansion — `edits.expansionfiles` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
+### Fichiers OBB / expansion — `edits.expansionfiles` — ✅ **livré (`releases expansion-files`, slice [#278](https://github.com/PollyGlot/google-play-cli/issues/278) du PRD [#243](https://github.com/PollyGlot/google-play-cli/issues/243))**
 Mécanisme legacy pour distribuer >150 MB d'assets hors APK.
-**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)), dernier bloc du PRD « Publisher long tail » (legacy, labelé comme tel).
+**Statut :** livré `[experimental]` — `releases expansion-files upload/set/view` ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md)), labelé legacy.
 
 ### APK legacy — `edits.apks` — 🔼 **PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118) (plus tard, hors first-release)**
 Upload d'APK au lieu d'AAB.
@@ -61,9 +61,9 @@ Langue par défaut, email/téléphone/site contact.
 Liste des pays où l'app est dispo.
 **Statut :** `gplay tracks availability view` (read-only, [ADR-0012](adr/0012-app-details-writable-availability-readonly.md)) — [#128](https://github.com/PollyGlot/google-play-cli/issues/128).
 
-### App Recovery — `apprecovery` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
+### App Recovery — `apprecovery` — ✅ **livré (namespace `recovery`, slices [#277](https://github.com/PollyGlot/google-play-cli/issues/277)+[#279](https://github.com/PollyGlot/google-play-cli/issues/279) du PRD [#243](https://github.com/PollyGlot/google-play-cli/issues/243))**
 Remédiation ciblée poussant les users impactés vers une version saine.
-**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)), bloc du PRD « Publisher long tail ».
+**Statut :** livré `[experimental]` — `recovery create/list/deploy/cancel/add-targeting` ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md) ; verbes `deploy`/`cancel`/`add-targeting` admis sous ADR-0019 §2).
 
 ### Création / gestion de custom closed tracks — `tracks.create` + testers — ✅ **livré** (PRD [#117](https://github.com/PollyGlot/google-play-cli/issues/117), slices #120–#123)
 Créer des tracks closed nommés (`qa-team`, `external-beta`...) et y gérer la liste de testeurs.
@@ -128,13 +128,13 @@ Upload AAB de 100+ MB. Google supporte l'upload résumable. Sur erreur réseau a
 
 ## Autres surfaces
 
-### Internal app sharing — `internalappsharingartifacts` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
+### Internal app sharing — `internalappsharingartifacts` — ✅ **livré (`releases sharing upload`, slice [#275](https://github.com/PollyGlot/google-play-cli/issues/275) du PRD [#243](https://github.com/PollyGlot/google-play-cli/issues/243))**
 Upload d'un AAB/APK pour partage par lien (ne passe pas par un track).
-**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)), bloc du PRD « Publisher long tail ».
+**Statut :** livré `[experimental]` — `releases sharing upload` ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md)).
 
-### Device tier configs — `applications.deviceTierConfigs` — 🔼 **PRD draft [#243](https://github.com/PollyGlot/google-play-cli/issues/243)**
+### Device tier configs — `applications.deviceTierConfigs` — ✅ **livré (namespace `device-tiers`, slice [#276](https://github.com/PollyGlot/google-play-cli/issues/276) du PRD [#243](https://github.com/PollyGlot/google-play-cli/issues/243))**
 Configs de targeting device pour la delivery par tiers (create/get/list).
-**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)), bloc du PRD « Publisher long tail ».
+**Statut :** livré `[experimental]` — `device-tiers create/view/list` ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md)).
 
 ### Custom apps / managed Google Play — `playcustomapp` — 🔼 **PRD draft [#242](https://github.com/PollyGlot/google-play-cli/issues/242)**
 Distribution privée d'apps à des organisations — la **seule** API capable de créer une app.

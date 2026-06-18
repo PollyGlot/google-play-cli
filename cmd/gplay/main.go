@@ -22,7 +22,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	compliancedatasafetyset "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/set"
 	compliancedatasafetyvalidate "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/validate"
+	devicetierscreate "github.com/PollyGlot/google-play-cli/commands/device-tiers/create"
+	devicetierslist "github.com/PollyGlot/google-play-cli/commands/device-tiers/list"
+	devicetiersview "github.com/PollyGlot/google-play-cli/commands/device-tiers/view"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
+	"github.com/PollyGlot/google-play-cli/commands/installskills"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
 	metadataimageslist "github.com/PollyGlot/google-play-cli/commands/metadata/images/list"
@@ -31,10 +35,19 @@ import (
 	metadatalist "github.com/PollyGlot/google-play-cli/commands/metadata/list"
 	metadatapull "github.com/PollyGlot/google-play-cli/commands/metadata/pull"
 	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
+	recoveryaddtargeting "github.com/PollyGlot/google-play-cli/commands/recovery/add-targeting"
+	recoverycancel "github.com/PollyGlot/google-play-cli/commands/recovery/cancel"
+	recoverycreate "github.com/PollyGlot/google-play-cli/commands/recovery/create"
+	recoverydeploy "github.com/PollyGlot/google-play-cli/commands/recovery/deploy"
+	recoverylist "github.com/PollyGlot/google-play-cli/commands/recovery/list"
+	expansionset "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/set"
+	expansionupload "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/upload"
+	expansionview "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/view"
 	releaseslist "github.com/PollyGlot/google-play-cli/commands/releases/list"
 	releasesmappings "github.com/PollyGlot/google-play-cli/commands/releases/mappings"
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
+	sharingupload "github.com/PollyGlot/google-play-cli/commands/releases/sharing/upload"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
@@ -229,6 +242,39 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	mappings.AddCommand(kernel.MarkMutating(releasesmappings.NewCommand(boot)))
 	releases.AddCommand(mappings)
+
+	// `gplay releases sharing` — Internal App Sharing (internalappsharingartifacts).
+	// A grouping noun under releases, mirroring `releases mappings`: a non-track
+	// upload that bypasses the Edit lifecycle entirely and mints a private,
+	// shareable install link (CONTEXT.md / ADR-0030 / PRD #243). The single
+	// `upload` leaf mutates Play state (creates an artifact), so it is marked.
+	sharing := &cobra.Command{
+		Use:           "sharing",
+		Short:         "Upload builds to Internal App Sharing (private shareable links)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	sharing.AddCommand(kernel.MarkMutating(sharingupload.NewCommand(boot)))
+	releases.AddCommand(sharing)
+
+	// `gplay releases expansion-files` — legacy OBB expansion files
+	// (edits.expansionfiles). A grouping noun under releases, mirroring
+	// `releases mappings`: an Edit artifact keyed by apkVersionCode (CONTEXT.md /
+	// ADR-0030). upload (media) and set (PUT) mutate inside an Edit; view is a
+	// read-only Edit. The expansion 'patch' type is a --type value, not the HTTP
+	// PATCH method, which folds into set.
+	expansionFiles := &cobra.Command{
+		Use:           "expansion-files",
+		Short:         "Manage legacy OBB expansion files (superseded by Play Asset Delivery)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	expansionFiles.AddCommand(kernel.MarkMutating(expansionupload.NewCommand(boot)))
+	expansionFiles.AddCommand(kernel.MarkMutating(expansionset.NewCommand(boot)))
+	expansionFiles.AddCommand(expansionview.NewCommand(boot))
+	releases.AddCommand(expansionFiles)
 	root.AddCommand(releases)
 
 	tracks := &cobra.Command{
@@ -260,6 +306,48 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	testers.AddCommand(testerslist.NewCommand(boot))
 	testers.AddCommand(kernel.MarkMutating(testersset.NewCommand(boot)))
 	root.AddCommand(testers)
+
+	// `gplay device-tiers` — Device Tier Configs (applications.deviceTierConfigs),
+	// device-targeting for tiered content delivery. A new top-level namespace,
+	// app-scoped and OUTSIDE the Edit lifecycle (no editId) — not under `tracks`
+	// (an Edit surface) nor `apps` (the local registry). The resource is
+	// immutable (create/get/list only), so `create` is the only mutating leaf.
+	// See ADR-0030 / PRD #243 / CONTEXT.md (Device tier config).
+	deviceTiers := &cobra.Command{
+		Use:           "device-tiers",
+		Short:         "Manage device tier configs (device-targeting for tiered delivery)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	deviceTiers.AddCommand(kernel.MarkMutating(devicetierscreate.NewCommand(boot)))
+	deviceTiers.AddCommand(devicetiersview.NewCommand(boot))
+	deviceTiers.AddCommand(devicetierslist.NewCommand(boot))
+	root.AddCommand(deviceTiers)
+
+	// `gplay recovery` — App Recovery (apprecovery): targeted incident-response
+	// remediation that pushes users impacted by a bad release back to a safe app
+	// version. A new top-level namespace, app-scoped and OUTSIDE the Edit
+	// lifecycle (own appRecoveryId, draft→active→canceled) — the inverse of why
+	// `releases mappings` lives under releases. The draft/read leaves are here;
+	// the production-impacting lifecycle leaves (deploy/cancel/add-targeting)
+	// require --confirm. See ADR-0030 / PRD #243 / CONTEXT.md (Recovery).
+	recoveryGroup := &cobra.Command{
+		Use:           "recovery",
+		Short:         "Manage app recovery actions (incident-response remediation for a bad release)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	recoveryGroup.AddCommand(kernel.MarkMutating(recoverycreate.NewCommand(boot)))
+	recoveryGroup.AddCommand(recoverylist.NewCommand(boot))
+	// The production-impacting lifecycle leaves (deploy/cancel/add-targeting)
+	// each require --confirm (exit 3 if missing) — new domain verbs admitted
+	// under ADR-0019 §2 / recorded in ADR-0030.
+	recoveryGroup.AddCommand(kernel.MarkMutating(recoverydeploy.NewCommand(boot)))
+	recoveryGroup.AddCommand(kernel.MarkMutating(recoverycancel.NewCommand(boot)))
+	recoveryGroup.AddCommand(kernel.MarkMutating(recoveryaddtargeting.NewCommand(boot)))
+	root.AddCommand(recoveryGroup)
 
 	// `gplay team` — manage the Developer account's members (Users) and their
 	// per-app access (Grants). The first gplay surface keyed by the Developer
@@ -407,6 +495,13 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// taxonomy (docs/DESIGN.md §9), built from internal/exit so it cannot
 	// drift from the codes the binary actually returns.
 	root.AddCommand(helpexitcodes.NewCommand())
+
+	// `gplay install-skills` — install the companion agent skills via
+	// `npx skills add` (ADR-0028 / #266). A flat category-3 meta-command; the
+	// one gplay command that needs Node/npx (a dev-workstation convenience, off
+	// the CI/runtime path, so the "no Node" pillar holds). Surfaced in root
+	// --help so an agent told to "install gplay" can discover it.
+	root.AddCommand(installskills.NewCommand(installskills.Options{}))
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",

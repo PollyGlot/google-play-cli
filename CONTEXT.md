@@ -197,3 +197,31 @@ The unit the [Play Developer Reporting API](#play-developer-reporting-api) expos
 A ProGuard/R8 **deobfuscation file** (`mapping.txt`) uploaded so Play can symbolicate an app's obfuscated crash stack traces — without it, [Vitals](#vitals) error reports are unreadable. Backed by Google's `edits.deobfuscationfiles` resource: an **Android Publisher** [Edit](#edit) artifact keyed by `versionCode`, uploaded with the same scope and Edit model as a release upload (not the Reporting service). Despite being functionally coupled to Vitals, it is architecturally a publisher Edit upload, so gplay surfaces it under `releases` (`releases upload --mapping`, `releases mappings upload`), never under the read-only `vitals` namespace.
 
 _Avoid_: filing a Mapping under `vitals` — `vitals` is read-only reporting; a Mapping is a publisher Edit upload.
+
+### Internal App Sharing
+A Google Play distribution channel (the `internalappsharingartifacts` resource) for uploading an APK or AAB and getting back a **private, shareable download link** that an authorized tester follows into the Play Store to install — bypassing tracks, releases, and the Edit lifecycle entirely. A QA/preview workflow, **not** a Release. gplay surfaces it under `releases sharing upload` ([ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md)): the channel distinction lives in the `sharing` noun, the gesture stays the canonical `upload` (the API methods are `uploadapk`/`uploadbundle`). APK vs AAB is auto-detected by extension, with a `--format apk|bundle` override.
+
+_Avoid_: calling it a "release" (it publishes to no track and creates no [Release](#release)) or folding it under a track-keyed surface.
+
+### Sharing artifact
+The `InternalAppSharingArtifact` resource an [Internal App Sharing](#internal-app-sharing) upload returns: `{ downloadUrl, certificateFingerprint, sha256 }`. The `downloadUrl` is the shareable install link (the field the human view leads with); `certificateFingerprint` is the SHA-256 of the signing certificate; `sha256` is the artifact's content hash. Passed through verbatim on `--output json` (ADR-0003).
+
+### Device tier config
+An app-scoped, **immutable** Android Publisher resource (`applications.deviceTierConfigs`) describing device-targeting criteria for tiered content delivery: named **device groups** (each a set of device selectors over RAM, device IDs, SoCs, system features), an ordered **device tier set** (tiers by descending priority level), and **user country sets**. Created once with a server-assigned int64 `deviceTierConfigId`; read by id or listed (newest first). Lives **outside** the Edit lifecycle, like the [Data Safety declaration](#data-safety-declaration) and the [Recovery](#recovery-recovery-action). The API exposes only create/get/list — **no update/patch/delete** — so a create can never overwrite an existing config. gplay namespace: `device-tiers` (`create` / `view` / `list`), [ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md).
+
+_Avoid_: filing it under `tracks` (it joins no Edit) or `apps` (that namespace is the local registry; a config is created server-side, so `create` is honest, not `add`).
+
+### Recovery (Recovery action)
+An **app recovery action** (Google's `apprecovery` resource): a targeted incident-response remediation that pushes users impacted by a bad release back to a safe app version via a remote in-app update. It has its own `appRecoveryId` and a **draft → active → canceled** lifecycle, independent of the [Edit](#edit) model (no `editId`), and is addressed by package + `versionCode`. gplay surfaces it under the top-level `recovery` namespace ([ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md)): `create` (a harmless draft), `list`, then the production-impacting `deploy` (activate — `--confirm`), `cancel` (irreversible — `--confirm`), and `add-targeting` (widen the audience — `--confirm`). There is no `recovery view` — the API exposes only `list`.
+
+_Avoid_: synonyms like "rollback", "remediation", or "hotfix" — the canonical noun is **Recovery**; and filing it under `releases` (it is non-Edit, the inverse of why [Mapping](#mapping) lives there).
+
+### Targeting (of a Recovery)
+The audience selector of a [Recovery](#recovery-recovery-action): which app **versions** (a versionCode list/range) and which **users** (all-users, CLDR regions, and/or Android SDK levels) the remediation applies to. Set at `create`; afterwards it can only be **widened** via `recovery add-targeting` — the API's `addTargeting` is **append-only** (it never narrows or removes). To shrink the blast radius you must `cancel` and recreate.
+
+_Avoid_: implying `add-targeting` can narrow or replace targeting (it is append-only) — that is why the verb is `add-targeting`, not `set`.
+
+### Expansion file (OBB)
+A **legacy** Google Play mechanism for distributing >150 MB of assets outside the APK, as an `.obb` sidecar attached to a specific APK `versionCode`. Backed by Google's `edits.expansionfiles` resource: an Android Publisher [Edit](#edit) artifact keyed by `apkVersionCode` and a **type** (`main` or `patch`), uploaded with the same scope and Edit model as a release upload — structurally a sibling of a [Mapping](#mapping). gplay surfaces it under `releases` (`releases expansion-files upload/set/view`), never under `edits` (the Edit is plumbing). Each APK has up to two expansion files (a main and an optional patch); each is either its own uploaded file (`fileSize`) or a reference to another APK's (`referencesVersion`) — the two are mutually exclusive. **Legacy**: superseded by Play Asset Delivery for AABs; only APK-based apps use it.
+
+_Avoid_: treating it as an `edits`-namespace concept (the Edit is plumbing), or confusing the expansion **patch type** (`--type patch`) with the HTTP **PATCH** method — the API's `update` (PUT) and `patch` (PATCH) both write the one field `referencesVersion`, so gplay folds them into a single `set` verb ([ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md)).
