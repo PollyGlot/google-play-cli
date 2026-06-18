@@ -216,6 +216,22 @@ Each transition is its own verb:
 - `gplay releases resume`
 - `gplay releases complete` — userFraction → 1.0, status → `completed`
 
+### Sub-surfaces under `releases`
+
+`releases` also hosts two grouping nouns for non-track Edit-or-upload surfaces
+(ADR-0030):
+
+- **`releases sharing upload`** — Internal App Sharing: a non-track media upload
+  (no Edit) returning a private shareable link (CONTEXT.md "Internal App
+  Sharing").
+- **`releases expansion-files upload/set/view`** — legacy OBB expansion files,
+  an Edit artifact keyed by `apkVersionCode` (CONTEXT.md "Expansion file (OBB)").
+  Labeled legacy (superseded by Play Asset Delivery). The expansion **`patch`
+  type** (`--type patch`) is unrelated to the HTTP PATCH method: the API's
+  `update` (PUT) and `patch` (PATCH) both write the single field
+  `referencesVersion`, so gplay exposes one declarative `set` (PUT primary), not
+  a PUT/PATCH pair.
+
 ---
 
 ## 4. Edit lifecycle

@@ -39,6 +39,9 @@ import (
 	recoverycreate "github.com/PollyGlot/google-play-cli/commands/recovery/create"
 	recoverydeploy "github.com/PollyGlot/google-play-cli/commands/recovery/deploy"
 	recoverylist "github.com/PollyGlot/google-play-cli/commands/recovery/list"
+	expansionset "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/set"
+	expansionupload "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/upload"
+	expansionview "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/view"
 	releaseslist "github.com/PollyGlot/google-play-cli/commands/releases/list"
 	releasesmappings "github.com/PollyGlot/google-play-cli/commands/releases/mappings"
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
@@ -252,6 +255,24 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	sharing.AddCommand(kernel.MarkMutating(sharingupload.NewCommand(boot)))
 	releases.AddCommand(sharing)
+
+	// `gplay releases expansion-files` — legacy OBB expansion files
+	// (edits.expansionfiles). A grouping noun under releases, mirroring
+	// `releases mappings`: an Edit artifact keyed by apkVersionCode (CONTEXT.md /
+	// ADR-0030). upload (media) and set (PUT) mutate inside an Edit; view is a
+	// read-only Edit. The expansion 'patch' type is a --type value, not the HTTP
+	// PATCH method, which folds into set.
+	expansionFiles := &cobra.Command{
+		Use:           "expansion-files",
+		Short:         "Manage legacy OBB expansion files (superseded by Play Asset Delivery)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	expansionFiles.AddCommand(kernel.MarkMutating(expansionupload.NewCommand(boot)))
+	expansionFiles.AddCommand(kernel.MarkMutating(expansionset.NewCommand(boot)))
+	expansionFiles.AddCommand(expansionview.NewCommand(boot))
+	releases.AddCommand(expansionFiles)
 	root.AddCommand(releases)
 
 	tracks := &cobra.Command{
