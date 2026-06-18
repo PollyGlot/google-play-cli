@@ -102,10 +102,37 @@ type listPage struct {
 // the verbatim bytes the API returned (the fully-consumed nextPageToken is
 // dropped). An *api.Error surfaces on any failure.
 func ListUsers(ctx context.Context, hc *http.Client, developerID string) ([]User, json.RawMessage, error) {
+	users, rawAll, err := listUsersRaw(ctx, hc, developerID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Normalise to an empty slice so an account with no members marshals as
+	// {"users":[]} rather than {"users":null} — the conventional empty-array
+	// shape a consumer parsing `.users` expects.
+	if rawAll == nil {
+		rawAll = []json.RawMessage{}
+	}
+	merged, err := json.Marshal(struct {
+		Users []json.RawMessage `json:"users"`
+	}{Users: rawAll})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: "marshal merged response: " + err.Error(), Cause: err}
+	}
+	return users, merged, nil
+}
+
+// listUsersRaw fetches every member of the developer account, following
+// nextPageToken to completion (no silent truncation), and returns the parsed
+// Users together with the verbatim per-User bytes the API returned — parallel
+// slices sharing an index. It is the shared core of ListUsers (which merges the
+// raw bytes into one `{"users":[…]}` body) and FindUserRaw (which filters to the
+// one matched member). An *api.Error surfaces on any failure.
+func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]User, []json.RawMessage, error) {
 	var (
-		users  []User
-		rawAll []json.RawMessage
-		token  string
+		users []User
+		raw   []json.RawMessage
+		token string
 	)
 	for {
 		u := usersBase(developerID)
@@ -124,52 +151,49 @@ func ListUsers(ctx context.Context, hc *http.Client, developerID string) ([]User
 		if err := json.Unmarshal(page, &pg); err != nil {
 			return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: "decode response: " + err.Error(), Cause: err}
 		}
-		for _, raw := range pg.Users {
+		for _, rawUser := range pg.Users {
 			var usr User
-			if err := json.Unmarshal(raw, &usr); err != nil {
+			if err := json.Unmarshal(rawUser, &usr); err != nil {
 				return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: "decode user: " + err.Error(), Cause: err}
 			}
 			users = append(users, usr)
-			rawAll = append(rawAll, raw)
+			raw = append(raw, rawUser)
 		}
 		if pg.NextPageToken == "" {
 			break
 		}
 		token = pg.NextPageToken
 	}
-
-	// Normalise to an empty slice so an account with no members marshals as
-	// {"users":[]} rather than {"users":null} — the conventional empty-array
-	// shape a consumer parsing `.users` expects.
-	if rawAll == nil {
-		rawAll = []json.RawMessage{}
-	}
-	merged, err := json.Marshal(struct {
-		Users []json.RawMessage `json:"users"`
-	}{Users: rawAll})
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: "marshal merged response: " + err.Error(), Cause: err}
-	}
-	return users, merged, nil
+	return users, raw, nil
 }
 
-// FindUser reads a single member (and their Grants) by email. The API has no
-// users.get, so it lists to completion and filters — the "read a User + their
-// grants" helper every read-then-decide path reuses (#150). Email match is
+// FindUserRaw reads a single member (and their Grants) by email, returning the
+// parsed User and the verbatim bytes users.list returned for it — the raw object
+// an addressed read (`team users view`) passes through under ADR-0003. The API
+// has no users.get, so it lists to completion and filters. Email match is
 // case-insensitive (Google stores the address as entered, but addresses are
-// case-insensitive). Returns (nil, false, nil) when no member matches.
-func FindUser(ctx context.Context, hc *http.Client, developerID, email string) (*User, bool, error) {
-	users, _, err := ListUsers(ctx, hc, developerID)
+// case-insensitive). Returns (nil, nil, false, nil) when no member matches.
+func FindUserRaw(ctx context.Context, hc *http.Client, developerID, email string) (*User, json.RawMessage, bool, error) {
+	users, raw, err := listUsersRaw(ctx, hc, developerID)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	want := strings.ToLower(strings.TrimSpace(email))
 	for i := range users {
 		if strings.ToLower(users[i].Email) == want {
-			return &users[i], true, nil
+			return &users[i], raw[i], true, nil
 		}
 	}
-	return nil, false, nil
+	return nil, nil, false, nil
+}
+
+// FindUser reads a single member (and their Grants) by email — the "read a User
+// + their grants" helper every read-then-decide path reuses (#150). It is
+// FindUserRaw without the raw pass-through bytes, for callers that only need the
+// parsed shape. Returns (nil, false, nil) when no member matches.
+func FindUser(ctx context.Context, hc *http.Client, developerID, email string) (*User, bool, error) {
+	u, _, found, err := FindUserRaw(ctx, hc, developerID, email)
+	return u, found, err
 }
 
 // Write-body types. They deliberately do NOT use omitempty on the permission
