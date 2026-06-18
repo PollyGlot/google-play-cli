@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	viewcmd "github.com/PollyGlot/google-play-cli/commands/team/users/view"
+	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/teamtest"
 )
@@ -24,6 +25,10 @@ const aliceUser = `{"email":"alice@example.com","accessState":"PENDING_SIGNUP","
 
 // bobUser is a plain (non-admin) member with no grants.
 const bobUser = `{"email":"bob@example.com","accessState":"INVITED"}`
+
+// carolUser is a non-admin member with TWO app grants — exercises the grants
+// count and multi-row rendering (every other fixture has ≤1 grant).
+const carolUser = `{"email":"carol@example.com","accessState":"PENDING_SIGNUP","grants":[{"packageName":"com.example.foo","appLevelPermissions":["CAN_VIEW_APP_QUALITY"]},{"packageName":"com.example.bar","appLevelPermissions":["CAN_MANAGE_TRACK_USERS","CAN_VIEW_APP_QUALITY"]}]}`
 
 func usersBody(users ...string) string {
 	return `{"users":[` + strings.Join(users, ",") + `]}`
@@ -101,7 +106,9 @@ func TestTableShowsHeaderAndGrants(t *testing.T) {
 }
 
 func TestJSONIsVerbatimSingleUser(t *testing.T) {
-	r, err := run(t, usersBody(aliceUser, bobUser), "alice@example.com")
+	// alice is the SECOND entry, so a passing assertion proves the matched
+	// member's own bytes are selected (raw[i]), not merely raw[0].
+	r, err := run(t, usersBody(bobUser, aliceUser), "alice@example.com")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -117,10 +124,38 @@ func TestMarkdownRendersRecord(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	out := renderMarkdown(t, r)
-	for _, want := range []string{"## alice@example.com", "com.example.foo"} {
+	// A record (DESIGN.md §7): heading + `- **Field**: value` list, then the
+	// grants as a GFM table (header + separator + data row).
+	for _, want := range []string{
+		"## alice@example.com",
+		"- **Access state**: PENDING_SIGNUP",
+		"- **Admin**: yes",
+		"- **Permissions**: CAN_MANAGE_PERMISSIONS_GLOBAL",
+		"- **Grants**: 1",
+		"PACKAGE",
+		"---",
+		"com.example.foo",
+		"CAN_VIEW_APP_QUALITY",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("markdown missing %q\n--- got ---\n%s", want, out)
 		}
+	}
+}
+
+// TestMarkdownGrantlessHasNoTable locks the empty-grants branch of the markdown
+// renderer: the record still lists Grants: 0 but emits no GFM grants table.
+func TestMarkdownGrantlessHasNoTable(t *testing.T) {
+	r, err := run(t, usersBody(bobUser), "bob@example.com")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out := renderMarkdown(t, r)
+	if !strings.Contains(out, "- **Grants**: 0") {
+		t.Errorf("grant-less markdown should show `- **Grants**: 0`\n%s", out)
+	}
+	if strings.Contains(out, "PACKAGE") {
+		t.Errorf("grant-less member must not render a grants table\n%s", out)
 	}
 }
 
@@ -183,5 +218,65 @@ func TestMissingEmailIsUsageError(t *testing.T) {
 	_, err := viewcmd.Run(rc, viewcmd.Input{Email: "   "})
 	if got := exitCodeOf(t, err); got != 2 {
 		t.Errorf("empty email exit = %d, want 2", got)
+	}
+}
+
+func TestServerErrorIsExit40(t *testing.T) {
+	rt := teamtest.New(teamtest.Fail("GET", "/users", 500, `{"error":{"code":500,"message":"boom"}}`))
+	rc := teamtest.NewRC(t, rt)
+	_, err := viewcmd.Run(rc, viewcmd.Input{Email: "alice@example.com"})
+	if got := exitCodeOf(t, err); got != 40 {
+		t.Errorf("500 exit = %d, want 40", got)
+	}
+}
+
+func TestMultiGrantMember(t *testing.T) {
+	r, err := run(t, usersBody(carolUser), "carol@example.com")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out := renderTable(t, r)
+	for _, want := range []string{"GRANTS\t2", "com.example.foo", "com.example.bar", "CAN_MANAGE_TRACK_USERS"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("multi-grant table missing %q\n--- got ---\n%s", want, out)
+		}
+	}
+}
+
+// TestMatchedMemberOnSecondPage proves FindUserRaw paginates to completion and
+// returns the matched member's verbatim bytes even when it sits on a later page
+// — the cross-page raw[i] alignment guard.
+func TestMatchedMemberOnSecondPage(t *testing.T) {
+	page1 := `{"users":[` + bobUser + `],"nextPageToken":"tok"}`
+	page2 := usersBody(aliceUser)
+	rt := teamtest.New(teamtest.Pages(page1, page2))
+	rc := teamtest.NewRC(t, rt)
+
+	r, err := viewcmd.Run(rc, viewcmd.Input{Email: "alice@example.com"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := strings.TrimSpace(renderJSON(t, r)); got != aliceUser {
+		t.Errorf("page-2 member JSON not verbatim\n want: %s\n  got: %s", aliceUser, got)
+	}
+	if got := len(rt.Calls()); got != 2 {
+		t.Errorf("expected 2 users.list page requests, got %d", got)
+	}
+}
+
+// TestUnresolvedDeveloperIDIsExit10 asserts that with no developer-id anywhere
+// the command fails with exit 10 before any network call (AC of #272).
+func TestUnresolvedDeveloperIDIsExit10(t *testing.T) {
+	t.Setenv("GPLAY_DEVELOPER_ID", "")
+	rt := teamtest.New()
+	rc := teamtest.NewRC(t, rt)
+	rc.Resolved = &config.Resolved{} // no developer-id from any layer
+
+	_, err := viewcmd.Run(rc, viewcmd.Input{Email: "alice@example.com"})
+	if got := exitCodeOf(t, err); got != 10 {
+		t.Errorf("exit = %d, want 10 (unresolved developer-id); err=%v", got, err)
+	}
+	if rt.Wrote() || len(rt.Calls()) != 0 {
+		t.Errorf("unresolved id must make no API call; calls=%v", rt.Calls())
 	}
 }

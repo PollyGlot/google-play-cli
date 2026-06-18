@@ -7,7 +7,7 @@
 //
 // The Play Developer API has no users.get and no standalone grants endpoint (a
 // Grant is a field of the User), so reading one member means listing users.list
-// to completion and filtering by email — the same cost as `team grants list`.
+// to completion and filtering by email — the same cost as `team grants list --user`.
 // A member that does not exist is a not-found (exit 30) even though the
 // underlying users.list returns HTTP 200: addressing a missing resource mirrors
 // `tracks view`/`apps view`. The developer-id resolves through the ADR-0015
@@ -23,11 +23,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/team/teamcmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -40,13 +40,6 @@ type Input struct {
 	DeveloperID string
 	Email       string
 }
-
-// usageError is a CLI-misuse error (empty email); ExitCode()=2 per
-// docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // memberNotFoundError is the synthetic not-found for an addressed member that
 // no row of users.list matched. The underlying call returns HTTP 200, but
@@ -161,11 +154,7 @@ func renderTable(w io.Writer, p Payload) error {
 	if err != nil {
 		return err
 	}
-	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	if err := output.RenderTable(tw, cols, p.Grants); err != nil {
-		return err
-	}
-	return tw.Flush()
+	return output.RenderTable(w, cols, p.Grants)
 }
 
 // renderJSON emits the matched User's bytes verbatim (ADR-0003 pass-through).
@@ -208,7 +197,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
-		return nil, &usageError{msg: "no member — pass an email: gplay team users view <email>"}
+		return nil, exit.Usagef("no member — pass an email: gplay team users view <email>")
 	}
 
 	developerID, err := teamcmd.DeveloperID(rc, in.DeveloperID)
