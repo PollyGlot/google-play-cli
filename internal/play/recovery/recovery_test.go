@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -63,8 +64,11 @@ func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 	if !req.RemoteInAppUpdate.IsRemoteInAppUpdateRequested {
 		t.Error("remoteInAppUpdate should be requested")
 	}
-	if len(req.Targeting.Regions.RegionCode) != 2 || req.Targeting.VersionList.VersionCodes[0] != 142 {
-		t.Errorf("targeting = %+v, want regions [US FR] + versionCodes [142]", req.Targeting)
+	if len(req.Targeting.Regions.RegionCode) != 2 {
+		t.Errorf("targeting regions = %v, want [US FR]", req.Targeting.Regions.RegionCode)
+	}
+	if len(req.Targeting.VersionList.VersionCodes) != 1 || req.Targeting.VersionList.VersionCodes[0] != 142 {
+		t.Errorf("targeting versionCodes = %v, want [142]", req.Targeting.VersionList.VersionCodes)
 	}
 	if a.AppRecoveryID != "555" || a.Status != "RECOVERY_STATUS_DRAFT" {
 		t.Errorf("action = %+v, want draft 555", a)
@@ -87,8 +91,12 @@ func TestList_sendsVersionCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if !strings.Contains(gotURL, "versionCode=142") {
-		t.Errorf("url %q missing versionCode=142", gotURL)
+	parsed, perr := url.Parse(gotURL)
+	if perr != nil {
+		t.Fatalf("parse url %q: %v", gotURL, perr)
+	}
+	if got := parsed.Query().Get("versionCode"); got != "142" {
+		t.Errorf("versionCode param = %q, want exactly 142", got)
 	}
 	if len(lr.RecoveryActions) != 1 || lr.RecoveryActions[0].AppRecoveryID != "1" {
 		t.Errorf("list = %+v, want one action", lr)

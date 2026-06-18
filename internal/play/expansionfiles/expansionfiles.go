@@ -75,12 +75,11 @@ func fileURL(host, pkg, editID string, versionCode int, fileType string) string 
 // versionCode and type, and returns the verbatim response body
 // (ExpansionFilesUploadResponse). Media upload to the upload sub-host.
 func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCode int, fileType, path string) (json.RawMessage, error) {
-	f, err := openRegular(path)
+	f, info, err := openRegular(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	info, _ := f.Stat()
 
 	u := fileURL(api.UploadBase, pkg, editID, versionCode, fileType) + "?uploadType=media"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, f)
@@ -132,22 +131,23 @@ func openRaw(path string) (*os.File, error) { return os.Open(path) }
 
 // openRegular opens the file and rejects a non-regular path up front as a
 // client-side *LocalIOError (exit 20) — parity with bundles/mappings.Upload —
-// so a directory/fifo never surfaces as a transport error (exit 50).
-func openRegular(path string) (*os.File, error) {
+// so a directory/fifo never surfaces as a transport error (exit 50). It returns
+// the os.FileInfo so the caller sets ContentLength without a second Stat.
+func openRegular(path string) (*os.File, os.FileInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, &LocalIOError{Path: path, Cause: err}
+		return nil, nil, &LocalIOError{Path: path, Cause: err}
 	}
 	info, err := f.Stat()
 	if err != nil {
 		_ = f.Close()
-		return nil, &LocalIOError{Path: path, Cause: err}
+		return nil, nil, &LocalIOError{Path: path, Cause: err}
 	}
 	if !info.Mode().IsRegular() {
 		_ = f.Close()
-		return nil, &LocalIOError{Path: path, Cause: fmt.Errorf("not a regular file")}
+		return nil, nil, &LocalIOError{Path: path, Cause: fmt.Errorf("not a regular file")}
 	}
-	return f, nil
+	return f, info, nil
 }
 
 // do runs req and maps the response to (raw body, *api.Error).

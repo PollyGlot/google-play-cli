@@ -41,6 +41,9 @@ func (p Payload) Renderers() output.Renderers {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	if in.PageSize < 0 {
+		return nil, devicetierscmd.Usagef("invalid --page-size: must be >= 0")
+	}
 	cols, err := devicetierscmd.ResolveColumns(in.Columns)
 	if err != nil {
 		return nil, err

@@ -125,7 +125,10 @@ func upload(ctx context.Context, hc *http.Client, op, artifactKind, pkg, path st
 			Reasons:    reasons,
 		}
 	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
+	}
 	var art Artifact
 	if err := json.Unmarshal(raw, &art); err != nil {
 		return Artifact{}, nil, &api.Error{

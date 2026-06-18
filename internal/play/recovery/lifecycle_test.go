@@ -39,14 +39,18 @@ func TestDeploy_postsDeployVerb(t *testing.T) {
 
 // TestCancel_postsCancelVerb asserts the :cancel custom verb path.
 func TestCancel_postsCancelVerb(t *testing.T) {
-	var gotURL string
+	var gotURL, gotMethod string
 	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
+		gotMethod = r.Method
 		return resp(200, `{}`), nil
 	})
 	hc := &http.Client{Transport: rt}
 	if _, err := recovery.Cancel(context.Background(), hc, "com.example.app", "555"); err != nil {
 		t.Fatalf("Cancel: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %s, want POST", gotMethod)
 	}
 	if !strings.HasSuffix(gotURL, "/appRecoveries/555:cancel") {
 		t.Errorf("url %q should hit the :cancel verb", gotURL)

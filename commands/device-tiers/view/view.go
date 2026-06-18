@@ -40,7 +40,8 @@ func (p Payload) Renderers() output.Renderers {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if strings.TrimSpace(in.ID) == "" {
+	id := strings.TrimSpace(in.ID)
+	if id == "" {
 		return nil, devicetierscmd.Usagef("missing device tier config id: gplay device-tiers view <id>")
 	}
 	cols, err := devicetierscmd.ResolveColumns(in.Columns)
@@ -55,7 +56,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg, raw, err := devicetiers.Get(rc.Ctx, httpClient, pkg, in.ID)
+	cfg, raw, err := devicetiers.Get(rc.Ctx, httpClient, pkg, id)
 	if err != nil {
 		return nil, devicetierscmd.Classify(pkg, err)
 	}
