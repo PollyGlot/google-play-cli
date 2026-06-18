@@ -55,11 +55,19 @@ Deciding rules:
 
 **2. Domain verbs** — each names a real gesture no generic verb captures:
 `upload`, `promote`, `rollout`, `halt`, `resume`, `complete`, `reply`, `pull`,
-`apply`, `validate`, `login`/`logout`. Admission test: it must state a domain
-gesture `set`/`create`/`view` could not say honestly. The `releases` rollout
-state machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these
-act on a release's rollout *state*, not on a "rollout" resource, so they are
-not nested.
+`apply`, `validate`, `login`/`logout`, and the App Recovery trio `deploy`,
+`cancel`, `add-targeting`. Admission test: it must state a domain gesture
+`set`/`create`/`view` could not say honestly. The `releases` rollout state
+machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these act on a
+release's rollout *state*, not on a "rollout" resource, so they are not nested.
+The recovery trio was admitted under this test and recorded in
+[ADR-0030](./adr/0030-android-publisher-long-tail-surfaces.md): `deploy`
+(activate a draft, ≠ `create`/`set`), `cancel` (terminate to status CANCELED,
+≠ `remove` which deletes), and `add-targeting` (append-only audience widening,
+≠ `set` which would imply replace/narrow). `add-targeting` is the lone
+hyphenated domain verb — a deliberate, narrow exception for legibility (it
+mirrors the API method `addTargeting`), not licence for hyphenated verbs
+generally.
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
 grammar, keeping their own names: `version`, `exit-codes`, `install-skills`
@@ -207,6 +215,22 @@ Each transition is its own verb:
 - `gplay releases halt`
 - `gplay releases resume`
 - `gplay releases complete` — userFraction → 1.0, status → `completed`
+
+### Sub-surfaces under `releases`
+
+`releases` also hosts two grouping nouns for non-track Edit-or-upload surfaces
+(ADR-0030):
+
+- **`releases sharing upload`** — Internal App Sharing: a non-track media upload
+  (no Edit) returning a private shareable link (CONTEXT.md "Internal App
+  Sharing").
+- **`releases expansion-files upload/set/view`** — legacy OBB expansion files,
+  an Edit artifact keyed by `apkVersionCode` (CONTEXT.md "Expansion file (OBB)").
+  Labeled legacy (superseded by Play Asset Delivery). The expansion **`patch`
+  type** (`--type patch`) is unrelated to the HTTP PATCH method: the API's
+  `update` (PUT) and `patch` (PATCH) both write the single field
+  `referencesVersion`, so gplay exposes one declarative `set` (PUT primary), not
+  a PUT/PATCH pair.
 
 ---
 
@@ -399,8 +423,9 @@ seconds instead of stalling a CI job until the runner-level kill:
   **60s default** deadline, applied once where the kernel builds the
   authenticated HTTP client — every command inherits it, no per-command
   plumbing.
-- **Media uploads** (`releases upload`, `metadata images apply`) are **exempt
-  from the default**: a multi-hundred-MB transfer is never killed by the short
+- **Media uploads** (`releases upload`, `releases sharing upload`,
+  `releases expansion-files upload`, `metadata images apply`) are **exempt from
+  the default**: a multi-hundred-MB transfer is never killed by the short
   control-plane bound.
 - The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
   `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
