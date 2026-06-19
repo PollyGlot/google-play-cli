@@ -84,10 +84,11 @@ autorité imposable par l'environnement, introspection de schéma embarquée.
 
 Durcissement interne clos, le thème bascule vers la **couverture des admin APIs
 restantes** : compléter la surface jusqu'à ce que toute opération admin Play soit
-pilotable depuis le CLI. Toujours en `0.x`, sans attendre de gel. **Tête de
-file : vitals [#49](https://github.com/PollyGlot/google-play-cli/issues/49)**
-(observabilité post-lancement) — l'étape qui complète l'arc *publier → durcir →
-observer*.
+pilotable depuis le CLI. Toujours en `0.x`, sans attendre de gel. L'arc
+*publier → durcir → observer* est **complété** — vitals
+[#49](https://github.com/PollyGlot/google-play-cli/issues/49) livré (PR #263).
+Restent les surfaces **commerce / games / custom-apps**, désormais grillées et
+décomposées (#245, #241, #242).
 
 > **Politique de couverture ([ADR-0026](adr/0026-maximal-admin-api-coverage.md), 2026-06-13) :**
 > toute **Admin API** Play est in scope en totalité (Android Publisher complet,
@@ -98,15 +99,15 @@ observer*.
 
 | Ordre | # | Area | Sujet | Prio | Note |
 |---|---|---|---|---|---|
-| 1 | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Vitals (metric sets + errors + anomalies) — Reporting API, read-only | **medium** | **Grillé** ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)) — service `playdeveloperreporting`/v1beta1, 2ᵉ scope OAuth, modèle hybride. **Décomposé** — 5 slices [#258](https://github.com/PollyGlot/google-play-cli/issues/258)–[#262](https://github.com/PollyGlot/google-play-cli/issues/262) (#258 walking skeleton, 2–5 bloquées par lui) |
-| 1b | [#250](https://github.com/PollyGlot/google-play-cli/issues/250) | releases | Mappings ProGuard/R8 (`edits.deobfuscationfiles`) — `upload --mapping` + `releases mappings upload` | **medium** | Splitté de #49 ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)) — Edit publisher, pas du reporting. **Track parallèle — ne bloque PAS la clôture de #49** : couplage *fonctionnel* avec `vitals errors` (stacks lisibles), pas une dépendance dure. #49 se clôt sur ses propres slices ; #250 améliore `vitals errors` quand il atterrit. |
-| 2 | [#243](https://github.com/PollyGlot/google-play-cli/issues/243) | releases+ | Publisher long tail — internal app sharing, app recovery, device tier configs, expansion files | **medium** | **PRD draft** (ADR-0026) — même service (Android Publisher), additif faible risque ; à griller → `/to-issues` |
-| 3 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | low | **PRD draft** (ADR-0026) — splitté de #243 : seul bloc money-touching, grilling write-safety dédié |
-| 4 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) | games | Games Services configuration (`gamesConfiguration`) — achievements & leaderboards | low | **PRD draft** (ADR-0026) — API séparée, à griller |
-| 5 | [#242](https://github.com/PollyGlot/google-play-cli/issues/242) | customapps | Custom apps — publication privée managed Google Play (`playcustomapp`) | low | **PRD draft** (ADR-0026) — seule API qui crée une app |
+| 1 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | low | **Grillé** ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) — `orders view <id>...` / `refund --confirm [--revoke]`, axe package, voided-purchases reporté. **Décomposé** — 3 slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284) (#282 walking skeleton, #283/#284 bloquées par lui) |
+| 2 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) | games | Games Services configuration (`gamesConfiguration`) — achievements & leaderboards | low | **Grillé** ([ADR-0033](adr/0033-games-services-configuration-draft-crud.md)) — namespace `games`, axe application-ID, draft-only (ni publish ni images). **Décomposé** — 3 slices [#286](https://github.com/PollyGlot/google-play-cli/issues/286)–[#288](https://github.com/PollyGlot/google-play-cli/issues/288) (#286 skeleton, #287/#288 bloquées par lui) |
+| 3 | [#242](https://github.com/PollyGlot/google-play-cli/issues/242) | customapps | Custom apps — publication privée managed Google Play (`playcustomapp`) | low | **Grillé** ([ADR-0032](adr/0032-custom-apps-account-axis-gated-creation.md)) — `customapps create` (axe compte, gate `--confirm`, create-only). **Décomposé** — slice [#285](https://github.com/PollyGlot/google-play-cli/issues/285) |
 | post-v1 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | low | **Post-v1** (confirmé) — énorme, 3 niveaux imbriqués |
 | post-v1 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | low | Spike d'investigation d'abord (auth GCS, scope OAuth distinct) |
 | — | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) | releases | APK upload (`edits.apks`) | low | Apps **existantes** only (AAB obligatoire pour les nouvelles depuis 2021) |
+| ✅ | [#49](https://github.com/PollyGlot/google-play-cli/issues/49) | vitals | Vitals (metric sets + errors + anomalies) — Reporting API, read-only | medium | **Livré** (PR [#263](https://github.com/PollyGlot/google-play-cli/issues/263)) — grillé ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)), service `playdeveloperreporting`/v1beta1 (2ᵉ scope OAuth) ; 5 slices [#258](https://github.com/PollyGlot/google-play-cli/issues/258)–[#262](https://github.com/PollyGlot/google-play-cli/issues/262) |
+| ✅ | [#250](https://github.com/PollyGlot/google-play-cli/issues/250) | releases | Mappings ProGuard/R8 (`edits.deobfuscationfiles`) — `upload --mapping` + `releases mappings upload` | medium | **Livré** (PR [#264](https://github.com/PollyGlot/google-play-cli/issues/264)) — splitté de #49 ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)), Edit publisher |
+| ✅ | [#243](https://github.com/PollyGlot/google-play-cli/issues/243) | releases+ | Publisher long tail — internal app sharing, app recovery, device tier configs, expansion files | medium | **Livré** (PR [#280](https://github.com/PollyGlot/google-play-cli/issues/280)) — grillé → 4 slices [#275](https://github.com/PollyGlot/google-play-cli/issues/275)–[#279](https://github.com/PollyGlot/google-play-cli/issues/279) ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md)) |
 | ✅ | [#147](https://github.com/PollyGlot/google-play-cli/issues/147) | team | Team management — users & grants | — | **Livré** (clos 2026-06-02) — 9 slices #149–#157 (ADR-0015/0016/0017) |
 
 **Chantiers transverses en parallèle** (hors couverture API) : convention de
