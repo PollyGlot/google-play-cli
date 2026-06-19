@@ -57,7 +57,10 @@ verification.
    keep the entitlement; revoking access is the larger hammer, opt-in. Required
    Play permission: `CAN_MANAGE_ORDERS`, which is **never** part of a Role bundle
    (ADR-0016). A 403 on either read or refund surfaces as an agent-resolvable
-   refusal naming the missing permission.
+   refusal naming the missing permission. The API also rejects refunds for orders
+   **older than 3 years** (stated verbatim in the `orders.refund` Discovery
+   description) — gplay surfaces that as an agent-resolvable refusal, not a
+   generic error.
 
 4. **Admin/runtime boundary for commerce, concretely.** Order lookup **by order
    ID** is admin: a human or agent holds an order ID from a user complaint or a
