@@ -81,19 +81,21 @@ CRUD des produits in-app non-abonnement.
 Abonnements, base plans, offers, pricing par territoire.
 **Pourquoi plus tard :** API très récente et complexe (3 niveaux imbriqués). Gros morceau à part entière, mérite son propre module et probablement sa propre paire de skills `gplay-subscription-management` + un skill de synchronisation avec RevenueCat.
 
-### Orders — `orders.get` / `orders.batchget` / `orders.refund` — 🔼 **PRD draft [#245](https://github.com/PollyGlot/google-play-cli/issues/245)**
+### Orders — `orders.get` / `orders.batchget` / `orders.refund` — 🔼 **PRD [#245](https://github.com/PollyGlot/google-play-cli/issues/245) grillé → décomposé (slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284))**
 Lecture d'une commande par order ID (diagnostic support/litige) et refund (write money-moving).
-**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) — PRD dédié, splitté du long tail [#243](https://github.com/PollyGlot/google-play-cli/issues/243) : seule surface qui touche à l'argent, grilling write-safety à part (ADR-0016/0017).
+**Statut :** grillé ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) — namespace `orders` sur l'axe package ; lecture `orders view <id>...` (variadic : 1→`get`, 2-1000→`batchget`) ; `orders refund <id> --confirm [--revoke]` (exit-3 si flag absent, pas de bulk, `--revoke` défaut false) ; permissions `CAN_VIEW_FINANCIAL_DATA` (lecture) / `CAN_MANAGE_ORDERS` (refund), jamais bundlées (ADR-0016). Décomposé en 3 slices, `[experimental]` d'abord.
 
 ### Vérification d'achats — `purchases.products` / `purchases.subscriptionsv2`
 Validation côté serveur des tokens de purchase.
 **Statut ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) :** exclu **par nature** du sweep de couverture — c'est une surface *runtime* (le backend valide des tokens en serving). Un read de *debug* ponctuel (litige) pourra exister plus tard comme diagnostic explicitement cadré, hors couverture.
 
-**Cas limite — `purchases.voidedpurchases.list` :** endpoint de *liste* (achats annulés/remboursés, anti-fraude) qu'on interroge côté admin, sans token device — admin-leaning, pas runtime. À trancher au grilling du PRD Orders [#245](https://github.com/PollyGlot/google-play-cli/issues/245) (même famille commerce).
+**Cas limite — `purchases.voidedpurchases.list` :** endpoint de *liste* (achats annulés/remboursés, anti-fraude) qu'on interroge côté admin, sans token device — admin-leaning, pas runtime. **Tranché au grilling de #245 ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) : in scope (admin) mais hors #245** — use case de réconciliation distinct du lookup d'order ; reporté à un futur PRD commerce (adjacent subscriptions/IAP [#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
 
 ---
 
-## Vitals (Play Developer Reporting API — séparée)
+## Vitals (Play Developer Reporting API — séparée) — ✅ **livré** (PRD [#49](https://github.com/PollyGlot/google-play-cli/issues/49), PR #263)
+
+> Module `gplay vitals` livré (crashes/ANR, errors, anomalies + les 7 metric sets) — grillé [ADR-0027](adr/0027-vitals-second-service-scope-readonly.md), slices #258–#262. Les mappings ProGuard/R8 (#250) ont suivi (PR #264). Les deux sous-sections ci-dessous sont conservées pour le rationnel d'origine.
 
 ### Crashes / ANR rates
 `vitals.crashrate.query`, `vitals.anrrate.query`, `vitals.errors.reports`, `vitals.errors.counts`.
@@ -136,13 +138,13 @@ Upload d'un AAB/APK pour partage par lien (ne passe pas par un track).
 Configs de targeting device pour la delivery par tiers (create/get/list).
 **Statut :** livré `[experimental]` — `device-tiers create/view/list` ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md)).
 
-### Custom apps / managed Google Play — `playcustomapp` — 🔼 **PRD draft [#242](https://github.com/PollyGlot/google-play-cli/issues/242)**
+### Custom apps / managed Google Play — `playcustomapp` — 🔼 **PRD [#242](https://github.com/PollyGlot/google-play-cli/issues/242) grillé → décomposé (slice [#285](https://github.com/PollyGlot/google-play-cli/issues/285))**
 Distribution privée d'apps à des organisations — la **seule** API capable de créer une app.
-**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) ; API séparée (`playcustomapp`), namespace `customapps` planifié.
+**Statut :** grillé ([ADR-0032](adr/0032-custom-apps-account-axis-gated-creation.md)) ; API séparée (`playcustomapp`), namespace `customapps` sur l'**axe compte développeur** (ADR-0015). Surface réduite par le snapshot à `create` seul (upload AAB/APK multipart — ni read ni delete) ; création irréversible → gate `--confirm` + `CAN_CREATE_MANAGED_PLAY_APPS` + enrollment managed Play. 1 slice, `[experimental]` d'abord.
 
-### Games Services — `gamesConfiguration` — 🔼 **PRD draft [#241](https://github.com/PollyGlot/google-play-cli/issues/241)**
-Configuration des achievements et leaderboards Play Games Services (CRUD + localisation + icônes).
-**Statut :** in scope ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) ; API séparée (Play Games Services *Publishing* API — la partie runtime des Games Services reste exclue par nature), namespace `games` planifié.
+### Games Services — `gamesConfiguration` — 🔼 **PRD [#241](https://github.com/PollyGlot/google-play-cli/issues/241) grillé → décomposé (slices [#286](https://github.com/PollyGlot/google-play-cli/issues/286)–[#288](https://github.com/PollyGlot/google-play-cli/issues/288))**
+Configuration des achievements et leaderboards Play Games Services (CRUD).
+**Statut :** grillé ([ADR-0033](adr/0033-games-services-configuration-draft-crud.md)) ; API séparée (Play Games Services *Publishing* API — la partie runtime reste exclue par nature), namespace `games` (`achievements`/`leaderboards`), addressing par **Play Games application ID**. Le snapshot a corrigé le draft : **pas d'`imageConfigurations`** (upload d'icônes inexistant) et **pas de méthode publish** (l'API écrit le *draft* ; `published` read-only ; publication joueurs Console-only). Décomposé en 3 slices, `[experimental]` d'abord. **Reporté :** le *sweep* de localisation en masse (ajouter une locale sur tous les achievements d'un coup) — workflow d'ordre supérieur.
 
 ### Play Integrity API — ❌ **non-goal par nature ([ADR-0026](adr/0026-maximal-admin-api-coverage.md))**
 Vérification serveur, par requête, qu'un appel au backend vient d'un binaire et d'un device authentiques.

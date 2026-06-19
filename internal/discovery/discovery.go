@@ -31,10 +31,16 @@ type Service struct {
 // Services is the declared snapshot set. androidpublisher v3 is the primary
 // publishing surface; playdeveloperreporting v1beta1 is the read-only
 // post-launch quality service (crashes/ANR vitals, #49) — a distinct host and
-// OAuth scope, snapshotted the same way.
+// OAuth scope, snapshotted the same way. gamesConfiguration v1configuration
+// (Play Games Services Publishing, #241) and playcustomapp v1 (managed Google
+// Play private apps, #242) are further Play admin APIs (ADR-0026), each its own
+// host — declared here so agents can query their shapes offline before the
+// commands ship.
 var Services = []Service{
 	{Name: "androidpublisher", Host: "androidpublisher.googleapis.com", Version: "v3"},
 	{Name: "playdeveloperreporting", Host: "playdeveloperreporting.googleapis.com", Version: "v1beta1"},
+	{Name: "gamesConfiguration", Host: "gamesconfiguration.googleapis.com", Version: "v1configuration"},
+	{Name: "playcustomapp", Host: "playcustomapp.googleapis.com", Version: "v1"},
 }
 
 // SnapshotFilename is the per-service snapshot file name, e.g.

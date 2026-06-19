@@ -135,6 +135,17 @@ androidpublisher.users.create	POST	androidpublisher/v3/{+parent}/users
 androidpublisher.users.delete	DELETE	androidpublisher/v3/{+name}
 androidpublisher.users.list	GET	androidpublisher/v3/{+parent}/users
 androidpublisher.users.patch	PATCH	androidpublisher/v3/{+name}
+gamesConfiguration.achievementConfigurations.delete	DELETE	games/v1configuration/achievements/{achievementId}
+gamesConfiguration.achievementConfigurations.get	GET	games/v1configuration/achievements/{achievementId}
+gamesConfiguration.achievementConfigurations.insert	POST	games/v1configuration/applications/{applicationId}/achievements
+gamesConfiguration.achievementConfigurations.list	GET	games/v1configuration/applications/{applicationId}/achievements
+gamesConfiguration.achievementConfigurations.update	PUT	games/v1configuration/achievements/{achievementId}
+gamesConfiguration.leaderboardConfigurations.delete	DELETE	games/v1configuration/leaderboards/{leaderboardId}
+gamesConfiguration.leaderboardConfigurations.get	GET	games/v1configuration/leaderboards/{leaderboardId}
+gamesConfiguration.leaderboardConfigurations.insert	POST	games/v1configuration/applications/{applicationId}/leaderboards
+gamesConfiguration.leaderboardConfigurations.list	GET	games/v1configuration/applications/{applicationId}/leaderboards
+gamesConfiguration.leaderboardConfigurations.update	PUT	games/v1configuration/leaderboards/{leaderboardId}
+playcustomapp.accounts.customApps.create	POST	playcustomapp/v1/accounts/{account}/customApps
 playdeveloperreporting.anomalies.list	GET	v1beta1/{+parent}/anomalies
 playdeveloperreporting.apps.fetchReleaseFilterOptions	GET	v1beta1/{+name}:fetchReleaseFilterOptions
 playdeveloperreporting.apps.search	GET	v1beta1/apps:search

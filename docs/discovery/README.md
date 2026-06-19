@@ -12,7 +12,9 @@ reference.
 |------|-----------|
 | `androidpublisher_v3.json` | Pinned, normalized snapshot of the Android Publisher v3 Discovery doc. |
 | `playdeveloperreporting_v1beta1.json` | Pinned, normalized snapshot of the Play Developer Reporting v1beta1 Discovery doc — the read-only crashes/ANR vitals service (#49), a distinct host and OAuth scope. |
-| `paths.txt` | Derived existence-check index — one `id⇥method⇥path` line per API method, across **both** services (ids carry their service prefix). |
+| `gamesConfiguration_v1configuration.json` | Pinned, normalized snapshot of the Play Games Services Publishing (`gamesConfiguration`) v1configuration Discovery doc — achievement & leaderboard configuration (#241), a distinct host. |
+| `playcustomapp_v1.json` | Pinned, normalized snapshot of the Play Custom App Publishing (`playcustomapp`) v1 Discovery doc — managed Google Play private-app creation (#242), a distinct host. |
+| `paths.txt` | Derived existence-check index — one `id⇥method⇥path` line per API method, across **all** snapshotted services (ids carry their service prefix). |
 
 **Generated — do not hand-edit.** Both files are produced by
 `make discovery-update`; an offline integrity test (`go test ./...`) fails if
@@ -48,7 +50,9 @@ produces a minimal, reviewable diff.
 - **Sources:**
   - `https://androidpublisher.googleapis.com/$discovery/rest?version=v3`
   - `https://playdeveloperreporting.googleapis.com/$discovery/rest?version=v1beta1`
-- **Last synced:** `androidpublisher_v3` revision `20260613`; `playdeveloperreporting_v1beta1` revision `20260611`
+  - `https://gamesconfiguration.googleapis.com/$discovery/rest?version=v1configuration`
+  - `https://playcustomapp.googleapis.com/$discovery/rest?version=v1`
+- **Last synced:** `androidpublisher_v3` revision `20260613`; `playdeveloperreporting_v1beta1` revision `20260611`; `gamesConfiguration_v1configuration` revision `20260604`; `playcustomapp_v1` revision `20260618`
 
 Freshness is **not** a per-PR gate — upstream drift is normal and must never
 block an unrelated PR. A human runs `make discovery-update` on demand. See
