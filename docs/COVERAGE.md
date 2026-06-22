@@ -48,7 +48,8 @@ By method count, of the **~155 admin methods** across the four APIs:
   the single biggest unbuilt block and the honest answer to "are we near the end?":
   **the commerce half is barely started.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
-  (now issues #293–#296).
+  (issues #293–#296); `generatedapks` (#294) has since been grilled into PRD #299
+  and **shipped** (slices #300–#301, PR #305).
 
 ---
 

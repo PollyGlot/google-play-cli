@@ -54,15 +54,10 @@ Deciding rules:
   and `tracks availability view`, not the bare nouns).
 
 **2. Domain verbs** — each names a real gesture no generic verb captures:
-`upload`, `download`, `promote`, `rollout`, `halt`, `resume`, `complete`,
-`reply`, `pull`, `apply`, `validate`, `login`/`logout`, and the App Recovery trio
-`deploy`, `cancel`, `add-targeting`. Admission test: it must state a domain
-gesture `set`/`create`/`view` could not say honestly. `download` was admitted
-under this test and recorded in
-[ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md): it writes
-**opaque binary bytes to a local file** (mirroring the API method `.download`), a
-gesture `view` (structured data to stdout) cannot state — so it is the one verb
-whose destination is `--dest PATH`, not the `--output` Renderable flag. The `releases` rollout state
+`upload`, `promote`, `rollout`, `halt`, `resume`, `complete`, `reply`, `pull`,
+`apply`, `validate`, `download`, `login`/`logout`, and the App Recovery trio
+`deploy`, `cancel`, `add-targeting`. Admission test: it must state a domain gesture
+`set`/`create`/`view` could not say honestly. The `releases` rollout state
 machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these act on a
 release's rollout *state*, not on a "rollout" resource, so they are not nested.
 The recovery trio was admitted under this test and recorded in
@@ -72,7 +67,12 @@ The recovery trio was admitted under this test and recorded in
 ≠ `set` which would imply replace/narrow). `add-targeting` is the lone
 hyphenated domain verb — a deliberate, narrow exception for legibility (it
 mirrors the API method `addTargeting`), not licence for hyphenated verbs
-generally.
+generally. `download` (`releases generated download`) was admitted on the same
+test: it writes opaque binary bytes to a local file — a gesture `view`/`set`
+cannot state — and mirrors the API method `.download`. It is gplay's only binary
+download-to-file verb; its destination flag is `--dest` (`--dest -` for stdout),
+never `--output`, which controls structured-data format
+([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
 grammar, keeping their own names: `version`, `exit-codes`, `install-skills`
@@ -223,19 +223,12 @@ Each transition is its own verb:
 
 ### Sub-surfaces under `releases`
 
-`releases` also hosts three grouping nouns for non-track surfaces (ADR-0030 /
-ADR-0034):
+`releases` also hosts grouping nouns for non-track surfaces (ADR-0030;
+`generated` added in ADR-0034):
 
 - **`releases sharing upload`** — Internal App Sharing: a non-track media upload
   (no Edit) returning a private shareable link (CONTEXT.md "Internal App
   Sharing").
-- **`releases generated list/download`** — the APKs Play generates and signs
-  from an uploaded AAB (`generatedapks`): application-scoped reads, **no Edit**
-  (CONTEXT.md "Generated APK"). `list` flattens the grouped-by-signing-key
-  response to one row per artifact; `download <downloadId> --dest PATH` streams
-  one artifact's raw bytes to disk (`--dest -` to stdout) — the lone command
-  whose payload is raw bytes, so it carries no `--output`
-  ([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
 - **`releases expansion-files upload/set/view`** — legacy OBB expansion files,
   an Edit artifact keyed by `apkVersionCode` (CONTEXT.md "Expansion file (OBB)").
   Labeled legacy (superseded by Play Asset Delivery). The expansion **`patch`
@@ -243,6 +236,13 @@ ADR-0034):
   `update` (PUT) and `patch` (PATCH) both write the single field
   `referencesVersion`, so gplay exposes one declarative `set` (PUT primary), not
   a PUT/PATCH pair.
+- **`releases generated list/download`** — the APKs Play generates and signs from
+  an uploaded AAB (CONTEXT.md "Generated APK"). **Read-only and Edit-free**
+  (application-scoped, not under an Edit). `list` enumerates the artifacts for a
+  `--version-code`; `download <downloadId>` streams one artifact's raw bytes to
+  `--dest PATH` (or `--dest -` for stdout) — gplay's only binary download-to-file
+  command, so it carries no `--output` flag
+  ([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
 
 ---
 

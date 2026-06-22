@@ -92,7 +92,8 @@ pilotable depuis le CLI. Toujours en `0.x`, sans attendre de gel. L'arc
 *publier → durcir → observer* est **complété** — vitals
 [#49](https://github.com/PollyGlot/google-play-cli/issues/49) livré (PR #263).
 Restent les surfaces **commerce / games / custom-apps**, désormais grillées et
-décomposées (#245, #241, #242).
+décomposées (#245, #241, #242). Le quick win read-only **generated APKs** (#299,
+trié depuis #294) est **livré** (PR #305).
 
 > **Politique de couverture ([ADR-0026](adr/0026-maximal-admin-api-coverage.md), 2026-06-13) :**
 > toute **Admin API** Play est in scope en totalité (Android Publisher complet,

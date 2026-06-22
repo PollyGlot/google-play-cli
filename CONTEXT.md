@@ -228,17 +228,17 @@ A **legacy** Google Play mechanism for distributing >150 MB of assets outside th
 
 _Avoid_: treating it as an `edits`-namespace concept (the Edit is plumbing), or confusing the expansion **patch type** (`--type patch`) with the HTTP **PATCH** method — the API's `update` (PUT) and `patch` (PATCH) both write the one field `referencesVersion`, so gplay folds them into a single `set` verb ([ADR-0030](docs/adr/0030-android-publisher-long-tail-surfaces.md)).
 
-### Generated APK
-An APK Google Play **generated and signed** from an uploaded App Bundle — a split, standalone, or universal APK (plus asset-pack slices and recovery modules) — exposed read-only via the `generatedapks` resource. Application-scoped at `/applications/{packageName}/generatedApks/{versionCode}`, **outside the [Edit](#edit) lifecycle** (no `editId`), like [Internal App Sharing](#internal-app-sharing) and [Recovery](#recovery-recovery-action). The list response groups artifacts **by signing key** (`certificateSha256Hash`); each carries an opaque [Download ID](#download-id). gplay surfaces it under `releases generated` (`list` / `download`), [ADR-0034](docs/adr/0034-generated-apks-binary-download-to-file.md).
-
-_Avoid_: calling it "the AAB" or "my APK" — it is the **served, Play-signed** artifact, not the developer's upload; filing it under `edits` (it joins no Edit); or assuming `generated list` opens a read-only Edit the way [`releases list`](#release) does (it does not — the GET is direct).
-
-### Download ID
-The opaque token (`downloadId`) Play assigns each [Generated APK](#generated-apk) in a `generatedapks.list` response — the **sole handle** `generatedapks.download` accepts to fetch that artifact's bytes. It is **not** a filename or URL and is not guaranteed stable across list calls; re-list to refresh it. gplay: the positional of `gplay releases generated download <downloadId>`.
-
-_Avoid_: treating a Download ID as a download URL or a stable artifact name — it is an opaque, per-listing handle consumed only by `download`.
-
 ### Order
 A Google Play purchase record identified by an **order ID** (e.g. `GPA.1234-5678-9012-34567`) — the receipt a buyer holds for a one-time or subscription purchase. Backed by the `orders` resource of the [Android Publisher API](#android-publisher-api), keyed by package: read with `orders.get` / `orders.batchget`, refunded with `orders.refund`. gplay surfaces it as `gplay orders view <orderId>...` (read) and `gplay orders refund <orderId> --confirm` (the money-moving write — [ADR-0031](docs/adr/0031-orders-commerce-reads-and-gated-refund.md)). The **canonical admin/runtime boundary example**: looking up an order *by order ID* is an [Admin API](#admin-api) diagnostic (a human or agent holds the ID from a complaint or payout report — no device token), whereas real-time **purchase-token verification** (`purchases.products` / `purchases.subscriptionsv2`) is a runtime surface, excluded by nature (ADR-0026).
 
 _Avoid_: conflating an **Order** (admin record, order ID) with a **purchase token** (device-issued, runtime, ephemeral) or a **voided purchase** (the polled anti-fraud feed `purchases.voidedpurchases.list` — admin, in scope, but deferred to a future commerce PRD, not part of #245).
+
+### Generated APK
+A signed APK that Play **generates from an uploaded AAB** for serving to devices — split, standalone, or universal APKs, plus asset-pack and recovery-module slices. Backed by the `generatedapks` resource of the [Android Publisher API](#android-publisher-api), keyed by package and `versionCode`, grouped in the response by **signing key** (each group carries a `certificateSha256Hash`). gplay surfaces it under `releases` (`releases generated list --version-code N` to enumerate, `releases generated download <downloadId> --version-code N --dest PATH` to fetch the bytes) — read-only and **Edit-free** (these endpoints are *not* under an [Edit](#edit), unlike a release upload). Use it after `releases upload` to verify the signing identity, sideload, or archive the exact artifacts Play serves ([ADR-0034](docs/adr/0034-generated-apks-binary-download-to-file.md)).
+
+_Avoid_: treating it as an `edits`-namespace concept (there is no Edit), or confusing a **Generated APK** (Play's server-side output of bundle processing) with the AAB you uploaded or with a [Mapping](#mapping)/[Expansion file](#expansion-file-obb) (your own uploaded artifacts).
+
+### Download ID
+The opaque handle that identifies one [Generated APK](#generated-apk) to download. Returned per artifact by `generatedapks.list` (the `downloadId` field on each split/standalone/universal/asset-slice/recovery entry) and supplied as the positional argument to `releases generated download`. It is not a URL and not stable across re-generation — always read a fresh one from `list`.
+
+_Avoid_: treating a **Download ID** as a durable identifier to cache, or confusing it with a `versionCode` (which addresses the *bundle*, not an individual generated artifact).
