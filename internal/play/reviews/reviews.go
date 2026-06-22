@@ -22,6 +22,7 @@ import (
 const (
 	opReviewsList  = "reviews.list"
 	opReviewsReply = "reviews.reply"
+	opReviewsGet   = "reviews.get"
 )
 
 // Timestamp mirrors the API's google.protobuf.Timestamp-shaped value:
@@ -32,19 +33,46 @@ type Timestamp struct {
 	Nanos   int    `json:"nanos"`
 }
 
+// Time returns the instant in UTC, or the zero Time when the Timestamp is
+// absent (nil receiver) or its seconds field is unparseable.
+func (ts *Timestamp) Time() time.Time {
+	if ts == nil {
+		return time.Time{}
+	}
+	secs, err := strconv.ParseInt(ts.Seconds, 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return time.Unix(secs, int64(ts.Nanos)).UTC()
+}
+
 // UserComment is the API-shaped subset of a review's user comment gplay
-// reads: the rating, the reviewer's locale, the body, and when it changed.
+// reads: the rating, the reviewer's locale, the body, when it changed, and —
+// for the deep single-review view — the device and app-version context.
 type UserComment struct {
 	Text             string     `json:"text"`
 	StarRating       int        `json:"starRating"`
 	ReviewerLanguage string     `json:"reviewerLanguage"`
 	LastModified     *Timestamp `json:"lastModified"`
+	Device           string     `json:"device"`
+	AndroidOSVersion int        `json:"androidOsVersion"`
+	AppVersionName   string     `json:"appVersionName"`
+	AppVersionCode   int        `json:"appVersionCode"`
+}
+
+// DeveloperComment is the API-shaped developer reply in a review's
+// conversation thread: the reply body and when it last changed.
+type DeveloperComment struct {
+	Text         string     `json:"text"`
+	LastModified *Timestamp `json:"lastModified"`
 }
 
 // Comment is one entry in a review's comments array. The API interleaves
-// user and developer comments; gplay reads the user comment.
+// user and developer comments; gplay reads both — the user comment carries
+// the rating/locale/text, the developer comment(s) the reply thread.
 type Comment struct {
-	UserComment *UserComment `json:"userComment"`
+	UserComment      *UserComment      `json:"userComment"`
+	DeveloperComment *DeveloperComment `json:"developerComment"`
 }
 
 // Review is the API-shaped Review resource, modeling only the fields gplay
@@ -52,9 +80,10 @@ type Comment struct {
 // it untouched (ADR-0003), even after pagination merges several pages and
 // the `--stars`/`--limit` filters narrow the set.
 type Review struct {
-	Raw      json.RawMessage `json:"-"`
-	ReviewID string          `json:"reviewId"`
-	Comments []Comment       `json:"comments"`
+	Raw        json.RawMessage `json:"-"`
+	ReviewID   string          `json:"reviewId"`
+	AuthorName string          `json:"authorName"`
+	Comments   []Comment       `json:"comments"`
 }
 
 // userComment returns the review's first user comment (the one carrying the
@@ -96,14 +125,55 @@ func (r Review) Text() string {
 // Time when it is absent or unparseable.
 func (r Review) LastModified() time.Time {
 	uc := r.userComment()
-	if uc == nil || uc.LastModified == nil {
+	if uc == nil {
 		return time.Time{}
 	}
-	secs, err := strconv.ParseInt(uc.LastModified.Seconds, 10, 64)
-	if err != nil {
-		return time.Time{}
+	return uc.LastModified.Time()
+}
+
+// Author is the display name of the reviewer, or "" when absent.
+func (r Review) Author() string { return r.AuthorName }
+
+// Device is the reviewer's device codename (e.g. "flame"), or "".
+func (r Review) Device() string {
+	if uc := r.userComment(); uc != nil {
+		return uc.Device
 	}
-	return time.Unix(secs, int64(uc.LastModified.Nanos)).UTC()
+	return ""
+}
+
+// AppVersion is the app version the review was written against, rendered as
+// "name (code)" when both are present, "name" or "(code)" when only one is,
+// and "" when neither is. The version code alone is still useful, so it is
+// surfaced even without a name.
+func (r Review) AppVersion() string {
+	uc := r.userComment()
+	if uc == nil {
+		return ""
+	}
+	switch {
+	case uc.AppVersionName != "" && uc.AppVersionCode != 0:
+		return uc.AppVersionName + " (" + strconv.Itoa(uc.AppVersionCode) + ")"
+	case uc.AppVersionName != "":
+		return uc.AppVersionName
+	case uc.AppVersionCode != 0:
+		return "(" + strconv.Itoa(uc.AppVersionCode) + ")"
+	default:
+		return ""
+	}
+}
+
+// DeveloperReplies returns the developer comments in conversation order — the
+// reply thread beneath the user's review. Empty when the developer has not
+// responded.
+func (r Review) DeveloperReplies() []DeveloperComment {
+	var out []DeveloperComment
+	for _, c := range r.Comments {
+		if c.DeveloperComment != nil {
+			out = append(out, *c.DeveloperComment)
+		}
+	}
+	return out
 }
 
 // Reply posts a developer response to reviewID via reviews.reply. Like
@@ -156,6 +226,62 @@ func Reply(ctx context.Context, hc *http.Client, pkg, reviewID, text string) (js
 		}
 	}
 	return raw, nil
+}
+
+// Get fetches a single review by reviewID via reviews.get. Like List/Reply it
+// is a direct read on the application — reviews are NOT read inside an Edit.
+// The returned Review keeps its verbatim JSON in Raw for the `--output json`
+// pass-through (ADR-0003). A non-2xx becomes an *api.Error carrying the
+// status, so the shared classifier maps 403 → exit 11 and 404 → exit 30 — and
+// a 404 here means an unknown OR expired reviewId (a valid review that has
+// fallen out of the API's 7-day window).
+func Get(ctx context.Context, hc *http.Client, pkg, reviewID string) (Review, error) {
+	u := api.AndroidPubBase +
+		"/applications/" + url.PathEscape(pkg) +
+		"/reviews/" + url.PathEscape(reviewID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return Review{}, &api.Error{Operation: opReviewsGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return Review{}, &api.Error{Operation: opReviewsGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
+		return Review{}, &api.Error{
+			Operation:  opReviewsGet,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    msg,
+			Reasons:    reasons,
+		}
+	}
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if readErr != nil {
+		return Review{}, &api.Error{
+			Operation:  opReviewsGet,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "read response: " + readErr.Error(),
+			Cause:      readErr,
+		}
+	}
+	var rv Review
+	if err := json.Unmarshal(raw, &rv); err != nil {
+		return Review{}, &api.Error{
+			Operation:  opReviewsGet,
+			Package:    pkg,
+			StatusCode: resp.StatusCode,
+			Message:    "decode review: " + err.Error(),
+			Cause:      err,
+		}
+	}
+	rv.Raw = raw
+	return rv, nil
 }
 
 // List fetches every review of pkg from reviews.list, following
