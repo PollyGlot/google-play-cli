@@ -313,6 +313,13 @@ three Renderers, and forcing one would invent a schema with no consumer.
 Any future command in the same shape (side-effecting, no structured
 result) follows the same rule.
 
+`releases generated download` follows it for the opposite reason: its
+payload is **raw binary bytes**, not a Renderable. It writes the bytes to
+`--dest PATH` (or `--dest -` for stdout) and names the byte count +
+destination on a `✓` stderr line (§8), sidestepping a confusing
+`--output`/`--output-file` collision
+([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
+
 ### `--output markdown`
 
 Markdown is a first-rank Format, not "table-in-markdown syntax". Each
