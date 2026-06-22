@@ -12,6 +12,8 @@ and AI agents, replacing Fastlane/Ruby. Pre-1.0.
 3. **`docs/BACKLOG.md`** — not-yet-shipped surfaces and their ordering. Every
    Play **admin** API is in scope (ADR-0026); only runtime surfaces (Play
    Integrity, real-time purchase verification) are excluded by nature.
+   **`docs/COVERAGE.md`** is the orthogonal view — the method-level matrix of all
+   ~155 admin methods mapped to shipped/planned/excluded (the blind-spot guard).
 4. **`docs/adr/`** — the surprising / irreversible decisions and their why.
 
 ## Non-obvious rules (what breaks if you guess)

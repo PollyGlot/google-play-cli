@@ -13,6 +13,11 @@ Ce fichier liste les parties de la Google Play Developer API (et APIs liées) **
 > d'origine. L'état planifié-vs-livré à jour vit dans [ROADMAP.md](ROADMAP.md) —
 > ici, seul ce qui n'est ni ✅ ni 🔼 est encore hors scope.
 
+> **Couverture exhaustive (method-level).** Ce registre est thématique, pas
+> exhaustif. La **matrice complète** des ~155 méthodes admin des 4 APIs (livré /
+> planifié / exclu) vit dans [COVERAGE.md](COVERAGE.md) — c'est le garde-fou
+> contre les angles morts.
+
 ## MVP (rappel, in-scope)
 
 - Auth — service account → OAuth2 access token

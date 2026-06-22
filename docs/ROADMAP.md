@@ -3,6 +3,10 @@
 Vue d'ensemble de la structure des issues du projet. Mise à jour à chaque
 nouveau PRD ou nouvelle décomposition via `/to-issues`.
 
+> **Couverture API.** Pour l'état method-level (« a-t-on tout couvert ? »), voir
+> la matrice [COVERAGE.md](COVERAGE.md) — chaque méthode des 4 APIs admin mappée
+> à livré / planifié / exclu.
+
 > **Versioning :** piloté de bout en bout par release-please / SemVer depuis les
 > commits conventionnels. **Pas de milestone versionné** — le scope se suit par
 > issues PRD + labels (`type:*`, `area:*`), la version par les commits. Voir
