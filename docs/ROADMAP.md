@@ -92,7 +92,8 @@ pilotable depuis le CLI. Toujours en `0.x`, sans attendre de gel. L'arc
 *publier → durcir → observer* est **complété** — vitals
 [#49](https://github.com/PollyGlot/google-play-cli/issues/49) livré (PR #263).
 Restent les surfaces **commerce / games / custom-apps**, désormais grillées et
-décomposées (#245, #241, #242).
+décomposées (#245, #241, #242), plus le quick win read-only **generated APKs**
+(#299, trié depuis #294).
 
 > **Politique de couverture ([ADR-0026](adr/0026-maximal-admin-api-coverage.md), 2026-06-13) :**
 > toute **Admin API** Play est in scope en totalité (Android Publisher complet,
@@ -106,6 +107,7 @@ décomposées (#245, #241, #242).
 | 1 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | low | **Grillé** ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) — `orders view <id>...` / `refund --confirm [--revoke]`, axe package, voided-purchases reporté. **Décomposé** — 3 slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284) (#282 walking skeleton, #283/#284 bloquées par lui) |
 | 2 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) | games | Games Services configuration (`gamesConfiguration`) — achievements & leaderboards | low | **Grillé** ([ADR-0033](adr/0033-games-services-configuration-draft-crud.md)) — namespace `games`, axe application-ID, draft-only (ni publish ni images). **Décomposé** — 3 slices [#286](https://github.com/PollyGlot/google-play-cli/issues/286)–[#288](https://github.com/PollyGlot/google-play-cli/issues/288) (#286 skeleton, #287/#288 bloquées par lui) |
 | 3 | [#242](https://github.com/PollyGlot/google-play-cli/issues/242) | customapps | Custom apps — publication privée managed Google Play (`playcustomapp`) | low | **Grillé** ([ADR-0032](adr/0032-custom-apps-account-axis-gated-creation.md)) — `customapps create` (axe compte, gate `--confirm`, create-only). **Décomposé** — slice [#285](https://github.com/PollyGlot/google-play-cli/issues/285) |
+| 4 | [#299](https://github.com/PollyGlot/google-play-cli/issues/299) | releases | Generated APKs — list/download les APK que Play génère d'un AAB (`generatedapks`) | low | **Trié** depuis [#294](https://github.com/PollyGlot/google-play-cli/issues/294) → **grillé** ([ADR-0034](adr/0034-generated-apks-binary-download-to-file.md)) — `releases generated list/download`, lectures **sans Edit**, 1er geste binaire `download-to-file` (verbe `download`, flag `--dest`). **Décomposé** — 2 slices [#300](https://github.com/PollyGlot/google-play-cli/issues/300)–[#301](https://github.com/PollyGlot/google-play-cli/issues/301) (#300 walking skeleton, #301 bloquée par lui) |
 | post-v1 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | low | **Post-v1** (confirmé) — énorme, 3 niveaux imbriqués |
 | post-v1 | [#94](https://github.com/PollyGlot/google-play-cli/issues/94) | reviews | Historique reviews >7j via CSV reports GCS | low | Spike d'investigation d'abord (auth GCS, scope OAuth distinct) |
 | — | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) | releases | APK upload (`edits.apks`) | low | Apps **existantes** only (AAB obligatoire pour les nouvelles depuis 2021) |

@@ -143,6 +143,10 @@ Upload d'un AAB/APK pour partage par lien (ne passe pas par un track).
 Configs de targeting device pour la delivery par tiers (create/get/list).
 **Statut :** livré `[experimental]` — `device-tiers create/view/list` ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md)).
 
+### APKs générés — `generatedapks` — 🔼 **PRD [#299](https://github.com/PollyGlot/google-play-cli/issues/299) (trié depuis [#294](https://github.com/PollyGlot/google-play-cli/issues/294)) grillé → décomposé (slices [#300](https://github.com/PollyGlot/google-play-cli/issues/300)–[#301](https://github.com/PollyGlot/google-play-cli/issues/301))**
+Lister puis télécharger les APK (split/standalone/universal + slices asset-pack/recovery) que Play génère et signe à partir d'un AAB uploadé — pour vérifier la signature, sideloader ou archiver l'artefact exact servi.
+**Statut :** grillé ([ADR-0034](adr/0034-generated-apks-binary-download-to-file.md)) ; deux lectures **sans Edit** (scoping application, hors `/edits/`), sous `releases generated`. `list --version-code N` énumère ; `download <downloadId> --version-code N --dest PATH` streame les octets bruts vers un fichier (`--dest -` = stdout) — **premier geste binaire « download-to-file » du CLI**, d'où un verbe `download` neuf (ADR-0019) et un flag `--dest` distinct de `--output`. 2 slices ordonnées (#300 walking skeleton, #301 bloquée par lui), `[experimental]` d'abord.
+
 ### Custom apps / managed Google Play — `playcustomapp` — 🔼 **PRD [#242](https://github.com/PollyGlot/google-play-cli/issues/242) grillé → décomposé (slice [#285](https://github.com/PollyGlot/google-play-cli/issues/285))**
 Distribution privée d'apps à des organisations — la **seule** API capable de créer une app.
 **Statut :** grillé ([ADR-0032](adr/0032-custom-apps-account-axis-gated-creation.md)) ; API séparée (`playcustomapp`), namespace `customapps` sur l'**axe compte développeur** (ADR-0015). Surface réduite par le snapshot à `create` seul (upload AAB/APK multipart — ni read ni delete) ; création irréversible → gate `--confirm` + `CAN_CREATE_MANAGED_PLAY_APPS` + enrollment managed Play. 1 slice, `[experimental]` d'abord.

@@ -55,8 +55,8 @@ Deciding rules:
 
 **2. Domain verbs** — each names a real gesture no generic verb captures:
 `upload`, `promote`, `rollout`, `halt`, `resume`, `complete`, `reply`, `pull`,
-`apply`, `validate`, `login`/`logout`, and the App Recovery trio `deploy`,
-`cancel`, `add-targeting`. Admission test: it must state a domain gesture
+`apply`, `validate`, `download`, `login`/`logout`, and the App Recovery trio
+`deploy`, `cancel`, `add-targeting`. Admission test: it must state a domain gesture
 `set`/`create`/`view` could not say honestly. The `releases` rollout state
 machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these act on a
 release's rollout *state*, not on a "rollout" resource, so they are not nested.
@@ -67,7 +67,12 @@ The recovery trio was admitted under this test and recorded in
 ≠ `set` which would imply replace/narrow). `add-targeting` is the lone
 hyphenated domain verb — a deliberate, narrow exception for legibility (it
 mirrors the API method `addTargeting`), not licence for hyphenated verbs
-generally.
+generally. `download` (`releases generated download`) was admitted on the same
+test: it writes opaque binary bytes to a local file — a gesture `view`/`set`
+cannot state — and mirrors the API method `.download`. It is gplay's only binary
+download-to-file verb; its destination flag is `--dest` (`--dest -` for stdout),
+never `--output`, which controls structured-data format
+([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
 grammar, keeping their own names: `version`, `exit-codes`, `install-skills`
@@ -218,8 +223,8 @@ Each transition is its own verb:
 
 ### Sub-surfaces under `releases`
 
-`releases` also hosts two grouping nouns for non-track Edit-or-upload surfaces
-(ADR-0030):
+`releases` also hosts grouping nouns for non-track surfaces (ADR-0030;
+`generated` added in ADR-0034):
 
 - **`releases sharing upload`** — Internal App Sharing: a non-track media upload
   (no Edit) returning a private shareable link (CONTEXT.md "Internal App
@@ -231,6 +236,13 @@ Each transition is its own verb:
   `update` (PUT) and `patch` (PATCH) both write the single field
   `referencesVersion`, so gplay exposes one declarative `set` (PUT primary), not
   a PUT/PATCH pair.
+- **`releases generated list/download`** — the APKs Play generates and signs from
+  an uploaded AAB (CONTEXT.md "Generated APK"). **Read-only and Edit-free**
+  (application-scoped, not under an Edit). `list` enumerates the artifacts for a
+  `--version-code`; `download <downloadId>` streams one artifact's raw bytes to
+  `--dest PATH` (or `--dest -` for stdout) — gplay's only binary download-to-file
+  command, so it carries no `--output` flag
+  ([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
 
 ---
 
