@@ -1,6 +1,7 @@
 package generatedapks_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -111,6 +112,63 @@ func TestList_404_exit30(t *testing.T) {
 		return resp(404, `{"error":{"message":"not found"}}`), nil
 	})
 	_, _, err := generatedapks.List(context.Background(), &http.Client{Transport: rt}, "com.example.app", 999)
+	assertExit(t, err, 30)
+}
+
+// TestDownload_altMedia_streamsBytes_noEdit asserts the download GET carries
+// alt=media, addresses the :download method (no /edits/), and streams the body
+// to the writer verbatim.
+func TestDownload_altMedia_streamsBytes_noEdit(t *testing.T) {
+	var gotURL string
+	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotURL = r.URL.String()
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
+			Body:       io.NopCloser(strings.NewReader("PK\x03\x04rawapkbytes")),
+		}, nil
+	})
+	var buf bytes.Buffer
+	n, err := generatedapks.Download(context.Background(), &http.Client{Transport: rt}, "com.example.app", 142, "dl-abc", &buf)
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if !strings.Contains(gotURL, "/generatedApks/142/downloads/dl-abc:download") {
+		t.Errorf("url %q is not the :download endpoint", gotURL)
+	}
+	if !strings.Contains(gotURL, "alt=media") {
+		t.Errorf("url %q missing alt=media", gotURL)
+	}
+	if strings.Contains(gotURL, "/edits/") {
+		t.Errorf("url %q must not open an Edit", gotURL)
+	}
+	if want := "PK\x03\x04rawapkbytes"; buf.String() != want {
+		t.Errorf("body = %q, want %q", buf.String(), want)
+	}
+	if n != int64(len("PK\x03\x04rawapkbytes")) {
+		t.Errorf("n = %d, want %d", n, len("PK\x03\x04rawapkbytes"))
+	}
+}
+
+// TestDownload_403_exit11 / _404_exit30 cover the refusal/not-found paths.
+func TestDownload_403_exit11(t *testing.T) {
+	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return resp(403, `{"error":{"message":"forbidden"}}`), nil
+	})
+	var buf bytes.Buffer
+	_, err := generatedapks.Download(context.Background(), &http.Client{Transport: rt}, "com.example.app", 142, "dl", &buf)
+	assertExit(t, err, 11)
+	if buf.Len() != 0 {
+		t.Errorf("error path wrote %d bytes, want 0", buf.Len())
+	}
+}
+
+func TestDownload_404_exit30(t *testing.T) {
+	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return resp(404, `{"error":{"message":"unknown downloadId"}}`), nil
+	})
+	var buf bytes.Buffer
+	_, err := generatedapks.Download(context.Background(), &http.Client{Transport: rt}, "com.example.app", 142, "bad", &buf)
 	assertExit(t, err, 30)
 }
 

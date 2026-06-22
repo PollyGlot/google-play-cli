@@ -104,6 +104,38 @@ func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (
 	return lr, raw, nil
 }
 
+// Download streams the raw signed bytes of one generated APK — addressed by its
+// opaque downloadID under versionCode — to w, via generatedapks.download with
+// alt=media (supportsMediaDownload + useMediaDownloadService). It streams
+// (io.Copy) rather than buffering, so a large universal APK never lands wholly
+// in memory; it never JSON-unmarshals the success body. Returns the number of
+// bytes written. No Edit (the endpoint is application-scoped). A non-2xx body is
+// still small JSON, parsed for the error envelope.
+func Download(ctx context.Context, hc *http.Client, pkg string, versionCode int64, downloadID string, w io.Writer) (int64, error) {
+	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) +
+		"/generatedApks/" + strconv.FormatInt(versionCode, 10) +
+		"/downloads/" + url.PathEscape(downloadID) + ":download?alt=media"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return 0, &api.Error{Operation: opDownload, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return 0, &api.Error{Operation: opDownload, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
+		return 0, &api.Error{Operation: opDownload, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
+	}
+	n, err := io.Copy(w, resp.Body)
+	if err != nil {
+		return n, &api.Error{Operation: opDownload, Package: pkg, StatusCode: resp.StatusCode, Message: "stream response body: " + err.Error(), Cause: err}
+	}
+	return n, nil
+}
+
 // do runs req and maps the JSON response to (raw body, *api.Error). Used by the
 // metadata read (List); Download streams its own (non-JSON) body separately.
 func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {

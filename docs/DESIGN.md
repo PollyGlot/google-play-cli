@@ -54,10 +54,15 @@ Deciding rules:
   and `tracks availability view`, not the bare nouns).
 
 **2. Domain verbs** — each names a real gesture no generic verb captures:
-`upload`, `promote`, `rollout`, `halt`, `resume`, `complete`, `reply`, `pull`,
-`apply`, `validate`, `login`/`logout`, and the App Recovery trio `deploy`,
-`cancel`, `add-targeting`. Admission test: it must state a domain gesture
-`set`/`create`/`view` could not say honestly. The `releases` rollout state
+`upload`, `download`, `promote`, `rollout`, `halt`, `resume`, `complete`,
+`reply`, `pull`, `apply`, `validate`, `login`/`logout`, and the App Recovery trio
+`deploy`, `cancel`, `add-targeting`. Admission test: it must state a domain
+gesture `set`/`create`/`view` could not say honestly. `download` was admitted
+under this test and recorded in
+[ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md): it writes
+**opaque binary bytes to a local file** (mirroring the API method `.download`), a
+gesture `view` (structured data to stdout) cannot state — so it is the one verb
+whose destination is `--dest PATH`, not the `--output` Renderable flag. The `releases` rollout state
 machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these act on a
 release's rollout *state*, not on a "rollout" resource, so they are not nested.
 The recovery trio was admitted under this test and recorded in
@@ -218,12 +223,19 @@ Each transition is its own verb:
 
 ### Sub-surfaces under `releases`
 
-`releases` also hosts two grouping nouns for non-track Edit-or-upload surfaces
-(ADR-0030):
+`releases` also hosts three grouping nouns for non-track surfaces (ADR-0030 /
+ADR-0034):
 
 - **`releases sharing upload`** — Internal App Sharing: a non-track media upload
   (no Edit) returning a private shareable link (CONTEXT.md "Internal App
   Sharing").
+- **`releases generated list/download`** — the APKs Play generates and signs
+  from an uploaded AAB (`generatedapks`): application-scoped reads, **no Edit**
+  (CONTEXT.md "Generated APK"). `list` flattens the grouped-by-signing-key
+  response to one row per artifact; `download <downloadId> --dest PATH` streams
+  one artifact's raw bytes to disk (`--dest -` to stdout) — the lone command
+  whose payload is raw bytes, so it carries no `--output`
+  ([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
 - **`releases expansion-files upload/set/view`** — legacy OBB expansion files,
   an Edit artifact keyed by `apkVersionCode` (CONTEXT.md "Expansion file (OBB)").
   Labeled legacy (superseded by Play Asset Delivery). The expansion **`patch`
@@ -300,6 +312,13 @@ expose `--output`. There is no structured payload that would survive
 three Renderers, and forcing one would invent a schema with no consumer.
 Any future command in the same shape (side-effecting, no structured
 result) follows the same rule.
+
+`releases generated download` follows it for the opposite reason: its
+payload is **raw binary bytes**, not a Renderable. It writes the bytes to
+`--dest PATH` (or `--dest -` for stdout) and names the byte count +
+destination on a `✓` stderr line (§8), sidestepping a confusing
+`--output`/`--output-file` collision
+([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
 
 ### `--output markdown`
 

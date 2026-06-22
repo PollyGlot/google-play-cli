@@ -43,6 +43,7 @@ import (
 	expansionset "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/set"
 	expansionupload "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/upload"
 	expansionview "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/view"
+	generateddownload "github.com/PollyGlot/google-play-cli/commands/releases/generated/download"
 	generatedlist "github.com/PollyGlot/google-play-cli/commands/releases/generated/list"
 	releaseslist "github.com/PollyGlot/google-play-cli/commands/releases/list"
 	releasesmappings "github.com/PollyGlot/google-play-cli/commands/releases/mappings"
@@ -291,6 +292,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	generated.AddCommand(generatedlist.NewCommand(boot))
+	generated.AddCommand(generateddownload.NewCommand(boot))
 	releases.AddCommand(generated)
 	root.AddCommand(releases)
 
