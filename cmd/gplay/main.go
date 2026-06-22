@@ -43,6 +43,8 @@ import (
 	expansionset "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/set"
 	expansionupload "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/upload"
 	expansionview "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/view"
+	generateddownload "github.com/PollyGlot/google-play-cli/commands/releases/generated/download"
+	generatedlist "github.com/PollyGlot/google-play-cli/commands/releases/generated/list"
 	releaseslist "github.com/PollyGlot/google-play-cli/commands/releases/list"
 	releasesmappings "github.com/PollyGlot/google-play-cli/commands/releases/mappings"
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
@@ -276,6 +278,23 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	expansionFiles.AddCommand(kernel.MarkMutating(expansionset.NewCommand(boot)))
 	expansionFiles.AddCommand(expansionview.NewCommand(boot))
 	releases.AddCommand(expansionFiles)
+
+	// `gplay releases generated` — the APKs Play generates and signs from an
+	// uploaded AAB (generatedapks). A grouping noun under releases, mirroring
+	// `releases sharing`: an application-scoped read that bypasses the Edit
+	// lifecycle entirely (CONTEXT.md "Generated APK" / ADR-0034 / PRD #299). The
+	// leaves are pure reads (no MarkMutating, not gated by GPLAY_READONLY):
+	// `list` enumerates the artifacts, `download` fetches one to disk.
+	generated := &cobra.Command{
+		Use:           "generated",
+		Short:         "List and download the APKs Play generates from an AAB",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	generated.AddCommand(generatedlist.NewCommand(boot))
+	generated.AddCommand(generateddownload.NewCommand(boot))
+	releases.AddCommand(generated)
 	root.AddCommand(releases)
 
 	tracks := &cobra.Command{
