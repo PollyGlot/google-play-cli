@@ -71,7 +71,7 @@ By method count, of the **~155 admin methods** across the four APIs:
 | `applications.tracks.releases.list` | 1 | ✅ | `releases list` |
 | `apprecovery` | 5 | ✅ | `recovery` |
 | `internalappsharingartifacts` | 2 | ✅ | `releases sharing` |
-| `reviews` | 3 | ✅ | `reviews list`/`reply` — **`reviews.get` (single review) not exposed** 🔴 minor gap |
+| `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |
 | `grants` | 3 | ✅ | `team grants` |
 | `orders` | 3 | 🟡 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) → slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284) |

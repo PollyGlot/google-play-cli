@@ -51,6 +51,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
+	reviewsview "github.com/PollyGlot/google-play-cli/commands/reviews/view"
 	schemacmd "github.com/PollyGlot/google-play-cli/commands/schema"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
 	teamgrantsremove "github.com/PollyGlot/google-play-cli/commands/team/grants/remove"
@@ -402,6 +403,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	reviews.AddCommand(reviewslist.NewCommand(boot))
 	reviews.AddCommand(kernel.MarkMutating(reviewsreply.NewCommand(boot)))
+	reviews.AddCommand(reviewsview.NewCommand(boot))
 	root.AddCommand(reviews)
 
 	// `gplay vitals` — read-only post-launch quality signals (crashes/ANR and

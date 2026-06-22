@@ -26,6 +26,22 @@ roadmap.
 filter), results auto-paginate until exhausted, and `--output json` is the
 `{"reviews": [...]}` pass-through reflecting the filtered set.
 
+## Viewing one review
+
+```sh
+gplay reviews view REVIEW_ID              # the REVIEW_ID column of `reviews list`
+```
+
+`view` is the deep read of a single review: a scalar header (author, star
+rating, date, locale, device, app version, reviewId) followed by the
+**user↔developer conversation** — the review body and any developer replies
+with their dates. `--output json` is the `Review` object verbatim; `--output
+markdown` renders a record plus the thread as blockquotes.
+
+Because the API only serves the last 7 days, a `REVIEW_ID` that is unknown
+**or has aged out of the window** fails with exit 30 and a message naming the
+window — a valid id can still become unfetchable.
+
 ## Replying
 
 ```sh
