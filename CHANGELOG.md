@@ -5,6 +5,15 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0](https://github.com/PollyGlot/google-play-cli/compare/v0.8.0...v0.9.0) (2026-06-22)
+
+
+### Features
+
+* **customapps:** create managed Google Play private apps ([#285](https://github.com/PollyGlot/google-play-cli/issues/285)) ([#303](https://github.com/PollyGlot/google-play-cli/issues/303)) ([3056b75](https://github.com/PollyGlot/google-play-cli/commit/3056b75a8d47bf1ec905b1c27ae264911f98b990))
+* **releases:** generated APKs — list/download the APKs Play generates from an AAB ([#299](https://github.com/PollyGlot/google-play-cli/issues/299)) ([#305](https://github.com/PollyGlot/google-play-cli/issues/305)) ([2f55eb2](https://github.com/PollyGlot/google-play-cli/commit/2f55eb20991b08665935b23935a6a41d457559a6))
+* **reviews:** `reviews view <reviewId>` single-review lookup (reviews.get) ([#298](https://github.com/PollyGlot/google-play-cli/issues/298)) ([#304](https://github.com/PollyGlot/google-play-cli/issues/304)) ([e3e30bd](https://github.com/PollyGlot/google-play-cli/commit/e3e30bd0b413080a3db2784e5d5397c6bdf217c8))
+
 ## [0.8.0](https://github.com/PollyGlot/google-play-cli/compare/v0.7.0...v0.8.0) (2026-06-18)
 
 
