@@ -22,6 +22,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/status"
 	compliancedatasafetyset "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/set"
 	compliancedatasafetyvalidate "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/validate"
+	customappscreate "github.com/PollyGlot/google-play-cli/commands/customapps/create"
 	devicetierscreate "github.com/PollyGlot/google-play-cli/commands/device-tiers/create"
 	devicetierslist "github.com/PollyGlot/google-play-cli/commands/device-tiers/list"
 	devicetiersview "github.com/PollyGlot/google-play-cli/commands/device-tiers/view"
@@ -392,6 +393,23 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	team.AddCommand(teamGrants)
 
 	root.AddCommand(team)
+
+	// `gplay customapps` — managed Google Play private app creation
+	// (playcustomapp.accounts.customApps.create). Like `team` it is keyed by the
+	// Developer account, not a package (ADR-0015) — the app does not yet exist to
+	// be keyed by package. The whole upstream surface is one method (no read, no
+	// delete), so `create` is the only leaf; it is the destructive/irreversible
+	// tier (--confirm, exit 3 if missing) and MarkMutating for GPLAY_READONLY.
+	// See ADR-0032 / PRD #242 / CONTEXT.md (Custom app).
+	customapps := &cobra.Command{
+		Use:           "customapps",
+		Short:         "Create managed Google Play private apps (organisation-scoped)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	customapps.AddCommand(kernel.MarkMutating(customappscreate.NewCommand(boot)))
+	root.AddCommand(customapps)
 
 	reviews := &cobra.Command{
 		Use:           "reviews",
