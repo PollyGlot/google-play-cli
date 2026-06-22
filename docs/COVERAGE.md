@@ -40,9 +40,10 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 By method count, of the **~155 admin methods** across the four APIs:
 
-- **~77 shipped (~50%)** — essentially the entire *publish / first-release /
-  team / observability* half (incl. `generatedapks`, PRD #299 / ADR-0034).
-- **+14 ready now (P0)** — orders #245, games #241, customapps #242 → ~57% once they land.
+- **~78 shipped (~50%)** — essentially the entire *publish / first-release /
+  team / observability* half (incl. `generatedapks`, PRD #299 / ADR-0034, and
+  `customapps`, PRD #242 / ADR-0032).
+- **+13 ready now (P0)** — orders #245, games #241 → ~57% once they land.
 - **~54 methods remain in one coherent continent: monetization** (subscriptions
   #51 + one-time products #293 + legacy IAP + external transactions #295). This is
   the single biggest unbuilt block and the honest answer to "are we near the end?":
@@ -101,7 +102,7 @@ By method count, of the **~155 admin methods** across the four APIs:
 
 | Surface | Methods | State | gplay / issue |
 |---|---|---|---|
-| `accounts.customApps.create` | 1 | 🟡 | [#242](https://github.com/PollyGlot/google-play-cli/issues/242) → slice [#285](https://github.com/PollyGlot/google-play-cli/issues/285) |
+| `accounts.customApps.create` | 1 | ✅ | `customapps create` — [ADR-0032](adr/0032-custom-apps-account-axis-gated-creation.md), PRD [#242](https://github.com/PollyGlot/google-play-cli/issues/242) (PR [#303](https://github.com/PollyGlot/google-play-cli/pull/303)) |
 
 ## `gamesConfiguration` v1configuration — 10 methods
 
