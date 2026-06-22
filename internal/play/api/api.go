@@ -20,6 +20,14 @@ const (
 	// `/apps/{package}/crashRateMetricSet:query`.
 	ReportingBase = "https://playdeveloperreporting.googleapis.com/v1beta1"
 
+	// CustomAppUploadBase is the media-upload base URL for the Play Custom App
+	// Publishing API (playcustomapp) — a DISTINCT Google service (its own host,
+	// the androidpublisher OAuth scope) whose entire current surface is one
+	// account-axis method, accounts.customApps.create (ADR-0032). That method is
+	// a multipart media upload, so only the /upload base is needed; resource
+	// paths hang off it, e.g. `/accounts/{account}/customApps`.
+	CustomAppUploadBase = "https://playcustomapp.googleapis.com/upload/playcustomapp/v1"
+
 	// MaxAPIErrorBodyRead caps how many bytes of a non-2xx androidpublisher
 	// response body we hold in memory while parsing the error envelope.
 	// Error payloads are tiny ({"error":{"code":...,"message":"..."}});
