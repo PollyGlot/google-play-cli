@@ -110,11 +110,13 @@ décomposées (#245, #241, #242).
 | ✅ | [#243](https://github.com/PollyGlot/google-play-cli/issues/243) | releases+ | Publisher long tail — internal app sharing, app recovery, device tier configs, expansion files | medium | **Livré** (PR [#280](https://github.com/PollyGlot/google-play-cli/issues/280)) — grillé → 4 slices [#275](https://github.com/PollyGlot/google-play-cli/issues/275)–[#279](https://github.com/PollyGlot/google-play-cli/issues/279) ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md)) |
 | ✅ | [#147](https://github.com/PollyGlot/google-play-cli/issues/147) | team | Team management — users & grants | — | **Livré** (clos 2026-06-02) — 9 slices #149–#157 (ADR-0015/0016/0017) |
 
-**Chantiers transverses en parallèle** (hors couverture API) : convention de
-confirmation `✓` sur les mutations ([#238](https://github.com/PollyGlot/google-play-cli/issues/238)
-en cours, [#247](https://github.com/PollyGlot/google-play-cli/issues/247) suivi),
-et le quick win dé-parké [#162](https://github.com/PollyGlot/google-play-cli/issues/162)
-(`team users view`, débloqué par la clôture de #98).
+**Chantiers transverses (livrés ✅)** : convention de confirmation `✓` sur les
+mutations ([#238](https://github.com/PollyGlot/google-play-cli/issues/238) +
+[#247](https://github.com/PollyGlot/google-play-cli/issues/247), DESIGN §8, closes
+2026-06-15), et le quick win dé-parké [#162](https://github.com/PollyGlot/google-play-cli/issues/162)
+(`team users view`, débloqué par la clôture de #98) — livré via PRD
+[#271](https://github.com/PollyGlot/google-play-cli/issues/271) / PR
+[#274](https://github.com/PollyGlot/google-play-cli/issues/274).
 
 ## Parking (post-MVP)
 
