@@ -40,15 +40,16 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 By method count, of the **~155 admin methods** across the four APIs:
 
-- **~75 shipped (~48%)** — essentially the entire *publish / first-release /
-  team / observability* half.
+- **~77 shipped (~50%)** — essentially the entire *publish / first-release /
+  team / observability* half (incl. `generatedapks`, PRD #299 / ADR-0034).
 - **+14 ready now (P0)** — orders #245, games #241, customapps #242 → ~57% once they land.
 - **~54 methods remain in one coherent continent: monetization** (subscriptions
   #51 + one-time products #293 + legacy IAP + external transactions #295). This is
   the single biggest unbuilt block and the honest answer to "are we near the end?":
   **the commerce half is barely started.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
-  (now issues #293–#296).
+  (issues #293–#296); `generatedapks` (#294) has since been grilled into PRD #299
+  and **shipped** (slices #300–#301, PR #305).
 
 ---
 
@@ -71,7 +72,7 @@ By method count, of the **~155 admin methods** across the four APIs:
 | `applications.tracks.releases.list` | 1 | ✅ | `releases list` |
 | `apprecovery` | 5 | ✅ | `recovery` |
 | `internalappsharingartifacts` | 2 | ✅ | `releases sharing` |
-| `reviews` | 3 | ✅ | `reviews list`/`reply` — **`reviews.get` (single review) not exposed** 🔴 minor gap |
+| `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |
 | `grants` | 3 | ✅ | `team grants` |
 | `orders` | 3 | 🟡 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) → slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284) |
@@ -81,7 +82,7 @@ By method count, of the **~155 admin methods** across the four APIs:
 | `monetization.onetimeproducts` (+`purchaseOptions`+`offers`) | 17 | 🔴 | [#293](https://github.com/PollyGlot/google-play-cli/issues/293) — new IAP model, #51 scopes only legacy |
 | `monetization.convertRegionPrices` | 1 | 🔴 | [#293](https://github.com/PollyGlot/google-play-cli/issues/293) (folds into monetization) |
 | `externaltransactions` | 3 | 🔴 | [#295](https://github.com/PollyGlot/google-play-cli/issues/295) — alternative billing / DMA reporting |
-| `generatedapks` | 2 | 🔴 | [#294](https://github.com/PollyGlot/google-play-cli/issues/294) — download APKs Play generates from an AAB |
+| `generatedapks` | 2 | ✅ | `releases generated` (list/download) — [ADR-0034](adr/0034-generated-apks-binary-download-to-file.md), PRD [#299](https://github.com/PollyGlot/google-play-cli/issues/299) |
 | `systemapks.variants` | 4 | 🔴 | [#296](https://github.com/PollyGlot/google-play-cli/issues/296) (parked — niche OEM/preload) |
 | `purchases.voidedpurchases.list` | 1 | 🔵 | backlog → future commerce PRD ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
 | `purchases.products` / `productsv2` | 4 | ⚫️ | runtime — token verification ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) |

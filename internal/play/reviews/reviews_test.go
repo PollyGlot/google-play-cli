@@ -269,3 +269,154 @@ func TestList_singlePage(t *testing.T) {
 		t.Errorf("got[0].Raw did not round-trip reviewId=r1: %v / %s", err, got[0].Raw)
 	}
 }
+
+// getRT captures the reviews.get GET — method and path — and serves a canned
+// body, or a forced non-2xx for the error-mapping test (code 0 → 200).
+type getRT struct {
+	code int
+	body string
+
+	mu     sync.Mutex
+	method string
+	path   string
+	calls  int
+}
+
+func (r *getRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	r.method = req.Method
+	r.path = req.URL.Path
+	code := r.code
+	if code == 0 {
+		code = 200
+	}
+	return &http.Response{
+		StatusCode: code,
+		Body:       io.NopCloser(strings.NewReader(r.body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestGet_fetchesSingleReviewAndParsesThread(t *testing.T) {
+	body := `{
+		"reviewId":"gp:AOqpT123",
+		"authorName":"Jane Doe",
+		"comments":[
+			{"userComment":{"text":"Crashes on launch","starRating":2,"reviewerLanguage":"en-US","device":"flame","appVersionName":"1.2.3","appVersionCode":45,"lastModified":{"seconds":"1700000000"}}},
+			{"developerComment":{"text":"Sorry — fixed in 1.2.4","lastModified":{"seconds":"1700000600"}}}
+		]
+	}`
+	rt := &getRT{body: body}
+	hc := &http.Client{Transport: rt}
+
+	got, err := Get(context.Background(), hc, "com.example.app", "gp:AOqpT123")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if rt.method != http.MethodGet {
+		t.Errorf("method = %q, want GET", rt.method)
+	}
+	// The reviewId's own colon stays literal in the path (no :reply suffix).
+	wantPath := "/androidpublisher/v3/applications/com.example.app/reviews/gp:AOqpT123"
+	if rt.path != wantPath {
+		t.Errorf("path = %q, want %q", rt.path, wantPath)
+	}
+
+	// Header accessors.
+	if got.ReviewID != "gp:AOqpT123" {
+		t.Errorf("ReviewID = %q, want gp:AOqpT123", got.ReviewID)
+	}
+	if got.Author() != "Jane Doe" {
+		t.Errorf("Author() = %q, want Jane Doe", got.Author())
+	}
+	if got.Stars() != 2 {
+		t.Errorf("Stars() = %d, want 2", got.Stars())
+	}
+	if got.Locale() != "en-US" {
+		t.Errorf("Locale() = %q, want en-US", got.Locale())
+	}
+	if got.Device() != "flame" {
+		t.Errorf("Device() = %q, want flame", got.Device())
+	}
+	if got.AppVersion() != "1.2.3 (45)" {
+		t.Errorf("AppVersion() = %q, want \"1.2.3 (45)\"", got.AppVersion())
+	}
+	if ts := got.LastModified(); ts.Unix() != 1700000000 {
+		t.Errorf("LastModified() = %v, want unix 1700000000", ts)
+	}
+
+	// The developer reply thread is parsed in conversation order.
+	replies := got.DeveloperReplies()
+	if len(replies) != 1 {
+		t.Fatalf("DeveloperReplies() = %d, want 1", len(replies))
+	}
+	if replies[0].Text != "Sorry — fixed in 1.2.4" {
+		t.Errorf("reply text = %q", replies[0].Text)
+	}
+	if ts := replies[0].LastModified.Time(); ts.Unix() != 1700000600 {
+		t.Errorf("reply LastModified = %v, want unix 1700000600", ts)
+	}
+
+	// The verbatim body is retained for the --output json pass-through.
+	if !json.Valid(got.Raw) || !strings.Contains(string(got.Raw), "gp:AOqpT123") {
+		t.Errorf("Raw should echo the API body verbatim, got: %s", got.Raw)
+	}
+}
+
+func TestGet_appVersionPartialAndAbsent(t *testing.T) {
+	cases := []struct {
+		name string
+		uc   string
+		want string
+	}{
+		{"both", `"appVersionName":"2.0","appVersionCode":99`, "2.0 (99)"},
+		{"nameOnly", `"appVersionName":"2.0"`, "2.0"},
+		{"codeOnly", `"appVersionCode":99`, "(99)"},
+		{"neither", `"text":"hi"`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"reviewId":"r1","comments":[{"userComment":{` + tc.uc + `}}]}`
+			rt := &getRT{body: body}
+			got, err := Get(context.Background(), &http.Client{Transport: rt}, "com.example.app", "r1")
+			if err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.AppVersion() != tc.want {
+				t.Errorf("AppVersion() = %q, want %q", got.AppVersion(), tc.want)
+			}
+		})
+	}
+}
+
+func TestGet_nonOKBecomesAPIErrorWithStatus(t *testing.T) {
+	cases := []struct {
+		name     string
+		code     int
+		wantExit int // via the shared StatusToExitCode taxonomy
+	}{
+		{"forbidden", 403, 11},
+		{"notFound", 404, 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &getRT{code: tc.code, body: `{"error":{"code":` + strconv.Itoa(tc.code) + `,"message":"nope"}}`}
+			hc := &http.Client{Transport: rt}
+
+			_, err := Get(context.Background(), hc, "com.example.app", "r1")
+			var apiErr *api.Error
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("err = %v (%T), want *api.Error", err, err)
+			}
+			if apiErr.StatusCode != tc.code {
+				t.Errorf("StatusCode = %d, want %d", apiErr.StatusCode, tc.code)
+			}
+			if apiErr.ExitCode() != tc.wantExit {
+				t.Errorf("ExitCode() = %d, want %d", apiErr.ExitCode(), tc.wantExit)
+			}
+		})
+	}
+}
