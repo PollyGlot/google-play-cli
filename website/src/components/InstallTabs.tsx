@@ -98,7 +98,7 @@ export default function InstallTabs() {
             className={`rounded-t-md px-4 py-2 font-mono text-sm transition-colors ${
               active.id === tab.id
                 ? 'bg-zinc-900 text-brand'
-                : 'bg-transparent text-zinc-400 hover:text-zinc-200'
+                : 'bg-transparent text-fg-muted hover:text-fg'
             }`}
           >
             {tab.label}

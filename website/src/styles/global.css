@@ -16,3 +16,18 @@
   --color-iris-cyan: #96e1f0;
   --color-iris-pink: #ff6ec3;
 }
+
+/* Semantic theme tokens (ADR-0035) — values live in theme.css per data-theme.
+   `inline` makes the utilities reference var(--…) directly so they re-resolve
+   when the theme attribute flips. Drives the landing's light/dark palette. */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-panel: var(--surface-panel);
+  --color-fg: var(--fg);
+  --color-fg-body: var(--fg-body);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+}
