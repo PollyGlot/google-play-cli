@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import '../styles/theme.css';
 import InstallTabs from '../components/InstallTabs.tsx';
 import logoMark from '../assets/logo-mark.svg';
 import surface from '../data/cli-surface.json';
@@ -123,10 +124,31 @@ locales:      [en-US fr-FR]`;
 ---
 
 <!doctype html>
-<html lang="en" class="scheme-dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- First-paint theme resolution: read the shared Starlight preference,
+         else the OS, and set data-theme before paint so there is no flash.
+         Same storage key the docs use, so a choice carries across the site. -->
+    <script is:inline>
+      (() => {
+        const stored = (() => {
+          try {
+            return localStorage.getItem('starlight-theme');
+          } catch {
+            return null;
+          }
+        })();
+        const theme =
+          stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
@@ -146,39 +168,39 @@ locales:      [en-US fr-FR]`;
       <script type="application/ld+json" set:html={JSON.stringify(block)} />
     ))}
   </head>
-  <body class="m-0 bg-ink font-sans text-zinc-200 antialiased">
+  <body class="m-0 bg-surface font-sans text-fg-body antialiased">
     <a
       href="#main"
       class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-brand focus:px-3 focus:py-2 focus:text-ink"
       >Skip to content</a
     >
 
-    <header class="border-b border-zinc-900">
+    <header class="border-b border-border">
       <nav
         class="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-5 py-4"
         aria-label="Main"
       >
         <a href={`${base}/`} class="flex items-center gap-2 no-underline">
           <img src={logoMark.src} alt="" width="28" height="21" />
-          <span class="font-mono text-lg font-bold text-zinc-100">gplay</span>
+          <span class="font-mono text-lg font-bold text-fg">gplay</span>
         </a>
         <span
-          class="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400"
+          class="rounded-full border border-border-strong px-2 py-0.5 text-xs text-fg-muted"
           title="Pre-1.0: surface may still change before GA"
         >
           public preview
         </span>
         <div class="ml-auto flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-          <a href={`${base}/docs/`} class="text-zinc-300 no-underline hover:text-brand">Docs</a>
-          <a href={`${base}/docs/reference/`} class="text-zinc-300 no-underline hover:text-brand"
+          <a href={`${base}/docs/`} class="text-fg-body no-underline hover:text-accent">Docs</a>
+          <a href={`${base}/docs/reference/`} class="text-fg-body no-underline hover:text-accent"
             >CLI reference</a
           >
           <a
             href={`${base}/docs/agents/agent-guide/`}
-            class="text-zinc-300 no-underline hover:text-brand">AI agents</a
+            class="text-fg-body no-underline hover:text-accent">AI agents</a
           >
-          <a href="#faq" class="text-zinc-300 no-underline hover:text-brand">FAQ</a>
-          <a href={GITHUB} class="text-zinc-300 no-underline hover:text-brand">GitHub</a>
+          <a href="#faq" class="text-fg-body no-underline hover:text-accent">FAQ</a>
+          <a href={GITHUB} class="text-fg-body no-underline hover:text-accent">GitHub</a>
         </div>
       </nav>
     </header>
@@ -195,10 +217,10 @@ locales:      [en-US fr-FR]`;
         </div>
         <div class="relative mx-auto grid max-w-5xl gap-12 px-5 py-16 md:grid-cols-2 md:py-24">
           <div>
-            <h1 class="m-0 text-4xl font-bold leading-tight text-zinc-50 md:text-5xl">
-              Ship to Google Play from your <span class="text-brand">terminal</span>
+            <h1 class="m-0 text-4xl font-bold leading-tight text-fg md:text-5xl">
+              Ship to Google Play from your <span class="text-accent">terminal</span>
             </h1>
-            <p class="mt-5 max-w-prose text-lg leading-relaxed text-zinc-400">
+            <p class="mt-5 max-w-prose text-lg leading-relaxed text-fg-muted">
               gplay is a fast, single-binary CLI for the Google Play Developer API. Releases,
               staged rollouts, store listings, reviews, compliance, and team management — built
               for CI pipelines and AI agents, designed to replace Fastlane on Android pipelines.
@@ -211,13 +233,21 @@ locales:      [en-US fr-FR]`;
               >
               <a
                 href={`${base}/docs/`}
-                class="rounded-md border border-zinc-700 px-5 py-2.5 font-semibold text-zinc-200 no-underline transition-colors hover:border-brand hover:text-brand"
+                class="rounded-md border border-border-strong px-5 py-2.5 font-semibold text-fg-body no-underline transition-colors hover:border-accent hover:text-accent"
                 >Read the docs</a
               >
             </div>
-            <p class="mt-6 font-mono text-sm text-zinc-500">
-              <span class="select-none text-brand">$</span> brew install PollyGlot/tap/gplay
-              <a href="#install" class="ml-2 text-zinc-400 underline underline-offset-4 hover:text-brand"
+            <p class="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+              <!-- Dark island: a copy-pasteable command reads as terminal output,
+                   so it keeps its dark surface and neon prompt in every theme. -->
+              <span
+                class="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-zinc-100"
+              >
+                <span class="select-none text-brand">$</span> brew install PollyGlot/tap/gplay
+              </span>
+              <a
+                href="#install"
+                class="font-mono text-fg-muted underline underline-offset-4 hover:text-accent"
                 >more options ↓</a
               >
             </p>
@@ -249,12 +279,12 @@ locales:      [en-US fr-FR]`;
         </div>
 
         <!-- Stats -->
-        <div class="border-y border-zinc-900 bg-zinc-950/60">
+        <div class="border-y border-border bg-surface-panel">
           <dl class="mx-auto grid max-w-5xl grid-cols-2 gap-6 px-5 py-8 text-center md:grid-cols-4">
             {stats.map((s) => (
               <div>
-                <dt class="order-2 text-sm text-zinc-500">{s.label}</dt>
-                <dd class="m-0 font-mono text-3xl font-bold text-brand">{s.value}</dd>
+                <dt class="order-2 text-sm text-fg-muted">{s.label}</dt>
+                <dd class="m-0 font-mono text-3xl font-bold text-accent">{s.value}</dd>
               </div>
             ))}
           </dl>
@@ -263,18 +293,18 @@ locales:      [en-US fr-FR]`;
 
       <!-- Features -->
       <section id="features" class="mx-auto max-w-5xl px-5 py-16" aria-label="Features">
-        <h2 class="m-0 text-3xl font-bold text-zinc-50">Built for pipelines, not demos</h2>
-        <p class="mt-3 max-w-prose text-zinc-400">
+        <h2 class="m-0 text-3xl font-bold text-fg">Built for pipelines, not demos</h2>
+        <p class="mt-3 max-w-prose text-fg-muted">
           Every design decision is documented in public
-          <a href={`${GITHUB}/tree/main/docs/adr`} class="text-brand underline underline-offset-4"
+          <a href={`${GITHUB}/tree/main/docs/adr`} class="text-accent underline underline-offset-4"
             >architecture decision records</a
           >. These are the load-bearing ones.
         </p>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f) => (
-            <article class="rounded-lg border border-zinc-800 bg-zinc-950/50 p-5">
-              <h3 class="m-0 text-base font-semibold text-zinc-100">{f.title}</h3>
-              <p class="mb-0 mt-2 text-sm leading-relaxed text-zinc-400">{f.body}</p>
+            <article class="rounded-lg border border-border bg-surface-panel p-5">
+              <h3 class="m-0 text-base font-semibold text-fg">{f.title}</h3>
+              <p class="mb-0 mt-2 text-sm leading-relaxed text-fg-muted">{f.body}</p>
             </article>
           ))}
         </div>
@@ -283,28 +313,28 @@ locales:      [en-US fr-FR]`;
       <!-- Command surface -->
       <section
         id="commands"
-        class="border-y border-zinc-900 bg-zinc-950/60"
+        class="border-y border-border bg-surface-panel"
         aria-label="Command surface"
       >
         <div class="mx-auto max-w-5xl px-5 py-16">
-          <h2 class="m-0 text-3xl font-bold text-zinc-50">The command surface</h2>
-          <p class="mt-3 max-w-prose text-zinc-400">
+          <h2 class="m-0 text-3xl font-bold text-fg">The command surface</h2>
+          <p class="mt-3 max-w-prose text-fg-muted">
             {surface.commands} commands across {namespaces.length} namespaces — every page of the
-            <a href={`${base}/docs/reference/`} class="text-brand underline underline-offset-4"
+            <a href={`${base}/docs/reference/`} class="text-accent underline underline-offset-4"
               >CLI reference</a
-            > is generated from the binary's own <code class="font-mono text-zinc-300">--help</code>,
+            > is generated from the binary's own <code class="font-mono text-fg-body">--help</code>,
             so docs never drift from the tool.
           </p>
           <div class="mt-10 grid gap-3 sm:grid-cols-2">
             {namespaces.map((n) => (
               <a
                 href={`${base}/docs/reference/${n.name}/`}
-                class="group flex items-baseline gap-3 rounded-md border border-zinc-800 px-4 py-3 no-underline transition-colors hover:border-brand"
+                class="group flex items-baseline gap-3 rounded-md border border-border px-4 py-3 no-underline transition-colors hover:border-accent"
               >
-                <code class="shrink-0 font-mono text-sm font-semibold text-brand">
+                <code class="shrink-0 font-mono text-sm font-semibold text-accent">
                   gplay {n.name}
                 </code>
-                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">{n.short}</span>
+                <span class="text-sm text-fg-muted group-hover:text-fg-body">{n.short}</span>
               </a>
             ))}
           </div>
@@ -313,42 +343,43 @@ locales:      [en-US fr-FR]`;
 
       <!-- AI agents -->
       <section id="agents" class="mx-auto max-w-5xl px-5 py-16" aria-label="AI agents">
-        <h2 class="m-0 text-3xl font-bold text-zinc-50">A CLI your AI agent already understands</h2>
+        <h2 class="m-0 text-3xl font-bold text-fg">A CLI your AI agent already understands</h2>
         <div class="mt-8 grid gap-10 md:grid-cols-2">
-          <div class="text-zinc-400">
+          <div class="text-fg-muted">
             <p class="mt-0 leading-relaxed">
               gplay treats autonomous callers as first-class users. JSON output mirrors the Google
               Play API schemas verbatim. A refused write names the exact safety flag it needs
-              (exit code 3) instead of dead-ending. <code class="font-mono text-zinc-300">--dry-run</code>
+              (exit code 3) instead of dead-ending. <code class="font-mono text-fg-body">--dry-run</code>
               previews any mutation without HTTP — and on team writes it returns a
-              <code class="font-mono text-zinc-300">requires</code> array announcing the gates ahead.
+              <code class="font-mono text-fg-body">requires</code> array announcing the gates ahead.
             </p>
             <p class="leading-relaxed">
               The docs you're reading ship as
-              <a href={`${base}/llms.txt`} class="text-brand underline underline-offset-4">llms.txt</a>
+              <a href={`${base}/llms.txt`} class="text-accent underline underline-offset-4">llms.txt</a>
               and
-              <a href={`${base}/llms-full.txt`} class="text-brand underline underline-offset-4"
+              <a href={`${base}/llms-full.txt`} class="text-accent underline underline-offset-4"
                 >llms-full.txt</a
               >, including the full generated command reference. The
               <a
                 href={`${base}/docs/agents/agent-guide/`}
-                class="text-brand underline underline-offset-4">agent guide</a
+                class="text-accent underline underline-offset-4">agent guide</a
               > spells out the whole contract.
             </p>
           </div>
           <div>
-            <p class="mt-0 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <p class="mt-0 text-sm font-semibold uppercase tracking-wide text-fg-muted">
               Ready-made skills
             </p>
+            <!-- Dark island: shell snippet stays dark in every theme. -->
             <div class="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
               <code class="block overflow-x-auto font-mono text-sm text-zinc-100">
                 <span class="select-none text-brand">$ </span>npx skills add PollyGlot/google-play-cli-skills
               </code>
             </div>
-            <p class="mt-3 text-sm leading-relaxed text-zinc-400">
+            <p class="mt-3 text-sm leading-relaxed text-fg-muted">
               Nine skills — one per namespace plus a conventions foundation — each documenting the
               safe command sequence for its workflow, for Claude Code and compatible tools.
-              <a href={`${base}/docs/agents/skills/`} class="text-brand underline underline-offset-4"
+              <a href={`${base}/docs/agents/skills/`} class="text-accent underline underline-offset-4"
                 >Browse the roster</a
               >.
             </p>
@@ -359,16 +390,16 @@ locales:      [en-US fr-FR]`;
       <!-- Install -->
       <section
         id="install"
-        class="border-y border-zinc-900 bg-zinc-950/60"
+        class="border-y border-border bg-surface-panel"
         aria-label="Installation"
       >
         <div class="mx-auto max-w-3xl px-5 py-16">
-          <h2 class="m-0 text-3xl font-bold text-zinc-50">Install</h2>
-          <p class="mt-3 text-zinc-400">
+          <h2 class="m-0 text-3xl font-bold text-fg">Install</h2>
+          <p class="mt-3 text-fg-muted">
             One binary, four ways to get it. Then
             <a
               href={`${base}/docs/getting-started/quickstart/`}
-              class="text-brand underline underline-offset-4">the quickstart</a
+              class="text-accent underline underline-offset-4">the quickstart</a
             > takes you from login to a release upload in five commands.
           </p>
           <div class="mt-8">
@@ -379,42 +410,42 @@ locales:      [en-US fr-FR]`;
 
       <!-- FAQ -->
       <section id="faq" class="mx-auto max-w-3xl px-5 py-16" aria-label="Frequently asked questions">
-        <h2 class="m-0 text-3xl font-bold text-zinc-50">FAQ</h2>
+        <h2 class="m-0 text-3xl font-bold text-fg">FAQ</h2>
         <div class="mt-8 flex flex-col gap-3">
           {faq.map((f) => (
-            <details class="group rounded-lg border border-zinc-800 bg-zinc-950/50 p-5 open:border-zinc-700">
-              <summary class="cursor-pointer list-none font-semibold text-zinc-100 marker:content-none group-open:text-brand">
+            <details class="group rounded-lg border border-border bg-surface-panel p-5 open:border-border-strong">
+              <summary class="cursor-pointer list-none font-semibold text-fg marker:content-none group-open:text-accent">
                 {f.q}
               </summary>
-              <p class="mb-0 mt-3 leading-relaxed text-zinc-400">{f.a}</p>
+              <p class="mb-0 mt-3 leading-relaxed text-fg-muted">{f.a}</p>
             </details>
           ))}
         </div>
       </section>
     </main>
 
-    <footer class="border-t border-zinc-900">
+    <footer class="border-t border-border">
       <div class="mx-auto max-w-5xl px-5 py-10">
         <div class="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
-          <a href={`${base}/docs/`} class="text-zinc-400 no-underline hover:text-brand">Docs</a>
-          <a href={`${base}/docs/reference/`} class="text-zinc-400 no-underline hover:text-brand"
+          <a href={`${base}/docs/`} class="text-fg-muted no-underline hover:text-accent">Docs</a>
+          <a href={`${base}/docs/reference/`} class="text-fg-muted no-underline hover:text-accent"
             >CLI reference</a
           >
-          <a href={GITHUB} class="text-zinc-400 no-underline hover:text-brand">GitHub</a>
-          <a href={`${GITHUB}/releases`} class="text-zinc-400 no-underline hover:text-brand"
+          <a href={GITHUB} class="text-fg-muted no-underline hover:text-accent">GitHub</a>
+          <a href={`${GITHUB}/releases`} class="text-fg-muted no-underline hover:text-accent"
             >Releases</a
           >
-          <a href={SKILLS_REPO} class="text-zinc-400 no-underline hover:text-brand">Agent skills</a>
-          <a href={`${base}/llms.txt`} class="text-zinc-400 no-underline hover:text-brand"
+          <a href={SKILLS_REPO} class="text-fg-muted no-underline hover:text-accent">Agent skills</a>
+          <a href={`${base}/llms.txt`} class="text-fg-muted no-underline hover:text-accent"
             >llms.txt</a
           >
         </div>
-        <p class="mt-6 max-w-prose text-xs leading-relaxed text-zinc-600">
+        <p class="mt-6 max-w-prose text-xs leading-relaxed text-fg-subtle">
           gplay is an independent open-source project (MIT license), currently in public preview
           (pre-1.0). It uses the public Google Play Developer API and is not endorsed by,
           affiliated with, or sponsored by Google LLC. "Google Play" is a trademark of Google LLC.
         </p>
-        <p class="mt-2 text-xs text-zinc-600">© 2026 Pavlo Trinko and contributors.</p>
+        <p class="mt-2 text-xs text-fg-subtle">© 2026 Pavlo Trinko and contributors.</p>
       </div>
     </footer>
   </body>

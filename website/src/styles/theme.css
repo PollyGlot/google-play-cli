@@ -21,6 +21,62 @@
   --sl-color-accent-high: #123d27;
 }
 
+/* ---------------------------------------------------------------------------
+   Semantic theme tokens for the landing page (ADR-0035).
+
+   One source of truth for the two palettes: the landing's utilities resolve
+   to these variables (exposed to Tailwind via `@theme inline` in global.css),
+   so the whole page follows the active `data-theme` attribute. Dark-island
+   regions (terminal mockup, shell snippets, code) deliberately keep literal
+   dark classes and never read these tokens.
+
+   Default (`:root`, no resolved theme — e.g. JS disabled) is the dark brand
+   surface, overridden to light when `data-theme='light'`.
+   --------------------------------------------------------------------------- */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface: #050507; /* page background (was bg-ink) */
+  --surface-panel: #0a0a0e; /* cards, stat band, section bands */
+  --fg: #fafafa; /* headings / strong text (was text-zinc-50/100) */
+  --fg-body: #e4e4e7; /* body copy, nav links (was text-zinc-200/300) */
+  --fg-muted: #a1a1aa; /* captions, labels (was text-zinc-400/500) */
+  --fg-subtle: #71717a; /* footer legalese (was text-zinc-600) */
+  --border: #27272a; /* structural + component borders */
+  --border-strong: #3f3f46; /* interactive outlines (buttons, tags) */
+  --accent: #3ddc84; /* text/link/stat accent — neon on dark */
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --surface: #ffffff;
+  --surface-panel: #f4f4f5; /* zinc-100 */
+  --fg: #18181b; /* zinc-900 */
+  --fg-body: #27272a; /* zinc-800 */
+  --fg-muted: #52525b; /* zinc-600 — AA on white */
+  --fg-subtle: #71717a; /* zinc-500 — AA for small text on white */
+  --border: #e4e4e7; /* zinc-200 */
+  --border-strong: #d4d4d8; /* zinc-300 */
+  --accent: #1d9457; /* accessible green — AA as text on white */
+}
+
+/* No-JS light fallback: with no first-paint script run, follow the OS so a
+   light-mode visitor without JS still gets a light surface. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --surface: #ffffff;
+    --surface-panel: #f4f4f5;
+    --fg: #18181b;
+    --fg-body: #27272a;
+    --fg-muted: #52525b;
+    --fg-subtle: #71717a;
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
+    --accent: #1d9457;
+  }
+}
+
 /* Keep the header logo at a sane size. */
 .site-title img {
   height: 1.5rem;
