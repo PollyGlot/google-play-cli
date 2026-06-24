@@ -204,18 +204,43 @@ locales:      [en-US fr-FR]`;
           >
           <a href="#faq" class="text-fg-body no-underline hover:text-accent">FAQ</a>
           <a href={GITHUB} class="text-fg-body no-underline hover:text-accent">GitHub</a>
-          <label class="flex items-center">
-            <span class="sr-only">Theme</span>
-            <select
-              id="theme-select"
-              aria-label="Theme"
-              class="cursor-pointer rounded-md border border-border bg-surface px-2 py-1 font-sans text-sm text-fg-body transition-colors hover:border-accent"
-            >
-              <option value="auto">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
+          <!-- Icon-only Light/Dark/System control. Native radios give keyboard
+               selection (arrow keys) for free; each option carries an sr-only
+               name + a title tooltip. Same `starlight-theme` storage contract
+               as the docs (see the script at the end of <body>). -->
+          <fieldset
+            id="theme-toggle"
+            class="m-0 flex items-center gap-0.5 rounded-md border border-border p-0.5"
+          >
+            <legend class="sr-only">Theme</legend>
+            <label class="theme-opt" title="System">
+              <input type="radio" name="theme" value="auto" class="sr-only" />
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"
+                ><path
+                  d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"
+                /></svg
+              >
+              <span class="sr-only">System</span>
+            </label>
+            <label class="theme-opt" title="Light">
+              <input type="radio" name="theme" value="light" class="sr-only" />
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"
+                ><path
+                  d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"
+                /></svg
+              >
+              <span class="sr-only">Light</span>
+            </label>
+            <label class="theme-opt" title="Dark">
+              <input type="radio" name="theme" value="dark" class="sr-only" />
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"
+                ><path
+                  d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"
+                /></svg
+              >
+              <span class="sr-only">Dark</span>
+            </label>
+          </fieldset>
         </div>
       </nav>
     </header>
@@ -468,8 +493,10 @@ locales:      [en-US fr-FR]`;
     <script is:inline>
       (() => {
         const KEY = 'starlight-theme';
-        const select = document.getElementById('theme-select');
-        if (!select) return;
+        const radios = Array.from(
+          document.querySelectorAll('#theme-toggle input[name="theme"]')
+        );
+        if (!radios.length) return;
         const parse = (t) => (t === 'auto' || t === 'light' || t === 'dark' ? t : 'auto');
         const load = () => {
           try {
@@ -488,12 +515,23 @@ locales:      [en-US fr-FR]`;
         const apply = (pref) => {
           document.documentElement.dataset.theme = pref === 'auto' ? osTheme() : pref;
         };
-        select.value = load();
-        select.addEventListener('change', () => {
-          const v = parse(select.value);
-          apply(v);
-          store(v);
-        });
+        const reflect = (pref) => {
+          radios.forEach((r) => {
+            const on = r.value === pref;
+            r.checked = on;
+            r.closest('.theme-opt').classList.toggle('is-active', on);
+          });
+        };
+        reflect(load());
+        radios.forEach((r) =>
+          r.addEventListener('change', () => {
+            if (!r.checked) return;
+            const v = parse(r.value);
+            apply(v);
+            store(v);
+            reflect(v);
+          })
+        );
         window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
           if (load() === 'auto') apply('auto');
         });

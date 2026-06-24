@@ -101,6 +101,33 @@
   display: inline;
 }
 
+/* Icon-only theme control in the landing header: a segmented group of native
+   radios rendered as icon buttons. The checked option takes the accent. */
+.theme-opt {
+  display: inline-flex;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.4rem;
+  color: var(--fg-muted);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+.theme-opt:hover {
+  color: var(--fg);
+}
+/* Active state is driven by JS (.is-active) rather than :has(input:checked):
+   the latter does not reliably re-evaluate when the radio changes and the
+   theme tokens flip at the same time. */
+.theme-opt.is-active {
+  background: var(--surface-panel);
+  color: var(--accent);
+}
+.theme-opt:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Hero radial glows — painted only on the near-black dark surface. */
 .hero-glow {
   background:
