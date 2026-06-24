@@ -201,6 +201,18 @@ locales:      [en-US fr-FR]`;
           >
           <a href="#faq" class="text-fg-body no-underline hover:text-accent">FAQ</a>
           <a href={GITHUB} class="text-fg-body no-underline hover:text-accent">GitHub</a>
+          <label class="flex items-center">
+            <span class="sr-only">Theme</span>
+            <select
+              id="theme-select"
+              aria-label="Theme"
+              class="cursor-pointer rounded-md border border-border bg-surface px-2 py-1 font-sans text-sm text-fg-body transition-colors hover:border-accent"
+            >
+              <option value="auto">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
         </div>
       </nav>
     </header>
@@ -448,5 +460,44 @@ locales:      [en-US fr-FR]`;
         <p class="mt-2 text-xs text-fg-subtle">© 2026 Pavlo Trinko and contributors.</p>
       </div>
     </footer>
+
+    <!-- Landing theme control. Self-contained 3-state selector bound to the
+         same `starlight-theme` key the docs use (empty string = System, the
+         Starlight storage contract), so one choice carries across the site.
+         Applies instantly, persists, and follows the OS while in System. -->
+    <script is:inline>
+      (() => {
+        const KEY = 'starlight-theme';
+        const select = document.getElementById('theme-select');
+        if (!select) return;
+        const parse = (t) => (t === 'auto' || t === 'light' || t === 'dark' ? t : 'auto');
+        const load = () => {
+          try {
+            return parse(localStorage.getItem(KEY));
+          } catch {
+            return 'auto';
+          }
+        };
+        const osTheme = () =>
+          window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        const store = (t) => {
+          try {
+            localStorage.setItem(KEY, t === 'light' || t === 'dark' ? t : '');
+          } catch {}
+        };
+        const apply = (pref) => {
+          document.documentElement.dataset.theme = pref === 'auto' ? osTheme() : pref;
+        };
+        select.value = load();
+        select.addEventListener('change', () => {
+          const v = parse(select.value);
+          apply(v);
+          store(v);
+        });
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+          if (load() === 'auto') apply('auto');
+        });
+      })();
+    </script>
   </body>
 </html>
