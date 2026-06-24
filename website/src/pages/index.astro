@@ -148,6 +148,14 @@ locales:      [en-US fr-FR]`;
               ? 'light'
               : 'dark';
         document.documentElement.dataset.theme = theme;
+        // Sync the mobile browser chrome with the *resolved* theme (not just
+        // the OS): inject a media-less theme-color meta that wins over the
+        // static media-scoped pair below in tree order. Runs before paint, so
+        // even an explicit override opposite the OS gets the right chrome.
+        const tc = document.createElement('meta');
+        tc.name = 'theme-color';
+        tc.setAttribute('content', theme === 'light' ? '#ffffff' : '#050507');
+        document.head.appendChild(tc);
       })();
     </script>
     <title>{title}</title>
@@ -155,6 +163,9 @@ locales:      [en-US fr-FR]`;
     <link rel="canonical" href={canonical} />
     <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
     <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
+    <!-- No-JS fallback: follow the OS (the page also follows the OS without JS).
+         With JS, the media-less meta injected above wins and tracks the
+         resolved theme, including an explicit override opposite the OS. -->
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#050507" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
     <meta property="og:type" content="website" />
@@ -513,7 +524,11 @@ locales:      [en-US fr-FR]`;
           } catch {}
         };
         const apply = (pref) => {
-          document.documentElement.dataset.theme = pref === 'auto' ? osTheme() : pref;
+          const t = pref === 'auto' ? osTheme() : pref;
+          document.documentElement.dataset.theme = t;
+          // Keep the mobile chrome in sync with the resolved theme.
+          const tc = document.querySelector('meta[name="theme-color"]:not([media])');
+          if (tc) tc.setAttribute('content', t === 'light' ? '#ffffff' : '#050507');
         };
         const reflect = (pref) => {
           radios.forEach((r) => {
