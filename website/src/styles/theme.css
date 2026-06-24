@@ -82,3 +82,44 @@
   height: 1.5rem;
   width: auto;
 }
+
+/* ---------------------------------------------------------------------------
+   Landing-only presentation (ADR-0035): logo swap + dark-only hero glows.
+   theme.css is shared (imported by the landing and the docs), but these
+   classes only exist on the landing markup.
+   --------------------------------------------------------------------------- */
+
+/* Per-theme logo swap in the landing's custom header. Default (dark / no-JS)
+   shows the glowing mark; light shows the deepened, glow-free variant. */
+.logo-light {
+  display: none;
+}
+:root[data-theme='light'] .logo-dark {
+  display: none;
+}
+:root[data-theme='light'] .logo-light {
+  display: inline;
+}
+
+/* Hero radial glows — painted only on the near-black dark surface. */
+.hero-glow {
+  background:
+    radial-gradient(42rem 22rem at 85% -10%, rgba(130, 175, 255, 0.1), transparent),
+    radial-gradient(36rem 20rem at 10% 110%, rgba(61, 220, 132, 0.08), transparent);
+}
+:root[data-theme='light'] .hero-glow {
+  background: none;
+}
+
+/* No-JS light fallback: follow the OS for the landing's logo + hero glow. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .logo-dark {
+    display: none;
+  }
+  :root:not([data-theme]) .logo-light {
+    display: inline;
+  }
+  :root:not([data-theme]) .hero-glow {
+    background: none;
+  }
+}

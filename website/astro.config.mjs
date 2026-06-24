@@ -29,7 +29,10 @@ export default defineConfig({
       description:
         'gplay is a fast, dependency-free CLI for the Google Play Developer API — releases, tracks, reviews, metadata, compliance and team management from your terminal, CI pipeline, or AI agent.',
       logo: {
-        src: './src/assets/logo-mark.svg',
+        // Per-theme mark: the glowing iridescent mark on dark, a deepened,
+        // glow-free variant on light so it reads on white (ADR-0035).
+        dark: './src/assets/logo-mark.svg',
+        light: './src/assets/logo-mark-light.svg',
         alt: 'gplay — three forward chevrons',
       },
       favicon: '/favicon.svg',
@@ -58,7 +61,15 @@ export default defineConfig({
           tag: 'meta',
           attrs: { name: 'twitter:card', content: 'summary_large_image' },
         },
-        { tag: 'meta', attrs: { name: 'theme-color', content: '#050507' } },
+        // Responsive browser chrome: match the active theme on mobile.
+        {
+          tag: 'meta',
+          attrs: { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: '#050507' },
+        },
+        {
+          tag: 'meta',
+          attrs: { name: 'theme-color', media: '(prefers-color-scheme: light)', content: '#ffffff' },
+        },
       ],
       sidebar: [
         {

@@ -3,6 +3,7 @@ import '../styles/global.css';
 import '../styles/theme.css';
 import InstallTabs from '../components/InstallTabs.tsx';
 import logoMark from '../assets/logo-mark.svg';
+import logoMarkLight from '../assets/logo-mark-light.svg';
 import surface from '../data/cli-surface.json';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -154,7 +155,8 @@ locales:      [en-US fr-FR]`;
     <link rel="canonical" href={canonical} />
     <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
     <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
-    <meta name="theme-color" content="#050507" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#050507" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -181,7 +183,8 @@ locales:      [en-US fr-FR]`;
         aria-label="Main"
       >
         <a href={`${base}/`} class="flex items-center gap-2 no-underline">
-          <img src={logoMark.src} alt="" width="28" height="21" />
+          <img class="logo-dark" src={logoMark.src} alt="" width="28" height="21" />
+          <img class="logo-light" src={logoMarkLight.src} alt="" width="28" height="21" />
           <span class="font-mono text-lg font-bold text-fg">gplay</span>
         </a>
         <span
@@ -220,13 +223,10 @@ locales:      [en-US fr-FR]`;
     <main id="main">
       <!-- Hero -->
       <section class="relative overflow-hidden" aria-label="Introduction">
-        <div
-          class="pointer-events-none absolute inset-0"
-          style="background:
-            radial-gradient(42rem 22rem at 85% -10%, rgba(130,175,255,0.10), transparent),
-            radial-gradient(36rem 20rem at 10% 110%, rgba(61,220,132,0.08), transparent);"
-        >
-        </div>
+        <!-- Hero glows are dark-only (theme.css): the low-alpha radial
+             gradients depend on a near-black backdrop and read as muddy
+             smudges on white, so they are removed in light. -->
+        <div class="hero-glow pointer-events-none absolute inset-0"></div>
         <div class="relative mx-auto grid max-w-5xl gap-12 px-5 py-16 md:grid-cols-2 md:py-24">
           <div>
             <h1 class="m-0 text-4xl font-bold leading-tight text-fg md:text-5xl">

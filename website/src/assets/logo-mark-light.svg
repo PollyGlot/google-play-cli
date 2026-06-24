@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="400" viewBox="250 312 540 400">
+  <!-- gplay — light-surface mark. Same three chevrons as logo-mark.svg with
+       deepened iridescence (denser blue → teal → darker green) and the glow
+       filter removed, so the mark reads on white instead of washing out.
+       Keep faithful to the locked mark: identical geometry, same iridescent
+       direction, only the palette is deepened for contrast on light. -->
+  <g fill="none" stroke-width="64" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M310 372 L432 512 L310 652" stroke="#3a6fd8"/>
+    <path d="M450 372 L572 512 L450 652" stroke="#0f9d96"/>
+    <path d="M590 372 L712 512 L590 652" stroke="#1d9457"/>
+  </g>
+</svg>
