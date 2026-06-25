@@ -95,7 +95,9 @@ type AchievementRow struct {
 func BuildAchievementRow(a games.AchievementConfiguration) AchievementRow {
 	r := AchievementRow{ID: a.ID, Type: a.AchievementType, State: a.InitialState}
 	if d := a.Detail(); d != nil {
-		r.Points = d.PointValue
+		if d.PointValue != nil {
+			r.Points = *d.PointValue
+		}
 		r.Name = d.Name.First()
 	}
 	return r
@@ -220,10 +222,12 @@ func BuildAchievementBody(stdin io.Reader, w AchievementWrite, requireField bool
 	}
 	if w.PointValueSet {
 		cfg.Draft = ensureAchDraft(cfg.Draft)
-		cfg.Draft.PointValue = w.PointValue
+		pv := w.PointValue
+		cfg.Draft.PointValue = &pv
 	}
 	if w.StepsSet {
-		cfg.StepsToUnlock = w.StepsToUnlock
+		steps := w.StepsToUnlock
+		cfg.StepsToUnlock = &steps
 	}
 	locale := localeOr(w.Locale)
 	if w.Name != "" {

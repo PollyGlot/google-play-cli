@@ -23,23 +23,30 @@ type AchievementConfigurationDetail struct {
 	Kind        string                 `json:"kind,omitempty"`
 	Name        *LocalizedStringBundle `json:"name,omitempty"`
 	Description *LocalizedStringBundle `json:"description,omitempty"`
-	PointValue  int                    `json:"pointValue,omitempty"`
-	IconURL     string                 `json:"iconUrl,omitempty"`
-	SortRank    int                    `json:"sortRank,omitempty"`
+	// PointValue is a *int (not int) so an explicit zero round-trips: omitempty
+	// drops a nil pointer (field genuinely unset) but emits a non-nil &0, which
+	// a plain `int,omitempty` would silently drop — defeating the --point-value 0
+	// write the gamescmd *Set flags exist to support.
+	PointValue *int   `json:"pointValue,omitempty"`
+	IconURL    string `json:"iconUrl,omitempty"`
+	SortRank   int    `json:"sortRank,omitempty"`
 }
 
 // AchievementConfiguration is the API-shaped achievement resource. JSON tags
 // mirror the API verbatim (ADR-0003). The draft is editable; published is
 // read-only live state.
 type AchievementConfiguration struct {
-	Kind            string                          `json:"kind,omitempty"`
-	ID              string                          `json:"id,omitempty"`
-	AchievementType string                          `json:"achievementType,omitempty"`
-	InitialState    string                          `json:"initialState,omitempty"`
-	StepsToUnlock   int                             `json:"stepsToUnlock,omitempty"`
-	Draft           *AchievementConfigurationDetail `json:"draft,omitempty"`
-	Published       *AchievementConfigurationDetail `json:"published,omitempty"`
-	Token           string                          `json:"token,omitempty"`
+	Kind            string `json:"kind,omitempty"`
+	ID              string `json:"id,omitempty"`
+	AchievementType string `json:"achievementType,omitempty"`
+	InitialState    string `json:"initialState,omitempty"`
+	// StepsToUnlock is a *int for the same reason as PointValue: an explicit
+	// --steps-to-unlock 0 must reach the wire, which a plain `int,omitempty`
+	// would drop.
+	StepsToUnlock *int                            `json:"stepsToUnlock,omitempty"`
+	Draft         *AchievementConfigurationDetail `json:"draft,omitempty"`
+	Published     *AchievementConfigurationDetail `json:"published,omitempty"`
+	Token         string                          `json:"token,omitempty"`
 }
 
 // Detail returns the draft when present, else the published detail — the

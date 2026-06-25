@@ -62,7 +62,7 @@ func TestBuildAchievementBody_fromFlags_buildsLocalizedDraft(t *testing.T) {
 	if got.AchievementType != "STANDARD" || got.InitialState != "REVEALED" {
 		t.Errorf("scalars = %+v", got)
 	}
-	if got.Draft == nil || got.Draft.PointValue != 10 {
+	if got.Draft == nil || got.Draft.PointValue == nil || *got.Draft.PointValue != 10 {
 		t.Fatalf("draft = %+v, want pointValue 10", got.Draft)
 	}
 	if got.Draft.Name.First() != "First Win" {
@@ -160,13 +160,44 @@ func TestColumns_resolveAndDefaults(t *testing.T) {
 }
 
 func TestBuildRows_readsDraftThenPublished(t *testing.T) {
+	five := 5
 	a := games.AchievementConfiguration{
 		ID:              "a1",
 		AchievementType: "STANDARD",
-		Published:       &games.AchievementConfigurationDetail{PointValue: 5, Name: &games.LocalizedStringBundle{Translations: []games.LocalizedString{{Locale: "en-US", Value: "Pub"}}}},
+		Published:       &games.AchievementConfigurationDetail{PointValue: &five, Name: &games.LocalizedStringBundle{Translations: []games.LocalizedString{{Locale: "en-US", Value: "Pub"}}}},
 	}
 	row := gamescmd.BuildAchievementRow(a)
 	if row.Name != "Pub" || row.Points != 5 {
 		t.Errorf("row falls back to published: %+v", row)
+	}
+}
+
+// TestBuildAchievementBody_explicitZeroIsSent is the regression guard for the
+// *int fields: an explicit --point-value 0 / --steps-to-unlock 0 (PointValueSet /
+// StepsSet true) MUST reach the wire — a plain `int,omitempty` would drop the
+// zero and silently defeat the *Set mechanism.
+func TestBuildAchievementBody_explicitZeroIsSent(t *testing.T) {
+	body, err := gamescmd.BuildAchievementBody(nil, gamescmd.AchievementWrite{
+		PointValue:    0,
+		PointValueSet: true,
+		StepsToUnlock: 0,
+		StepsSet:      true,
+	}, true)
+	if err != nil {
+		t.Fatalf("BuildAchievementBody: %v", err)
+	}
+	if !strings.Contains(string(body), `"pointValue":0`) {
+		t.Errorf("body = %s, want pointValue:0 sent", body)
+	}
+	if !strings.Contains(string(body), `"stepsToUnlock":0`) {
+		t.Errorf("body = %s, want stepsToUnlock:0 sent", body)
+	}
+	// And an unset numeric field must stay absent (nil pointer dropped by omitempty).
+	body2, err := gamescmd.BuildAchievementBody(nil, gamescmd.AchievementWrite{Name: "X"}, true)
+	if err != nil {
+		t.Fatalf("BuildAchievementBody: %v", err)
+	}
+	if strings.Contains(string(body2), "pointValue") || strings.Contains(string(body2), "stepsToUnlock") {
+		t.Errorf("body = %s, want no pointValue/stepsToUnlock when unset", body2)
 	}
 }
