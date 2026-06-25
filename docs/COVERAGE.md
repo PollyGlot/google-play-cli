@@ -76,7 +76,7 @@ By method count, of the **~155 admin methods** across the four APIs:
 | `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |
 | `grants` | 3 | ✅ | `team grants` |
-| `orders` | 3 | 🟡 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) → slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284) |
+| `orders` | 3 | 🟡 | `orders view <id>` (`orders.get`) shipped — slice [#282](https://github.com/PollyGlot/google-play-cli/issues/282); batch [#283](https://github.com/PollyGlot/google-play-cli/issues/283) + refund [#284](https://github.com/PollyGlot/google-play-cli/issues/284) pending ([#245](https://github.com/PollyGlot/google-play-cli/issues/245) / [ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
 | `edits.apks` | 3 | 🔵 | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) (`addexternallyhosted` niche, EMM-only) |
 | `inappproducts` (legacy IAP) | 9 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) |
 | `monetization.subscriptions` (+`basePlans`+`offers`) | 24 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (post-v1) |
