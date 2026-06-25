@@ -40,10 +40,12 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 By method count, of the **~155 admin methods** across the four APIs:
 
-- **~78 shipped (~50%)** — essentially the entire *publish / first-release /
-  team / observability* half (incl. `generatedapks`, PRD #299 / ADR-0034, and
-  `customapps`, PRD #242 / ADR-0032).
-- **+13 ready now (P0)** — orders #245, games #241 → ~57% once they land.
+- **~79 shipped (~51%)** — essentially the entire *publish / first-release /
+  team / observability* half (incl. `generatedapks`, PRD #299 / ADR-0034,
+  `customapps`, PRD #242 / ADR-0032, and the first orders slice `orders view`
+  / `orders.get`, PRD #245 / ADR-0031).
+- **+12 ready now (P0)** — the rest of orders #245 (`batchget` + `refund`) and
+  games #241 → ~57% once they land.
 - **~54 methods remain in one coherent continent: monetization** (subscriptions
   #51 + one-time products #293 + legacy IAP + external transactions #295). This is
   the single biggest unbuilt block and the honest answer to "are we near the end?":
@@ -76,7 +78,7 @@ By method count, of the **~155 admin methods** across the four APIs:
 | `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |
 | `grants` | 3 | ✅ | `team grants` |
-| `orders` | 3 | 🟡 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) → slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284) |
+| `orders` | 3 | 🟡 | `orders view <id>` (`orders.get`) shipped — slice [#282](https://github.com/PollyGlot/google-play-cli/issues/282); batch [#283](https://github.com/PollyGlot/google-play-cli/issues/283) + refund [#284](https://github.com/PollyGlot/google-play-cli/issues/284) pending ([#245](https://github.com/PollyGlot/google-play-cli/issues/245) / [ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
 | `edits.apks` | 3 | 🔵 | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) (`addexternallyhosted` niche, EMM-only) |
 | `inappproducts` (legacy IAP) | 9 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) |
 | `monetization.subscriptions` (+`basePlans`+`offers`) | 24 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (post-v1) |

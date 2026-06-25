@@ -36,6 +36,7 @@ import (
 	metadatalist "github.com/PollyGlot/google-play-cli/commands/metadata/list"
 	metadatapull "github.com/PollyGlot/google-play-cli/commands/metadata/pull"
 	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
+	ordersview "github.com/PollyGlot/google-play-cli/commands/orders/view"
 	recoveryaddtargeting "github.com/PollyGlot/google-play-cli/commands/recovery/add-targeting"
 	recoverycancel "github.com/PollyGlot/google-play-cli/commands/recovery/cancel"
 	recoverycreate "github.com/PollyGlot/google-play-cli/commands/recovery/create"
@@ -430,6 +431,26 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	customapps.AddCommand(kernel.MarkMutating(customappscreate.NewCommand(boot)))
 	root.AddCommand(customapps)
+
+	// `gplay orders` — look up Google Play orders by order ID (orders.get /
+	// orders.batchget) and, later, refund them (orders.refund). The admin-side
+	// commerce surface: orders ride the package/app axis like releases/metadata
+	// (applications/{packageName}/orders/...), NOT the developer-account axis —
+	// a human or agent holds an order ID from a complaint or payout report (no
+	// device token), distinct from runtime purchase-token verification, which
+	// gplay does not wrap (ADR-0031 / CONTEXT.md "Order"). The read leaf `view`
+	// is the walking skeleton (#282); the batch form (#283) and the gated
+	// money-moving `refund` (#284) follow. `view` is a pure read — not marked
+	// mutating, not gated by GPLAY_READONLY.
+	ordersGroup := &cobra.Command{
+		Use:           "orders",
+		Short:         "Look up Google Play orders by order ID (admin commerce diagnostic)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	ordersGroup.AddCommand(ordersview.NewCommand(boot))
+	root.AddCommand(ordersGroup)
 
 	reviews := &cobra.Command{
 		Use:           "reviews",
