@@ -26,6 +26,16 @@ import (
 	devicetierscreate "github.com/PollyGlot/google-play-cli/commands/device-tiers/create"
 	devicetierslist "github.com/PollyGlot/google-play-cli/commands/device-tiers/list"
 	devicetiersview "github.com/PollyGlot/google-play-cli/commands/device-tiers/view"
+	gamesachievementscreate "github.com/PollyGlot/google-play-cli/commands/games/achievements/create"
+	gamesachievementsdelete "github.com/PollyGlot/google-play-cli/commands/games/achievements/delete"
+	gamesachievementslist "github.com/PollyGlot/google-play-cli/commands/games/achievements/list"
+	gamesachievementsupdate "github.com/PollyGlot/google-play-cli/commands/games/achievements/update"
+	gamesachievementsview "github.com/PollyGlot/google-play-cli/commands/games/achievements/view"
+	gamesleaderboardscreate "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/create"
+	gamesleaderboardsdelete "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/delete"
+	gamesleaderboardslist "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/list"
+	gamesleaderboardsupdate "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/update"
+	gamesleaderboardsview "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/view"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
 	"github.com/PollyGlot/google-play-cli/commands/installskills"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
@@ -430,6 +440,52 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	customapps.AddCommand(kernel.MarkMutating(customappscreate.NewCommand(boot)))
 	root.AddCommand(customapps)
+
+	// `gplay games` — Play Games Services configuration (gamesConfiguration): a
+	// game's achievement and leaderboard configurations. A DISTINCT Google
+	// service (its own host, the shared androidpublisher scope — so no WithScope)
+	// addressed by the numeric Play Games application ID, its own ID space rather
+	// than the Android package (ADR-0033). `games`, `achievements`, and
+	// `leaderboards` are grouping nouns (kernel.GroupRunE). Writes affect the
+	// editable draft (there is no publish method — publishing to players is
+	// Console-only); list/view are reads, create/update are routine writes, and
+	// delete is the destructive tier (--confirm, exit 3 if missing). See PRD #241
+	// / ADR-0033 / CONTEXT.md (Play Games Services Publishing API).
+	games := &cobra.Command{
+		Use:           "games",
+		Short:         "Configure a game's Play Games Services resources (achievements, leaderboards)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	gamesAchievements := &cobra.Command{
+		Use:           "achievements",
+		Short:         "Manage a game's achievement configurations (list/view/create/update/delete)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	gamesAchievements.AddCommand(gamesachievementslist.NewCommand(boot))
+	gamesAchievements.AddCommand(gamesachievementsview.NewCommand(boot))
+	gamesAchievements.AddCommand(kernel.MarkMutating(gamesachievementscreate.NewCommand(boot)))
+	gamesAchievements.AddCommand(kernel.MarkMutating(gamesachievementsupdate.NewCommand(boot)))
+	gamesAchievements.AddCommand(kernel.MarkMutating(gamesachievementsdelete.NewCommand(boot)))
+	games.AddCommand(gamesAchievements)
+
+	gamesLeaderboards := &cobra.Command{
+		Use:           "leaderboards",
+		Short:         "Manage a game's leaderboard configurations (list/view/create/update/delete)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	gamesLeaderboards.AddCommand(gamesleaderboardslist.NewCommand(boot))
+	gamesLeaderboards.AddCommand(gamesleaderboardsview.NewCommand(boot))
+	gamesLeaderboards.AddCommand(kernel.MarkMutating(gamesleaderboardscreate.NewCommand(boot)))
+	gamesLeaderboards.AddCommand(kernel.MarkMutating(gamesleaderboardsupdate.NewCommand(boot)))
+	gamesLeaderboards.AddCommand(kernel.MarkMutating(gamesleaderboardsdelete.NewCommand(boot)))
+	games.AddCommand(gamesLeaderboards)
+	root.AddCommand(games)
 
 	reviews := &cobra.Command{
 		Use:           "reviews",

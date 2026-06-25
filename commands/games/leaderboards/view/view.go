@@ -1,0 +1,90 @@
+// Package view implements `gplay games leaderboards view <leaderboardId>`: read
+// a single leaderboard configuration (leaderboardConfigurations.get). Read-only.
+// Each config carries an editable draft and a read-only published detail; the
+// table summarises the best-available one. --output json passes the
+// LeaderboardConfiguration through verbatim (ADR-0003). Ships [experimental].
+package view
+
+import (
+	"encoding/json"
+	"io"
+
+	"github.com/spf13/cobra"
+
+	"github.com/PollyGlot/google-play-cli/commands/games/gamescmd"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/games"
+)
+
+// Input is the request-shaped struct cobra builds from flags + args.
+type Input struct {
+	ID      string
+	Columns string
+}
+
+// Payload renders one leaderboard as a single-row table / verbatim JSON.
+type Payload struct {
+	Row  gamescmd.LeaderboardRow
+	Cols []output.Column[gamescmd.LeaderboardRow]
+	Raw  json.RawMessage
+}
+
+func (p Payload) Renderers() output.Renderers {
+	return output.Renderers{
+		Table:    func(w io.Writer) error { return output.RenderTable(w, p.Cols, []gamescmd.LeaderboardRow{p.Row}) },
+		JSON:     func(w io.Writer) error { _, err := w.Write(p.Raw); return err },
+		Markdown: func(w io.Writer) error { return output.RenderMarkdown(w, p.Cols, []gamescmd.LeaderboardRow{p.Row}) },
+	}
+}
+
+// Run is the business function the kernel invokes.
+func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	id, err := gamescmd.RequireID(in.ID, "missing leaderboard id: gplay games leaderboards view <leaderboardId>")
+	if err != nil {
+		return nil, err
+	}
+	cols, err := gamescmd.ResolveLeaderboardColumns(in.Columns)
+	if err != nil {
+		return nil, err
+	}
+	httpClient, err := rc.AuthedClient()
+	if err != nil {
+		return nil, err
+	}
+	l, raw, err := games.GetLeaderboard(rc.Ctx, httpClient, id)
+	if err != nil {
+		return nil, gamescmd.Classify(id, err)
+	}
+	return Payload{Row: gamescmd.BuildLeaderboardRow(l), Cols: cols, Raw: raw}, nil
+}
+
+// NewCommand returns the cobra command for `gplay games leaderboards view`.
+func NewCommand(boot kernel.Boot) *cobra.Command {
+	var (
+		outputFlag string
+		in         Input
+	)
+	cmd := &cobra.Command{
+		Use:   "view <leaderboardId>",
+		Short: "[experimental] Read one leaderboard configuration by id",
+		Long: `Read a single leaderboard configuration by its ID. The config carries an
+editable draft and a read-only published detail (there is no publish method —
+publishing to players is Console-only, ADR-0033). --output json passes the
+LeaderboardConfiguration through verbatim (ADR-0003).
+
+[experimental] — the surface may still evolve (ADR-0010).`,
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			in.ID = args[0]
+			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
+				return Run(rc, in)
+			})
+		},
+	}
+	output.RegisterFlag(cmd, &outputFlag)
+	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns (default: "+gamescmd.DefaultLeaderboardColumns()+")")
+	return cmd
+}
