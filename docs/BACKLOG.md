@@ -86,9 +86,9 @@ CRUD des produits in-app non-abonnement.
 Abonnements, base plans, offers, pricing par territoire.
 **Pourquoi plus tard :** API très récente et complexe (3 niveaux imbriqués). Gros morceau à part entière, mérite son propre module et probablement sa propre paire de skills `gplay-subscription-management` + un skill de synchronisation avec RevenueCat.
 
-### Orders — `orders.get` / `orders.batchget` / `orders.refund` — 🔼 **PRD [#245](https://github.com/PollyGlot/google-play-cli/issues/245) grillé → décomposé (slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284))**
+### Orders — `orders.get` / `orders.batchget` / `orders.refund` — ✅ **livré** (PRD [#245](https://github.com/PollyGlot/google-play-cli/issues/245), slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284))
 Lecture d'une commande par order ID (diagnostic support/litige) et refund (write money-moving).
-**Statut :** grillé ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) — namespace `orders` sur l'axe package ; lecture `orders view <id>...` (variadic : 1→`get`, 2-1000→`batchget`) ; `orders refund <id> --confirm [--revoke]` (exit-3 si flag absent, pas de bulk, `--revoke` défaut false) ; permissions `CAN_VIEW_FINANCIAL_DATA` (lecture) / `CAN_MANAGE_ORDERS` (refund), jamais bundlées (ADR-0016). Décomposé en 3 slices, `[experimental]` d'abord.
+**Statut :** livré `[experimental]` — grillé ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) ; namespace `orders` sur l'axe package ; lecture `orders view <id>...` (variadic : 1→`get`, 2-1000→`batchget`, >1000→exit 2) ; `orders refund <id> --confirm [--revoke]` (exit-3 si flag absent, `MarkMutating`, pas de bulk, `--revoke` défaut false, refus spécifique >3 ans) ; permissions `CAN_VIEW_FINANCIAL_DATA` (lecture) / `CAN_MANAGE_ORDERS` (refund), jamais bundlées (ADR-0016).
 
 ### Vérification d'achats — `purchases.products` / `purchases.subscriptionsv2`
 Validation côté serveur des tokens de purchase.
