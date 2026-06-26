@@ -1,13 +1,13 @@
-// Package view implements `gplay orders view <orderId>`: a single Google Play
-// order lookup by order ID, end-to-end (orders.get). Read-only and Edit-free — a
-// direct application-scoped GET on the package axis (ADR-0031). The human views
-// show a compact summary (order id, state, total, creation time, line items);
-// --output json is the Order resource verbatim (ADR-0003 pass-through). Reading
+// Package view implements `gplay orders view <orderId> [<orderId>...]`: a
+// Google Play order lookup by order ID, end-to-end. One ID calls orders.get;
+// two to 1000 IDs call orders.batchget — one ergonomic read verb hides the
+// get-vs-batchget routing (ADR-0031). Read-only and Edit-free — a direct
+// application-scoped GET on the package axis. The human views show a compact
+// summary (single: order id, state, total, creation time, line items; batch:
+// one summary line per order); --output json is the Order (single) /
+// BatchGetOrdersResponse (batch) verbatim (ADR-0003 pass-through). Reading
 // requires the service account to hold CAN_VIEW_FINANCIAL_DATA; a 403 surfaces
 // as an agent-resolvable refusal naming it. Ships [experimental] (ADR-0010).
-//
-// This is the walking skeleton for the `orders` namespace (#282); the batch form
-// `orders view <id> <id>...` (orders.batchget) follows in #283.
 package view
 
 import (
@@ -24,32 +24,60 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/orders"
 )
 
-// Input is the request-shaped struct cobra builds from the positional orderId
-// plus the --package flag.
+// Input is the request-shaped struct cobra builds from the variadic positional
+// order IDs plus the --package flag.
 type Input struct {
-	Package string
-	OrderID string
+	Package  string
+	OrderIDs []string
 }
 
-// Payload satisfies output.Renderable. Raw carries the Order's verbatim bytes
-// for the ADR-0003 JSON pass-through; Order drives the human-shaped table and
-// markdown views.
+// Payload satisfies output.Renderable. Orders holds one order (single lookup)
+// or several (batch); Batch records which API method answered so the renderers
+// pick the detailed single view vs the one-line-per-order summary. Raw carries
+// the verbatim bytes for the ADR-0003 JSON pass-through (Order for single,
+// BatchGetOrdersResponse for batch).
 type Payload struct {
-	Order orders.Order
-	Raw   json.RawMessage
+	Orders []orders.Order
+	Batch  bool
+	Raw    json.RawMessage
 }
 
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
-		Table:    func(w io.Writer) error { return renderTable(w, p.Order) },
+		Table:    func(w io.Writer) error { return p.renderTable(w) },
 		JSON:     func(w io.Writer) error { return renderJSON(w, p) },
-		Markdown: func(w io.Writer) error { return renderMarkdown(w, p.Order) },
+		Markdown: func(w io.Writer) error { return p.renderMarkdown(w) },
 	}
 }
 
-// headerRows is the scalar summary shared by the table and markdown views, in a
-// fixed order. Empty values are kept (an absent total reads as a blank cell, not
-// a dropped row).
+// renderTable picks the detailed single-order view or the batch summary.
+func (p Payload) renderTable(w io.Writer) error {
+	if p.Batch {
+		return renderBatchTable(w, p.Orders)
+	}
+	return renderSingleTable(w, p.single())
+}
+
+// renderMarkdown picks the detailed single-order record or the batch list.
+func (p Payload) renderMarkdown(w io.Writer) error {
+	if p.Batch {
+		return renderBatchMarkdown(w, p.Orders)
+	}
+	return renderSingleMarkdown(w, p.single())
+}
+
+// single returns the lone order for the single-lookup path; a zero Order if the
+// slice is somehow empty (defensive — Run always populates one).
+func (p Payload) single() orders.Order {
+	if len(p.Orders) == 0 {
+		return orders.Order{}
+	}
+	return p.Orders[0]
+}
+
+// headerRows is the scalar summary shared by the single table and markdown
+// views, in a fixed order. Empty values are kept (an absent total reads as a
+// blank cell, not a dropped row).
 func headerRows(o orders.Order) [][2]string {
 	return [][2]string{
 		{"ORDER_ID", o.OrderID},
@@ -59,10 +87,10 @@ func headerRows(o orders.Order) [][2]string {
 	}
 }
 
-// renderTable writes the summary as `FIELD<TAB>VALUE` lines (like
+// renderSingleTable writes the summary as `FIELD<TAB>VALUE` lines (like
 // `apps view`/`reviews view`), then one line per line item under a "Line items:"
 // label.
-func renderTable(w io.Writer, o orders.Order) error {
+func renderSingleTable(w io.Writer, o orders.Order) error {
 	for _, row := range headerRows(o) {
 		if _, err := fmt.Fprintf(w, "%s\t%s\n", row[0], row[1]); err != nil {
 			return err
@@ -82,21 +110,33 @@ func renderTable(w io.Writer, o orders.Order) error {
 	return nil
 }
 
-// renderJSON emits the Order's bytes verbatim (ADR-0003 pass-through). Raw is
-// always populated on the Run path; an empty Raw would mean the API body was
-// never captured, so we error rather than emit zero bytes.
+// renderBatchTable writes one tab-separated summary line per order (id, state,
+// total, create time) — a compact roster for the multi-ID lookup.
+func renderBatchTable(w io.Writer, os []orders.Order) error {
+	for _, o := range os {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", o.OrderID, o.State, formatMoney(o.Total), o.CreateTime); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// renderJSON emits the verbatim API bytes (ADR-0003 pass-through) — the Order
+// for a single lookup, the BatchGetOrdersResponse for a batch. Raw is always
+// populated on the Run path; an empty Raw would mean the API body was never
+// captured, so we error rather than emit zero bytes.
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw orders.get payload for --output json")
+		return fmt.Errorf("missing raw orders payload for --output json")
 	}
 	_, err := w.Write(p.Raw)
 	return err
 }
 
-// renderMarkdown renders the order as a record: a level-2 heading then a
+// renderSingleMarkdown renders the order as a record: a level-2 heading then a
 // `- **Field**: value` list (docs/DESIGN.md §7), followed by the line items as a
 // bullet list, so a pasted report stands alone.
-func renderMarkdown(w io.Writer, o orders.Order) error {
+func renderSingleMarkdown(w io.Writer, o orders.Order) error {
 	heading := "Order"
 	if o.OrderID != "" {
 		heading = "Order " + o.OrderID
@@ -118,6 +158,28 @@ func renderMarkdown(w io.Writer, o orders.Order) error {
 	}
 	for _, li := range o.LineItems {
 		if _, err := fmt.Fprintf(w, "- %s\n", lineItemSummary(li)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// renderBatchMarkdown renders the batch as a heading + one bullet per order
+// (id — state — total — create time), so a pasted multi-order report stands
+// alone.
+func renderBatchMarkdown(w io.Writer, os []orders.Order) error {
+	if _, err := fmt.Fprintf(w, "## Orders (%d)\n\n", len(os)); err != nil {
+		return err
+	}
+	for _, o := range os {
+		parts := []string{o.OrderID, o.State, formatMoney(o.Total), o.CreateTime}
+		kept := parts[:0]
+		for _, p := range parts {
+			if strings.TrimSpace(p) != "" {
+				kept = append(kept, p)
+			}
+		}
+		if _, err := fmt.Fprintf(w, "- %s\n", strings.Join(kept, " — ")); err != nil {
 			return err
 		}
 	}
@@ -185,14 +247,30 @@ func mdLabel(key string) string {
 	return strings.Join(words, " ")
 }
 
-// Run is the business function the kernel invokes. It validates the orderId,
-// resolves the package, builds an authenticated client, fetches the single order
-// (orders.get), and renders. A 404/403 is classified into an agent-resolvable
-// refusal (orderscmd.ClassifyView).
+// trimIDs drops empty/whitespace-only order IDs (a stray "" from quoting) and
+// trims the rest, preserving order.
+func trimIDs(raw []string) []string {
+	out := make([]string, 0, len(raw))
+	for _, id := range raw {
+		if id = strings.TrimSpace(id); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// Run is the business function the kernel invokes. It validates the order IDs,
+// resolves the package, builds an authenticated client, then routes: one ID to
+// orders.get, two to MaxBatchOrderIDs to orders.batchget. Over the cap is a
+// usage error (exit 2) naming the limit; a 404/403 is classified into an
+// agent-resolvable refusal.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	orderID := strings.TrimSpace(in.OrderID)
-	if orderID == "" {
-		return nil, orderscmd.Usagef("no order — pass an order ID: gplay orders view <orderId>")
+	ids := trimIDs(in.OrderIDs)
+	if len(ids) == 0 {
+		return nil, orderscmd.Usagef("no order — pass one or more order IDs: gplay orders view <orderId> [<orderId>...]")
+	}
+	if len(ids) > orders.MaxBatchOrderIDs {
+		return nil, orderscmd.Usagef("too many order IDs (%d) — orders.batchget accepts between 1 and %d per request; split the list into smaller batches", len(ids), orders.MaxBatchOrderIDs)
 	}
 	pkg, err := orderscmd.ResolvePackage(rc, in.Package)
 	if err != nil {
@@ -202,34 +280,48 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	o, raw, err := orders.Get(rc.Ctx, httpClient, pkg, orderID)
-	if err != nil {
-		return nil, orderscmd.ClassifyView(pkg, orderID, err)
+
+	if len(ids) == 1 {
+		o, raw, err := orders.Get(rc.Ctx, httpClient, pkg, ids[0])
+		if err != nil {
+			return nil, orderscmd.ClassifyView(pkg, ids[0], err)
+		}
+		return Payload{Orders: []orders.Order{o}, Raw: raw}, nil
 	}
-	return Payload{Order: o, Raw: raw}, nil
+
+	resp, raw, err := orders.BatchGet(rc.Ctx, httpClient, pkg, ids)
+	if err != nil {
+		return nil, orderscmd.ClassifyBatchView(pkg, len(ids), err)
+	}
+	return Payload{Orders: resp.Orders, Batch: true, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay orders view <orderId>`.
+// NewCommand returns the cobra command for `gplay orders view <orderId> [...]`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
 		in         Input
 	)
 	cmd := &cobra.Command{
-		Use:   "view <orderId>",
-		Short: "[experimental] Look up a Google Play order by its order ID",
-		Long: `Look up a single Google Play order by its order ID — the admin-side commerce
+		Use:   "view <orderId> [<orderId>...]",
+		Short: "[experimental] Look up Google Play orders by order ID",
+		Long: `Look up one or more Google Play orders by order ID — the admin-side commerce
 diagnostic: a human or agent holds an order ID from a buyer complaint or a
 payout report and reads its state, total, and line items. This is the order
 lookup boundary of the commerce surface; real-time purchase-token verification
 is a runtime API gplay does not wrap (CONTEXT.md "Order" / ADR-0031).
 
-The order ID looks like ` + "`GPA.1234-5678-9012-34567`" + `. The package defaults to the
-repo's .gplay/config.json pin when --package is omitted. This is a direct
+Pass a single order ID for a detailed lookup (orders.get) or several to look
+them up together (orders.batchget, 1–1000 IDs per request — more is a usage
+error). batchget is all-or-nothing: if any ID is unknown or belongs to another
+package, the whole request fails. The order ID looks like
+` + "`GPA.1234-5678-9012-34567`" + `. The package defaults to the repo's
+.gplay/config.json pin when --package is omitted. This is a direct
 application-scoped read — it opens no Edit.
 
-The human views show a compact summary (order id, state, total, creation time,
-line items); --output json passes the Order resource through verbatim
+The human views show a compact summary (single: order id, state, total,
+creation time, line items; multiple: one line per order); --output json passes
+the Order (single) or BatchGetOrdersResponse (batch) through verbatim
 (ADR-0003), including the fields the summary omits (buyer address, tax, order
 history, sales channel, …).
 
@@ -238,11 +330,11 @@ permission (never part of a Role bundle); a 403 names it. An unknown order ID
 fails with exit 30.
 
 [experimental] — the surface may still evolve (ADR-0010).`,
-		Args:          cobra.ExactArgs(1),
+		Args:          cobra.MinimumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			in.OrderID = args[0]
+			in.OrderIDs = args
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, in)
 			})

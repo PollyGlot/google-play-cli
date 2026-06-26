@@ -117,6 +117,109 @@ func TestGet_404_exit30(t *testing.T) {
 	assertExit(t, err, 30)
 }
 
+const batchBody = `{
+  "orders": [
+    {"orderId": "GPA.0001", "state": "PROCESSED", "total": {"currencyCode": "USD", "units": "1", "nanos": 0}},
+    {"orderId": "GPA.0002", "state": "REFUNDED", "total": {"currencyCode": "USD", "units": "2", "nanos": 500000000}}
+  ],
+  "nextPageToken": "ignored-but-verbatim"
+}`
+
+// TestBatchGet_batchGetPath_repeatedOrderIds asserts the call hits the
+// :batchGet endpoint with one orderIds query parameter per ID, parses the
+// envelope, and passes unmodeled fields through verbatim.
+func TestBatchGet_batchGetPath_repeatedOrderIds(t *testing.T) {
+	var gotURL, gotMethod string
+	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotURL = r.URL.String()
+		gotMethod = r.Method
+		return resp(200, batchBody), nil
+	})
+
+	got, raw, err := orders.BatchGet(context.Background(), &http.Client{Transport: rt}, "com.example.app", []string{"GPA.0001", "GPA.0002"})
+	if err != nil {
+		t.Fatalf("BatchGet: %v", err)
+	}
+	if gotMethod != http.MethodGet {
+		t.Errorf("method = %q, want GET", gotMethod)
+	}
+	if !strings.Contains(gotURL, "/applications/com.example.app/orders:batchGet?") {
+		t.Errorf("url %q is not the application-scoped orders.batchget endpoint", gotURL)
+	}
+	if strings.Contains(gotURL, "/edits/") {
+		t.Errorf("url %q must not open an Edit", gotURL)
+	}
+	if c := strings.Count(gotURL, "orderIds="); c != 2 {
+		t.Errorf("url %q must carry one orderIds param per ID, got %d", gotURL, c)
+	}
+	if len(got.Orders) != 2 || got.Orders[0].OrderID != "GPA.0001" || got.Orders[1].State != "REFUNDED" {
+		t.Errorf("orders = %+v", got.Orders)
+	}
+	// ADR-0003: the raw body is verbatim, including fields the typed envelope
+	// does not model (nextPageToken).
+	if !strings.Contains(string(raw), "nextPageToken") {
+		t.Errorf("raw passthrough dropped fields: %s", raw)
+	}
+}
+
+// TestBatchGet_403_exit11 asserts a forbidden batch read maps to the authz exit
+// code, like the single read.
+func TestBatchGet_403_exit11(t *testing.T) {
+	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return resp(403, `{"error":{"message":"The caller does not have permission"}}`), nil
+	})
+	_, _, err := orders.BatchGet(context.Background(), &http.Client{Transport: rt}, "com.example.app", []string{"GPA.1", "GPA.2"})
+	assertExit(t, err, 11)
+}
+
+// TestRefund_postNoRevoke asserts the default refund is a POST to :refund with
+// no revoke query parameter (money back, entitlement kept).
+func TestRefund_postNoRevoke(t *testing.T) {
+	var gotURL, gotMethod string
+	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotURL = r.URL.String()
+		gotMethod = r.Method
+		return resp(200, ""), nil
+	})
+	if _, err := orders.Refund(context.Background(), &http.Client{Transport: rt}, "com.example.app", "GPA.1234", false); err != nil {
+		t.Fatalf("Refund: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if !strings.HasSuffix(gotURL, "/applications/com.example.app/orders/GPA.1234:refund") {
+		t.Errorf("url %q is not the orders.refund endpoint", gotURL)
+	}
+	if strings.Contains(gotURL, "revoke") {
+		t.Errorf("url %q must not carry revoke by default", gotURL)
+	}
+}
+
+// TestRefund_revoke asserts --revoke maps to the revoke=true query parameter.
+func TestRefund_revoke(t *testing.T) {
+	var gotURL string
+	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotURL = r.URL.String()
+		return resp(204, ""), nil
+	})
+	if _, err := orders.Refund(context.Background(), &http.Client{Transport: rt}, "com.example.app", "GPA.1234", true); err != nil {
+		t.Fatalf("Refund: %v", err)
+	}
+	if !strings.Contains(gotURL, "revoke=true") {
+		t.Errorf("url %q must carry revoke=true", gotURL)
+	}
+}
+
+// TestRefund_403_exit11 asserts a forbidden refund maps to the authz exit code
+// (the command names CAN_MANAGE_ORDERS on top).
+func TestRefund_403_exit11(t *testing.T) {
+	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return resp(403, `{"error":{"message":"The caller does not have permission"}}`), nil
+	})
+	_, err := orders.Refund(context.Background(), &http.Client{Transport: rt}, "com.example.app", "GPA.1", false)
+	assertExit(t, err, 11)
+}
+
 func assertExit(t *testing.T, err error, want int) {
 	t.Helper()
 	if err == nil {

@@ -306,6 +306,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{"metadata", "images", "apply"},
 		{"compliance", "datasafety", "set"},
 		{"apps", "details", "set"},
+		{"orders", "refund"},
 	}
 	// Reads (and local-only registry/credential ops) must stay UNmarked — the
 	// policy only blocks mutations of Google Play state, so dashboards and
@@ -326,6 +327,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{"apps", "list"},
 		{"apps", "view"},
 		{"apps", "details", "view"},
+		{"orders", "view"},
 		{"auth", "status"},
 		{"auth", "login"},
 		{"schema"},
