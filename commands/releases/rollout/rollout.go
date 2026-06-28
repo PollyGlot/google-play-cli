@@ -145,6 +145,13 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		}
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-transition Edit.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := call(rc.Ctx, httpClient, orchestrator.StateOpts{
 		Package:           pkg,
 		Track:             in.Track,
@@ -152,6 +159,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		ReleaseName:       in.ReleaseName,
 		UserFraction:      userFraction,
 		KeepEditOnFailure: in.KeepEditOnFailure,
+		ExplicitEditID:    explicitEditID,
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})

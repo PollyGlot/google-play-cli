@@ -117,12 +117,20 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-upload Edit.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := orchestrator.UploadMapping(rc.Ctx, httpClient, orchestrator.MappingOpts{
 		Package:           pkg,
 		VersionCode:       in.VersionCode,
 		MappingPath:       in.MappingPath,
 		FileType:          in.Type,
 		KeepEditOnFailure: in.KeepEditOnFailure,
+		ExplicitEditID:    explicitEditID,
 		DryRun:            in.DryRun,
 	})
 	if err != nil {

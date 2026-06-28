@@ -186,6 +186,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-promote Edit.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
+
 	var status orchestrator.Status
 	switch {
 	case in.Draft:
@@ -209,6 +216,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotes:      in.ReleaseNotes,
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
+		ExplicitEditID:    explicitEditID,
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})

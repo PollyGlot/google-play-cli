@@ -29,6 +29,11 @@ type MappingOpts struct {
 
 	KeepEditOnFailure bool
 
+	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
+	// instead of opening/committing a per-upload Edit (docs/DESIGN.md §4).
+	// Empty is the implicit default.
+	ExplicitEditID string
+
 	// DryRun validates inputs and the mapping is readable without any
 	// HTTP: no Edit is opened, nothing is uploaded.
 	DryRun bool
@@ -94,7 +99,7 @@ func UploadMapping(ctx context.Context, hc *http.Client, opts MappingOpts) (*Map
 	}
 
 	result := &MappingResult{VersionCode: opts.VersionCode, FileType: fileType}
-	err = edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure}, func(editID string) error {
+	err = edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		res, err := mappings.Upload(ctx, hc, opts.Package, editID, opts.VersionCode, fileType, opts.MappingPath)
 		if err != nil {
 			return err

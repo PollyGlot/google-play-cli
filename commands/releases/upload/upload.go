@@ -171,12 +171,18 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &usageError{msg: "missing --track"}
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-upload Edit. A corrupt pin surfaces here.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
+
 	// Dry-run skips auth entirely: nothing hits the network, so a
 	// missing Account is not a problem here. The orchestrator handles
 	// the dry-run path before any HTTP would happen.
 	var httpClient *http.Client
 	if !in.DryRun {
-		var err error
 		// UploadClient, not AuthedClient: the AAB transfer can be hundreds of
 		// MB, so it is exempt from the 60s control-plane default (honors an
 		// explicit --timeout). See kernel.RunContext.UploadClient.
@@ -209,6 +215,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotes:      in.ReleaseNotes,
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
+		ExplicitEditID:    explicitEditID,
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})

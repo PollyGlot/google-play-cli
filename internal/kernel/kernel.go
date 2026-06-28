@@ -27,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/editpin"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/transport"
@@ -405,6 +407,37 @@ func (rc *RunContext) Confirmf(format string, args ...any) {
 		return
 	}
 	_, _ = fmt.Fprintf(rc.Stderr, "✓ "+format+"\n", args...)
+}
+
+// GplayDir returns the project's .gplay/ directory — the one found via walk-up
+// that holds config.json — and ok=true when a project was resolved. It is the
+// home of the explicit-Edit pin (.gplay/edit-<pkg>.json) and is gitignored for
+// edit-*.json by `gplay init`, so a pin written here never lands in version
+// control. ok=false means no .gplay/ was found (no `gplay init`); callers that
+// must persist a pin treat that as a usage error, while read paths fall back to
+// implicit mode.
+func (rc *RunContext) GplayDir() (string, bool) {
+	if rc.Resolved == nil || rc.Resolved.ProjectSharedPath == "" {
+		return "", false
+	}
+	return filepath.Dir(rc.Resolved.ProjectSharedPath), true
+}
+
+// ExplicitEditID returns the open explicit-Edit ID pinned for pkg in the
+// project's .gplay/edit-<pkg>.json, or "" when none is pinned (or no project
+// was resolved) — the signal a write command uses to reuse an open Edit instead
+// of opening its own (docs/DESIGN.md §4). A corrupt pin file is an error so a
+// broken pin surfaces rather than silently opening a conflicting Edit.
+func (rc *RunContext) ExplicitEditID(pkg string) (string, error) {
+	gplayDir, ok := rc.GplayDir()
+	if !ok {
+		return "", nil
+	}
+	pin, found, err := editpin.Lookup(rc.FS, gplayDir, pkg)
+	if err != nil || !found {
+		return "", err
+	}
+	return pin.EditID, nil
 }
 
 // maybeWriteErrorEnvelope writes the JSON error envelope to stdout when the

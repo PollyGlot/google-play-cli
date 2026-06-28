@@ -56,6 +56,11 @@ type Opts struct {
 	// NoValidate bypasses the offline imagevalidate fail-fast pre-check
 	// (ADR-0013 §4 — gplay must never be permanently stricter than Play).
 	NoValidate bool
+
+	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
+	// instead of opening/committing a per-apply Edit (docs/DESIGN.md §4). Empty
+	// is the implicit default.
+	ExplicitEditID string
 }
 
 // Result is what Apply returns. Diff is always populated. On a real apply the
@@ -140,7 +145,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 	// Real apply: ONE write Edit. Plan inside it, execute, commit once. A no-op
 	// diff returns errNoChanges so the Edit auto-discards. Any per-slot failure
 	// also auto-discards → 0 slots published (atomic).
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types, opts.Prune)
 		if err != nil {
 			return err

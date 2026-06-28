@@ -274,12 +274,21 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-apply Edit. (The --dry-run preview uses a separate
+	// read-only Edit and ignores this.)
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := orchestrator.Apply(rc.Ctx, httpClient, local, orchestrator.Opts{
-		Package:     pkg,
-		DryRun:      in.DryRun,
-		Confirm:     in.Confirm,
-		Prune:       in.Prune,
-		AllowLocale: in.AllowLocale,
+		Package:        pkg,
+		DryRun:         in.DryRun,
+		Confirm:        in.Confirm,
+		Prune:          in.Prune,
+		AllowLocale:    in.AllowLocale,
+		ExplicitEditID: explicitEditID,
 	})
 	if err != nil {
 		return nil, classifyEditError(pkg, err)

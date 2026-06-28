@@ -212,14 +212,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-apply Edit.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := imageorchestrator.Apply(rc.Ctx, httpClient, local, imageorchestrator.Opts{
-		Package:    pkg,
-		DryRun:     in.DryRun,
-		Confirm:    in.Confirm,
-		Prune:      in.Prune,
-		Locales:    in.Locales,
-		Types:      in.Types,
-		NoValidate: in.NoValidate,
+		Package:        pkg,
+		DryRun:         in.DryRun,
+		Confirm:        in.Confirm,
+		Prune:          in.Prune,
+		Locales:        in.Locales,
+		Types:          in.Types,
+		NoValidate:     in.NoValidate,
+		ExplicitEditID: explicitEditID,
 	})
 	if err != nil {
 		return nil, classifyEditError(pkg, err)

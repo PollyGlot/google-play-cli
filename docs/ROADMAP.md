@@ -123,7 +123,11 @@ mutations ([#238](https://github.com/PollyGlot/google-play-cli/issues/238) +
 2026-06-15), et le quick win dé-parké [#162](https://github.com/PollyGlot/google-play-cli/issues/162)
 (`team users view`, débloqué par la clôture de #98) — livré via PRD
 [#271](https://github.com/PollyGlot/google-play-cli/issues/271) / PR
-[#274](https://github.com/PollyGlot/google-play-cli/issues/274).
+[#274](https://github.com/PollyGlot/google-play-cli/issues/274). Le mode Edit
+**explicite** ([#48](https://github.com/PollyGlot/google-play-cli/issues/48),
+`gplay edits begin/commit/discard/status`, DESIGN §4) est lui aussi livré : un
+Edit ouvert est épinglé dans `.gplay/edit-<package>.json` et réutilisé par les
+commandes d'écriture suivantes.
 
 ## Parking (post-MVP)
 
@@ -133,7 +137,6 @@ Idées trackées pour visibilité, **pas** planifiées. Voir
 | # | Sujet | Pourquoi parked |
 |---|---|---|
 | [#38](https://github.com/PollyGlot/google-play-cli/issues/38) | [arch] Renderer interface (contredit ADR-0005) | Décision à re-litiguer si besoin |
-| [#48](https://github.com/PollyGlot/google-play-cli/issues/48) | `gplay edits begin/commit/discard` (mode explicit) | Implicit mode suffit pour MVP |
 
 ## Commandes utiles
 

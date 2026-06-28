@@ -146,6 +146,12 @@ type Opts struct {
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
 
+	// ExplicitEditID, when set, reuses an already-open explicit Edit
+	// (`gplay edits begin`) instead of opening/committing a per-upload Edit:
+	// the upload mutates the pinned Edit and leaves it open for the user to
+	// `gplay edits commit` (docs/DESIGN.md §4). Empty is the implicit default.
+	ExplicitEditID string
+
 	// MappingPath, when set, uploads a ProGuard/R8 deobfuscation file (a
 	// Mapping) alongside the AAB in the SAME Edit, keyed by the versionCode
 	// the bundle upload returns. Empty means no mapping is uploaded. This
@@ -223,7 +229,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 
 	result := &Result{Track: opts.Track}
 
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		var localized []tracks.LocalizedText
 		if opts.ReleaseNotes != "" || opts.ReleaseNotesDir != "" {
 			// details.get is an extra round-trip; only do it when the
