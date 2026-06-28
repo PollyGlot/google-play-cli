@@ -6,6 +6,8 @@
 package commit
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/edits/editscmd"
@@ -50,7 +52,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	if err := editpin.Clear(rc.FS, gplayDir, pkg); err != nil {
-		return nil, err
+		// The Edit IS committed (the change is live); only the local pin cleanup
+		// failed. Say so explicitly and name the stale file, so this does not
+		// read as a failed commit and the leftover pin (which would block the
+		// next `gplay edits begin`) can be removed by hand.
+		return nil, fmt.Errorf("committed explicit edit %s for %s, but failed to clear the local pin %s (remove it manually): %w", pin.EditID, pkg, editpin.Path(gplayDir, pkg), err)
 	}
 
 	rc.Confirmf("committed explicit edit %s for %s", pin.EditID, pkg)

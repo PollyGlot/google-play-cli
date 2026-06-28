@@ -8,6 +8,7 @@ package discard
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/spf13/cobra"
@@ -61,11 +62,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Clear the pin regardless of the API outcome: a 404 means the Edit is
 	// already gone, and even on a transient error the user asked to abandon it
 	// (it auto-expires in ~24h), so the local pin must not linger.
-	if clearErr := editpin.Clear(rc.FS, gplayDir, pkg); clearErr != nil {
-		return nil, clearErr
+	clearErr := editpin.Clear(rc.FS, gplayDir, pkg)
+
+	// An already-gone (404) Edit is the discard's desired end state, not a
+	// failure. Combine the remaining errors so a local cleanup failure never
+	// masks whether the Edit is still open on Play.
+	remoteErr := discardErr
+	if alreadyGone(remoteErr) {
+		remoteErr = nil
 	}
-	if discardErr != nil && !alreadyGone(discardErr) {
-		return nil, discardErr
+	switch {
+	case remoteErr != nil && clearErr != nil:
+		return nil, fmt.Errorf("discard explicit edit %s for %s: %w; also failed to clear the local pin: %v", pin.EditID, pkg, remoteErr, clearErr)
+	case remoteErr != nil:
+		return nil, remoteErr
+	case clearErr != nil:
+		return nil, fmt.Errorf("discarded explicit edit %s for %s on Play, but failed to clear the local pin %s (remove it manually): %w", pin.EditID, pkg, editpin.Path(gplayDir, pkg), clearErr)
 	}
 
 	rc.Confirmf("discarded explicit edit %s for %s", pin.EditID, pkg)

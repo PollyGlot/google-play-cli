@@ -121,7 +121,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	rc.Confirmf("uploaded %s expansion file to versionCode %d for %q", ft, in.VersionCode, pkg)
+	rc.ConfirmMutation(explicitEditID, "uploaded %s expansion file to versionCode %d for %q", ft, in.VersionCode, pkg)
 	return Payload{VersionCode: in.VersionCode, Type: ft, Raw: raw}, nil
 }
 

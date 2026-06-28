@@ -268,9 +268,11 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		result.VersionCode = versionCode
 
 		// Upload the ProGuard/R8 mapping in the SAME edit once the
-		// versionCode is known. A failure here aborts the edit (auto-
-		// discard via WithEdit) so we never commit a release whose mapping
-		// silently failed to attach — the whole point is readable crash
+		// versionCode is known. A failure here aborts the closure: in IMPLICIT
+		// mode WithEdit auto-discards so we never commit a release whose mapping
+		// silently failed to attach; in EXPLICIT mode the pinned Edit is left
+		// open for the user to retry or discard. Either way the release is not
+		// committed without its mapping — the whole point is readable crash
 		// stacks (#250).
 		if opts.MappingPath != "" {
 			if _, err := mappings.Upload(ctx, hc, opts.Package, editID, versionCode, mappings.TypeProguard, opts.MappingPath); err != nil {

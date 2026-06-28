@@ -75,6 +75,18 @@ func TestLookupMissingEditIDIsAnError(t *testing.T) {
 	}
 }
 
+func TestLookupPackageMismatchIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	// File is edit-com.example.app.json but its embedded package disagrees — a
+	// copied/renamed pin. Lookup must reject it as corruption.
+	if err := (config.OSFS{}).WriteFile(editpin.Path(dir, pkg), []byte(`{"editId":"e1","package":"com.other.app"}`), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, ok, err := editpin.Lookup(config.OSFS{}, dir, pkg); err == nil || ok {
+		t.Errorf("package mismatch: ok=%v err=%v, want ok=false non-nil err", ok, err)
+	}
+}
+
 func TestClearIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	// Clearing a non-existent pin is a no-op (no error).

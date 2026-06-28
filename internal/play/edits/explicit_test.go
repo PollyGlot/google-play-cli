@@ -92,7 +92,10 @@ func TestOpenExplicit_editAlreadyExists_isConflict(t *testing.T) {
 		t.Fatalf("OpenExplicit error = %v (%T), want *EditConflictError", err, err)
 	}
 	var coder interface{ ExitCode() int }
-	if errors.As(err, &coder) && coder.ExitCode() != 30 {
+	if !errors.As(err, &coder) {
+		t.Fatalf("editAlreadyExists error must expose a Coder; got %T", err)
+	}
+	if coder.ExitCode() != 30 {
 		t.Errorf("editAlreadyExists exit = %d, want 30", coder.ExitCode())
 	}
 }

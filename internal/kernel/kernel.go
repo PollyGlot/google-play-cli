@@ -409,6 +409,27 @@ func (rc *RunContext) Confirmf(format string, args ...any) {
 	_, _ = fmt.Fprintf(rc.Stderr, "✓ "+format+"\n", args...)
 }
 
+// ConfirmMutation emits the post-mutation confirmation line on stderr. In the
+// default IMPLICIT Edit mode it is the committed ✓ (DESIGN §8: ✓ means the
+// change was committed). When explicitEditID is non-empty the mutation was
+// staged into a user-owned open Edit (`gplay edits begin`) and is NOT yet
+// published — so a committed ✓ would lie — and it prints a distinct, non-✓
+// "staged" line pointing at `gplay edits commit` instead, preserving the
+// ✓ = committed invariant. Callers pass the same message body they would give
+// Confirmf; like Confirmf it is best-effort, never fires on a --dry-run (the
+// caller gates that), and is a no-op on a nil Stderr.
+func (rc *RunContext) ConfirmMutation(explicitEditID, format string, args ...any) {
+	if explicitEditID == "" {
+		rc.Confirmf(format, args...)
+		return
+	}
+	if rc.Stderr == nil {
+		return
+	}
+	prefix := fmt.Sprintf("• staged in open edit %s — run `gplay edits commit` to publish (not live yet): ", explicitEditID)
+	_, _ = fmt.Fprintf(rc.Stderr, prefix+format+"\n", args...)
+}
+
 // GplayDir returns the project's .gplay/ directory — the one found via walk-up
 // that holds config.json — and ok=true when a project was resolved. It is the
 // home of the explicit-Edit pin (.gplay/edit-<pkg>.json) and is gitignored for
@@ -430,7 +451,7 @@ func (rc *RunContext) GplayDir() (string, bool) {
 // broken pin surfaces rather than silently opening a conflicting Edit.
 func (rc *RunContext) ExplicitEditID(pkg string) (string, error) {
 	gplayDir, ok := rc.GplayDir()
-	if !ok {
+	if !ok || rc.FS == nil {
 		return "", nil
 	}
 	pin, found, err := editpin.Lookup(rc.FS, gplayDir, pkg)

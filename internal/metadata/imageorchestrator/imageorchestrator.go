@@ -142,9 +142,12 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 		return result, nil
 	}
 
-	// Real apply: ONE write Edit. Plan inside it, execute, commit once. A no-op
-	// diff returns errNoChanges so the Edit auto-discards. Any per-slot failure
-	// also auto-discards → 0 slots published (atomic).
+	// Real apply: ONE write Edit. Plan inside it, execute, commit once. In
+	// IMPLICIT mode a no-op diff returns errNoChanges so the Edit auto-discards
+	// and any per-slot failure also auto-discards → 0 slots published (atomic).
+	// In EXPLICIT mode (opts.ExplicitEditID set) WithEdit reuses the pinned Edit
+	// and never commits or discards — staged changes wait for `gplay edits
+	// commit`/`discard`.
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types, opts.Prune)
 		if err != nil {

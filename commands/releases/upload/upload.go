@@ -171,23 +171,25 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &usageError{msg: "missing --track"}
 	}
 
-	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
-	// keeps the implicit per-upload Edit. A corrupt pin surfaces here.
-	explicitEditID, err := rc.ExplicitEditID(pkg)
-	if err != nil {
-		return nil, err
-	}
-
-	// Dry-run skips auth entirely: nothing hits the network, so a
-	// missing Account is not a problem here. The orchestrator handles
-	// the dry-run path before any HTTP would happen.
-	var httpClient *http.Client
+	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the
+	// network, and the orchestrator's dry-run path never reuses a pinned Edit,
+	// so a corrupt pin must not fail a preview. The pin is only resolved on the
+	// live path below.
+	var (
+		httpClient     *http.Client
+		explicitEditID string
+	)
 	if !in.DryRun {
+		var err error
+		// Reuse an open explicit Edit when one is pinned (`gplay edits begin`);
+		// "" keeps the implicit per-upload Edit. A corrupt pin surfaces here.
+		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
+			return nil, err
+		}
 		// UploadClient, not AuthedClient: the AAB transfer can be hundreds of
 		// MB, so it is exempt from the 60s control-plane default (honors an
 		// explicit --timeout). See kernel.RunContext.UploadClient.
-		httpClient, err = rc.UploadClient()
-		if err != nil {
+		if httpClient, err = rc.UploadClient(); err != nil {
 			return nil, err
 		}
 	}
@@ -236,7 +238,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if result.MappingUploaded {
 			extra += ", mapping uploaded"
 		}
-		rc.Confirmf("uploaded versionCode %d to track %q (status %s%s)",
+		rc.ConfirmMutation(explicitEditID, "uploaded versionCode %d to track %q (status %s%s)",
 			result.VersionCode, result.Track, result.Status, extra)
 	}
 	return Payload{Result: result}, nil

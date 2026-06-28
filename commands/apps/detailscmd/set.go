@@ -240,7 +240,7 @@ func RunSet(rc *kernel.RunContext, in SetInput) (output.Renderable, error) {
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The
 	// --dry-run path returned above, so this only runs after a real patch.
-	rc.Confirmf("app details updated for %q", pkg)
+	rc.ConfirmMutation(explicitEditID, "app details updated for %q", pkg)
 	return SetPayload{Package: pkg, Patch: patch, Raw: raw}, nil
 }
 

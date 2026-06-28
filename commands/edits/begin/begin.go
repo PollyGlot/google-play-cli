@@ -11,6 +11,8 @@
 package begin
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/edits/editscmd"
@@ -56,8 +58,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := editpin.Write(rc.FS, gplayDir, pkg, editID); err != nil {
 		// The Edit is open server-side but we could not persist the pin. Discard
 		// it so the user is not left with an orphaned 24h Edit lock they cannot
-		// see locally; surface the original write error.
-		_ = edits.DiscardExplicit(rc.Ctx, httpClient, pkg, editID)
+		// see locally. If the discard ALSO fails, surface both — the Edit is
+		// still open with no local pin to recover it.
+		if discardErr := edits.DiscardExplicit(rc.Ctx, httpClient, pkg, editID); discardErr != nil {
+			return nil, fmt.Errorf("write edit pin: %w; cleanup also failed — explicit edit %s is still open on Play (discard it via the Play Console or wait ~24h): %v", err, editID, discardErr)
+		}
 		return nil, err
 	}
 

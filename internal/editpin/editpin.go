@@ -56,8 +56,16 @@ func Lookup(fsys config.FS, gplayDir, pkg string) (Pin, bool, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return Pin{}, false, fmt.Errorf("editpin: %s: %w", path, err)
 	}
-	if strings.TrimSpace(p.EditID) == "" {
+	p.EditID = strings.TrimSpace(p.EditID)
+	if p.EditID == "" {
 		return Pin{}, false, fmt.Errorf("editpin: %s: missing editId", path)
+	}
+	// A pin whose embedded package disagrees with the file it was read from is
+	// corruption (a copied/renamed file): reject it now rather than later
+	// reusing the Edit against the wrong package. An empty Package is tolerated
+	// (a minimal/older pin); the filename remains the authority.
+	if p.Package != "" && p.Package != pkg {
+		return Pin{}, false, fmt.Errorf("editpin: %s: package mismatch (%q != %q)", path, p.Package, pkg)
 	}
 	return p, true, nil
 }
@@ -72,7 +80,15 @@ func Write(fsys config.FS, gplayDir, pkg, editID string) error {
 	if err != nil {
 		return err
 	}
-	return fsys.WriteFile(Path(gplayDir, pkg), append(data, '\n'), 0o644)
+	path := Path(gplayDir, pkg)
+	if err := fsys.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		// A short write / ENOSPC can leave a truncated file that Lookup would
+		// then treat as fatal corruption, wedging later commands. Best-effort
+		// remove it so a failed write leaves no half-written pin behind.
+		_ = fsys.Remove(path)
+		return err
+	}
+	return nil
 }
 
 // Clear removes the pin file for pkg. A missing file is not an error, so the

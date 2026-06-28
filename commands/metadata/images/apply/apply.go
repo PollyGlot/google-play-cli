@@ -213,10 +213,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
-	// keeps the implicit per-apply Edit.
-	explicitEditID, err := rc.ExplicitEditID(pkg)
-	if err != nil {
-		return nil, err
+	// keeps the implicit per-apply Edit. Skipped on --dry-run: the preview uses
+	// a separate read-only Edit and never reuses the pin, so a corrupt pin must
+	// not fail it.
+	var explicitEditID string
+	if !in.DryRun {
+		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
+			return nil, err
+		}
 	}
 
 	res, err := imageorchestrator.Apply(rc.Ctx, httpClient, local, imageorchestrator.Opts{
@@ -236,7 +240,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// --dry-run), reporting the upload/delete/reorder tally.
 	if !in.DryRun {
 		s := res.Diff.Summary
-		rc.Confirmf("images applied to %q (%d uploaded, %d deleted, %d reordered)",
+		rc.ConfirmMutation(explicitEditID, "images applied to %q (%d uploaded, %d deleted, %d reordered)",
 			res.Package, s.Upload, s.Delete, s.Reorder)
 	}
 	return Payload{Result: res}, nil

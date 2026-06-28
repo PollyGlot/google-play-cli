@@ -115,6 +115,10 @@ func TestRun_commitsAndClearsPin(t *testing.T) {
 	if rt.commitCalls != 1 {
 		t.Errorf("commitCalls = %d, want 1", rt.commitCalls)
 	}
+	// Explicit-lifecycle contract: commit must never open a replacement Edit.
+	if rt.insertCalls != 0 {
+		t.Errorf("commit opened %d Edit(s); want 0 (it commits the pinned Edit)", rt.insertCalls)
+	}
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); ok {
 		t.Error("pin still present after a successful commit")
 	}

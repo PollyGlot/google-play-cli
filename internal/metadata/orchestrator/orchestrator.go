@@ -196,9 +196,12 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	}
 
 	// Real apply: ONE write Edit. Fetch+diff+guard inside it; patch/delete
-	// the changes; commit once. A no-op diff returns errNoChanges so the
-	// Edit auto-discards (no empty commit). Any per-locale failure also
-	// auto-discards → 0 locales published (atomic).
+	// the changes; commit once. In IMPLICIT mode a no-op diff returns
+	// errNoChanges so the Edit auto-discards (no empty commit) and any
+	// per-locale failure also auto-discards → 0 locales published (atomic). In
+	// EXPLICIT mode (opts.ExplicitEditID set) WithEdit reuses the pinned Edit
+	// and never commits or discards — the staged changes stay in the open Edit
+	// for the user to `gplay edits commit`/`discard`.
 	patched := make(map[string]json.RawMessage)
 	var pruned []string
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {

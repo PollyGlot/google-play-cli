@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -28,13 +29,15 @@ import (
 
 const pkg = "com.example.app"
 
-// beginRT serves the OAuth token exchange and the single edits.insert POST.
+// beginRT serves the OAuth token exchange, the edits.insert POST, and the
+// edits.delete DELETE (the rollback path when the pin write fails).
 type beginRT struct {
 	t      *testing.T
 	editID string
 
 	mu          sync.Mutex
 	insertCalls int
+	deleteCalls int
 }
 
 func (r *beginRT) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -47,8 +50,20 @@ func (r *beginRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		r.insertCalls++
 		return jsonResp(200, `{"id":"`+r.editID+`","expiryTimeSeconds":"1700000000"}`), nil
 	}
+	if req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/") {
+		r.deleteCalls++
+		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
+	}
 	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 	return nil, nil
+}
+
+// failWriteFS is an OSFS whose WriteFile always fails, to drive begin's
+// pin-write-failure rollback (it must discard the just-opened Edit).
+type failWriteFS struct{ config.FS }
+
+func (failWriteFS) WriteFile(string, []byte, fs.FileMode) error {
+	return errors.New("disk full")
 }
 
 func jsonResp(status int, body string) *http.Response {
@@ -136,6 +151,29 @@ func TestRun_alreadyOpen_exit60_noNetwork(t *testing.T) {
 	}
 	if rt.insertCalls != 0 {
 		t.Errorf("a second begin must not open another Edit; insertCalls = %d", rt.insertCalls)
+	}
+}
+
+func TestRun_pinWriteFailure_discardsServerEdit(t *testing.T) {
+	// OpenExplicit succeeds, but persisting the pin fails. begin must roll back
+	// by discarding the just-opened server-side Edit so no orphan is left, and
+	// must leave no pin behind.
+	rt := &beginRT{t: t, editID: "edit-orphan"}
+	rc, gplayDir := newRC(t, rt)
+	rc.FS = failWriteFS{config.OSFS{}}
+
+	_, err := begincmd.Run(rc, begincmd.Input{Package: pkg})
+	if err == nil {
+		t.Fatal("expected the pin-write failure to surface")
+	}
+	if rt.insertCalls != 1 {
+		t.Errorf("insertCalls = %d, want 1 (the Edit was opened)", rt.insertCalls)
+	}
+	if rt.deleteCalls != 1 {
+		t.Errorf("deleteCalls = %d, want 1 (the opened Edit must be discarded on pin-write failure)", rt.deleteCalls)
+	}
+	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); ok {
+		t.Error("a failed begin must leave no pin behind")
 	}
 }
 

@@ -110,7 +110,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	rc.Confirmf("set versionCode %d %s expansion file to reference versionCode %d for %q", in.VersionCode, ft, in.ReferencesVersion, pkg)
+	rc.ConfirmMutation(explicitEditID, "set versionCode %d %s expansion file to reference versionCode %d for %q", in.VersionCode, ft, in.ReferencesVersion, pkg)
 	return Payload{VersionCode: in.VersionCode, Type: ft, ReferencesVersion: in.ReferencesVersion, Raw: raw}, nil
 }
 

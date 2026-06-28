@@ -132,6 +132,25 @@ func TestRun_discard404_isSuccessAndClearsPin(t *testing.T) {
 	}
 }
 
+func TestRun_discardServerError_clearsPinButReturnsError(t *testing.T) {
+	// A non-404 server error: the user asked to abandon the Edit, so the local
+	// pin must still be cleared (it auto-expires in ~24h), but the failed remote
+	// discard must surface — a filesystem clear must not mask it.
+	rt := &discardRT{t: t, deleteStatus: 500}
+	rc, gplayDir := newRC(t, rt)
+	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-stuck"); err != nil {
+		t.Fatalf("seed pin: %v", err)
+	}
+
+	_, err := discardcmd.Run(rc, discardcmd.Input{Package: pkg})
+	if err == nil {
+		t.Fatal("a non-404 remote discard error must surface")
+	}
+	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); ok {
+		t.Error("the pin must be cleared even when the remote discard failed")
+	}
+}
+
 func TestRun_noOpenEdit_exit60_noNetwork(t *testing.T) {
 	rt := &discardRT{t: t}
 	rc, _ := newRC(t, rt)

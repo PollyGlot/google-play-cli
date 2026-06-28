@@ -238,7 +238,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The
 	// --dry-run path returned above, so this only runs after a real create.
-	rc.Confirmf("track %q created", created.Track)
+	rc.ConfirmMutation(explicitEditID, "track %q created", created.Track)
 	return Payload{
 		Name:       created.Track,
 		Type:       tracks.TrackTypeClosedTesting,
