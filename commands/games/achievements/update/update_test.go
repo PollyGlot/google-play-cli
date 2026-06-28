@@ -41,6 +41,30 @@ func TestRun_happyPath_putsToResource(t *testing.T) {
 	}
 }
 
+// TestRun_explicitZeroFlag_reachesBody guards that an explicit --point-value 0
+// survives into the PUT body on update (the *int fix), not dropped by omitempty.
+func TestRun_explicitZeroFlag_reachesBody(t *testing.T) {
+	var gotBody string
+	rc := gamescmdtest.NewRC(t, gamescmdtest.RTFunc(func(r *http.Request) (*http.Response, error) {
+		if resp, ok := gamescmdtest.Token(r); ok {
+			return resp, nil
+		}
+		var b bytes.Buffer
+		if r.Body != nil {
+			_, _ = b.ReadFrom(r.Body)
+		}
+		gotBody = b.String()
+		return gamescmdtest.JSONResp(`{"id":"a7"}`), nil
+	}))
+	_, err := updatecmd.Run(rc, updatecmd.Input{ID: "a7", Write: gamescmd.AchievementWrite{PointValue: 0, PointValueSet: true}})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(gotBody, `"pointValue":0`) {
+		t.Errorf("body %q should carry pointValue:0", gotBody)
+	}
+}
+
 func TestRun_missingID_exit2(t *testing.T) {
 	rc := gamescmdtest.NewRC(t, gamescmdtest.RTFunc(func(r *http.Request) (*http.Response, error) {
 		if resp, ok := gamescmdtest.Token(r); ok {

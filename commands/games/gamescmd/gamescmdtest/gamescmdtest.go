@@ -37,7 +37,11 @@ func (f RTFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r)
 // leaf test's RoundTripper can delegate the auth hop and focus on the API call.
 // Returns (resp, true) when r is the token request, (nil, false) otherwise.
 func Token(r *http.Request) (*http.Response, bool) {
-	if r.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(r.URL.Path, "/token") {
+	// Match only the exact token endpoint from saJSON()'s token_uri — not any
+	// path ending in /token — so a misdirected auth host or an API path that
+	// happens to end in /token can't get a fake bearer token and pass for the
+	// wrong reason.
+	if r.URL.Host == "oauth2.googleapis.com" && r.URL.Path == "/token" {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`))}, true
 	}
 	return nil, false

@@ -157,6 +157,38 @@ func TestLeaderboards_addressing(t *testing.T) {
 	}
 }
 
+func TestCreateLeaderboard_postsBodyToApplication(t *testing.T) {
+	var url, method, reqBody string
+	hc := recorder(jsonResp(200, `{"id":"lnew"}`), &url, &method, &reqBody)
+	in := []byte(`{"scoreOrder":"LARGER_IS_BETTER","scoreMin":"0"}`)
+	if _, _, err := games.CreateLeaderboard(context.Background(), hc, "55", in); err != nil {
+		t.Fatalf("CreateLeaderboard: %v", err)
+	}
+	if method != http.MethodPost {
+		t.Errorf("method = %s, want POST", method)
+	}
+	if !strings.Contains(url, "/applications/55/leaderboards") {
+		t.Errorf("url %q should address the application's leaderboards", url)
+	}
+	if reqBody != string(in) {
+		t.Errorf("body = %s, want %s (verbatim)", reqBody, in)
+	}
+}
+
+func TestUpdateLeaderboard_putsBodyToResource(t *testing.T) {
+	var url, method, reqBody string
+	hc := recorder(jsonResp(200, `{"id":"l9"}`), &url, &method, &reqBody)
+	if _, _, err := games.UpdateLeaderboard(context.Background(), hc, "l9", []byte(`{"scoreOrder":"SMALLER_IS_BETTER"}`)); err != nil {
+		t.Fatalf("UpdateLeaderboard: %v", err)
+	}
+	if method != http.MethodPut {
+		t.Errorf("method = %s, want PUT", method)
+	}
+	if !strings.HasSuffix(url, "/leaderboards/l9") {
+		t.Errorf("url %q should address leaderboard l9", url)
+	}
+}
+
 func TestDo_forbiddenMapsToAPIError(t *testing.T) {
 	var url, method, reqBody string
 	hc := recorder(jsonResp(403, `{"error":{"message":"no access","errors":[{"reason":"forbidden"}]}}`), &url, &method, &reqBody)

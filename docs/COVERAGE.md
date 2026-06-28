@@ -48,9 +48,11 @@ By method count, of the **~155 admin methods** across the four APIs:
   and **games #241** — achievements + leaderboards CRUD, ADR-0033).
 - **P0 queue now empty** — both ready-decomposed PRDs (orders #245, games #241)
   have shipped; the next work is the planned monetization block below.
-- **~54 methods remain in one coherent continent: monetization** (subscriptions
-  #51 + one-time products #293 + legacy IAP + external transactions #295). This is
-  the single biggest unbuilt block and the honest answer to "are we near the end?":
+- **~64 methods remain**, of which **~54 are one coherent continent:
+  monetization** (subscriptions #51 + one-time products #293 + legacy IAP +
+  external transactions #295); the other ~10 are long-tail (`edits.apks`,
+  `systemapks`, voided purchases, the two reporting helpers). Monetization is the
+  single biggest unbuilt block and the honest answer to "are we near the end?":
   **the commerce half is barely started.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
   (issues #293–#296); `generatedapks` (#294) has since been grilled into PRD #299

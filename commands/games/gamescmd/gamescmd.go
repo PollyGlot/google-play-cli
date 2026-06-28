@@ -55,6 +55,14 @@ func ResolveApplicationID(flag string) (string, error) {
 	if id == "" {
 		return "", &usageError{msg: "missing --application-id: the numeric Play Games Services application ID is required"}
 	}
+	// The Play Games application ID is a numeric console ID. Rejecting a
+	// non-numeric value here (e.g. a package name pasted by mistake) turns a
+	// misleading upstream 404 into a local, agent-resolvable exit-2 usage error.
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return "", &usageError{msg: "invalid --application-id: expected the numeric Play Games Services application ID, got " + strconv.Quote(id)}
+		}
+	}
 	return id, nil
 }
 
@@ -199,7 +207,14 @@ type AchievementWrite struct {
 }
 
 func (w AchievementWrite) hasFieldFlags() bool {
-	return w.Name != "" || w.Description != "" || w.Type != "" || w.InitialState != "" || w.PointValueSet || w.StepsSet
+	// Trim the string flags so a whitespace-only value (e.g. --type=' ') is not
+	// counted as set — it would otherwise pass the requireField check yet marshal
+	// to nothing (the body builder trims before assigning), sending an empty body.
+	return strings.TrimSpace(w.Name) != "" ||
+		strings.TrimSpace(w.Description) != "" ||
+		strings.TrimSpace(w.Type) != "" ||
+		strings.TrimSpace(w.InitialState) != "" ||
+		w.PointValueSet || w.StepsSet
 }
 
 // BuildAchievementBody resolves the request body for create/update: the
@@ -261,7 +276,9 @@ type LeaderboardWrite struct {
 }
 
 func (w LeaderboardWrite) hasFieldFlags() bool {
-	return w.Name != "" || w.ScoreOrder != "" || w.ScoreMinSet || w.ScoreMaxSet
+	return strings.TrimSpace(w.Name) != "" ||
+		strings.TrimSpace(w.ScoreOrder) != "" ||
+		w.ScoreMinSet || w.ScoreMaxSet
 }
 
 // BuildLeaderboardBody resolves the request body for create/update. scoreMin /

@@ -83,6 +83,42 @@ func TestRun_happyPath_postsAndConfirms(t *testing.T) {
 	}
 }
 
+// TestRun_explicitZeroFlags_reachTheBody is the command-level regression guard
+// for the *int fix: an explicit --point-value 0 / --steps-to-unlock 0 (the *Set
+// bits flipped, as the leaf does via cmd.Flags().Changed) must survive into the
+// request body, not be dropped by omitempty.
+func TestRun_explicitZeroFlags_reachTheBody(t *testing.T) {
+	var gotBody string
+	rc := gamescmdtest.NewRC(t, gamescmdtest.RTFunc(func(r *http.Request) (*http.Response, error) {
+		if resp, ok := gamescmdtest.Token(r); ok {
+			return resp, nil
+		}
+		b, _ := readAll(r)
+		gotBody = b
+		return gamescmdtest.JSONResp(`{"id":"z"}`), nil
+	}))
+	_, err := createcmd.Run(rc, createcmd.Input{
+		ApplicationID: "999",
+		Write: gamescmd.AchievementWrite{
+			Name:          "Zero",
+			Type:          "INCREMENTAL",
+			PointValue:    0,
+			PointValueSet: true,
+			StepsToUnlock: 0,
+			StepsSet:      true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(gotBody, `"pointValue":0`) {
+		t.Errorf("body %q should carry pointValue:0", gotBody)
+	}
+	if !strings.Contains(gotBody, `"stepsToUnlock":0`) {
+		t.Errorf("body %q should carry stepsToUnlock:0", gotBody)
+	}
+}
+
 func readAll(r *http.Request) (string, error) {
 	if r.Body == nil {
 		return "", nil

@@ -27,6 +27,11 @@ func TestResolveApplicationID_emptyIsExit2(t *testing.T) {
 	if err != nil || id != "12345" {
 		t.Errorf("ResolveApplicationID = %q, %v; want 12345", id, err)
 	}
+	// A non-numeric value (e.g. a package name pasted by mistake) is rejected
+	// locally as exit 2 rather than reaching the API as a misleading 404.
+	if _, err := gamescmd.ResolveApplicationID("com.example.app"); err == nil || exitCode(t, err) != 2 {
+		t.Errorf("non-numeric --application-id should be exit 2, got %v", err)
+	}
 }
 
 func TestRequireConfirm_missingIsExit3NamingFlag(t *testing.T) {
