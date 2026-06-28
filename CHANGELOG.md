@@ -5,6 +5,14 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0](https://github.com/PollyGlot/google-play-cli/compare/v0.9.0...v0.10.0) (2026-06-26)
+
+
+### Features
+
+* **orders:** `orders view <orderId>` single-order lookup (orders.get) ([#282](https://github.com/PollyGlot/google-play-cli/issues/282)) ([#314](https://github.com/PollyGlot/google-play-cli/issues/314)) ([0a87bea](https://github.com/PollyGlot/google-play-cli/commit/0a87bea6e3246f94067fdf8792eec9359af86b6d))
+* **orders:** batch `orders view` + gated `orders refund` — completes PRD [#245](https://github.com/PollyGlot/google-play-cli/issues/245) ([#283](https://github.com/PollyGlot/google-play-cli/issues/283), [#284](https://github.com/PollyGlot/google-play-cli/issues/284)) ([#317](https://github.com/PollyGlot/google-play-cli/issues/317)) ([ef2b0d5](https://github.com/PollyGlot/google-play-cli/commit/ef2b0d54ec487f51170f39ce9a92b0c48679e632))
+
 ## [0.9.0](https://github.com/PollyGlot/google-play-cli/compare/v0.8.0...v0.9.0) (2026-06-22)
 
 

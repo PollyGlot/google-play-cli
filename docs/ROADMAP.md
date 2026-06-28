@@ -91,10 +91,11 @@ restantes** : compléter la surface jusqu'à ce que toute opération admin Play 
 pilotable depuis le CLI. Toujours en `0.x`, sans attendre de gel. L'arc
 *publier → durcir → observer* est **complété** — vitals
 [#49](https://github.com/PollyGlot/google-play-cli/issues/49) livré (PR #263).
-Les **games** (#241) sont désormais **livrées** (CRUD achievements/leaderboards,
-ADR-0033) ; reste la surface **commerce** (#245, grillée et décomposée). Les
-**custom apps** (#242) sont **livrées** (PR #303), tout comme le quick win
-read-only **generated APKs** (#299, trié depuis #294, PR #305).
+Les **games** (#241, CRUD achievements/leaderboards, ADR-0033) et les **orders**
+(#245, lookup + refund gated, ADR-0031) sont désormais **livrées** ; le gros bloc
+restant est la **monetization** (#51, subscriptions + IAP). Les **custom apps**
+(#242) sont **livrées** (PR #303), tout comme le quick win read-only **generated
+APKs** (#299, trié depuis #294, PR #305).
 
 > **Politique de couverture ([ADR-0026](adr/0026-maximal-admin-api-coverage.md), 2026-06-13) :**
 > toute **Admin API** Play est in scope en totalité (Android Publisher complet,
@@ -105,7 +106,7 @@ read-only **generated APKs** (#299, trié depuis #294, PR #305).
 
 | Ordre | # | Area | Sujet | Prio | Note |
 |---|---|---|---|---|---|
-| 1 | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | low | **Grillé** ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) — `orders view <id>...` / `refund --confirm [--revoke]`, axe package, voided-purchases reporté. **Décomposé** — 3 slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284) (#282 walking skeleton, #283/#284 bloquées par lui) |
+| ✅ | [#245](https://github.com/PollyGlot/google-play-cli/issues/245) | orders | Orders — lookup & refund (`orders.get/batchget/refund`) | low | **Livré** — grillé ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)), `orders view <id>...` (single `orders.get` + batch `orders.batchget`) / `refund --confirm [--revoke]` (gated, money-moving), axe package, voided-purchases reporté. **3 slices** [#282](https://github.com/PollyGlot/google-play-cli/issues/282) (PR #314) + [#283](https://github.com/PollyGlot/google-play-cli/issues/283)/[#284](https://github.com/PollyGlot/google-play-cli/issues/284) |
 | ✅ | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) | games | Games Services configuration (`gamesConfiguration`) — achievements & leaderboards | low | **Livré** — grillé ([ADR-0033](adr/0033-games-services-configuration-draft-crud.md)), namespace `games`, axe application-ID, draft-only (ni publish ni images) ; CRUD complet `games achievements`/`games leaderboards` (list/view/create/update/delete) → 3 slices [#286](https://github.com/PollyGlot/google-play-cli/issues/286)–[#288](https://github.com/PollyGlot/google-play-cli/issues/288) |
 | ✅ | [#242](https://github.com/PollyGlot/google-play-cli/issues/242) | customapps | Custom apps — publication privée managed Google Play (`playcustomapp`) | low | **Livré** (PR [#303](https://github.com/PollyGlot/google-play-cli/pull/303)) — grillé ([ADR-0032](adr/0032-custom-apps-account-axis-gated-creation.md)), axe compte, gate `--confirm`, create-only → slice [#285](https://github.com/PollyGlot/google-play-cli/issues/285) |
 | post-v1 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) | monetization | Subscriptions v2 + IAP one-shot + sync RevenueCat | low | **Post-v1** (confirmé) — énorme, 3 niveaux imbriqués |
