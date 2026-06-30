@@ -3,9 +3,15 @@ name: Discovery Watch
 # Weekly check of Google's Discovery documents against the offline snapshots
 # under docs/discovery/. When Google publishes a new revision, this opens (or
 # refreshes) a rolling PR with the regenerated snapshot + schema index. The PR
-# body carries the paths.txt diff, so a surface change (new/removed methods)
-# is visible at a glance — that diff is the trigger to grill the new surface
-# under the maximal-coverage policy (ADR-0026).
+# is classified three ways so the title/body are an honest triage signal:
+#   - surface       — methods added/removed (paths.txt diff) → grill the new
+#                     surface under the maximal-coverage policy (ADR-0026).
+#   - schema        — query params / fields / descriptions changed, but no
+#                     method surface change; the body shows the schema diff.
+#   - revision-only — ONLY the revision date stamp moved → genuinely safe.
+# paths.txt tracks method existence only (id + verb + path), so it cannot tell
+# schema from revision-only on its own — the classifier diffs everything minus
+# the revision line to decide that (see the "Detect changes" step).
 on:
   schedule:
     - cron: '0 6 * * 1' # Mondays 06:00 UTC
@@ -54,15 +60,36 @@ jobs:
             exit 0
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
-          if git diff --quiet -- docs/discovery/paths.txt; then
-            echo "kind=revision-only" >> "$GITHUB_OUTPUT"
+          # paths.txt only tracks method existence (id + verb + path), so a new
+          # query param or schema field never shows up there — keying the label
+          # off paths.txt alone mislabels such changes as "revision bump only"
+          # (this is what happened on #320). So first ask the stronger question:
+          # is there ANY change beyond the top-level "revision" date stamp? Strip
+          # that one line — the leading two spaces pin it to the document root,
+          # so a nested field literally named "revision" is never mistaken for it
+          # — and see what survives.
+          substantive=$(git diff -- docs/discovery/ internal/schemaindex/schema_index.json \
+            | grep -E '^[+-]' \
+            | grep -vE '^(\+\+\+|---) ' \
+            | grep -vE '^[+-]  "revision": "[^"]+",?$' \
+            || true)
+          if [ -z "$substantive" ]; then
+            kind=revision-only          # only the date stamp moved — genuinely safe
+          elif git diff --quiet -- docs/discovery/paths.txt; then
+            kind=schema                 # params/fields/descriptions changed, no new surface
           else
-            echo "kind=surface" >> "$GITHUB_OUTPUT"
+            kind=surface                # methods added/removed — ADR-0026 grilling
           fi
           {
+            echo "kind=$kind"
             echo 'paths_diff<<PATHS_EOF'
             git diff -- docs/discovery/paths.txt | head -200
             echo 'PATHS_EOF'
+            echo 'schema_diff<<SCHEMA_EOF'
+            git diff -- docs/discovery/ internal/schemaindex/schema_index.json \
+              | grep -vE '^[+-]  "revision": "[^"]+",?$' \
+              | head -200
+            echo 'SCHEMA_EOF'
           } >> "$GITHUB_OUTPUT"
 
       - name: Open or refresh the rolling PR
@@ -71,6 +98,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           KIND: ${{ steps.diff.outputs.kind }}
           PATHS_DIFF: ${{ steps.diff.outputs.paths_diff }}
+          SCHEMA_DIFF: ${{ steps.diff.outputs.schema_diff }}
         run: |
           set -euo pipefail
           BRANCH=chore/discovery-refresh
@@ -78,24 +106,34 @@ jobs:
           git config user.email "gplay[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git add docs/discovery/ internal/schemaindex/schema_index.json
-          if [ "$KIND" = "surface" ]; then
-            TITLE="chore(discovery): API surface changed — refresh snapshots"
-          else
-            TITLE="chore(discovery): refresh snapshots (revision bump only)"
-          fi
+          case "$KIND" in
+            surface) TITLE="chore(discovery): API surface changed — refresh snapshots" ;;
+            schema)  TITLE="chore(discovery): schema details changed — refresh snapshots" ;;
+            *)       TITLE="chore(discovery): refresh snapshots (revision bump only)" ;;
+          esac
           git commit -m "$TITLE"
           git push -f origin "$BRANCH"
           {
             echo "## Summary"
-            if [ "$KIND" = "surface" ]; then
-              echo "- Google changed the **method surface** of a Discovery document. Review the diff below — under [ADR-0026](../blob/main/docs/adr/0026-maximal-admin-api-coverage.md) a new admin surface is in scope and should get a slice or PRD."
-              echo
-              echo '```diff'
-              echo "$PATHS_DIFF"
-              echo '```'
-            else
-              echo "- Revision bump only — no method or schema changes. Safe to merge."
-            fi
+            case "$KIND" in
+              surface)
+                echo "- Google changed the **method surface** of a Discovery document. Review the diff below — under [ADR-0026](../blob/main/docs/adr/0026-maximal-admin-api-coverage.md) a new admin surface is in scope and should get a slice or PRD."
+                echo
+                echo '```diff'
+                echo "$PATHS_DIFF"
+                echo '```'
+                ;;
+              schema)
+                echo "- Google changed **schema details** (query params, fields, or descriptions) — **no method was added or removed** (\`paths.txt\` is unchanged), so there is no new surface to grill under ADR-0026. This is **not** a no-op revision bump; review the schema diff below (the \`revision\` date line is elided as noise)."
+                echo
+                echo '```diff'
+                echo "$SCHEMA_DIFF"
+                echo '```'
+                ;;
+              *)
+                echo "- Revision bump only — no method or schema changes. Safe to merge."
+                ;;
+            esac
             echo
             echo "_Opened automatically by the Discovery Watch workflow._"
           } > /tmp/pr-body.md
