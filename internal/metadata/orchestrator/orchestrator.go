@@ -59,6 +59,12 @@ type Opts struct {
 	// AllowLocale whitelists locale codes outside the embedded registry
 	// (Google drift), mirroring `metadata validate --allow-locale`.
 	AllowLocale []string
+
+	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
+	// instead of opening/committing a per-apply Edit (docs/DESIGN.md §4): the
+	// listings are patched into the pinned Edit and left for the user to
+	// `gplay edits commit`. Empty is the implicit default.
+	ExplicitEditID string
 }
 
 // Result is what Apply returns. Diff is always populated (the computed
@@ -190,12 +196,15 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	}
 
 	// Real apply: ONE write Edit. Fetch+diff+guard inside it; patch/delete
-	// the changes; commit once. A no-op diff returns errNoChanges so the
-	// Edit auto-discards (no empty commit). Any per-locale failure also
-	// auto-discards → 0 locales published (atomic).
+	// the changes; commit once. In IMPLICIT mode a no-op diff returns
+	// errNoChanges so the Edit auto-discards (no empty commit) and any
+	// per-locale failure also auto-discards → 0 locales published (atomic). In
+	// EXPLICIT mode (opts.ExplicitEditID set) WithEdit reuses the pinned Edit
+	// and never commits or discards — the staged changes stay in the open Edit
+	// for the user to `gplay edits commit`/`discard`.
 	patched := make(map[string]json.RawMessage)
 	var pruned []string
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		d, err := plan(ctx, hc, opts, editID, local)
 		if err != nil {
 			return err

@@ -155,6 +155,11 @@ type PromoteOpts struct {
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
 
+	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
+	// instead of opening/committing a per-promote Edit (docs/DESIGN.md §4).
+	// Empty is the implicit default.
+	ExplicitEditID string
+
 	Confirm bool
 
 	// DryRun validates inputs and computes what would be sent without
@@ -211,7 +216,7 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 
 	result := &Result{Track: opts.ToTrack}
 
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		src, _, err := tracks.Get(ctx, hc, opts.Package, editID, opts.FromTrack)
 		if err != nil {
 			return err

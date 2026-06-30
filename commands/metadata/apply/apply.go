@@ -274,12 +274,24 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-apply Edit. Skipped on --dry-run: the preview uses
+	// a separate read-only Edit and never reuses the pin, so a corrupt pin must
+	// not fail it.
+	var explicitEditID string
+	if !in.DryRun {
+		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
+			return nil, err
+		}
+	}
+
 	res, err := orchestrator.Apply(rc.Ctx, httpClient, local, orchestrator.Opts{
-		Package:     pkg,
-		DryRun:      in.DryRun,
-		Confirm:     in.Confirm,
-		Prune:       in.Prune,
-		AllowLocale: in.AllowLocale,
+		Package:        pkg,
+		DryRun:         in.DryRun,
+		Confirm:        in.Confirm,
+		Prune:          in.Prune,
+		AllowLocale:    in.AllowLocale,
+		ExplicitEditID: explicitEditID,
 	})
 	if err != nil {
 		return nil, classifyEditError(pkg, err)
@@ -291,7 +303,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if len(res.Pruned) > 0 {
 			detail += fmt.Sprintf(", %d pruned", len(res.Pruned))
 		}
-		rc.Confirmf("metadata applied to %q (%s)", res.Package, detail)
+		rc.ConfirmMutation(explicitEditID, "metadata applied to %q (%s)", res.Package, detail)
 	}
 	return Payload{Result: res}, nil
 }

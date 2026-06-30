@@ -146,6 +146,12 @@ type Opts struct {
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
 
+	// ExplicitEditID, when set, reuses an already-open explicit Edit
+	// (`gplay edits begin`) instead of opening/committing a per-upload Edit:
+	// the upload mutates the pinned Edit and leaves it open for the user to
+	// `gplay edits commit` (docs/DESIGN.md §4). Empty is the implicit default.
+	ExplicitEditID string
+
 	// MappingPath, when set, uploads a ProGuard/R8 deobfuscation file (a
 	// Mapping) alongside the AAB in the SAME Edit, keyed by the versionCode
 	// the bundle upload returns. Empty means no mapping is uploaded. This
@@ -223,7 +229,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 
 	result := &Result{Track: opts.Track}
 
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		var localized []tracks.LocalizedText
 		if opts.ReleaseNotes != "" || opts.ReleaseNotesDir != "" {
 			// details.get is an extra round-trip; only do it when the
@@ -262,9 +268,11 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		result.VersionCode = versionCode
 
 		// Upload the ProGuard/R8 mapping in the SAME edit once the
-		// versionCode is known. A failure here aborts the edit (auto-
-		// discard via WithEdit) so we never commit a release whose mapping
-		// silently failed to attach — the whole point is readable crash
+		// versionCode is known. A failure here aborts the closure: in IMPLICIT
+		// mode WithEdit auto-discards so we never commit a release whose mapping
+		// silently failed to attach; in EXPLICIT mode the pinned Edit is left
+		// open for the user to retry or discard. Either way the release is not
+		// committed without its mapping — the whole point is readable crash
 		// stacks (#250).
 		if opts.MappingPath != "" {
 			if _, err := mappings.Upload(ctx, hc, opts.Package, editID, versionCode, mappings.TypeProguard, opts.MappingPath); err != nil {

@@ -26,6 +26,10 @@ import (
 	devicetierscreate "github.com/PollyGlot/google-play-cli/commands/device-tiers/create"
 	devicetierslist "github.com/PollyGlot/google-play-cli/commands/device-tiers/list"
 	devicetiersview "github.com/PollyGlot/google-play-cli/commands/device-tiers/view"
+	editsbegin "github.com/PollyGlot/google-play-cli/commands/edits/begin"
+	editscommit "github.com/PollyGlot/google-play-cli/commands/edits/commit"
+	editsdiscard "github.com/PollyGlot/google-play-cli/commands/edits/discard"
+	editsstatus "github.com/PollyGlot/google-play-cli/commands/edits/status"
 	gamesachievementscreate "github.com/PollyGlot/google-play-cli/commands/games/achievements/create"
 	gamesachievementsdelete "github.com/PollyGlot/google-play-cli/commands/games/achievements/delete"
 	gamesachievementslist "github.com/PollyGlot/google-play-cli/commands/games/achievements/list"
@@ -442,6 +446,27 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	customapps.AddCommand(kernel.MarkMutating(customappscreate.NewCommand(boot)))
 	root.AddCommand(customapps)
+
+	// `gplay edits` — the EXPLICIT Edit lifecycle (begin/commit/discard/status,
+	// docs/DESIGN.md §4 / CONTEXT.md "Edit"). Most write commands run their own
+	// implicit Edit (open → mutate → commit) per invocation; `edits begin` opens
+	// one and pins its ID to .gplay/edit-<package>.json so subsequent writes
+	// batch into it instead of opening their own — committed or discarded
+	// explicitly by the user. begin/commit/discard mutate Play state (insert /
+	// commit / delete), so they are MarkMutating (GPLAY_READONLY refuses them,
+	// exit 4); status is a local-pin read and stays unmarked. See #48.
+	editsGroup := &cobra.Command{
+		Use:           "edits",
+		Short:         "Manage explicit Edit transactions (begin, commit, discard, status)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	editsGroup.AddCommand(kernel.MarkMutating(editsbegin.NewCommand(boot)))
+	editsGroup.AddCommand(kernel.MarkMutating(editscommit.NewCommand(boot)))
+	editsGroup.AddCommand(kernel.MarkMutating(editsdiscard.NewCommand(boot)))
+	editsGroup.AddCommand(editsstatus.NewCommand(boot))
+	root.AddCommand(editsGroup)
 
 	// `gplay games` — Play Games Services configuration (gamesConfiguration): a
 	// game's achievement and leaderboard configurations. A DISTINCT Google

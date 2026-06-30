@@ -23,10 +23,11 @@ import (
 // DanglingEditError wraps the upstream failure that caused an Edit to be
 // left open in KeepOnFailure mode. It carries the Edit ID so the
 // operator can recover by waiting for the Edit's ~24h expiry, or by
-// releasing it via the Google Play Console. (A `gplay edits discard`
-// subcommand is planned per DESIGN.md §4 but not yet wired; the message
-// points at remediation paths that work today.) It implements gplay's
-// Coder contract by inheriting from the wrapped error when possible,
+// releasing it via the Google Play Console. (The explicit `gplay edits`
+// lifecycle exists now, but an Edit dangling from an IMPLICIT-mode failure
+// was never pinned in .gplay/, so `gplay edits discard` cannot find it —
+// the message points at the remediation paths that do apply.) It implements
+// gplay's Coder contract by inheriting from the wrapped error when possible,
 // falling back to exit 60 (state conflict) so the dangling Edit
 // surfaces as a retryable state condition.
 type DanglingEditError struct {
@@ -50,8 +51,14 @@ func (e *DanglingEditError) ExitCode() int {
 
 // Options tunes the Edit lifecycle. KeepOnFailure suppresses the
 // auto-discard cleanup when the closure returns an error — see Block 2.
+//
+// ExplicitEditID selects the explicit-mode (`gplay edits begin/commit/discard`)
+// contract: when it is non-empty, WithEdit runs fn against that already-open
+// Edit WITHOUT opening, committing, or discarding one — the caller owns the
+// lifecycle. KeepOnFailure is moot in that mode (nothing is auto-discarded).
 type Options struct {
-	KeepOnFailure bool
+	KeepOnFailure  bool
+	ExplicitEditID string
 }
 
 // WithEdit opens an Edit on pkg, invokes fn with the new Edit ID, and
@@ -62,6 +69,14 @@ type Options struct {
 // operator can recover. A failed cleanup is intentionally swallowed so
 // the caller-supplied error (the real cause) reaches the user.
 func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn func(editID string) error) error {
+	// Explicit mode (`gplay edits begin` has an Edit open and persisted to
+	// .gplay/edit-<pkg>.json): run the mutation against the pinned Edit and
+	// return. We deliberately do NOT insert, commit, or discard — the user
+	// drives those via `gplay edits commit`/`discard`, so a mid-batch failure
+	// leaves the Edit open for a retry or an explicit discard.
+	if opts.ExplicitEditID != "" {
+		return fn(opts.ExplicitEditID)
+	}
 	editID, err := insertEdit(ctx, hc, pkg)
 	if err != nil {
 		return err
@@ -145,11 +160,12 @@ func WithReadOnlyEdit(ctx context.Context, hc *http.Client, pkg string, fn func(
 // EditConflictError signals that the upstream insertEdit was rejected
 // because an Edit is already open on the package. It is recoverable —
 // the open Edit auto-expires after ~24h, or the operator can release
-// it via the Google Play Console — so the error message points at a
-// real, today-available remediation path rather than the planned-but-
-// unwired `gplay edits discard` subcommand. The mapping to exit 30
-// (API 4xx, recoverable) rather than the generic state-conflict exit
-// 60 stays the same.
+// it via the Google Play Console — so the error message points at those
+// remediation paths (the conflicting Edit may have been opened by another
+// client, or by a `gplay edits begin` whose pin is in a different repo, so
+// `gplay edits discard` is not guaranteed to reach it). The mapping to
+// exit 30 (API 4xx, recoverable) rather than the generic state-conflict
+// exit 60 stays the same.
 type EditConflictError struct {
 	Package string
 	Err     error
@@ -217,6 +233,40 @@ func Validate(ctx context.Context, hc *http.Client, pkg string) error {
 		return &DanglingEditError{EditID: editID, Err: delErr}
 	}
 	return nil
+}
+
+// OpenExplicit opens a new Edit on pkg and returns its ID WITHOUT committing or
+// discarding it — the explicit-mode entrypoint for `gplay edits begin`, which
+// persists the returned ID to .gplay/edit-<pkg>.json so later write commands
+// reuse it. Google's `editAlreadyExists` (an Edit is already open server-side,
+// e.g. one this machine forgot or another client opened) maps to
+// *EditConflictError (exit 30 + Play Console recovery hint); any other failure
+// surfaces as the raw *api.Error.
+func OpenExplicit(ctx context.Context, hc *http.Client, pkg string) (string, error) {
+	editID, err := insertEdit(ctx, hc, pkg)
+	if err != nil {
+		if isEditAlreadyExists(err) {
+			return "", &EditConflictError{Package: pkg, Err: err}
+		}
+		return "", err
+	}
+	return editID, nil
+}
+
+// CommitExplicit commits an already-open Edit (the `gplay edits commit` verb).
+// On failure the Edit stays open (no discard), so the operator can re-attempt
+// the commit or discard it — the caller leaves .gplay/edit-<pkg>.json in place
+// until a commit succeeds.
+func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string) error {
+	return commitEdit(ctx, hc, pkg, editID)
+}
+
+// DiscardExplicit discards an already-open Edit (the `gplay edits discard`
+// verb). The caller clears .gplay/edit-<pkg>.json regardless of the outcome —
+// an Edit that has already expired/vanished server-side is the desired end
+// state either way.
+func DiscardExplicit(ctx context.Context, hc *http.Client, pkg, editID string) error {
+	return deleteEdit(ctx, hc, pkg, editID)
 }
 
 // isEditAlreadyExists reports whether err carries Google Play's

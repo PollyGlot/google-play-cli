@@ -95,6 +95,11 @@ type StateOpts struct {
 
 	KeepEditOnFailure bool
 
+	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
+	// instead of opening/committing a per-transition Edit (docs/DESIGN.md §4).
+	// Empty is the implicit default.
+	ExplicitEditID string
+
 	// Confirm gates production-impacting transitions. Required (else
 	// *ConfirmRequiredError, exit 2) when Track is "production" AND the
 	// transition would expose the release to real users — rollout / resume
@@ -171,7 +176,7 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 	}
 
 	result := &Result{Track: opts.Track}
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		cur, rawTrack, err := tracks.Get(ctx, hc, opts.Package, editID, opts.Track)
 		if err != nil {
 			return err

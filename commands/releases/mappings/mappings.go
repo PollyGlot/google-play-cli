@@ -104,15 +104,24 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
 	}
 
-	// Dry-run skips auth entirely: nothing hits the network.
-	var httpClient *http.Client
+	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the
+	// network and the dry-run path never reuses a pinned Edit, so a corrupt pin
+	// must not fail a preview. Both are resolved only on the live path.
+	var (
+		httpClient     *http.Client
+		explicitEditID string
+	)
 	if !in.DryRun {
 		var err error
 		// UploadClient, not AuthedClient: native symbol archives can reach
 		// the API's 1.6 GiB cap, so the upload is exempt from the 60s
 		// control-plane default (honors an explicit --timeout).
-		httpClient, err = rc.UploadClient()
-		if err != nil {
+		if httpClient, err = rc.UploadClient(); err != nil {
+			return nil, err
+		}
+		// Reuse an open explicit Edit when one is pinned (`gplay edits begin`);
+		// "" keeps the implicit per-upload Edit.
+		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
 			return nil, err
 		}
 	}
@@ -123,6 +132,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		MappingPath:       in.MappingPath,
 		FileType:          in.Type,
 		KeepEditOnFailure: in.KeepEditOnFailure,
+		ExplicitEditID:    explicitEditID,
 		DryRun:            in.DryRun,
 	})
 	if err != nil {
@@ -131,7 +141,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr (never on
 	// a --dry-run).
 	if !in.DryRun {
-		rc.Confirmf("uploaded %s mapping for versionCode %d", result.FileType, result.VersionCode)
+		rc.ConfirmMutation(explicitEditID, "uploaded %s mapping for versionCode %d", result.FileType, result.VersionCode)
 	}
 	return Payload{Result: result}, nil
 }

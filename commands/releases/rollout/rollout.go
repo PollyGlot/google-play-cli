@@ -136,11 +136,21 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 	// Dry-run skips auth entirely: nothing hits the network, so a missing
 	// Account is not a problem. The orchestrator handles the dry-run path
 	// before any HTTP would happen.
-	var httpClient *http.Client
+	// Dry-run skips auth AND the explicit-Edit pin: nothing hits the network and
+	// the dry-run path never reuses a pinned Edit, so a corrupt pin must not
+	// fail a preview. Both are resolved only on the live path.
+	var (
+		httpClient     *http.Client
+		explicitEditID string
+	)
 	if !in.DryRun {
 		var err error
-		httpClient, err = rc.AuthedClient()
-		if err != nil {
+		if httpClient, err = rc.AuthedClient(); err != nil {
+			return nil, err
+		}
+		// Reuse an open explicit Edit when one is pinned (`gplay edits begin`);
+		// "" keeps the implicit per-transition Edit.
+		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
 			return nil, err
 		}
 	}
@@ -152,6 +162,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		ReleaseName:       in.ReleaseName,
 		UserFraction:      userFraction,
 		KeepEditOnFailure: in.KeepEditOnFailure,
+		ExplicitEditID:    explicitEditID,
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -165,7 +176,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		if result.Status == "inProgress" {
 			extra = ", userFraction " + output.Percent(result.UserFraction)
 		}
-		rc.Confirmf("rollout %s on track %q (versionCode %d, status %s%s)",
+		rc.ConfirmMutation(explicitEditID, "rollout %s on track %q (versionCode %d, status %s%s)",
 			action, in.Track, result.VersionCode, result.Status, extra)
 	}
 	return Payload{Result: result}, nil
