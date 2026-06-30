@@ -95,8 +95,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-set Edit.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
 	var raw json.RawMessage
-	err = edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure}, func(editID string) error {
+	err = edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
 		r, e := expansionfiles.Update(rc.Ctx, httpClient, pkg, editID, in.VersionCode, ft, in.ReferencesVersion)
 		raw = r
 		return e
@@ -104,7 +110,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	rc.Confirmf("set versionCode %d %s expansion file to reference versionCode %d for %q", in.VersionCode, ft, in.ReferencesVersion, pkg)
+	rc.ConfirmMutation(explicitEditID, "set versionCode %d %s expansion file to reference versionCode %d for %q", in.VersionCode, ft, in.ReferencesVersion, pkg)
 	return Payload{VersionCode: in.VersionCode, Type: ft, ReferencesVersion: in.ReferencesVersion, Raw: raw}, nil
 }
 

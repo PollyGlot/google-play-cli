@@ -106,8 +106,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-upload Edit.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
 	var raw json.RawMessage
-	err = edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure}, func(editID string) error {
+	err = edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
 		r, e := expansionfiles.Upload(rc.Ctx, httpClient, pkg, editID, in.VersionCode, ft, in.OBBPath)
 		raw = r
 		return e
@@ -115,7 +121,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	rc.Confirmf("uploaded %s expansion file to versionCode %d for %q", ft, in.VersionCode, pkg)
+	rc.ConfirmMutation(explicitEditID, "uploaded %s expansion file to versionCode %d for %q", ft, in.VersionCode, pkg)
 	return Payload{VersionCode: in.VersionCode, Type: ft, Raw: raw}, nil
 }
 

@@ -219,8 +219,15 @@ func RunSet(rc *kernel.RunContext, in SetInput) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-set Edit.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
+
 	var raw json.RawMessage
-	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure}, func(editID string) error {
+	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
 		_, r, e := details.Patch(rc.Ctx, httpClient, pkg, editID, patch)
 		if e != nil {
 			return e
@@ -233,7 +240,7 @@ func RunSet(rc *kernel.RunContext, in SetInput) (output.Renderable, error) {
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The
 	// --dry-run path returned above, so this only runs after a real patch.
-	rc.Confirmf("app details updated for %q", pkg)
+	rc.ConfirmMutation(explicitEditID, "app details updated for %q", pkg)
 	return SetPayload{Package: pkg, Patch: patch, Raw: raw}, nil
 }
 

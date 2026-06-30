@@ -214,11 +214,18 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
+	// keeps the implicit per-create Edit.
+	explicitEditID, err := rc.ExplicitEditID(pkg)
+	if err != nil {
+		return nil, err
+	}
+
 	var (
 		created *tracks.Track
 		raw     json.RawMessage
 	)
-	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure}, func(editID string) error {
+	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
 		t, r, e := tracks.Create(rc.Ctx, httpClient, pkg, editID, in.Name, tracks.FormFactorDefault)
 		if e != nil {
 			return e
@@ -231,7 +238,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The
 	// --dry-run path returned above, so this only runs after a real create.
-	rc.Confirmf("track %q created", created.Track)
+	rc.ConfirmMutation(explicitEditID, "track %q created", created.Track)
 	return Payload{
 		Name:       created.Track,
 		Type:       tracks.TrackTypeClosedTesting,
