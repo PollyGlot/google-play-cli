@@ -146,6 +146,9 @@ func TestRun_discardServerError_clearsPinButReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("a non-404 remote discard error must surface")
 	}
+	if rt.deleteCalls != 1 {
+		t.Errorf("deleteCalls = %d, want 1 — the remote discard must be attempted before the pin is cleared", rt.deleteCalls)
+	}
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); ok {
 		t.Error("the pin must be cleared even when the remote discard failed")
 	}
