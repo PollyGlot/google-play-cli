@@ -5,6 +5,13 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0](https://github.com/PollyGlot/google-play-cli/compare/v0.10.0...v0.11.0) (2026-06-30)
+
+
+### Features
+
+* **edits:** explicit Edit lifecycle — `gplay edits begin/commit/discard/status` ([#48](https://github.com/PollyGlot/google-play-cli/issues/48)) ([#318](https://github.com/PollyGlot/google-play-cli/issues/318)) ([c5e86d5](https://github.com/PollyGlot/google-play-cli/commit/c5e86d5879dff0fd116f05076733042be0cb5587))
+
 ## [0.10.0](https://github.com/PollyGlot/google-play-cli/compare/v0.9.0...v0.10.0) (2026-06-26)
 
 
