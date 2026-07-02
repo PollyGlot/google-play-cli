@@ -28,6 +28,16 @@ const (
 	// paths hang off it, e.g. `/accounts/{account}/customApps`.
 	CustomAppUploadBase = "https://playcustomapp.googleapis.com/upload/playcustomapp/v1"
 
+	// GamesConfigBase is the data-plane base URL for the Play Games Services
+	// Publishing API (gamesConfiguration) — a DISTINCT Google service (its own
+	// host, the androidpublisher OAuth scope) carrying the admin surface for a
+	// game's achievement and leaderboard configurations (#241, ADR-0033).
+	// Addressed by the Play Games application ID (its own ID space, not the
+	// Android package). Resource paths hang off this base, e.g.
+	// `/applications/{applicationId}/achievements` (list/insert) or
+	// `/achievements/{achievementId}` (get/update/delete).
+	GamesConfigBase = "https://gamesconfiguration.googleapis.com/games/v1configuration"
+
 	// MaxAPIErrorBodyRead caps how many bytes of a non-2xx androidpublisher
 	// response body we hold in memory while parsing the error envelope.
 	// Error payloads are tiny ({"error":{"code":...,"message":"..."}});

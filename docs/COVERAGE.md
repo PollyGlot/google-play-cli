@@ -40,16 +40,19 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 By method count, of the **~155 admin methods** across the four APIs:
 
-- **~81 shipped (~52%)** — essentially the entire *publish / first-release /
-  team / observability* half (incl. `generatedapks`, PRD #299 / ADR-0034,
-  `customapps`, PRD #242 / ADR-0032, and **orders #245 in full** — `orders view`
-  single + batch (`orders.get`/`orders.batchget`) and the gated `orders refund`
-  (`orders.refund`), ADR-0031).
-- **+10 ready now (P0)** — games #241 (achievements + leaderboards) → ~57% once
-  it lands.
-- **~54 methods remain in one coherent continent: monetization** (subscriptions
-  #51 + one-time products #293 + legacy IAP + external transactions #295). This is
-  the single biggest unbuilt block and the honest answer to "are we near the end?":
+- **~91 shipped (~59%)** — essentially the entire *publish / first-release /
+  team / observability* half plus the admin commerce-reads and games config
+  (incl. `generatedapks`, PRD #299 / ADR-0034, `customapps`, PRD #242 / ADR-0032,
+  **orders #245 in full** — `orders view` single + batch (`orders.get`/
+  `orders.batchget`) and the gated `orders refund` (`orders.refund`), ADR-0031,
+  and **games #241** — achievements + leaderboards CRUD, ADR-0033).
+- **P0 queue now empty** — both ready-decomposed PRDs (orders #245, games #241)
+  have shipped; the next work is the planned monetization block below.
+- **~64 methods remain**, of which **~54 are one coherent continent:
+  monetization** (subscriptions #51 + one-time products #293 + legacy IAP +
+  external transactions #295); the other ~10 are long-tail (`edits.apks`,
+  `systemapks`, voided purchases, the two reporting helpers). Monetization is the
+  single biggest unbuilt block and the honest answer to "are we near the end?":
   **the commerce half is barely started.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
   (issues #293–#296); `generatedapks` (#294) has since been grilled into PRD #299
@@ -111,8 +114,8 @@ By method count, of the **~155 admin methods** across the four APIs:
 
 | Surface | Methods | State | gplay / issue |
 |---|---|---|---|
-| `achievementConfigurations.*` (list/get/insert/update/delete) | 5 | 🟡 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) → slices [#286](https://github.com/PollyGlot/google-play-cli/issues/286)/[#287](https://github.com/PollyGlot/google-play-cli/issues/287) |
-| `leaderboardConfigurations.*` (list/get/insert/update/delete) | 5 | 🟡 | [#241](https://github.com/PollyGlot/google-play-cli/issues/241) → slice [#288](https://github.com/PollyGlot/google-play-cli/issues/288) |
+| `achievementConfigurations.*` (list/get/insert/update/delete) | 5 | ✅ | `games achievements list/view/create/update/delete` — [ADR-0033](adr/0033-games-services-configuration-draft-crud.md), PRD [#241](https://github.com/PollyGlot/google-play-cli/issues/241) (slices [#286](https://github.com/PollyGlot/google-play-cli/issues/286)/[#287](https://github.com/PollyGlot/google-play-cli/issues/287)) |
+| `leaderboardConfigurations.*` (list/get/insert/update/delete) | 5 | ✅ | `games leaderboards list/view/create/update/delete` — [ADR-0033](adr/0033-games-services-configuration-draft-crud.md), PRD [#241](https://github.com/PollyGlot/google-play-cli/issues/241) (slice [#288](https://github.com/PollyGlot/google-play-cli/issues/288)) |
 
 > The Play Games Services **runtime** API (player-facing achievement/leaderboard
 > writes) is excluded by nature; only the *configuration* (publishing) surface

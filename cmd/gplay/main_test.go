@@ -167,6 +167,9 @@ var groupPaths = [][]string{
 	{"metadata", "images"},
 	{"compliance"},
 	{"compliance", "datasafety"},
+	{"games"},
+	{"games", "achievements"},
+	{"games", "leaderboards"},
 }
 
 // TestGroupCommands_unknownSubcommandFailsLoudly asserts the UX contract for
@@ -306,6 +309,12 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{"metadata", "images", "apply"},
 		{"compliance", "datasafety", "set"},
 		{"apps", "details", "set"},
+		{"games", "achievements", "create"},
+		{"games", "achievements", "update"},
+		{"games", "achievements", "delete"},
+		{"games", "leaderboards", "create"},
+		{"games", "leaderboards", "update"},
+		{"games", "leaderboards", "delete"},
 		{"orders", "refund"},
 	}
 	// Reads (and local-only registry/credential ops) must stay UNmarked — the
@@ -331,6 +340,10 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{"auth", "status"},
 		{"auth", "login"},
 		{"schema"},
+		{"games", "achievements", "list"},
+		{"games", "achievements", "view"},
+		{"games", "leaderboards", "list"},
+		{"games", "leaderboards", "view"},
 	}
 
 	find := func(t *testing.T, path []string) *cobra.Command {
