@@ -284,91 +284,216 @@ func TestFlagErrors_areCliMisuse(t *testing.T) {
 // GPLAY_READONLY policy (#211 / ADR-0024): it pins exactly which leaf commands
 // carry the mutating annotation (kernel.MarkMutating). A new write command that
 // forgets MarkMutating, or a read command wrongly marked, fails here — so the
-// policy's authority boundary cannot silently rot as the tree grows. Resolved
-// through the real cobra tree via Command.Find (no execution, no auth/network).
+// policy's authority boundary cannot silently rot as the tree grows.
+//
+// Crucially it does NOT trust a hand-maintained allow-list to enumerate the
+// tree: it WALKS the real cobra tree and asserts EVERY runnable leaf is present
+// in `want` with the matching annotation. A leaf that nobody classified — the
+// exact way a new surface slips past a static list by simply being absent — is a
+// test failure, not a silent pass. The reverse guard also fails a `want` entry
+// that resolves to no leaf, so a rename can't leave a stale line "covering"
+// nothing. (No execution, no auth/network — Command.Name/Commands only.)
 //
 // Multi-token paths are kept as SPLIT args (never a contiguous phrase) so the
-// repo-wide verb gate (#168) stays green on this file.
+// repo-wide verb gate (#168) stays green on this file; the map key is joined at
+// runtime and each leaf's own path comes from cmd.CommandPath(), never a literal.
 func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
-	mutating := [][]string{
-		{"releases", "upload"},
-		{"releases", "promote"},
-		{"releases", "rollout"},
-		{"releases", "halt"},
-		{"releases", "resume"},
-		{"releases", "complete"},
-		{"tracks", "create"},
-		{"testers", "set"},
-		{"team", "users", "add"},
-		{"team", "users", "set"},
-		{"team", "users", "remove"},
-		{"team", "grants", "set"},
-		{"team", "grants", "remove"},
-		{"reviews", "reply"},
-		{"metadata", "apply"},
-		{"metadata", "images", "apply"},
-		{"compliance", "datasafety", "set"},
-		{"apps", "details", "set"},
-		{"games", "achievements", "create"},
-		{"games", "achievements", "update"},
-		{"games", "achievements", "delete"},
-		{"games", "leaderboards", "create"},
-		{"games", "leaderboards", "update"},
-		{"games", "leaderboards", "delete"},
-		{"orders", "refund"},
+	// leaf classification: true = mutating Google Play state (MarkMutating;
+	// GPLAY_READONLY refuses it, exit 4). false = a read, an offline validator,
+	// or a local-only registry/credential op — must stay UNmarked so dashboards
+	// and agents can still observe and plan with a production credential.
+	type leaf struct {
+		path     []string
+		mutating bool
 	}
-	// Reads (and local-only registry/credential ops) must stay UNmarked — the
-	// policy only blocks mutations of Google Play state, so dashboards and
-	// agents can still observe and plan with a production credential.
-	readOnly := [][]string{
-		{"releases", "list"},
-		{"tracks", "list"},
-		{"tracks", "view"},
-		{"tracks", "availability", "view"},
-		{"testers", "list"},
-		{"team", "users", "list"},
-		{"team", "grants", "list"},
-		{"team", "permissions"},
-		{"reviews", "list"},
-		{"metadata", "list"},
-		{"metadata", "pull"},
-		{"metadata", "images", "list"},
-		{"apps", "list"},
-		{"apps", "view"},
-		{"apps", "details", "view"},
-		{"orders", "view"},
-		{"auth", "status"},
-		{"auth", "login"},
-		{"schema"},
-		{"games", "achievements", "list"},
-		{"games", "achievements", "view"},
-		{"games", "leaderboards", "list"},
-		{"games", "leaderboards", "view"},
+	classified := []leaf{
+		// top-level meta / local-only leaves
+		{[]string{"init"}, false},
+		{[]string{"version"}, false},
+		{[]string{"schema"}, false},
+		{[]string{"exit-codes"}, false},
+		{[]string{"install-skills"}, false},
+
+		// auth — local credential ops, none mutate Play state
+		{[]string{"auth", "login"}, false},
+		{[]string{"auth", "logout"}, false},
+		{[]string{"auth", "status"}, false},
+		{[]string{"auth", "list"}, false},
+		{[]string{"auth", "doctor"}, false},
+
+		// apps — local registry ops + reads
+		{[]string{"apps", "init"}, false},
+		{[]string{"apps", "add"}, false},
+		{[]string{"apps", "list"}, false},
+		{[]string{"apps", "view"}, false},
+		{[]string{"apps", "details", "view"}, false},
+		{[]string{"apps", "details", "set"}, true},
+		{[]string{"apps", "remove"}, false},
+
+		// releases
+		{[]string{"releases", "upload"}, true},
+		{[]string{"releases", "promote"}, true},
+		{[]string{"releases", "rollout"}, true},
+		{[]string{"releases", "halt"}, true},
+		{[]string{"releases", "resume"}, true},
+		{[]string{"releases", "complete"}, true},
+		{[]string{"releases", "list"}, false},
+		{[]string{"releases", "mappings", "upload"}, true},
+		{[]string{"releases", "sharing", "upload"}, true},
+		{[]string{"releases", "expansion-files", "upload"}, true},
+		{[]string{"releases", "expansion-files", "set"}, true},
+		{[]string{"releases", "expansion-files", "view"}, false},
+		{[]string{"releases", "generated", "list"}, false},
+		{[]string{"releases", "generated", "download"}, false},
+
+		// tracks
+		{[]string{"tracks", "list"}, false},
+		{[]string{"tracks", "view"}, false},
+		{[]string{"tracks", "create"}, true},
+		{[]string{"tracks", "availability", "view"}, false},
+
+		// testers
+		{[]string{"testers", "list"}, false},
+		{[]string{"testers", "set"}, true},
+
+		// device-tiers
+		{[]string{"device-tiers", "create"}, true},
+		{[]string{"device-tiers", "view"}, false},
+		{[]string{"device-tiers", "list"}, false},
+
+		// recovery — deploy/cancel/add-targeting are the production-impacting
+		// lifecycle writes; a dropped MarkMutating on any would let a force-push
+		// to users run under GPLAY_READONLY=1 instead of exit 4.
+		{[]string{"recovery", "create"}, true},
+		{[]string{"recovery", "list"}, false},
+		{[]string{"recovery", "deploy"}, true},
+		{[]string{"recovery", "cancel"}, true},
+		{[]string{"recovery", "add-targeting"}, true},
+
+		// team
+		{[]string{"team", "permissions"}, false},
+		{[]string{"team", "users", "list"}, false},
+		{[]string{"team", "users", "view"}, false},
+		{[]string{"team", "users", "add"}, true},
+		{[]string{"team", "users", "set"}, true},
+		{[]string{"team", "users", "remove"}, true},
+		{[]string{"team", "grants", "list"}, false},
+		{[]string{"team", "grants", "set"}, true},
+		{[]string{"team", "grants", "remove"}, true},
+
+		// customapps
+		{[]string{"customapps", "create"}, true},
+
+		// edits — begin/commit/discard mutate Play state (insert/commit/delete);
+		// status is a local-pin read.
+		{[]string{"edits", "begin"}, true},
+		{[]string{"edits", "commit"}, true},
+		{[]string{"edits", "discard"}, true},
+		{[]string{"edits", "status"}, false},
+
+		// games
+		{[]string{"games", "achievements", "list"}, false},
+		{[]string{"games", "achievements", "view"}, false},
+		{[]string{"games", "achievements", "create"}, true},
+		{[]string{"games", "achievements", "update"}, true},
+		{[]string{"games", "achievements", "delete"}, true},
+		{[]string{"games", "leaderboards", "list"}, false},
+		{[]string{"games", "leaderboards", "view"}, false},
+		{[]string{"games", "leaderboards", "create"}, true},
+		{[]string{"games", "leaderboards", "update"}, true},
+		{[]string{"games", "leaderboards", "delete"}, true},
+
+		// orders
+		{[]string{"orders", "view"}, false},
+		{[]string{"orders", "refund"}, true},
+
+		// reviews
+		{[]string{"reviews", "list"}, false},
+		{[]string{"reviews", "reply"}, true},
+		{[]string{"reviews", "view"}, false},
+
+		// vitals — the whole namespace is read-only (Play Developer Reporting).
+		{[]string{"vitals", "query"}, false},
+		{[]string{"vitals", "crashes"}, false},
+		{[]string{"vitals", "anr"}, false},
+		{[]string{"vitals", "slowstart"}, false},
+		{[]string{"vitals", "slowrendering"}, false},
+		{[]string{"vitals", "excessivewakeup"}, false},
+		{[]string{"vitals", "lmk"}, false},
+		{[]string{"vitals", "stuckbgwakelock"}, false},
+		{[]string{"vitals", "errors", "counts"}, false},
+		{[]string{"vitals", "errors", "issues"}, false},
+		{[]string{"vitals", "errors", "reports"}, false},
+		{[]string{"vitals", "anomalies"}, false},
+
+		// metadata — validate leaves are offline; only apply mutates.
+		{[]string{"metadata", "list"}, false},
+		{[]string{"metadata", "pull"}, false},
+		{[]string{"metadata", "validate"}, false},
+		{[]string{"metadata", "apply"}, true},
+		{[]string{"metadata", "images", "list"}, false},
+		{[]string{"metadata", "images", "pull"}, false},
+		{[]string{"metadata", "images", "validate"}, false},
+		{[]string{"metadata", "images", "apply"}, true},
+
+		// compliance
+		{[]string{"compliance", "datasafety", "validate"}, false},
+		{[]string{"compliance", "datasafety", "set"}, true},
 	}
 
-	find := func(t *testing.T, path []string) *cobra.Command {
-		t.Helper()
-		root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
-		cmd, rest, err := root.Find(path)
-		if err != nil || len(rest) != 0 {
-			t.Fatalf("Find(%v) did not resolve fully: rest=%v err=%v", path, rest, err)
+	want := make(map[string]bool, len(classified))
+	for _, e := range classified {
+		key := strings.Join(e.path, " ")
+		if _, dup := want[key]; dup {
+			t.Fatalf("duplicate classification for %q — remove one", key)
 		}
-		return cmd
+		want[key] = e.mutating
 	}
 
-	for _, p := range mutating {
-		t.Run("mutating/"+strings.Join(p, " "), func(t *testing.T) {
-			if !kernel.IsMutating(find(t, p)) {
-				t.Errorf("%v must be marked mutating (kernel.MarkMutating) — GPLAY_READONLY would not refuse it", p)
+	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+
+	// Walk EVERY runnable leaf and assert it is classified with the matching
+	// annotation. Grouping nouns always have children, so a childless node is a
+	// real leaf; cobra's injected help/completion helpers are skipped by name.
+	seen := map[string]bool{}
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if name := c.Name(); name == "help" || name == "completion" || strings.HasPrefix(name, "__") {
+			return
+		}
+		if kids := c.Commands(); len(kids) > 0 {
+			for _, k := range kids {
+				walk(k)
 			}
-		})
+			return
+		}
+		// cmd.CommandPath() is "gplay <path>"; strip the root to get the key.
+		key := strings.TrimPrefix(c.CommandPath(), "gplay ")
+		seen[key] = true
+		wantMut, ok := want[key]
+		if !ok {
+			t.Errorf("leaf %q is not classified in the mutating registry — every leaf must be pinned as mutating or read-only (a new write command MUST be kernel.MarkMutating so GPLAY_READONLY refuses it, exit 4)", c.CommandPath())
+			return
+		}
+		if got := kernel.IsMutating(c); got != wantMut {
+			if wantMut {
+				t.Errorf("%q must be marked mutating (kernel.MarkMutating) — GPLAY_READONLY would not refuse it", key)
+			} else {
+				t.Errorf("%q is marked mutating but is a read/local command — GPLAY_READONLY would wrongly refuse it", key)
+			}
+		}
 	}
-	for _, p := range readOnly {
-		t.Run("read/"+strings.Join(p, " "), func(t *testing.T) {
-			if kernel.IsMutating(find(t, p)) {
-				t.Errorf("%v is marked mutating but is a read/local command — GPLAY_READONLY would wrongly refuse it", p)
-			}
-		})
+	for _, c := range root.Commands() {
+		walk(c)
+	}
+
+	// Reverse guard: a classified path that matches no real leaf is a stale
+	// entry (the command was renamed or removed) — fail so the list can't drift
+	// into "covering" commands that no longer exist.
+	for key := range want {
+		if !seen[key] {
+			t.Errorf("classified path %q resolves to no leaf — stale entry (renamed or removed?)", key)
+		}
 	}
 }
 
