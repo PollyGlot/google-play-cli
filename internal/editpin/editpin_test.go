@@ -1,6 +1,7 @@
 package editpin_test
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -9,6 +10,13 @@ import (
 )
 
 const pkg = "com.example.app"
+
+// failRenameFS wraps an FS but makes the tmp→pin rename fail, simulating a swap
+// that dies partway (EXDEV, ENOSPC, power loss). Every other operation delegates
+// to the embedded FS, so the tmp file still gets written and best-effort-removed.
+type failRenameFS struct{ config.FS }
+
+func (failRenameFS) Rename(_, _ string) error { return errors.New("simulated rename failure") }
 
 func TestFileNameAndPath(t *testing.T) {
 	if got := editpin.FileName(pkg); got != "edit-com.example.app.json" {
@@ -42,6 +50,53 @@ func TestWriteCreatesGplayDir(t *testing.T) {
 	}
 	if _, ok, err := editpin.Lookup(config.OSFS{}, dir, pkg); err != nil || !ok {
 		t.Fatalf("Lookup after Write into fresh dir: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestWriteFailedSwapKeepsPriorPin is the crash-atomicity guard: a Write whose
+// final swap fails must leave the *prior* pin intact, never a truncated or
+// half-written one. Because a corrupt pin is fatal to Lookup (and would wedge
+// every later write command plus block `gplay edits begin` recovery), Write
+// stages to `<pin>.tmp` and renames — so a failed write is a no-op on the live
+// pin. A non-atomic WriteFile-in-place would clobber it. MemFS mirrors the
+// FS-level contract (as config's atomic-Save test does).
+func TestWriteFailedSwapKeepsPriorPin(t *testing.T) {
+	fsys := config.NewMemFS("/", "/home/u")
+	dir := "/repo/.gplay"
+	path := editpin.Path(dir, pkg)
+
+	// A valid pin already on disk (a prior `gplay edits begin`).
+	if err := editpin.Write(fsys, dir, pkg, "edit-old"); err != nil {
+		t.Fatalf("seed Write: %v", err)
+	}
+
+	// The swap onto the live pin fails partway; the prior pin must survive.
+	if err := editpin.Write(failRenameFS{fsys}, dir, pkg, "edit-new"); err == nil {
+		t.Fatal("Write with failing rename: want error, got nil")
+	}
+	got, ok, err := editpin.Lookup(fsys, dir, pkg)
+	if err != nil || !ok {
+		t.Fatalf("Lookup after failed swap: ok=%v err=%v, want the prior pin intact", ok, err)
+	}
+	if got.EditID != "edit-old" {
+		t.Errorf("EditID = %q, want edit-old — a failed write must not clobber the prior pin", got.EditID)
+	}
+	// No `.tmp` fragment left masquerading as pin state.
+	if _, err := fsys.Stat(path + ".tmp"); err == nil {
+		t.Error("failed Write left a .tmp fragment behind")
+	}
+}
+
+// TestWriteLeavesNoTmpBehind asserts a successful fresh write (no prior pin)
+// lands the pin and cleans up after itself — the rename consumes the `.tmp`
+// sibling, leaving nothing for a later Lookup to trip over.
+func TestWriteLeavesNoTmpBehind(t *testing.T) {
+	dir := t.TempDir()
+	if err := editpin.Write(config.OSFS{}, dir, pkg, "edit-1"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if _, err := (config.OSFS{}).Stat(editpin.Path(dir, pkg) + ".tmp"); err == nil {
+		t.Error("Write left a .tmp sibling behind after a successful rename")
 	}
 }
 
