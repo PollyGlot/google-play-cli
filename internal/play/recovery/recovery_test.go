@@ -37,7 +37,7 @@ func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 	hc := &http.Client{Transport: rt}
 
 	a, raw, err := recovery.Create(context.Background(), hc, "com.example.app", recovery.CreateOpts{
-		VersionCodes: []int64{142}, Regions: []string{"US", "FR"}, RemoteInAppUpdate: true,
+		VersionCodes: []int64{142}, Regions: []string{"US", "FR"}, SdkLevels: []int64{29, 30}, RemoteInAppUpdate: true,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -53,6 +53,12 @@ func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 			Regions struct {
 				RegionCode []string `json:"regionCode"`
 			} `json:"regions"`
+			// androidSdks.sdkLevels is the SDK-level audience dimension — asserted
+			// here so a regression in its JSON shape can't ship silently (the
+			// builder sets it in internal/play/recovery/recovery.go).
+			AndroidSdks struct {
+				SdkLevels []int64 `json:"sdkLevels"`
+			} `json:"androidSdks"`
 			VersionList struct {
 				VersionCodes []int64 `json:"versionCodes"`
 			} `json:"versionList"`
@@ -67,6 +73,9 @@ func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 	if len(req.Targeting.Regions.RegionCode) != 2 {
 		t.Errorf("targeting regions = %v, want [US FR]", req.Targeting.Regions.RegionCode)
 	}
+	if got := req.Targeting.AndroidSdks.SdkLevels; len(got) != 2 || got[0] != 29 || got[1] != 30 {
+		t.Errorf("targeting androidSdks.sdkLevels = %v, want [29 30]", got)
+	}
 	if len(req.Targeting.VersionList.VersionCodes) != 1 || req.Targeting.VersionList.VersionCodes[0] != 142 {
 		t.Errorf("targeting versionCodes = %v, want [142]", req.Targeting.VersionList.VersionCodes)
 	}
@@ -75,6 +84,42 @@ func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 	}
 	if strings.TrimSpace(string(raw)) != draftBody {
 		t.Errorf("raw = %s, want verbatim", raw)
+	}
+}
+
+// TestCreate_allUsersTargeting_onWire asserts the --all-users selector reaches
+// the wire as allUsers.isAllUsersRequested — the "everyone" audience dimension,
+// distinct from the regions/sdk-levels narrowing. Without this the builder could
+// drop or rename the key and no create test would notice.
+func TestCreate_allUsersTargeting_onWire(t *testing.T) {
+	var gotBody []byte
+	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotBody, _ = io.ReadAll(r.Body)
+		return resp(200, draftBody), nil
+	})
+	hc := &http.Client{Transport: rt}
+
+	if _, _, err := recovery.Create(context.Background(), hc, "com.example.app", recovery.CreateOpts{
+		VersionCodes: []int64{142}, AllUsers: true, RemoteInAppUpdate: true,
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	var req struct {
+		Targeting struct {
+			AllUsers struct {
+				IsAllUsersRequested bool `json:"isAllUsersRequested"`
+			} `json:"allUsers"`
+			Regions *struct{} `json:"regions"`
+		} `json:"targeting"`
+	}
+	if err := json.Unmarshal(gotBody, &req); err != nil {
+		t.Fatalf("request body not parseable: %v\n%s", err, gotBody)
+	}
+	if !req.Targeting.AllUsers.IsAllUsersRequested {
+		t.Errorf("targeting.allUsers.isAllUsersRequested = false, want true\n%s", gotBody)
+	}
+	if req.Targeting.Regions != nil {
+		t.Errorf("all-users selector should not emit a regions object: %s", gotBody)
 	}
 }
 
