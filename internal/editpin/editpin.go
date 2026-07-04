@@ -72,6 +72,17 @@ func Lookup(fsys config.FS, gplayDir, pkg string) (Pin, bool, error) {
 
 // Write persists the pin for pkg to gplayDir, creating gplayDir if it does not
 // yet exist (mirrors config.Init's 0755/0644 modes).
+//
+// The write is atomic: the bytes go to a sibling `<path>.tmp` first, then a
+// rename swaps them onto path (the same tmp+rename pattern as config.Save, and
+// why config.FS exposes Rename/Remove). On POSIX (and Windows for same-volume
+// renames) rename is atomic, so a crash — SIGKILL, power loss, disk-full —
+// mid-write leaves either the OLD pin or the NEW one, never a truncated or
+// zero-length file. That matters because Lookup treats a present-but-corrupt
+// pin as a FATAL error, which would wedge every later write command AND block
+// recovery via `gplay edits begin` (it Lookups before it could overwrite). A
+// plain truncate-then-write WriteFile only cleans up on a returned error; a
+// killed process never reaches that cleanup.
 func Write(fsys config.FS, gplayDir, pkg, editID string) error {
 	if err := fsys.MkdirAll(gplayDir, 0o755); err != nil {
 		return err
@@ -81,11 +92,15 @@ func Write(fsys config.FS, gplayDir, pkg, editID string) error {
 		return err
 	}
 	path := Path(gplayDir, pkg)
-	if err := fsys.WriteFile(path, append(data, '\n'), 0o644); err != nil {
-		// A short write / ENOSPC can leave a truncated file that Lookup would
-		// then treat as fatal corruption, wedging later commands. Best-effort
-		// remove it so a failed write leaves no half-written pin behind.
-		_ = fsys.Remove(path)
+	tmp := path + ".tmp"
+	if err := fsys.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
+		// Best-effort remove the tmp fragment; never touch the live pin, which
+		// a failed fresh write must not disturb.
+		_ = fsys.Remove(tmp)
+		return err
+	}
+	if err := fsys.Rename(tmp, path); err != nil {
+		_ = fsys.Remove(tmp)
 		return err
 	}
 	return nil
