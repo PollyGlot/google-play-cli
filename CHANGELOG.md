@@ -5,6 +5,13 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0](https://github.com/PollyGlot/google-play-cli/compare/v0.11.0...v0.12.0) (2026-07-02)
+
+
+### Features
+
+* **games:** Play Games Services configuration — achievements & leaderboards CRUD ([#241](https://github.com/PollyGlot/google-play-cli/issues/241)) ([#315](https://github.com/PollyGlot/google-play-cli/issues/315)) ([66030bf](https://github.com/PollyGlot/google-play-cli/commit/66030bf02454a8d3c7dca63f49c037fb465ea947))
+
 ## [0.11.0](https://github.com/PollyGlot/google-play-cli/compare/v0.10.0...v0.11.0) (2026-06-30)
 
 
