@@ -160,6 +160,11 @@ The separate Google service (`playdeveloperreporting`) for **post-launch observa
 
 _Avoid_: conflating it with the Android Publisher API or assuming one Discovery snapshot covers both.
 
+### Reporting bucket
+The developer's Google Cloud Storage bucket (`gs://pubsite_prod_rev_<developer-id>`) where Play deposits its **monthly CSV exports** — reviews history, stats, sales. Not an API: plain GCS objects, read with the same service account granted "View app information" (global) plus the `devstorage.read_only` OAuth scope, and encoded **UTF-16** (transcoding mandatory). The bucket name derives from the numeric [Developer account](#developer-account) ID; the Play Console's *Copy Cloud Storage URI* button is the authoritative source when it doesn't. The data channel behind `reviews history` ([ADR-0037](docs/adr/0037-reviews-history-gcs-csv-reports.md)) — the only route to review history beyond `reviews.list`'s 7-day window.
+
+_Avoid_: calling it an API (it is object storage), or conflating its CSV **vitals/stats exports** with the [Play Developer Reporting API](#play-developer-reporting-api) (a real API, the `vitals` namespace's source).
+
 ### Play Games Services Publishing API
 The Google service (`gamesConfiguration`) for configuring a game's Play Games Services resources — achievement and leaderboard configurations (CRUD on each: list/view/create/update/delete). An Admin API (developer configures their game), distinct from the Play Games Services *runtime* APIs the game itself calls (sign-in, score submission), which are out of scope. Addressed by the **Play Games application ID** (a numeric ID in its own space, not the Android package). The API writes the editable **draft**; the `published` copy is read-only and there is **no publish method** — publishing to players is Console-only ([ADR-0033](docs/adr/0033-games-services-configuration-draft-crud.md)). gplay surfaces it under the top-level `games` namespace (`games achievements` / `games leaderboards`, each with `list`/`view`/`create`/`update`/`delete`), addressed by `--application-id`; `delete` is the destructive tier (`--confirm`, exit 3), `create`/`update` accept localized field flags or a full `--from-json` body, and ships `[experimental]`.
 

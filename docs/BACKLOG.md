@@ -49,10 +49,10 @@ Upload du fichier `mapping.txt` pour dé-obfusquer les crashes côté Play vital
 Mécanisme legacy pour distribuer >150 MB d'assets hors APK.
 **Statut :** livré `[experimental]` — `releases expansion-files upload/set/view` ([ADR-0030](adr/0030-android-publisher-long-tail-surfaces.md)), labelé legacy.
 
-### APK legacy — `edits.apks` — 🔼 **PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118) (plus tard, hors first-release)**
+### APK legacy — `edits.apks` — 🔼 **PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118) grillé ([ADR-0036](adr/0036-apk-upload-rides-releases-upload.md)) → slice [#330](https://github.com/PollyGlot/google-play-cli/issues/330)**
 Upload d'APK au lieu d'AAB.
-> **Promu en PRD planifié mais déprioritisé** (2026-06-01) — apps existantes only, voir [ROADMAP.md](ROADMAP.md) « Ensuite ».
-**Pourquoi plus tard :** Google n'accepte plus de nouveaux APK pour nouvelles apps depuis 2021. AAB-only par défaut, APK ajouté seulement si un user le réclame.
+> **Grillé le 2026-07-08** : pas de nouvelle commande — `releases upload` accepte `.apk` (auto-détection par extension + `--format`, la convention de `releases sharing upload`) ; `edits.apks.list` et `addexternallyhosted` exclus.
+**Pourquoi plus tard :** Google n'accepte plus de nouveaux APK pour nouvelles apps depuis 2021 — apps existantes only, complétude/parité.
 
 ### Testers (groupes internes) — `edits.testers` — ✅ **livré** (PRD [#117](https://github.com/PollyGlot/google-play-cli/issues/117), slices #120–#123)
 Gestion des emails de testeurs sur tracks closed.
@@ -114,9 +114,9 @@ Validation côté serveur des tokens de purchase.
 
 ## Reviews — au-delà de la fenêtre 7 jours
 
-### Import des CSV reports d'historique reviews
+### Import des CSV reports d'historique reviews — **PRD [#94](https://github.com/PollyGlot/google-play-cli/issues/94) spiké + grillé ([ADR-0037](adr/0037-reviews-history-gcs-csv-reports.md)) → slices [#331](https://github.com/PollyGlot/google-play-cli/issues/331)/[#332](https://github.com/PollyGlot/google-play-cli/issues/332)**
 L'API `reviews.list` ne retourne que les 7 derniers jours. Pour l'historique long, Google expose des **CSV reports** dans un bucket GCS dédié (`gs://pubsite_prod_rev_<id>/reviews/`).
-**Pourquoi plus tard :** demande l'auth GCS (autre scope OAuth) et un parseur CSV séparé. Utile pour analyse longitudinale, pas pour le flow CI standard.
+> **Spike résolu (2026-07-08)** : même service account + scope `devstorage.read_only` (pattern 2ᵉ service d'[ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)), bucket dérivé du developer ID ([ADR-0015](adr/0015-developer-account-addressing-rides-on-account.md)) avec `--bucket` en override, CSV **UTF-16** transcodé. Surface : `reviews history --month`, sibling de `reviews list`.
 
 ---
 
