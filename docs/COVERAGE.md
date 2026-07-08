@@ -83,12 +83,12 @@ By method count, of the **~155 admin methods** across the four APIs:
 | `users` | 4 | ✅ | `team users` |
 | `grants` | 3 | ✅ | `team grants` |
 | `orders` | 3 | ✅ | `orders view <id>...` (`orders.get` single + `orders.batchget` batch) + `orders refund` (`orders.refund`, gated) — slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)/[#283](https://github.com/PollyGlot/google-play-cli/issues/283)/[#284](https://github.com/PollyGlot/google-play-cli/issues/284) ([#245](https://github.com/PollyGlot/google-play-cli/issues/245) / [ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
-| `edits.apks` | 3 | 🔵 | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) (`addexternallyhosted` niche, EMM-only) |
+| `edits.apks` | 3 | 🔵 | [#118](https://github.com/PollyGlot/google-play-cli/issues/118) grilled ([ADR-0036](adr/0036-apk-upload-rides-releases-upload.md)) → slice [#330](https://github.com/PollyGlot/google-play-cli/issues/330): `upload` rides `releases upload`; `list` + `addexternallyhosted` excluded |
 | `inappproducts` (legacy IAP) | 9 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) |
 | `monetization.subscriptions` (+`basePlans`+`offers`) | 24 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (post-v1) |
-| `monetization.onetimeproducts` (+`purchaseOptions`+`offers`) | 17 | 🔴 | [#293](https://github.com/PollyGlot/google-play-cli/issues/293) — new IAP model, #51 scopes only legacy |
-| `monetization.convertRegionPrices` | 1 | 🔴 | [#293](https://github.com/PollyGlot/google-play-cli/issues/293) (folds into monetization) |
-| `externaltransactions` | 3 | 🔴 | [#295](https://github.com/PollyGlot/google-play-cli/issues/295) — alternative billing / DMA reporting |
+| `monetization.onetimeproducts` (+`purchaseOptions`+`offers`) | 17 | 🔵 | folded into PRD [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (was [#293](https://github.com/PollyGlot/google-play-cli/issues/293), 2026-07-08) — legacy-vs-v2 decided at #51's grilling |
+| `monetization.convertRegionPrices` | 1 | 🔵 | folded into PRD [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (was [#293](https://github.com/PollyGlot/google-play-cli/issues/293)) |
+| `externaltransactions` | 3 | 🔴 | [#295](https://github.com/PollyGlot/google-play-cli/issues/295) **parked** (2026-07-08) — alternative billing / DMA reporting, niche |
 | `generatedapks` | 2 | ✅ | `releases generated` (list/download) — [ADR-0034](adr/0034-generated-apks-binary-download-to-file.md), PRD [#299](https://github.com/PollyGlot/google-play-cli/issues/299) |
 | `systemapks.variants` | 4 | 🔴 | [#296](https://github.com/PollyGlot/google-play-cli/issues/296) (parked — niche OEM/preload) |
 | `purchases.voidedpurchases.list` | 1 | 🔵 | backlog → future commerce PRD ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
