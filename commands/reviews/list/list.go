@@ -27,7 +27,7 @@ import (
 // sevenDayWarning is printed to stderr on every successful invocation: the
 // reviews API only exposes the last 7 days, so a quiet empty result would
 // otherwise read as "no reviews" when it really means "none in the window".
-const sevenDayWarning = "WARN: the Google Play reviews API only returns reviews from the last 7 days; older reviews are not available here (see docs/BACKLOG.md for long-history CSV reports)."
+const sevenDayWarning = "WARN: the Google Play reviews API only returns reviews from the last 7 days; older reviews are not available here — use `gplay reviews history` for the full history from the monthly CSV reports."
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {

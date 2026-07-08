@@ -411,6 +411,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"reviews", "list"}, false},
 		{[]string{"reviews", "reply"}, true},
 		{[]string{"reviews", "view"}, false},
+		{[]string{"reviews", "history"}, false},
 
 		// vitals — the whole namespace is read-only (Play Developer Reporting).
 		{[]string{"vitals", "query"}, false},
