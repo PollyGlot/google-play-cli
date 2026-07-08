@@ -1004,7 +1004,7 @@
       }
     }
   },
-  "revision": "20260625",
+  "revision": "20260702",
   "rootUrl": "https://playdeveloperreporting.googleapis.com/",
   "schemas": {
     "GooglePlayDeveloperReportingV1beta1Anomaly": {
