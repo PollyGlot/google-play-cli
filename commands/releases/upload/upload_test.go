@@ -74,10 +74,12 @@ func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
 	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
 		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/bundles"):
-		return jsonResp(200, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, r.versionCode)), nil
 	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
 		return jsonResp(200, `{"deobfuscationFile":{"symbolType":"proguard"}}`), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/bundles"):
+		return jsonResp(200, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, r.versionCode)), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/apks"):
+		return jsonResp(200, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, r.versionCode)), nil
 	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/tracks/"):
 		body, _ := io.ReadAll(req.Body)
 		r.trackUpdateReq = body
@@ -361,14 +363,15 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 		"confirm",
 		"dry-run",
 		"mapping",
+		"format",
 		"output",
 	} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("cobra command missing expected flag --%s", name)
 		}
 	}
-	if got := cmd.Use; got != "upload <aab>" {
-		t.Errorf("cmd.Use = %q, want %q", got, "upload <aab>")
+	if got := cmd.Use; got != "upload <artifact>" {
+		t.Errorf("cmd.Use = %q, want %q", got, "upload <artifact>")
 	}
 }
 
@@ -496,5 +499,165 @@ func TestRun_withMapping_uploadsMappingInSameEditAndConfirms(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "mapping") {
 		t.Errorf("✓ line should mention the uploaded mapping; stderr=%q", stderr.String())
+	}
+}
+
+// writeFakeAPK creates a non-empty .apk file. The RoundTripper does not
+// validate the bytes — apks.Upload just needs os.Open to succeed.
+func writeFakeAPK(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "app.apk")
+	if err := os.WriteFile(p, []byte("fake-apk-content"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return p
+}
+
+// TestRun_apkExtension_ridesApksUploadEndpoint asserts a .apk artifact is
+// auto-detected and uploaded via edits.apks.upload (POST .../apks?uploadType=media)
+// instead of bundles.upload, while the rest of the Edit lifecycle — insert,
+// tracks.update, commit — is byte-for-byte the AAB pipeline (ADR-0036).
+func TestRun_apkExtension_ridesApksUploadEndpoint(t *testing.T) {
+	apk := writeFakeAPK(t)
+	rt := &uploadRT{
+		t:                  t,
+		editID:             "edit-apk",
+		versionCode:        91,
+		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"91","status":"completed","versionCodes":["91"],"userFraction":1.0}]}`,
+	}
+	rc, _ := newRC(t, rt)
+
+	if _, err := upload.Run(rc, upload.Input{
+		Package: "com.example.app",
+		Track:   "internal",
+		AABPath: apk,
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	wantSequence := []string{
+		"POST /token",
+		"POST /androidpublisher/v3/applications/com.example.app/edits",
+		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-apk/apks",
+		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-apk/tracks/internal",
+		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-apk:commit",
+	}
+	if len(rt.calls) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	}
+	for i, want := range wantSequence {
+		if rt.calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		}
+	}
+}
+
+// TestRun_formatApkOverride_forcesApkPathForNonApkFilename asserts that
+// --format apk routes a file whose extension is NOT .apk through the APK
+// endpoint — the override wins over extension auto-detect (ADR-0030 parity).
+func TestRun_formatApkOverride_forcesApkPathForNonApkFilename(t *testing.T) {
+	// A file with a .bin extension the auto-detect could not classify.
+	p := filepath.Join(t.TempDir(), "build.bin")
+	if err := os.WriteFile(p, []byte("fake-apk-content"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	rt := &uploadRT{
+		t:                  t,
+		editID:             "edit-fmt",
+		versionCode:        5,
+		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"5","status":"completed","versionCodes":["5"]}]}`,
+	}
+	rc, _ := newRC(t, rt)
+
+	if _, err := upload.Run(rc, upload.Input{
+		Package: "com.example.app",
+		Track:   "internal",
+		AABPath: p,
+		Format:  "apk",
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	sawApks := false
+	for _, c := range rt.calls {
+		if strings.HasSuffix(c, "/apks") {
+			sawApks = true
+		}
+		if strings.HasSuffix(c, "/bundles") {
+			t.Errorf("--format apk still hit the bundles endpoint: %q", c)
+		}
+	}
+	if !sawApks {
+		t.Errorf("--format apk did not hit the apks endpoint; calls=%v", rt.calls)
+	}
+}
+
+// TestRun_unknownExtension_noFormat_exit2_noHTTP asserts that an artifact
+// with an unrecognized extension and no --format is a usage error (exit 2)
+// before any HTTP — mirroring the `releases sharing upload` message.
+func TestRun_unknownExtension_noFormat_exit2_noHTTP(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "build.bin")
+	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	rt := &uploadRT{t: t}
+	rc, _ := newRC(t, rt)
+
+	_, err := upload.Run(rc, upload.Input{
+		Package: "com.example.app",
+		Track:   "internal",
+		AABPath: p,
+	})
+	if err == nil {
+		t.Fatal("Run accepted an unknown-extension artifact without --format")
+	}
+	if got := exit.For(err); got != 2 {
+		t.Errorf("exit.For(err) = %d, want 2; err=%v", got, err)
+	}
+	if !strings.Contains(err.Error(), "cannot tell APK from AAB by extension") {
+		t.Errorf("error %q is missing the sharing-parity extension message", err.Error())
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("RoundTripper saw %d calls on a usage error: %v", len(rt.calls), rt.calls)
+	}
+}
+
+// TestRun_apkWithMapping_uploadsMappingAgainstApkVersionCode asserts
+// --mapping works for an APK unchanged: the deobfuscation file is POSTed
+// against the APK's versionCode in the same Edit (ADR-0036).
+func TestRun_apkWithMapping_uploadsMappingAgainstApkVersionCode(t *testing.T) {
+	apk := writeFakeAPK(t)
+	mapping := writeFakeMapping(t)
+	rt := &uploadRT{
+		t:                  t,
+		editID:             "edit-apk",
+		versionCode:        91,
+		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"91","status":"completed","versionCodes":["91"]}]}`,
+	}
+	rc, _ := newRC(t, rt)
+
+	if _, err := upload.Run(rc, upload.Input{
+		Package: "com.example.app",
+		Track:   "internal",
+		AABPath: apk,
+		Mapping: mapping,
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	wantSequence := []string{
+		"POST /token",
+		"POST /androidpublisher/v3/applications/com.example.app/edits",
+		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-apk/apks",
+		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-apk/apks/91/deobfuscationFiles/proguard",
+		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-apk/tracks/internal",
+		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-apk:commit",
+	}
+	if len(rt.calls) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	}
+	for i, want := range wantSequence {
+		if rt.calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		}
 	}
 }

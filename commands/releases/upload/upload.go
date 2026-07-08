@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -24,6 +26,7 @@ type Input struct {
 	Package           string
 	Track             string
 	AABPath           string
+	Format            string // "" | "apk" | "bundle" — overrides extension auto-detect
 	Mapping           string
 	ReleaseNotes      string
 	ReleaseNotesDir   string
@@ -41,6 +44,32 @@ type usageError struct{ msg string }
 
 func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
+
+// resolveFormat classifies the artifact as an APK or an AAB, from an
+// explicit --format override or the file extension (.apk / .aab). It
+// mirrors the `releases sharing upload` convention (ADR-0030), including
+// its exact "cannot tell APK from AAB by extension" message — but as a
+// CLI-misuse usage error (exit 2), matching this command's flag-validation
+// taxonomy. Returns the orchestrator format value (FormatAPK / FormatBundle).
+func resolveFormat(path, formatOverride string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(formatOverride)) {
+	case "apk":
+		return orchestrator.FormatAPK, nil
+	case "bundle":
+		return orchestrator.FormatBundle, nil
+	case "":
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".apk":
+			return orchestrator.FormatAPK, nil
+		case ".aab":
+			return orchestrator.FormatBundle, nil
+		default:
+			return "", &usageError{msg: "cannot tell APK from AAB by extension — pass --format apk|bundle"}
+		}
+	default:
+		return "", &usageError{msg: "--format must be apk or bundle"}
+	}
+}
 
 // Payload satisfies output.Renderable for the resulting upload Result.
 type Payload struct {
@@ -171,6 +200,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &usageError{msg: "missing --track"}
 	}
 
+	// Classify APK vs AAB up front (before any HTTP and even on --dry-run)
+	// so an unknown extension without --format is a usage error (exit 2),
+	// never a late surprise after an Edit is opened.
+	format, err := resolveFormat(in.AABPath, in.Format)
+	if err != nil {
+		return nil, err
+	}
+
 	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the
 	// network, and the orchestrator's dry-run path never reuses a pinned Edit,
 	// so a corrupt pin must not fail a preview. The pin is only resolved on the
@@ -211,6 +248,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Package:           pkg,
 		Track:             in.Track,
 		AABPath:           in.AABPath,
+		Format:            format,
 		MappingPath:       in.Mapping,
 		Status:            status,
 		UserFraction:      in.StagedFraction,
@@ -252,21 +290,31 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		stagedFractionVar float64
 	)
 	cmd := &cobra.Command{
-		Use:   "upload <aab>",
-		Short: "Upload an AAB to a track on Google Play",
-		Long: `Upload an AAB and attach it to a release on the given track.
+		Use:   "upload <artifact>",
+		Short: "Upload an AAB or APK to a track on Google Play",
+		Long: `Upload an AAB (or a legacy APK) and attach it to a release on the given track.
 
 Performs the full Edit lifecycle in one call:
-  edits.insert → bundles.upload → tracks.update → edits.commit
+  edits.insert → bundles.upload (or apks.upload) → tracks.update → edits.commit
 
-Pass --mapping <mapping.txt> to upload the AAB's ProGuard/R8 deobfuscation
-file in the same Edit, so Play vitals can symbolicate obfuscated crash
-stacks. To attach a mapping to an already-published version, use
-gplay releases mappings upload instead.
+AAB vs APK is auto-detected by file extension (.aab / .apk); pass
+--format apk|bundle to override when the extension is ambiguous. The rest
+of the pipeline — track assignment, release notes, --mapping, draft-by-
+default on production, --dry-run, --confirm — is identical for both.
+
+Pass --mapping <mapping.txt> to upload the artifact's ProGuard/R8
+deobfuscation file in the same Edit, so Play vitals can symbolicate
+obfuscated crash stacks. To attach a mapping to an already-published
+version, use gplay releases mappings upload instead.
 
 Targeting production defaults to a draft release (ADR-0002) unless
 --complete or --staged is supplied. Any string is accepted as --track
-so closed-test tracks with custom names just work.`,
+so closed-test tracks with custom names just work.
+
+[experimental] APK upload — Google has required the AAB for new apps
+since August 2021, so .apk uploads only serve existing apps still
+distributed as APKs; if the app requires an App Bundle, Google's rejection
+of the APK passes through verbatim.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -286,7 +334,8 @@ so closed-test tracks with custom names just work.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name)")
-	cmd.Flags().StringVar(&in.Mapping, "mapping", "", "ProGuard/R8 deobfuscation file (mapping.txt) uploaded with the AAB so Play vitals can symbolicate obfuscated crash stacks")
+	cmd.Flags().StringVar(&in.Format, "format", "", "artifact type: apk or bundle (overrides extension auto-detect)")
+	cmd.Flags().StringVar(&in.Mapping, "mapping", "", "ProGuard/R8 deobfuscation file (mapping.txt) uploaded with the artifact so Play vitals can symbolicate obfuscated crash stacks")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "release notes text (applied to the app's default language)")
 	cmd.Flags().StringVar(&in.ReleaseNotesDir, "release-notes-dir", "", "directory of <locale>.txt files (with optional default.txt fallback)")
 	cmd.Flags().BoolVar(&in.Draft, "draft", false, "force the release status to draft")
