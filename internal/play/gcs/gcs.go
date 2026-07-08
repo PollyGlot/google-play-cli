@@ -144,7 +144,9 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 			Reasons:    reasons,
 		}
 	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxRead))
+	// Read one byte past the cap so an oversized body is detected and reported
+	// explicitly, rather than silently truncated into a confusing parse error.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxRead+1))
 	if readErr != nil {
 		return nil, &api.Error{
 			Operation:  op,
@@ -152,6 +154,14 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 			StatusCode: resp.StatusCode,
 			Message:    "read response: " + readErr.Error(),
 			Cause:      readErr,
+		}
+	}
+	if int64(len(raw)) > maxRead {
+		return nil, &api.Error{
+			Operation:  op,
+			Package:    bucket,
+			StatusCode: resp.StatusCode,
+			Message:    "response exceeds size limit",
 		}
 	}
 	return raw, nil

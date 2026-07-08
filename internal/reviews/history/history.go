@@ -29,22 +29,22 @@ import (
 // a string: the report leaves most columns optional and gplay does not reshape
 // the reviewer's data, it transcodes and surfaces it verbatim.
 type Row struct {
-	PackageName                    string `json:"packageName"`
-	AppVersionCode                 string `json:"appVersionCode"`
-	AppVersionName                 string `json:"appVersionName"`
-	ReviewerLanguage               string `json:"reviewerLanguage"`
-	Device                         string `json:"device"`
-	ReviewSubmitDateAndTime        string `json:"reviewSubmitDateAndTime"`
-	ReviewSubmitMillisSinceEpoch   string `json:"reviewSubmitMillisSinceEpoch"`
-	ReviewLastUpdateDateAndTime    string `json:"reviewLastUpdateDateAndTime"`
-	ReviewLastUpdateMillisSinceEpo string `json:"reviewLastUpdateMillisSinceEpoch"`
-	StarRating                     string `json:"starRating"`
-	ReviewTitle                    string `json:"reviewTitle"`
-	ReviewText                     string `json:"reviewText"`
-	DeveloperReplyDateAndTime      string `json:"developerReplyDateAndTime"`
-	DeveloperReplyMillisSinceEpoch string `json:"developerReplyMillisSinceEpoch"`
-	DeveloperReplyText             string `json:"developerReplyText"`
-	ReviewLink                     string `json:"reviewLink"`
+	PackageName                      string `json:"packageName"`
+	AppVersionCode                   string `json:"appVersionCode"`
+	AppVersionName                   string `json:"appVersionName"`
+	ReviewerLanguage                 string `json:"reviewerLanguage"`
+	Device                           string `json:"device"`
+	ReviewSubmitDateAndTime          string `json:"reviewSubmitDateAndTime"`
+	ReviewSubmitMillisSinceEpoch     string `json:"reviewSubmitMillisSinceEpoch"`
+	ReviewLastUpdateDateAndTime      string `json:"reviewLastUpdateDateAndTime"`
+	ReviewLastUpdateMillisSinceEpoch string `json:"reviewLastUpdateMillisSinceEpoch"`
+	StarRating                       string `json:"starRating"`
+	ReviewTitle                      string `json:"reviewTitle"`
+	ReviewText                       string `json:"reviewText"`
+	DeveloperReplyDateAndTime        string `json:"developerReplyDateAndTime"`
+	DeveloperReplyMillisSinceEpoch   string `json:"developerReplyMillisSinceEpoch"`
+	DeveloperReplyText               string `json:"developerReplyText"`
+	ReviewLink                       string `json:"reviewLink"`
 }
 
 // header maps a documented CSV header label to the Row field it fills. Parsing
@@ -60,7 +60,7 @@ var header = map[string]func(*Row, string){
 	"Review Submit Date and Time":           func(r *Row, v string) { r.ReviewSubmitDateAndTime = v },
 	"Review Submit Millis Since Epoch":      func(r *Row, v string) { r.ReviewSubmitMillisSinceEpoch = v },
 	"Review Last Update Date and Time":      func(r *Row, v string) { r.ReviewLastUpdateDateAndTime = v },
-	"Review Last Update Millis Since Epoch": func(r *Row, v string) { r.ReviewLastUpdateMillisSinceEpo = v },
+	"Review Last Update Millis Since Epoch": func(r *Row, v string) { r.ReviewLastUpdateMillisSinceEpoch = v },
 	"Star Rating":                           func(r *Row, v string) { r.StarRating = v },
 	"Review Title":                          func(r *Row, v string) { r.ReviewTitle = v },
 	"Review Text":                           func(r *Row, v string) { r.ReviewText = v },
