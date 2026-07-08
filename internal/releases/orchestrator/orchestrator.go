@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/play/apks"
 	"github.com/PollyGlot/google-play-cli/internal/play/bundles"
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -137,9 +138,20 @@ const (
 // ADR-0002 safe-default rule (production → draft when Status is
 // Unspecified) and the --confirm guard for production publishes.
 type Opts struct {
-	Package           string
-	Track             string
-	AABPath           string
+	Package string
+	Track   string
+	// AABPath is the local path to the artifact uploaded into the Edit. It
+	// is historically named for the AAB common case but also carries an
+	// APK path when Format is FormatAPK (ADR-0036); the release pipeline
+	// after the upload step is identical either way.
+	AABPath string
+	// Format selects the upload endpoint for AABPath: FormatBundle (the
+	// default, empty) routes through edits.bundles.upload, FormatAPK routes
+	// through edits.apks.upload (ADR-0036). The command layer resolves this
+	// from the file extension or an explicit --format override; the
+	// versionCode both endpoints return drives the rest of the pipeline
+	// unchanged.
+	Format            string
 	Status            Status
 	UserFraction      float64
 	ReleaseNotes      string
@@ -261,7 +273,19 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 			}
 		}
 
-		versionCode, err := bundles.Upload(ctx, hc, opts.Package, editID, opts.AABPath)
+		// Dispatch on artifact format: an APK rides edits.apks.upload, an
+		// AAB (the default) rides edits.bundles.upload. Both return the
+		// versionCode that drives the rest of the pipeline, so everything
+		// below this line is format-agnostic (ADR-0036).
+		var (
+			versionCode int
+			err         error
+		)
+		if opts.Format == FormatAPK {
+			versionCode, err = apks.Upload(ctx, hc, opts.Package, editID, opts.AABPath)
+		} else {
+			versionCode, err = bundles.Upload(ctx, hc, opts.Package, editID, opts.AABPath)
+		}
 		if err != nil {
 			return err
 		}
@@ -359,6 +383,14 @@ func buildRelease(versionCode int, opts Opts) tracks.Release {
 // constant rather than a string literal so the comparison is grep-able.
 const TrackProduction = "production"
 
+// Artifact format values for Opts.Format. FormatBundle is the empty
+// default (edits.bundles.upload); FormatAPK routes the legacy path
+// (edits.apks.upload, ADR-0036).
+const (
+	FormatBundle = "bundle"
+	FormatAPK    = "apk"
+)
+
 // dryRunDefaultLangPlaceholder satisfies notes.Load's DefaultLanguage
 // requirement during a dry-run so the loader's structural validation
 // (mutual exclusion, file-size cap, missing dir) still runs. The real
@@ -375,13 +407,13 @@ func dryRunResult(opts Opts) (*Result, error) {
 	if opts.AABPath != "" {
 		st, err := os.Stat(opts.AABPath)
 		if err != nil {
-			return nil, &dryRunError{msg: "AAB not accessible: " + err.Error()}
+			return nil, &dryRunError{msg: "artifact not accessible: " + err.Error()}
 		}
 		// Parity with the live path (bundles.Upload): a directory passes
 		// Stat but cannot be streamed, so reject non-regular files here too
 		// — otherwise --dry-run would green-light what the live upload rejects.
 		if !st.Mode().IsRegular() {
-			return nil, &dryRunError{msg: "AAB is not a regular file: " + opts.AABPath}
+			return nil, &dryRunError{msg: "artifact is not a regular file: " + opts.AABPath}
 		}
 	}
 

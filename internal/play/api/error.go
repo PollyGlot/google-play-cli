@@ -49,16 +49,17 @@ func (e *Error) Unwrap() error { return e.Cause }
 
 // ExitCode satisfies the gplay Coder contract. The mapping table mostly
 // lives in StatusToExitCode and matches docs/DESIGN.md §9; the one
-// operation-aware nuance handled here is bundles.upload, where 400 and
-// 404 mean "malformed AAB" and must surface as exit 20 (not the generic
-// 30). Auth (403), conflict (409), 5xx and transport-level failures
-// still win over the operation hint — a 403 on bundles.upload is still
-// an auth problem.
+// operation-aware nuance handled here is the artifact uploads
+// (bundles.upload / apks.upload), where 400 and 404 mean "malformed
+// artifact" (or, for APKs, an AAB-required app) and must surface as exit
+// 20 (not the generic 30). Auth (403), conflict (409), 5xx and
+// transport-level failures still win over the operation hint — a 403 on
+// bundles.upload is still an auth problem.
 func (e *Error) ExitCode() int {
 	if e == nil {
 		return 0
 	}
-	if e.Operation == "bundles.upload" {
+	if e.Operation == "bundles.upload" || e.Operation == "apks.upload" {
 		switch e.StatusCode {
 		case http.StatusBadRequest, http.StatusNotFound:
 			return 20
