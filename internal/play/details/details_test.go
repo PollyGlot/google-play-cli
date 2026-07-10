@@ -29,9 +29,11 @@ type infoRT struct {
 	editID  string
 	details string // body returned by /details (200 unless detailsCode set)
 	listing string // body returned by /listings/{lang} (200 unless listingCode set)
+	icon    string // body returned by /listings/{lang}/icon (defaults to empty slot)
 
 	detailsCode int // 0 → 200
 	listingCode int // 0 → 200
+	iconCode    int // 0 → 200
 
 	mu    sync.Mutex
 	calls []string
@@ -52,6 +54,16 @@ func (r *infoRT) RoundTrip(req *http.Request) (*http.Response, error) {
 			code = 200
 		}
 		return jsonResp(code, r.details), nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/icon"):
+		code := r.iconCode
+		if code == 0 {
+			code = 200
+		}
+		body := r.icon
+		if body == "" {
+			body = `{"images":[]}` // missing == empty (ADR-0013)
+		}
+		return jsonResp(code, body), nil
 	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/listings/"):
 		code := r.listingCode
 		if code == 0 {
@@ -116,10 +128,13 @@ func TestGet_happyPath(t *testing.T) {
 		t.Errorf("ContactEmail = %q, want %q", d.ContactEmail, "hi@example.com")
 	}
 
+	// The icon read (edits.images.list on the default language's icon
+	// slot) runs inside the SAME Edit, between listings.get and discard.
 	wantSequence := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/details",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/listings/en-US",
+		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/listings/en-US/icon",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-info",
 	}
 	if len(rt.calls) != len(wantSequence) {
@@ -132,12 +147,15 @@ func TestGet_happyPath(t *testing.T) {
 	}
 
 	// The raw envelope is the gplay-shaped {"details":..,"listing":..}
-	// — explicit exception to ADR-0003 because apps view merges two
+	// — explicit exception to ADR-0003 because apps view merges multiple
 	// endpoints. Each sub-object must be the upstream body verbatim so
-	// jq/--output json consumers see the API field names unchanged.
+	// jq/--output json consumers see the API field names unchanged. With
+	// no icon in the slot, the optional icon key is omitted entirely and
+	// d.Icon is nil.
 	var env struct {
 		Details json.RawMessage `json:"details"`
 		Listing json.RawMessage `json:"listing"`
+		Icon    json.RawMessage `json:"icon"`
 	}
 	if err := json.Unmarshal(raw, &env); err != nil {
 		t.Fatalf("raw JSON is not the {details,listing} envelope: %v\nraw=%s", err, raw)
@@ -147,6 +165,106 @@ func TestGet_happyPath(t *testing.T) {
 	}
 	if strings.TrimSpace(string(env.Listing)) != strings.TrimSpace(listingBody) {
 		t.Errorf("envelope.listing = %s\nwant %s", env.Listing, listingBody)
+	}
+	if len(env.Icon) != 0 {
+		t.Errorf("envelope.icon should be omitted when the icon slot is empty, got %s", env.Icon)
+	}
+	if d.Icon != nil {
+		t.Errorf("d.Icon = %+v, want nil (empty icon slot)", d.Icon)
+	}
+}
+
+// TestGet_iconPresent_addsIconKey asserts that when the default
+// language's icon slot is non-empty, Get adds an "icon" key
+// {"url":..,"sha256":..} (verbatim edits.images field values) to the
+// envelope and populates d.Icon. The icon read shares the one Edit.
+func TestGet_iconPresent_addsIconKey(t *testing.T) {
+	detailsBody := `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`
+	listingBody := `{"language":"en-US","title":"MyApp"}`
+	iconBody := `{"images":[{"id":"ic1","url":"https://play.example/icon.png","sha1":"deadbeef","sha256":"ICON_SHA_256"}]}`
+	rt := &infoRT{
+		t:       t,
+		editID:  "edit-icon",
+		details: detailsBody,
+		listing: listingBody,
+		icon:    iconBody,
+	}
+	hc := &http.Client{Transport: rt}
+
+	d, raw, err := details.Get(context.Background(), hc, "com.example.app")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if d.Icon == nil {
+		t.Fatal("d.Icon = nil, want a populated *Icon")
+	}
+	if d.Icon.Sha256 != "ICON_SHA_256" {
+		t.Errorf("d.Icon.Sha256 = %q, want ICON_SHA_256", d.Icon.Sha256)
+	}
+	if d.Icon.URL != "https://play.example/icon.png" {
+		t.Errorf("d.Icon.URL = %q, want the preview url verbatim", d.Icon.URL)
+	}
+
+	var env struct {
+		Icon *struct {
+			URL    string `json:"url"`
+			Sha256 string `json:"sha256"`
+		} `json:"icon"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatalf("unmarshal envelope: %v\nraw=%s", err, raw)
+	}
+	if env.Icon == nil {
+		t.Fatalf("envelope.icon missing, want {url,sha256}; raw=%s", raw)
+	}
+	if env.Icon.Sha256 != "ICON_SHA_256" || env.Icon.URL != "https://play.example/icon.png" {
+		t.Errorf("envelope.icon = %+v, want verbatim url+sha256", env.Icon)
+	}
+	// Exactly one Edit was opened (single insert), reused for all reads.
+	inserts := 0
+	for _, c := range rt.calls {
+		if strings.HasSuffix(c, "/edits") && strings.HasPrefix(c, "POST ") {
+			inserts++
+		}
+	}
+	if inserts != 1 {
+		t.Errorf("edits.insert count = %d, want exactly 1 (same Edit reused)", inserts)
+	}
+}
+
+// TestGet_iconRead403_mapsExit11 asserts a 403 on the icon read bubbles
+// up as exit 11 (authorization) via the shared error mapping.
+func TestGet_iconRead403_mapsExit11(t *testing.T) {
+	rt := &infoRT{
+		t:        t,
+		editID:   "edit-icon-403",
+		details:  `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
+		listing:  `{"language":"en-US","title":"MyApp"}`,
+		iconCode: 403,
+		icon:     `{"error":{"code":403,"message":"insufficient permissions"}}`,
+	}
+	hc := &http.Client{Transport: rt}
+	_, _, err := details.Get(context.Background(), hc, "com.example.app")
+	if code := exitCodeOf(t, err); code != 11 {
+		t.Errorf("ExitCode() = %d, want 11 (403 on icon read)", code)
+	}
+}
+
+// TestGet_iconRead404_mapsExit30 asserts a 404 on the icon read maps to
+// exit 30 (API 4xx other than auth/perms).
+func TestGet_iconRead404_mapsExit30(t *testing.T) {
+	rt := &infoRT{
+		t:        t,
+		editID:   "edit-icon-404",
+		details:  `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
+		listing:  `{"language":"en-US","title":"MyApp"}`,
+		iconCode: 404,
+		icon:     `{"error":{"code":404,"message":"not found"}}`,
+	}
+	hc := &http.Client{Transport: rt}
+	_, _, err := details.Get(context.Background(), hc, "com.example.app")
+	if code := exitCodeOf(t, err); code != 30 {
+		t.Errorf("ExitCode() = %d, want 30 (404 on icon read)", code)
 	}
 }
 
