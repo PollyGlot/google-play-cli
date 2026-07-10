@@ -288,6 +288,39 @@ The Google Play Developer API has no `apps.list`, so `gplay apps list` reads a
 
 Backlog: real discovery via Cloud Resource Manager + IAM (see `BACKLOG.md`).
 
+### App icon on `apps view` (`[experimental]`, ADR-0038)
+
+`gplay apps view` also reports the app's store **icon** for its default
+language, read live via `edits.images.list` inside the same read-only Edit:
+
+- **Durable handle is `sha256`.** The icon's content `sha256` is the stable,
+  content-addressed identifier — the only value safe to persist, diff, or key a
+  cache on. The `table`/`markdown` views show a `sha256` line only when the icon
+  slot is non-empty; the `--output json` envelope adds an optional `icon` key
+  `{"url":..,"sha256":..}`, omitted entirely when the slot is empty
+  (missing == empty, [ADR-0013](./adr/0013-image-slot-reconciliation.md)).
+- **`url` is a preview link — never persist it.** The `Image.url` has
+  undocumented resolution, auth, and expiry; it is passed through verbatim but
+  must not be stored. To fetch the actual icon **bytes**, use
+  `gplay metadata images pull`.
+- **Scope reality.** Reading the icon requires the full `androidpublisher` OAuth
+  scope gplay already uses — Google exposes **no** narrower listings/images
+  `.readonly` scope — so it confers no new permission beyond "the service
+  account is invited on the app".
+- **Not gated by `GPLAY_READONLY`.** The read mutates nothing (the Edit is
+  always discarded), so it is exempt from the read-only policy
+  ([ADR-0024](./adr/0024-readonly-environment-policy.md)) and keeps working under
+  a read-only deployment.
+- **No cache.** gplay never stores the icon between runs — each `apps view` is a
+  faithful live read. Caching (keyed on `sha256`) is the consumer's
+  responsibility.
+
+`gplay metadata images list --type <AppImageType>` (`[experimental]`) narrows
+the same live per-slot summary to a single image slot (CONTEXT.md "Image slot")
+across locales; an unknown `--type` is refused client-side (exit 20) before any
+API call, and `--output json` keeps its exact per-slot shape — `--type` only
+narrows which slots appear.
+
 ---
 
 ## 7. Output

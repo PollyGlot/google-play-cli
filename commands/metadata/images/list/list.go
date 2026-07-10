@@ -37,6 +37,7 @@ import (
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
+	Type    string
 }
 
 // usageError is a CLI-misuse error (no package); ExitCode()=2 per
@@ -45,6 +46,15 @@ type usageError struct{ msg string }
 
 func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
+
+// validationError is a client-side flag-value failure (an unknown
+// --type); ExitCode()=20 per docs/DESIGN.md §9. Refused offline, before
+// any HTTP round-trip, so a typo like "iconn" surfaces a clear message
+// naming the nine valid AppImageType values rather than a downstream 404.
+type validationError struct{ msg string }
+
+func (e *validationError) Error() string { return e.msg }
+func (e *validationError) ExitCode() int { return 20 }
 
 // packageNotFoundError / forbiddenError mirror `metadata list`: actionable
 // hints on a 404 / 403, with the wrapped *api.Error left to drive the exit
@@ -208,6 +218,20 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
 	}
 
+	// [experimental] --type narrows the read to a single AppImageType.
+	// Validate client-side BEFORE any HTTP call so an unknown value is
+	// refused offline (exit 20) rather than building an invalid slot URL.
+	types := images.Types()
+	if in.Type != "" {
+		ty, ok := images.ParseType(in.Type)
+		if !ok {
+			return nil, &validationError{msg: fmt.Sprintf(
+				"metadata images list: %q is not a valid image type — one of: %s",
+				in.Type, joinTypes(images.Types()))}
+		}
+		types = []images.Type{ty}
+	}
+
 	httpClient, err := rc.AuthedClient()
 	if err != nil {
 		return nil, err
@@ -220,7 +244,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return err
 		}
 		for _, loc := range locales {
-			for _, ty := range images.Types() {
+			for _, ty := range types {
 				imgs, raw, e := images.List(rc.Ctx, httpClient, pkg, editID, loc, ty)
 				if e != nil {
 					return e
@@ -237,6 +261,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	return Payload{Package: pkg, Slots: slots}, nil
+}
+
+// joinTypes renders the nine AppImageType values as a comma-separated
+// list for the --type validation-error message, in canonical order.
+func joinTypes(ts []images.Type) string {
+	ss := make([]string, 0, len(ts))
+	for _, t := range ts {
+		ss = append(ss, string(t))
+	}
+	return strings.Join(ss, ", ")
 }
 
 // appLocales returns the app's locale codes (those carrying a Listing), in
@@ -275,6 +309,14 @@ nothing is committed and nothing on disk is read. The API exposes no
 list-by-locale endpoint, so list walks the 9 types across every locale that
 has a Listing.
 
+[experimental] --type <AppImageType> narrows the read to a single image
+type (one of: icon, featureGraphic, tvBanner, promoGraphic,
+phoneScreenshots, sevenInchScreenshots, tenInchScreenshots, tvScreenshots,
+wearScreenshots) across every locale, instead of walking all nine. An
+unknown value is refused client-side (exit 20) before any API call.
+--output json keeps its exact shape — --type only narrows which slots
+appear.
+
 (--output json carries each slot's images verbatim — the edits.images.list
 objects, id/url/sha1/sha256; --output markdown renders a Markdown table.)`,
 		Args:          cobra.NoArgs,
@@ -288,5 +330,6 @@ objects, id/url/sha1/sha256; --output markdown renders a Markdown table.)`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
+	cmd.Flags().StringVar(&in.Type, "type", "", "[experimental] narrow to one AppImageType (icon, featureGraphic, phoneScreenshots, …); default: all nine")
 	return cmd
 }

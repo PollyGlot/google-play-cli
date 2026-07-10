@@ -227,6 +227,105 @@ func TestRun_tableShowsCountsAndSha256(t *testing.T) {
 	}
 }
 
+// TestRun_typeFilter_readsOnlyThatType asserts --type icon narrows the
+// read to the icon slot across all locales: the transport must see NO
+// requests for the other eight types. With the two-locale fixture that
+// is exactly 2 slot GETs (en-US/icon, fr-FR/icon).
+func TestRun_typeFilter_readsOnlyThatType(t *testing.T) {
+	listingsResp, slots := twoLocales()
+	rt := &imagesRT{t: t, editID: "edit-img", listingsResp: listingsResp, slots: slots}
+	rc := newRC(t, rt)
+
+	if _, err := imageslist.Run(rc, imageslist.Input{Package: "com.example.app", Type: "icon"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if rt.slotGETs != 2 {
+		t.Errorf("slot GETs = %d, want 2 (icon × 2 locales)", rt.slotGETs)
+	}
+	// No slot read may address any type other than icon.
+	for _, c := range rt.calls {
+		if strings.Contains(c, "/listings/") && strings.HasSuffix(c, "/listings") {
+			continue // the listings.list enumeration call
+		}
+		if strings.Contains(c, "/listings/") && !strings.HasSuffix(c, "/icon") &&
+			!strings.HasSuffix(c, "/edits") && !strings.HasPrefix(c, "DELETE ") {
+			t.Errorf("saw a non-icon slot read with --type icon: %q", c)
+		}
+	}
+}
+
+// TestRun_invalidType_exit20_noHTTP asserts an unknown --type value is
+// refused client-side (exit 20) before any HTTP round-trip.
+func TestRun_invalidType_exit20_noHTTP(t *testing.T) {
+	rt := &imagesRT{t: t, editID: "edit-img"}
+	rc := newRC(t, rt)
+
+	_, err := imageslist.Run(rc, imageslist.Input{Package: "com.example.app", Type: "iconn"})
+	var coder interface{ ExitCode() int }
+	if !asCoder(err, &coder) || coder.ExitCode() != 20 {
+		t.Fatalf("err = %v, want ExitCode 20", err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected zero HTTP calls before validation error, saw: %v", rt.calls)
+	}
+}
+
+// TestRun_typeFilter_jsonMatchesUnfiltered asserts that for the icon
+// slot, --type icon --output json is byte-identical to the icon slot in
+// the unfiltered JSON — --type only narrows which slots appear, never
+// reshapes them.
+func TestRun_typeFilter_jsonMatchesUnfiltered(t *testing.T) {
+	listingsResp, slots := twoLocales()
+
+	iconSlot := func(in imageslist.Input) map[string]json.RawMessage {
+		rt := &imagesRT{t: t, editID: "edit-img", listingsResp: listingsResp, slots: slots}
+		rc := newRC(t, rt)
+		r, err := imageslist.Run(rc, in)
+		if err != nil {
+			t.Fatalf("Run(%+v): %v", in, err)
+		}
+		var buf bytes.Buffer
+		if err := r.Renderers().JSON(&buf); err != nil {
+			t.Fatalf("JSON render: %v", err)
+		}
+		var doc struct {
+			Slots []struct {
+				Locale    string          `json:"locale"`
+				ImageType string          `json:"imageType"`
+				Count     int             `json:"count"`
+				Images    json.RawMessage `json:"images"`
+			} `json:"slots"`
+		}
+		if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+			t.Fatalf("parse json: %v\n%s", err, buf.String())
+		}
+		out := map[string]json.RawMessage{}
+		for _, s := range doc.Slots {
+			if s.ImageType == "icon" {
+				out[s.Locale] = s.Images
+			}
+		}
+		return out
+	}
+
+	unfiltered := iconSlot(imageslist.Input{Package: "com.example.app"})
+	filtered := iconSlot(imageslist.Input{Package: "com.example.app", Type: "icon"})
+
+	if len(filtered) != len(unfiltered) || len(filtered) == 0 {
+		t.Fatalf("icon slot counts differ: filtered=%d unfiltered=%d", len(filtered), len(unfiltered))
+	}
+	for loc, want := range unfiltered {
+		got, ok := filtered[loc]
+		if !ok {
+			t.Errorf("filtered output missing icon slot for %q", loc)
+			continue
+		}
+		if string(got) != string(want) {
+			t.Errorf("icon slot %q differs:\n filtered=%s\n unfiltered=%s", loc, got, want)
+		}
+	}
+}
+
 // TestRun_noPackage_isUsageError asserts the missing-package guard (exit 2).
 func TestRun_noPackage_isUsageError(t *testing.T) {
 	rc := newRC(t, &imagesRT{t: t, editID: "x"})

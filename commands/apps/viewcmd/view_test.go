@@ -41,9 +41,11 @@ type viewRT struct {
 	editID  string
 	details string
 	listing string
+	icon    string // body for /listings/{lang}/icon (defaults to empty slot)
 
 	detailsCode int
 	listingCode int
+	iconCode    int
 
 	mu        sync.Mutex
 	calls     []string
@@ -72,6 +74,16 @@ func (r *viewRT) RoundTrip(req *http.Request) (*http.Response, error) {
 			code = 200
 		}
 		return jsonResp(code, r.details), nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/icon"):
+		code := r.iconCode
+		if code == 0 {
+			code = 200
+		}
+		body := r.icon
+		if body == "" {
+			body = `{"images":[]}` // missing == empty (ADR-0013)
+		}
+		return jsonResp(code, body), nil
 	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/listings/"):
 		code := r.listingCode
 		if code == 0 {
@@ -174,6 +186,7 @@ func TestRun_happyPath(t *testing.T) {
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/details",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/listings/en-US",
+		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/listings/en-US/icon",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-info",
 	}
 	if len(rt.calls) != len(wantSequence) {
@@ -184,8 +197,19 @@ func TestRun_happyPath(t *testing.T) {
 			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
 		}
 	}
+	// Exactly one Edit opened (single edits.insert), reused for all reads.
+	inserts := 0
+	for _, c := range rt.calls {
+		if c == "POST /androidpublisher/v3/applications/com.example.app/edits" {
+			inserts++
+		}
+	}
+	if inserts != 1 {
+		t.Errorf("edits.insert count = %d, want exactly 1 (same Edit reused)", inserts)
+	}
 
 	// JSON pass-through: the envelope wraps both upstream bodies verbatim.
+	// With no icon in the slot, the optional icon key is omitted entirely.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -193,6 +217,7 @@ func TestRun_happyPath(t *testing.T) {
 	var env struct {
 		Details json.RawMessage `json:"details"`
 		Listing json.RawMessage `json:"listing"`
+		Icon    json.RawMessage `json:"icon"`
 	}
 	if err := json.Unmarshal(jsonOut.Bytes(), &env); err != nil {
 		t.Fatalf("JSON output is not the {details,listing} envelope: %v\nout=%s", err, jsonOut.String())
@@ -202,6 +227,142 @@ func TestRun_happyPath(t *testing.T) {
 	}
 	if strings.TrimSpace(string(env.Listing)) != strings.TrimSpace(listingBody) {
 		t.Errorf("envelope.listing = %s\nwant %s", env.Listing, listingBody)
+	}
+	if len(env.Icon) != 0 {
+		t.Errorf("envelope.icon should be omitted when the icon slot is empty, got %s", env.Icon)
+	}
+}
+
+// TestRun_iconPresent_inEnvelopeAndViews asserts that when the default
+// language has a store icon, the JSON envelope carries an "icon" key
+// {"url":..,"sha256":..} verbatim, and the table/markdown views show the
+// sha256 line. The whole read still opens exactly one Edit.
+func TestRun_iconPresent_inEnvelopeAndViews(t *testing.T) {
+	rt := &viewRT{
+		t:       t,
+		editID:  "edit-info",
+		details: `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
+		listing: `{"language":"en-US","title":"MyApp"}`,
+		icon:    `{"images":[{"id":"ic1","url":"https://play.example/icon.png","sha1":"d1","sha256":"ICON_SHA_256"}]}`,
+	}
+	rc, _ := newRC(t, rt)
+
+	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var jsonOut bytes.Buffer
+	if err := r.Renderers().JSON(&jsonOut); err != nil {
+		t.Fatalf("JSON render: %v", err)
+	}
+	var env struct {
+		Icon *struct {
+			URL    string `json:"url"`
+			Sha256 string `json:"sha256"`
+		} `json:"icon"`
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal envelope: %v\nout=%s", err, jsonOut.String())
+	}
+	if env.Icon == nil {
+		t.Fatalf("envelope.icon missing, want {url,sha256}; out=%s", jsonOut.String())
+	}
+	if env.Icon.Sha256 != "ICON_SHA_256" || env.Icon.URL != "https://play.example/icon.png" {
+		t.Errorf("envelope.icon = %+v, want verbatim url+sha256", env.Icon)
+	}
+
+	var tbl bytes.Buffer
+	if err := r.Renderers().Table(&tbl); err != nil {
+		t.Fatalf("Table render: %v", err)
+	}
+	if !strings.Contains(tbl.String(), "ICON_SHA_256") {
+		t.Errorf("table output missing icon sha256:\n%s", tbl.String())
+	}
+
+	var md bytes.Buffer
+	if err := r.Renderers().Markdown(&md); err != nil {
+		t.Fatalf("Markdown render: %v", err)
+	}
+	if !strings.Contains(md.String(), "ICON_SHA_256") {
+		t.Errorf("markdown output missing icon sha256:\n%s", md.String())
+	}
+}
+
+// TestRun_iconAbsent_noIconRow asserts that with an empty icon slot, the
+// icon key is omitted from the envelope and no icon row appears in the
+// table/markdown views.
+func TestRun_iconAbsent_noIconRow(t *testing.T) {
+	rt := &viewRT{
+		t:       t,
+		editID:  "edit-info",
+		details: `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
+		listing: `{"language":"en-US","title":"MyApp"}`,
+		// icon left empty → transport serves {"images":[]}
+	}
+	rc, _ := newRC(t, rt)
+
+	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var jsonOut bytes.Buffer
+	if err := r.Renderers().JSON(&jsonOut); err != nil {
+		t.Fatalf("JSON render: %v", err)
+	}
+	var env struct {
+		Icon json.RawMessage `json:"icon"`
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	if len(env.Icon) != 0 {
+		t.Errorf("envelope.icon = %s, want omitted", env.Icon)
+	}
+
+	var tbl bytes.Buffer
+	if err := r.Renderers().Table(&tbl); err != nil {
+		t.Fatalf("Table render: %v", err)
+	}
+	if strings.Contains(tbl.String(), "ICON_SHA256") {
+		t.Errorf("table output has an icon row when the slot is empty:\n%s", tbl.String())
+	}
+}
+
+// TestRun_iconRead403_exit11 asserts a 403 on the icon read bubbles up
+// as exit 11 (authorization).
+func TestRun_iconRead403_exit11(t *testing.T) {
+	rt := &viewRT{
+		t:        t,
+		editID:   "edit-icon-403",
+		details:  `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
+		listing:  `{"language":"en-US","title":"MyApp"}`,
+		iconCode: 403,
+		icon:     `{"error":{"code":403,"message":"insufficient permissions"}}`,
+	}
+	rc, _ := newRC(t, rt)
+	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
+	if code := exitCodeOf(t, err); code != 11 {
+		t.Errorf("ExitCode() = %d, want 11", code)
+	}
+}
+
+// TestRun_iconRead404_exit30 asserts a 404 on the icon read maps to
+// exit 30 (API 4xx other than auth/perms).
+func TestRun_iconRead404_exit30(t *testing.T) {
+	rt := &viewRT{
+		t:        t,
+		editID:   "edit-icon-404",
+		details:  `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
+		listing:  `{"language":"en-US","title":"MyApp"}`,
+		iconCode: 404,
+		icon:     `{"error":{"code":404,"message":"not found"}}`,
+	}
+	rc, _ := newRC(t, rt)
+	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
+	if code := exitCodeOf(t, err); code != 30 {
+		t.Errorf("ExitCode() = %d, want 30", code)
 	}
 }
 
