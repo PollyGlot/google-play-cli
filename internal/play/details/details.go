@@ -7,10 +7,11 @@
 //
 //   - Get is the high-level entry point used by `gplay apps view`. It
 //     opens a read-only Edit on its own, fetches details.get +
-//     listings.get(defaultLanguage), and discards the Edit. Returns the
-//     typed *Details plus the raw JSON envelope
-//     {"details":..,"listing":..} (explicit exception to ADR-0003
-//     because two endpoints are merged).
+//     listings.get(defaultLanguage) + images.list(defaultLanguage, icon),
+//     and discards the Edit. Returns the typed *Details plus the raw
+//     JSON envelope {"details":..,"listing":..,"icon"?:..} (explicit
+//     exception to ADR-0003 because multiple endpoints are merged; the
+//     [experimental] icon key is omitted when the icon slot is empty).
 package details
 
 import (
@@ -23,6 +24,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
+	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
 const (
@@ -31,14 +33,27 @@ const (
 	opListingsGet  = "listings.get"
 )
 
-// Details surfaces the three fields `gplay apps view` displays — the
-// minimum needed to confirm "yes, I'm looking at the right app".
-// defaultLanguage and contactEmail come from edits.details.get;
-// title comes from edits.listings.get on the default language.
+// Details surfaces the fields `gplay apps view` displays — the minimum
+// needed to confirm "yes, I'm looking at the right app".
+// defaultLanguage and contactEmail come from edits.details.get; title
+// comes from edits.listings.get on the default language; Icon is the
+// optional [experimental] icon carrier (nil when the default language's
+// icon slot is empty), read from edits.images.list on the default
+// language.
 type Details struct {
 	DefaultLanguage string `json:"defaultLanguage"`
 	Title           string `json:"title"`
 	ContactEmail    string `json:"contactEmail"`
+	Icon            *Icon  `json:"-"`
+}
+
+// Icon is the optional identity handle for an app's store icon on its
+// default language: the durable content sha256 plus the (ephemeral,
+// never-persist) preview url. Both are verbatim edits.images field
+// values (ADR-0038). nil on Details when the icon slot is empty.
+type Icon struct {
+	URL    string `json:"url"`
+	Sha256 string `json:"sha256"`
 }
 
 // AppDetails is the full edits.details resource backing the `apps details`
@@ -103,11 +118,15 @@ func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, 
 }
 
 // Get opens a read-only Edit on pkg, reads details.get +
-// listings.get(defaultLanguage), discards the Edit, and returns both
-// the typed *Details and the raw JSON envelope. The envelope shape is
-// {"details": <details.get verbatim>, "listing": <listings.get verbatim>}
-// — an explicit exception to ADR-0003 documented in the ADR's
-// Exceptions section, because apps view combines two endpoints.
+// listings.get(defaultLanguage) + images.list(defaultLanguage, icon),
+// discards the Edit, and returns both the typed *Details and the raw
+// JSON envelope. The envelope shape is
+// {"details": <details.get verbatim>, "listing": <listings.get verbatim>,
+// "icon": {"url":..,"sha256":..}} — an explicit exception to ADR-0003
+// documented in the ADR's Exceptions section, because apps view combines
+// multiple endpoints. The [experimental] icon key carries verbatim
+// edits.images field values and is omitted entirely when the default
+// language's icon slot is empty (missing == empty, ADR-0013).
 //
 // Errors propagate as *api.Error so the gplay exit-code taxonomy maps
 // transparently: 403 → 11, 404 → 30, 5xx → 40, network → 50. The Edit
@@ -127,12 +146,23 @@ func Get(ctx context.Context, hc *http.Client, pkg string) (*Details, json.RawMe
 		if err != nil {
 			return err
 		}
+		// [experimental] optional icon read, inside the SAME read-only
+		// Edit. edits.images.list on the default language's icon slot:
+		// missing == empty (ADR-0013), so an absent icon returns an
+		// empty slice and no error — the key is then omitted entirely.
+		// Faithful live read, no cache (ADR-0038).
+		icon, err := fetchIcon(ctx, hc, pkg, editID, defaultLang)
+		if err != nil {
+			return err
+		}
 		envelope, err := json.Marshal(struct {
 			Details json.RawMessage `json:"details"`
 			Listing json.RawMessage `json:"listing"`
+			Icon    *Icon           `json:"icon,omitempty"`
 		}{
 			Details: detailsRaw,
 			Listing: listingRaw,
+			Icon:    icon,
 		})
 		if err != nil {
 			// Operation names elsewhere in internal/play/* match a real
@@ -151,6 +181,7 @@ func Get(ctx context.Context, hc *http.Client, pkg string) (*Details, json.RawMe
 			DefaultLanguage: defaultLang,
 			Title:           title,
 			ContactEmail:    contactEmail,
+			Icon:            icon,
 		}
 		raw = envelope
 		return nil
@@ -324,6 +355,27 @@ func fetchListing(ctx context.Context, hc *http.Client, pkg, editID, language st
 		}
 	}
 	return raw, parsed.Title, nil
+}
+
+// fetchIcon reads the default language's icon slot via edits.images.list
+// inside the already-open Edit and returns the optional *Icon carrier.
+// A singular icon slot holds at most one image (ADR-0013); an absent
+// icon is missing == empty, so List returns an empty slice and no error
+// and fetchIcon returns (nil, nil) — the caller omits the key entirely.
+// The url + sha256 are verbatim edits.images field values (ADR-0038):
+// sha256 is the durable content-identity handle, url an ephemeral
+// preview link the caller must never persist. Errors propagate as
+// *api.Error (op "images.list") so the exit-code taxonomy maps
+// transparently: 403 → 11, 404 → 30, 5xx → 40, network → 50.
+func fetchIcon(ctx context.Context, hc *http.Client, pkg, editID, language string) (*Icon, error) {
+	imgs, _, err := images.List(ctx, hc, pkg, editID, language, images.Icon)
+	if err != nil {
+		return nil, err
+	}
+	if len(imgs) == 0 {
+		return nil, nil
+	}
+	return &Icon{URL: imgs[0].URL, Sha256: imgs[0].Sha256}, nil
 }
 
 // getJSON is the shared scaffolding for a GET that returns a JSON body
