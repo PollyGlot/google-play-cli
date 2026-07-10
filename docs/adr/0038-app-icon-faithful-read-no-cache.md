@@ -1,113 +1,114 @@
-# App icon: a faithful live read, `sha256` as the durable handle, no cache
+# App icon retrieval: a faithful live read + content identity, no cache in gplay
 
-## Status
+Status: **Accepted** (2026-07-10). Motivated by a downstream consumer (a desktop
+cockpit that lists a portfolio of apps and wants to render each app's real
+store icon, falling back to an initial when absent). Tracked by PRD
+[#337](https://github.com/PollyGlot/google-play-cli/issues/337) and its slices
+([#338](https://github.com/PollyGlot/google-play-cli/issues/338),
+[#339](https://github.com/PollyGlot/google-play-cli/issues/339),
+[#340](https://github.com/PollyGlot/google-play-cli/issues/340)). The point of
+the ADR is not the plumbing — it mostly exists already — but the **boundary**:
+what gplay owns, and what the consumer owns.
 
-Accepted
+## What already exists
 
-## Context
+The Play Store listing icon is already reachable today, end to end:
 
-Grilled from PRD [#337](https://github.com/PollyGlot/google-play-cli/issues/337)
-under [ADR-0026](0026-maximal-admin-api-coverage.md) (maximal admin-API
-coverage). Two read surfaces want to expose an app's store **icon**:
+- `internal/play/images/images.go` — the `Image{ID, URL, Sha1, Sha256}` type
+  (JSON tags verbatim, [ADR-0003](0003-json-passthrough.md)), the `Icon =
+  "icon"` `AppImageType`, and `images.List(ctx, hc, pkg, editID, lang, type)`.
+- `internal/play/edits/edits.go` — `WithReadOnlyEdit` (open → fn → **always
+  discard**, never commit), which already dissolves the "you must open an Edit
+  to read a listing image" friction.
+- `commands/metadata/images/pull` — already downloads image bytes to disk
+  (`download` + `imagetree.Write`), following the binary-download conventions of
+  [ADR-0034](0034-generated-apks-binary-download-to-file.md).
 
-- **`apps view`** — the cross-resource identity card. It already merges
-  `edits.details.get` + `edits.listings.get` on the default language inside one
-  read-only [Edit](../../CONTEXT.md#edit) (the documented ADR-0003 envelope
-  exception). Adding the icon of the default language answers "am I looking at
-  the right app?" more completely.
-- **`metadata images list --type`** — narrowing the per-slot summary to one
-  [image slot](../../CONTEXT.md#image-slot) (e.g. `icon`) across locales.
+So "can gplay get the icon?" is already **yes**. The open questions are
+ergonomics (the icon is buried in an all-slots sweep) and, more importantly,
+**where caching lives**.
 
-The icon is a [Store image](../../CONTEXT.md#store-image), so it is already read
-via `edits.images.list`, which returns an `Image` object per stored image:
-`{id, url, sha1, sha256}`. The question this ADR settles is **what gplay
-promises about that data** — which field is durable, whether gplay caches it,
-and which write-safety and scope rules apply.
+## The decisions
 
-## Decision
+- **No cache in gplay. This is the load-bearing decision.** gplay is a
+  **faithful, live projection** of the API — every command hits the live
+  service (`gplay apps view` "still hits the live API", DESIGN §"apps view").
+  Introducing an on-disk icon cache would make gplay **stateful and potentially
+  stale**, which breaks that contract. It is worse for the agent surface
+  ([ADR-0029](0029-agent-discovery-surface.md)): an AI agent treats command
+  output as **ground truth**, so a silently-cached, stale icon is a correctness
+  bug, and it makes agent runs non-deterministic. The absence of any cache in
+  the codebase today is a stance, not an omission — this ADR ratifies it.
 
-1. **Faithful live read, every time.** Both surfaces read the icon from
-   `edits.images.list` on each invocation, inside the same read-only Edit they
-   already open. gplay never returns a remembered value; the answer always
-   reflects the store's current state at call time.
+- **Caching is a consumer responsibility, and gplay already ships the seam for
+  it.** The real cost is downstream: an Edit-per-app fan-out when a consumer
+  renders N icons at once (an Edit is `packageName`-scoped, so it cannot be
+  batched across apps). That is a **policy** problem — refresh cadence, bitmap
+  storage — and policy belongs to the consumer, not the CLI. gplay's
+  contribution is **content identity**: it returns `sha256` on every `Image`
+  (verbatim, ADR-0003). A consumer caches the decoded bitmap keyed by `sha256`
+  and re-reads only when it chooses to. gplay stays pure; the consumer owns
+  "how often" and "keep the bytes where."
 
-2. **`sha256` is the durable content-identity handle.** The `Image.sha256` is
-   the stable, content-addressed identifier gplay already reconciles images by
-   ([ADR-0013](0013-image-slot-reconciliation.md)). It is the field a caller may
-   persist, diff, or key a cache on.
+- **The durable handle is `sha256` (+ a downloaded file), never `Image.url`.**
+  The API documents `Image.url` as "a URL that will serve a **preview** of the
+  image"; its resolution, authentication, and **expiry are undocumented**.
+  Treat it as volatile: consumers that need the bytes should `download` them and
+  key their cache on `sha256`, not persist the URL. gplay surfaces both, and
+  says plainly which one is durable.
 
-3. **`Image.url` is a preview URL — never persist it.** The `url` is an
-   ephemeral preview link with **undocumented resolution, auth, and expiry**
-   semantics: it is not a stable address, may require credentials, and can stop
-   resolving without notice. gplay passes it through verbatim on `--output json`
-   (ADR-0003) and in the `apps view` envelope's `icon` key, but the human
-   (`table`/`markdown`) views deliberately surface only `sha256`, and the docs
-   state plainly that `url` must not be cached or stored. To obtain the actual
-   icon **bytes**, use the existing `gplay metadata images pull`.
+- **A focused read, not the 9-slot sweep.** `metadata images list` reads every
+  `(locale × imageType)` slot to summarize a listing — the wrong tool for "give
+  me just the icon." Add a `--type <AppImageType>` filter to `metadata images
+  list` so a consumer can read a **single** slot (one locale, one type) in one
+  read-only Edit. `--output json` stays the verbatim API body.
 
-4. **The `apps view` `icon` key is `{"url":..,"sha256":..}`, optional.** It
-   extends the ADR-0003 envelope exception: the key carries verbatim
-   `edits.images` field values and is **omitted entirely** when the default
-   language's icon slot is empty (missing == empty, ADR-0013). Absent icon →
-   no key, no row.
+- **Icon rides `apps view` (the app-facing projection).** `apps view` already
+  opens a `WithReadOnlyEdit`, resolves the default language, and returns
+  `{defaultLanguage, title, contactEmail}`. Enrich its JSON with an optional
+  `icon` object (`{url, sha256}`) resolved by `images.List(..., defaultLanguage,
+  images.Icon)` **inside the same Edit** — near-zero marginal cost, and it is the
+  natural accessor for a portfolio consumer that already calls `apps view` for
+  app identity. Absent icon → field omitted (the consumer's initial-fallback is
+  the honest default).
 
-5. **Full `androidpublisher` scope — there is no read-only listings scope.**
-   Reading images requires the standard `androidpublisher` OAuth scope gplay
-   already uses; Google exposes **no** narrower `…androidpublisher.readonly`
-   scope for listings/images. So the icon read confers no new permission
-   requirement beyond "the service account is invited on the app". A `403` on
-   the icon read → exit `11`, `404` → `30`, `5xx` → `40`, network → `50`, via
-   the shared `*api.Error` mapping.
+- **Bytes stay on the existing `download` gesture.** Materializing the icon
+  bytes is `metadata images pull`, already governed by ADR-0034 (`--dest PATH`,
+  streamed, `--dest -` to stdout, stderr `✓`). No new download path, no
+  `--output` collision. We do **not** add byte output to `apps view`.
 
-6. **Not gated by `GPLAY_READONLY`.** Both surfaces are pure reads — they open a
-   read-only Edit that is always discarded, never committed, and mutate nothing.
-   Per [ADR-0024](0024-readonly-environment-policy.md) only mutating commands are
-   marked; a read is exempt and keeps working under a read-only deployment.
+- **Scope reality, documented, not "fixed."** Reading a listing image rides a
+  read-only Edit, and the listings API has **no `androidpublisher.readonly`
+  scope** — so even a purely-read icon fetch requires the full
+  `androidpublisher` scope. This is inherent to the API; gplay cannot lever it
+  away. It is **not** gated by `GPLAY_READONLY` ([ADR-0024](0024-readonly-environment-policy.md))
+  because it never mutates. Document it so a consumer with a "read-only" posture
+  knows a write-scoped token is still required to render an icon. Refusals keep
+  the house exit codes ([ADR-0017](0017-write-safety-and-agent-resolvable-refusals.md)):
+  `403` → `11`, `404` → `30`, `5xx` → `40`, network → `50`.
 
-7. **No cache in gplay — caching is the consumer's responsibility.** gplay does
-   **not** store the icon (bytes, url, or sha256) between invocations, and does
-   not add a cache flag or a cache directory. A caller who wants to avoid
-   re-reading keys their own cache on the durable `sha256` and manages its
-   freshness themselves. This keeps gplay a thin, honest window onto live store
-   state: a cache would introduce a staleness contract gplay has no way to
-   honor (the store can change out of band), and would be the first persistent
-   state gplay owns beyond config and open Edits — a cost with no offsetting
-   correctness benefit for a CLI whose whole value is a faithful read.
+- **Ships `[experimental]` first** ([ADR-0010](0010-versioning-public-contract-and-ga.md)),
+  so the `icon` field shape on `apps view` and the `--type` filter can settle
+  before they enter the public contract.
 
-8. **Ships `[experimental]` first**
-   ([ADR-0010](0010-versioning-public-contract-and-ga.md)): the `icon` key on
-   `apps view` and the `metadata images list --type` flag are outside the
-   [Public contract](../../CONTEXT.md#public-contract) until they graduate, like
-   every new surface under ADR-0026.
+## Consequences
 
-## Why
+- gplay gains an ergonomic, faithful path to a single app's icon (`apps view`
+  → `icon`, and `metadata images list --type icon`) without ever caching.
+- The Edit-per-app portfolio cost is acknowledged and **pushed to the consumer**,
+  with `sha256` as the documented caching key.
+- The vision stays intact: gplay is still "the Google Play API, rendered as a
+  CLI and for AI agents" — a live projection plus content identity, with state
+  and policy left to whoever consumes it.
 
-- **The durable-handle rule is the load-bearing part.** The tempting shortcut is
-  to treat `Image.url` as "the icon's address" and hand it to callers as a
-  stable link. That is a latent bug: the URL's expiry/auth are undocumented, so
-  a persisted url silently rots. Naming `sha256` as the one durable handle — and
-  routing byte retrieval through `metadata images pull` — pins the honest
-  contract before a consumer builds on the wrong field.
+## Alternatives rejected
 
-- **No-cache is a deliberate boundary, not an omission.** A CLI that caches a
-  remote resource inherits an invalidation problem it cannot solve (the store
-  mutates through the Play Console, other tools, other agents). Declining the
-  cache keeps every read faithful and keeps gplay stateless beyond config.
-  Consumers who genuinely need caching have the perfect key already: `sha256`.
-
-- **Scope reality avoids a false promise.** Documenting that no listings
-  `.readonly` scope exists stops a future reader from "hardening" the read with
-  a narrower scope that Google does not offer — and explains why a read still
-  requires the full `androidpublisher` scope.
-
-## References
-
-- [ADR-0003](0003-json-passthrough.md) — `--output json` pass-through and the
-  `apps view` envelope exception (now optionally carrying `icon`).
-- [ADR-0013](0013-image-slot-reconciliation.md) — content-hash reconciliation;
-  `missing == empty` for an image slot.
-- [ADR-0024](0024-readonly-environment-policy.md) — `GPLAY_READONLY` gates only
-  mutating commands; these reads are exempt.
-- [ADR-0034](0034-generated-apks-binary-download-to-file.md) — the sibling
-  Edit-free binary read; icon **bytes** are fetched with `metadata images pull`,
-  not surfaced inline.
+- **An in-gplay icon cache (TTL + cache dir).** Rejected: makes the CLI stateful
+  and its output potentially stale; hostile to the agent-as-ground-truth
+  contract; a large philosophical shift for a problem that is the consumer's.
+- **A brand-new `apps icon` command.** Rejected as surface bloat: it would
+  duplicate what `apps view` (+ `metadata images pull`) already express. If a
+  dedicated intent verb proves warranted later, it can be added under the verb
+  gate ([ADR-0019](0019-canonical-verb-vocabulary.md)); it is not needed now.
+- **Returning `Image.url` as the primary handle.** Rejected: undocumented
+  expiry/auth; `sha256` + downloaded bytes is the durable contract.
