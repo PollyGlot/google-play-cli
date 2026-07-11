@@ -68,6 +68,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
 	sharingupload "github.com/PollyGlot/google-play-cli/commands/releases/sharing/upload"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
+	reviewshistory "github.com/PollyGlot/google-play-cli/commands/reviews/history"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	reviewsview "github.com/PollyGlot/google-play-cli/commands/reviews/view"
@@ -546,6 +547,10 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	reviews.AddCommand(reviewslist.NewCommand(boot))
 	reviews.AddCommand(kernel.MarkMutating(reviewsreply.NewCommand(boot)))
 	reviews.AddCommand(reviewsview.NewCommand(boot))
+	// `reviews history` reads the monthly CSV reports from the developer's
+	// Reporting bucket over the GCS API — a third Google service, so its leaf
+	// mints a least-privilege devstorage.read_only token via WithScope (ADR-0037).
+	reviews.AddCommand(kernel.WithScope(reviewshistory.NewCommand(boot), token.StorageReadOnlyScope))
 	root.AddCommand(reviews)
 
 	// `gplay vitals` — read-only post-launch quality signals (crashes/ANR and

@@ -28,6 +28,14 @@ const AndroidPublisherScope = "https://www.googleapis.com/auth/androidpublisher"
 // surface never requests it.
 const ReportingScope = "https://www.googleapis.com/auth/playdeveloperreporting"
 
+// StorageReadOnlyScope is the OAuth2 scope required to read the developer's
+// Google Cloud Storage reporting bucket — the monthly CSV exports (reviews
+// history, #94). Like ReportingScope it is a DISTINCT, least-privilege scope:
+// `gplay reviews history` requests only this one (read-only by construction),
+// and no publishing or reporting command requests it. Documented at:
+// https://cloud.google.com/storage/docs/authentication
+const StorageReadOnlyScope = "https://www.googleapis.com/auth/devstorage.read_only"
+
 // AuthError wraps an HTTP error from the OAuth2 token endpoint so callers
 // (and the command layer) can map it to exit code 10.
 type AuthError struct {
