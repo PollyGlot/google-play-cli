@@ -1,0 +1,158 @@
+---
+// Install-method tabs, WAI-ARIA tabs pattern, zero framework runtime.
+// All panels are server-rendered (hidden except the first); a small inline
+// script wires selection, roving focus (arrows/Home/End), and copy buttons.
+// Replaces the former React island: same UI, ~58 KB gzip less JavaScript.
+
+type Tab = {
+  id: string;
+  label: string;
+  command: string;
+  note?: string;
+};
+
+const TABS: Tab[] = [
+  {
+    id: 'brew',
+    label: 'Homebrew',
+    command: 'brew install PollyGlot/tap/gplay',
+    note: 'macOS and Linux.',
+  },
+  {
+    id: 'script',
+    label: 'Install script',
+    command: 'curl -fsSL https://gplay.sh/install | sh',
+    note: 'Detects your OS and architecture; ideal for CI images.',
+  },
+  {
+    id: 'go',
+    label: 'go install',
+    command: 'go install github.com/PollyGlot/google-play-cli/cmd/gplay@latest',
+    note: 'Builds from source with your Go toolchain.',
+  },
+  {
+    id: 'binaries',
+    label: 'Binaries',
+    command: 'https://github.com/PollyGlot/google-play-cli/releases',
+    note: 'Pre-built archives for Linux, macOS, and Windows — with checksums and signatures.',
+  },
+];
+---
+
+<div class="w-full" id="install-tabs">
+  <div role="tablist" aria-label="Installation methods" class="flex flex-wrap gap-1">
+    {
+      TABS.map((tab, index) => (
+        <button
+          role="tab"
+          id={`install-tab-${tab.id}`}
+          aria-selected={index === 0 ? 'true' : 'false'}
+          aria-controls={`install-panel-${tab.id}`}
+          tabindex={index === 0 ? 0 : -1}
+          class="cursor-pointer rounded-t-md border-0 bg-transparent px-4 py-2 font-mono text-sm text-fg-muted transition-colors hover:text-fg aria-selected:bg-zinc-900 aria-selected:text-brand"
+        >
+          {tab.label}
+        </button>
+      ))
+    }
+  </div>
+  {
+    TABS.map((tab, index) => (
+      <div
+        role="tabpanel"
+        id={`install-panel-${tab.id}`}
+        aria-labelledby={`install-tab-${tab.id}`}
+        hidden={index !== 0}
+        class="rounded-b-md rounded-tr-md border border-zinc-800 bg-zinc-900 p-4"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <code class="block overflow-x-auto py-1 font-mono text-sm leading-relaxed text-zinc-100">
+            {tab.id === 'binaries' ? (
+              <a href={tab.command} class="text-brand underline underline-offset-4">
+                {tab.command}
+              </a>
+            ) : (
+              <>
+                <span class="select-none text-brand">$ </span>
+                {tab.command}
+              </>
+            )}
+          </code>
+          {tab.id !== 'binaries' && (
+            <button
+              data-copy={tab.command}
+              aria-label="Copy command"
+              class="shrink-0 cursor-pointer rounded-md border border-zinc-700 bg-transparent px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-brand hover:text-brand"
+            >
+              Copy
+            </button>
+          )}
+        </div>
+        {tab.note && <p class="mb-0 mt-3 text-sm text-zinc-400">{tab.note}</p>}
+      </div>
+    ))
+  }
+</div>
+
+<script is:inline>
+  (() => {
+    const root = document.getElementById('install-tabs');
+    if (!root) return;
+    const tabs = Array.from(root.querySelectorAll('[role="tab"]'));
+    const panels = Array.from(root.querySelectorAll('[role="tabpanel"]'));
+
+    const select = (index) => {
+      tabs.forEach((tab, i) => {
+        tab.setAttribute('aria-selected', String(i === index));
+        tab.tabIndex = i === index ? 0 : -1;
+      });
+      panels.forEach((panel, i) => {
+        panel.hidden = i !== index;
+      });
+    };
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => select(index));
+      // Roving focus per the WAI-ARIA tabs pattern: arrows/Home/End move
+      // focus and selection together.
+      tab.addEventListener('keydown', (event) => {
+        let next;
+        switch (event.key) {
+          case 'ArrowRight':
+            next = (index + 1) % tabs.length;
+            break;
+          case 'ArrowLeft':
+            next = (index - 1 + tabs.length) % tabs.length;
+            break;
+          case 'Home':
+            next = 0;
+            break;
+          case 'End':
+            next = tabs.length - 1;
+            break;
+          default:
+            return;
+        }
+        event.preventDefault();
+        select(next);
+        tabs[next].focus();
+      });
+    });
+
+    root.querySelectorAll('button[data-copy]').forEach((button) => {
+      let timer;
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy);
+          button.textContent = 'Copied ✓';
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            button.textContent = 'Copy';
+          }, 1600);
+        } catch {
+          // Clipboard unavailable (permissions / non-secure context) — no-op.
+        }
+      });
+    });
+  })();
+</script>

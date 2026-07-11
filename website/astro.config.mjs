@@ -1,7 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import react from '@astrojs/react';
 import tailwindcss from '@tailwindcss/vite';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import rehypeBaseLinks from './scripts/rehype-base-links.mjs';
@@ -119,7 +118,6 @@ export default defineConfig({
         }),
       ],
     }),
-    react(),
   ],
   vite: {
     plugins: [tailwindcss()],
