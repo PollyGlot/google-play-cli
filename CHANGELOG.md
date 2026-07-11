@@ -5,6 +5,14 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0](https://github.com/PollyGlot/google-play-cli/compare/v0.13.0...v0.14.0) (2026-07-11)
+
+
+### Features
+
+* **apps:** app icon retrieval — apps view icon + metadata images list --type ([#342](https://github.com/PollyGlot/google-play-cli/issues/342)) ([8fd5596](https://github.com/PollyGlot/google-play-cli/commit/8fd5596973e6ec124b919283fe6bc539b2126e13))
+* **reviews:** reviews history reads monthly GCS CSV reports ([#94](https://github.com/PollyGlot/google-play-cli/issues/94)) ([#336](https://github.com/PollyGlot/google-play-cli/issues/336)) ([7f703a4](https://github.com/PollyGlot/google-play-cli/commit/7f703a4ccb1e055d3389cc9a1d135d078fbb856b))
+
 ## [0.13.0](https://github.com/PollyGlot/google-play-cli/compare/v0.12.1...v0.13.0) (2026-07-08)
 
 
