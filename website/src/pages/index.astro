@@ -1,10 +1,15 @@
 ---
 import '../styles/global.css';
 import '../styles/theme.css';
-import InstallTabs from '../components/InstallTabs.tsx';
+import InstallTabs from '../components/InstallTabs.astro';
 import logoMark from '../assets/logo-mark.svg';
 import logoMarkLight from '../assets/logo-mark-light.svg';
 import surface from '../data/cli-surface.json';
+import releaseManifest from '../../../.release-please-manifest.json';
+
+// Current CLI version, from the release-please manifest (single source of
+// truth for the released version — no network call at build time).
+const version = releaseManifest['.'];
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const site = (Astro.site ?? new URL('https://gplay.sh')).origin;
@@ -122,6 +127,17 @@ status:       completed
 userFraction: 1
 releaseName:  421
 locales:      [en-US fr-FR]`;
+
+// Single source for the hero terminal session: the static markup below and
+// the typing animation replay the exact same commands and output.
+const demoSession = [
+  {
+    cmd: 'gplay releases upload app.aab --track internal \\\n    --release-notes-dir ./whatsnew',
+    out: demoUploadOutput,
+  },
+  { cmd: 'gplay releases promote --from internal --to beta' },
+  { cmd: 'gplay releases rollout --track production \\\n    --to 0.10 --confirm' },
+];
 ---
 
 <!doctype html>
@@ -198,22 +214,28 @@ locales:      [en-US fr-FR]`;
           <img class="logo-light" src={logoMarkLight.src} alt="" width="28" height="21" />
           <span class="font-mono text-lg font-bold text-fg">gplay</span>
         </a>
-        <span
-          class="rounded-full border border-border-strong px-2 py-0.5 text-xs text-fg-muted"
+        <a
+          href={`${GITHUB}/releases`}
+          class="rounded-full border border-border-strong px-2 py-0.5 text-xs text-fg-muted no-underline transition-colors hover:border-accent hover:text-accent"
           title="Pre-1.0: surface may still change before GA"
         >
-          public preview
-        </span>
-        <div class="ml-auto flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+          public preview · v{version}
+        </a>
+        <div class="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2 text-sm sm:gap-x-5">
           <a href={`${base}/docs/`} class="text-fg-body no-underline hover:text-accent">Docs</a>
-          <a href={`${base}/docs/reference/`} class="text-fg-body no-underline hover:text-accent"
-            >CLI reference</a
+          <!-- Secondary links hide on phones to keep the header to two rows;
+               both destinations stay reachable (docs sidebar, page scroll). -->
+          <a
+            href={`${base}/docs/reference/`}
+            class="hidden text-fg-body no-underline hover:text-accent sm:inline">CLI reference</a
           >
           <a
             href={`${base}/docs/agents/agent-guide/`}
             class="text-fg-body no-underline hover:text-accent">AI agents</a
           >
-          <a href="#faq" class="text-fg-body no-underline hover:text-accent">FAQ</a>
+          <a href="#faq" class="hidden text-fg-body no-underline hover:text-accent sm:inline"
+            >FAQ</a
+          >
           <a href={GITHUB} class="text-fg-body no-underline hover:text-accent">GitHub</a>
           <!-- Icon-only Light/Dark/System control. Native radios give keyboard
                selection (arrow keys) for free; each option carries an sr-only
@@ -312,17 +334,16 @@ locales:      [en-US fr-FR]`;
               <span class="h-2.5 w-2.5 rounded-full bg-zinc-700"></span>
               <span class="h-2.5 w-2.5 rounded-full bg-zinc-700"></span>
               <span class="h-2.5 w-2.5 rounded-full bg-zinc-700"></span>
-              <span class="ml-2 font-mono text-xs text-zinc-500">release day</span>
+              <span class="ml-2 font-mono text-xs text-zinc-400">release day</span>
             </div>
             <pre
-              class="m-0 overflow-x-auto p-4 font-mono text-[13px] leading-relaxed"><code><span class="text-brand">$</span> <span class="text-zinc-100">gplay releases upload app.aab --track internal \</span>
-<span class="text-zinc-100">    --release-notes-dir ./whatsnew</span>
-<span class="text-zinc-500">{demoUploadOutput}</span>
+              id="demo-pre"
+              class="m-0 overflow-x-auto p-4 font-mono text-[13px] leading-relaxed"><code id="demo-code"><span class="text-brand">$</span> <span class="text-zinc-100">{demoSession[0].cmd}</span>
+<span class="text-zinc-400">{demoSession[0].out}</span>
 
-<span class="text-brand">$</span> <span class="text-zinc-100">gplay releases promote --from internal --to beta</span>
+<span class="text-brand">$</span> <span class="text-zinc-100">{demoSession[1].cmd}</span>
 
-<span class="text-brand">$</span> <span class="text-zinc-100">gplay releases rollout --track production \</span>
-<span class="text-zinc-100">    --to 0.10 --confirm</span></code></pre>
+<span class="text-brand">$</span> <span class="text-zinc-100">{demoSession[2].cmd}</span></code></pre>
           </div>
         </div>
 
@@ -462,8 +483,21 @@ locales:      [en-US fr-FR]`;
         <div class="mt-8 flex flex-col gap-3">
           {faq.map((f) => (
             <details class="group rounded-lg border border-border bg-surface-panel p-5 open:border-border-strong">
-              <summary class="cursor-pointer list-none font-semibold text-fg marker:content-none group-open:text-accent">
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold text-fg marker:content-none group-open:text-accent">
                 {f.q}
+                <svg
+                  aria-hidden="true"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="shrink-0 text-fg-muted transition-transform duration-200 group-open:rotate-180 group-open:text-accent"
+                  ><path d="m6 9 6 6 6-6" /></svg
+                >
               </summary>
               <p class="mb-0 mt-3 leading-relaxed text-fg-muted">{f.a}</p>
             </details>
@@ -549,6 +583,74 @@ locales:      [en-US fr-FR]`;
         );
         window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
           if (load() === 'auto') apply('auto');
+        });
+      })();
+    </script>
+
+    <!-- Hero terminal typing animation. Progressive enhancement over the
+         server-rendered session (single source: demoSession): replays the same
+         commands with a typed effect, once, then leaves a blinking cursor.
+         No JS or prefers-reduced-motion → the static session stays as-is.
+         The <pre> height is locked before clearing so nothing shifts (CLS 0),
+         and the container's role="img" aria-label keeps the announced content
+         stable throughout. -->
+    <script is:inline define:vars={{ session: demoSession }}>
+      (() => {
+        const pre = document.getElementById('demo-pre');
+        const code = document.getElementById('demo-code');
+        if (!pre || !code) return;
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+        const finalHTML = code.innerHTML;
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const span = (className) => {
+          const el = document.createElement('span');
+          el.className = className;
+          return el;
+        };
+
+        const run = async () => {
+          pre.style.minHeight = `${pre.offsetHeight}px`;
+          code.textContent = '';
+          const cursor = span('demo-cursor');
+          code.appendChild(cursor);
+          // Insert everything before the cursor so it always trails the output.
+          const put = (node) => code.insertBefore(node, cursor);
+
+          const type = async (target, text) => {
+            for (const char of text) {
+              target.textContent += char;
+              await sleep(14 + Math.random() * 24);
+            }
+          };
+
+          await sleep(500);
+          for (const [index, entry] of session.entries()) {
+            if (index > 0) {
+              put(document.createTextNode('\n'));
+              await sleep(700);
+            }
+            const prompt = span('text-brand');
+            prompt.textContent = '$';
+            put(prompt);
+            put(document.createTextNode(' '));
+            const cmd = span('text-zinc-100');
+            put(cmd);
+            await type(cmd, entry.cmd);
+            await sleep(350);
+            put(document.createTextNode('\n'));
+            if (entry.out) {
+              const out = span('text-zinc-400');
+              out.textContent = entry.out;
+              put(out);
+              put(document.createTextNode('\n'));
+            }
+          }
+        };
+
+        run().catch(() => {
+          // Any surprise mid-animation: fall back to the full static session.
+          code.innerHTML = finalHTML;
         });
       })();
     </script>

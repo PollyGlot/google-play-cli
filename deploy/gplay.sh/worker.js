@@ -155,6 +155,17 @@ async function handle(request, env) {
   // Static site (landing + docs). The assets binding handles HTML routing,
   // trailing slashes, and the 404 page (see wrangler.toml [assets]).
   const response = await env.ASSETS.fetch(request);
+
+  // Astro's /_astro/* assets are content-hashed: a changed file gets a new
+  // URL, so the old one can be cached forever. Without this override the
+  // asset binding's default (`max-age=0, must-revalidate`) forces a
+  // revalidation round-trip — and a Worker invocation — per asset per view.
+  if (pathname.startsWith("/_astro/") && response.ok) {
+    const immutable = new Response(response.body, response);
+    immutable.headers.set("cache-control", "public, max-age=31536000, immutable");
+    return immutable;
+  }
+
   return decorateDocument(response);
 }
 
