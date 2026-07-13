@@ -109,6 +109,7 @@ androidpublisher.monetization.subscriptions.patch	PATCH	androidpublisher/v3/appl
 androidpublisher.orders.batchget	GET	androidpublisher/v3/applications/{packageName}/orders:batchGet
 androidpublisher.orders.get	GET	androidpublisher/v3/applications/{packageName}/orders/{orderId}
 androidpublisher.orders.refund	POST	androidpublisher/v3/applications/{packageName}/orders/{orderId}:refund
+androidpublisher.orders.reviewrefund	POST	androidpublisher/v3/applications/{packageName}/orders/{orderId}:reviewrefund
 androidpublisher.purchases.products.acknowledge	POST	androidpublisher/v3/applications/{packageName}/purchases/products/{productId}/tokens/{token}:acknowledge
 androidpublisher.purchases.products.consume	POST	androidpublisher/v3/applications/{packageName}/purchases/products/{productId}/tokens/{token}:consume
 androidpublisher.purchases.products.get	GET	androidpublisher/v3/applications/{packageName}/purchases/products/{productId}/tokens/{token}
