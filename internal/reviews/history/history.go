@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf16"
 )
@@ -179,4 +180,78 @@ func NormalizeMonth(month string) (string, error) {
 		return "", fmt.Errorf("invalid --month %q: month must be 01..12", month)
 	}
 	return m[1] + m[2], nil
+}
+
+// MonthRange returns every YYYYMM from `from` to `to` inclusive (both given in
+// the --from/--to YYYY-MM shape). It rejects a malformed bound or an inverted
+// range (from after to), naming the offending flag so the error points at what
+// the operator typed. The result is chronologically ordered and, on success,
+// never empty (from == to yields a single month).
+func MonthRange(from, to string) ([]string, error) {
+	fn, err := NormalizeMonth(from)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --from %q: want YYYY-MM (e.g. 2026-06)", from)
+	}
+	tn, err := NormalizeMonth(to)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --to %q: want YYYY-MM (e.g. 2026-06)", to)
+	}
+	// YYYYMM sorts lexicographically the same as chronologically.
+	if fn > tn {
+		return nil, fmt.Errorf("--from %s is after --to %s", from, to)
+	}
+	fy, fm := splitYYYYMM(fn)
+	ty, tm := splitYYYYMM(tn)
+	var out []string
+	for y, mo := fy, fm; y < ty || (y == ty && mo <= tm); {
+		out = append(out, fmt.Sprintf("%04d%02d", y, mo))
+		if mo++; mo > 12 {
+			mo, y = 1, y+1
+		}
+	}
+	return out, nil
+}
+
+// splitYYYYMM splits a validated YYYYMM string into its year and month ints.
+func splitYYYYMM(yyyymm string) (year, month int) {
+	year, _ = strconv.Atoi(yyyymm[:4])
+	month, _ = strconv.Atoi(yyyymm[4:])
+	return year, month
+}
+
+// Merge coalesces rows gathered across several monthly reports into one result
+// set. Rows sharing a ReviewLink — the review's stable identity — collapse to the
+// single occurrence with the greatest Review Last Update Millis, so a review
+// re-exported (edited) in a later month wins over its earlier snapshot. Rows with
+// no ReviewLink cannot be identified across files, so each is kept verbatim. The
+// result is sorted chronologically by review submit time; the sort is stable, so
+// rows with equal submit millis keep their first-seen order.
+func Merge(rows []Row) []Row {
+	out := make([]Row, 0, len(rows))
+	pos := make(map[string]int, len(rows)) // ReviewLink -> index in out
+	for _, r := range rows {
+		if r.ReviewLink == "" {
+			out = append(out, r)
+			continue
+		}
+		if i, seen := pos[r.ReviewLink]; seen {
+			if millis(r.ReviewLastUpdateMillisSinceEpoch) >= millis(out[i].ReviewLastUpdateMillisSinceEpoch) {
+				out[i] = r
+			}
+			continue
+		}
+		pos[r.ReviewLink] = len(out)
+		out = append(out, r)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return millis(out[i].ReviewSubmitMillisSinceEpoch) < millis(out[j].ReviewSubmitMillisSinceEpoch)
+	})
+	return out
+}
+
+// millis parses an epoch-millis column to int64; a blank or malformed value
+// sorts as 0 (the report leaves the millis columns optional).
+func millis(s string) int64 {
+	n, _ := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	return n
 }

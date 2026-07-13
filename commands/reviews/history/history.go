@@ -12,6 +12,7 @@ package history
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -32,6 +33,8 @@ import (
 type Input struct {
 	Package     string
 	Month       string // --month YYYY-MM; "" = the latest month present in the bucket
+	From        string // --from YYYY-MM; range start (mutually exclusive with --month)
+	To          string // --to YYYY-MM; range end (mutually exclusive with --month)
 	Bucket      string // --bucket override; "" = derive from the developer-id
 	DeveloperID string // --developer-id (feeds the default bucket name only)
 	Columns     string // --columns override; "" = the default set
@@ -182,6 +185,13 @@ func classify(bucket string, err error) error {
 	return err
 }
 
+// isNotFound reports whether err is a 404 from the reporting bucket — a month
+// with no published report. In range mode that is a skipped WARN, not a failure.
+func isNotFound(err error) bool {
+	var apiErr *api.Error
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
+}
+
 // Run resolves the package, the reporting bucket, and the target month, fetches
 // the monthly reviews CSV report, parses it (UTF-16 → UTF-8, header-driven), and
 // returns the rendered rows.
@@ -217,12 +227,30 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		bucket = "pubsite_prod_rev_" + devID
 	}
 
-	// Normalize --month up front so a bad value fails before any network I/O.
-	var yyyymm string
-	if in.Month != "" {
+	// --month (single) and --from/--to (range) are mutually exclusive addressing
+	// axes: one names a month, the other a span. Both together is ambiguous.
+	rangeMode := in.From != "" || in.To != ""
+	if rangeMode && in.Month != "" {
+		return nil, exit.Usagef("--month and --from/--to are mutually exclusive")
+	}
+	if rangeMode && (in.From == "" || in.To == "") {
+		return nil, exit.Usagef("--from and --to must be given together")
+	}
+
+	// Resolve the months to read up front so a malformed flag fails before any
+	// network I/O. An empty list means "default": list the bucket for the latest.
+	var months []string
+	switch {
+	case rangeMode:
+		if months, err = history.MonthRange(in.From, in.To); err != nil {
+			return nil, exit.Usagef("%s", err)
+		}
+	case in.Month != "":
+		var yyyymm string
 		if yyyymm, err = history.NormalizeMonth(in.Month); err != nil {
 			return nil, exit.Usagef("%s", err)
 		}
+		months = []string{yyyymm}
 	}
 
 	hc, err := rc.AuthedClient()
@@ -230,8 +258,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// No --month: list the package's reports and pick the latest month.
-	if yyyymm == "" {
+	// Neither --month nor a range: list the package's reports, pick the latest.
+	if len(months) == 0 {
 		objs, err := gcs.ListObjects(rc.Ctx, hc, bucket, history.ReviewsPrefix(pkg))
 		if err != nil {
 			return nil, classify(bucket, err)
@@ -240,21 +268,42 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		for i, o := range objs {
 			names[i] = o.Name
 		}
-		if yyyymm = history.LatestMonth(pkg, names); yyyymm == "" {
+		latest := history.LatestMonth(pkg, names)
+		if latest == "" {
 			return nil, &noReportsError{pkg: pkg, bucket: bucket}
 		}
+		months = []string{latest}
 	}
 
-	raw, err := gcs.FetchObject(rc.Ctx, hc, bucket, history.ObjectName(pkg, yyyymm))
-	if err != nil {
-		return nil, classify(bucket, err)
+	// Fetch each month. In range mode a missing month (404) is a skipped stderr
+	// WARN — the range is a best-effort sweep over what Play actually published,
+	// not a demand that every month exist. Any other failure (e.g. 403) is fatal.
+	var all []history.Row
+	for _, m := range months {
+		raw, err := gcs.FetchObject(rc.Ctx, hc, bucket, history.ObjectName(pkg, m))
+		if err != nil {
+			if rangeMode && isNotFound(err) {
+				if rc.Stderr != nil {
+					_, _ = fmt.Fprintf(rc.Stderr, "WARN: no reviews report for %s-%s — skipped\n", m[:4], m[4:])
+				}
+				continue
+			}
+			return nil, classify(bucket, err)
+		}
+		rows, err := history.Parse(raw)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, rows...)
 	}
 
-	rows, err := history.Parse(raw)
-	if err != nil {
-		return nil, err
+	// A range spans month boundaries, so the same review can appear in two files;
+	// collapse duplicates (latest update wins) and order the merged set by submit
+	// time. A single month is already one coherent file — leave it verbatim.
+	if rangeMode {
+		all = history.Merge(all)
 	}
-	return Payload{Rows: rows, Columns: cols}, nil
+	return Payload{Rows: all, Columns: cols}, nil
 }
 
 // NewCommand returns the cobra command for `gplay reviews history`.
@@ -278,8 +327,12 @@ axis; override it with --bucket when the Console-issued URI differs (copy
 it with the Console's "Copy Cloud Storage URI" button).
 
 --month YYYY-MM selects one month; when omitted, the latest month present
-for the package is used. Default table columns: date, stars, locale,
-version, title, summary — override with --columns device,reply,...
+for the package is used. --from YYYY-MM --to YYYY-MM instead read every
+monthly report across the range and merge them into one result set (a
+review edited across the month boundary appears once, latest update
+winning; a month with no report is skipped with a WARN). --month and
+--from/--to are mutually exclusive. Default table columns: date, stars,
+locale, version, title, summary — override with --columns device,reply,...
 
 --output json emits the parsed rows as {"reviews":[...]} with stable
 lowerCamel field names (the documented ADR-0037 deviation: the upstream is
@@ -299,6 +352,8 @@ table.
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Month, "month", "", "month to read as YYYY-MM (default: the latest month present in the bucket)")
+	cmd.Flags().StringVar(&in.From, "from", "", "range start as YYYY-MM (with --to; mutually exclusive with --month)")
+	cmd.Flags().StringVar(&in.To, "to", "", "range end as YYYY-MM (with --from; mutually exclusive with --month)")
 	cmd.Flags().StringVar(&in.Bucket, "bucket", "", "Reporting bucket name override (default: pubsite_prod_rev_<developerId>)")
 	cmd.Flags().StringVar(&in.DeveloperID, "developer-id", "", "Play Console Developer account id used to derive the bucket (overrides the active Account's, env, and project-local)")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: "+defaultColumns+")")
