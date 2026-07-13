@@ -38,7 +38,7 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 ## Headline
 
-By method count, of the **~155 admin methods** across the four APIs:
+By method count, of the **~156 admin methods** across the four APIs:
 
 - **~92 shipped (~59%)** — essentially the entire *publish / first-release /
   team / observability* half plus the admin commerce-reads and games config
@@ -49,19 +49,20 @@ By method count, of the **~155 admin methods** across the four APIs:
   and **games #241** — achievements + leaderboards CRUD, ADR-0033).
 - **P0 queue now empty** — both ready-decomposed PRDs (orders #245, games #241)
   have shipped; the next work is the planned monetization block below.
-- **~64 methods remain**, of which **~54 are one coherent continent:
+- **~65 methods remain**, of which **~54 are one coherent continent:
   monetization** (subscriptions #51 + one-time products #293 + legacy IAP +
-  external transactions #295); the other ~10 are long-tail (`edits.apks`,
-  `systemapks`, voided purchases, the two reporting helpers). Monetization is the
-  single biggest unbuilt block and the honest answer to "are we near the end?":
-  **the commerce half is barely started.**
+  external transactions #295); the other ~11 are long-tail (`edits.apks`,
+  `systemapks`, voided purchases, `orders.reviewrefund` (#352, new 2026-07-13),
+  the two reporting helpers). Monetization is the single biggest unbuilt block
+  and the honest answer to "are we near the end?": **the commerce half is barely
+  started.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
   (issues #293–#296); `generatedapks` (#294) has since been grilled into PRD #299
   and **shipped** (slices #300–#301, PR #305).
 
 ---
 
-## `androidpublisher` v3 — 137 methods
+## `androidpublisher` v3 — 138 methods
 
 | Surface (resource) | Methods | State | gplay namespace / issue |
 |---|---|---|---|
@@ -83,7 +84,7 @@ By method count, of the **~155 admin methods** across the four APIs:
 | `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |
 | `grants` | 3 | ✅ | `team grants` |
-| `orders` | 3 | ✅ | `orders view <id>...` (`orders.get` single + `orders.batchget` batch) + `orders refund` (`orders.refund`, gated) — slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)/[#283](https://github.com/PollyGlot/google-play-cli/issues/283)/[#284](https://github.com/PollyGlot/google-play-cli/issues/284) ([#245](https://github.com/PollyGlot/google-play-cli/issues/245) / [ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
+| `orders` | 4 | ✅ | 3 ✅ — `orders view <id>...` (`orders.get` single + `orders.batchget` batch) + `orders refund` (`orders.refund`, gated) — slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)/[#283](https://github.com/PollyGlot/google-play-cli/issues/283)/[#284](https://github.com/PollyGlot/google-play-cli/issues/284) ([#245](https://github.com/PollyGlot/google-play-cli/issues/245) / [ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)); `orders.reviewrefund` (chargeback refund review, notification-token input) 🔵 [#352](https://github.com/PollyGlot/google-play-cli/issues/352) — newly surfaced 2026-07-13 (PR #351), to grill (slice vs park) |
 | `edits.apks` | 3 | ✅ | `upload` rides `releases upload` (`.apk` → `apks.upload`, slice [#330](https://github.com/PollyGlot/google-play-cli/issues/330) / [ADR-0036](adr/0036-apk-upload-rides-releases-upload.md)); `list` + `addexternallyhosted` excluded |
 | `inappproducts` (legacy IAP) | 9 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) |
 | `monetization.subscriptions` (+`basePlans`+`offers`) | 24 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (post-v1) |
