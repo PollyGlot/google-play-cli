@@ -92,7 +92,7 @@ By method count, of the **~155 admin methods** across the four APIs:
 | `externaltransactions` | 3 | 🔴 | [#295](https://github.com/PollyGlot/google-play-cli/issues/295) **parked** (2026-07-08) — alternative billing / DMA reporting, niche |
 | `generatedapks` | 2 | ✅ | `releases generated` (list/download) — [ADR-0034](adr/0034-generated-apks-binary-download-to-file.md), PRD [#299](https://github.com/PollyGlot/google-play-cli/issues/299) |
 | `systemapks.variants` | 4 | 🔴 | [#296](https://github.com/PollyGlot/google-play-cli/issues/296) (parked — niche OEM/preload) |
-| `purchases.voidedpurchases.list` | 1 | 🔵 | backlog → future commerce PRD ([ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
+| `purchases.voidedpurchases.list` | 1 | 🔵 | [#346](https://github.com/PollyGlot/google-play-cli/issues/346) (parked — refund/chargeback feed, deferred by [ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
 | `purchases.products` / `productsv2` | 4 | ⚫️ | runtime — token verification ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) |
 | `purchases.subscriptions` / `subscriptionsv2` | 10 | ⚫️ | runtime — token verification (ADR-0026) |
 
@@ -102,8 +102,8 @@ By method count, of the **~155 admin methods** across the four APIs:
 |---|---|---|---|
 | `vitals.*` (crashrate, anrrate, errors, slowstart, slowrendering, wakeups, wakelocks, lmk) | 18 | ✅ | `vitals` ([#49](https://github.com/PollyGlot/google-play-cli/issues/49)) |
 | `anomalies.list` | 1 | ✅ | `vitals anomalies` |
-| `apps.search` | 1 | 🔵 | discovery candidate (real `apps list`, [ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)) |
-| `apps.fetchReleaseFilterOptions` | 1 | 🔴 | minor helper — fold into `vitals` if release-keyed filters are needed |
+| `apps.search` | 1 | 🔵 | [#347](https://github.com/PollyGlot/google-play-cli/issues/347) — server-authoritative `apps list` vs local registry ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md)) |
+| `apps.fetchReleaseFilterOptions` | 1 | 🔴 | [#348](https://github.com/PollyGlot/google-play-cli/issues/348) (parked — minor helper, fold into `vitals` if release-keyed filters are needed) |
 
 ## `playcustomapp` v1 — 1 method
 
