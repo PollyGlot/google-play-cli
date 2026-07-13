@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -330,6 +331,216 @@ func TestPayload_JSON_emitsParsedRows(t *testing.T) {
 	}
 	if env.Reviews[0].ReviewText != "Très bonne app 🎉" {
 		t.Errorf("non-ASCII review text not passed through: %q", env.Reviews[0].ReviewText)
+	}
+}
+
+// --- range mode (--from/--to) -----------------------------------------------
+
+// monthRT serves a per-month CSV for the range tests: a month present in bodies
+// returns its report; a month absent returns 404 — a gap Play never published.
+type monthRT struct {
+	mu     sync.Mutex
+	calls  []string
+	bodies map[string][]byte // YYYYMM -> UTF-16 CSV report
+}
+
+var monthInPath = regexp.MustCompile(`_(\d{6})\.csv`)
+
+func (r *monthRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+		return resp(200, []byte(`{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`)), nil
+	}
+	path := req.URL.EscapedPath()
+	r.mu.Lock()
+	r.calls = append(r.calls, path)
+	r.mu.Unlock()
+	m := monthInPath.FindStringSubmatch(path)
+	if m == nil {
+		return resp(200, []byte(`{"items":[]}`)), nil
+	}
+	if body, ok := r.bodies[m[1]]; ok {
+		return resp(200, body), nil
+	}
+	return resp(404, []byte(`{"error":{"code":404,"message":"no such object"}}`)), nil
+}
+
+// oneReviewCSV builds a minimal single-row report carrying the columns Merge
+// needs: submit millis (sort key), last-update millis (dedup tiebreak), link
+// (identity), and a text marker.
+func oneReviewCSV(link, submitMillis, updateMillis, text string) string {
+	return "Package Name,Review Submit Millis Since Epoch,Review Last Update Millis Since Epoch,Review Text,Review Link\n" +
+		"com.example.app," + submitMillis + "," + updateMillis + ",\"" + text + "\"," + link + "\n"
+}
+
+// TestRun_range_fetchesAllMonths_mergedSorted covers the primary range criteria:
+// every month in --from..--to is fetched, rows merge into one set sorted by
+// submit time, and a review re-exported in a later month collapses to one row
+// with the latest update winning.
+func TestRun_range_fetchesAllMonths_mergedSorted(t *testing.T) {
+	rt := &monthRT{bodies: map[string][]byte{
+		"202601": utf16LE(oneReviewCSV("https://play.google.com/r/1", "1000", "1000", "jan")),
+		"202602": utf16LE(oneReviewCSV("https://play.google.com/r/2", "3000", "3000", "feb")),
+		// March re-exports r/1 (edited, higher update millis) plus a fresh r/3.
+		"202603": utf16LE(oneReviewCSV("https://play.google.com/r/1", "1000", "2000", "jan-edited") +
+			"com.example.app,2000,2000,\"mar\",https://play.google.com/r/3\n"),
+	}}
+	rc, _, _, _ := newRC(t, rt)
+
+	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// All three months fetched.
+	for _, m := range []string{"202601", "202602", "202603"} {
+		if !fetchedMonth(rt.calls, m) {
+			t.Errorf("month %s not fetched; calls=%v", m, rt.calls)
+		}
+	}
+
+	rows := r.(Payload).Rows
+	if len(rows) != 3 {
+		t.Fatalf("want 3 merged rows (r/1 deduped), got %d: %+v", len(rows), rows)
+	}
+	// Sorted by submit millis: r/1 (1000), r/3 (2000), r/2 (3000).
+	wantLinks := []string{"https://play.google.com/r/1", "https://play.google.com/r/3", "https://play.google.com/r/2"}
+	for i, want := range wantLinks {
+		if rows[i].ReviewLink != want {
+			t.Errorf("row %d link = %q, want %q (sort by submit)", i, rows[i].ReviewLink, want)
+		}
+	}
+	// Latest update wins for r/1.
+	if rows[0].ReviewText != "jan-edited" {
+		t.Errorf("dedup should keep latest update, got %q", rows[0].ReviewText)
+	}
+
+	// --output json emits the merged set.
+	var buf bytes.Buffer
+	if err := output.Render(&buf, output.FormatJSON, r.Renderers()); err != nil {
+		t.Fatalf("Render JSON: %v", err)
+	}
+	var env struct {
+		Reviews []struct {
+			ReviewLink string `json:"reviewLink"`
+		} `json:"reviews"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("JSON envelope: %v\n%s", err, buf.String())
+	}
+	if len(env.Reviews) != 3 || env.Reviews[0].ReviewLink != wantLinks[0] {
+		t.Errorf("JSON not the merged, sorted set: %s", buf.String())
+	}
+}
+
+func fetchedMonth(calls []string, yyyymm string) bool {
+	for _, c := range calls {
+		if strings.Contains(c, "_"+yyyymm+".csv") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRun_range_missingMonth_warnsNotFatal: a month with no report inside the
+// range is skipped with a stderr WARN, not a failure.
+func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
+	rt := &monthRT{bodies: map[string][]byte{
+		"202601": utf16LE(oneReviewCSV("https://play.google.com/r/1", "1000", "1000", "jan")),
+		// 202602 absent → 404.
+		"202603": utf16LE(oneReviewCSV("https://play.google.com/r/3", "3000", "3000", "mar")),
+	}}
+	rc, _, _, stderr := newRC(t, rt)
+
+	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
+	if err != nil {
+		t.Fatalf("a missing month must not fail the range: %v", err)
+	}
+	if got := len(r.(Payload).Rows); got != 2 {
+		t.Fatalf("want 2 rows (jan+mar, feb skipped), got %d", got)
+	}
+	if w := stderr.String(); !strings.Contains(w, "WARN") || !strings.Contains(w, "2026-02") {
+		t.Errorf("missing month should WARN on stderr naming 2026-02; got %q", w)
+	}
+}
+
+// TestRun_range_allMissing_exit30: a range where every month 404s (e.g. a wrong
+// package) is the "no reports" condition — exit 30, not a silent empty success.
+func TestRun_range_allMissing_exit30(t *testing.T) {
+	rt := &monthRT{bodies: map[string][]byte{}} // nothing published → every month 404
+	rc, _, _, _ := newRC(t, rt)
+
+	_, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
+	if code := exitCodeOf(t, err); code != 30 {
+		t.Fatalf("an all-missing range should be exit 30, got %d (err: %v)", code, err)
+	}
+}
+
+// TestRun_singleMonthRange_verbatimLikeMonth: --from X --to X reads exactly one
+// file and must return it in file order, identical to --month X — the merge/sort
+// step only applies when more than one report is actually read.
+func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
+	// Two rows whose submit millis DESCEND, so a submit-time sort would reorder
+	// them; verbatim file order must be preserved.
+	csv := "Package Name,Review Submit Millis Since Epoch,Review Text,Review Link\n" +
+		"com.example.app,2000,\"first\",https://play.google.com/r/a\n" +
+		"com.example.app,1000,\"second\",https://play.google.com/r/b\n"
+	rt := &monthRT{bodies: map[string][]byte{"202601": utf16LE(csv)}}
+	rc, _, _, _ := newRC(t, rt)
+
+	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-01"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	rows := r.(Payload).Rows
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	// File order preserved (NOT sorted by submit) — same as --month would give.
+	if rows[0].ReviewText != "first" || rows[1].ReviewText != "second" {
+		t.Errorf("single-month range should be verbatim like --month, got %q then %q", rows[0].ReviewText, rows[1].ReviewText)
+	}
+}
+
+// TestRun_monthAndRange_exit2_noNetwork: --month with --from/--to is a usage
+// error (exit 2) caught before any network I/O.
+func TestRun_monthAndRange_exit2_noNetwork(t *testing.T) {
+	rt := &monthRT{}
+	rc, _, _, _ := newRC(t, rt)
+
+	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06", From: "2026-01", To: "2026-03"})
+	if code := exitCodeOf(t, err); code != 2 {
+		t.Fatalf("--month + range should be exit 2, got %d", code)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("usage error reached the network; calls=%v", rt.calls)
+	}
+}
+
+// TestRun_halfRange_exit2: --from without --to (or vice versa) is a usage error.
+func TestRun_halfRange_exit2(t *testing.T) {
+	rt := &monthRT{}
+	rc, _, _, _ := newRC(t, rt)
+
+	if _, err := Run(rc, Input{Package: "com.example.app", From: "2026-01"}); exitCodeOf(t, err) != 2 {
+		t.Errorf("--from without --to should be exit 2")
+	}
+	if _, err := Run(rc, Input{Package: "com.example.app", To: "2026-03"}); exitCodeOf(t, err) != 2 {
+		t.Errorf("--to without --from should be exit 2")
+	}
+}
+
+// TestRun_badRange_exit2_noNetwork: an inverted or malformed range fails as
+// usage before any I/O.
+func TestRun_badRange_exit2_noNetwork(t *testing.T) {
+	rt := &monthRT{}
+	rc, _, _, _ := newRC(t, rt)
+
+	_, err := Run(rc, Input{Package: "com.example.app", From: "2026-03", To: "2026-01"})
+	if code := exitCodeOf(t, err); code != 2 {
+		t.Fatalf("inverted range should be exit 2, got %d", code)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("bad range reached the network; calls=%v", rt.calls)
 	}
 }
 
