@@ -182,11 +182,19 @@ func NormalizeMonth(month string) (string, error) {
 	return m[1] + m[2], nil
 }
 
+// maxRangeMonths caps how many months a single --from/--to sweep may span. Each
+// month is one sequential GCS fetch, so an unbounded range (e.g. a mistyped year
+// like 1026 that still satisfies the YYYY-MM regex) would fire thousands of
+// requests; the cap turns that fat-finger into a fast usage error instead. Ten
+// years is far more history than Play's monthly reports ever cover.
+const maxRangeMonths = 120
+
 // MonthRange returns every YYYYMM from `from` to `to` inclusive (both given in
-// the --from/--to YYYY-MM shape). It rejects a malformed bound or an inverted
-// range (from after to), naming the offending flag so the error points at what
-// the operator typed. The result is chronologically ordered and, on success,
-// never empty (from == to yields a single month).
+// the --from/--to YYYY-MM shape). It rejects a malformed bound, an inverted
+// range (from after to), or a span wider than maxRangeMonths, naming the
+// offending flag so the error points at what the operator typed. The result is
+// chronologically ordered and, on success, never empty (from == to yields a
+// single month).
 func MonthRange(from, to string) ([]string, error) {
 	fn, err := NormalizeMonth(from)
 	if err != nil {
@@ -202,6 +210,9 @@ func MonthRange(from, to string) ([]string, error) {
 	}
 	fy, fm := splitYYYYMM(fn)
 	ty, tm := splitYYYYMM(tn)
+	if span := (ty-fy)*12 + (tm - fm) + 1; span > maxRangeMonths {
+		return nil, fmt.Errorf("range %s..%s spans %d months, more than the %d-month maximum", from, to, span, maxRangeMonths)
+	}
 	var out []string
 	for y, mo := fy, fm; y < ty || (y == ty && mo <= tm); {
 		out = append(out, fmt.Sprintf("%04d%02d", y, mo))
@@ -227,26 +238,36 @@ func splitYYYYMM(yyyymm string) (year, month int) {
 // result is sorted chronologically by review submit time; the sort is stable, so
 // rows with equal submit millis keep their first-seen order.
 func Merge(rows []Row) []Row {
-	out := make([]Row, 0, len(rows))
+	// Decorate each row with its parsed submit millis once, so the sort below
+	// compares precomputed int64s instead of re-parsing the same strings on
+	// every comparison (O(n) parses, not O(n log n)).
+	type keyed struct {
+		row    Row
+		submit int64
+	}
+	out := make([]keyed, 0, len(rows))
 	pos := make(map[string]int, len(rows)) // ReviewLink -> index in out
 	for _, r := range rows {
+		k := keyed{row: r, submit: millis(r.ReviewSubmitMillisSinceEpoch)}
 		if r.ReviewLink == "" {
-			out = append(out, r)
+			out = append(out, k)
 			continue
 		}
 		if i, seen := pos[r.ReviewLink]; seen {
-			if millis(r.ReviewLastUpdateMillisSinceEpoch) >= millis(out[i].ReviewLastUpdateMillisSinceEpoch) {
-				out[i] = r
+			if millis(r.ReviewLastUpdateMillisSinceEpoch) >= millis(out[i].row.ReviewLastUpdateMillisSinceEpoch) {
+				out[i] = k
 			}
 			continue
 		}
 		pos[r.ReviewLink] = len(out)
-		out = append(out, r)
+		out = append(out, k)
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		return millis(out[i].ReviewSubmitMillisSinceEpoch) < millis(out[j].ReviewSubmitMillisSinceEpoch)
-	})
-	return out
+	sort.SliceStable(out, func(i, j int) bool { return out[i].submit < out[j].submit })
+	merged := make([]Row, len(out))
+	for i := range out {
+		merged[i] = out[i].row
+	}
+	return merged
 }
 
 // millis parses an epoch-millis column to int64; a blank or malformed value

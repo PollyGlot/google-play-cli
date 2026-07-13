@@ -278,7 +278,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Fetch each month. In range mode a missing month (404) is a skipped stderr
 	// WARN — the range is a best-effort sweep over what Play actually published,
 	// not a demand that every month exist. Any other failure (e.g. 403) is fatal.
+	// read counts the months that actually yielded a report.
 	var all []history.Row
+	read := 0
 	for _, m := range months {
 		raw, err := gcs.FetchObject(rc.Ctx, hc, bucket, history.ObjectName(pkg, m))
 		if err != nil {
@@ -290,6 +292,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			}
 			return nil, classify(bucket, err)
 		}
+		read++
 		rows, err := history.Parse(raw)
 		if err != nil {
 			return nil, err
@@ -297,10 +300,20 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		all = append(all, rows...)
 	}
 
-	// A range spans month boundaries, so the same review can appear in two files;
-	// collapse duplicates (latest update wins) and order the merged set by submit
-	// time. A single month is already one coherent file — leave it verbatim.
-	if rangeMode {
+	// A range that matched no report at all — every month 404'd, typically a
+	// wrong --package or --bucket — is the same "no reports" condition the
+	// single-month and default paths raise (exit 30), not a silent empty success.
+	if rangeMode && read == 0 {
+		return nil, &noReportsError{pkg: pkg, bucket: bucket}
+	}
+
+	// Merge only when more than one report was actually read: multiple files can
+	// repeat a review across the month boundary, so they need cross-file dedup
+	// (latest update wins) and a submit-time order. A lone report — a single
+	// month, a degenerate --from X --to X, or a range where only one month
+	// existed — is one coherent file, left verbatim exactly like --month so the
+	// two spellings of "one month" agree.
+	if read > 1 {
 		all = history.Merge(all)
 	}
 	return Payload{Rows: all, Columns: cols}, nil

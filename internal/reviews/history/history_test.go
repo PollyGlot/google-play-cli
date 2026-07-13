@@ -162,6 +162,19 @@ func TestMonthRange(t *testing.T) {
 			t.Errorf("MonthRange(%q,%q) should have errored", bad[0], bad[1])
 		}
 	}
+
+	// A span wider than the cap (e.g. a mistyped year) is rejected, not expanded
+	// into thousands of months.
+	if _, err := MonthRange("1026-01", "2026-12"); err == nil {
+		t.Error("an over-wide range should error, not expand to thousands of months")
+	}
+	// Exactly the cap is allowed; one past it is not.
+	if got, err := MonthRange("2020-01", "2029-12"); err != nil || len(got) != 120 {
+		t.Errorf("120-month span should be allowed, got len=%d err=%v", len(got), err)
+	}
+	if _, err := MonthRange("2020-01", "2030-01"); err == nil {
+		t.Error("121-month span should exceed the cap")
+	}
 }
 
 func TestMerge_dedupLastUpdateWins_sortedBySubmit(t *testing.T) {

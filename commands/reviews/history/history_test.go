@@ -463,6 +463,44 @@ func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 	}
 }
 
+// TestRun_range_allMissing_exit30: a range where every month 404s (e.g. a wrong
+// package) is the "no reports" condition — exit 30, not a silent empty success.
+func TestRun_range_allMissing_exit30(t *testing.T) {
+	rt := &monthRT{bodies: map[string][]byte{}} // nothing published → every month 404
+	rc, _, _, _ := newRC(t, rt)
+
+	_, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
+	if code := exitCodeOf(t, err); code != 30 {
+		t.Fatalf("an all-missing range should be exit 30, got %d (err: %v)", code, err)
+	}
+}
+
+// TestRun_singleMonthRange_verbatimLikeMonth: --from X --to X reads exactly one
+// file and must return it in file order, identical to --month X — the merge/sort
+// step only applies when more than one report is actually read.
+func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
+	// Two rows whose submit millis DESCEND, so a submit-time sort would reorder
+	// them; verbatim file order must be preserved.
+	csv := "Package Name,Review Submit Millis Since Epoch,Review Text,Review Link\n" +
+		"com.example.app,2000,\"first\",https://play.google.com/r/a\n" +
+		"com.example.app,1000,\"second\",https://play.google.com/r/b\n"
+	rt := &monthRT{bodies: map[string][]byte{"202601": utf16LE(csv)}}
+	rc, _, _, _ := newRC(t, rt)
+
+	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-01"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	rows := r.(Payload).Rows
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	// File order preserved (NOT sorted by submit) — same as --month would give.
+	if rows[0].ReviewText != "first" || rows[1].ReviewText != "second" {
+		t.Errorf("single-month range should be verbatim like --month, got %q then %q", rows[0].ReviewText, rows[1].ReviewText)
+	}
+}
+
 // TestRun_monthAndRange_exit2_noNetwork: --month with --from/--to is a usage
 // error (exit 2) caught before any network I/O.
 func TestRun_monthAndRange_exit2_noNetwork(t *testing.T) {
