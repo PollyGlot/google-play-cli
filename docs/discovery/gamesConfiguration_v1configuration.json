@@ -382,7 +382,7 @@
       }
     }
   },
-  "revision": "20260604",
+  "revision": "20260702",
   "rootUrl": "https://gamesconfiguration.googleapis.com/",
   "schemas": {
     "AchievementConfiguration": {

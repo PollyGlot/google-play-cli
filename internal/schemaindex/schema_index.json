@@ -1,5 +1,5 @@
 {
-  "revision": "20260702",
+  "revision": "20260706",
   "methods": {
     "androidpublisher.applications.dataSafety": {
       "httpMethod": "POST",
@@ -3127,6 +3127,28 @@
         }
       ]
     },
+    "androidpublisher.orders.reviewrefund": {
+      "httpMethod": "POST",
+      "path": "applications/{packageName}/orders/{orderId}:reviewrefund",
+      "description": "Provide refund preference and purchase usage for a chargeback request",
+      "parameters": [
+        {
+          "name": "orderId",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The order ID provided to the user when the subscription or in-app order was purchased."
+        },
+        {
+          "name": "packageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The package name of the application for which this subscription or in-app item was purchased (for example, 'com.some.thing')."
+        }
+      ],
+      "request": "OrdersReviewRefundRequest"
+    },
     "androidpublisher.purchases.products.acknowledge": {
       "httpMethod": "POST",
       "path": "applications/{packageName}/purchases/products/{productId}/tokens/{token}:acknowledge",
@@ -4933,6 +4955,42 @@
         }
       }
     },
+    "ApiservingMcpMcpToolVisibility": {
+      "description": "Profile describing the visibility restriction of an MCP tool. Key: \"google.com/tool.profiles/visibility.restriction\"",
+      "properties": {
+        "fieldVisibility": {
+          "$ref": "ApiservingMcpMcpToolVisibilityFieldVisibility",
+          "repeated": true,
+          "description": "A list of field-level visibility restrictions."
+        },
+        "visibilityEnforcementStrategy": {
+          "type": "string",
+          "enum": [
+            "VISIBILITY_ENFORCEMENT_STRATEGY_UNSPECIFIED",
+            "COMBINE",
+            "OVERRIDE"
+          ],
+          "description": "The strategy used to enforce visibility restrictions. DO NOT USE. This field is not yet implemented."
+        },
+        "visibilityRestriction": {
+          "type": "string",
+          "description": "The visibility restriction labels for the tool itself (e.g., \"PRODUCER_DEFINED_PREVIEW\"). Multiple labels can be provided as a comma-separated string."
+        }
+      }
+    },
+    "ApiservingMcpMcpToolVisibilityFieldVisibility": {
+      "description": "Visibility rules for individual tool parameters (fields). This allows producers to hide specific fields in tools/list and tools/call.",
+      "properties": {
+        "restriction": {
+          "type": "string",
+          "description": "The visibility restriction labels for this field (comma-separated)."
+        },
+        "selector": {
+          "type": "string",
+          "description": "The name of the parameter in the input_schema or output_schema."
+        }
+      }
+    },
     "Apk": {
       "description": "Information about an APK. The resource for ApksService.",
       "properties": {
@@ -5769,6 +5827,27 @@
         }
       }
     },
+    "CoarseLocation": {
+      "description": "Coarse Geographic location details for where the consumption happened.",
+      "properties": {
+        "administrativeArea": {
+          "type": "string",
+          "description": "Optional. Highest administrative subdivision which is used for postal addresses of a country or region. For example, this can be a state, a province, an oblast, or a prefecture. For Spain, this is the province and not the autonomous community (for example, \"Barcelona\" and not \"Catalonia\"). Many countries don't use an administrative area in postal addresses. For example, in Switzerland, this should be left unpopulated."
+        },
+        "locality": {
+          "type": "string",
+          "description": "Optional. Generally refers to the city or town portion of the address. Examples: US city, IT comune, UK post town. In regions of the world where localities are not well defined or do not fit into this structure well, leave `locality` empty."
+        },
+        "regionCode": {
+          "type": "string",
+          "description": "Required. [CLDR region code](https://cldr.unicode.org/) of the country/region of the address. This value is never inferred and you must ensure the value is correct. Example: \"CH\" for Switzerland."
+        },
+        "sublocality": {
+          "type": "string",
+          "description": "Optional. Sublocality of the address. For example, this can be a neighborhood, borough, or district. For most addresses, you can omit this."
+        }
+      }
+    },
     "Comment": {
       "description": "An entry of conversation between user and developer.",
       "properties": {
@@ -5779,6 +5858,35 @@
         "userComment": {
           "$ref": "UserComment",
           "description": "A comment from a user."
+        }
+      }
+    },
+    "ConsumptionUsageEvent": {
+      "description": "List of events, each representing an instance where the user consumed or used the purchased item or service.",
+      "properties": {
+        "consumptionItemDescription": {
+          "type": "string",
+          "description": "Optional. Free form text that allows developers to provide more info on the item consumed. Maximum length is 5000 characters."
+        },
+        "consumptionTime": {
+          "type": "string",
+          "description": "Optional. Time when the user consumed, used, downloaded, opened, or streamed the content."
+        },
+        "ipAddress": {
+          "type": "string",
+          "description": "Optional. The IP address from which the consumption occurred."
+        },
+        "location": {
+          "$ref": "CoarseLocation",
+          "description": "Optional. Geographic location where the consumption occurred."
+        },
+        "obfuscatedAccountId": {
+          "type": "string",
+          "description": "Optional. Obfuscated string that is uniquely associated with the purchaser's user account in the app. https://developer.android.com/reference/com/android/billingclient/api/BillingFlowParams.Builder#setObfuscatedAccountId(java.lang.String)"
+        },
+        "obfuscatedProfileId": {
+          "type": "string",
+          "description": "Optional. Obfuscated string that is uniquely associated with the purchaser's user profile in the app. https://developer.android.com/reference/com/android/billingclient/api/BillingFlowParams.Builder#setObfuscatedProfileId(java.lang.String)"
         }
       }
     },
@@ -9436,6 +9544,38 @@
         "refundEvent": {
           "$ref": "RefundEvent",
           "description": "Details of when the order was fully refunded."
+        }
+      }
+    },
+    "OrdersReviewRefundRequest": {
+      "description": "Request for the orders.reviewrefund API.",
+      "properties": {
+        "consumptionPercentageMilliunits": {
+          "type": "integer",
+          "description": "Optional. Percentage of the In-App purchase the customer consumed, in milliunits. Minimum: 0 Maximum: 100,000. For paid apps, this can be omitted. Example : 45200 represents 45.2%."
+        },
+        "consumptionUsageEvents": {
+          "$ref": "ConsumptionUsageEvent",
+          "repeated": true,
+          "description": "Optional. List of events, each representing an instance where the user consumed or used the purchased item or service. Lists with over 1000 items will be rejected."
+        },
+        "pendingRefundToken": {
+          "type": "string",
+          "description": "Required. The pending refund token included in the pending refund review notification."
+        },
+        "refundPreference": {
+          "type": "string",
+          "enum": [
+            "REFUND_PREFERENCE_UNSPECIFIED",
+            "DECLINE",
+            "APPROVE",
+            "NEUTRAL"
+          ],
+          "description": "Required. Indicates your preference, based on your operational logic, as to whether the Play Store should grant the refund."
+        },
+        "sampleContentProvided": {
+          "type": "boolean",
+          "description": "Required. Indicates whether you provided a free sample, trial, or information about the functionality prior to the purchase."
         }
       }
     },
