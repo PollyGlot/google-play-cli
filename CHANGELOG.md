@@ -5,6 +5,13 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0](https://github.com/PollyGlot/google-play-cli/compare/v0.14.0...v0.15.0) (2026-07-13)
+
+
+### Features
+
+* **reviews:** reviews history --from/--to range aggregation ([#332](https://github.com/PollyGlot/google-play-cli/issues/332)) ([#350](https://github.com/PollyGlot/google-play-cli/issues/350)) ([3cbf8a5](https://github.com/PollyGlot/google-play-cli/commit/3cbf8a5eb46b35b6f4bf89a3ec72234bcdbb78f5))
+
 ## [0.14.0](https://github.com/PollyGlot/google-play-cli/compare/v0.13.0...v0.14.0) (2026-07-11)
 
 
