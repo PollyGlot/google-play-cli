@@ -73,6 +73,18 @@ func (p *playRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if p.bundleHandler != nil {
 			return p.bundleHandler(req)
 		}
+		// Resumable initiate: hand back a session URI (the same /bundles path,
+		// with an upload_id query) in the Location header. The helper then PUTs
+		// the artifact chunk(s) there. A fake AAB is a few bytes, so it is a
+		// single chunk; the PUT handler below returns the versionCode body.
+		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-" + p.editID
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Location": []string{loc}},
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/bundles"):
+		// Resumable chunk PUT (the final chunk carries the resource body).
 		body := fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, p.versionCode)
 		return jsonResp(200, body), nil
 	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
@@ -149,10 +161,13 @@ func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 		t.Fatal("result is nil")
 	}
 
-	// Canonical four-call sequence.
+	// Canonical call sequence. bundles.upload is now a resumable upload:
+	// a POST initiate followed by a PUT of the (single) chunk to the session
+	// URI (same /bundles path), then tracks.update and the commit.
 	wantPaths := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
+		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-xyz/tracks/internal",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-xyz:commit",
 	}
@@ -782,6 +797,7 @@ func TestUpload_withMapping_uploadsMappingInSameEdit(t *testing.T) {
 	wantPaths := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
+		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/apks/142/deobfuscationFiles/proguard",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-xyz/tracks/internal",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-xyz:commit",

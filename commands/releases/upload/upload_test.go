@@ -77,6 +77,15 @@ func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
 		return jsonResp(200, `{"deobfuscationFile":{"symbolType":"proguard"}}`), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/bundles"):
+		// Resumable initiate: return the session URI (same /bundles path) in
+		// Location; the PUT below carries the single chunk and the versionCode.
+		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-" + r.editID
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Location": []string{loc}},
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	case req.Method == http.MethodPut && strings.HasSuffix(req.URL.Path, "/bundles"):
 		return jsonResp(200, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, r.versionCode)), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/apks"):
 		return jsonResp(200, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, r.versionCode)), nil
@@ -197,6 +206,7 @@ func TestRun_internalTrack_happyPath_hitsTokenAndAndroidPublisher(t *testing.T) 
 		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
+		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-xyz/tracks/internal",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-xyz:commit",
 	}
@@ -485,6 +495,7 @@ func TestRun_withMapping_uploadsMappingInSameEditAndConfirms(t *testing.T) {
 		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
+		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/apks/142/deobfuscationFiles/proguard",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-xyz/tracks/internal",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-xyz:commit",
