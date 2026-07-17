@@ -77,7 +77,28 @@ func ResumableUpload(
 	r io.ReaderAt,
 	size int64,
 ) (body []byte, status int, err error) {
-	sessionURI, err := resumableInitiate(ctx, hc, op, pkg, initiateURL, contentType, size)
+	return ResumableUploadWithInitiateBody(ctx, hc, op, pkg, initiateURL, contentType, r, size, nil, "")
+}
+
+// ResumableUploadWithInitiateBody is ResumableUpload with a non-empty initiate
+// request body — the case where the resumable session is opened by POSTing
+// resource metadata (e.g. playcustomapp.customApps.create sends the CustomApp
+// title/languageCode as JSON in the initiate, then streams the artifact in the
+// chunk PUTs). initiateBody is the raw bytes of that body and
+// initiateContentType its Content-Type (e.g. "application/json; charset=UTF-8");
+// a nil initiateBody reproduces the empty-body initiate ResumableUpload uses.
+// The media content type (contentType) still travels in X-Upload-Content-Type,
+// distinct from the initiate body's own type.
+func ResumableUploadWithInitiateBody(
+	ctx context.Context,
+	hc *http.Client,
+	op, pkg, initiateURL, contentType string,
+	r io.ReaderAt,
+	size int64,
+	initiateBody []byte,
+	initiateContentType string,
+) (body []byte, status int, err error) {
+	sessionURI, err := resumableInitiate(ctx, hc, op, pkg, initiateURL, contentType, size, initiateBody, initiateContentType)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -161,12 +182,21 @@ func ResumableUpload(
 
 // resumableInitiate does the POST that opens a resumable session and returns
 // the session URI (the Location header value).
-func resumableInitiate(ctx context.Context, hc *http.Client, op, pkg, initiateURL, contentType string, size int64) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, initiateURL, http.NoBody)
+func resumableInitiate(ctx context.Context, hc *http.Client, op, pkg, initiateURL, contentType string, size int64, initiateBody []byte, initiateContentType string) (string, error) {
+	var reqBody io.Reader = http.NoBody
+	if initiateBody != nil {
+		reqBody = bytes.NewReader(initiateBody)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, initiateURL, reqBody)
 	if err != nil {
 		return "", &Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}
-	req.ContentLength = 0
+	req.ContentLength = int64(len(initiateBody))
+	if initiateBody != nil && initiateContentType != "" {
+		// The initiate body carries resource metadata; its Content-Type is
+		// distinct from the media's X-Upload-Content-Type below.
+		req.Header.Set("Content-Type", initiateContentType)
+	}
 	req.Header.Set("X-Upload-Content-Type", contentType)
 	req.Header.Set("X-Upload-Content-Length", strconv.FormatInt(size, 10))
 	resp, err := hc.Do(req)

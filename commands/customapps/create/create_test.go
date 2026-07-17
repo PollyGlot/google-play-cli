@@ -34,8 +34,12 @@ import (
 
 const createdApp = `{"title":"My Internal App","languageCode":"en-US","packageName":"com.example.internal"}`
 
-// customRT terminates the /token exchange and routes the single create POST,
-// returning a configurable status + body and capturing the call sequence + URL.
+const customSessionURI = "https://playcustomapp.googleapis.com/upload/session/xyz789"
+
+// customRT terminates the /token exchange and drives the resumable create
+// upload (initiate POST → chunk PUT), returning a configurable status + body
+// and capturing the call sequence + URL. A non-200 status is applied to the
+// initiate POST (the layer a 403 refusal surfaces from).
 type customRT struct {
 	t *testing.T
 
@@ -57,17 +61,30 @@ func (r *customRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
+	// Initiate: the metadata POST that opens the resumable session.
 	if req.Method == http.MethodPost && strings.Contains(req.URL.Host, "playcustomapp") {
 		r.uploadURL = req.URL.String()
 		status := r.status
 		if status == 0 {
 			status = 200
 		}
+		resp := jsonResp(status, "")
+		if status >= 200 && status < 300 {
+			resp.Header.Set("Location", customSessionURI)
+		} else {
+			// Error envelope surfaces on the initiate.
+			resp.Body = io.NopCloser(strings.NewReader(r.body))
+		}
+		return resp, nil
+	}
+	// Chunk PUT: the session URI carries the artifact; the final chunk returns
+	// the created CustomApp resource body.
+	if req.Method == http.MethodPut && req.URL.String() == customSessionURI {
 		body := r.body
 		if body == "" {
 			body = createdApp
 		}
-		return jsonResp(status, body), nil
+		return jsonResp(200, body), nil
 	}
 	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 	return nil, nil
@@ -150,7 +167,7 @@ func validInput(artifact string) createcmd.Input {
 }
 
 // TestRun_happyPath asserts the /token exchange precedes a POST to the
-// customApps endpoint (account axis, uploadType=multipart), the JSON view
+// customApps endpoint (account axis, uploadType=resumable), the JSON view
 // passes the CustomApp through verbatim, and a ✓ line lands on stderr.
 func TestRun_happyPath(t *testing.T) {
 	rt := &customRT{t: t}
@@ -165,7 +182,7 @@ func TestRun_happyPath(t *testing.T) {
 	if rt.tokenHits == 0 {
 		t.Errorf("no /token exchange; calls=%v", rt.calls)
 	}
-	for _, want := range []string{"/accounts/1234567890/customApps", "uploadType=multipart"} {
+	for _, want := range []string{"/accounts/1234567890/customApps", "uploadType=resumable"} {
 		if !strings.Contains(rt.uploadURL, want) {
 			t.Errorf("upload url %q missing %q", rt.uploadURL, want)
 		}
@@ -329,7 +346,7 @@ func TestRun_missingArtifact_exit20_noNetwork(t *testing.T) {
 }
 
 // TestRun_organizations_threadedToRequest asserts a repeatable --organization
-// lands in the multipart JSON metadata part as an organizationId.
+// lands in the initiate JSON metadata body as an organizationId.
 func TestRun_organizations_threadedToRequest(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -342,7 +359,7 @@ func TestRun_organizations_threadedToRequest(t *testing.T) {
 	}
 	// The dry-run view echoes orgs; the live path can't (the canned response has
 	// none), so assert the live call succeeded and rendered. Org wire-threading
-	// is asserted end-to-end in the internal/play/customapps multipart test.
+	// is asserted end-to-end in the internal/play/customapps resumable test.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)

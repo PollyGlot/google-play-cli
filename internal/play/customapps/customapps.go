@@ -3,8 +3,10 @@
 // API path that creates an app *record* (public apps are Console-only). It is
 // keyed by the developer-account axis (accounts/{account}, ADR-0015), not a
 // package: the app does not yet exist to be keyed by package. The call is a
-// hand-rolled multipart/related media upload (ADR-0007, raw HTTP): a JSON
-// CustomApp metadata part plus the AAB/APK artifact in a single POST.
+// resumable media upload (ADR-0007, raw HTTP; PRD #355): the JSON CustomApp
+// metadata opens the resumable session in the initiate POST and the AAB/APK
+// artifact streams in chunked PUTs, resuming from a server-acknowledged offset
+// on a transient failure.
 //
 // The whole upstream surface is this one method — there is NO get/list (no
 // read) and NO delete, which is why creation is gated behind --confirm at the
@@ -15,14 +17,10 @@
 package customapps
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"net/url"
 	"os"
 
@@ -74,18 +72,16 @@ func (e *LocalIOError) Unwrap() error { return e.Cause }
 // is a client-side validation failure, not a transport problem.
 func (e *LocalIOError) ExitCode() int { return 20 }
 
-// multiReadCloser adapts an io.Reader + the underlying io.Closer into a single
-// ReadCloser, so a GetBody replay closes the freshly-opened artifact file
-// rather than leaking its descriptor.
-type multiReadCloser struct {
-	io.Reader
-	io.Closer
-}
-
 // Create uploads artifactPath plus the CustomApp metadata to
 // customApps.create and returns the created CustomApp (carrying its
 // output-only packageName) plus the raw JSON response (ADR-0003). account is
 // the developer-account ID — the accounts/{account} path key.
+//
+// The transfer is a resumable upload (PRD #355): the CustomApp metadata JSON
+// opens the session in the initiate POST (uploadType=resumable) and the
+// artifact streams in the chunk PUTs. The surface is unchanged — the resource
+// body Google returns on the final chunk is the same CustomApp payload the
+// former multipart upload returned.
 func Create(ctx context.Context, hc *http.Client, account, artifactPath string, opts CreateOpts) (CustomApp, json.RawMessage, error) {
 	metaJSON, err := json.Marshal(CustomApp{
 		Title:         opts.Title,
@@ -101,11 +97,10 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 		return CustomApp{}, nil, &LocalIOError{Path: artifactPath, Cause: err}
 	}
 	defer func() { _ = f.Close() }()
-	// Stat the artifact so we can set ContentLength explicitly (no chunked
-	// Transfer-Encoding, which Google's upload front-ends handle poorly for
-	// large bodies and which blocks transport retries — same rationale as
-	// bundles.upload). A directory / fifo passes Open+Stat but cannot be
-	// streamed as a body, so reject anything but a regular file up front.
+	// Stat the artifact for its size (the resumable helper needs the exact
+	// byte count for X-Upload-Content-Length and the chunk Content-Range
+	// headers). A directory / fifo passes Open+Stat but cannot be streamed, so
+	// reject anything but a regular file up front — parity with bundles.upload.
 	info, err := f.Stat()
 	if err != nil {
 		return CustomApp{}, nil, &LocalIOError{Path: artifactPath, Cause: err}
@@ -114,75 +109,23 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 		return CustomApp{}, nil, &LocalIOError{Path: artifactPath, Cause: fmt.Errorf("not a regular file")}
 	}
 
-	// Build the multipart/related head (the JSON metadata part plus the media
-	// part's headers) and tail (the closing boundary) up front, so the artifact
-	// streams BETWEEN them with an exact ContentLength and a replayable GetBody
-	// — the body is never buffered in memory (artifacts run to 10 GiB).
-	var head bytes.Buffer
-	mw := multipart.NewWriter(&head)
-	jpart, err := mw.CreatePart(textproto.MIMEHeader{"Content-Type": {"application/json; charset=UTF-8"}})
-	if err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, Message: err.Error(), Cause: err}
-	}
-	if _, err := jpart.Write(metaJSON); err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, Message: err.Error(), Cause: err}
-	}
-	// Open the media part's headers but write none of its body here; the
-	// artifact bytes are streamed in separately below.
-	if _, err := mw.CreatePart(textproto.MIMEHeader{"Content-Type": {"application/octet-stream"}}); err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, Message: err.Error(), Cause: err}
-	}
-	boundary := mw.Boundary()
-	headBytes := head.Bytes()
-	// NOT mw.Close(): that would append the closing boundary to head BEFORE the
-	// artifact bytes. Build the tail (what Close would emit) by hand instead.
-	tail := []byte("\r\n--" + boundary + "--\r\n")
+	u := api.CustomAppUploadBase + "/accounts/" + url.PathEscape(account) + "/customApps?uploadType=resumable"
 
-	newBody := func(media io.Reader) io.Reader {
-		return io.MultiReader(bytes.NewReader(headBytes), media, bytes.NewReader(tail))
+	// *os.File is an io.ReaderAt, giving the resumable helper random access to
+	// re-send from a server-acknowledged offset after a transient failure
+	// without reopening the file. The metadata JSON travels in the initiate
+	// body; the artifact travels in the chunk PUTs (application/octet-stream).
+	raw, status, err := api.ResumableUploadWithInitiateBody(
+		ctx, hc, op, account, u, "application/octet-stream", f, info.Size(),
+		metaJSON, "application/json; charset=UTF-8",
+	)
+	if err != nil {
+		return CustomApp{}, nil, err
 	}
 
-	u := api.CustomAppUploadBase + "/accounts/" + url.PathEscape(account) + "/customApps?uploadType=multipart"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, newBody(f))
-	if err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, Message: err.Error(), Cause: err}
-	}
-	req.ContentLength = int64(len(headBytes)) + info.Size() + int64(len(tail))
-	req.Header.Set("Content-Type", "multipart/related; boundary="+boundary)
-	// GetBody re-opens the artifact so the transport can replay the body across
-	// a 3xx redirect or an oauth2 token-refresh retry — the closer is the fresh
-	// file, so each replay frees its own descriptor (parity with bundles.go).
-	req.GetBody = func() (io.ReadCloser, error) {
-		rf, err := os.Open(artifactPath)
-		if err != nil {
-			return nil, err
-		}
-		return multiReadCloser{Reader: newBody(rf), Closer: rf}, nil
-	}
-
-	resp, err := hc.Do(req)
-	if err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return CustomApp{}, nil, &api.Error{
-			Operation:  op,
-			Package:    account,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, StatusCode: resp.StatusCode, Message: "read response body: " + err.Error(), Cause: err}
-	}
 	var parsed CustomApp
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, StatusCode: resp.StatusCode, Message: "decode response: " + err.Error(), Cause: err}
+		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, StatusCode: status, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return parsed, raw, nil
 }
