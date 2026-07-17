@@ -3,8 +3,9 @@
 // playcustomapp.accounts.customApps.create — the one Developer API path that
 // creates an app *record* (ADR-0032). It is keyed by the developer-account axis
 // (accounts/{account}, ADR-0015), not a package: the app does not yet exist to
-// be keyed by package. A multipart AAB/APK upload carries the CustomApp
-// metadata (--title, --default-language, repeatable --organization).
+// be keyed by package. A resumable AAB/APK upload carries the CustomApp
+// metadata (--title, --default-language, repeatable --organization) in the
+// initiate request, then streams the artifact in chunks (PRD #355).
 //
 // Creation is IRREVERSIBLE — the API exposes no delete (and no read), so the
 // app permanently occupies the account. That puts it in the destructive tier

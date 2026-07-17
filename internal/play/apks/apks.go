@@ -1,8 +1,8 @@
 // Package apks uploads a legacy APK to a specific Edit via the
 // edits.apks.upload endpoint. It is the legacy sibling of
 // internal/play/bundles: the endpoint uses Google's upload sub-host and
-// the simple-media upload protocol (Content-Type:
-// application/octet-stream, uploadType=media) and returns the versionCode
+// the resumable upload protocol (Content-Type:
+// application/octet-stream, uploadType=resumable) and returns the versionCode
 // Google parsed out of the APK, after which the release pipeline (track
 // assignment, commit, --mapping) is identical (ADR-0036). Google has
 // required the AAB for new apps since August 2021, so this surface only
@@ -14,7 +14,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -45,10 +44,10 @@ func (e *LocalIOError) Unwrap() error { return e.Cause }
 func (e *LocalIOError) ExitCode() int { return 20 }
 
 // Upload streams the APK at apkPath to apks.upload and returns the
-// versionCode Google parsed out of the APK. The recipe (explicit
-// ContentLength, GetBody re-open, regular-file guard, error mapping) is
-// identical to internal/play/bundles.Upload; only the endpoint segment
-// (/apks) and the operation tag (apks.upload) differ.
+// versionCode Google parsed out of the APK. The recipe (regular-file
+// guard, resumable chunked upload, error mapping) is identical to
+// internal/play/bundles.Upload; only the endpoint segment (/apks) and the
+// operation tag (apks.upload) differ.
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, apkPath string) (int, error) {
 	f, err := os.Open(apkPath)
 	if err != nil {
@@ -79,39 +78,15 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, apkPath string) (
 	u := api.UploadBase +
 		"/applications/" + url.PathEscape(pkg) +
 		"/edits/" + url.PathEscape(editID) +
-		"/apks?uploadType=media"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, f)
+		"/apks?uploadType=resumable"
+
+	// *os.File is an io.ReaderAt, giving the resumable helper random access so
+	// it can re-send from a server-acknowledged offset after a transient
+	// failure without reopening the file.
+	body, status, err := api.ResumableUpload(ctx, hc, op, pkg, u, "application/octet-stream", f, info.Size())
 	if err != nil {
-		return 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+		return 0, err
 	}
-	req.ContentLength = info.Size()
-	// GetBody lets http.Client replay the body across 3xx redirects and
-	// across transport-level retries (e.g. an oauth2 token refresh that
-	// rebuilds the request). Per net/http's contract, GetBody must return
-	// a fresh independent ReadCloser each call — the transport closes
-	// Request.Body (the *os.File `f`) after each attempt, so opening a new
-	// file handle keeps each retry independent.
-	req.GetBody = func() (io.ReadCloser, error) {
-		return os.Open(apkPath)
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return 0, &api.Error{
-			Operation:  op,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed struct {
 		VersionCode int `json:"versionCode"`
 	}
@@ -119,7 +94,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, apkPath string) (
 		return 0, &api.Error{
 			Operation:  op,
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
 		}

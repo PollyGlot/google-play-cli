@@ -1,8 +1,8 @@
 // Package mappings uploads a ProGuard/R8 deobfuscation file (a Mapping,
 // per CONTEXT.md) to a specific Edit via the Android Publisher
 // edits.deobfuscationfiles.upload endpoint. Like bundles.upload it uses
-// Google's upload sub-host and the simple-media protocol (Content-Type:
-// application/octet-stream, uploadType=media); unlike bundles it is keyed
+// Google's upload sub-host and the resumable protocol (Content-Type:
+// application/octet-stream, uploadType=resumable); unlike bundles it is keyed
 // by the APK versionCode and the deobfuscation file type.
 //
 // Despite being functionally coupled to Vitals (it is what makes
@@ -16,7 +16,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -103,39 +102,16 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 		"/edits/" + url.PathEscape(editID) +
 		"/apks/" + strconv.Itoa(versionCode) +
 		"/deobfuscationFiles/" + url.PathEscape(fileType) +
-		"?uploadType=media"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, f)
+		"?uploadType=resumable"
+
+	// *os.File is an io.ReaderAt, giving the resumable helper random access so
+	// it can re-send from a server-acknowledged offset after a transient
+	// failure without reopening the file. Native symbol archives can reach the
+	// snapshot's 1.6 GiB cap, so chunked resume matters here.
+	body, status, err := api.ResumableUpload(ctx, hc, op, pkg, u, "application/octet-stream", f, info.Size())
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, err
 	}
-	req.ContentLength = info.Size()
-	// GetBody lets http.Client replay the body across 3xx redirects and
-	// transport-level retries (e.g. an oauth2 token refresh that rebuilds
-	// the request). Per net/http's contract, GetBody must return a fresh
-	// independent ReadCloser each call — the transport closes Request.Body
-	// (the *os.File `f`) after each attempt, so a new file handle keeps
-	// each retry independent.
-	req.GetBody = func() (io.ReadCloser, error) {
-		return os.Open(path)
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{
-			Operation:  op,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed struct {
 		DeobfuscationFile struct {
 			SymbolType string `json:"symbolType"`
@@ -145,7 +121,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 		return nil, &api.Error{
 			Operation:  op,
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
 		}

@@ -1,14 +1,15 @@
 // Package bundles uploads an AAB to a specific Edit via the
-// edits.bundles.upload endpoint. The endpoint uses Google's
-// upload sub-host and the simple-media upload protocol
-// (Content-Type: application/octet-stream, uploadType=media).
+// edits.bundles.upload endpoint. The endpoint uses Google's upload sub-host
+// and the resumable upload protocol (uploadType=resumable): initiate → chunked
+// PUT → resume-from-offset on a transient failure. The resumable state machine
+// itself lives in the shared api.ResumableUpload helper; this package only
+// opens the AAB and parses the versionCode Google returns.
 package bundles
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -37,10 +38,12 @@ func (e *LocalIOError) Unwrap() error { return e.Cause }
 // AAB is a client-side validation failure, not a transport problem.
 func (e *LocalIOError) ExitCode() int { return 20 }
 
-// Upload streams the AAB at aabPath to bundles.upload and returns the
-// versionCode Google parsed out of the bundle. Error mapping to gplay
-// exit codes will land in Block 4 of the TDD plan; for now only the
-// happy path matters.
+// Upload streams the AAB at aabPath to bundles.upload via the resumable
+// protocol and returns the versionCode Google parsed out of the bundle. The
+// surface is unchanged (same stdout/JSON, same exit codes): the resource body
+// Google returns on the final chunk is the same {"versionCode":N} payload the
+// simple-media upload returned. Upstream failures map to *api.Error (DESIGN §9);
+// a local file problem maps to *LocalIOError (exit 20).
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (int, error) {
 	f, err := os.Open(aabPath)
 	if err != nil {
@@ -71,40 +74,16 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (
 	u := api.UploadBase +
 		"/applications/" + url.PathEscape(pkg) +
 		"/edits/" + url.PathEscape(editID) +
-		"/bundles?uploadType=media"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, f)
+		"/bundles?uploadType=resumable"
+
+	// *os.File is an io.ReaderAt, giving the resumable helper random access so
+	// it can re-send from a server-acknowledged offset after a transient
+	// failure without reopening the file.
+	body, status, err := api.ResumableUpload(ctx, hc, op, pkg, u, "application/octet-stream", f, info.Size())
 	if err != nil {
-		return 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+		return 0, err
 	}
-	req.ContentLength = info.Size()
-	// GetBody lets http.Client replay the body across 3xx redirects and
-	// across transport-level retries (e.g. an oauth2 token refresh that
-	// rebuilds the request). Per net/http's contract, GetBody must return
-	// a fresh independent ReadCloser each call — the transport closes
-	// Request.Body (the *os.File `f`) after each attempt, so seeking and
-	// re-wrapping it would yield reads from a closed handle. Opening a
-	// new file handle keeps each retry independent.
-	req.GetBody = func() (io.ReadCloser, error) {
-		return os.Open(aabPath)
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return 0, &api.Error{
-			Operation:  op,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+
 	var parsed struct {
 		VersionCode int `json:"versionCode"`
 	}
@@ -112,7 +91,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (
 		return 0, &api.Error{
 			Operation:  op,
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
 		}

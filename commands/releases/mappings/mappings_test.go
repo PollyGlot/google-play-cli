@@ -59,6 +59,14 @@ func (r *mappingRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
 		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
 	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
+		// Resumable initiate: session URI in Location.
+		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-" + r.editID
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Location": []string{loc}},
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
 		return jsonResp(200, `{"deobfuscationFile":{"symbolType":"proguard"}}`), nil
 	case strings.HasSuffix(req.URL.Path, ":commit"):
 		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, r.editID)), nil
@@ -143,6 +151,7 @@ func TestRun_happyPath_beginUploadCommit_andConfirms(t *testing.T) {
 		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-map/apks/142/deobfuscationFiles/proguard",
+		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-map/apks/142/deobfuscationFiles/proguard",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-map:commit",
 	}
 	if len(rt.calls) != len(wantSequence) {

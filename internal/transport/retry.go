@@ -120,11 +120,29 @@ func retryable(resp *http.Response, err error) bool {
 	return resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
 }
 
-// isNonRetryable excludes the operations that must never auto-retry. Today that
-// is edits.commit (path suffix ":commit"): a duplicate commit could
-// double-publish.
+// isNonRetryable excludes the operations that must never auto-retry:
+//   - edits.commit (path suffix ":commit"): a duplicate commit could
+//     double-publish.
+//   - any request whose context carries WithoutRetry: the resumable-upload
+//     helper drives its own resume-from-offset loop (query the committed
+//     offset via a 308 probe, then continue), so a blind transport retry of
+//     a chunk PUT would double-send bytes and race the helper's own recovery.
 func isNonRetryable(req *http.Request) bool {
+	if req.Context().Value(noRetryKey{}) != nil {
+		return true
+	}
 	return strings.HasSuffix(req.URL.Path, ":commit")
+}
+
+// noRetryKey is the private context key set by WithoutRetry.
+type noRetryKey struct{}
+
+// WithoutRetry marks ctx so that any request issued with it is excluded from
+// the WithRetry middleware's automatic retry loop (transport error / 5xx /
+// 429). It is used by callers that implement their own recovery — notably the
+// resumable-upload helper, whose chunk PUTs must not be blindly re-sent.
+func WithoutRetry(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noRetryKey{}, struct{}{})
 }
 
 // cloneWithFreshBody clones req with a body rebuilt from GetBody, so every

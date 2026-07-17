@@ -127,6 +127,30 @@ func TestUsersList_paginatesToCompletion(t *testing.T) {
 	}
 }
 
+// TestUsersList_repeatedToken_abortsLoop asserts that a server repeating the
+// same nextPageToken makes ListUsers abort with the standard pagination
+// token-loop api.Error instead of following the token forever. UsersList serves
+// the same body — carrying a nextPageToken — on every page, so the second
+// sighting of the token trips the guard.
+func TestUsersList_repeatedToken_abortsLoop(t *testing.T) {
+	looping := `{"users":[{"email":"a@example.com"}],"nextPageToken":"stuck"}`
+	rt := teamtest.New(teamtest.UsersList(looping))
+	rc := teamtest.NewRC(t, rt)
+
+	_, err := listcmd.Run(rc, listcmd.Input{})
+	if err == nil {
+		t.Fatal("expected a pagination token-loop error, got nil")
+	}
+	if !strings.Contains(err.Error(), "pagination token loop detected in users.list") {
+		t.Errorf("error %q should report the repeated-nextPageToken loop", err.Error())
+	}
+	// The guard aborts on the second sighting: page 1 seeds the token, page 2
+	// re-sees it and stops. No unbounded following.
+	if got := len(rt.Calls()); got != 2 {
+		t.Errorf("expected exactly 2 page requests before the loop guard aborts, got %d", got)
+	}
+}
+
 // TestUsersList_empty_jsonArray asserts an account with no members renders
 // {"users":[]} (not null) — the conventional empty-array shape.
 func TestUsersList_empty_jsonArray(t *testing.T) {
