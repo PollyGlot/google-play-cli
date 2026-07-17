@@ -1,18 +1,20 @@
-// Package customapps_test exercises the hand-rolled multipart/related upload to
+// Package customapps_test exercises the play-layer upload to
 // playcustomapp.accounts.customApps.create against a RoundTripper mock — no
-// network. It asserts the wire shape (URL, uploadType=multipart, the JSON
-// metadata part and the artifact media part) and the error mapping.
+// network. The transfer is a resumable upload (PRD #355): the CustomApp
+// metadata opens the session in the initiate POST (uploadType=resumable) and
+// the artifact streams in the chunk PUTs. The tests assert the wire shape (URL,
+// uploadType=resumable, the metadata JSON in the initiate body, the artifact
+// bytes in the PUT) and the error mapping.
 package customapps_test
 
 import (
 	"context"
 	"errors"
 	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,56 +22,72 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/customapps"
 )
 
-// captureRT records the single create POST and returns a canned response.
-type captureRT struct {
+const sessionURI = "https://playcustomapp.googleapis.com/upload/session/abc123"
+
+// resumeRT scripts the resumable protocol: it answers the initiate POST with a
+// session URI (unless initStatus is an error) and serves the single chunk PUT
+// with the final resource body. It records the initiate body and the PUT bytes
+// so a test can assert the metadata reached the initiate and the artifact
+// reached the chunk.
+type resumeRT struct {
 	t *testing.T
 
-	status int
-	body   string
+	initStatus int    // 0 => 200
+	putStatus  int    // 0 => 200
+	putBody    string // final-chunk resource body
 
-	calls       int
-	method      string
-	url         string
-	contentType string
-	metaPart    string
-	mediaPart   []byte
+	calls        int
+	initMethod   string
+	initURL      string
+	initBody     string
+	initCType    string
+	uploadCType  string
+	uploadLength string
+	putBytes     []byte
+	putRange     string
 }
 
-func (r *captureRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.calls++
-	r.method = req.Method
-	r.url = req.URL.String()
-	r.contentType = req.Header.Get("Content-Type")
-
-	// Parse the multipart/related body so the test asserts the real wire shape,
-	// not an internal representation.
-	mediaType, params, err := mime.ParseMediaType(r.contentType)
-	if err == nil && strings.HasPrefix(mediaType, "multipart/") {
-		mr := multipart.NewReader(req.Body, params["boundary"])
-		for {
-			p, err := mr.NextPart()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				r.t.Fatalf("read multipart part: %v", err)
-			}
-			data, _ := io.ReadAll(p)
-			ct := p.Header.Get("Content-Type")
-			switch {
-			case strings.Contains(ct, "application/json"):
-				r.metaPart = string(data)
-			default:
-				r.mediaPart = data
-			}
+	switch req.Method {
+	case http.MethodPost:
+		r.initMethod = req.Method
+		r.initURL = req.URL.String()
+		r.initCType = req.Header.Get("Content-Type")
+		r.uploadCType = req.Header.Get("X-Upload-Content-Type")
+		r.uploadLength = req.Header.Get("X-Upload-Content-Length")
+		b, _ := io.ReadAll(req.Body)
+		_ = req.Body.Close()
+		r.initBody = string(b)
+		status := r.initStatus
+		if status == 0 {
+			status = http.StatusOK
 		}
-	}
+		h := http.Header{}
+		if status >= 200 && status < 300 {
+			h.Set("Location", sessionURI)
+		}
+		return &http.Response{StatusCode: status, Header: h, Body: io.NopCloser(strings.NewReader(""))}, nil
 
-	return &http.Response{
-		StatusCode: r.status,
-		Header:     http.Header{"Content-Type": {"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(r.body)),
-	}, nil
+	case http.MethodPut:
+		b, _ := io.ReadAll(req.Body)
+		_ = req.Body.Close()
+		r.putBytes = b
+		r.putRange = req.Header.Get("Content-Range")
+		status := r.putStatus
+		if status == 0 {
+			status = http.StatusOK
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(r.putBody)),
+		}, nil
+
+	default:
+		r.t.Fatalf("unexpected method %s", req.Method)
+		return nil, nil
+	}
 }
 
 func writeArtifact(t *testing.T, name, content string) string {
@@ -83,14 +101,16 @@ func writeArtifact(t *testing.T, name, content string) string {
 
 const okResp = `{"title":"My Internal App","languageCode":"en-US","packageName":"com.example.internal","organizations":[{"organizationId":"org-123","organizationName":"Acme"}]}`
 
-// TestCreate_multipartShape asserts the POST hits the playcustomapp upload
-// endpoint with uploadType=multipart, a multipart/related content type, the
-// JSON metadata part (title/languageCode/organizations) and the artifact bytes
-// as the media part — and that the response is parsed + passed through verbatim.
-func TestCreate_multipartShape(t *testing.T) {
-	rt := &captureRT{t: t, status: 200, body: okResp}
+// TestCreate_resumableShape asserts the initiate POST hits the playcustomapp
+// upload endpoint with uploadType=resumable, carries the CustomApp metadata
+// (title/languageCode/organizations) as its JSON body with the media size in
+// X-Upload-Content-Length, and that the artifact bytes travel in the chunk PUT
+// — and that the response is parsed + passed through verbatim.
+func TestCreate_resumableShape(t *testing.T) {
+	rt := &resumeRT{t: t, putBody: okResp}
 	hc := &http.Client{Transport: rt}
-	artifact := writeArtifact(t, "app.aab", "PK\x03\x04 fake bundle bytes")
+	const artifactBytes = "PK\x03\x04 fake bundle bytes"
+	artifact := writeArtifact(t, "app.aab", artifactBytes)
 
 	app, raw, err := customapps.Create(context.Background(), hc, "1234567890", artifact, customapps.CreateOpts{
 		Title:        "My Internal App",
@@ -102,28 +122,40 @@ func TestCreate_multipartShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if rt.method != http.MethodPost {
-		t.Errorf("method = %s, want POST", rt.method)
+	if rt.initMethod != http.MethodPost {
+		t.Errorf("initiate method = %s, want POST", rt.initMethod)
 	}
 	for _, want := range []string{
 		"playcustomapp.googleapis.com/upload/playcustomapp/v1",
 		"/accounts/1234567890/customApps",
-		"uploadType=multipart",
+		"uploadType=resumable",
 	} {
-		if !strings.Contains(rt.url, want) {
-			t.Errorf("url %q missing %q", rt.url, want)
+		if !strings.Contains(rt.initURL, want) {
+			t.Errorf("initiate url %q missing %q", rt.initURL, want)
 		}
 	}
-	if !strings.HasPrefix(rt.contentType, "multipart/related;") {
-		t.Errorf("content-type = %q, want multipart/related", rt.contentType)
+	// The metadata (title/language/orgs) must reach the API in the initiate body.
+	if !strings.HasPrefix(rt.initCType, "application/json") {
+		t.Errorf("initiate content-type = %q, want application/json", rt.initCType)
 	}
 	for _, want := range []string{`"title":"My Internal App"`, `"languageCode":"en-US"`, `"organizationId":"org-123"`} {
-		if !strings.Contains(rt.metaPart, want) {
-			t.Errorf("metadata part %q missing %q", rt.metaPart, want)
+		if !strings.Contains(rt.initBody, want) {
+			t.Errorf("initiate body %q missing %q", rt.initBody, want)
 		}
 	}
-	if got := string(rt.mediaPart); got != "PK\x03\x04 fake bundle bytes" {
-		t.Errorf("media part = %q, want the artifact bytes verbatim", got)
+	// The media type + length describe the artifact, not the metadata.
+	if rt.uploadCType != "application/octet-stream" {
+		t.Errorf("X-Upload-Content-Type = %q, want application/octet-stream", rt.uploadCType)
+	}
+	if want := strconv.Itoa(len(artifactBytes)); rt.uploadLength != want {
+		t.Errorf("X-Upload-Content-Length = %q, want %q", rt.uploadLength, want)
+	}
+	// The artifact bytes travel in the chunk PUT, verbatim.
+	if got := string(rt.putBytes); got != artifactBytes {
+		t.Errorf("chunk PUT body = %q, want the artifact bytes verbatim", got)
+	}
+	if !strings.HasPrefix(rt.putRange, "bytes 0-") {
+		t.Errorf("chunk Content-Range = %q, want a bytes 0-… range", rt.putRange)
 	}
 	// Parsed response carries the output-only packageName.
 	if app.PackageName != "com.example.internal" {
@@ -135,10 +167,10 @@ func TestCreate_multipartShape(t *testing.T) {
 	}
 }
 
-// TestCreate_noOrganizations_omitsField asserts that with no orgs the metadata
-// part has no organizations key (the app then defaults to the account's org).
+// TestCreate_noOrganizations_omitsField asserts that with no orgs the initiate
+// metadata has no organizations key (the app then defaults to the account's org).
 func TestCreate_noOrganizations_omitsField(t *testing.T) {
-	rt := &captureRT{t: t, status: 200, body: okResp}
+	rt := &resumeRT{t: t, putBody: okResp}
 	hc := &http.Client{Transport: rt}
 	artifact := writeArtifact(t, "app.aab", "bytes")
 
@@ -148,16 +180,16 @@ func TestCreate_noOrganizations_omitsField(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if strings.Contains(rt.metaPart, "organizations") {
-		t.Errorf("metadata part should omit organizations when none given: %q", rt.metaPart)
+	if strings.Contains(rt.initBody, "organizations") {
+		t.Errorf("initiate metadata should omit organizations when none given: %q", rt.initBody)
 	}
 }
 
-// TestCreate_403_apiError asserts a 403 surfaces as an *api.Error mapping to
-// exit 11 (authorization) — the layer the command turns into an
-// agent-resolvable refusal.
+// TestCreate_403_apiError asserts a 403 on the initiate surfaces as an
+// *api.Error mapping to exit 11 (authorization) — the layer the command turns
+// into an agent-resolvable refusal.
 func TestCreate_403_apiError(t *testing.T) {
-	rt := &captureRT{t: t, status: 403, body: `{"error":{"code":403,"message":"caller lacks CAN_CREATE_MANAGED_PLAY_APPS","errors":[{"reason":"forbidden"}]}}`}
+	rt := &resumeRT{t: t, initStatus: 403}
 	hc := &http.Client{Transport: rt}
 	artifact := writeArtifact(t, "app.aab", "bytes")
 
@@ -177,7 +209,7 @@ func TestCreate_403_apiError(t *testing.T) {
 // TestCreate_missingArtifact_exit20_noNetwork asserts an unreadable artifact is
 // a client-side *LocalIOError (exit 20) and makes no HTTP call.
 func TestCreate_missingArtifact_exit20_noNetwork(t *testing.T) {
-	rt := &captureRT{t: t, status: 200, body: okResp}
+	rt := &resumeRT{t: t, putBody: okResp}
 	hc := &http.Client{Transport: rt}
 
 	_, _, err := customapps.Create(context.Background(), hc, "42", filepath.Join(t.TempDir(), "nope.aab"), customapps.CreateOpts{Title: "T", LanguageCode: "en-US"})
@@ -195,7 +227,7 @@ func TestCreate_missingArtifact_exit20_noNetwork(t *testing.T) {
 
 // TestCreate_directory_exit20 asserts a non-regular path is rejected up front.
 func TestCreate_directory_exit20(t *testing.T) {
-	rt := &captureRT{t: t, status: 200, body: okResp}
+	rt := &resumeRT{t: t, putBody: okResp}
 	hc := &http.Client{Transport: rt}
 
 	_, _, err := customapps.Create(context.Background(), hc, "42", t.TempDir(), customapps.CreateOpts{Title: "T", LanguageCode: "en-US"})

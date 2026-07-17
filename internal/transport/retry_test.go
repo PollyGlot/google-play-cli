@@ -158,6 +158,27 @@ func TestRetry_editsCommitNeverRetried(t *testing.T) {
 	}
 }
 
+func TestRetry_withoutRetryContextNeverRetried(t *testing.T) {
+	// A request whose context carries WithoutRetry (the resumable-upload
+	// chunk PUTs) must pass through once even on a 5xx — the caller owns its
+	// own resume-from-offset recovery, so a blind transport retry would
+	// double-send bytes.
+	inner := &scriptRT{t: t, steps: []step{{status: 500}}}
+	rt, _ := newRetry(t, inner, 3)
+	req := newReq(t, http.MethodPut, apiURL, "chunk")
+	req = req.WithContext(WithoutRetry(req.Context()))
+	resp, err := rt.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	if resp.StatusCode != 500 {
+		t.Errorf("final status = %d, want 500 returned (no retry)", resp.StatusCode)
+	}
+	if inner.calls != 1 {
+		t.Errorf("WithoutRetry attempts = %d, want 1 (caller owns recovery)", inner.calls)
+	}
+}
+
 func TestRetry_exhaustedReturnsLastResponse(t *testing.T) {
 	inner := &scriptRT{t: t, steps: []step{{status: 500}, {status: 500}, {status: 500}}}
 	rt, delays := newRetry(t, inner, 2)

@@ -35,6 +35,7 @@ func TestUploadMapping_happyPath_beginUploadCommit(t *testing.T) {
 	wantPaths := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-map/apks/142/deobfuscationFiles/proguard",
+		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-map/apks/142/deobfuscationFiles/proguard",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-map:commit",
 	}
 	if len(rt.calls) != len(wantPaths) {

@@ -134,6 +134,8 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 		raw   []json.RawMessage
 		token string
 	)
+	// seen guards against a server that repeats a pageToken forever.
+	seen := map[string]struct{}{}
 	for {
 		u := usersBase(developerID)
 		q := url.Values{}
@@ -162,6 +164,14 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 		if pg.NextPageToken == "" {
 			break
 		}
+		if _, dup := seen[pg.NextPageToken]; dup {
+			return nil, nil, &api.Error{
+				Operation: opUsersList,
+				Package:   developerID,
+				Message:   "pagination token loop detected in users.list (server repeated a nextPageToken)",
+			}
+		}
+		seen[pg.NextPageToken] = struct{}{}
 		token = pg.NextPageToken
 	}
 	return users, raw, nil
