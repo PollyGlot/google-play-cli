@@ -264,3 +264,101 @@ func TestResumable_terminal4xxDuringChunks(t *testing.T) {
 		t.Errorf("PUTs issued = %d, want 1 (4xx is terminal, no resume)", len(rt.puts))
 	}
 }
+
+// TestResumable_probeTransientFailure_retriesUnderStallBound: a 5xx to the
+// offset probe itself is transient — the helper retries the probe under the
+// stall bound instead of aborting the upload on the first failure.
+func TestResumable_probeTransientFailure_retriesUnderStallBound(t *testing.T) {
+	size := api.ResumableChunkSize + 300
+	rt := &resumeRT{t: t, putSteps: []step{
+		{status: 500},                            // chunk 1 PUT: upstream hiccup
+		{status: 503},                            // probe #1: also hiccups
+		{status: 0},                              // probe #2: connection dropped
+		{status: 308, rng: "bytes=0-8388607"},    // probe #3: server has chunk 1
+		{status: 200, body: `{"versionCode":5}`}, // final chunk, resumed
+	}}
+	body, status, err := run(t, rt, size)
+	if err != nil {
+		t.Fatalf("ResumableUpload: %v", err)
+	}
+	if status != 200 || string(body) != `{"versionCode":5}` {
+		t.Fatalf("got status=%d body=%q", status, body)
+	}
+	if len(rt.puts) != 5 {
+		t.Fatalf("PUT count = %d, want 5 (chunk, probe x3, chunk)", len(rt.puts))
+	}
+}
+
+// TestResumable_probeTerminal4xx_isImmediate: a 4xx to the probe is terminal —
+// no retry, the error surfaces with its upstream status.
+func TestResumable_probeTerminal4xx_isImmediate(t *testing.T) {
+	size := api.ResumableChunkSize + 300
+	rt := &resumeRT{t: t, putSteps: []step{
+		{status: 500}, // chunk 1 PUT: upstream hiccup
+		{status: 404, body: `{"error":{"message":"session gone"}}`}, // probe: terminal
+	}}
+	_, _, err := run(t, rt, size)
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != 404 {
+		t.Fatalf("err = %v, want *api.Error with StatusCode 404", err)
+	}
+	if len(rt.puts) != 2 {
+		t.Fatalf("PUT count = %d, want 2 (no probe retry after 4xx)", len(rt.puts))
+	}
+}
+
+// TestResumable_ackedOffsetBeyondSize_isProtocolError: a 308 Range past the
+// artifact's end is rejected as a protocol error instead of computing a
+// negative chunk length.
+func TestResumable_ackedOffsetBeyondSize_isProtocolError(t *testing.T) {
+	size := api.ResumableChunkSize + 300
+	rt := &resumeRT{t: t, putSteps: []step{
+		{status: 308, rng: "bytes=0-999999999"}, // acked offset 10^9 > size
+	}}
+	_, _, err := run(t, rt, size)
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v, want *api.Error", err)
+	}
+	if !strings.Contains(apiErr.Message, "outside artifact size") {
+		t.Errorf("Message = %q, want an out-of-range offset protocol error", apiErr.Message)
+	}
+}
+
+// shortReader reports a full size but returns fewer bytes than asked: the
+// artifact shrank (or lied about its size) between stat and read.
+type shortReader struct{ actual int }
+
+func (s *shortReader) ReadAt(p []byte, off int64) (int, error) {
+	n := s.actual - int(off)
+	if n <= 0 {
+		return 0, io.EOF
+	}
+	if n > len(p) {
+		n = len(p)
+	}
+	copy(p[:n], make([]byte, n))
+	if n < len(p) {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
+// TestResumable_shortRead_isLocalIOError: a short ReadAt (clean io.EOF
+// included) must not upload the zero-filled tail of the buffer — it is a
+// LocalIOError (exit 20).
+func TestResumable_shortRead_isLocalIOError(t *testing.T) {
+	rt := &resumeRT{t: t, putSteps: []step{}}
+	hc := &http.Client{Transport: rt}
+	_, _, err := api.ResumableUpload(context.Background(), hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", &shortReader{actual: 512}, 1024)
+	var lioErr *api.LocalIOError
+	if !errors.As(err, &lioErr) {
+		t.Fatalf("err = %v, want *api.LocalIOError", err)
+	}
+	if got := exit.For(err); got != 20 {
+		t.Errorf("exit.For = %d, want 20", got)
+	}
+	if len(rt.puts) != 0 {
+		t.Errorf("PUTs issued = %d, want 0 (nothing uploaded on short read)", len(rt.puts))
+	}
+}

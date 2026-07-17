@@ -121,10 +121,21 @@ func ResumableUploadWithInitiateBody(
 			// Transport failure: probe the committed offset and resume.
 			newOffset, done, doneBody, doneStatus, perr := resumableProbe(noRetryCtx, hc, sessionURI, size, op, pkg)
 			if perr != nil {
-				return nil, 0, perr
+				if !probeErrIsTransient(perr) {
+					return nil, 0, perr
+				}
+				// The probe itself failed transiently; count it against the
+				// same stall bound and try again from the last known offset.
+				if stalls++; stalls >= maxResumeStalls {
+					return nil, 0, perr
+				}
+				continue
 			}
 			if done {
 				return doneBody, doneStatus, nil
+			}
+			if verr := validOffset(newOffset, size, op, pkg); verr != nil {
+				return nil, 0, verr
 			}
 			if newOffset <= offset {
 				if stalls++; stalls >= maxResumeStalls {
@@ -142,6 +153,9 @@ func ResumableUploadWithInitiateBody(
 			// Resume Incomplete: advance to the server's acknowledged offset.
 			newOffset := committedOffset(resp, offset)
 			drain(resp)
+			if verr := validOffset(newOffset, size, op, pkg); verr != nil {
+				return nil, 0, verr
+			}
 			if newOffset <= offset {
 				if stalls++; stalls >= maxResumeStalls {
 					return nil, 0, &Error{Operation: op, Package: pkg, StatusCode: 308, Message: "resumable upload stalled: server acknowledged no progress after " + strconv.Itoa(maxResumeStalls) + " chunks"}
@@ -160,10 +174,19 @@ func ResumableUploadWithInitiateBody(
 			drain(resp)
 			newOffset, done, doneBody, doneStatus, perr := resumableProbe(noRetryCtx, hc, sessionURI, size, op, pkg)
 			if perr != nil {
-				return nil, 0, perr
+				if !probeErrIsTransient(perr) {
+					return nil, 0, perr
+				}
+				if stalls++; stalls >= maxResumeStalls {
+					return nil, 0, perr
+				}
+				continue
 			}
 			if done {
 				return doneBody, doneStatus, nil
+			}
+			if verr := validOffset(newOffset, size, op, pkg); verr != nil {
+				return nil, 0, verr
 			}
 			if newOffset <= offset {
 				if stalls++; stalls >= maxResumeStalls {
@@ -225,7 +248,14 @@ func resumablePutChunk(ctx context.Context, hc *http.Client, sessionURI, content
 	chunkLen := end - offset
 	buf := make([]byte, chunkLen)
 	if chunkLen > 0 {
-		if _, rerr := r.ReadAt(buf, offset); rerr != nil && rerr != io.EOF {
+		// A short read — even a clean io.EOF — means the artifact no longer
+		// has the bytes this chunk promises; uploading the zero-filled tail
+		// of buf would corrupt the artifact server-side.
+		n, rerr := r.ReadAt(buf, offset)
+		if n != len(buf) {
+			if rerr == nil {
+				rerr = io.ErrUnexpectedEOF
+			}
 			return nil, &LocalIOError{Op: op, Cause: rerr}
 		}
 	}
@@ -296,6 +326,25 @@ func committedOffset(resp *http.Response, fallback int64) int64 {
 		return fallback
 	}
 	return last + 1
+}
+
+// validOffset rejects a server-acknowledged offset outside [0, size]: the
+// Range header is external data, and trusting a value past the artifact's end
+// would compute a negative chunk length downstream. Out of range is a protocol
+// error, not something to resume from.
+func validOffset(offset, size int64, op, pkg string) *Error {
+	if offset < 0 || offset > size {
+		return &Error{Operation: op, Package: pkg, Message: fmt.Sprintf("resumable upload: server acknowledged offset %d outside artifact size %d", offset, size)}
+	}
+	return nil
+}
+
+// probeErrIsTransient reports whether a resumableProbe failure is worth
+// retrying under the stall bound: a transport error (no status) or an upstream
+// 5xx. Terminal 4xx responses stay immediate.
+func probeErrIsTransient(err error) bool {
+	apiErr, ok := err.(*Error)
+	return ok && (apiErr.StatusCode == 0 || apiErr.StatusCode >= 500)
 }
 
 // errorFromResponse builds an *Error from a non-success response, parsing the
