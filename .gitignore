@@ -36,3 +36,6 @@ service-account*.json
 
 # Goreleaser snapshots
 goreleaser.snapshot/
+
+# Skills CLI — fichiers réels partagés entre agents, ne pas versionner
+.agents/
