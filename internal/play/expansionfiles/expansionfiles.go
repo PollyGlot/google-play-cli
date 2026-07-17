@@ -73,7 +73,7 @@ func fileURL(host, pkg, editID string, versionCode int, fileType string) string 
 
 // Upload streams the .obb at path to expansionfiles.upload, keyed by the APK
 // versionCode and type, and returns the verbatim response body
-// (ExpansionFilesUploadResponse). Media upload to the upload sub-host.
+// (ExpansionFilesUploadResponse). Resumable upload to the upload sub-host.
 func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCode int, fileType, path string) (json.RawMessage, error) {
 	f, info, err := openRegular(path)
 	if err != nil {
@@ -81,15 +81,18 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 	}
 	defer func() { _ = f.Close() }()
 
-	u := fileURL(api.UploadBase, pkg, editID, versionCode, fileType) + "?uploadType=media"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, f)
+	u := fileURL(api.UploadBase, pkg, editID, versionCode, fileType) + "?uploadType=resumable"
+
+	// *os.File is an io.ReaderAt, giving the resumable helper random access so
+	// it can re-send from a server-acknowledged offset after a transient
+	// failure without reopening the file. The resumable state machine lives in
+	// the shared api.ResumableUpload helper; the response body
+	// (ExpansionFilesUploadResponse) is passed through verbatim (ADR-0003).
+	body, _, err := api.ResumableUpload(ctx, hc, opUpload, pkg, u, "application/octet-stream", f, info.Size())
 	if err != nil {
-		return nil, &api.Error{Operation: opUpload, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, err
 	}
-	req.ContentLength = info.Size()
-	req.GetBody = func() (io.ReadCloser, error) { return openRaw(path) }
-	req.Header.Set("Content-Type", "application/octet-stream")
-	return do(hc, opUpload, pkg, req)
+	return json.RawMessage(body), nil
 }
 
 // Update declaratively sets the expansion file's referencesVersion (PUT),
@@ -125,9 +128,6 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID string, versionCode i
 	}
 	return ef, raw, nil
 }
-
-// openRaw opens the file (used by GetBody for retry-safe replay).
-func openRaw(path string) (*os.File, error) { return os.Open(path) }
 
 // openRegular opens the file and rejects a non-regular path up front as a
 // client-side *LocalIOError (exit 20) — parity with bundles/mappings.Upload —

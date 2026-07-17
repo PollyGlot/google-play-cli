@@ -30,26 +30,49 @@ func writeOBB(t *testing.T) string {
 	return p
 }
 
-// TestUpload_mediaShape asserts the media POST to the expansionFiles endpoint.
-func TestUpload_mediaShape(t *testing.T) {
-	var gotURL, gotCT string
-	rt := rtFunc(func(r *http.Request) (*http.Response, error) {
-		gotURL = r.URL.String()
-		gotCT = r.Header.Get("Content-Type")
-		return resp(200, `{"expansionFile":{"fileSize":"123"}}`), nil
-	})
+// resumableRT speaks the resumable-upload protocol: the POST initiate
+// answers with a session URI in Location, then the chunk PUT carries the
+// bytes and returns the final resource body. It records the initiate URL,
+// the X-Upload-Content-Type, and the method sequence.
+type resumableRT struct {
+	body string
+
+	methods   []string
+	initiURL  string
+	initCType string
+}
+
+func (r *resumableRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.methods = append(r.methods, req.Method)
+	if req.Method == http.MethodPost {
+		r.initiURL = req.URL.String()
+		r.initCType = req.Header.Get("X-Upload-Content-Type")
+		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-1"
+		return &http.Response{StatusCode: 200, Header: http.Header{"Location": []string{loc}}, Body: io.NopCloser(strings.NewReader(""))}, nil
+	}
+	return resp(200, r.body), nil
+}
+
+// TestUpload_resumableShape asserts the resumable initiate targets the
+// expansionFiles endpoint with uploadType=resumable, the media type travels
+// in X-Upload-Content-Type, and the response body passes through verbatim.
+func TestUpload_resumableShape(t *testing.T) {
+	rt := &resumableRT{body: `{"expansionFile":{"fileSize":"123"}}`}
 	hc := &http.Client{Transport: rt}
 	raw, err := expansionfiles.Upload(context.Background(), hc, "com.example.app", "edit1", 142, expansionfiles.TypeMain, writeOBB(t))
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
-	for _, want := range []string{"/upload/androidpublisher/v3/applications/com.example.app/edits/edit1/apks/142/expansionFiles/main", "uploadType=media"} {
-		if !strings.Contains(gotURL, want) {
-			t.Errorf("url %q missing %q", gotURL, want)
+	for _, want := range []string{"/upload/androidpublisher/v3/applications/com.example.app/edits/edit1/apks/142/expansionFiles/main", "uploadType=resumable"} {
+		if !strings.Contains(rt.initiURL, want) {
+			t.Errorf("initiate url %q missing %q", rt.initiURL, want)
 		}
 	}
-	if gotCT != "application/octet-stream" {
-		t.Errorf("Content-Type = %q, want application/octet-stream", gotCT)
+	if len(rt.methods) != 2 || rt.methods[0] != http.MethodPost || rt.methods[1] != http.MethodPut {
+		t.Errorf("method sequence = %v, want [POST PUT]", rt.methods)
+	}
+	if rt.initCType != "application/octet-stream" {
+		t.Errorf("X-Upload-Content-Type = %q, want application/octet-stream", rt.initCType)
 	}
 	if !strings.Contains(string(raw), `"fileSize":"123"`) {
 		t.Errorf("raw %s should pass through", raw)

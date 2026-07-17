@@ -42,7 +42,12 @@ func (r *efRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	switch {
 	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
 		return jsonResp(`{"id":"edit1","expiryTimeSeconds":"1700000000"}`), nil
-	case strings.Contains(req.URL.Path, "/expansionFiles/"):
+	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/expansionFiles/"):
+		// Resumable initiate: session URI in Location; the PUT chunk below
+		// carries the .obb bytes and returns the resource body.
+		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-1"
+		return &http.Response{StatusCode: 200, Header: http.Header{"Location": []string{loc}}, Body: io.NopCloser(strings.NewReader(""))}, nil
+	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/expansionFiles/"):
 		return jsonResp(`{"expansionFile":{"fileSize":"123"}}`), nil
 	case strings.HasSuffix(req.URL.Path, ":commit"):
 		return jsonResp(`{"id":"edit1"}`), nil
@@ -115,6 +120,7 @@ func TestRun_happyPath_editSequence(t *testing.T) {
 		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit1/apks/142/expansionFiles/main",
+		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit1/apks/142/expansionFiles/main",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit1:commit",
 	}
 	if len(r.calls) != len(want) {

@@ -91,6 +91,15 @@ func (p *playRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if p.deobfHandler != nil {
 			return p.deobfHandler(req)
 		}
+		// Resumable initiate: session URI in Location. The mapping bytes
+		// travel on the PUT chunk below.
+		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-" + p.editID
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Location": []string{loc}},
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
 		p.deobfReqBody, _ = io.ReadAll(req.Body)
 		return jsonResp(200, `{"deobfuscationFile":{"symbolType":"proguard"}}`), nil
 	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/tracks/"):
@@ -799,6 +808,7 @@ func TestUpload_withMapping_uploadsMappingInSameEdit(t *testing.T) {
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
 		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/apks/142/deobfuscationFiles/proguard",
+		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/apks/142/deobfuscationFiles/proguard",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-xyz/tracks/internal",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-xyz:commit",
 	}
