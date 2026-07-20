@@ -183,6 +183,12 @@ Image officielle pour CI containers (ex: `gplay-cli/gplay:latest`).
 Auto-update du binaire depuis GitHub Releases.
 **Pourquoi plus tard :** `brew upgrade`, install script re-run, et `go install ...@latest` couvrent déjà les cas. Self-update ajoute une surface de sécurité (signature, checksum) sans gain UX significatif.
 
+### Soumission à homebrew-core (nom nu `gplay` au lieu de `pollyglot/tap/gplay`)
+Faire graduer la formule du tap tiers `pollyglot/tap` vers `Homebrew/homebrew-core`, ce qui ferait afficher `gplay` en nom court (comme `asc`) au lieu du chemin `owner/repo/formule` — purement cosmétique, `brew install gplay` marche déjà en nom court via le tap.
+**Pourquoi parké :** bloqué sur le gate de notoriété de `brew audit --new` (`SharedAudits`). Rejet « not notable enough » tant que forks < seuil ET watchers < seuil ET stars < seuil. Comme **on est owner du repo**, c'est le seuil **self-submission ×3** qui s'applique : < 90 forks, < 90 watchers, < 225 stars. État actuel (2026-07-20) : 5 stars / 0 fork / 1 watcher → très loin. L'âge (~63 j > 30 j requis), la licence (MIT/DFSG) et le tag stable sont OK.
+**Voie la plus atteignable :** faire soumettre par un **contributeur tiers** (seuil standard, non ×3) → il suffit alors de **75 stars OU 30 forks OU 30 watchers** (un seul suffit). Cible réaliste : ≥ 75 stars. Coûts à peser : réécriture de la formule en **build-from-source** (homebrew-core refuse les binaires prébuilds goreleaser) + perte du contrôle du timing des releases (chaque bump = PR relue + BrewTestBot au lieu du push direct au tap).
+**Ne pas ouvrir ce chantier tant qu'on est loin de ~75 stars.**
+
 ---
 
 ## Documentation & onboarding
