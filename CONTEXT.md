@@ -50,6 +50,13 @@ Distinct from **apps view**, the cross-resource *identity card* (package + title
 
 _Avoid_: calling these fields "metadata" — metadata is the per-locale Store front.
 
+### Accessible App
+An App the active credential can see **server-side**, as returned by the Play Developer Reporting `apps.search` method (`{name, packageName, displayName}`). Surfaced by `apps accessible list` — a server-authoritative inventory, the answer to "which Apps can this credential reach?". Rides the Reporting service and its least-privilege scope ([Play Developer Reporting API](#play-developer-reporting-api), [ADR-0027](docs/adr/0027-vitals-second-service-scope-readonly.md)), not the Android Publisher API.
+
+Deliberately **distinct from the local registry** (`apps list`, `apps add`), which is gplay's *chosen working set* of packages. The two sets do not coincide by design ([ADR-0039](docs/adr/0039-accessible-apps-vs-local-registry.md)): a credential may hold Android Publisher rights to `apps add` an App it cannot see here (different grant), and may see hundreds of org Apps it does not drive. `apps accessible list` is a **bootstrap-discovery** surface whose output feeds `apps add`; it is not a source for the registry and not a drift check against it.
+
+_Avoid_: treating it as an authoritative mirror of the registry, or building access-audit/drift logic on the gap between the two (structural false positives, ADR-0039); adding a `--source registry|server` flag to `apps list` (ADR-0019 wants a new noun, not a mode flag).
+
 ### Store image
 A binary store asset attached to a Listing, keyed by **locale and image type** (`edits.images`): the singular slots `icon`, `featureGraphic`, `tvBanner`, `promoGraphic`, and the gallery slots `phoneScreenshots`, `sevenInchScreenshots`, `tenInchScreenshots`, `tvScreenshots`, `wearScreenshots`. Part of the Store front (per-locale), so it lives under `metadata`, in a `metadata images` sub-namespace distinct from the text Listing commands — the two share the metadata tree and the Additive sync stance but reconcile differently (text upserts by field name; images diff by content, see Image slot).
 

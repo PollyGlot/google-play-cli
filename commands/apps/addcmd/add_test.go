@@ -159,7 +159,7 @@ func TestRun_noVerify_skipsAPIAndRecordsAnyway(t *testing.T) {
 	rt := &failOnCallRT{t: t}
 	rc := newRC(t, rt)
 
-	if _, err := addcmd.Run(rc, addcmd.Input{Package: "com.example.myapp", NoVerify: true}); err != nil {
+	if _, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.myapp"}, NoVerify: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -180,7 +180,7 @@ func TestRun_invalidPackage_rejectsClientSide(t *testing.T) {
 	rt := &failOnCallRT{t: t}
 	rc := newRC(t, rt)
 
-	_, err := addcmd.Run(rc, addcmd.Input{Package: "notapackage"})
+	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"notapackage"}})
 	if err == nil {
 		t.Fatal("Run: expected validation error for missing dot, got nil")
 	}
@@ -223,7 +223,7 @@ func TestRun_persistsUnderAccountThatActuallyRanProbe(t *testing.T) {
 	// global Active flag).
 	rc.AccountName = "altname"
 
-	if _, err := addcmd.Run(rc, addcmd.Input{Package: "com.example.app"}); err != nil {
+	if _, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.app"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -249,7 +249,7 @@ func TestRun_accountNotInGlobal_refusesBeforeProbe(t *testing.T) {
 	rc := newRC(t, rt)
 	rc.AccountName = "ghost" // not in g.Accounts (newRC seeds only "playci")
 
-	_, err := addcmd.Run(rc, addcmd.Input{Package: "com.example.app"})
+	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.app"}})
 	if err == nil {
 		t.Fatal("Run: expected error for keystore-only account, got nil")
 	}
@@ -271,7 +271,7 @@ func TestRun_apiError_doesNotPersistPackage(t *testing.T) {
 	rt := &validateRT{t: t, editID: "edit-x", insertStatus: http.StatusForbidden}
 	rc := newRC(t, rt)
 
-	_, err := addcmd.Run(rc, addcmd.Input{Package: "com.example.myapp"})
+	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.myapp"}})
 	if err == nil {
 		t.Fatal("Run: expected error from 403 insert, got nil")
 	}
@@ -295,7 +295,7 @@ func TestRun_happyPath_validatesAndPersists(t *testing.T) {
 	rt := &validateRT{t: t, editID: "edit-add"}
 	rc := newRC(t, rt)
 
-	if _, err := addcmd.Run(rc, addcmd.Input{Package: "com.example.myapp"}); err != nil {
+	if _, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.myapp"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -330,7 +330,7 @@ func TestRun_malformedInlineCredential_exits10NotRegistered(t *testing.T) {
 	boot := kernel.Boot{ConfigPath: cfgPath, KeystoreRoot: filepath.Join(root, "accounts")}
 	in := kernel.Inputs{Resolver: resolver.Inputs{ServiceAccountFlag: "{ not valid json"}}
 	runErr := kernel.Run(boot, in, func(rc *kernel.RunContext) (output.Renderable, error) {
-		return addcmd.Run(rc, addcmd.Input{Package: "com.example.app", NoVerify: true})
+		return addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.app"}, NoVerify: true})
 	})
 	if runErr == nil {
 		t.Fatal("apps add with a malformed inline credential = nil, want exit 10")

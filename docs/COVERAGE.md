@@ -40,7 +40,7 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 By method count, of the **~159 admin methods** across the four APIs:
 
-- **~92 shipped (~59%)** — essentially the entire *publish / first-release /
+- **~93 shipped (~60%)** — essentially the entire *publish / first-release /
   team / observability* half plus the admin commerce-reads and games config
   (incl. `edits.apks.upload` via `releases upload`, ADR-0036,
   `generatedapks`, PRD #299 / ADR-0034, `customapps`, PRD #242 / ADR-0032,
@@ -106,7 +106,7 @@ By method count, of the **~159 admin methods** across the four APIs:
 |---|---|---|---|
 | `vitals.*` (crashrate, anrrate, errors, slowstart, slowrendering, wakeups, wakelocks, lmk) | 18 | ✅ | `vitals` ([#49](https://github.com/PollyGlot/google-play-cli/issues/49)) |
 | `anomalies.list` | 1 | ✅ | `vitals anomalies` |
-| `apps.search` | 1 | 🟡 | [#347](https://github.com/PollyGlot/google-play-cli/issues/347) — grilled 2026-07-17, `ready-for-agent`: ships as **`apps accessible list`**, a resource distinct from the local registry (the two sets do not coincide), never a `--source` flag on `apps list`; reuses the existing reporting scope ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md) §2), ADR-0039 to be written |
+| `apps.search` | 1 | ✅ | `apps accessible list` ([#347](https://github.com/PollyGlot/google-play-cli/issues/347), [ADR-0039](adr/0039-accessible-apps-vs-local-registry.md)) — server-authoritative discovery, a resource distinct from the local registry (the two sets do not coincide), never a `--source` flag on `apps list`; reuses the existing reporting scope ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md) §2) |
 | `apps.fetchReleaseFilterOptions` | 1 | 🔴 | [#348](https://github.com/PollyGlot/google-play-cli/issues/348) (parked — minor helper, fold into `vitals` if release-keyed filters are needed) |
 
 ## `playcustomapp` v1 — 1 method
