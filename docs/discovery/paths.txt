@@ -8,6 +8,12 @@ androidpublisher.apprecovery.cancel	POST	androidpublisher/v3/applications/{packa
 androidpublisher.apprecovery.create	POST	androidpublisher/v3/applications/{packageName}/appRecoveries
 androidpublisher.apprecovery.deploy	POST	androidpublisher/v3/applications/{packageName}/appRecoveries/{appRecoveryId}:deploy
 androidpublisher.apprecovery.list	GET	androidpublisher/v3/applications/{packageName}/appRecoveries
+androidpublisher.appstoreappsreview.createappstorehostedapp	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps:create
+androidpublisher.appstoreappsreview.updateappstorehostedapp	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps:update
+androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}:updateAppStoreHostedAppPublishStatus
+androidpublisher.appstoreappsreview.uploadapk	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/apks:upload
+androidpublisher.appstoreappsreview.uploadappstoreapppolicydeclarationfile	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/policyDeclarationFiles:upload
+androidpublisher.appstoreappsreview.uploadimage	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/images:upload
 androidpublisher.edits.apks.addexternallyhosted	POST	androidpublisher/v3/applications/{packageName}/edits/{editId}/apks/externallyHosted
 androidpublisher.edits.apks.list	GET	androidpublisher/v3/applications/{packageName}/edits/{editId}/apks
 androidpublisher.edits.apks.upload	POST	androidpublisher/v3/applications/{packageName}/edits/{editId}/apks
@@ -117,9 +123,6 @@ androidpublisher.purchases.productsv2.getproductpurchasev2	GET	androidpublisher/
 androidpublisher.purchases.subscriptions.acknowledge	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}:acknowledge
 androidpublisher.purchases.subscriptions.cancel	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}:cancel
 androidpublisher.purchases.subscriptions.defer	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}:defer
-androidpublisher.purchases.subscriptions.get	GET	androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}
-androidpublisher.purchases.subscriptions.refund	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}:refund
-androidpublisher.purchases.subscriptions.revoke	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}:revoke
 androidpublisher.purchases.subscriptionsv2.cancel	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:cancel
 androidpublisher.purchases.subscriptionsv2.defer	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:defer
 androidpublisher.purchases.subscriptionsv2.get	GET	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}
