@@ -6,8 +6,11 @@
 package addcmd_test
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	iofs "io/fs"
 	"net/http"
 	"strings"
 	"sync"
@@ -18,6 +21,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
+
+// saveFailFS is an OSFS whose WriteFile always fails, so config.Global.Save
+// returns an error — used to exercise the batch Save-failure report path.
+type saveFailFS struct{ config.OSFS }
+
+func (saveFailFS) WriteFile(string, []byte, iofs.FileMode) error {
+	return errors.New("simulated disk failure")
+}
 
 // variadicRT routes the edits.insert+delete probe per package: an insert
 // for a package listed in insertStatusByPkg returns that status (a
@@ -208,6 +219,34 @@ func TestRun_variadic_dedupProbesOnce(t *testing.T) {
 	}
 	if !registry.Has(g.Accounts, "playci", "com.example.a") || !registry.Has(g.Accounts, "playci", "com.example.b") {
 		t.Errorf("both distinct packages should be registered; accounts=%+v", g.Accounts)
+	}
+}
+
+// TestRun_variadic_saveFailure_reportsBeforePropagating asserts that when
+// the terminal Save fails on a multi-package batch, the per-package ✓/✗
+// report is still emitted (so the operator sees which packages probed
+// clean) before the raw Save error propagates.
+func TestRun_variadic_saveFailure_reportsBeforePropagating(t *testing.T) {
+	rt := &variadicRT{t: t, editID: "edit-multi"}
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+	rc.FS = saveFailFS{}
+
+	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
+	if err == nil {
+		t.Fatal("Run: expected the Save error to propagate, got nil")
+	}
+	if !strings.Contains(err.Error(), "simulated disk failure") {
+		t.Errorf("returned error should be the raw Save error; got %q", err.Error())
+	}
+	// The per-package report must have been emitted despite the Save failure.
+	out := stderr.String()
+	if !strings.Contains(out, "com.example.a") || !strings.Contains(out, "com.example.b") {
+		t.Errorf("stderr should carry the per-package report before the Save error; got %q", out)
+	}
+	if !strings.Contains(out, "2 registered, 0 failed") {
+		t.Errorf("stderr should carry the batch tally; got %q", out)
 	}
 }
 

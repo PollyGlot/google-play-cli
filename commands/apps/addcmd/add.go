@@ -140,9 +140,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Persist the successful registrations. A Save failure here would lose
-	// packages that already probed clean, so it aborts with the raw error.
+	// packages that already probed clean, so it aborts with the raw error —
+	// but only after reporting the per-package outcomes, so the operator/
+	// agent still sees which packages probed clean (already-computed
+	// information that helps them retry a narrower set) rather than a bare
+	// Save error. reportBatch runs exactly once on every path.
 	if addedAny {
 		if err := g.Save(rc.Ctx, fsOrDefault(rc), rc.ConfigPath); err != nil {
+			reportBatch(rc, results, account, in.NoVerify)
 			return nil, err
 		}
 	}
@@ -255,14 +260,22 @@ type pkgResult struct {
 	err error
 }
 
-// printAdded writes the single-package success line — byte-for-byte the
-// pre-variadic stderr output.
-func printAdded(rc *kernel.RunContext, pkg, account string, noVerify bool) {
+// successLine formats the "✓ registered ..." stderr line shared by the
+// single-package path (printAdded) and the batch reporter (reportBatch),
+// so the wording and the "(unverified)" qualifier cannot drift between
+// them.
+func successLine(pkg, account string, noVerify bool) string {
 	verb := "registered"
 	if noVerify {
 		verb = "registered (unverified)"
 	}
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ %s %q under Account %q\n", verb, pkg, account)
+	return fmt.Sprintf("✓ %s %q under Account %q\n", verb, pkg, account)
+}
+
+// printAdded writes the single-package success line — byte-for-byte the
+// pre-variadic stderr output.
+func printAdded(rc *kernel.RunContext, pkg, account string, noVerify bool) {
+	_, _ = fmt.Fprint(rc.Stderr, successLine(pkg, account, noVerify))
 }
 
 // reportBatch prints one line per package to stderr for a multi-package
@@ -275,15 +288,11 @@ func reportBatch(rc *kernel.RunContext, results []pkgResult, account string, noV
 	if rc.Stderr == nil {
 		return
 	}
-	verb := "registered"
-	if noVerify {
-		verb = "registered (unverified)"
-	}
 	ok, failed := 0, 0
 	for _, r := range results {
 		if r.err == nil {
 			ok++
-			_, _ = fmt.Fprintf(rc.Stderr, "✓ %s %q under Account %q\n", verb, r.pkg, account)
+			_, _ = fmt.Fprint(rc.Stderr, successLine(r.pkg, account, noVerify))
 			continue
 		}
 		failed++
