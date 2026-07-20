@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/apps/accessiblecmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/detailscmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
@@ -226,6 +227,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	apps.AddCommand(initcmd.NewCommand(initcmd.Options{}))
 	apps.AddCommand(addcmd.NewCommand(boot))
 	apps.AddCommand(listcmd.NewCommand(boot))
+	apps.AddCommand(accessiblecmd.NewCommand(boot))
 	apps.AddCommand(viewcmd.NewCommand(boot))
 	apps.AddCommand(detailscmd.NewCommand(boot))
 	apps.AddCommand(removecmd.NewCommand(boot))

@@ -325,6 +325,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"apps", "init"}, false},
 		{[]string{"apps", "add"}, false},
 		{[]string{"apps", "list"}, false},
+		{[]string{"apps", "accessible", "list"}, false}, // #347 — Reporting apps.search, read-only
 		{[]string{"apps", "view"}, false},
 		{[]string{"apps", "details", "view"}, false},
 		{[]string{"apps", "details", "set"}, true},
