@@ -38,7 +38,7 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 ## Headline
 
-By method count, of the **~156 admin methods** across the four APIs:
+By method count, of the **~159 admin methods** across the four APIs:
 
 - **~92 shipped (~59%)** — essentially the entire *publish / first-release /
   team / observability* half plus the admin commerce-reads and games config
@@ -49,11 +49,13 @@ By method count, of the **~156 admin methods** across the four APIs:
   and **games #241** — achievements + leaderboards CRUD, ADR-0033).
 - **P0 queue now empty** — both ready-decomposed PRDs (orders #245, games #241)
   have shipped; the next work is the planned monetization block below.
-- **~65 methods remain**, of which **~54 are one coherent continent:
+- **~71 methods remain**, of which **~54 are one coherent continent:
   monetization** (subscriptions #51 + one-time products #293 + legacy IAP +
-  external transactions #295); the other ~11 are long-tail (`edits.apks`,
+  external transactions #295); the other ~17 are long-tail (`edits.apks`,
   `systemapks`, voided purchases, `orders.reviewrefund` (#352, parked 2026-07-17),
-  the two reporting helpers). Monetization is the single biggest unbuilt block
+  the two reporting helpers, plus the 6-method `appstoreappsreview` hosted-app
+  surface (PRD #377, surfaced 2026-07-20 by the Discovery refresh PR #374)).
+  Monetization is the single biggest unbuilt block
   and the honest answer to "are we near the end?": **the commerce half is barely
   started.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
@@ -62,7 +64,7 @@ By method count, of the **~156 admin methods** across the four APIs:
 
 ---
 
-## `androidpublisher` v3 — 138 methods
+## `androidpublisher` v3 — 141 methods
 
 | Surface (resource) | Methods | State | gplay namespace / issue |
 |---|---|---|---|
@@ -80,6 +82,7 @@ By method count, of the **~156 admin methods** across the four APIs:
 | `applications.deviceTierConfigs` | 3 | ✅ | `device-tiers` |
 | `applications.tracks.releases.list` | 1 | ✅ | `releases list` |
 | `apprecovery` | 5 | ✅ | `recovery` |
+| `appstoreappsreview` | 6 | 🔵 | `appstore` — hosted-app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377), slices [#378](https://github.com/PollyGlot/google-play-cli/issues/378)/[#379](https://github.com/PollyGlot/google-play-cli/issues/379)/[#380](https://github.com/PollyGlot/google-play-cli/issues/380)/[#381](https://github.com/PollyGlot/google-play-cli/issues/381); surfaced 2026-07-20 by Discovery PR #374 |
 | `internalappsharingartifacts` | 2 | ✅ | `releases sharing` |
 | `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |
@@ -95,7 +98,7 @@ By method count, of the **~156 admin methods** across the four APIs:
 | `systemapks.variants` | 4 | 🔴 | [#296](https://github.com/PollyGlot/google-play-cli/issues/296) (parked — niche OEM/preload) |
 | `purchases.voidedpurchases.list` | 1 | 🔵 | [#346](https://github.com/PollyGlot/google-play-cli/issues/346) (parked — refund/chargeback feed, deferred by [ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)) |
 | `purchases.products` / `productsv2` | 4 | ⚫️ | runtime — token verification ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) |
-| `purchases.subscriptions` / `subscriptionsv2` | 10 | ⚫️ | runtime — token verification (ADR-0026) |
+| `purchases.subscriptions` / `subscriptionsv2` | 7 | ⚫️ | runtime — token verification (ADR-0026); v1 `get`/`refund`/`revoke` removed by Google in the 2026-07-20 Discovery refresh (PR #374) |
 
 ## `playdeveloperreporting` v1beta1 — 21 methods
 
@@ -132,7 +135,7 @@ so they are structurally unusable from a terminal or agent:
 
 - **Play Integrity API** (its own API; not in any snapshot here).
 - `androidpublisher.purchases.products` / `productsv2` / `subscriptions` /
-  `subscriptionsv2` (14 methods) — server-side purchase-token verification.
+  `subscriptionsv2` (11 methods) — server-side purchase-token verification.
 
 A one-off *debug* read for a dispute could exist later as an explicitly-scoped
 diagnostic, outside the coverage sweep (ADR-0026).
