@@ -393,3 +393,5 @@ broad `security-and-quality` suite and is intentionally **non-required** at
 first, so we can watch the alert volume before promoting it to a required check.
 Triage each alert (fix, or dismiss with a reason); the baseline is zero open
 alerts. Findings surface in the repo's **Security → Code scanning** tab.
+
+<!-- ci-gating docs-only verification probe (throwaway) -->
