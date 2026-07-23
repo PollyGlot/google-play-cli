@@ -13,40 +13,90 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build, lint, test
+  # Detect the scope of the diff so the heavy jobs can short-circuit on
+  # docs/site-only changes. Gating is by *changed paths*: any .go / go.mod /
+  # go.sum / Makefile / .github / scripts touch flips `code` true and the full
+  # pipeline runs. See docs/CI_CD.md § "Path-based job gating".
+  changes:
+    name: Detect change scope
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          # `code` = anything that can change the built binary or the CI/build
+          # machinery itself. Mirrors the docs-only definition in CLAUDE.md: a
+          # PR touching none of these is docs/site-only and skips build+fuzz.
+          filters: |
+            code:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Makefile'
+              - '.github/**'
+              - 'scripts/**'
+              - 'install.sh'
+
+  build:
+    name: Build, lint, test
+    runs-on: ubuntu-latest
+    needs: changes
+    # NOTE: no job-level `if`. "Build, lint, test" is a required check on main,
+    # and a *skipped* required job blocks merge (GitHub treats skipped as
+    # unsatisfied). So the job always runs and reports success; the expensive
+    # steps self-select on `changes.outputs.code`. On a docs-only PR every step
+    # below is skipped and the job goes green in seconds — merge stays unblocked.
+    steps:
+      - if: needs.changes.outputs.code == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - if: needs.changes.outputs.code == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.25'
           cache: true
 
       - name: gofmt
+        if: needs.changes.outputs.code == 'true'
         run: |
           diff <(gofmt -d .) <(echo -n) || (echo '::error::run "make format" to fix formatting'; exit 1)
 
       - name: go vet
+        if: needs.changes.outputs.code == 'true'
         run: go vet ./...
 
       - name: golangci-lint
+        if: needs.changes.outputs.code == 'true'
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.2
 
       - name: test
+        if: needs.changes.outputs.code == 'true'
         run: go test -race ./...
 
       - name: build
+        if: needs.changes.outputs.code == 'true'
         run: go build ./cmd/gplay
 
   fuzz:
     name: Fuzz smoke (untrusted-input parsers)
     runs-on: ubuntu-latest
+    needs: changes
+    # Fuzz smoke is NOT a required check, so it can be skipped outright at the
+    # job level on docs-only PRs — no green-stub gymnastics needed.
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -79,6 +129,8 @@ jobs:
   docs:
     name: Docs sanity
     runs-on: ubuntu-latest
+    # Always runs: it's a required check, and its steps (verb gate, shellcheck,
+    # required-files) are cheap and relevant to every PR regardless of scope.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
