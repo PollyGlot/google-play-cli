@@ -65,6 +65,13 @@ jobs:
       - name: Fuzz parsers
         run: |
           set -euo pipefail
+          # Go persists generated fuzz inputs in $GOCACHE/fuzz, which setup-go's
+          # build cache restores across runs. That corpus grows unboundedly and
+          # eventually pushes the time-boxed run past the coordinator's shutdown
+          # deadline ("context deadline exceeded") on slow runners — seen on the
+          # v0.17.0 release PR (#383). Reset it so each smoke starts from the
+          # in-code f.Add seeds only; regression cases still run in `test`.
+          rm -rf "$(go env GOCACHE)/fuzz"
           go test -run='^$' -fuzz='^FuzzParseErrorEnvelope$' -fuzztime=30s ./internal/play/api/
           go test -run='^$' -fuzz='^FuzzScopesFromAssertion$' -fuzztime=30s ./internal/transport/
           go test -run='^$' -fuzz='^FuzzParse$' -fuzztime=30s ./internal/reviews/batch/
