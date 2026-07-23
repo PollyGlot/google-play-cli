@@ -335,3 +335,61 @@ The structural fix — explicit `edits begin/commit/discard` so a pipeline can
 adopt and discard an Edit by ID — is tracked in
 [#48](https://github.com/PollyGlot/google-play-cli/issues/48) and intentionally
 parked; this runbook covers recovery with the commands that exist today.
+
+## 8. gplay's own CI (for repository maintainers)
+
+> Everything above is about wiring **your** app's pipeline. This last section
+> documents how the **gplay repository itself** is tested — relevant only if
+> you're contributing to gplay, not to using the CLI.
+
+The pipeline lives in [`.github/workflows/`](../.github/workflows/); every
+third-party action is SHA-pinned (see
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#github-actions-are-sha-pinned)).
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` — **Build, lint, test** | PR + push to `main` | gofmt, `go vet`, golangci-lint, `go test -race`, build. **Required check.** |
+| `ci.yml` — **Docs sanity** | PR + push to `main` | verb-gate (ADR-0019), shellcheck, required-files. **Required check.** |
+| `ci.yml` — **Fuzz smoke** | PR + push to `main` | bounded fuzzing of the untrusted-input parsers. Not required. |
+| `codeql.yml` | PR + push to `main` + weekly | CodeQL `security-and-quality` static analysis of our own Go. Not required (yet). |
+| `govulncheck.yml` | weekly + `go.mod`/`go.sum` push | dependency-vulnerability scan. |
+
+### Path-based job gating
+
+A leading **`changes`** job ([`dorny/paths-filter`](https://github.com/dorny/paths-filter))
+classifies each diff and exposes a `code` output. A change is `code: true` if it
+touches any of `**/*.go`, `go.mod`, `go.sum`, `Makefile`, `.github/**`,
+`scripts/**`, or `install.sh` — the same "not docs-only" boundary as
+[`CLAUDE.md`](../CLAUDE.md). Everything else (Markdown, `docs/**`, `website/**`,
+doc assets) is docs/site-only.
+
+On a docs-only PR the heavy jobs short-circuit, so the frequent self-merged doc
+PRs don't pay the ~2m40s build + ~1m50s fuzz. **The required-check interplay is
+the subtle part:**
+
+- **`fuzz`** is *not* required, so it skips outright at the job level:
+  `if: needs.changes.outputs.code == 'true'`.
+- **`build`** ("Build, lint, test") *is* required. GitHub treats a **skipped**
+  required job as unsatisfied — it would block merge forever. So `build` has
+  **no job-level `if`**; it always runs and always reports success, and each
+  expensive *step* self-selects on `needs.changes.outputs.code`. On a docs-only
+  PR every step is skipped and the job goes green in seconds, leaving the
+  required check satisfied without running any Go tooling.
+- **`docs`** ("Docs sanity") always runs — it's required, cheap, and relevant to
+  every PR.
+
+Net effect: docs-only PRs get a fast green pipeline; any `.go`/`go.mod`/
+`Makefile`/`.github`/`scripts` touch flips `code` true and runs the full
+pipeline unchanged — gating is by changed path, never by trust, so there's no
+loss of safety.
+
+### CodeQL
+
+`codeql.yml` runs GitHub's CodeQL taint-tracking over gplay's own Go on every PR,
+every push to `main`, and a weekly cron. gplay handles service-account
+credentials, JWTs, and untrusted API responses, so the queries that matter here
+are credential leakage to logs, injection, and path traversal. It runs the
+broad `security-and-quality` suite and is intentionally **non-required** at
+first, so we can watch the alert volume before promoting it to a required check.
+Triage each alert (fix, or dismiss with a reason); the baseline is zero open
+alerts. Findings surface in the repo's **Security → Code scanning** tab.
