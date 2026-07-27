@@ -14,6 +14,8 @@ androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus	POST	an
 androidpublisher.appstoreappsreview.uploadapk	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/apks:upload
 androidpublisher.appstoreappsreview.uploadappstoreapppolicydeclarationfile	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/policyDeclarationFiles:upload
 androidpublisher.appstoreappsreview.uploadimage	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/images:upload
+androidpublisher.appstorecatalog.recentappviews.get	GET	androidpublisher/v3/appstorecatalog/{appStorePackageName}/recentAppViews/{playAppPackageName}
+androidpublisher.appstorecatalog.recentupdateevents.list	GET	androidpublisher/v3/appstorecatalog/{appStorePackageName}/recentUpdateEvents
 androidpublisher.edits.apks.addexternallyhosted	POST	androidpublisher/v3/applications/{packageName}/edits/{editId}/apks/externallyHosted
 androidpublisher.edits.apks.list	GET	androidpublisher/v3/applications/{packageName}/edits/{editId}/apks
 androidpublisher.edits.apks.upload	POST	androidpublisher/v3/applications/{packageName}/edits/{editId}/apks
