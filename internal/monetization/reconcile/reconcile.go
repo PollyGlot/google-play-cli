@@ -14,6 +14,49 @@ import (
 	"sort"
 )
 
+// Field is one managed top-level field of the resource. Normalize, when set,
+// rewrites the decoded value on both sides before comparison — the hook that
+// keeps server-derived output-only subfields (basePlans[].state) from
+// producing phantom patches while the field itself stays declarable. It never
+// affects what apply sends (the file body travels verbatim; the server ignores
+// output-only fields on write).
+type Field struct {
+	Name      string
+	Normalize func(any) any
+}
+
+// StripKeys returns a Normalize func that removes the named keys from every
+// object in the value, walking objects and arrays recursively.
+func StripKeys(keys ...string) func(any) any {
+	drop := map[string]struct{}{}
+	for _, k := range keys {
+		drop[k] = struct{}{}
+	}
+	var walk func(any) any
+	walk = func(v any) any {
+		switch t := v.(type) {
+		case map[string]any:
+			out := make(map[string]any, len(t))
+			for k, val := range t {
+				if _, gone := drop[k]; gone {
+					continue
+				}
+				out[k] = walk(val)
+			}
+			return out
+		case []any:
+			out := make([]any, len(t))
+			for i, val := range t {
+				out[i] = walk(val)
+			}
+			return out
+		default:
+			return v
+		}
+	}
+	return walk
+}
+
 // Change is one planned action on one product. Fields names the changed managed
 // fields (patch only) — it is both the human diff summary and the exact
 // updateMask the executor sends, which is what keeps unmanaged nesting out of
@@ -45,7 +88,7 @@ func (p Plan) HasDeletes() bool { return len(p.Deletes) > 0 }
 // fields only: local-only products become creates, live-only products become
 // deletes, and a product whose managed projection differs becomes a patch
 // naming exactly the differing fields.
-func Compute(local, live map[string]json.RawMessage, managed []string) (Plan, error) {
+func Compute(local, live map[string]json.RawMessage, managed []Field) (Plan, error) {
 	var plan Plan
 	for id, rawLocal := range local {
 		rawLive, ok := live[id]
@@ -78,7 +121,7 @@ func Compute(local, live map[string]json.RawMessage, managed []string) (Plan, er
 // changedFields projects both resources onto the managed fields and returns
 // the ones whose values differ. A field absent on both sides is equal;
 // comparison is on decoded values, so formatting differences never count.
-func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []string) ([]string, error) {
+func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []Field) ([]string, error) {
 	var localM, liveM map[string]any
 	if err := json.Unmarshal(rawLocal, &localM); err != nil {
 		return nil, fmt.Errorf("decode declared subscription %q: %w", id, err)
@@ -88,8 +131,17 @@ func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []strin
 	}
 	var changed []string
 	for _, f := range managed {
-		if !reflect.DeepEqual(localM[f], liveM[f]) {
-			changed = append(changed, f)
+		lv, ov := localM[f.Name], liveM[f.Name]
+		if f.Normalize != nil {
+			if lv != nil {
+				lv = f.Normalize(lv)
+			}
+			if ov != nil {
+				ov = f.Normalize(ov)
+			}
+		}
+		if !reflect.DeepEqual(lv, ov) {
+			changed = append(changed, f.Name)
 		}
 	}
 	return changed, nil

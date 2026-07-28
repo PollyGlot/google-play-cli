@@ -174,6 +174,26 @@ func TestPatch_scopedUpdateMask(t *testing.T) {
 	}
 }
 
+// TestConvertRegionPrices_postsPrice asserts the helper POSTs the Money to the
+// pricing:convertRegionPrices endpoint and returns the response verbatim.
+func TestConvertRegionPrices_postsPrice(t *testing.T) {
+	rt := &subsRT{responses: []scripted{{200, `{"regionVersion":{"version":"2022/02"},"convertedRegionPrices":{"FR":{"regionCode":"FR","price":{"currencyCode":"EUR","units":"4","nanos":490000000}}}}`}}}
+	raw, err := subscriptions.ConvertRegionPrices(context.Background(), client(rt), "com.example.app", subscriptions.Money{CurrencyCode: "USD", Units: "4", Nanos: 990000000})
+	if err != nil {
+		t.Fatalf("ConvertRegionPrices: %v", err)
+	}
+	req := rt.requests[0]
+	if req.method != http.MethodPost || !strings.HasSuffix(strings.Split(req.url, "?")[0], "/applications/com.example.app/pricing:convertRegionPrices") {
+		t.Errorf("request %s %s is not monetization.convertRegionPrices", req.method, req.url)
+	}
+	if !strings.Contains(req.body, `"units":"4"`) || !strings.Contains(req.body, `"nanos":990000000`) {
+		t.Errorf("body %q must carry the Money", req.body)
+	}
+	if !strings.Contains(string(raw), "convertedRegionPrices") {
+		t.Errorf("response %s should be returned verbatim", raw)
+	}
+}
+
 // TestDelete_addressesProduct asserts Delete issues the DELETE and treats an
 // empty 2xx as success.
 func TestDelete_addressesProduct(t *testing.T) {
