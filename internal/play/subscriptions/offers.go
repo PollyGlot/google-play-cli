@@ -168,6 +168,55 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, basePla
 	return postEmpty(ctx, hc, op, pkg, u)
 }
 
+// opMigratePrices tags *api.Error for the subscriber price migration.
+const opMigratePrices = "monetization.subscriptions.basePlans.migratePrices"
+
+// RegionsVersion mirrors the RegionsVersion schema.
+type RegionsVersion struct {
+	Version string `json:"version"`
+}
+
+// RegionalPriceMigration mirrors RegionalPriceMigrationConfig: one region
+// whose legacy price cohorts older than the cutoff migrate to the current
+// price.
+type RegionalPriceMigration struct {
+	RegionCode                    string `json:"regionCode"`
+	OldestAllowedPriceVersionTime string `json:"oldestAllowedPriceVersionTime"`
+	PriceIncreaseType             string `json:"priceIncreaseType,omitempty"`
+}
+
+// MigrateBasePlanPricesRequest mirrors the request schema. The path identity
+// (packageName/productId/basePlanId) is echoed in the body as the schema
+// requires ("must be equal to" the resource fields).
+type MigrateBasePlanPricesRequest struct {
+	PackageName             string                   `json:"packageName"`
+	ProductID               string                   `json:"productId"`
+	BasePlanID              string                   `json:"basePlanId"`
+	RegionalPriceMigrations []RegionalPriceMigration `json:"regionalPriceMigrations"`
+	RegionsVersion          RegionsVersion           `json:"regionsVersion"`
+}
+
+// MigrateBasePlanPrices migrates EXISTING subscribers of one base plan to the
+// current price (basePlans.migratePrices) — the sole imperative escape hatch
+// of the Monetization catalog (ADR-0041 §4): apply never reprices a live
+// purchaser, this call is how an operator deliberately does. One base plan per
+// call — the batch sibling is deliberately not wrapped (no bulk money-moving,
+// the ADR-0031 stance). The command gates it behind --confirm before reaching
+// here.
+func MigrateBasePlanPrices(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, request MigrateBasePlanPricesRequest) (json.RawMessage, error) {
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, &api.Error{Operation: opMigratePrices, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
+	}
+	u := base(pkg) + "/" + url.PathEscape(productID) + "/basePlans/" + url.PathEscape(basePlanID) + ":migratePrices"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, &api.Error{Operation: opMigratePrices, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return do(hc, opMigratePrices, pkg, req)
+}
+
 // offersBase is the offers collection URL under one base plan.
 func offersBase(pkg, productID, basePlanID string) string {
 	return base(pkg) + "/" + url.PathEscape(productID) + "/basePlans/" + url.PathEscape(basePlanID) + "/offers"
