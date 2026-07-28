@@ -105,11 +105,18 @@ Three realities shape the design:
    override when Google publishes a new one — a flag, not a config knob,
    so the pin is visible in CI logs.
 8. **v2 for all writes; `pull` unions legacy.** (`iap` slices #371–#372.)
-   `iap apply` writes `monetization.onetimeproducts` only. `iap pull`
-   reads **both** v2 and legacy `inappproducts` and unions by product ID,
-   so unmigrated legacy products are never invisible. Editing a
-   legacy-origin product requires the explicit one-way **`--migrate`**
-   flag, which promotes it to v2 on apply; without it, `apply` errors.
+   `iap apply` writes `monetization.onetimeproducts` only — a v2 create
+   is `patch` with `allowMissing`, the API has no insert; offer writes
+   ride the per-purchase-option batch endpoints. `iap pull` reads
+   **both** v2 and legacy `inappproducts` and unions by product ID, so
+   unmigrated legacy products are never invisible (a product live in
+   both models keeps the v2 file — the legacy row is its pre-migration
+   shadow). A file's origin is its shape (`sku` = legacy, `productId` =
+   v2). The legacy surface is **inert**: never created, edited or
+   deleted; the promotion gesture is rewriting the file in the v2 schema
+   and applying with the explicit one-way **`--migrate`** flag (exit 3
+   without it, its own `migrate` op in the plan) — once promoted, a
+   product can never return to `inappproducts`.
 9. **`convertRegionPrices` folds into pricing** (slice #368), not a
    standalone top-level command: **`subscriptions prices convert --price
    --currency`** derives per-region prices from one base price, printing
