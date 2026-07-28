@@ -42,6 +42,8 @@ import (
 	gamesleaderboardsupdate "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/update"
 	gamesleaderboardsview "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/view"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
+	iapapply "github.com/PollyGlot/google-play-cli/commands/iap/apply"
+	iappull "github.com/PollyGlot/google-play-cli/commands/iap/pull"
 	"github.com/PollyGlot/google-play-cli/commands/installskills"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
@@ -580,6 +582,23 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	subscriptionsPrices.AddCommand(kernel.MarkMutating(subscriptionspricesmigrate.NewCommand(boot)))
 	subscriptionsGroup.AddCommand(subscriptionsPrices)
 	root.AddCommand(subscriptionsGroup)
+
+	// `gplay iap` — the one-time-product side of the Monetization catalog
+	// (slices #371–#372 / ADR-0041 §8). Same declarative pull/apply pair and
+	// the same axis as `subscriptions`; pull unions the v2 model with the
+	// read-only legacy inappproducts (never written in place), apply writes
+	// v2 only — MarkMutating so GPLAY_READONLY refuses it (exit 4), deletes
+	// gated by --confirm at the command layer (exit 3 if missing).
+	iapGroup := &cobra.Command{
+		Use:           "iap",
+		Short:         "Pull and apply the app's one-time-product catalog as files (declarative)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	iapGroup.AddCommand(iappull.NewCommand(boot))
+	iapGroup.AddCommand(kernel.MarkMutating(iapapply.NewCommand(boot)))
+	root.AddCommand(iapGroup)
 
 	reviews := &cobra.Command{
 		Use:           "reviews",
