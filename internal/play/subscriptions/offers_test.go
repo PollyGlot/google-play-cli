@@ -98,6 +98,36 @@ func TestDeleteOffer_addressesOffer(t *testing.T) {
 	}
 }
 
+// TestMigrateBasePlanPrices_postsRequest asserts the migration POSTs the
+// :migratePrices custom verb with the full request body (path identity echoed,
+// as the schema requires) and returns the response verbatim.
+func TestMigrateBasePlanPrices_postsRequest(t *testing.T) {
+	rt := &subsRT{responses: []scripted{{200, `{}`}}}
+	req := subscriptions.MigrateBasePlanPricesRequest{
+		PackageName: "com.example.app",
+		ProductID:   "premium",
+		BasePlanID:  "monthly",
+		RegionalPriceMigrations: []subscriptions.RegionalPriceMigration{
+			{RegionCode: "US", OldestAllowedPriceVersionTime: "2026-01-01T00:00:00Z", PriceIncreaseType: "PRICE_INCREASE_TYPE_OPT_OUT"},
+			{RegionCode: "FR", OldestAllowedPriceVersionTime: "2026-01-01T00:00:00Z"},
+		},
+		RegionsVersion: subscriptions.RegionsVersion{Version: "2022/02"},
+	}
+	_, err := subscriptions.MigrateBasePlanPrices(context.Background(), client(rt), "com.example.app", "premium", "monthly", req)
+	if err != nil {
+		t.Fatalf("MigrateBasePlanPrices: %v", err)
+	}
+	got := rt.requests[0]
+	if got.method != http.MethodPost || !strings.HasSuffix(got.url, "/subscriptions/premium/basePlans/monthly:migratePrices") {
+		t.Errorf("request %s %s is not basePlans.migratePrices", got.method, got.url)
+	}
+	for _, want := range []string{`"regionCode":"US"`, `"regionCode":"FR"`, `"oldestAllowedPriceVersionTime":"2026-01-01T00:00:00Z"`, `"version":"2022/02"`, `"priceIncreaseType":"PRICE_INCREASE_TYPE_OPT_OUT"`} {
+		if !strings.Contains(got.body, want) {
+			t.Errorf("body %q missing %s", got.body, want)
+		}
+	}
+}
+
 // TestSetStates_hitCustomVerbs asserts the state ops POST the :activate /
 // :deactivate custom verbs with an empty JSON body (identity rides the path).
 func TestSetStates_hitCustomVerbs(t *testing.T) {

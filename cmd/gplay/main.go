@@ -76,6 +76,7 @@ import (
 	schemacmd "github.com/PollyGlot/google-play-cli/commands/schema"
 	subscriptionsapply "github.com/PollyGlot/google-play-cli/commands/subscriptions/apply"
 	subscriptionspricesconvert "github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/convert"
+	subscriptionspricesmigrate "github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/migrate"
 	subscriptionspull "github.com/PollyGlot/google-play-cli/commands/subscriptions/pull"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
 	teamgrantsremove "github.com/PollyGlot/google-play-cli/commands/team/grants/remove"
@@ -573,6 +574,10 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	subscriptionsPrices.AddCommand(subscriptionspricesconvert.NewCommand(boot))
+	// `migrate` (basePlans.migratePrices) reprices EXISTING subscribers — the
+	// sole imperative escape hatch of the catalog (ADR-0041 §4): money-moving,
+	// --confirm-gated (exit 3), MarkMutating, never reachable from apply.
+	subscriptionsPrices.AddCommand(kernel.MarkMutating(subscriptionspricesmigrate.NewCommand(boot)))
 	subscriptionsGroup.AddCommand(subscriptionsPrices)
 	root.AddCommand(subscriptionsGroup)
 

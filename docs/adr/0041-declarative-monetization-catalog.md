@@ -61,9 +61,15 @@ Three realities shape the design:
    `orders refund` / `customapps create` gate family. `--dry-run` always
    shows the full plan first.
 4. **`apply` never touches an existing purchaser.** Editing a price in a
-   file affects **new** purchases only. Migrating existing subscribers
-   (`batchMigratePrices`) is the sole imperative escape hatch — its own
-   gated command (slice #370), never triggered by an `apply` diff.
+   file affects **new** purchases only. Migrating existing subscribers is
+   the sole imperative escape hatch — **`subscriptions prices migrate`**
+   (slice #370): one base plan per invocation via `basePlans.
+   migratePrices`, `--region`-scoped with an `--oldest` cohort cutoff,
+   DESTRUCTIVE tier (`--confirm`, exit 3; offline `--dry-run`;
+   MarkMutating), never triggered by an `apply` diff (pinned by test).
+   The batch sibling (`batchMigratePrices`) is deliberately not wrapped —
+   no bulk money-moving, the ADR-0031 stance. `migrate` is a domain verb
+   admitted under [ADR-0019](./0019-canonical-verb-vocabulary.md) §2.
 5. **Scoped diff, scoped `updateMask`.** Each slice reconciles only the
    fields it owns and sends an `updateMask` limited to them — the walking
    skeleton (#367) patches `listings`, `taxAndComplianceSettings` and

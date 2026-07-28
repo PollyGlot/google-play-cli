@@ -414,6 +414,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"subscriptions", "pull"}, false},
 		{[]string{"subscriptions", "apply"}, true},
 		{[]string{"subscriptions", "prices", "convert"}, false},
+		{[]string{"subscriptions", "prices", "migrate"}, true},
 
 		// reviews
 		{[]string{"reviews", "list"}, false},

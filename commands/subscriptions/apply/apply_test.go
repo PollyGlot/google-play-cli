@@ -301,6 +301,13 @@ func TestRun_confirmedPlan_executesInOrder(t *testing.T) {
 	if !strings.Contains(stderr.String(), "1 created, 1 patched, 1 deleted") {
 		t.Errorf("stderr %q should confirm the applied plan", stderr.String())
 	}
+	// The PRD #51 invariant: apply never reprices an existing subscriber — no
+	// plan, whatever it contains, may reach basePlans.migratePrices.
+	for _, c := range rt.calls {
+		if strings.Contains(c, ":migratePrices") {
+			t.Fatalf("apply must never call migratePrices; calls=%v", rt.calls)
+		}
+	}
 	var out bytes.Buffer
 	if err := r.Renderers().Table(&out); err != nil {
 		t.Fatalf("Table: %v", err)
