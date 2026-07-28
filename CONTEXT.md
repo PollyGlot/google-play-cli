@@ -254,3 +254,18 @@ _Avoid_: treating it as an `edits`-namespace concept (there is no Edit), or conf
 The opaque handle that identifies one [Generated APK](#generated-apk) to download. Returned per artifact by `generatedapks.list` (the `downloadId` field on each split/standalone/universal/asset-slice/recovery entry) and supplied as the positional argument to `releases generated download`. It is not a URL and not stable across re-generation — always read a fresh one from `list`.
 
 _Avoid_: treating a **Download ID** as a durable identifier to cache, or confusing it with a `versionCode` (which addresses the *bundle*, not an individual generated artifact).
+
+### Subscription
+A recurring-purchase product of an app, backed by `monetization.subscriptions` of the [Android Publisher API](#android-publisher-api), keyed by package + `productId`. A three-level resource: the Subscription (localized listings, tax/compliance settings) contains **Base plans** (billing period, per-territory prices) which contain **Offers** (trials, intro pricing). gplay owns it declaratively as part of the [Monetization catalog](#monetization-catalog), not via imperative CRUD ([ADR-0041](docs/adr/0041-declarative-monetization-catalog.md)). Editing a Subscription's config never changes what an existing subscriber pays — subscriber price migration is a separate gated imperative.
+
+_Avoid_: "in-app subscription managed like an IAP" — subscriptions and one-time products are sibling catalogs with distinct resources; and never imply an `apply` can reprice existing subscribers.
+
+### Monetization catalog
+The on-disk, declarative form of an app's monetization config: a directory (`--dir`) holding one JSON file per product (`<productId>.json`, the API resource in wire format). It is the unit `subscriptions pull` writes and `subscriptions apply` reconciles (`iap` in later slices). Reconciliation is **mirror**, not [Additive sync](#additive-sync): the directory is the complete declared catalog, so a live product with no file is a **delete** in the [Reconciliation plan](#reconciliation-plan) — visible in `--dry-run` and gated by `--confirm` ([ADR-0041](docs/adr/0041-declarative-monetization-catalog.md)).
+
+_Avoid_: confusing it with the [Metadata tree](#metadata-tree) (additive stance, per-locale text files) — same pull/apply verbs, deliberately different omission semantics.
+
+### Reconciliation plan
+The create/patch/delete set `subscriptions apply` computes between a [Monetization catalog](#monetization-catalog) and the live catalog. `--dry-run` prints the plan and stops; without it the plan executes, except that a plan containing any **delete** refuses to run without `--confirm` (exit 3). `--output json` renders the plan as a gplay-owned shape (`[experimental]`), an explicit exception to pure API pass-through since no single API response describes a diff.
+
+_Avoid_: calling an executed plan "synced" when deletes were skipped by refusal — the refusal is the whole plan not running, never a partial apply.

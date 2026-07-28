@@ -74,6 +74,8 @@ import (
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	reviewsview "github.com/PollyGlot/google-play-cli/commands/reviews/view"
 	schemacmd "github.com/PollyGlot/google-play-cli/commands/schema"
+	subscriptionsapply "github.com/PollyGlot/google-play-cli/commands/subscriptions/apply"
+	subscriptionspull "github.com/PollyGlot/google-play-cli/commands/subscriptions/pull"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
 	teamgrantsremove "github.com/PollyGlot/google-play-cli/commands/team/grants/remove"
 	teamgrantsset "github.com/PollyGlot/google-play-cli/commands/team/grants/set"
@@ -538,6 +540,27 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	ordersGroup.AddCommand(ordersview.NewCommand(boot))
 	ordersGroup.AddCommand(kernel.MarkMutating(ordersrefund.NewCommand(boot)))
 	root.AddCommand(ordersGroup)
+
+	// `gplay subscriptions` — the declarative Monetization catalog, subscription
+	// side (PRD #51, walking skeleton #367 / ADR-0041). Package axis, Edit-free
+	// (applications/{packageName}/subscriptions/..., like device-tiers and
+	// orders). `pull` mirrors the live catalog into <productId>.json files —
+	// it writes only locally, so it is not marked mutating. `apply` reconciles
+	// the live catalog to the files (create/patch/delete) — MarkMutating so
+	// GPLAY_READONLY refuses it (exit 4); a plan containing a delete
+	// additionally requires --confirm at the command layer (exit 3 if missing).
+	// Subscriber price migration is deliberately NOT reachable from apply — it
+	// arrives as its own gated command (slice #370).
+	subscriptionsGroup := &cobra.Command{
+		Use:           "subscriptions",
+		Short:         "Pull and apply the app's subscription catalog as files (declarative)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	subscriptionsGroup.AddCommand(subscriptionspull.NewCommand(boot))
+	subscriptionsGroup.AddCommand(kernel.MarkMutating(subscriptionsapply.NewCommand(boot)))
+	root.AddCommand(subscriptionsGroup)
 
 	reviews := &cobra.Command{
 		Use:           "reviews",

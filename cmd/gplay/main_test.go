@@ -408,6 +408,11 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"orders", "view"}, false},
 		{[]string{"orders", "refund"}, true},
 
+		// subscriptions — pull writes only local catalog files; apply
+		// reconciles the live catalog (ADR-0041).
+		{[]string{"subscriptions", "pull"}, false},
+		{[]string{"subscriptions", "apply"}, true},
+
 		// reviews
 		{[]string{"reviews", "list"}, false},
 		{[]string{"reviews", "reply"}, true},

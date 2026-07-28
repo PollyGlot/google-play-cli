@@ -82,9 +82,10 @@ Créer des tracks closed nommés (`qa-team`, `external-beta`...) et y gérer la 
 CRUD des produits in-app non-abonnement.
 **Pourquoi plus tard :** gros sous-domaine (CRUD complet + pricing par territoire). Sera un module à part entière post-MVP.
 
-### Subscriptions v2 — `monetization.subscriptions` + `basePlans` + `offers`
+### Subscriptions v2 — `monetization.subscriptions` + `basePlans` + `offers` — 🔨 **entamé** (PRD [#51](https://github.com/PollyGlot/google-play-cli/issues/51), slice [#367](https://github.com/PollyGlot/google-play-cli/issues/367) livrée)
 Abonnements, base plans, offers, pricing par territoire.
-**Pourquoi plus tard :** API très récente et complexe (3 niveaux imbriqués). Gros morceau à part entière, mérite son propre module et probablement sa propre paire de skills `gplay-subscription-management` + un skill de synchronisation avec RevenueCat.
+**Statut :** walking skeleton livré `[experimental]` — `subscriptions pull`/`apply` déclaratifs au niveau subscription (moteur de réconciliation partagé, [ADR-0041](adr/0041-declarative-monetization-catalog.md)) ; basePlans/offers/pricing et la migration gated d'abonnés suivent (slices [#368](https://github.com/PollyGlot/google-play-cli/issues/368)–[#370](https://github.com/PollyGlot/google-play-cli/issues/370)).
+**Pourquoi plus tard (rationnel d'origine) :** API très récente et complexe (3 niveaux imbriqués). Gros morceau à part entière, mérite son propre module et probablement sa propre paire de skills `gplay-subscription-management` + un skill de synchronisation avec RevenueCat.
 
 ### Orders — `orders.get` / `orders.batchget` / `orders.refund` — ✅ **livré** (PRD [#245](https://github.com/PollyGlot/google-play-cli/issues/245), slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)–[#284](https://github.com/PollyGlot/google-play-cli/issues/284))
 Lecture d'une commande par order ID (diagnostic support/litige) et refund (write money-moving).
