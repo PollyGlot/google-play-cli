@@ -40,24 +40,26 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 By method count, of the **~159 admin methods** across the four APIs:
 
-- **~93 shipped (~60%)** — essentially the entire *publish / first-release /
+- **~97 shipped (~62%)** — essentially the entire *publish / first-release /
   team / observability* half plus the admin commerce-reads and games config
   (incl. `edits.apks.upload` via `releases upload`, ADR-0036,
   `generatedapks`, PRD #299 / ADR-0034, `customapps`, PRD #242 / ADR-0032,
   **orders #245 in full** — `orders view` single + batch (`orders.get`/
   `orders.batchget`) and the gated `orders refund` (`orders.refund`), ADR-0031,
   and **games #241** — achievements + leaderboards CRUD, ADR-0033).
-- **P0 queue now empty** — both ready-decomposed PRDs (orders #245, games #241)
-  have shipped; the next work is the planned monetization block below.
-- **~71 methods remain**, of which **~54 are one coherent continent:
-  monetization** (subscriptions #51 + one-time products #293 + legacy IAP +
+- **Monetization is started** — the declarative-catalog walking skeleton
+  (slice #367 of PRD #51, [ADR-0041](adr/0041-declarative-monetization-catalog.md))
+  shipped `subscriptions pull`/`apply` on the subscription top level (4 of the
+  24 subscription-tree methods); the reconciliation engine it proves is the
+  one every remaining monetization slice (#368–#372) reuses.
+- **~67 methods remain**, of which **~50 are the rest of the monetization
+  continent** (subscription nesting + one-time products under #51, legacy IAP,
   external transactions #295); the other ~17 are long-tail (`edits.apks`,
   `systemapks`, voided purchases, `orders.reviewrefund` (#352, parked 2026-07-17),
   the two reporting helpers, plus the 6-method `appstoreappsreview` hosted-app
   surface (PRD #377, surfaced 2026-07-20 by the Discovery refresh PR #374)).
-  Monetization is the single biggest unbuilt block
-  and the honest answer to "are we near the end?": **the commerce half is barely
-  started.**
+  Monetization remains the biggest block in flight, and the honest answer to
+  "are we near the end?": **the commerce half is now started, not finished.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
   (issues #293–#296); `generatedapks` (#294) has since been grilled into PRD #299
   and **shipped** (slices #300–#301, PR #305).
@@ -90,7 +92,7 @@ By method count, of the **~159 admin methods** across the four APIs:
 | `orders` | 4 | ✅ | 3 ✅ — `orders view <id>...` (`orders.get` single + `orders.batchget` batch) + `orders refund` (`orders.refund`, gated) — slices [#282](https://github.com/PollyGlot/google-play-cli/issues/282)/[#283](https://github.com/PollyGlot/google-play-cli/issues/283)/[#284](https://github.com/PollyGlot/google-play-cli/issues/284) ([#245](https://github.com/PollyGlot/google-play-cli/issues/245) / [ADR-0031](adr/0031-orders-commerce-reads-and-gated-refund.md)); `orders.reviewrefund` (chargeback refund review) 🔵 [#352](https://github.com/PollyGlot/google-play-cli/issues/352) — surfaced 2026-07-13 (PR #351), **parked** 2026-07-17: its required `pendingRefundToken` only reaches the caller through a Real-time Developer Notification, and gplay has no notification-ingestion pipeline; unpark when one lands |
 | `edits.apks` | 3 | ✅ | `upload` rides `releases upload` (`.apk` → `apks.upload`, slice [#330](https://github.com/PollyGlot/google-play-cli/issues/330) / [ADR-0036](adr/0036-apk-upload-rides-releases-upload.md)); `list` + `addexternallyhosted` excluded |
 | `inappproducts` (legacy IAP) | 9 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) |
-| `monetization.subscriptions` (+`basePlans`+`offers`) | 24 | 🔵 | [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (post-v1) |
+| `monetization.subscriptions` (+`basePlans`+`offers`) | 24 | 4 ✅ | `subscriptions pull`/`apply` — declarative catalog, subscription level (`list`/`create`/`patch`/`delete`), slice [#367](https://github.com/PollyGlot/google-play-cli/issues/367) of [#51](https://github.com/PollyGlot/google-play-cli/issues/51) / [ADR-0041](adr/0041-declarative-monetization-catalog.md); `get`/`batchGet`/`batchUpdate`/`archive` + the `basePlans`/`offers` levels ride slices [#368](https://github.com/PollyGlot/google-play-cli/issues/368)–[#370](https://github.com/PollyGlot/google-play-cli/issues/370) 🟡 |
 | `monetization.onetimeproducts` (+`purchaseOptions`+`offers`) | 17 | 🔵 | folded into PRD [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (was [#293](https://github.com/PollyGlot/google-play-cli/issues/293), 2026-07-08) — legacy-vs-v2 decided at #51's grilling |
 | `monetization.convertRegionPrices` | 1 | 🔵 | folded into PRD [#51](https://github.com/PollyGlot/google-play-cli/issues/51) (was [#293](https://github.com/PollyGlot/google-play-cli/issues/293)) |
 | `externaltransactions` | 3 | 🔴 | [#295](https://github.com/PollyGlot/google-play-cli/issues/295) **parked** (2026-07-08) — alternative billing / DMA reporting, niche |

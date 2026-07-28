@@ -1,0 +1,100 @@
+// Package reconcile computes the Reconciliation plan (CONTEXT.md) of the
+// Monetization catalog: the pure create/patch/delete diff between a declared
+// catalog (files) and the live one, restricted to the managed fields of the
+// calling slice. No I/O, no clock, no auth — the same split as
+// internal/metadata/diff vs its orchestrator. Later slices widen the managed
+// field set (basePlans with #368); the engine itself does not change
+// (ADR-0041).
+package reconcile
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"sort"
+)
+
+// Change is one planned action on one product. Fields names the changed managed
+// fields (patch only) — it is both the human diff summary and the exact
+// updateMask the executor sends, which is what keeps unmanaged nesting out of
+// reach (ADR-0041 §5).
+type Change struct {
+	ProductID string   `json:"productId"`
+	Fields    []string `json:"fields,omitempty"`
+}
+
+// Plan is the Reconciliation plan: what apply would (or did) do. All slices are
+// sorted by product ID for stable output.
+type Plan struct {
+	Creates   []Change `json:"-"`
+	Patches   []Change `json:"-"`
+	Deletes   []Change `json:"-"`
+	Unchanged []string `json:"-"`
+}
+
+// HasChanges reports whether the plan does anything at all.
+func (p Plan) HasChanges() bool {
+	return len(p.Creates)+len(p.Patches)+len(p.Deletes) > 0
+}
+
+// HasDeletes reports whether the plan is destructive — the condition that
+// gates execution behind --confirm (ADR-0041 §3).
+func (p Plan) HasDeletes() bool { return len(p.Deletes) > 0 }
+
+// Compute diffs the declared catalog against the live one over the managed
+// fields only: local-only products become creates, live-only products become
+// deletes, and a product whose managed projection differs becomes a patch
+// naming exactly the differing fields.
+func Compute(local, live map[string]json.RawMessage, managed []string) (Plan, error) {
+	var plan Plan
+	for id, rawLocal := range local {
+		rawLive, ok := live[id]
+		if !ok {
+			plan.Creates = append(plan.Creates, Change{ProductID: id})
+			continue
+		}
+		changed, err := changedFields(id, rawLocal, rawLive, managed)
+		if err != nil {
+			return Plan{}, err
+		}
+		if len(changed) == 0 {
+			plan.Unchanged = append(plan.Unchanged, id)
+			continue
+		}
+		plan.Patches = append(plan.Patches, Change{ProductID: id, Fields: changed})
+	}
+	for id := range live {
+		if _, ok := local[id]; !ok {
+			plan.Deletes = append(plan.Deletes, Change{ProductID: id})
+		}
+	}
+	sortChanges(plan.Creates)
+	sortChanges(plan.Patches)
+	sortChanges(plan.Deletes)
+	sort.Strings(plan.Unchanged)
+	return plan, nil
+}
+
+// changedFields projects both resources onto the managed fields and returns
+// the ones whose values differ. A field absent on both sides is equal;
+// comparison is on decoded values, so formatting differences never count.
+func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []string) ([]string, error) {
+	var localM, liveM map[string]any
+	if err := json.Unmarshal(rawLocal, &localM); err != nil {
+		return nil, fmt.Errorf("decode declared subscription %q: %w", id, err)
+	}
+	if err := json.Unmarshal(rawLive, &liveM); err != nil {
+		return nil, fmt.Errorf("decode live subscription %q: %w", id, err)
+	}
+	var changed []string
+	for _, f := range managed {
+		if !reflect.DeepEqual(localM[f], liveM[f]) {
+			changed = append(changed, f)
+		}
+	}
+	return changed, nil
+}
+
+func sortChanges(cs []Change) {
+	sort.Slice(cs, func(i, j int) bool { return cs[i].ProductID < cs[j].ProductID })
+}
