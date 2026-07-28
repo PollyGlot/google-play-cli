@@ -266,6 +266,6 @@ The on-disk, declarative form of an app's monetization config: a directory (`--d
 _Avoid_: confusing it with the [Metadata tree](#metadata-tree) (additive stance, per-locale text files) — same pull/apply verbs, deliberately different omission semantics.
 
 ### Reconciliation plan
-The create/patch/delete set `subscriptions apply` computes between a [Monetization catalog](#monetization-catalog) and the live catalog. `--dry-run` prints the plan and stops; without it the plan executes, except that a plan containing any **delete** refuses to run without `--confirm` (exit 3). `--output json` renders the plan as a gplay-owned shape (`[experimental]`), an explicit exception to pure API pass-through since no single API response describes a diff.
+The action set `subscriptions apply` computes between a [Monetization catalog](#monetization-catalog) and the live catalog: create/patch/delete of subscriptions and of their offers, plus the lifecycle activations/deactivations reconciling a declared `state:` (ACTIVE/INACTIVE — omitted means unmanaged) through the dedicated endpoints, never a patch. `--dry-run` prints the plan and stops; without it the plan executes, except that a plan containing any **delete** refuses to run without `--confirm` (exit 3). `--output json` renders the plan as a gplay-owned shape (`[experimental]`), an explicit exception to pure API pass-through since no single API response describes a diff.
 
 _Avoid_: calling an executed plan "synced" when deletes were skipped by refusal — the refusal is the whole plan not running, never a partial apply.

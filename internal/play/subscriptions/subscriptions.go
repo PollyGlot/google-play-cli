@@ -4,11 +4,12 @@
 // (applications/{packageName}/subscriptions...), like deviceTierConfigs and
 // orders. Raw HTTP (ADR-0007), never the google-go-sdk.
 //
-// This package ships the walking-skeleton surface of PRD #51 (slice #367): list
-// (followed to completion for reconciliation), create, patch (with a caller-
-// scoped updateMask so unmanaged nesting is never clobbered) and delete. The
-// nested basePlans/offers levels arrive with later slices (#368–#370). See
-// ADR-0041.
+// This package ships the declarative-catalog surface of PRD #51: the
+// subscription level (list followed to completion, create, patch with a
+// caller-scoped updateMask, delete — slice #367), the pricing helper
+// convertRegionPrices (#368), and the offers sub-resource plus the base-plan/
+// offer state ops (offers.go, #369). Subscriber price migration (#370) is the
+// remaining monetization write. See ADR-0041.
 package subscriptions
 
 import (
@@ -118,7 +119,7 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 // Create creates a subscription from the catalog-file resource, sent verbatim
 // as the request body. productId and regionsVersion.version ride as query
 // parameters — the API requires the regions version pin for any write that
-// carries regional prices (ADR-0041 §6).
+// carries regional prices (ADR-0041 §7).
 func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, body json.RawMessage) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("productId", productID)
@@ -134,8 +135,8 @@ func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion
 
 // Patch updates a subscription from the catalog-file resource, sent verbatim,
 // with the updateMask scoped to exactly the fields the caller reconciles — the
-// mechanism that keeps unmanaged nesting (basePlans, until slice #368) out of
-// reach of an apply (ADR-0041 §5).
+// mechanism that keeps anything outside the caller's managed set out of reach
+// of an apply (ADR-0041 §5).
 func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, body json.RawMessage) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
@@ -166,7 +167,7 @@ func Delete(ctx context.Context, hc *http.Client, pkg, productID string) error {
 // ConvertRegionPrices derives per-region prices from one base price using
 // today's exchange rates and Google's country-specific pricing patterns
 // (monetization.convertRegionPrices) — the pricing helper of the Monetization
-// catalog (ADR-0041 §8). Read-only in effect: it computes, it never writes
+// catalog (ADR-0041 §9). Read-only in effect: it computes, it never writes
 // catalog state. The verbatim response is the ADR-0003 pass-through.
 func ConvertRegionPrices(ctx context.Context, hc *http.Client, pkg string, price Money) (json.RawMessage, error) {
 	body, err := json.Marshal(struct {

@@ -1,6 +1,6 @@
 // Package convert implements `gplay subscriptions prices convert`: derive
 // per-region prices from one base price via monetization.convertRegionPrices —
-// the pricing helper of the Monetization catalog (ADR-0041 §8), for filling a
+// the pricing helper of the Monetization catalog (ADR-0041 §9), for filling a
 // base plan's regionalConfigs in bulk before an apply. A computation, not a
 // write: it never touches catalog state, so it is not marked mutating. `convert`
 // is a domain verb admitted under ADR-0019 §2 (it is Google's own method name;

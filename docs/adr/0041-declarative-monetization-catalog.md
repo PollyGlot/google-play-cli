@@ -75,20 +75,36 @@ Three realities shape the design:
    (`activate`/`deactivate`, slice #369) and **subscriber price
    migration** (#370). The output-only `basePlans[].state` subfield is
    therefore *normalized out of the diff* (a live `ACTIVE` never produces
-   a phantom patch) while `pull` keeps writing it — files stay
-   forward-compatible with #369's declarative state.
-6. **`--regions-version` with a pinned default.** `create`/`patch` require
+   a phantom patch) while `pull` keeps writing it. **Offers joined with
+   slice #369**: unlike base plans they are a real sub-resource with
+   their own CRUD, so the catalog file *embeds* them
+   (`basePlans[].offers`, a file construct the API resource does not
+   carry — pull nests them from one wildcard `offers.list` walk, apply
+   splits them back out and strips them from parent bodies) and
+   reconciles them through the offers endpoints under the same composite
+   key (`productId/basePlanId/offerId`).
+6. **Lifecycle state is declarative, reconciled via the dedicated
+   endpoints, prominent but ungated** (slice #369). A base plan's or
+   offer's `state:` field declares `ACTIVE` or `INACTIVE`; apply
+   reconciles a drift through `:activate`/`:deactivate` — never a patch.
+   A missing `state:` declares nothing (missing = unmanaged, the
+   metadata stance); an unreachable declaration (`DRAFT` from anything,
+   `INACTIVE` from `DRAFT`) is a usage error naming the transition.
+   State changes are listed prominently in every plan view — they move
+   buyer availability — but are **not** gated behind `--confirm`:
+   activate/deactivate are reversible, deletion is not.
+7. **`--regions-version` with a pinned default.** `create`/`patch` require
    Google's regions version string; gplay defaults to the current
    published version (`2022/02`) and exposes `--regions-version` to
    override when Google publishes a new one — a flag, not a config knob,
    so the pin is visible in CI logs.
-7. **v2 for all writes; `pull` unions legacy.** (`iap` slices #371–#372.)
+8. **v2 for all writes; `pull` unions legacy.** (`iap` slices #371–#372.)
    `iap apply` writes `monetization.onetimeproducts` only. `iap pull`
    reads **both** v2 and legacy `inappproducts` and unions by product ID,
    so unmigrated legacy products are never invisible. Editing a
    legacy-origin product requires the explicit one-way **`--migrate`**
    flag, which promotes it to v2 on apply; without it, `apply` errors.
-8. **`convertRegionPrices` folds into pricing** (slice #368), not a
+9. **`convertRegionPrices` folds into pricing** (slice #368), not a
    standalone top-level command: **`subscriptions prices convert --price
    --currency`** derives per-region prices from one base price, printing
    the `ConvertRegionPricesResponse` verbatim so its Money objects paste

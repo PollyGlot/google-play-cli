@@ -564,7 +564,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// `prices` is a grouping noun; `convert` (monetization.convertRegionPrices)
 	// is a pure computation — derives regional prices, writes nothing — so it
 	// is not marked mutating. Domain verb admitted under ADR-0019 §2
-	// (ADR-0041 §8).
+	// (ADR-0041 §9).
 	subscriptionsPrices := &cobra.Command{
 		Use:           "prices",
 		Short:         "Pricing helpers for the subscription catalog",

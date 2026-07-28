@@ -24,7 +24,7 @@ const DefaultDir = "./monetization/subscriptions"
 
 // DefaultRegionsVersion is the regions version pin sent with subscription
 // writes (create/patch) unless --regions-version overrides it — the latest
-// version Google has published (ADR-0041 §6).
+// version Google has published (ADR-0041 §7).
 const DefaultRegionsVersion = "2022/02"
 
 // ResolvePackage resolves the target package: --package wins, else the project
