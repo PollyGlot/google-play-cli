@@ -7,7 +7,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
 )
 
-var managed = []string{"listings", "taxAndComplianceSettings", "restrictedPaymentCountries"}
+var managed = []reconcile.Field{
+	{Name: "listings"},
+	{Name: "taxAndComplianceSettings"},
+	{Name: "restrictedPaymentCountries"},
+}
 
 func raw(s string) json.RawMessage { return json.RawMessage(s) }
 
@@ -79,6 +83,37 @@ func TestCompute_missingManagedFieldEqualsAbsent(t *testing.T) {
 	}
 	if plan.HasChanges() {
 		t.Errorf("plan %+v should be empty", plan)
+	}
+}
+
+// TestCompute_normalizerExcludesOutputOnly asserts a Field normalizer strips
+// server-derived subfields before comparison: a live basePlans[].state (output
+// only) never produces a phantom patch, while a real basePlan edit still does.
+func TestCompute_normalizerExcludesOutputOnly(t *testing.T) {
+	fields := []reconcile.Field{{Name: "basePlans", Normalize: reconcile.StripKeys("state")}}
+	local := map[string]json.RawMessage{
+		"p": raw(`{"productId":"p","basePlans":[{"basePlanId":"monthly","regionalConfigs":[{"regionCode":"US","price":{"units":"4"}}]}]}`),
+	}
+	liveSame := map[string]json.RawMessage{
+		"p": raw(`{"productId":"p","basePlans":[{"basePlanId":"monthly","state":"ACTIVE","regionalConfigs":[{"regionCode":"US","price":{"units":"4"}}]}]}`),
+	}
+	plan, err := reconcile.Compute(local, liveSame, fields)
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if plan.HasChanges() {
+		t.Errorf("plan %+v should be empty — only the output-only state differs", plan)
+	}
+
+	livePriceDrift := map[string]json.RawMessage{
+		"p": raw(`{"productId":"p","basePlans":[{"basePlanId":"monthly","state":"ACTIVE","regionalConfigs":[{"regionCode":"US","price":{"units":"5"}}]}]}`),
+	}
+	plan, err = reconcile.Compute(local, livePriceDrift, fields)
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if len(plan.Patches) != 1 || plan.Patches[0].Fields[0] != "basePlans" {
+		t.Errorf("plan %+v should patch basePlans — the price genuinely differs", plan)
 	}
 }
 

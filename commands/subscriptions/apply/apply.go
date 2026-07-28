@@ -29,10 +29,19 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
-// managedFields is the subscription-level projection this slice reconciles —
-// and therefore the widest updateMask it can ever send. basePlans joins with
-// slice #368, offers with #369 (ADR-0041 §5).
-var managedFields = []string{"listings", "taxAndComplianceSettings", "restrictedPaymentCountries"}
+// managedFields is the projection apply reconciles — and therefore the widest
+// updateMask it can ever send (ADR-0041 §5). basePlans (slice #368) is
+// declarable config that rides the parent subscription patch — the sub-resource
+// endpoints only manage state (activate/deactivate, #369) and subscriber price
+// migration (#370) — so its output-only state subfield is normalized out of the
+// comparison: a live ACTIVE state never produces a phantom patch, and files
+// keep carrying it for the day #369 makes state declarative.
+var managedFields = []reconcile.Field{
+	{Name: "listings"},
+	{Name: "taxAndComplianceSettings"},
+	{Name: "restrictedPaymentCountries"},
+	{Name: "basePlans", Normalize: reconcile.StripKeys("state")},
+}
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
@@ -261,10 +270,12 @@ deliberately not the additive stance of metadata apply).
 --dry-run reads live Play and prints the plan without changing anything.
 Creates and patches run directly; a plan containing any delete refuses without
 --confirm (exit 3, naming the flag) — CI=true never auto-confirms. Patches send
-an updateMask limited to the changed subscription-level fields (listings, tax
-and compliance, restricted payment countries), so base plans and offers are
-never touched by this command. Editing prices in files affects new purchases
-only — migrating existing subscribers is a separate, gated command.
+an updateMask limited to the changed managed fields (listings, tax and
+compliance, restricted payment countries, base plans and their per-territory
+prices), so offers are never touched by this command. A base plan's state is
+output-only here (never diffed, never written); use "subscriptions prices
+convert" to derive regional prices in bulk. Editing prices in files affects new
+purchases only — migrating existing subscribers is a separate, gated command.
 
 --regions-version pins the regions version sent with creates and patches
 (default ` + subscriptionscmd.DefaultRegionsVersion + `, the latest Google has

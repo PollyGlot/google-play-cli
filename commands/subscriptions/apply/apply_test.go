@@ -26,9 +26,10 @@ import (
 )
 
 // liveCatalog is what subscriptions.list serves: premium (patchable) and gone
-// (delete candidate).
+// (delete candidate). premium's base plan carries the output-only state the
+// files never declare — the engine normalizer must keep it out of every diff.
 const liveCatalog = `{"subscriptions":[
-  {"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly"}]},
+  {"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]},
   {"productId":"gone","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Gone"}]}
 ]}`
 
@@ -132,12 +133,12 @@ func matchedCatalog(t *testing.T) string {
 	})
 }
 
-// driftedCatalog declares one new product, one edited listing, and omits
-// "gone" (a delete).
+// driftedCatalog declares one new product, one edited listing (basePlans kept
+// as pulled, so only listings drift), and omits "gone" (a delete).
 func driftedCatalog(t *testing.T) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
-		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}]}`,
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}],"basePlans":[{"basePlanId":"monthly"}]}`,
 		"newbie.json":  `{"productId":"newbie","listings":[{"languageCode":"en-US","title":"New"}]}`,
 	})
 }
@@ -291,11 +292,37 @@ func TestRun_confirmedPlan_executesInOrder(t *testing.T) {
 	}
 }
 
+// TestRun_basePlanPriceDrift_patchesBasePlans asserts a base-plan edit (price)
+// produces a patch whose updateMask carries basePlans — while a live-only
+// output-only state never does (covered by the engine normalizer): the file
+// here omits state, live carries state=ACTIVE, and only the price difference
+// drives the diff.
+func TestRun_basePlanPriceDrift_patchesBasePlans(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","regionalConfigs":[{"regionCode":"US","price":{"currencyCode":"USD","units":"9"}}]}]}`,
+		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
+	}) // file omits state; live carries state=ACTIVE — only the price drives the diff
+	rt := &subsRT{}
+	rc, _ := newRC(t, rt)
+	if _, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var patchURL string
+	for _, u := range rt.urls {
+		if strings.Contains(u, "/subscriptions/premium?") {
+			patchURL = u
+		}
+	}
+	if !strings.Contains(patchURL, "updateMask=basePlans") {
+		t.Errorf("patch url %q must carry basePlans in the updateMask", patchURL)
+	}
+}
+
 // TestRun_nonDestructivePlan_runsWithoutConfirm asserts creates/patches alone
 // need no --confirm (the gate is for deletes).
 func TestRun_nonDestructivePlan_runsWithoutConfirm(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
-		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}]}`,
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}],"basePlans":[{"basePlanId":"monthly"}]}`,
 		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
 	})
 	rt := &subsRT{}

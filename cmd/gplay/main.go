@@ -75,6 +75,7 @@ import (
 	reviewsview "github.com/PollyGlot/google-play-cli/commands/reviews/view"
 	schemacmd "github.com/PollyGlot/google-play-cli/commands/schema"
 	subscriptionsapply "github.com/PollyGlot/google-play-cli/commands/subscriptions/apply"
+	subscriptionspricesconvert "github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/convert"
 	subscriptionspull "github.com/PollyGlot/google-play-cli/commands/subscriptions/pull"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
 	teamgrantsremove "github.com/PollyGlot/google-play-cli/commands/team/grants/remove"
@@ -560,6 +561,19 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	subscriptionsGroup.AddCommand(subscriptionspull.NewCommand(boot))
 	subscriptionsGroup.AddCommand(kernel.MarkMutating(subscriptionsapply.NewCommand(boot)))
+	// `prices` is a grouping noun; `convert` (monetization.convertRegionPrices)
+	// is a pure computation — derives regional prices, writes nothing — so it
+	// is not marked mutating. Domain verb admitted under ADR-0019 §2
+	// (ADR-0041 §8).
+	subscriptionsPrices := &cobra.Command{
+		Use:           "prices",
+		Short:         "Pricing helpers for the subscription catalog",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	subscriptionsPrices.AddCommand(subscriptionspricesconvert.NewCommand(boot))
+	subscriptionsGroup.AddCommand(subscriptionsPrices)
 	root.AddCommand(subscriptionsGroup)
 
 	reviews := &cobra.Command{

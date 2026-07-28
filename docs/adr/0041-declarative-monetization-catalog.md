@@ -66,10 +66,17 @@ Three realities shape the design:
    gated command (slice #370), never triggered by an `apply` diff.
 5. **Scoped diff, scoped `updateMask`.** Each slice reconciles only the
    fields it owns and sends an `updateMask` limited to them — the walking
-   skeleton patches `listings`, `taxAndComplianceSettings` and
-   `restrictedPaymentCountries` and therefore cannot clobber `basePlans`
-   it does not yet manage. Nested levels join the diff as their slices
-   land, not before.
+   skeleton (#367) patches `listings`, `taxAndComplianceSettings` and
+   `restrictedPaymentCountries`. Nested levels join the diff as their
+   slices land, not before. **`basePlans` joined with slice #368**: base
+   plan *config* (billing type, per-territory `regionalConfigs` prices)
+   is declarable and rides the parent subscription patch — the API has no
+   create/patch on the sub-resource; its endpoints only manage **state**
+   (`activate`/`deactivate`, slice #369) and **subscriber price
+   migration** (#370). The output-only `basePlans[].state` subfield is
+   therefore *normalized out of the diff* (a live `ACTIVE` never produces
+   a phantom patch) while `pull` keeps writing it — files stay
+   forward-compatible with #369's declarative state.
 6. **`--regions-version` with a pinned default.** `create`/`patch` require
    Google's regions version string; gplay defaults to the current
    published version (`2022/02`) and exposes `--regions-version` to
@@ -82,7 +89,13 @@ Three realities shape the design:
    legacy-origin product requires the explicit one-way **`--migrate`**
    flag, which promotes it to v2 on apply; without it, `apply` errors.
 8. **`convertRegionPrices` folds into pricing** (slice #368), not a
-   standalone command.
+   standalone top-level command: **`subscriptions prices convert --price
+   --currency`** derives per-region prices from one base price, printing
+   the `ConvertRegionPricesResponse` verbatim so its Money objects paste
+   into a catalog file's `regionalConfigs`. A computation, not a write —
+   not marked mutating. `convert` is a domain verb admitted under
+   [ADR-0019](./0019-canonical-verb-vocabulary.md) §2 (Google's own
+   method name; no canonical verb reads as "compute derived prices").
 
 ## Consequences
 

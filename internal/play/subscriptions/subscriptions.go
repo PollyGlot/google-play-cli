@@ -25,11 +25,20 @@ import (
 
 // op* tag *api.Error with the REST reference method id.
 const (
-	opList   = "monetization.subscriptions.list"
-	opCreate = "monetization.subscriptions.create"
-	opPatch  = "monetization.subscriptions.patch"
-	opDelete = "monetization.subscriptions.delete"
+	opList    = "monetization.subscriptions.list"
+	opCreate  = "monetization.subscriptions.create"
+	opPatch   = "monetization.subscriptions.patch"
+	opDelete  = "monetization.subscriptions.delete"
+	opConvert = "monetization.convertRegionPrices"
 )
+
+// Money mirrors the Money schema: whole units (a decimal int64 string) plus
+// nano (10^-9) units, tagged with an ISO-4217 currency.
+type Money struct {
+	CurrencyCode string `json:"currencyCode,omitempty"`
+	Units        string `json:"units,omitempty"`
+	Nanos        int32  `json:"nanos,omitempty"`
+}
 
 // listPageSize is the page size subscriptions.list requests; List follows
 // nextPageToken to completion regardless (reconciliation needs the whole
@@ -152,6 +161,27 @@ func Delete(ctx context.Context, hc *http.Client, pkg, productID string) error {
 	}
 	_, err = do(hc, opDelete, pkg, req)
 	return err
+}
+
+// ConvertRegionPrices derives per-region prices from one base price using
+// today's exchange rates and Google's country-specific pricing patterns
+// (monetization.convertRegionPrices) — the pricing helper of the Monetization
+// catalog (ADR-0041 §8). Read-only in effect: it computes, it never writes
+// catalog state. The verbatim response is the ADR-0003 pass-through.
+func ConvertRegionPrices(ctx context.Context, hc *http.Client, pkg string, price Money) (json.RawMessage, error) {
+	body, err := json.Marshal(struct {
+		Price Money `json:"price"`
+	}{Price: price})
+	if err != nil {
+		return nil, &api.Error{Operation: opConvert, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
+	}
+	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/pricing:convertRegionPrices"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, &api.Error{Operation: opConvert, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return do(hc, opConvert, pkg, req)
 }
 
 // base is the application-scoped subscriptions collection URL.
