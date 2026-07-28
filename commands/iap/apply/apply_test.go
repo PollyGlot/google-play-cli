@@ -272,6 +272,101 @@ func TestRun_legacyOmission_refuses(t *testing.T) {
 	}
 }
 
+// migrationCatalog redeclares the live legacy old_gems as a v2 product (the
+// one-way promotion gesture), next to the matched coins100.
+func migrationCatalog(t *testing.T) string {
+	t.Helper()
+	return writeCatalog(t, map[string]string{
+		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+		"old_gems.json": `{"productId":"old_gems","listings":[{"languageCode":"en-US","title":"Old Gems"}],"purchaseOptions":[{"purchaseOptionId":"buy"}]}`,
+	})
+}
+
+// TestRun_migrate_refusesWithoutFlag asserts a legacy→v2 redeclaration on a
+// real run exits 3 naming --migrate, mutating nothing.
+func TestRun_migrate_refusesWithoutFlag(t *testing.T) {
+	rt := &iapRT{}
+	rc := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: migrationCatalog(t)})
+	assertExit(t, err, 3)
+	if !strings.Contains(err.Error(), "--migrate") || !strings.Contains(err.Error(), "one-way") {
+		t.Errorf("refusal %q must name --migrate and the one-way door", err.Error())
+	}
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("refusal must not mutate; got %v", m)
+	}
+}
+
+// TestRun_migrate_dryRunPreviews asserts --dry-run shows the promotion as a
+// distinct "migrate" op with requires:["migrate"], without the flag.
+func TestRun_migrate_dryRunPreviews(t *testing.T) {
+	rt := &iapRT{}
+	rc := newRC(t, rt)
+	r, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: migrationCatalog(t), DryRun: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("dry-run must not mutate; got %v", m)
+	}
+	var js bytes.Buffer
+	if err := r.Renderers().JSON(&js); err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	got := js.String()
+	for _, want := range []string{`"op": "migrate"`, `"old_gems"`, `"migrate"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("json %s missing %s", got, want)
+		}
+	}
+	var view struct {
+		Requires []string       `json:"requires"`
+		Summary  map[string]int `json:"summary"`
+	}
+	if err := json.Unmarshal(js.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range view.Requires {
+		if r == "migrate" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("requires = %v, want migrate listed", view.Requires)
+	}
+	if view.Summary["migrate"] != 1 || view.Summary["create"] != 0 {
+		t.Errorf("summary = %v, want migrate=1 create=0", view.Summary)
+	}
+}
+
+// TestRun_migrate_promotesViaV2Upsert asserts --migrate executes the
+// promotion as a v2 allowMissing patch and reports the migrated op.
+func TestRun_migrate_promotesViaV2Upsert(t *testing.T) {
+	rt := &iapRT{}
+	rc := newRC(t, rt)
+	r, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: migrationCatalog(t), Migrate: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var promoteURL string
+	for _, u := range rt.urls {
+		if strings.Contains(u, "/onetimeproducts/old_gems?") {
+			promoteURL = u
+		}
+	}
+	if !strings.Contains(promoteURL, "allowMissing=true") {
+		t.Errorf("promotion url %q must be the v2 allowMissing upsert", promoteURL)
+	}
+	var out bytes.Buffer
+	if err := r.Renderers().Table(&out); err != nil {
+		t.Fatalf("Table: %v", err)
+	}
+	if !strings.Contains(out.String(), "migrated old_gems (legacy → v2") {
+		t.Errorf("table %q should report the migrated op", out.String())
+	}
+}
+
 // TestRun_dryRun_plansWithoutMutating asserts the offer patch mask stays
 // scoped and no write happens under --dry-run.
 func TestRun_dryRun_plansWithoutMutating(t *testing.T) {

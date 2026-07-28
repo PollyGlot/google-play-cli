@@ -64,16 +64,19 @@ type Input struct {
 	RegionsVersion string
 	DryRun         bool
 	Confirm        bool
+	Migrate        bool
 }
 
 // Payload renders the Reconciliation plan — planned under --dry-run, executed
-// otherwise.
+// otherwise. Migrating marks the creates that are one-way legacy→v2
+// promotions (slice #372), rendered as their own `migrate` op.
 type Payload struct {
-	Package  string
-	Dir      string
-	Plan     reconcile.Plan
-	DryRun   bool
-	Requires []string
+	Package   string
+	Dir       string
+	Plan      reconcile.Plan
+	Migrating map[string]bool
+	DryRun    bool
+	Requires  []string
 }
 
 func (p Payload) Renderers() output.Renderers {
@@ -118,6 +121,12 @@ func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 		return err
 	}
 	for _, c := range p.Plan.Creates {
+		if p.Migrating[c.ProductID] {
+			if err := line("%s %s (legacy → v2, one-way)", p.verb("migrate", "migrated"), c.ProductID); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := line("%s %s", p.verb("create", "created"), c.ProductID); err != nil {
 			return err
 		}
@@ -147,8 +156,8 @@ func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "summary: create=%d patch=%d delete=%d offerCreate=%d offerPatch=%d offerDelete=%d unchanged=%d\n",
-		len(p.Plan.Creates), len(p.Plan.Patches), len(p.Plan.Deletes),
+	if _, err := fmt.Fprintf(w, "summary: create=%d migrate=%d patch=%d delete=%d offerCreate=%d offerPatch=%d offerDelete=%d unchanged=%d\n",
+		len(p.Plan.Creates)-len(p.Migrating), len(p.Migrating), len(p.Plan.Patches), len(p.Plan.Deletes),
 		len(p.Plan.OfferCreates), len(p.Plan.OfferPatches), len(p.Plan.OfferDeletes), len(p.Plan.Unchanged)); err != nil {
 		return err
 	}
@@ -191,7 +200,11 @@ func splitOfferKey(composite string) (productID, purchaseOptionID, offerID strin
 func (p Payload) renderJSON(w io.Writer) error {
 	changes := make([]jsonChange, 0, p.changeCount())
 	for _, c := range p.Plan.Creates {
-		changes = append(changes, jsonChange{Op: "create", ProductID: c.ProductID})
+		op := "create"
+		if p.Migrating[c.ProductID] {
+			op = "migrate"
+		}
+		changes = append(changes, jsonChange{Op: op, ProductID: c.ProductID})
 	}
 	for _, c := range p.Plan.Patches {
 		changes = append(changes, jsonChange{Op: "patch", ProductID: c.ProductID, Fields: c.Fields})
@@ -216,7 +229,8 @@ func (p Payload) renderJSON(w io.Writer) error {
 		DryRun:  p.DryRun,
 		Changes: changes,
 		Summary: map[string]int{
-			"create":      len(p.Plan.Creates),
+			"create":      len(p.Plan.Creates) - len(p.Migrating),
+			"migrate":     len(p.Migrating),
 			"patch":       len(p.Plan.Patches),
 			"delete":      len(p.Plan.Deletes),
 			"offerCreate": len(p.Plan.OfferCreates),
@@ -228,10 +242,15 @@ func (p Payload) renderJSON(w io.Writer) error {
 	})
 }
 
-// guardLegacy enforces the legacy surface's inertness: every legacy file must
+// guardLegacy enforces the legacy surface's inertness — every legacy file must
 // match its live row, every live legacy row must keep its file (unless the v2
-// model shadows it), and a legacy→v2 redeclaration names the #372 gate.
-func guardLegacy(localLegacy map[string]json.RawMessage, localV2 map[string]json.RawMessage, liveLegacy []iap.LegacyItem, liveV2 map[string]json.RawMessage) error {
+// model shadows it) — and drives the one-way legacy→v2 promotion (slice #372):
+// a live legacy product redeclared as a v2 file migrates when --migrate is
+// passed (the returned list feeds the plan's migrate ops), previews under
+// --dry-run without it, and refuses with the named flag (exit 3) on a real
+// run. Editing a legacy file in place stays refused: the promotion gesture IS
+// rewriting the file in the v2 schema.
+func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []iap.LegacyItem, liveV2 map[string]json.RawMessage, migrate, dryRun bool) (migrating []string, err error) {
 	liveBySKU := map[string]json.RawMessage{}
 	for _, lg := range liveLegacy {
 		liveBySKU[lg.SKU] = lg.Raw
@@ -239,10 +258,10 @@ func guardLegacy(localLegacy map[string]json.RawMessage, localV2 map[string]json
 	for sku, raw := range localLegacy {
 		liveRaw, ok := liveBySKU[sku]
 		if !ok {
-			return exit.Usagef("catalog declares legacy product %q that is not live — gplay never creates legacy inappproducts; declare it as a v2 product instead (v2 schema, no sku field)", sku)
+			return nil, exit.Usagef("catalog declares legacy product %q that is not live — gplay never creates legacy inappproducts; declare it as a v2 product instead (v2 schema, no sku field)", sku)
 		}
 		if !legacyEqual(raw, liveRaw) {
-			return exit.Usagef("catalog edits legacy product %q — gplay never writes the legacy surface in place; the one-way --migrate promotion to v2 arrives with slice #372 (until then, edit it in Play Console)", sku)
+			return nil, exit.Usagef("catalog edits legacy product %q — gplay never writes the legacy surface in place; to change it, rewrite the file in the v2 schema (productId instead of sku) and apply with --migrate (one-way)", sku)
 		}
 	}
 	skus := make([]string, 0, len(liveBySKU))
@@ -258,11 +277,15 @@ func guardLegacy(localLegacy map[string]json.RawMessage, localV2 map[string]json
 			continue // pre-migration shadow of a live v2 product — v2 owns it
 		}
 		if _, redeclared := localV2[sku]; redeclared {
-			return exit.Usagef("catalog declares %q as a v2 product while it is live as a legacy inappproduct — the one-way --migrate promotion arrives with slice #372", sku)
+			if !migrate && !dryRun {
+				return nil, exit.SafetyFlag("migrate", "catalog declares %q as a v2 product while it is live as a legacy inappproduct — promoting it to v2 is a one-way door (it can never return to inappproducts); pass --migrate to proceed (rehearse first with --dry-run)", sku)
+			}
+			migrating = append(migrating, sku)
+			continue
 		}
-		return exit.Usagef("catalog omits legacy product %q — gplay never deletes the legacy surface; restore the file (gplay iap pull) or remove the product in Play Console", sku)
+		return nil, exit.Usagef("catalog omits legacy product %q — gplay never deletes the legacy surface; restore the file (gplay iap pull) or remove the product in Play Console", sku)
 	}
-	return nil
+	return migrating, nil
 }
 
 // legacyEqual compares a declared legacy file with its live row, ignoring the
@@ -330,8 +353,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("catalog directory %q holds no .json catalog files while %q has %d live one-time product(s) — applying it would delete them all; run gplay iap pull first, or pass the right --dir", dir, pkg, len(liveV2)+len(liveLegacy))
 	}
 
-	if err := guardLegacy(localLegacy, localV2, liveLegacy, liveV2); err != nil {
+	migrating, err := guardLegacy(localLegacy, localV2, liveLegacy, liveV2, in.Migrate, in.DryRun)
+	if err != nil {
 		return nil, err
+	}
+	migratingSet := make(map[string]bool, len(migrating))
+	for _, id := range migrating {
+		migratingSet[id] = true
 	}
 
 	liveOffers, err := iap.ListAllOffers(rc.Ctx, httpClient, pkg)
@@ -366,10 +394,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	var requires []string
 	if plan.HasDeletes() {
-		requires = []string{"confirm"}
+		requires = append(requires, "confirm")
+	}
+	if len(migrating) > 0 && !in.Migrate {
+		requires = append(requires, "migrate")
 	}
 	if in.DryRun || !plan.HasChanges() {
-		return Payload{Package: pkg, Dir: dir, Plan: plan, DryRun: in.DryRun, Requires: requires}, nil
+		return Payload{Package: pkg, Dir: dir, Plan: plan, Migrating: migratingSet, DryRun: in.DryRun, Requires: requires}, nil
 	}
 	if plan.HasDeletes() && !in.Confirm {
 		return nil, exit.SafetyFlag("confirm", "this plan deletes %d one-time product(s) and %d offer(s) from the live catalog of %q and deletion cannot be undone; pass --confirm to proceed (rehearse first with --dry-run)", len(plan.Deletes), len(plan.OfferDeletes), pkg)
@@ -443,10 +474,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
-	rc.Confirmf("one-time products applied to %q (%d created, %d patched, %d deleted; offers: %d created, %d patched, %d deleted)", pkg,
-		len(plan.Creates), len(plan.Patches), len(plan.Deletes),
+	rc.Confirmf("one-time products applied to %q (%d created, %d migrated legacy→v2, %d patched, %d deleted; offers: %d created, %d patched, %d deleted)", pkg,
+		len(plan.Creates)-len(migrating), len(migrating), len(plan.Patches), len(plan.Deletes),
 		len(plan.OfferCreates), len(plan.OfferPatches), len(plan.OfferDeletes))
-	return Payload{Package: pkg, Dir: dir, Plan: plan}, nil
+	return Payload{Package: pkg, Dir: dir, Plan: plan, Migrating: migratingSet}, nil
 }
 
 // NewCommand returns the cobra command for `gplay iap apply`.
@@ -465,10 +496,12 @@ directory is the complete declared catalog: a live v2 product or offer with no
 declaration is a delete in the plan (mirror semantics).
 
 Legacy inappproducts (files with a "sku" field) are inert: gplay never
-creates, edits or deletes the legacy surface — an edited, omitted or
-locally-invented legacy file refuses with the way out (the one-way --migrate
-promotion to v2 arrives with slice #372). A legacy product shadowed by a live
-v2 product of the same ID is owned by the v2 file.
+creates, edits or deletes the legacy surface. To change a legacy product,
+rewrite its file in the v2 schema (productId instead of sku) and apply with
+--migrate: the promotion to v2 is a ONE-WAY door (the product can never
+return to inappproducts), so it refuses without the flag (exit 3, naming it)
+and shows as a distinct "migrate" op in the plan. A legacy product shadowed
+by a live v2 product of the same ID is owned by the v2 file.
 
 --dry-run reads live Play and prints the plan without changing anything.
 Creates and patches run directly (a v2 create is a patch with allowMissing —
@@ -496,5 +529,6 @@ lifecycle states are not yet reconciled (normalized out of the diff).
 	cmd.Flags().StringVar(&in.RegionsVersion, "regions-version", iapcmd.DefaultRegionsVersion, "regions version pin sent with writes")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the plan without committing (online)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize a destructive plan (required when the plan deletes products or offers)")
+	cmd.Flags().BoolVar(&in.Migrate, "migrate", false, "authorize one-way legacy→v2 promotions (required when a live legacy product is redeclared as v2)")
 	return cmd
 }
