@@ -48,6 +48,9 @@ func Read(dir string) (map[string]json.RawMessage, error) {
 			return nil, fmt.Errorf("catalog file %q is not a JSON subscription resource: %w", de.Name(), err)
 		}
 		id := strings.TrimSuffix(de.Name(), ".json")
+		if id == "" {
+			return nil, fmt.Errorf("catalog file %q has an empty filename stem — the stem is the product ID and cannot be empty", de.Name())
+		}
 		if probe.ProductID != "" && probe.ProductID != id {
 			return nil, fmt.Errorf("catalog file %q declares productId %q — the filename stem is the reconciliation key and must match", de.Name(), probe.ProductID)
 		}
@@ -88,8 +91,8 @@ func Write(dir string, entries []Entry) ([]string, error) {
 			return nil, fmt.Errorf("encode subscription %q: %w", e.ProductID, err)
 		}
 		name := e.ProductID + ".json"
-		if err := os.WriteFile(filepath.Join(dir, name), append(b, '\n'), 0o644); err != nil {
-			return nil, fmt.Errorf("write catalog file %q: %w", name, err)
+		if err := writeNoFollow(dir, name, append(b, '\n')); err != nil {
+			return nil, err
 		}
 		keep[name] = struct{}{}
 	}
@@ -112,4 +115,36 @@ func Write(dir string, entries []Entry) ([]string, error) {
 	}
 	sort.Strings(removed)
 	return removed, nil
+}
+
+// writeNoFollow writes a catalog file via a temp file + rename so a
+// pre-existing <productId>.json symlink is replaced, never followed —
+// os.WriteFile on the destination would write through the link into whatever
+// it points at.
+func writeNoFollow(dir, name string, data []byte) error {
+	tmp, err := os.CreateTemp(dir, "."+name+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("write catalog file %q: %w", name, err)
+	}
+	tmpName := tmp.Name()
+	cleanup := func(cause error) error {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("write catalog file %q: %w", name, cause)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return cleanup(err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		return cleanup(err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("write catalog file %q: %w", name, err)
+	}
+	if err := os.Rename(tmpName, filepath.Join(dir, name)); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("write catalog file %q: %w", name, err)
+	}
+	return nil
 }

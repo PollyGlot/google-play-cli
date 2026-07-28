@@ -106,6 +106,19 @@ func TestList_tokenLoopGuard(t *testing.T) {
 	}
 }
 
+// TestList_emptyProductID_refuses asserts a malformed resource without a
+// productId is rejected at the API boundary instead of becoming an
+// unaddressable catalog entry.
+func TestList_emptyProductID_refuses(t *testing.T) {
+	rt := &subsRT{responses: []scripted{
+		{200, `{"subscriptions":[{"listings":[{"languageCode":"en-US","title":"No ID"}]}]}`},
+	}}
+	_, err := subscriptions.List(context.Background(), client(rt), "com.example.app")
+	if err == nil || !strings.Contains(err.Error(), "without a productId") {
+		t.Fatalf("err = %v, want the missing-productId refusal", err)
+	}
+}
+
 // TestCreate_postsResourceWithRegionsVersion asserts Create POSTs the file
 // resource verbatim with productId and regionsVersion.version as query params.
 func TestCreate_postsResourceWithRegionsVersion(t *testing.T) {

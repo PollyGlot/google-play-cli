@@ -86,6 +86,9 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 			if err := json.Unmarshal(rawSub, &s); err != nil {
 				return nil, &api.Error{Operation: opList, Package: pkg, Message: "decode subscription: " + err.Error(), Cause: err}
 			}
+			if s.ProductID == "" {
+				return nil, &api.Error{Operation: opList, Package: pkg, Message: "response contains a subscription without a productId — refusing a catalog entry that cannot be addressed"}
+			}
 			items = append(items, Item{ProductID: s.ProductID, Raw: rawSub})
 		}
 		if pg.NextPageToken == "" {

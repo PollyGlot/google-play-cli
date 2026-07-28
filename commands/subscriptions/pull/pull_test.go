@@ -151,6 +151,26 @@ func TestRun_humanSummary(t *testing.T) {
 	}
 }
 
+// TestRun_emptyLiveNonEmptyLocal_refuses asserts an unexpectedly-empty live
+// listing never erases a populated catalog directory (mis-set --package /
+// scope loss): pull refuses (exit 2) and the files survive.
+func TestRun_emptyLiveNonEmptyLocal_refuses(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "premium.json"), []byte(`{"productId":"premium"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rt := &subsRT{status: 200, body: `{}`}
+	rc := newRC(t, rt)
+	_, err := pullcmd.Run(rc, pullcmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 2)
+	if !strings.Contains(err.Error(), "refusing to erase") {
+		t.Errorf("refusal %q should explain the erase risk", err.Error())
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "premium.json")); statErr != nil {
+		t.Errorf("premium.json must survive the refusal: %v", statErr)
+	}
+}
+
 // TestRun_missingPackage_exit2_noNetwork asserts no package (flag or pin) is
 // CLI misuse before any HTTP.
 func TestRun_missingPackage_exit2_noNetwork(t *testing.T) {

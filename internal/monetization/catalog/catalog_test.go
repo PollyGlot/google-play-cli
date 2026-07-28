@@ -56,6 +56,45 @@ func TestRead_missingDir_refuses(t *testing.T) {
 	}
 }
 
+// TestWrite_replacesSymlinkWithoutFollowing asserts a pre-existing
+// <productId>.json symlink is replaced by a regular file and its target is
+// never written through.
+func TestWrite_replacesSymlinkWithoutFollowing(t *testing.T) {
+	dir := t.TempDir()
+	outside := t.TempDir()
+	target := filepath.Join(outside, "target.json")
+	if err := os.WriteFile(target, []byte(`untouched`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, "premium.json")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, err := catalog.Write(dir, []catalog.Entry{{ProductID: "premium", Raw: json.RawMessage(`{"productId":"premium"}`)}})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if b, _ := os.ReadFile(target); string(b) != "untouched" {
+		t.Errorf("symlink target was written through: %q", b)
+	}
+	fi, err := os.Lstat(filepath.Join(dir, "premium.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		t.Error("premium.json is still a symlink; want a regular file")
+	}
+}
+
+// TestRead_emptyStem_refuses asserts a file literally named ".json" (empty
+// product-ID stem) is refused.
+func TestRead_emptyStem_refuses(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, ".json", `{}`)
+	if _, err := catalog.Read(dir); err == nil || !strings.Contains(err.Error(), "empty filename stem") {
+		t.Fatalf("err = %v, want the empty-stem refusal", err)
+	}
+}
+
 // TestWrite_refusesUnsafeProductID asserts an API-supplied product ID is never
 // trusted as a path: anything path-like refuses instead of escaping --dir.
 func TestWrite_refusesUnsafeProductID(t *testing.T) {

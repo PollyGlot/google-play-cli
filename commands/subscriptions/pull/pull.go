@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/subscriptions/subscriptionscmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/monetization/catalog"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -96,6 +97,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	items, err := subscriptions.List(rc.Ctx, httpClient, pkg)
 	if err != nil {
 		return nil, subscriptionscmd.Classify(pkg, err)
+	}
+	// Mirror semantics make pull destructive locally: an unexpectedly-empty
+	// live listing (mis-set --package, scope loss) would erase a populated
+	// catalog directory. Refuse instead — the apply-side empty-vs-live guard,
+	// mirrored (ADR-0041).
+	if len(items) == 0 {
+		if existing, readErr := catalog.Read(dir); readErr == nil && len(existing) > 0 {
+			return nil, exit.Usagef("live subscription catalog of %q is empty while %q holds %d catalog file(s) — refusing to erase the local catalog; verify --package, or delete the files yourself if the empty live catalog is intended", pkg, dir, len(existing))
+		}
 	}
 	entries := make([]catalog.Entry, 0, len(items))
 	rawSubs := make([]json.RawMessage, 0, len(items))
