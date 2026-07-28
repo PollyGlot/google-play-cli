@@ -69,6 +69,14 @@ func Write(dir string, entries []Entry) ([]string, error) {
 	}
 	keep := map[string]struct{}{}
 	for _, e := range entries {
+		// The product ID names the file, and it arrives from the API response —
+		// never trust it as a path. Play product IDs are lowercase
+		// letters/digits/underscores/periods, so anything path-like is refused
+		// rather than joined into dir.
+		if e.ProductID == "" || e.ProductID != filepath.Base(e.ProductID) ||
+			e.ProductID == "." || e.ProductID == ".." || strings.ContainsAny(e.ProductID, `/\`) {
+			return nil, fmt.Errorf("live subscription has unsafe productId %q — refusing to write it as a catalog filename", e.ProductID)
+		}
 		var m map[string]any
 		if err := json.Unmarshal(e.Raw, &m); err != nil {
 			return nil, fmt.Errorf("decode live subscription %q: %w", e.ProductID, err)

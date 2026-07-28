@@ -207,7 +207,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		requires = []string{"confirm"}
 	}
 	if in.DryRun || !plan.HasChanges() {
-		return Payload{Package: pkg, Dir: dir, Plan: plan, DryRun: true, Requires: requires}, nil
+		// DryRun reflects the invocation, not the branch: a real apply that
+		// found nothing to do reports dryRun:false with zero changes.
+		return Payload{Package: pkg, Dir: dir, Plan: plan, DryRun: in.DryRun, Requires: requires}, nil
 	}
 	if plan.HasDeletes() && !in.Confirm {
 		return nil, exit.SafetyFlag("confirm", "this plan deletes %d subscription(s) from the live catalog of %q and deletion cannot be undone; pass --confirm to proceed (rehearse first with --dry-run)", len(plan.Deletes), pkg)

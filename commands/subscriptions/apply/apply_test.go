@@ -161,6 +161,25 @@ func TestRun_noChanges_isNoOp(t *testing.T) {
 	if !strings.Contains(out.String(), "no changes to apply") {
 		t.Errorf("table %q should say no changes", out.String())
 	}
+	// The json contract reflects the invocation: this was a real apply, not a
+	// --dry-run, so dryRun is false even though nothing ran.
+	var js bytes.Buffer
+	if err := r.Renderers().JSON(&js); err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	var view struct {
+		DryRun  bool           `json:"dryRun"`
+		Summary map[string]int `json:"summary"`
+	}
+	if err := json.Unmarshal(js.Bytes(), &view); err != nil {
+		t.Fatalf("json %s: %v", js.String(), err)
+	}
+	if view.DryRun {
+		t.Errorf("no-op real apply must report dryRun=false, got %s", js.String())
+	}
+	if view.Summary["unchanged"] != 2 {
+		t.Errorf("summary = %v, want unchanged=2", view.Summary)
+	}
 }
 
 // TestRun_dryRun_printsPlanWithoutMutating asserts --dry-run computes the full

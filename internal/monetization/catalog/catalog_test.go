@@ -56,6 +56,18 @@ func TestRead_missingDir_refuses(t *testing.T) {
 	}
 }
 
+// TestWrite_refusesUnsafeProductID asserts an API-supplied product ID is never
+// trusted as a path: anything path-like refuses instead of escaping --dir.
+func TestWrite_refusesUnsafeProductID(t *testing.T) {
+	for _, id := range []string{"", ".", "..", "../evil", "a/b", `a\b`} {
+		dir := t.TempDir()
+		_, err := catalog.Write(dir, []catalog.Entry{{ProductID: id, Raw: json.RawMessage(`{}`)}})
+		if err == nil || !strings.Contains(err.Error(), "unsafe productId") {
+			t.Errorf("Write(%q) err = %v, want the unsafe-productId refusal", id, err)
+		}
+	}
+}
+
 // TestWrite_roundTrip asserts Write lays down one pretty-printed <productId>.json
 // per entry, strips server-side noise (packageName, archived), removes stale
 // .json files, and leaves foreign files alone — so pull then Read is a no-op
