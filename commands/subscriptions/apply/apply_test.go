@@ -33,13 +33,16 @@ const liveCatalog = `{"subscriptions":[
   {"productId":"gone","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Gone"}]}
 ]}`
 
-// subsRT terminates /token, serves the live catalog on GET, echoes writes, and
-// records every mutation (method + URL + body).
+// subsRT terminates /token, serves the live catalog on the subscriptions GET
+// and offersBody on the wildcard offers GET, echoes writes, and records every
+// mutation (method + URL + body).
 type subsRT struct {
-	mu     sync.Mutex
-	calls  []string
-	urls   []string
-	bodies map[string]string
+	mu         sync.Mutex
+	calls      []string
+	urls       []string
+	bodies     map[string]string
+	offersBody string
+	liveBody   string
 }
 
 func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -58,8 +61,19 @@ func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		r.bodies[key] = string(b)
 	}
+	if req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/subscriptions/-/basePlans/-/offers") {
+		body := r.offersBody
+		if body == "" {
+			body = `{}`
+		}
+		return jsonResp(200, body), nil
+	}
 	if req.Method == http.MethodGet {
-		return jsonResp(200, liveCatalog), nil
+		body := r.liveBody
+		if body == "" {
+			body = liveCatalog
+		}
+		return jsonResp(200, body), nil
 	}
 	return jsonResp(200, `{}`), nil
 }
@@ -111,6 +125,12 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: stderr}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa
 	return rc, stderr
+}
+
+func newRCWithLive(t *testing.T, rt *subsRT, live string) (*kernel.RunContext, *bytes.Buffer) {
+	t.Helper()
+	rt.liveBody = live
+	return newRC(t, rt)
 }
 
 func writeCatalog(t *testing.T, files map[string]string) string {
@@ -332,6 +352,159 @@ func TestRun_nonDestructivePlan_runsWithoutConfirm(t *testing.T) {
 	}
 	if !rt.saw("PATCH", "/subscriptions/premium") {
 		t.Errorf("calls = %v, want the patch to run without --confirm", rt.calls)
+	}
+}
+
+// liveOffers is the wildcard offers body for the level-3 tests: one ACTIVE
+// intro offer under premium/monthly.
+const liveOffers = `{"subscriptionOffers":[
+  {"packageName":"com.example.app","productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P1W"}]}
+]}`
+
+// offersCatalog mirrors liveCatalog + liveOffers exactly (as a pull would have
+// written it: offers embedded, packageName stripped, states carried).
+func offersCatalog(t *testing.T, introFragment string) string {
+	t.Helper()
+	return writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE","offers":[` + introFragment + `]}]}`,
+		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
+	})
+}
+
+const introAsPulled = `{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P1W"}]}`
+
+// TestRun_offersMatch_isNoOp asserts the pull-then-apply invariant holds at
+// level 3: embedded offers matching live (modulo the stripped packageName and
+// the declared state) plan nothing.
+func TestRun_offersMatch_isNoOp(t *testing.T) {
+	rt := &subsRT{offersBody: liveOffers}
+	rc, _ := newRC(t, rt)
+	r, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: offersCatalog(t, introAsPulled)})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("no-op apply must not mutate; got %v", m)
+	}
+	var out bytes.Buffer
+	if err := r.Renderers().Table(&out); err != nil {
+		t.Fatalf("Table: %v", err)
+	}
+	if !strings.Contains(out.String(), "no changes to apply") {
+		t.Errorf("table %q should say no changes", out.String())
+	}
+}
+
+// TestRun_offerPatch_scopedMask asserts an edited offer phase patches the
+// offer with a mask limited to the changed fields.
+func TestRun_offerPatch_scopedMask(t *testing.T) {
+	edited := `{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P2W"}]}`
+	rt := &subsRT{offersBody: liveOffers}
+	rc, _ := newRC(t, rt)
+	if _, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: offersCatalog(t, edited)}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var patchURL string
+	for _, u := range rt.urls {
+		if strings.Contains(u, "/offers/intro?") {
+			patchURL = u
+		}
+	}
+	if !strings.Contains(patchURL, "updateMask=phases") || strings.Contains(patchURL, "state") {
+		t.Errorf("offer patch url %q must scope the mask to phases", patchURL)
+	}
+}
+
+// TestRun_offerCreateAndStates asserts a declared new offer is created after
+// its parent exists, a DRAFT base plan declared ACTIVE is activated, and an
+// ACTIVE offer declared INACTIVE is deactivated — with the plan surfacing all
+// of it under distinct ops in the json view.
+func TestRun_offerCreateAndStates(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE","offers":[
+			{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"INACTIVE","phases":[{"duration":"P1W"}]},
+			{"offerId":"neo","phases":[{"duration":"P3D"}]}
+		]},{"basePlanId":"yearly","state":"ACTIVE"}]}`,
+		"gone.json": `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
+	})
+	// live: monthly ACTIVE (matches), yearly DRAFT (declared ACTIVE → activate),
+	// intro ACTIVE (declared INACTIVE → deactivate), neo absent (→ create).
+	rt := &subsRT{offersBody: liveOffers}
+	live := `{"subscriptions":[
+	  {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"yearly","state":"DRAFT"}]},
+	  {"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}
+	]}`
+	rc, _ := newRCWithLive(t, rt, live)
+	r, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !rt.saw("POST", "/offers") || !rt.saw("POST", "/basePlans/yearly:activate") || !rt.saw("POST", "/offers/intro:deactivate") {
+		t.Fatalf("calls = %v, want offer create + yearly activate + intro deactivate", rt.calls)
+	}
+	var createURL string
+	for _, u := range rt.urls {
+		if strings.Contains(u, "offerId=neo") {
+			createURL = u
+		}
+	}
+	if !strings.Contains(createURL, "/subscriptions/premium/basePlans/monthly/offers?") {
+		t.Errorf("offer create url %q must address premium/monthly", createURL)
+	}
+	var js bytes.Buffer
+	if err := r.Renderers().JSON(&js); err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	got := js.String()
+	for _, want := range []string{`"op": "activate"`, `"op": "deactivate"`, `"kind": "offer"`, `"from": "DRAFT"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("json %s missing %s", got, want)
+		}
+	}
+}
+
+// TestRun_offerDelete_gated asserts omitting a live offer is destructive: exit
+// 3 without --confirm, the DELETE runs with it.
+func TestRun_offerDelete_gated(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
+	})
+	rt := &subsRT{offersBody: liveOffers}
+	rc, _ := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 3)
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("refusal must not mutate; got %v", m)
+	}
+
+	rt2 := &subsRT{offersBody: liveOffers}
+	rc2, _ := newRC(t, rt2)
+	if _, err := applycmd.Run(rc2, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true}); err != nil {
+		t.Fatalf("Run --confirm: %v", err)
+	}
+	if !rt2.saw("DELETE", "/offers/intro") {
+		t.Errorf("calls = %v, want the offer DELETE", rt2.calls)
+	}
+}
+
+// TestRun_impossibleStateTransition_exit2 asserts a declared INACTIVE over a
+// live DRAFT refuses with a usage error naming the transition.
+func TestRun_impossibleStateTransition_exit2(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"INACTIVE"}]}`,
+		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
+	})
+	live := `{"subscriptions":[
+	  {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"DRAFT"}]},
+	  {"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}
+	]}`
+	rt := &subsRT{}
+	rc, _ := newRCWithLive(t, rt, live)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, DryRun: true})
+	assertExit(t, err, 2)
+	if !strings.Contains(err.Error(), "INACTIVE") {
+		t.Errorf("refusal %q should name the impossible transition", err.Error())
 	}
 }
 

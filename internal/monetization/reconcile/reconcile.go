@@ -66,23 +66,48 @@ type Change struct {
 	Fields    []string `json:"fields,omitempty"`
 }
 
-// Plan is the Reconciliation plan: what apply would (or did) do. All slices are
-// sorted by product ID for stable output.
+// StateChange is one planned lifecycle transition (slice #369): a base plan or
+// offer whose declared state: differs from live, reconciled via the dedicated
+// activate/deactivate endpoints rather than a patch. Kind is "basePlan" or
+// "offer"; To is the declared target ("ACTIVE" → activate, "INACTIVE" →
+// deactivate). Surfaced prominently in every plan view — a state change moves
+// buyer availability.
+type StateChange struct {
+	Kind       string `json:"kind"`
+	ProductID  string `json:"productId"`
+	BasePlanID string `json:"basePlanId"`
+	OfferID    string `json:"offerId,omitempty"`
+	From       string `json:"from"`
+	To         string `json:"to"`
+}
+
+// Plan is the Reconciliation plan: what apply would (or did) do. The Offer*
+// slices carry offer-level actions (their Change.ProductID holds the composite
+// productId/basePlanId/offerId display key). All slices are sorted for stable
+// output.
 type Plan struct {
-	Creates   []Change `json:"-"`
-	Patches   []Change `json:"-"`
-	Deletes   []Change `json:"-"`
-	Unchanged []string `json:"-"`
+	Creates      []Change      `json:"-"`
+	Patches      []Change      `json:"-"`
+	Deletes      []Change      `json:"-"`
+	OfferCreates []Change      `json:"-"`
+	OfferPatches []Change      `json:"-"`
+	OfferDeletes []Change      `json:"-"`
+	StateChanges []StateChange `json:"-"`
+	Unchanged    []string      `json:"-"`
 }
 
 // HasChanges reports whether the plan does anything at all.
 func (p Plan) HasChanges() bool {
-	return len(p.Creates)+len(p.Patches)+len(p.Deletes) > 0
+	return len(p.Creates)+len(p.Patches)+len(p.Deletes)+
+		len(p.OfferCreates)+len(p.OfferPatches)+len(p.OfferDeletes)+
+		len(p.StateChanges) > 0
 }
 
 // HasDeletes reports whether the plan is destructive — the condition that
-// gates execution behind --confirm (ADR-0041 §3).
-func (p Plan) HasDeletes() bool { return len(p.Deletes) > 0 }
+// gates execution behind --confirm (ADR-0041 §3). Offer deletes count: they
+// remove catalog state just like subscription deletes. State changes do not —
+// activate/deactivate are reversible.
+func (p Plan) HasDeletes() bool { return len(p.Deletes)+len(p.OfferDeletes) > 0 }
 
 // Compute diffs the declared catalog against the live one over the managed
 // fields only: local-only products become creates, live-only products become

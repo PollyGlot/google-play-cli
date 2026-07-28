@@ -29,11 +29,12 @@ import (
 // recording every API call. status/body override the happy path for refusal
 // tests.
 type subsRT struct {
-	mu     sync.Mutex
-	calls  []string
-	urls   []string
-	status int
-	body   string
+	mu         sync.Mutex
+	calls      []string
+	urls       []string
+	status     int
+	body       string
+	offersBody string
 }
 
 func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -48,10 +49,17 @@ func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	if r.status != 0 {
 		return jsonResp(r.status, r.body), nil
 	}
+	if strings.Contains(req.URL.Path, "/subscriptions/-/basePlans/-/offers") {
+		body := r.offersBody
+		if body == "" {
+			body = `{}`
+		}
+		return jsonResp(200, body), nil
+	}
 	if strings.Contains(req.URL.RawQuery, "pageToken=p2") {
 		return jsonResp(200, `{"subscriptions":[{"productId":"pro","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Pro"}]}]}`), nil
 	}
-	return jsonResp(200, `{"subscriptions":[{"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}]}],"nextPageToken":"p2"}`), nil
+	return jsonResp(200, `{"subscriptions":[{"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}],"nextPageToken":"p2"}`), nil
 }
 
 func jsonResp(status int, body string) *http.Response {
@@ -98,8 +106,16 @@ func TestRun_mirrorsLiveCatalogToDir(t *testing.T) {
 			t.Errorf("url %q must not open an Edit", u)
 		}
 	}
-	if got := len(rt.urls); got != 2 {
-		t.Fatalf("want 2 list pages, got %d (%v)", got, rt.urls)
+	var listPages, offerWalks int
+	for _, u := range rt.urls {
+		if strings.Contains(u, "/basePlans/-/offers") {
+			offerWalks++
+		} else {
+			listPages++
+		}
+	}
+	if listPages != 2 || offerWalks != 1 {
+		t.Fatalf("want 2 list pages + 1 offers walk, got %d + %d (%v)", listPages, offerWalks, rt.urls)
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "premium.json"))
 	if err != nil {
@@ -148,6 +164,50 @@ func TestRun_humanSummary(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("table %q missing %q", got, want)
 		}
+	}
+}
+
+// TestRun_embedsOffersUnderBasePlans asserts pull nests each live offer under
+// its base plan's offers array in the file, with the packageName echo stripped
+// — while --output json stays the plain subscriptions envelope.
+func TestRun_embedsOffersUnderBasePlans(t *testing.T) {
+	dir := t.TempDir()
+	rt := &subsRT{offersBody: `{"subscriptionOffers":[{"packageName":"com.example.app","productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P1W"}]}]}`}
+	rc := newRC(t, rt)
+	r, err := pullcmd.Run(rc, pullcmd.Input{Package: "com.example.app", Dir: dir})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	_ = r
+	b, err := os.ReadFile(filepath.Join(dir, "premium.json"))
+	if err != nil {
+		t.Fatalf("premium.json: %v", err)
+	}
+	var sub struct {
+		BasePlans []struct {
+			BasePlanID string           `json:"basePlanId"`
+			Offers     []map[string]any `json:"offers"`
+		} `json:"basePlans"`
+	}
+	if err := json.Unmarshal(b, &sub); err != nil {
+		t.Fatalf("decode premium.json: %v", err)
+	}
+	if len(sub.BasePlans) != 1 || len(sub.BasePlans[0].Offers) != 1 {
+		t.Fatalf("premium.json basePlans = %+v, want monthly with 1 embedded offer", sub.BasePlans)
+	}
+	offer := sub.BasePlans[0].Offers[0]
+	if offer["offerId"] != "intro" {
+		t.Errorf("embedded offer = %v, want intro", offer)
+	}
+	if _, has := offer["packageName"]; has {
+		t.Errorf("embedded offer %v must strip packageName", offer)
+	}
+	var js bytes.Buffer
+	if err := r.Renderers().JSON(&js); err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	if strings.Contains(js.String(), `"offers"`) {
+		t.Errorf("json %s must stay the plain subscriptions envelope (offers ride the files)", js.String())
 	}
 }
 

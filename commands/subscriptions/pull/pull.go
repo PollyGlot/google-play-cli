@@ -107,11 +107,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, exit.Usagef("live subscription catalog of %q is empty while %q holds %d catalog file(s) — refusing to erase the local catalog; verify --package, or delete the files yourself if the empty live catalog is intended", pkg, dir, len(existing))
 		}
 	}
+	// Offers are a separate sub-resource (no embedding in the Subscription
+	// resource), read in one wildcard walk and nested under each base plan's
+	// "offers" array in the files (slice #369, ADR-0041 §5).
+	offers, err := subscriptions.ListAllOffers(rc.Ctx, httpClient, pkg)
+	if err != nil {
+		return nil, subscriptionscmd.Classify(pkg, err)
+	}
+	embedded, err := subscriptionscmd.EmbedOffers(items, offers)
+	if err != nil {
+		return nil, err
+	}
 	entries := make([]catalog.Entry, 0, len(items))
 	rawSubs := make([]json.RawMessage, 0, len(items))
 	written := make([]string, 0, len(items))
 	for _, it := range items {
-		entries = append(entries, catalog.Entry{ProductID: it.ProductID, Raw: it.Raw})
+		entries = append(entries, catalog.Entry{ProductID: it.ProductID, Raw: embedded[it.ProductID]})
 		rawSubs = append(rawSubs, it.Raw)
 		written = append(written, it.ProductID+".json")
 	}
@@ -141,12 +152,15 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "pull",
 		Short: "[experimental] Pull the live subscription catalog into files",
 		Long: `Read the app's complete live subscription catalog
-(monetization.subscriptions.list, every page) and write it as the on-disk
-catalog: one <productId>.json file per subscription under --dir (default
-` + subscriptionscmd.DefaultDir + `), the API resource verbatim. Stale .json
-files for subscriptions no longer live are removed so the directory mirrors
-Play; non-.json files are never touched. Commit the directory, edit the files,
-then rehearse with "gplay subscriptions apply --dry-run".
+(monetization.subscriptions.list plus one wildcard offers walk, every page)
+and write it as the on-disk catalog: one <productId>.json file per
+subscription under --dir (default ` + subscriptionscmd.DefaultDir + `), the
+API resource verbatim with each base plan's offers nested under
+basePlans[].offers. Stale .json files for subscriptions no longer live are
+removed so the directory mirrors Play; non-.json files are never touched.
+Commit the directory, edit the files, then rehearse with
+"gplay subscriptions apply --dry-run". --output json stays the merged
+ListSubscriptionsResponse (offers travel in the files).
 
 [experimental] — the surface may still evolve (ADR-0010).`,
 		Args:          cobra.NoArgs,
