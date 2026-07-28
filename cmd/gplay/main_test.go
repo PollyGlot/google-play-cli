@@ -416,6 +416,11 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"subscriptions", "prices", "convert"}, false},
 		{[]string{"subscriptions", "prices", "migrate"}, true},
 
+		// iap — pull writes only local catalog files; apply reconciles the
+		// live v2 catalog (legacy is read-only, ADR-0041 §8).
+		{[]string{"iap", "pull"}, false},
+		{[]string{"iap", "apply"}, true},
+
 		// reviews
 		{[]string{"reviews", "list"}, false},
 		{[]string{"reviews", "reply"}, true},
