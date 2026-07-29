@@ -1,5 +1,5 @@
 {
-  "revision": "20260717",
+  "revision": "20260723",
   "methods": {
     "androidpublisher.applications.dataSafety": {
       "httpMethod": "POST",
@@ -332,6 +332,67 @@
       ],
       "request": "UploadImageRequest",
       "response": "UploadImageResponse"
+    },
+    "androidpublisher.appstorecatalog.recentappviews.get": {
+      "httpMethod": "GET",
+      "path": "appstorecatalog/{appStorePackageName}/recentAppViews/{playAppPackageName}",
+      "description": "Returns metadata about a recently updated app.",
+      "parameters": [
+        {
+          "name": "appStorePackageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The package name of the app store on behalf of which the request is made."
+        },
+        {
+          "name": "playAppPackageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The package name of the requested Play app."
+        }
+      ],
+      "response": "RecentAppView"
+    },
+    "androidpublisher.appstorecatalog.recentupdateevents.list": {
+      "httpMethod": "GET",
+      "path": "appstorecatalog/{appStorePackageName}/recentUpdateEvents",
+      "description": "Lists update events for eligible apps in the given time range.",
+      "parameters": [
+        {
+          "name": "appStorePackageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The package name of the app store on behalf of which the request is made."
+        },
+        {
+          "name": "endTime",
+          "in": "query",
+          "type": "string",
+          "description": "Required. The end time of the range (exclusive)."
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "type": "integer",
+          "description": "Optional. The maximum number of update events to return. The service may return fewer than this value. If unspecified, at most 100 update events will be returned. The maximum value is 1000; values above 1000 will be coerced to 1000."
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "type": "string",
+          "description": "Optional. A page token, received from a previous `ListRecentUpdateEvents` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListRecentUpdateEvents` must match the call that provided the page token."
+        },
+        {
+          "name": "startTime",
+          "in": "query",
+          "type": "string",
+          "description": "Required. The start time of the range (inclusive)."
+        }
+      ],
+      "response": "ListRecentUpdateEventsResponse"
     },
     "androidpublisher.edits.apks.addexternallyhosted": {
       "httpMethod": "POST",
@@ -5160,6 +5221,23 @@
         }
       }
     },
+    "AppContactInformation": {
+      "description": "Contact information for the app.",
+      "properties": {
+        "contactEmail": {
+          "type": "string",
+          "description": "The contact email for this app. Always set."
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "The contact phone for this app. Optionally provided by the developer."
+        },
+        "websiteUrl": {
+          "type": "string",
+          "description": "The contact website url for this app. Optionally provided by the developer."
+        }
+      }
+    },
     "AppDetails": {
       "description": "The app details. The resource for DetailsService.",
       "properties": {
@@ -5955,6 +6033,162 @@
         }
       }
     },
+    "CatalogAppView": {
+      "description": "LINT.IfChange A view of a Google Play app within the Catalog Export for app stores.",
+      "properties": {
+        "activeVersionNames": {
+          "type": "string",
+          "repeated": true,
+          "description": "Active versions of the app mapped from `android:versionName` manifest attributes."
+        },
+        "appCategory": {
+          "type": "string",
+          "enum": [
+            "APP_CATEGORY_UNSPECIFIED",
+            "GAME",
+            "APP"
+          ],
+          "description": "The category of the app."
+        },
+        "appContactInformation": {
+          "$ref": "AppContactInformation",
+          "description": "Developer-provided contact information for the app."
+        },
+        "appSubcategory": {
+          "type": "string",
+          "description": "The subcategory of the app e.g. \"GAME_ACTION\"."
+        },
+        "deliveryToken": {
+          "type": "string",
+          "description": "The token used for delivery of the app with the Google Play Inline Install API."
+        },
+        "developerDetails": {
+          "$ref": "DeveloperDetails",
+          "description": "The developer details of the app."
+        },
+        "deviceCompatibilityRequirements": {
+          "$ref": "DeviceCompatibilityRequirements",
+          "repeated": true,
+          "description": "The app may specify multiple sets of device compatibility requirements, and a device is considered compatible with the app if it satisfies at least one of `DeviceCompatibilityRequirements`."
+        },
+        "excludedDevicesByIdentifier": {
+          "$ref": "DeviceIdentifier",
+          "repeated": true,
+          "description": "List of devices excluded from the app's distribution even if they are otherwise compatible with the requirements from device_compatibility_requirements. These are OR-ed, i.e. a device is excluded if it matches any of the identifiers."
+        },
+        "excludedDevicesBySelector": {
+          "$ref": "CatalogDeviceSelector",
+          "repeated": true,
+          "description": "List of devices excluded from the app's distribution even if they are otherwise compatible with the requirements from device_compatibility_requirements. A device is excluded if it matches any of given the selectors."
+        },
+        "firstReleaseDate": {
+          "$ref": "Date",
+          "description": "The date when the app was first released."
+        },
+        "hasInAppAds": {
+          "type": "boolean",
+          "description": "Whether the app has ads."
+        },
+        "hasInAppPurchases": {
+          "type": "boolean",
+          "description": "Whether the app has in-app purchases through Google Play."
+        },
+        "iarcCertificateId": {
+          "type": "string",
+          "description": "The IARC certificate ID for the app."
+        },
+        "isAdultOnlyAudience": {
+          "type": "boolean",
+          "description": "Whether the app is targeted to an adult-only (18+) audience."
+        },
+        "lastPublishTime": {
+          "type": "string",
+          "description": "The timestamp when the app was last published."
+        },
+        "localizedStoreListings": {
+          "$ref": "LocalizedStoreListings",
+          "description": "The localized store listings of the app which are shown on Google Play."
+        },
+        "packageName": {
+          "type": "string",
+          "description": "The package name of the app."
+        },
+        "permissions": {
+          "$ref": "CatalogPermission",
+          "repeated": true,
+          "description": "Required permissions declared by the app which apply for all Android SDK versions."
+        },
+        "permissionsSdk23": {
+          "$ref": "CatalogPermission",
+          "repeated": true,
+          "description": "Required permissions declared by the app which apply for Android SDK versions SDK 23 and above."
+        },
+        "priceInTheUnitedStates": {
+          "$ref": "Money",
+          "description": "The price of the app in the United States. Empty if the app is free."
+        },
+        "privacyPolicyUrl": {
+          "type": "string",
+          "description": "The URL of the app's privacy policy."
+        },
+        "salePriceInTheUnitedStates": {
+          "$ref": "Money",
+          "description": "The sale price of the app in the United States. Only populated for paid apps with an active US sale."
+        }
+      }
+    },
+    "CatalogDeviceSelector": {
+      "description": "Defines a device selector for a device. A device is considered matched if it matches any of given the selectors.",
+      "properties": {
+        "deviceTypeSelector": {
+          "type": "string",
+          "enum": [
+            "DEVICE_TYPE_SELECTOR_UNSPECIFIED",
+            "ANDROID_GO"
+          ],
+          "description": "The device type selector."
+        },
+        "ramSelector": {
+          "$ref": "RamSelector",
+          "description": "Defines a RAM selector for a device."
+        },
+        "socSelectors": {
+          "$ref": "SocSelector",
+          "repeated": true,
+          "description": "The SOC selectors. A device matches the device selector if it matches any of the SOC selectors."
+        }
+      }
+    },
+    "CatalogPermission": {
+      "description": "A permission declared by an app.",
+      "properties": {
+        "maxSdkVersion": {
+          "type": "integer",
+          "description": "The `maxSdkVersion` attribute indicating up to which Android SDK version the permission is requested."
+        },
+        "name": {
+          "type": "string",
+          "description": "The `name` attribute indicating the permission name."
+        }
+      }
+    },
+    "CatalogSdkVersion": {
+      "description": "Defines a range of SDK versions. A device is considered compatible uf its\\ SDK version falls within the min_sdk_version and max_sdk_version range.",
+      "properties": {
+        "maxSdkVersion": {
+          "type": "string",
+          "description": "The maximum SDK version required for the app (inclusive)."
+        },
+        "minSdkVersion": {
+          "type": "string",
+          "description": "The minimum SDK version required for the app (inclusive)."
+        },
+        "targetSdkVersion": {
+          "type": "string",
+          "description": "The target SDK version for the app."
+        }
+      }
+    },
     "CoarseLocation": {
       "description": "Coarse Geographic location details for where the consumption happened.",
       "properties": {
@@ -5986,6 +6220,42 @@
         "userComment": {
           "$ref": "UserComment",
           "description": "A comment from a user."
+        }
+      }
+    },
+    "CompatibleScreen": {
+      "description": "Compatible screens as listed in the `compatible-screens` Manifest tag.",
+      "properties": {
+        "density": {
+          "type": "string",
+          "enum": [
+            "DENSITY_UNSPECIFIED",
+            "DENSITY_NODPI",
+            "DENSITY_LDPI",
+            "DENSITY_MDPI",
+            "DENSITY_TVDPI",
+            "DENSITY_HDPI",
+            "DENSITY_280",
+            "DENSITY_XHDPI",
+            "DENSITY_360",
+            "DENSITY_400",
+            "DENSITY_420",
+            "DENSITY_XXHDPI",
+            "DENSITY_560",
+            "DENSITY_XXXHDPI"
+          ],
+          "description": "Screen density."
+        },
+        "screenSize": {
+          "type": "string",
+          "enum": [
+            "SCREEN_SIZE_UNSPECIFIED",
+            "SCREEN_SIZE_SMALL",
+            "SCREEN_SIZE_NORMAL",
+            "SCREEN_SIZE_LARGE",
+            "SCREEN_SIZE_EXTRA_LARGE"
+          ],
+          "description": "The screen size."
         }
       }
     },
@@ -6440,8 +6710,98 @@
         }
       }
     },
+    "DeveloperDetails": {
+      "description": "The developer details of a Google Play app.",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "The physical address of the developer."
+        },
+        "contactEmail": {
+          "type": "string",
+          "description": "The contact email of the developer."
+        },
+        "developerName": {
+          "type": "string",
+          "description": "The developer name of the app."
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "The phone number of the developer."
+        },
+        "website": {
+          "type": "string",
+          "description": "The website of the developer."
+        }
+      }
+    },
     "DeveloperInitiatedCancellation": {
       "description": "Information specific to cancellations initiated by developers."
+    },
+    "DeviceCompatibilityRequirements": {
+      "description": "Defines a set of device compatibility requirements for the app. A device must satisfy all of the requirements in a set to be considered compatible with the app.",
+      "properties": {
+        "compatibleScreens": {
+          "$ref": "CompatibleScreen",
+          "repeated": true,
+          "description": "Compatible screens as listed in the `compatible-screens` Manifest tag."
+        },
+        "glEsVersion": {
+          "type": "integer",
+          "description": "Required version of OpenGL ES."
+        },
+        "isScreenRequired": {
+          "type": "boolean",
+          "description": "Specifies if the app requires a screen."
+        },
+        "nativePlatforms": {
+          "type": "string",
+          "repeated": true,
+          "description": "List of required ABIs (Application Binary Interface), e.g. `armeabi` or `x86`."
+        },
+        "requiredSoftwareLibraries": {
+          "type": "string",
+          "repeated": true,
+          "description": "List of required libraries as declared in the `uses-library` manifest tag."
+        },
+        "requiredSystemFeatures": {
+          "type": "string",
+          "repeated": true,
+          "description": "The system features that the app requires. A device must have all of the system features to be considered compatible with the app."
+        },
+        "requiresSmallestWidthDp": {
+          "type": "string",
+          "description": "Specifies the minimum smallest width required of the screen."
+        },
+        "sdkVersion": {
+          "$ref": "CatalogSdkVersion",
+          "description": "Defines a range of SDK versions that the app is compatible with."
+        },
+        "supportedGlTextures": {
+          "type": "string",
+          "repeated": true,
+          "description": "Supported gl textures as specified by the `supported-gl-texture` Manifest tag."
+        },
+        "supportedScreens": {
+          "type": "string",
+          "repeated": true,
+          "description": "Compatible screens as listed in the `supports-screens` Manifest tag."
+        },
+        "use32BitAbi": {
+          "type": "string",
+          "enum": [
+            "USE_32_BIT_ABI_UNSPECIFIED",
+            "USE_32_BIT_ABI_TRUE",
+            "USE_32_BIT_ABI_OTHER"
+          ],
+          "description": "Value of `android:use32BitAbi` flag retrieved from the Manifest."
+        },
+        "usesConfigurations": {
+          "$ref": "UsesConfiguration",
+          "repeated": true,
+          "description": "Lists all configurations marked as required by use of the `uses-configuration` manifest tag. Each instance of this proto represents a single `uses-configuration` entry. See http://developer.android.com/guide/topics/manifest/uses-configuration-element.html"
+        }
+      }
     },
     "DeviceFeature": {
       "description": "Represents a device feature.",
@@ -6489,6 +6849,19 @@
         "buildDevice": {
           "type": "string",
           "description": "Value of Build.DEVICE."
+        }
+      }
+    },
+    "DeviceIdentifier": {
+      "description": "Defines a device identifier for a device.",
+      "properties": {
+        "deviceBrand": {
+          "type": "string",
+          "description": "The brand of the device."
+        },
+        "deviceModel": {
+          "type": "string",
+          "description": "The model of the device."
         }
       }
     },
@@ -8276,6 +8649,15 @@
         }
       }
     },
+    "ImageAsset": {
+      "description": "An image asset.",
+      "properties": {
+        "imageUrl": {
+          "type": "string",
+          "description": "The URL of the image asset."
+        }
+      }
+    },
     "ImagesDeleteAllResponse": {
       "description": "Response for deleting all images.",
       "properties": {
@@ -8854,6 +9236,20 @@
         }
       }
     },
+    "ListRecentUpdateEventsResponse": {
+      "description": "Response message for ListRecentUpdateEvents.",
+      "properties": {
+        "nextPageToken": {
+          "type": "string",
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages."
+        },
+        "recentUpdateEvents": {
+          "$ref": "RecentUpdateEvent",
+          "repeated": true,
+          "description": "The list of recent update events."
+        }
+      }
+    },
     "ListReleaseSummariesResponse": {
       "description": "Response listing all releases for a given track that are either ready to be sent for review, in review, approved, not approved or available.",
       "properties": {
@@ -8942,6 +9338,64 @@
           "$ref": "Listing",
           "repeated": true,
           "description": "All localized listings."
+        }
+      }
+    },
+    "LocalizedStoreListing": {
+      "description": "A localized store listings of the app.",
+      "properties": {
+        "appName": {
+          "type": "string",
+          "description": "The name of the app in this localization."
+        },
+        "featureGraphic": {
+          "$ref": "ImageAsset",
+          "description": "The feature graphic of the app."
+        },
+        "fullDescription": {
+          "type": "string",
+          "description": "A longer description of the app in this localization."
+        },
+        "icon": {
+          "$ref": "ImageAsset",
+          "description": "The icon of the app."
+        },
+        "languageCode": {
+          "type": "string",
+          "description": "The BCP-47 language code for this localization."
+        },
+        "phoneScreenshots": {
+          "$ref": "ScreenshotSet",
+          "description": "The phone screenshots of the app."
+        },
+        "shortDescription": {
+          "type": "string",
+          "description": "A short description of the app in this localization."
+        },
+        "tabletRegularScreenshots": {
+          "$ref": "ScreenshotSet",
+          "description": "The regular tablet screenshots of the app."
+        },
+        "tabletSmallScreenshots": {
+          "$ref": "ScreenshotSet",
+          "description": "The small tablet screenshots of the app."
+        },
+        "video": {
+          "$ref": "VideoAsset",
+          "description": "The video of the app."
+        }
+      }
+    },
+    "LocalizedStoreListings": {
+      "description": "The localized store listings of an app.",
+      "properties": {
+        "defaultLanguageCode": {
+          "type": "string",
+          "description": "The default language code of the app. If a localized store listing is not available for a given language, assets from the default language are used instead."
+        },
+        "localizedStoreListings": {
+          "$ref": "LocalizedStoreListing",
+          "repeated": true
         }
       }
     },
@@ -10391,6 +10845,46 @@
         }
       }
     },
+    "RamSelector": {
+      "description": "Defines a RAM selector for a device.",
+      "properties": {
+        "ramMbLessThanOrEqual": {
+          "type": "string",
+          "description": "This will match any device that has less than or equal ram_mb_less_than_or_equal mb of RAM."
+        }
+      }
+    },
+    "RecentAppView": {
+      "description": "Metadata about a recently updated app.",
+      "properties": {
+        "appView": {
+          "$ref": "CatalogAppView",
+          "description": "Recently updated app view."
+        }
+      }
+    },
+    "RecentUpdateEvent": {
+      "description": "A recent update event.",
+      "properties": {
+        "eventTime": {
+          "type": "string",
+          "description": "The timestamp of the update."
+        },
+        "playAppPackageName": {
+          "type": "string",
+          "description": "The package name of the app."
+        },
+        "updateType": {
+          "type": "string",
+          "enum": [
+            "UPDATE_TYPE_UNSPECIFIED",
+            "MODIFICATION",
+            "DELETION"
+          ],
+          "description": "The type of the update event."
+        }
+      }
+    },
     "RecurringExternalTransaction": {
       "description": "Represents a transaction that is part of a recurring series of payments. This can be a subscription or a one-time product with multiple payments (such as preorder).",
       "properties": {
@@ -10921,6 +11415,16 @@
         }
       }
     },
+    "ScreenshotSet": {
+      "description": "A set of screenshots.",
+      "properties": {
+        "screenshots": {
+          "$ref": "ImageAsset",
+          "repeated": true,
+          "description": "The image assets of the screenshots."
+        }
+      }
+    },
     "SdkVersion": {
       "description": "Represents an sdk version.",
       "properties": {
@@ -10955,6 +11459,19 @@
         "vanityCode": {
           "$ref": "VanityCode",
           "description": "A vanity code was applied."
+        }
+      }
+    },
+    "SocSelector": {
+      "description": "Defines a SOC selector for a device. This will match any device whose SoC (System on Chip) matches all fields in the selector.",
+      "properties": {
+        "socMake": {
+          "type": "string",
+          "description": "The manufacturer of the SoC."
+        },
+        "socModel": {
+          "type": "string",
+          "description": "The model of the SoC."
         }
       }
     },
@@ -12219,6 +12736,53 @@
         }
       }
     },
+    "UsesConfiguration": {
+      "description": "Represents all configurations marked as required by use of the uses-configuration manifest tag.",
+      "properties": {
+        "requiredKeyboardType": {
+          "type": "string",
+          "enum": [
+            "KEYBOARD_TYPE_UNSPECIFIED",
+            "KEYBOARD_TYPE_UNDEFINED",
+            "KEYBOARD_TYPE_NO_KEYS",
+            "KEYBOARD_TYPE_QWERTY",
+            "KEYBOARD_TYPE_TWELVE_KEY"
+          ],
+          "description": "The type of keyboard required."
+        },
+        "requiredNavigationType": {
+          "type": "string",
+          "enum": [
+            "NAVIGATION_TYPE_UNSPECIFIED",
+            "NAVIGATION_TYPE_UNDEFINED",
+            "NAVIGATION_TYPE_NO_NAVIGATION",
+            "NAVIGATION_TYPE_DPAD",
+            "NAVIGATION_TYPE_TRACKBALL",
+            "NAVIGATION_TYPE_WHEEL"
+          ],
+          "description": "The navigation device required."
+        },
+        "requiredTouchscreenType": {
+          "type": "string",
+          "enum": [
+            "TOUCHSCREEN_TYPE_UNSPECIFIED",
+            "TOUCHSCREEN_TYPE_UNDEFINED",
+            "TOUCHSCREEN_TYPE_NO_TOUCHSCREEN",
+            "TOUCHSCREEN_TYPE_STYLUS",
+            "TOUCHSCREEN_TYPE_FINGER"
+          ],
+          "description": "The type of touchscreen required."
+        },
+        "requiresFiveWayNavigation": {
+          "type": "boolean",
+          "description": "Whether or not the application requires a five-way navigation control."
+        },
+        "requiresHardwareKeyboard": {
+          "type": "boolean",
+          "description": "Whether or not the application requires a hardware keyboard."
+        }
+      }
+    },
     "UsesPermission": {
       "description": "A permission used by this APK.",
       "properties": {
@@ -12280,6 +12844,15 @@
         "textureCompressionFormatTargeting": {
           "$ref": "TextureCompressionFormatTargeting",
           "description": "Texture-compression-format-level targeting"
+        }
+      }
+    },
+    "VideoAsset": {
+      "description": "A video asset.",
+      "properties": {
+        "videoUrl": {
+          "type": "string",
+          "description": "The URL of the video asset."
         }
       }
     },
