@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagediff"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagevalidate"
@@ -39,8 +40,8 @@ type Opts struct {
 	DryRun bool
 
 	// Confirm authorizes a real publish. Required for any non-dry-run Apply;
-	// without it Apply returns *ConfirmRequiredError (exit 2). CI=true must NOT
-	// flow into this field.
+	// without it Apply returns an *exit.SafetyFlagError naming --confirm
+	// (exit 3). CI=true must NOT flow into this field.
 	Confirm bool
 
 	// Locales/Types restrict the reconciliation to a subset (the --locale /
@@ -71,15 +72,15 @@ type Result struct {
 	Diff    imagediff.Result
 }
 
-// ConfirmRequiredError signals a real apply invoked without --confirm. It maps
-// to exit 2 and points at --dry-run. Images are live-on-commit with no
-// track/draft fallback, so --confirm is always required for a real apply.
-type ConfirmRequiredError struct{}
-
-func (e *ConfirmRequiredError) Error() string {
-	return "metadata images apply publishes images live to the store immediately; pass --confirm to proceed (preview first with --dry-run)"
+// confirmRequired builds the refusal for a real apply invoked without
+// --confirm. It is an *exit.SafetyFlagError, so it exits 3 ("safety flag
+// required", docs/DESIGN.md §9) and names the missing flag in the --output
+// json error envelope's requires[] (ADR-0017 / ADR-0023). It points at
+// --dry-run. Images are live-on-commit with no track/draft fallback, so
+// --confirm is always required for a real apply.
+func confirmRequired() error {
+	return exit.SafetyFlag("confirm", "metadata images apply publishes images live to the store immediately; pass --confirm to proceed (preview first with --dry-run)")
 }
-func (e *ConfirmRequiredError) ExitCode() int { return 2 }
 
 // ValidationError signals the local tree fails the offline image lint that must
 // block a publish. It maps to exit 20.
@@ -111,7 +112,7 @@ var errNoChanges = noChanges{}
 func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts) (*Result, error) {
 	// 1. Confirm gate (real writes only), before any network.
 	if !opts.DryRun && !opts.Confirm {
-		return nil, &ConfirmRequiredError{}
+		return nil, confirmRequired()
 	}
 
 	locales := filterLocales(local, opts.Locales)

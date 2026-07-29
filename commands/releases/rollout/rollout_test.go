@@ -260,10 +260,11 @@ func TestRunComplete_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_productionWriteWithoutConfirm_returnsExit2 asserts the production
+// TestRun_productionWriteWithoutConfirm_returnsExit3 asserts the production
 // confirm gate at the CLI: complete on production without --confirm refuses
-// (exit 2) before any HTTP.
-func TestRun_productionWriteWithoutConfirm_returnsExit2(t *testing.T) {
+// with exit 3 (safety flag required, docs/DESIGN.md §9 — NOT the generic
+// usage exit 2, #408) before any HTTP.
+func TestRun_productionWriteWithoutConfirm_returnsExit3(t *testing.T) {
 	rt := &stateRT{t: t}
 	rc := newRC(t, rt)
 
@@ -272,7 +273,7 @@ func TestRun_productionWriteWithoutConfirm_returnsExit2(t *testing.T) {
 		Track:   "production",
 		// Confirm omitted → must refuse before any HTTP.
 	})
-	assertExit(t, err, 2)
+	assertExit(t, err, 3)
 	if len(rt.calls) != 0 {
 		t.Errorf("expected zero HTTP calls before confirm guard, saw: %v", rt.calls)
 	}

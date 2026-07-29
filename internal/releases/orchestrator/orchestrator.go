@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/apks"
 	"github.com/PollyGlot/google-play-cli/internal/play/bundles"
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
@@ -23,18 +24,15 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 )
 
-// ConfirmRequiredError signals a production publish that needs an
-// explicit --confirm to proceed. It maps to exit code 2 (CLI misuse).
-type ConfirmRequiredError struct {
-	Track  string
-	Status string
+// confirmRequired builds the refusal for a production publish that needs an
+// explicit --confirm to proceed (ADR-0002). It is an *exit.SafetyFlagError, so
+// it exits 3 — "safety flag required", docs/DESIGN.md §9 — and names the
+// missing flag in the --output json error envelope's requires[] (ADR-0017 /
+// ADR-0023). It is deliberately NOT exit 2: the invocation is well-formed, and
+// the refusal is deterministically resolvable by re-running with --confirm.
+func confirmRequired(status string) error {
+	return exit.SafetyFlag("confirm", "production publish (status=%s) requires --confirm to prevent accidental rollouts", status)
 }
-
-func (e *ConfirmRequiredError) Error() string {
-	return "production publish (status=" + e.Status + ") requires --confirm to prevent accidental rollouts"
-}
-
-func (e *ConfirmRequiredError) ExitCode() int { return 2 }
 
 // InvalidOptsError signals a caller-side validation failure: a Status /
 // UserFraction combination Google Play would reject, or any other
@@ -211,7 +209,7 @@ type Result struct {
 //
 // Production publishes (track == "production" with status that would
 // reach real users) require opts.Confirm = true; otherwise Upload
-// returns *ConfirmRequiredError (exit 2).
+// returns an *exit.SafetyFlagError naming --confirm (exit 3).
 //
 // opts.DryRun runs the input validation and previews what would be
 // sent, without any HTTP. The returned Result has VersionCode=0 and
@@ -233,10 +231,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 	}
 
 	if requiresConfirm(opts.Track, opts.Status) && !opts.Confirm {
-		return nil, &ConfirmRequiredError{
-			Track:  opts.Track,
-			Status: resolvedStatus(opts.Track, opts.Status),
-		}
+		return nil, confirmRequired(resolvedStatus(opts.Track, opts.Status))
 	}
 
 	result := &Result{Track: opts.Track}

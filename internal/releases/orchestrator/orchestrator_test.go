@@ -267,7 +267,7 @@ func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.
 		Track:   "production",
 		AABPath: aab,
 		Status:  orchestrator.StatusCompleted,
-		Confirm: true, // production publish gate (see ConfirmRequiredError)
+		Confirm: true, // production publish gate (see confirmRequired)
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -303,7 +303,7 @@ func TestUpload_productionTrack_explicitStaged_sendsInProgressWithFraction(t *te
 		AABPath:      aab,
 		Status:       orchestrator.StatusInProgress,
 		UserFraction: 0.05,
-		Confirm:      true, // production publish gate (see ConfirmRequiredError)
+		Confirm:      true, // production publish gate (see confirmRequired)
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -642,10 +642,10 @@ func TestUpload_withReleaseNotesDir_defaultTxt_fetchesDetailsGet(t *testing.T) {
 	}
 }
 
-// TestUpload_productionComplete_withoutConfirm_returnsExit2 asserts the
+// TestUpload_productionComplete_withoutConfirm_returnsExit3 asserts the
 // --confirm guardrail: a production publish that would reach real
 // users (Completed) without Confirm=true must refuse before any HTTP.
-func TestUpload_productionComplete_withoutConfirm_returnsExit2(t *testing.T) {
+func TestUpload_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt := &playRT{
 		t:           t,
@@ -674,8 +674,8 @@ func TestUpload_productionComplete_withoutConfirm_returnsExit2(t *testing.T) {
 	if !errors.As(err, &coder) {
 		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
 	}
-	if coder.ExitCode() != 2 {
-		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	if coder.ExitCode() != 3 {
+		t.Errorf("ExitCode() = %d, want 3 (safety flag required, #408)", coder.ExitCode())
 	}
 	if len(rt.calls) != 0 {
 		t.Errorf("expected zero HTTP calls before --confirm guard, saw: %v", rt.calls)

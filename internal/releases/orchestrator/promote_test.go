@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
@@ -737,12 +738,12 @@ func TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds(t *testing.T) {
 	}
 }
 
-// TestPromote_productionComplete_withoutConfirm_returnsExit2 asserts
+// TestPromote_productionComplete_withoutConfirm_returnsExit3 asserts
 // the ADR-0002 confirm guard inheritance: a production promote that
 // would reach real users (Completed) without Confirm=true must refuse
 // before any HTTP. Mirrors upload's same guard so users learn the rule
 // once.
-func TestPromote_productionComplete_withoutConfirm_returnsExit2(t *testing.T) {
+func TestPromote_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 	rt := &promoteRT{
 		t:      t,
 		editID: "should-not-open",
@@ -767,8 +768,12 @@ func TestPromote_productionComplete_withoutConfirm_returnsExit2(t *testing.T) {
 	if !errors.As(err, &coder) {
 		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
 	}
-	if coder.ExitCode() != 2 {
-		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
+	if coder.ExitCode() != 3 {
+		t.Errorf("ExitCode() = %d, want 3 (safety flag required, #408)", coder.ExitCode())
+	}
+	var safety *exit.SafetyFlagError
+	if !errors.As(err, &safety) || safety.Flag != "confirm" {
+		t.Errorf("err = %v (%T), want *exit.SafetyFlagError naming \"confirm\"", err, err)
 	}
 	if len(rt.calls) != 0 {
 		t.Errorf("expected zero HTTP calls before --confirm guard, saw: %v", rt.calls)

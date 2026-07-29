@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -27,6 +28,7 @@ import (
 
 	imagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -150,14 +152,19 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_realApply_withoutConfirm_refusesExit2 asserts the confirm gate fires
-// before any network (exit 2).
-func TestRun_realApply_withoutConfirm_refusesExit2(t *testing.T) {
+// TestRun_realApply_withoutConfirm_refusesExit3 asserts the confirm gate fires
+// before any network, with exit 3 (safety flag required, docs/DESIGN.md §9 —
+// NOT the generic usage exit 2, #408).
+func TestRun_realApply_withoutConfirm_refusesExit3(t *testing.T) {
 	rt := &applyRT{t: t, editID: "e"}
 	rc := newRC(t, rt)
 	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t)})
-	if got := exitCodeOf(t, err); got != 2 {
-		t.Errorf("exit = %d, want 2", got)
+	if got := exitCodeOf(t, err); got != 3 {
+		t.Errorf("exit = %d, want 3", got)
+	}
+	var safety *exit.SafetyFlagError
+	if !errors.As(err, &safety) || safety.Flag != "confirm" {
+		t.Errorf("err = %v (%T), want *exit.SafetyFlagError naming \"confirm\"", err, err)
 	}
 	if len(rt.calls) != 0 {
 		t.Errorf("confirm gate must fire before any network, saw %v", rt.calls)

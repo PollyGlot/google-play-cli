@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/diff"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/validate"
@@ -46,9 +47,9 @@ type Opts struct {
 	DryRun bool
 
 	// Confirm authorizes a real publish. Required for any non-dry-run
-	// Apply (ADR-0011 §4); without it Apply returns *ConfirmRequiredError
-	// (exit 2). CI=true must NOT flow into this field — env governs output
-	// format, never mutation.
+	// Apply (ADR-0011 §4); without it Apply returns an *exit.SafetyFlagError
+	// naming --confirm (exit 3). CI=true must NOT flow into this field — env
+	// governs output format, never mutation.
 	Confirm bool
 
 	// Prune deletes locales live on Play but absent on disk (disk becomes
@@ -80,19 +81,18 @@ type Result struct {
 	Pruned  []string
 }
 
-// ConfirmRequiredError signals a real apply invoked without --confirm. It
-// maps to exit 2 and points the operator at --dry-run, reusing gplay's
-// existing --confirm meaning (ADR-0002 / ADR-0011 §4).
-type ConfirmRequiredError struct{ Prune bool }
-
-func (e *ConfirmRequiredError) Error() string {
-	if e.Prune {
-		return "metadata apply --prune publishes to live production and deletes online locales; pass --confirm to proceed (preview first with --dry-run)"
+// confirmRequired builds the refusal for a real apply invoked without
+// --confirm. It is an *exit.SafetyFlagError, so it exits 3 ("safety flag
+// required", docs/DESIGN.md §9) and names the missing flag in the --output
+// json error envelope's requires[] (ADR-0017 / ADR-0023). It points the
+// operator at --dry-run, reusing gplay's existing --confirm meaning
+// (ADR-0002 / ADR-0011 §4).
+func confirmRequired(prune bool) error {
+	if prune {
+		return exit.SafetyFlag("confirm", "metadata apply --prune publishes to live production and deletes online locales; pass --confirm to proceed (preview first with --dry-run)")
 	}
-	return "metadata apply publishes Listings live to all users immediately; pass --confirm to proceed (preview first with --dry-run)"
+	return exit.SafetyFlag("confirm", "metadata apply publishes Listings live to all users immediately; pass --confirm to proceed (preview first with --dry-run)")
 }
-
-func (e *ConfirmRequiredError) ExitCode() int { return 2 }
 
 // ValidationError signals that the local tree fails an offline lint that
 // must block a publish (a char-limit overflow, an unknown locale, or a
@@ -115,8 +115,9 @@ func (e *ValidationError) ExitCode() int { return 20 }
 
 // PruneDefaultLanguageError signals that --prune would delete the app's
 // defaultLanguage Listing, which Play requires to exist. It maps to exit 2
-// (a guardrail refusal, like ConfirmRequired) and names the locale so the
-// operator can add it to the tree or drop --prune.
+// (a guardrail refusal, like EmptyTreePrune — no safety flag resolves it, so
+// it is not the exit-3 case) and names the locale so the operator can add it
+// to the tree or drop --prune.
 type PruneDefaultLanguageError struct{ Locale string }
 
 func (e *PruneDefaultLanguageError) Error() string {
@@ -134,8 +135,9 @@ func (e *PruneDefaultLanguageError) ExitCode() int { return 2 }
 // symptom of a mis-pointed --dir (a typo'd path that still resolves to a
 // readable-but-empty directory, or a dir holding only a README / files the
 // codec does not recognize). It is refused before any network, in dry-run
-// too, and maps to exit 2 (a guardrail refusal, like ConfirmRequired /
-// PruneDefaultLanguage).
+// too, and maps to exit 2 (a guardrail refusal, like PruneDefaultLanguage).
+// It stays 2 rather than 3: no safety flag resolves it — the fix is to point
+// --dir somewhere else or drop --prune, not to acknowledge anything.
 type EmptyTreePruneError struct{}
 
 func (e *EmptyTreePruneError) Error() string {
@@ -155,7 +157,7 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	// 1. Confirm gate (real writes only). Evaluated before any network so a
 	// missing --confirm fails instantly, never after opening an Edit.
 	if !opts.DryRun && !opts.Confirm {
-		return nil, &ConfirmRequiredError{Prune: opts.Prune}
+		return nil, confirmRequired(opts.Prune)
 	}
 
 	// 2. Offline lint, reusing the validate engine. Required-MISSING is

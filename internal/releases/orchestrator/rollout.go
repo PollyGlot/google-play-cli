@@ -100,8 +100,9 @@ type StateOpts struct {
 	// Empty is the implicit default.
 	ExplicitEditID string
 
-	// Confirm gates production-impacting transitions. Required (else
-	// *ConfirmRequiredError, exit 2) when Track is "production" AND the
+	// Confirm gates production-impacting transitions. Required (else an
+	// *exit.SafetyFlagError naming --confirm, exit 3) when Track is
+	// "production" AND the
 	// transition would expose the release to real users — rollout / resume
 	// / complete. Halt is exempt (it reduces exposure), and non-production
 	// tracks never need it. Mirrors the upload / promote confirm gate
@@ -172,7 +173,7 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 	// Confirm=true. Runs before any HTTP so a missing --confirm short-circuits
 	// without opening an Edit.
 	if transitionReachesProdUsers(opts.Track, tr.status) && !opts.Confirm {
-		return nil, &ConfirmRequiredError{Track: opts.Track, Status: tr.status}
+		return nil, confirmRequired(tr.status)
 	}
 
 	result := &Result{Track: opts.Track}

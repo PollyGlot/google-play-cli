@@ -12,6 +12,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
@@ -20,17 +21,15 @@ import (
 // don't need to import both packages. exit.For maps it to exit code 2.
 var ErrUnknownAccount = config.ErrUnknownAccount
 
-// ErrConfirmRequired is returned when logout runs without --confirm.
-// Mapping to exit code 2 (CLI misuse) per docs/DESIGN.md §9; the
-// destructive-op contract requires an explicit opt-in.
-var ErrConfirmRequired = confirmError{}
-
-type confirmError struct{}
-
-func (confirmError) Error() string {
-	return "logout: --confirm is required to remove a credential (this operation is destructive)"
+// confirmRequired builds the refusal returned when logout runs without
+// --confirm. It is an *exit.SafetyFlagError, so it exits 3 — "safety flag
+// required" per docs/DESIGN.md §9 — and names the missing flag in the
+// --output json error envelope's requires[] (ADR-0017 / ADR-0023). The
+// destructive-op contract requires an explicit opt-in; the invocation
+// itself is well-formed, which is why this is not the exit-2 usage error.
+func confirmRequired() error {
+	return exit.SafetyFlag("confirm", "logout: --confirm is required to remove a credential (this operation is destructive)")
 }
-func (confirmError) ExitCode() int { return 2 }
 
 // Input carries the positional Account name and the --confirm opt-in.
 type Input struct {
@@ -43,7 +42,7 @@ type Input struct {
 // Refuses to run without Input.Confirm — the destructive-op contract.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.Confirm {
-		return nil, ErrConfirmRequired
+		return nil, confirmRequired()
 	}
 	cfg, err := config.LoadGlobalOrEmpty(rc.Ctx, rc.FS, rc.ConfigPath)
 	if err != nil {

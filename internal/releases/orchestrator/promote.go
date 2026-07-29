@@ -208,10 +208,7 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	// Runs before any HTTP so a missing --confirm short-circuits without
 	// opening an Edit.
 	if requiresConfirm(opts.ToTrack, opts.Status) && !opts.Confirm {
-		return nil, &ConfirmRequiredError{
-			Track:  opts.ToTrack,
-			Status: resolvedStatus(opts.ToTrack, opts.Status),
-		}
+		return nil, confirmRequired(resolvedStatus(opts.ToTrack, opts.Status))
 	}
 
 	result := &Result{Track: opts.ToTrack}

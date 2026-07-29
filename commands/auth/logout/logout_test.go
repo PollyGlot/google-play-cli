@@ -14,6 +14,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/auth/logout"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
@@ -45,6 +46,48 @@ func TestRun_pureBusiness(t *testing.T) {
 		if a.Name == "beta" {
 			t.Errorf("beta still in registry: %+v", cfg.Accounts)
 		}
+	}
+}
+
+// TestRun_withoutConfirm_refusesExit3 asserts the destructive-op gate: logout
+// without --confirm refuses with exit 3 (safety flag required,
+// docs/DESIGN.md §9 — NOT the generic usage exit 2, #408), names the flag for
+// the --output json envelope's requires[], and removes nothing.
+func TestRun_withoutConfirm_refusesExit3(t *testing.T) {
+	boot := newBoot(t, newFakeKeyring(true))
+	seed(t, boot, "alpha", "beta")
+	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{Keyring: boot.Keyring, FileRoot: boot.KeystoreRoot})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
+	rc.Keystore = be
+
+	_, err = logout.Run(rc, logout.Input{Name: "beta"}) // Confirm omitted
+	var safety *exit.SafetyFlagError
+	if !errors.As(err, &safety) {
+		t.Fatalf("err = %v (%T), want *exit.SafetyFlagError", err, err)
+	}
+	if safety.ExitCode() != 3 {
+		t.Errorf("ExitCode() = %d, want 3", safety.ExitCode())
+	}
+	if safety.Flag != "confirm" {
+		t.Errorf("Flag = %q, want %q (feeds requires[] in the JSON envelope)", safety.Flag, "confirm")
+	}
+
+	// A refused logout must leave the registry untouched.
+	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
+	if err != nil {
+		t.Fatalf("LoadGlobalOrEmpty: %v", err)
+	}
+	var found bool
+	for _, a := range cfg.Accounts {
+		if a.Name == "beta" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("refused logout removed %q from the registry: %+v", "beta", cfg.Accounts)
 	}
 }
 

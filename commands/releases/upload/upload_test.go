@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -262,12 +263,13 @@ func TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_productionPublishWithoutConfirm_exit2_noHTTP asserts that a
-// production --complete without --confirm hits the orchestrator's
-// ConfirmRequiredError guard before any HTTP — including the /token
-// exchange. The oauth2 library is lazy, so a buggy refactor that
-// pre-mints a token would show up as a non-zero call count here.
-func TestRun_productionPublishWithoutConfirm_exit2_noHTTP(t *testing.T) {
+// TestRun_productionPublishWithoutConfirm_exit3_noHTTP asserts that a
+// production --complete without --confirm hits the orchestrator's confirm
+// guard before any HTTP — including the /token exchange. The oauth2 library
+// is lazy, so a buggy refactor that pre-mints a token would show up as a
+// non-zero call count here. The refusal is exit 3 (safety flag required,
+// docs/DESIGN.md §9), not the generic usage exit 2 (#408).
+func TestRun_productionPublishWithoutConfirm_exit3_noHTTP(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt := &uploadRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -280,10 +282,14 @@ func TestRun_productionPublishWithoutConfirm_exit2_noHTTP(t *testing.T) {
 		Confirm:  false,
 	})
 	if err == nil {
-		t.Fatal("Run returned nil error; want ConfirmRequiredError")
+		t.Fatal("Run returned nil error; want a --confirm safety refusal")
 	}
-	if got := exit.For(err); got != 2 {
-		t.Errorf("exit.For(err) = %d, want 2; err=%v", got, err)
+	if got := exit.For(err); got != 3 {
+		t.Errorf("exit.For(err) = %d, want 3; err=%v", got, err)
+	}
+	var safety *exit.SafetyFlagError
+	if !errors.As(err, &safety) || safety.Flag != "confirm" {
+		t.Errorf("err = %v (%T), want *exit.SafetyFlagError naming \"confirm\"", err, err)
 	}
 	if len(rt.calls) != 0 {
 		t.Errorf("RoundTripper saw %d calls on confirm-guarded error: %v", len(rt.calls), rt.calls)
