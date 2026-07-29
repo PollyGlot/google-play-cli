@@ -10,9 +10,9 @@
 //     target package/account + report "would POST N bytes / N rows". Zero
 //     network I/O, and it does not require --confirm (nothing is written).
 //   - the real write requires --confirm (a bad declaration blocks releases or
-//     misstates data practices). Without it set refuses, exits 2, and points
-//     at --dry-run. CI=true NEVER auto-confirms — CI governs output format
-//     only, never mutation.
+//     misstates data practices). Without it set refuses, exits 3 (safety flag
+//     required, docs/DESIGN.md §9), and points at --dry-run. CI=true NEVER
+//     auto-confirms — CI governs output format only, never mutation.
 package set
 
 import (
@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/compliance/datasafety"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -53,16 +54,17 @@ type usageError struct{ msg string }
 func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
 
-// confirmRequiredError signals a real write invoked without --confirm. It
-// maps to exit 2 and points at --dry-run, reusing gplay's --confirm meaning
-// (ADR-0002 / ADR-0011 item 4, recorded in ADR-0014). CI=true must never
-// reach this as an auto-confirm — env governs output format, not mutation.
-type confirmRequiredError struct{}
-
-func (e *confirmRequiredError) Error() string {
-	return "compliance datasafety set replaces the app's live Data Safety declaration (a stale or wrong declaration can block releases); pass --confirm to proceed (preview first with --dry-run)"
+// confirmRequired builds the refusal returned when a real write is invoked
+// without --confirm. It is an *exit.SafetyFlagError, so it exits 3 (safety
+// flag required, docs/DESIGN.md §9) and names the missing flag in the
+// --output json envelope's requires[] — the same shape every other gated
+// command uses (ADR-0017). It points at --dry-run and reuses gplay's
+// --confirm meaning (ADR-0002 / ADR-0011 item 4, recorded in ADR-0014).
+// CI=true must never reach this as an auto-confirm — env governs output
+// format, not mutation.
+func confirmRequired() error {
+	return exit.SafetyFlag("confirm", "compliance datasafety set replaces the app's live Data Safety declaration (a stale or wrong declaration can block releases); pass --confirm to proceed (preview first with --dry-run)")
 }
-func (e *confirmRequiredError) ExitCode() int { return 2 }
 
 // packageNotFoundError / forbiddenError attach actionable hints to a 404 /
 // 403 on the POST, leaving the wrapped *api.Error to drive the exit code
@@ -335,7 +337,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// missing --confirm fails instantly, never after a POST. CI=true does NOT
 	// flow into in.Confirm — env governs output format, never mutation.
 	if !in.Confirm {
-		return nil, &confirmRequiredError{}
+		return nil, confirmRequired()
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -383,10 +385,10 @@ bytes / N rows to <package>" without any network call (and without needing
 --confirm).
 
 The real write requires --confirm (a stale or wrong declaration can block
-releases or misstate your data practices); without it set refuses, exits 2,
-and points here. CI=true does NOT auto-confirm. --output json passes the API
-response through verbatim (or, when the API returns an empty body, a
-gplay-shaped success object).`,
+releases or misstate your data practices); without it set refuses, exits 3
+(safety flag required), and points here. CI=true does NOT auto-confirm.
+--output json passes the API response through verbatim (or, when the API
+returns an empty body, a gplay-shaped success object).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

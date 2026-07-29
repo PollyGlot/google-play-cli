@@ -15,6 +15,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	setcmd "github.com/PollyGlot/google-play-cli/commands/compliance/datasafety/set"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"golang.org/x/oauth2"
@@ -163,16 +165,17 @@ func TestConfirm_happyPath(t *testing.T) {
 	}
 }
 
-// TestConfirm_missing_refuses_exit2 asserts a real write without --confirm
-// refuses (exit 2), points at --dry-run, and makes NO POST.
-func TestConfirm_missing_refuses_exit2(t *testing.T) {
+// TestConfirm_missing_refuses_exit3 asserts a real write without --confirm
+// refuses with exit 3 (safety flag required, docs/DESIGN.md §9 — NOT the
+// generic usage exit 2, #406), points at --dry-run, and makes NO POST.
+func TestConfirm_missing_refuses_exit3(t *testing.T) {
 	path, _, _ := validCSV(t, 1)
 	rt := &liveRT{t: t}
 	rc := newLiveRC(t, rt)
 
 	_, err := setcmd.Run(rc, setcmd.Input{Package: "com.example.app", File: path})
-	if got := exitCodeOf(t, err); got != 2 {
-		t.Errorf("exit = %d, want 2 (missing --confirm); err=%v", got, err)
+	if got := exitCodeOf(t, err); got != 3 {
+		t.Errorf("exit = %d, want 3 (missing --confirm); err=%v", got, err)
 	}
 	if !strings.Contains(err.Error(), "--dry-run") {
 		t.Errorf("refusal %q should point at --dry-run", err.Error())
@@ -182,8 +185,47 @@ func TestConfirm_missing_refuses_exit2(t *testing.T) {
 	}
 }
 
+// TestConfirm_missing_namesFlagInEnvelope asserts the refusal is a
+// *exit.SafetyFlagError naming "confirm", so the --output json error envelope
+// carries requires:["confirm"] and an agent can recover deterministically
+// (ADR-0017 / ADR-0023).
+func TestConfirm_missing_namesFlagInEnvelope(t *testing.T) {
+	path, _, _ := validCSV(t, 1)
+	rt := &liveRT{t: t}
+	rc := newLiveRC(t, rt)
+
+	_, err := setcmd.Run(rc, setcmd.Input{Package: "com.example.app", File: path})
+	var safety *exit.SafetyFlagError
+	if !errors.As(err, &safety) {
+		t.Fatalf("err = %T (%v), want *exit.SafetyFlagError", err, err)
+	}
+	if safety.Flag != "confirm" {
+		t.Errorf("Flag = %q, want %q", safety.Flag, "confirm")
+	}
+
+	var buf bytes.Buffer
+	if werr := output.WriteErrorEnvelope(&buf, err); werr != nil {
+		t.Fatalf("WriteErrorEnvelope: %v", werr)
+	}
+	var env struct {
+		Error struct {
+			ExitCode int      `json:"exitCode"`
+			Requires []string `json:"requires"`
+		} `json:"error"`
+	}
+	if uerr := json.Unmarshal(buf.Bytes(), &env); uerr != nil {
+		t.Fatalf("envelope not JSON: %v\n%s", uerr, buf.String())
+	}
+	if env.Error.ExitCode != 3 {
+		t.Errorf("envelope exitCode = %d, want 3", env.Error.ExitCode)
+	}
+	if len(env.Error.Requires) != 1 || env.Error.Requires[0] != "confirm" {
+		t.Errorf("envelope requires = %v, want [confirm]", env.Error.Requires)
+	}
+}
+
 // TestConfirm_CI_neverAutoConfirms asserts CI=true does NOT auto-confirm: a
-// missing --confirm still refuses (exit 2) and makes no POST, even under CI.
+// missing --confirm still refuses (exit 3) and makes no POST, even under CI.
 func TestConfirm_CI_neverAutoConfirms(t *testing.T) {
 	t.Setenv("CI", "true")
 	path, _, _ := validCSV(t, 1)
@@ -191,8 +233,8 @@ func TestConfirm_CI_neverAutoConfirms(t *testing.T) {
 	rc := newLiveRC(t, rt)
 
 	_, err := setcmd.Run(rc, setcmd.Input{Package: "com.example.app", File: path})
-	if got := exitCodeOf(t, err); got != 2 {
-		t.Errorf("exit = %d, want 2 (CI must not auto-confirm); err=%v", got, err)
+	if got := exitCodeOf(t, err); got != 3 {
+		t.Errorf("exit = %d, want 3 (CI must not auto-confirm); err=%v", got, err)
 	}
 	if rt.posted() {
 		t.Errorf("CI=true must not POST without --confirm; calls=%v", rt.calls)
