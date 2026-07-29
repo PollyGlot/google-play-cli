@@ -42,6 +42,8 @@ import (
 	gamesleaderboardsupdate "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/update"
 	gamesleaderboardsview "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/view"
 	helpexitcodes "github.com/PollyGlot/google-play-cli/commands/help/exitcodes"
+	iapapply "github.com/PollyGlot/google-play-cli/commands/iap/apply"
+	iappull "github.com/PollyGlot/google-play-cli/commands/iap/pull"
 	"github.com/PollyGlot/google-play-cli/commands/installskills"
 	metadataapply "github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	metadataimagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
@@ -74,6 +76,10 @@ import (
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	reviewsview "github.com/PollyGlot/google-play-cli/commands/reviews/view"
 	schemacmd "github.com/PollyGlot/google-play-cli/commands/schema"
+	subscriptionsapply "github.com/PollyGlot/google-play-cli/commands/subscriptions/apply"
+	subscriptionspricesconvert "github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/convert"
+	subscriptionspricesmigrate "github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/migrate"
+	subscriptionspull "github.com/PollyGlot/google-play-cli/commands/subscriptions/pull"
 	teamgrantslist "github.com/PollyGlot/google-play-cli/commands/team/grants/list"
 	teamgrantsremove "github.com/PollyGlot/google-play-cli/commands/team/grants/remove"
 	teamgrantsset "github.com/PollyGlot/google-play-cli/commands/team/grants/set"
@@ -538,6 +544,61 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	ordersGroup.AddCommand(ordersview.NewCommand(boot))
 	ordersGroup.AddCommand(kernel.MarkMutating(ordersrefund.NewCommand(boot)))
 	root.AddCommand(ordersGroup)
+
+	// `gplay subscriptions` — the declarative Monetization catalog, subscription
+	// side (PRD #51, walking skeleton #367 / ADR-0041). Package axis, Edit-free
+	// (applications/{packageName}/subscriptions/..., like device-tiers and
+	// orders). `pull` mirrors the live catalog into <productId>.json files —
+	// it writes only locally, so it is not marked mutating. `apply` reconciles
+	// the live catalog to the files (create/patch/delete) — MarkMutating so
+	// GPLAY_READONLY refuses it (exit 4); a plan containing a delete
+	// additionally requires --confirm at the command layer (exit 3 if missing).
+	// Subscriber price migration is deliberately NOT reachable from apply — it
+	// arrives as its own gated command (slice #370).
+	subscriptionsGroup := &cobra.Command{
+		Use:           "subscriptions",
+		Short:         "Pull and apply the app's subscription catalog as files (declarative)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	subscriptionsGroup.AddCommand(subscriptionspull.NewCommand(boot))
+	subscriptionsGroup.AddCommand(kernel.MarkMutating(subscriptionsapply.NewCommand(boot)))
+	// `prices` is a grouping noun; `convert` (monetization.convertRegionPrices)
+	// is a pure computation — derives regional prices, writes nothing — so it
+	// is not marked mutating. Domain verb admitted under ADR-0019 §2
+	// (ADR-0041 §9).
+	subscriptionsPrices := &cobra.Command{
+		Use:           "prices",
+		Short:         "Pricing helpers for the subscription catalog",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	subscriptionsPrices.AddCommand(subscriptionspricesconvert.NewCommand(boot))
+	// `migrate` (basePlans.migratePrices) reprices EXISTING subscribers — the
+	// sole imperative escape hatch of the catalog (ADR-0041 §4): money-moving,
+	// --confirm-gated (exit 3), MarkMutating, never reachable from apply.
+	subscriptionsPrices.AddCommand(kernel.MarkMutating(subscriptionspricesmigrate.NewCommand(boot)))
+	subscriptionsGroup.AddCommand(subscriptionsPrices)
+	root.AddCommand(subscriptionsGroup)
+
+	// `gplay iap` — the one-time-product side of the Monetization catalog
+	// (slices #371–#372 / ADR-0041 §8). Same declarative pull/apply pair and
+	// the same axis as `subscriptions`; pull unions the v2 model with the
+	// read-only legacy inappproducts (never written in place), apply writes
+	// v2 only — MarkMutating so GPLAY_READONLY refuses it (exit 4), deletes
+	// gated by --confirm at the command layer (exit 3 if missing).
+	iapGroup := &cobra.Command{
+		Use:           "iap",
+		Short:         "Pull and apply the app's one-time-product catalog as files (declarative)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	iapGroup.AddCommand(iappull.NewCommand(boot))
+	iapGroup.AddCommand(kernel.MarkMutating(iapapply.NewCommand(boot)))
+	root.AddCommand(iapGroup)
 
 	reviews := &cobra.Command{
 		Use:           "reviews",

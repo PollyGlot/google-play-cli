@@ -254,3 +254,23 @@ _Avoid_: treating it as an `edits`-namespace concept (there is no Edit), or conf
 The opaque handle that identifies one [Generated APK](#generated-apk) to download. Returned per artifact by `generatedapks.list` (the `downloadId` field on each split/standalone/universal/asset-slice/recovery entry) and supplied as the positional argument to `releases generated download`. It is not a URL and not stable across re-generation — always read a fresh one from `list`.
 
 _Avoid_: treating a **Download ID** as a durable identifier to cache, or confusing it with a `versionCode` (which addresses the *bundle*, not an individual generated artifact).
+
+### Subscription
+A recurring-purchase product of an app, backed by `monetization.subscriptions` of the [Android Publisher API](#android-publisher-api), keyed by package + `productId`. A three-level resource: the Subscription (localized listings, tax/compliance settings) contains **Base plans** (billing period, per-territory prices) which contain **Offers** (trials, intro pricing). gplay owns it declaratively as part of the [Monetization catalog](#monetization-catalog), not via imperative CRUD ([ADR-0041](docs/adr/0041-declarative-monetization-catalog.md)). Editing a Subscription's config never changes what an existing subscriber pays — subscriber price migration is a separate gated imperative.
+
+_Avoid_: "in-app subscription managed like an IAP" — subscriptions and one-time products are sibling catalogs with distinct resources; and never imply an `apply` can reprice existing subscribers.
+
+### Monetization catalog
+The on-disk, declarative form of an app's monetization config: a directory (`--dir`) holding one JSON file per product (`<productId>.json`, the API resource in wire format). Two sibling segments, one per product family: `subscriptions pull`/`apply` own `./monetization/subscriptions`, `iap pull`/`apply` own `./monetization/iap`. Reconciliation is **mirror**, not [Additive sync](#additive-sync): the directory is the complete declared catalog, so a live product with no file is a **delete** in the [Reconciliation plan](#reconciliation-plan) — visible in `--dry-run` and gated by `--confirm` ([ADR-0041](docs/adr/0041-declarative-monetization-catalog.md)).
+
+_Avoid_: confusing it with the [Metadata tree](#metadata-tree) (additive stance, per-locale text files) — same pull/apply verbs, deliberately different omission semantics.
+
+### One-time product
+A non-recurring purchase product of an app. Two API models coexist: the forward **v2** resource (`monetization.onetimeproducts`, keyed by package + `productId`, nesting **Purchase options** → **Offers** — the subscription shape) and the **legacy** `inappproducts` resource (flat, keyed by `sku`). gplay surfaces the union under `gplay iap`: `pull` reads **both** and dedupes by product ID (an unmigrated legacy product is invisible to the v2 list, so a v2-only pull would strand it; a product live in both models keeps the v2 file); `apply` writes the **v2 model only** — a v2 create is a `patch` with `allowMissing`, the API has no insert ([ADR-0041](docs/adr/0041-declarative-monetization-catalog.md) §8). A catalog file's origin is its shape: `sku` = legacy, `productId` = v2 — no gplay-invented marker.
+
+_Avoid_: "IAP" for subscriptions (sibling catalogs, distinct resources); writing, deleting or "syncing" the legacy surface — it is read-only in gplay, and the only exit is the one-way `iap apply --migrate` promotion to v2 (rewrite the file in the v2 schema; once promoted, a product never returns to `inappproducts`).
+
+### Reconciliation plan
+The action set `subscriptions apply` computes between a [Monetization catalog](#monetization-catalog) and the live catalog: create/patch/delete of subscriptions and of their offers, plus the lifecycle activations/deactivations reconciling a declared `state:` (ACTIVE/INACTIVE — omitted means unmanaged) through the dedicated endpoints, never a patch. `--dry-run` prints the plan and stops; without it the plan executes, except that a plan containing any **delete** refuses to run without `--confirm` (exit 3). `--output json` renders the plan as a gplay-owned shape (`[experimental]`), an explicit exception to pure API pass-through since no single API response describes a diff.
+
+_Avoid_: calling an executed plan "synced" when deletes were skipped by refusal — the refusal is the whole plan not running, never a partial apply.
