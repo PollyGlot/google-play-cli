@@ -5,6 +5,18 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0](https://github.com/PollyGlot/google-play-cli/compare/v0.17.0...v0.18.0) (2026-07-29)
+
+
+### Features
+
+* **iap:** one-time-product declarative catalog — v2 writes, legacy-union pull (slice [#371](https://github.com/PollyGlot/google-play-cli/issues/371)) ([#403](https://github.com/PollyGlot/google-play-cli/issues/403)) ([5600615](https://github.com/PollyGlot/google-play-cli/commit/5600615723f4119f71a923184bf6e32928c0864c))
+* **iap:** one-way legacy→v2 --migrate promotion (slice [#372](https://github.com/PollyGlot/google-play-cli/issues/372)) ([#404](https://github.com/PollyGlot/google-play-cli/issues/404)) ([fab8bc3](https://github.com/PollyGlot/google-play-cli/commit/fab8bc3c3bb78c3cb1403ea6324b026fb4845032))
+* **subscriptions:** base plans + per-territory pricing (slice [#368](https://github.com/PollyGlot/google-play-cli/issues/368)) ([#400](https://github.com/PollyGlot/google-play-cli/issues/400)) ([5cb38e6](https://github.com/PollyGlot/google-play-cli/commit/5cb38e6516172c058cd12e2baa1b076ec7293bef))
+* **subscriptions:** declarative catalog pull/apply — walking skeleton (slice [#367](https://github.com/PollyGlot/google-play-cli/issues/367)) ([#399](https://github.com/PollyGlot/google-play-cli/issues/399)) ([7a5762f](https://github.com/PollyGlot/google-play-cli/commit/7a5762f16f9e86641d5572be6c344892b867b5e4))
+* **subscriptions:** gated subscriber price migration (slice [#370](https://github.com/PollyGlot/google-play-cli/issues/370)) ([#402](https://github.com/PollyGlot/google-play-cli/issues/402)) ([d6f9282](https://github.com/PollyGlot/google-play-cli/commit/d6f928293c9826427ff99fecb01761d120652a19))
+* **subscriptions:** offers + declarative lifecycle state (slice [#369](https://github.com/PollyGlot/google-play-cli/issues/369)) ([#401](https://github.com/PollyGlot/google-play-cli/issues/401)) ([2e0c073](https://github.com/PollyGlot/google-play-cli/commit/2e0c073741f0eb8fa01a477f3366d25ed60c50c7))
+
 ## [0.17.0](https://github.com/PollyGlot/google-play-cli/compare/v0.16.0...v0.17.0) (2026-07-20)
 
 
