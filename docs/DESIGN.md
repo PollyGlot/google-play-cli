@@ -543,6 +543,18 @@ Under `--output json` the refusal is emitted as the standard error envelope
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
 
+**Exit 3 has no exceptions.** *Every* refusal for a missing safety-acknowledgment
+flag exits `3` — never `2` — whatever the command and however destructive the
+write. This is the one distinction an automated caller most needs: `2` means "you
+typed it wrong", `3` means "you were asked to acknowledge, re-run with the flag".
+Commands built the refusal by hand for a while and drifted to `2`; that is what
+[#406](https://github.com/PollyGlot/google-play-cli/issues/406) and
+[#408](https://github.com/PollyGlot/google-play-cli/issues/408) corrected. Build
+the refusal with `exit.SafetyFlag("<flag>", …)` and never with a bespoke error
+type — the helper also feeds `requires: ["<flag>"]` into the `--output json`
+error envelope (§7 / ADR-0023), which is how an agent recovers without scraping
+the message.
+
 ---
 
 ## 10. Tracks and testers

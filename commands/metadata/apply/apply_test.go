@@ -24,6 +24,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/metadata/apply"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/tree"
@@ -204,16 +205,21 @@ func TestRun_dryRun_jsonDiffSchema(t *testing.T) {
 	}
 }
 
-// TestRun_applyWithoutConfirm_exit2 asserts a real apply refuses without
-// --confirm, before opening any Edit.
-func TestRun_applyWithoutConfirm_exit2(t *testing.T) {
+// TestRun_applyWithoutConfirm_exit3 asserts a real apply refuses without
+// --confirm, before opening any Edit, with exit 3 (safety flag required,
+// docs/DESIGN.md §9 — NOT the generic usage exit 2, #408).
+func TestRun_applyWithoutConfirm_exit3(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
 	rt := &applyRT{t: t, editID: "e1"}
 	rc := newRC(t, rt)
 
 	_, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir})
-	if code := exitCodeOf(t, err); code != 2 {
-		t.Errorf("exit = %d, want 2", code)
+	if code := exitCodeOf(t, err); code != 3 {
+		t.Errorf("exit = %d, want 3", code)
+	}
+	var safety *exit.SafetyFlagError
+	if !errors.As(err, &safety) || safety.Flag != "confirm" {
+		t.Errorf("err = %v (%T), want *exit.SafetyFlagError naming \"confirm\"", err, err)
 	}
 	if !strings.Contains(err.Error(), "--dry-run") {
 		t.Errorf("error %q should point at --dry-run", err.Error())

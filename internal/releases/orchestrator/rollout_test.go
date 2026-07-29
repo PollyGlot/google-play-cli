@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
@@ -769,12 +770,15 @@ func TestState_confirmGate(t *testing.T) {
 		if err == nil {
 			t.Fatal("complete on production without confirm: want error, got nil")
 		}
-		var confirmErr *orchestrator.ConfirmRequiredError
+		var confirmErr *exit.SafetyFlagError
 		if !errors.As(err, &confirmErr) {
-			t.Fatalf("err = %v (%T), want *orchestrator.ConfirmRequiredError", err, err)
+			t.Fatalf("err = %v (%T), want *exit.SafetyFlagError", err, err)
 		}
-		if confirmErr.ExitCode() != 2 {
-			t.Errorf("ExitCode() = %d, want 2", confirmErr.ExitCode())
+		if confirmErr.ExitCode() != 3 {
+			t.Errorf("ExitCode() = %d, want 3 (safety flag required, #408)", confirmErr.ExitCode())
+		}
+		if confirmErr.Flag != "confirm" {
+			t.Errorf("Flag = %q, want %q (feeds requires[] in the JSON envelope)", confirmErr.Flag, "confirm")
 		}
 		if len(rt.calls) != 0 {
 			t.Errorf("expected zero HTTP calls before confirm guard, saw: %v", rt.calls)

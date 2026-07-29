@@ -13,8 +13,8 @@
 //     {package, slots[], summary} so a CI gate is one jq line:
 //     jq -e '.summary.upload + .summary.delete + .summary.reorder > 0'.
 //   - --confirm performs the real publish (one Edit, one commit, atomic).
-//     Without --confirm a real apply refuses (exit 2) and points at --dry-run;
-//     CI=true never auto-confirms. Images are live-on-commit (no draft).
+//     Without --confirm a real apply refuses (exit 3 — safety flag required)
+//     and points at --dry-run; CI=true never auto-confirms. Images are live-on-commit (no draft).
 package imagesapply
 
 import (

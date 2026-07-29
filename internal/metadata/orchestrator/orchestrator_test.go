@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/orchestrator"
 )
@@ -161,15 +162,43 @@ func TestApply_dryRun_readsDiffsDiscards(t *testing.T) {
 	}
 }
 
-// TestApply_confirmRequired: a real apply without --confirm fails exit 2
-// before any HTTP.
+// TestApply_confirmRequired: a real apply without --confirm fails exit 3
+// (safety flag required, docs/DESIGN.md §9 — NOT the generic usage exit 2,
+// #408) before any HTTP, naming --confirm for the JSON envelope's requires[].
 func TestApply_confirmRequired(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")}
 	rt := &fakeRT{t: t, editID: "e1"}
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x"}) // DryRun=false, Confirm=false
-	if code := exitCode(t, err); code != 2 {
-		t.Errorf("exit = %d, want 2", code)
+	if code := exitCode(t, err); code != 3 {
+		t.Errorf("exit = %d, want 3", code)
+	}
+	var safety *exit.SafetyFlagError
+	if !errors.As(err, &safety) || safety.Flag != "confirm" {
+		t.Errorf("err = %v (%T), want *exit.SafetyFlagError naming \"confirm\"", err, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("expected 0 HTTP calls, saw %v", rt.calls)
+	}
+}
+
+// TestApply_confirmRequired_prune asserts the --prune variant of the refusal
+// carries the same exit 3 + named flag, and states the destructive delete in
+// its message (the two branches of the confirm gate are distinct strings).
+func TestApply_confirmRequired_prune(t *testing.T) {
+	local := listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")}
+	rt := &fakeRT{t: t, editID: "e1"}
+	_, err := orchestrator.Apply(context.Background(), client(rt), local,
+		orchestrator.Opts{Package: "com.x", Prune: true}) // DryRun=false, Confirm=false
+	if code := exitCode(t, err); code != 3 {
+		t.Errorf("exit = %d, want 3", code)
+	}
+	var safety *exit.SafetyFlagError
+	if !errors.As(err, &safety) || safety.Flag != "confirm" {
+		t.Fatalf("err = %v (%T), want *exit.SafetyFlagError naming \"confirm\"", err, err)
+	}
+	if !strings.Contains(err.Error(), "deletes online locales") {
+		t.Errorf("err = %q, want the --prune message naming the deletion", err.Error())
 	}
 	if len(rt.calls) != 0 {
 		t.Errorf("expected 0 HTTP calls, saw %v", rt.calls)

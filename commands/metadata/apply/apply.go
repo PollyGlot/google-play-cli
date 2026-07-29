@@ -14,8 +14,8 @@
 //     (offline); the offline role is held by `metadata validate`.
 //   - --confirm performs the real publish (one Edit, one commit, atomic).
 //     --output json is the per-locale listings.patch response bodies.
-//     Without --confirm a real apply refuses (exit 2) and points at
-//     --dry-run; CI=true never auto-confirms.
+//     Without --confirm a real apply refuses (exit 3 — safety flag
+//     required) and points at --dry-run; CI=true never auto-confirms.
 package apply
 
 import (
@@ -97,9 +97,9 @@ func (e *forbiddenError) Error() string {
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
 // classifyEditError adds the 404/403 hints, leaving the wrapped *api.Error
-// to drive the exit code. The orchestrator's own typed errors
-// (ConfirmRequired, Validation, PruneDefaultLanguage) are not *api.Error,
-// so they pass through untouched with their own exit codes.
+// to drive the exit code. The orchestrator's own errors (the --confirm
+// safety refusal, Validation, PruneDefaultLanguage) are not *api.Error, so
+// they pass through untouched with their own exit codes.
 func classifyEditError(pkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
