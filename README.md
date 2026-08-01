@@ -24,11 +24,13 @@ exit codes, safe production defaults.
 [agent skills](#agent-skills) that run it from natural-language prompts.
 
 > **Generally available.** The Public contract is in force: for every command
-> *not* marked `[experimental]` — auth, apps, releases, tracks, reviews,
-> metadata, compliance, team, testers, edits, vitals — names, flags, semantics
-> and exit codes will not change without a major bump. Newer namespaces
-> (monetization, `games`, `recovery`, `orders`, …) ship `[experimental]` and
-> stay free to evolve; `--help` tells you which is which.
+> *not* marked `[experimental]`, names, flags, semantics and exit codes will not
+> change without a major bump. That covers auth, apps, the core release loop,
+> tracks, testers, team, edits, metadata, compliance, vitals, and
+> `reviews list` / `view` / `reply`. Newer or less-exercised surfaces —
+> monetization, `games`, `recovery`, `orders`, `reviews history`, and the side
+> namespaces under `releases` — ship `[experimental]` and stay free to evolve.
+> **`--help` is the source of truth**: the label is on the command itself.
 > See [Stability and the Public contract](https://gplay.sh/docs/concepts/stability/),
 > [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/), and
 > [docs/BACKLOG.md](docs/BACKLOG.md) for what's out of scope.

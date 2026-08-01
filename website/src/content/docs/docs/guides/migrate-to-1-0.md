@@ -44,7 +44,11 @@ error envelope — it names what is missing:
 gplay auth logout ci-account
 ```
 
-Off a TTY — which is every CI run — the output is already JSON:
+Off a TTY the output is JSON by default ([Output
+formats](/docs/concepts/output-formats/)). Do not rely on that in CI — a runner
+can allocate a TTY. On the commands that accept it, pass `--output json`
+explicitly when you intend to parse the result; `auth logout` has no such flag,
+so it follows the TTY default alone.
 
 ```json
 {

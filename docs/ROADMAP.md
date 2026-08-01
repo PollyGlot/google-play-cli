@@ -108,7 +108,9 @@ autorité imposable par l'environnement, introspection de schéma embarquée.
 
 Durcissement interne clos, le thème bascule vers la **couverture des admin APIs
 restantes** : compléter la surface jusqu'à ce que toute opération admin Play soit
-pilotable depuis le CLI. Toujours en `0.x`, sans attendre de gel. L'arc
+pilotable depuis le CLI. Le thème continue **après** le gel 1.0 : ce qui reste
+est additif (nouveaux namespaces), donc livrable en `1.x` sans majeure — les
+surfaces neuves arrivent `[experimental]` (ADR-0042). L'arc
 *publier → durcir → observer* est **complété** — vitals
 [#49](https://github.com/PollyGlot/google-play-cli/issues/49) livré (PR #263).
 Les **games** (#241, CRUD achievements/leaderboards, ADR-0033) et les **orders**

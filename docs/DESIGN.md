@@ -628,7 +628,11 @@ Since `1.0`, every command sits on one side of a line
 - **Unlabelled = frozen.** Part of the Public contract — its name, flags,
   semantics and exit codes cannot change without a **major** bump. Also frozen:
   the config schema and its precedence, Account resolution precedence, and the
-  guarantee that `--output json` stays API pass-through (§7 / ADR-0003).
+  guarantee that `--output json` stays API pass-through — for the frozen,
+  API-backed commands (§7 / ADR-0003). An experimental command is outside the
+  contract in full, output shape included: `schema` in particular projects the
+  embedded index rather than echoing an API response, so there is no upstream
+  resource to pass through.
 - **`[experimental]` = shipped, not frozen.** Free to change in any release.
 
 **Not** covered either way: the `table` / `markdown` layouts, the *fields*
