@@ -83,3 +83,7 @@ a `gplay-cli-usage` foundation. Install:
 3. **Conventions.** Apply the relevant `docs/DESIGN.md` section.
 4. **Test first**, RoundTripper-mocked.
 5. **Update `--help`** and command docs (use `CONTEXT.md` terms).
+6. **Decide its stability.** Since 1.0 an unlabelled command joins the frozen
+   Public contract (ADR-0010/ADR-0042). Not ready to promise its flags forever?
+   `kernel.Experimental(...)` at the registration site. The registry test in
+   `cmd/gplay` fails on any unclassified leaf.

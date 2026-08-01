@@ -101,7 +101,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	var in Input
 	cmd := &cobra.Command{
 		Use:   "download <downloadId>",
-		Short: "[experimental] Download a generated APK to a file (or stdout)",
+		Short: "Download a generated APK to a file (or stdout)",
 		Long: `Fetch one APK Play generated and signed from an uploaded bundle, streaming the
 raw signed bytes to disk. Address the artifact by the <downloadId> from
 ` + "`gplay releases generated list`" + ` and the --version-code it was generated from.
@@ -110,9 +110,7 @@ The destination is --dest PATH (required); --dest - streams the bytes to stdout
 for piping. This command has no --output flag — its payload is raw bytes, not a
 Renderable. On success a ✓ line on stderr names the byte count and destination.
 
-This is a direct application-scoped read — it opens no Edit and moves no money.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+This is a direct application-scoped read — it opens no Edit and moves no money.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

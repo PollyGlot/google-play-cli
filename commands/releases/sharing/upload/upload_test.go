@@ -258,15 +258,14 @@ func TestRun_dryRun_noNetwork_noConfirmation(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface and the [experimental] label.
+// TestNewCommand_flags asserts the flag/name surface. The [experimental] label
+// is applied at registration by kernel.Experimental and pinned centrally by
+// TestStabilityRegistry_pinsPublicContract (ADR-0010/ADR-0042).
 func TestNewCommand_flags(t *testing.T) {
 	cmd := uploadcmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"package", "format", "dry-run", "output"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("missing --%s flag", name)
 		}
-	}
-	if !strings.Contains(cmd.Short, "[experimental]") {
-		t.Errorf("Short %q should carry the [experimental] label", cmd.Short)
 	}
 }

@@ -115,7 +115,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "[experimental] Create a draft recovery action for a bad versionCode",
+		Short: "Create a draft recovery action for a bad versionCode",
 		Long: `Create a DRAFT app recovery action targeting users impacted by a bad APK
 versionCode. A draft is staged but NOT yet pushed to any user — activate it
 later with ` + "`gplay recovery deploy <id>`" + ` (which requires --confirm).
@@ -125,9 +125,7 @@ Pass --version-code (the bad version) and at least one audience selector:
 remote in-app update by default (--remote-in-app-update).
 
 A draft is harmless, so create needs no --confirm; use --dry-run to validate
-inputs without any HTTP call. GPLAY_READONLY still refuses it (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+inputs without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

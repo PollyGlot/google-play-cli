@@ -259,7 +259,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "create <app.aab|app.apk>",
-		Short: "[experimental] Create a managed Google Play private app (irreversible)",
+		Short: "Create a managed Google Play private app (irreversible)",
 		Long: `Create a private app distributed to one organisation through managed Google
 Play, uploading the AAB/APK with the custom app's metadata in a single call.
 This is the one Google Play Developer API path that creates an app record
@@ -282,9 +282,7 @@ be enrolled in managed Google Play and the service account must hold the
 account-level CAN_CREATE_MANAGED_PLAY_APPS capability; a 403 names both.
 
 --output json passes the created CustomApp through verbatim (including the
-output-only packageName). GPLAY_READONLY refuses the live write (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+output-only packageName). GPLAY_READONLY refuses the live write (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

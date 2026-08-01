@@ -151,16 +151,14 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "convert",
-		Short: "[experimental] Derive per-region prices from one base price",
+		Short: "Derive per-region prices from one base price",
 		Long: `Convert one base price into per-region prices using today's exchange rates
 and Google's country-specific pricing patterns (monetization.convertRegionPrices).
 A computation, not a write: use it to fill a base plan's regionalConfigs in the
 catalog files in bulk, then rehearse with "gplay subscriptions apply --dry-run".
 
 --output json is the ConvertRegionPricesResponse verbatim — the regional Money
-objects can be pasted into a catalog file's regionalConfigs.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+objects can be pasted into a catalog file's regionalConfigs.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

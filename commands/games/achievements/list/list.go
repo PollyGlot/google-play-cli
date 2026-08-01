@@ -71,16 +71,14 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "[experimental] List a game's achievement configurations",
+		Short: "List a game's achievement configurations",
 		Long: `List the achievement configurations for a Play Games Services application.
 
 Addressing rides the numeric Play Games application ID (--application-id) — a
 distinct ID space from the Android package (ADR-0033). Use --max-results and
 --page-token to page; --output json passes the
 AchievementConfigurationListResponse through verbatim, including nextPageToken
-(ADR-0003).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+(ADR-0003).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

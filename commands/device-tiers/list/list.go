@@ -71,12 +71,10 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "[experimental] List the app's device tier configs (newest first)",
+		Short: "List the app's device tier configs (newest first)",
 		Long: `List the app's device tier configs, newest first. Use --page-size and
 --page-token to page; --output json passes the ListDeviceTierConfigsResponse
-through verbatim, including nextPageToken (ADR-0003).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+through verbatim, including nextPageToken (ADR-0003).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -84,3 +84,7 @@ environment, not the command. See
 
 - [CI/CD guide](/docs/guides/ci-cd/)
 - [gplay for AI agents](/docs/agents/agent-guide/)
+- [Stability and the Public contract](/docs/concepts/stability/) — exit codes
+  are part of the frozen contract
+- [Migrating to 1.0](/docs/guides/migrate-to-1-0/) — missing `--confirm`
+  refusals moved from `2` to `3`

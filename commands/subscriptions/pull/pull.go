@@ -150,7 +150,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "[experimental] Pull the live subscription catalog into files",
+		Short: "Pull the live subscription catalog into files",
 		Long: `Read the app's complete live subscription catalog
 (monetization.subscriptions.list plus one wildcard offers walk, every page)
 and write it as the on-disk catalog: one <productId>.json file per
@@ -160,9 +160,7 @@ basePlans[].offers. Stale .json files for subscriptions no longer live are
 removed so the directory mirrors Play; non-.json files are never touched.
 Commit the directory, edit the files, then rehearse with
 "gplay subscriptions apply --dry-run". --output json stays the merged
-ListSubscriptionsResponse (offers travel in the files).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+ListSubscriptionsResponse (offers travel in the files).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -71,11 +71,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "view <deviceTierConfigId>",
-		Short: "[experimental] Read one device tier config by id",
+		Short: "Read one device tier config by id",
 		Long: `Read a single device tier config by its server-assigned id.
---output json passes the DeviceTierConfig through verbatim (ADR-0003).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+--output json passes the DeviceTierConfig through verbatim (ADR-0003).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

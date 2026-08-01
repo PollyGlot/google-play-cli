@@ -160,7 +160,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "[experimental] Create a device tier config from a JSON body",
+		Short: "Create a device tier config from a JSON body",
 		Long: `Create a new device tier config on Google Play from a JSON DeviceTierConfig
 body read from --file (or stdin when --file is omitted or "-"). The server
 assigns the deviceTierConfigId; do not include it in the body.
@@ -168,9 +168,7 @@ assigns the deviceTierConfigId; do not include it in the body.
 Device tier configs are immutable — the API has create/get/list only, no
 update or delete — so create needs no --confirm (it can never overwrite or
 destroy an existing config); use --dry-run to validate the body and resolve the
-target without any HTTP call. GPLAY_READONLY still refuses it (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+target without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -178,7 +178,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "[experimental] Pull the live one-time-product catalog into files (v2 ∪ legacy)",
+		Short: "Pull the live one-time-product catalog into files (v2 ∪ legacy)",
 		Long: `Read the app's complete live one-time-product catalog from BOTH surfaces —
 the v2 model (monetization.onetimeproducts, offers nested under each purchase
 option) and the legacy inappproducts — and write their union as the on-disk
@@ -190,9 +190,7 @@ legacy product in place. Stale .json files are removed so the directory
 mirrors Play; non-.json files are never touched.
 
 --output json is a composite of the two verbatim list envelopes
-({"oneTimeProducts":[...],"inappproduct":[...]}).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+({"oneTimeProducts":[...],"inappproduct":[...]}).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

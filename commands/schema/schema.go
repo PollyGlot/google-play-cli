@@ -428,7 +428,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "schema [query]",
-		Short: "[experimental] Introspect the Android Publisher API surface offline",
+		Short: "Introspect the Android Publisher API surface offline",
 		Long: `Query an embedded, offline projection of the Android Publisher API
 (the Schema index) — does a method exist, what does it send and return, what
 fields and enums does a type carry.
@@ -451,10 +451,7 @@ rendered directly.
   --method GET|POST|PATCH|PUT|DELETE
                      filter the method surface by HTTP verb (combinable)
 
-A query that matches nothing prints a note on stderr and exits 0.
-
-[experimental] — the surface, especially the --output json shape, may still
-change.`,
+A query that matches nothing prints a note on stderr and exits 0.`,
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

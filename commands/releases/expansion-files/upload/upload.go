@@ -133,7 +133,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "upload <file.obb>",
-		Short: "[experimental] Upload a legacy OBB expansion file to an APK versionCode",
+		Short: "Upload a legacy OBB expansion file to an APK versionCode",
 		Long: `Upload a legacy .obb expansion file and attach it to an already-published
 APK versionCode, via the full Edit lifecycle (insert → upload → commit;
 auto-discarded on failure unless --keep-edit-on-failure).
@@ -142,9 +142,7 @@ LEGACY: expansion files are the pre-AAB mechanism for >150 MB out-of-APK
 assets — most apps use Play Asset Delivery instead. Only APK-based apps use OBB.
 
 --type is main or patch (the two expansion files per APK). --dry-run validates
-the local file and inputs without any HTTP call. GPLAY_READONLY refuses it.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+the local file and inputs without any HTTP call. GPLAY_READONLY refuses it.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

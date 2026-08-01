@@ -512,6 +512,222 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 	}
 }
 
+// TestStabilityRegistry_pinsPublicContract is the v1.0 counterpart of the
+// mutating registry: it pins, leaf by leaf, which commands are inside the frozen
+// Public contract and which ship [experimental] (ADR-0010 / ADR-0042).
+//
+// It matters more than a normal registry test because the failure is silent and
+// one-way. Forget kernel.Experimental on a young command and gplay promises,
+// from the next release on, that its flags and semantics will not change without
+// a major bump — a promise that cannot be walked back without breaking someone's
+// CI. The walk below makes "unclassified" a build failure instead.
+//
+// Multi-token paths are kept as SPLIT args (never a contiguous phrase) so the
+// repo-wide verb gate (#168) stays green on this file.
+func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
+	// leaf classification: true = shipped [experimental] (outside the Public
+	// contract, free to change in any release). false = frozen — its name,
+	// flags, semantics and exit codes are the 1.0 promise.
+	type leaf struct {
+		path         []string
+		experimental bool
+	}
+	classified := []leaf{
+		// top-level meta / local-only leaves — the install and diagnostic
+		// surface CI scripts wrap first, frozen. `schema` is the exception: its
+		// --output json is a projection gplay invented, not a Google resource.
+		{[]string{"init"}, false},
+		{[]string{"version"}, false},
+		{[]string{"schema"}, true},
+		{[]string{"exit-codes"}, false},
+		{[]string{"install-skills"}, false},
+
+		// auth — the oldest surface in the CLI, frozen in full.
+		{[]string{"auth", "login"}, false},
+		{[]string{"auth", "logout"}, false},
+		{[]string{"auth", "status"}, false},
+		{[]string{"auth", "list"}, false},
+		{[]string{"auth", "doctor"}, false},
+
+		// apps — MVP surface, frozen (ADR-0010 names it explicitly).
+		{[]string{"apps", "init"}, false},
+		{[]string{"apps", "add"}, false},
+		{[]string{"apps", "list"}, false},
+		{[]string{"apps", "accessible", "list"}, false},
+		{[]string{"apps", "view"}, false},
+		{[]string{"apps", "details", "view"}, false},
+		{[]string{"apps", "details", "set"}, false},
+		{[]string{"apps", "remove"}, false},
+
+		// releases — the core loop is frozen; the three side surfaces bolted on
+		// later (sharing, expansion-files, generated) are not.
+		{[]string{"releases", "upload"}, false},
+		{[]string{"releases", "promote"}, false},
+		{[]string{"releases", "rollout"}, false},
+		{[]string{"releases", "halt"}, false},
+		{[]string{"releases", "resume"}, false},
+		{[]string{"releases", "complete"}, false},
+		{[]string{"releases", "list"}, false},
+		{[]string{"releases", "mappings", "upload"}, false},
+		{[]string{"releases", "sharing", "upload"}, true},
+		{[]string{"releases", "expansion-files", "upload"}, true},
+		{[]string{"releases", "expansion-files", "set"}, true},
+		{[]string{"releases", "expansion-files", "view"}, true},
+		{[]string{"releases", "generated", "list"}, true},
+		{[]string{"releases", "generated", "download"}, true},
+
+		// tracks / testers — MVP surface, frozen.
+		{[]string{"tracks", "list"}, false},
+		{[]string{"tracks", "view"}, false},
+		{[]string{"tracks", "create"}, false},
+		{[]string{"tracks", "availability", "view"}, false},
+		{[]string{"testers", "list"}, false},
+		{[]string{"testers", "set"}, false},
+
+		// device-tiers / recovery / customapps — the #243 long-tail and the
+		// account-axis creation surface, all shipped for coverage rather than
+		// demand.
+		{[]string{"device-tiers", "create"}, true},
+		{[]string{"device-tiers", "view"}, true},
+		{[]string{"device-tiers", "list"}, true},
+		{[]string{"recovery", "create"}, true},
+		{[]string{"recovery", "list"}, true},
+		{[]string{"recovery", "deploy"}, true},
+		{[]string{"recovery", "cancel"}, true},
+		{[]string{"recovery", "add-targeting"}, true},
+		{[]string{"customapps", "create"}, true},
+
+		// team / edits — exercised on every real account and every write
+		// respectively, frozen.
+		{[]string{"team", "permissions"}, false},
+		{[]string{"team", "users", "list"}, false},
+		{[]string{"team", "users", "view"}, false},
+		{[]string{"team", "users", "add"}, false},
+		{[]string{"team", "users", "set"}, false},
+		{[]string{"team", "users", "remove"}, false},
+		{[]string{"team", "grants", "list"}, false},
+		{[]string{"team", "grants", "set"}, false},
+		{[]string{"team", "grants", "remove"}, false},
+		{[]string{"edits", "begin"}, false},
+		{[]string{"edits", "commit"}, false},
+		{[]string{"edits", "discard"}, false},
+		{[]string{"edits", "status"}, false},
+
+		// games — a second Google service on its own ID space, draft-only writes.
+		{[]string{"games", "achievements", "list"}, true},
+		{[]string{"games", "achievements", "view"}, true},
+		{[]string{"games", "achievements", "create"}, true},
+		{[]string{"games", "achievements", "update"}, true},
+		{[]string{"games", "achievements", "delete"}, true},
+		{[]string{"games", "leaderboards", "list"}, true},
+		{[]string{"games", "leaderboards", "view"}, true},
+		{[]string{"games", "leaderboards", "create"}, true},
+		{[]string{"games", "leaderboards", "update"}, true},
+		{[]string{"games", "leaderboards", "delete"}, true},
+
+		// orders / subscriptions / iap — the commerce continent. The declarative
+		// catalog (ADR-0041) shipped in v0.18.0, days before the 1.0 cut, and
+		// exposes a file schema and a reconciliation model as contract.
+		{[]string{"orders", "view"}, true},
+		{[]string{"orders", "refund"}, true},
+		{[]string{"subscriptions", "pull"}, true},
+		{[]string{"subscriptions", "apply"}, true},
+		{[]string{"subscriptions", "prices", "convert"}, true},
+		{[]string{"subscriptions", "prices", "migrate"}, true},
+		{[]string{"iap", "pull"}, true},
+		{[]string{"iap", "apply"}, true},
+
+		// reviews — list/reply/view are MVP and frozen; history reads CSVs out
+		// of a GCS bucket whose layout Google can change without an API version.
+		{[]string{"reviews", "list"}, false},
+		{[]string{"reviews", "reply"}, false},
+		{[]string{"reviews", "view"}, false},
+		{[]string{"reviews", "history"}, true},
+
+		// vitals — read-only, shipped early and stable since.
+		{[]string{"vitals", "query"}, false},
+		{[]string{"vitals", "crashes"}, false},
+		{[]string{"vitals", "anr"}, false},
+		{[]string{"vitals", "slowstart"}, false},
+		{[]string{"vitals", "slowrendering"}, false},
+		{[]string{"vitals", "excessivewakeup"}, false},
+		{[]string{"vitals", "lmk"}, false},
+		{[]string{"vitals", "stuckbgwakelock"}, false},
+		{[]string{"vitals", "errors", "counts"}, false},
+		{[]string{"vitals", "errors", "issues"}, false},
+		{[]string{"vitals", "errors", "reports"}, false},
+		{[]string{"vitals", "anomalies"}, false},
+
+		// metadata / compliance — the first-release readiness surfaces, driven
+		// end-to-end since June, frozen.
+		{[]string{"metadata", "list"}, false},
+		{[]string{"metadata", "pull"}, false},
+		{[]string{"metadata", "validate"}, false},
+		{[]string{"metadata", "apply"}, false},
+		{[]string{"metadata", "images", "list"}, false},
+		{[]string{"metadata", "images", "pull"}, false},
+		{[]string{"metadata", "images", "validate"}, false},
+		{[]string{"metadata", "images", "apply"}, false},
+		{[]string{"compliance", "datasafety", "validate"}, false},
+		{[]string{"compliance", "datasafety", "set"}, false},
+	}
+
+	want := make(map[string]bool, len(classified))
+	for _, e := range classified {
+		key := strings.Join(e.path, " ")
+		if _, dup := want[key]; dup {
+			t.Fatalf("duplicate classification for %q — remove one", key)
+		}
+		want[key] = e.experimental
+	}
+
+	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+
+	seen := map[string]bool{}
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if name := c.Name(); name == "help" || name == "completion" || strings.HasPrefix(name, "__") {
+			return
+		}
+		if kids := c.Commands(); len(kids) > 0 {
+			for _, k := range kids {
+				walk(k)
+			}
+			return
+		}
+		key := strings.TrimPrefix(c.CommandPath(), "gplay ")
+		seen[key] = true
+		wantExp, ok := want[key]
+		if !ok {
+			t.Errorf("leaf %q is not classified in the stability registry — every leaf must be pinned as frozen or [experimental]; an unclassified NEW command would silently join the frozen v1.0 Public contract (ADR-0010)", c.CommandPath())
+			return
+		}
+		if got := kernel.IsExperimental(c); got != wantExp {
+			if wantExp {
+				t.Errorf("%q must be labelled experimental (kernel.Experimental) — as it stands, gplay promises its surface will not change without a major bump", key)
+			} else {
+				t.Errorf("%q is labelled experimental but is classified as part of the frozen Public contract", key)
+			}
+		}
+		// The annotation is the semantics; the visible tag is what a CI author
+		// actually reads before wiring a command into a pipeline. An experimental
+		// command with no marker in its help is a broken promise in the other
+		// direction.
+		if wantExp && !strings.Contains(c.Short, "[experimental]") {
+			t.Errorf("%q is experimental but its Short %q carries no visible marker", key, c.Short)
+		}
+	}
+	for _, c := range root.Commands() {
+		walk(c)
+	}
+
+	for key := range want {
+		if !seen[key] {
+			t.Errorf("classified path %q resolves to no leaf — stale entry (renamed or removed?)", key)
+		}
+	}
+}
+
 func TestRootCmd_persistentFlags_serviceAccountAccountAndVerbose(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 

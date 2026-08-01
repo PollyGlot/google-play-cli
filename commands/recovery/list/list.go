@@ -71,14 +71,12 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "[experimental] List recovery actions for a versionCode",
+		Short: "List recovery actions for a versionCode",
 		Long: `List the app recovery actions for a (bad) APK versionCode, with their id,
 status, and creation time. --version-code is required (recoveries are keyed by
 version); --output json passes the ListAppRecoveriesResponse through verbatim.
 
-There is no ` + "`recovery view`" + ` — the API exposes only list.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+There is no ` + "`recovery view`" + ` — the API exposes only list.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

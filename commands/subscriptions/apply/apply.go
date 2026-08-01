@@ -550,7 +550,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "[experimental] Reconcile the live subscription catalog to the catalog files",
+		Short: "Reconcile the live subscription catalog to the catalog files",
 		Long: `Compute the plan between the on-disk catalog (--dir, default
 ` + subscriptionscmd.DefaultDir + `) and the app's live subscription catalog —
 subscriptions, base plans (config + per-territory prices), offers, and the
@@ -572,9 +572,7 @@ a separate, gated command.
 
 --regions-version pins the regions version sent with creates and patches
 (default ` + subscriptionscmd.DefaultRegionsVersion + `, the latest Google has
-published). GPLAY_READONLY refuses the command (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+published). GPLAY_READONLY refuses the command (exit 4).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

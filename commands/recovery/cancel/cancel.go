@@ -57,15 +57,13 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "cancel <appRecoveryId>",
-		Short: "[experimental] Cancel a recovery action (irreversible)",
+		Short: "Cancel a recovery action (irreversible)",
 		Long: `Cancel an app recovery action. The action persists with status CANCELED and
 CANNOT be resumed — this is irreversible. To target users again you must create
 a new recovery.
 
 Requires --confirm (missing → exit 3); rehearse first with --dry-run.
-GPLAY_READONLY refuses it (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+GPLAY_READONLY refuses it (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
