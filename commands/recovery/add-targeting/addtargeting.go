@@ -65,16 +65,14 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "add-targeting <appRecoveryId>",
-		Short: "[experimental] Widen a recovery's audience (append-only)",
+		Short: "Widen a recovery's audience (append-only)",
 		Long: `Widen the audience of an app recovery action by adding users, regions, or
 Android SDK levels. This is APPEND-ONLY — it can only widen, never narrow; to
 shrink the blast radius, cancel the recovery and create a new one.
 
 Pass at least one of --all-users, --regions <CC,CC>, or --sdk-levels <N,N>.
 Requires --confirm (missing → exit 3); rehearse first with --dry-run.
-GPLAY_READONLY refuses it (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+GPLAY_READONLY refuses it (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

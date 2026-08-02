@@ -72,7 +72,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "[experimental] List the APKs Play generated from an uploaded AAB",
+		Short: "List the APKs Play generated from an uploaded AAB",
 		Long: `List the split, standalone, and universal APKs (plus asset-pack slices and
 recovery modules) Play generated and signed from the App Bundle uploaded under a
 given versionCode. Each artifact carries an opaque downloadId to feed
@@ -82,9 +82,7 @@ given versionCode. Each artifact carries an opaque downloadId to feed
 flattens the grouped-by-signing-key response to one row per artifact; --output
 json passes the GeneratedApksListResponse through verbatim (ADR-0003).
 
-This is a direct application-scoped read — it opens no Edit.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+This is a direct application-scoped read — it opens no Edit.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

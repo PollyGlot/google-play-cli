@@ -208,7 +208,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "[experimental] Migrate existing subscribers to the current price (money-moving)",
+		Short: "Migrate existing subscribers to the current price (money-moving)",
 		Long: `Migrate EXISTING subscribers of one base plan to its current price
 (basePlans.migratePrices) — the one deliberate exception to the rule that
 editing catalog files never touches a live purchaser: "subscriptions apply"
@@ -222,9 +222,7 @@ array. GPLAY_READONLY refuses it (exit 4). One base plan per invocation —
 there is deliberately no bulk migration.
 
 --price-increase-type opt-in requires subscribers to accept the new price or
-churn; opt-out (where Google allows it) applies it automatically with notice.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+churn; opt-out (where Google allows it) applies it automatically with notice.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

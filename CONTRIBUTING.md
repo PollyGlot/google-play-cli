@@ -112,6 +112,13 @@ None of those bump the version or land in the CLI `CHANGELOG.md`. Reserve
   policy refuses it (exit 4, ADR-0024). The mutating-registry guard test in
   `cmd/gplay` fails if a write command is left unmarked (or a read command is
   wrongly marked). Read commands and `--dry-run` paths stay unmarked.
+- **Any new command, full stop** → decide its stability. Since 1.0, an
+  unlabelled command joins the frozen Public contract: its names, flags,
+  semantics and exit codes cannot change without a major bump (ADR-0010 /
+  ADR-0042). If you are not ready to promise that, wrap it with
+  `kernel.Experimental(...)` at its registration site. The stability-registry
+  guard test in `cmd/gplay` fails on any leaf that is not explicitly
+  classified, so this cannot be forgotten silently.
 
 ## Code review
 

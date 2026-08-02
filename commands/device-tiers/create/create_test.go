@@ -208,15 +208,14 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the surface + [experimental] label.
+// TestNewCommand_flags asserts the flag surface. The [experimental] label is
+// applied at registration by kernel.Experimental and pinned centrally by
+// TestStabilityRegistry_pinsPublicContract (ADR-0010/ADR-0042).
 func TestNewCommand_flags(t *testing.T) {
 	cmd := createcmd.NewCommand(kernel.Boot{})
 	for _, n := range []string{"package", "file", "allow-unknown-devices", "dry-run", "output"} {
 		if cmd.Flags().Lookup(n) == nil {
 			t.Errorf("missing --%s", n)
 		}
-	}
-	if !strings.Contains(cmd.Short, "[experimental]") {
-		t.Errorf("Short %q missing [experimental]", cmd.Short)
 	}
 }

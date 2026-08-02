@@ -84,15 +84,13 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "view",
-		Short: "[experimental] Read an APK's expansion file configuration",
+		Short: "Read an APK's expansion file configuration",
 		Long: `Read the expansion file configuration (fileSize if this APK has its own
 uploaded file, or referencesVersion if it points at another APK's) for a given
 versionCode and type. Opens a read-only Edit (insert → get → discard).
 
 LEGACY (OBB). --type is main or patch. --output json passes the ExpansionFile
-through verbatim (ADR-0003).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+through verbatim (ADR-0003).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

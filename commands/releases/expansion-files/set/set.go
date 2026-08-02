@@ -122,16 +122,14 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "set",
-		Short: "[experimental] Point an APK's expansion file at another APK's file",
+		Short: "Point an APK's expansion file at another APK's file",
 		Long: `Declaratively set an APK's expansion file configuration to reference another
 APK versionCode's already-uploaded expansion file (no new binary uploaded).
 Wraps edits.expansionfiles.update (PUT) inside the Edit lifecycle.
 
 LEGACY (OBB). --type is main or patch; --references-version is the APK
 versionCode whose expansion file to point at. --dry-run validates inputs
-without any HTTP call. GPLAY_READONLY refuses it.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+without any HTTP call. GPLAY_READONLY refuses it.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

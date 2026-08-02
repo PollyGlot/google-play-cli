@@ -8,7 +8,7 @@
   <a href="https://github.com/PollyGlot/google-play-cli/stargazers"><img src="https://img.shields.io/github/stars/PollyGlot/google-play-cli?style=for-the-badge" alt="GitHub Stars"></a>
   <img src="https://img.shields.io/badge/Go-1.22+-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/status-pre--1.0-orange?style=for-the-badge" alt="Status">
+  <img src="https://img.shields.io/badge/status-GA-2ea44f?style=for-the-badge" alt="Status">
 </p>
 
 # gplay
@@ -23,12 +23,17 @@ exit codes, safe production defaults.
 **Two ways to drive it:** the raw CLI (flags, scripts, CI) or
 [agent skills](#agent-skills) that run it from natural-language prompts.
 
-> **Public preview — pre-1.0.** A broad surface is already implemented: auth,
-> apps, releases, tracks, reviews, metadata, compliance (Data Safety), team,
-> and closed-track testers. Breaking changes are still possible before `v1.0`.
-> See [docs/BACKLOG.md](docs/BACKLOG.md) for what's out of scope and
-> [ADR-0010](docs/adr/0010-versioning-public-contract-and-ga.md) for the
-> versioning policy.
+> **Generally available.** The Public contract is in force: for every command
+> *not* marked `[experimental]`, names, flags, semantics and exit codes will not
+> change without a major bump. That covers auth, apps, the core release loop,
+> tracks, testers, team, edits, metadata, compliance, vitals, and
+> `reviews list` / `view` / `reply`. Newer or less-exercised surfaces —
+> monetization, `games`, `recovery`, `orders`, `reviews history`, and the side
+> namespaces under `releases` — ship `[experimental]` and stay free to evolve.
+> **`--help` is the source of truth**: the label is on the command itself.
+> See [Stability and the Public contract](https://gplay.sh/docs/concepts/stability/),
+> [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/), and
+> [docs/BACKLOG.md](docs/BACKLOG.md) for what's out of scope.
 
 ## Why
 

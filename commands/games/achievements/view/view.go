@@ -67,13 +67,11 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "view <achievementId>",
-		Short: "[experimental] Read one achievement configuration by id",
+		Short: "Read one achievement configuration by id",
 		Long: `Read a single achievement configuration by its ID. The config carries an
 editable draft and a read-only published detail (there is no publish method —
 publishing to players is Console-only, ADR-0033). --output json passes the
-AchievementConfiguration through verbatim (ADR-0003).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+AchievementConfiguration through verbatim (ADR-0003).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

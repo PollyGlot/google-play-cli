@@ -71,12 +71,27 @@ attaches artifacts without touching that body. Ordering is guaranteed by the
 
 ## Versioning strategy
 
-gplay follows **0.x semver** while pre-1.0: `fix:` bumps patch, `feat:` bumps
-the **minor** (`0.1.0` → `0.2.0`), and breaking changes also bump the minor
-rather than the major until `v1.0`. This is release-please's default behavior
-for `0.y.z`, so it needs no extra config. `1.0.0` is cut when the command
-surface — flags, JSON output shapes ([ADR-0003](0003-json-passthrough.md)), and
-the exit-code table — is stable enough that breaking it warrants a major bump.
+gplay follows plain semver from release-please's Conventional Commit reading:
+`fix:` bumps patch, `feat:` bumps the minor, and a breaking change (`!` or a
+`BREAKING CHANGE:` footer) bumps the **major**.
+
+> **Correction (2026-08, ADR-0042).** This section previously claimed that
+> breaking changes bump the *minor* rather than the major while in `0.y.z`, and
+> that this was release-please's default needing no config. Both halves were
+> wrong: that behavior requires `bump-minor-pre-major: true`, which
+> [`release-please-config.json`](../../release-please-config.json) never set. The
+> first `fix!` the repo ever merged ([#410](https://github.com/PollyGlot/google-play-cli/issues/410))
+> therefore computed `1.0.0` straight from `0.18.0`. The correction is recorded
+> rather than silently edited because that bump is what triggered the GA
+> decision.
+
+What `1.0` promises is **not** owned by this ADR: the Public contract, its
+carve-outs, and the per-command stability labels live in
+[ADR-0010](0010-versioning-public-contract-and-ga.md) and
+[ADR-0042](0042-one-zero-ga-and-stability-label-mechanism.md). In particular,
+the "JSON output shapes" this section once listed among what `1.0` freezes is
+too strong — ADR-0010 §2 refines it to "json stays passthrough"
+([ADR-0003](0003-json-passthrough.md)).
 
 Versions never reset or move backward: every tool that resolves "latest"
 (`go install @latest`, Homebrew, release-please) orders by semver, so a lower

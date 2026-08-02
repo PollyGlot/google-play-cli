@@ -14,6 +14,7 @@ For deeper rationale on the load-bearing choices, see:
 - [ADR-0019 — Canonical verb vocabulary](./adr/0019-canonical-verb-vocabulary.md)
 - [ADR-0023 — JSON error envelope on failure](./adr/0023-json-error-envelope.md)
 - [ADR-0024 — `GPLAY_READONLY` environment policy](./adr/0024-readonly-environment-policy.md)
+- [ADR-0042 — 1.0 GA and the stability-label mechanism](./adr/0042-one-zero-ga-and-stability-label-mechanism.md)
 
 ---
 
@@ -615,3 +616,64 @@ API; gplay attaches a hint pointing at `gplay tracks create <name>` (same
 pattern as the other track-not-found hints). gplay **never auto-creates** a
 track as a side effect of an upload — a typo'd `--track` must fail, not
 silently spawn a phantom track.
+
+---
+
+## 11. Stability labels and the Public contract
+
+Since `1.0`, every command sits on one side of a line
+([ADR-0010](./adr/0010-versioning-public-contract-and-ga.md) /
+[ADR-0042](./adr/0042-one-zero-ga-and-stability-label-mechanism.md)):
+
+- **Unlabelled = frozen.** Part of the Public contract — its name, flags,
+  semantics and exit codes cannot change without a **major** bump. Also frozen:
+  the config schema and its precedence, Account resolution precedence, and the
+  guarantee that `--output json` stays API pass-through — for the frozen,
+  API-backed commands (§7 / ADR-0003). An experimental command is outside the
+  contract in full, output shape included: `schema` in particular projects the
+  embedded index rather than echoing an API response, so there is no upstream
+  resource to pass through.
+- **`[experimental]` = shipped, not frozen.** Free to change in any release.
+
+**Not** covered either way: the `table` / `markdown` layouts, the *fields*
+inside the pass-through JSON (Google owns those), and stderr wording.
+
+### Declaring it
+
+One registration-time annotation, exactly like `kernel.MarkMutating` (§8):
+
+```go
+root.AddCommand(kernel.Experimental(subscriptionsGroup))
+```
+
+`kernel.Experimental` labels the command **and the subtree already registered
+under it**, so a whole young namespace takes one call; `kernel.IsExperimental`
+walks up the parent chain, so a subcommand can never claim more stability than
+its namespace. Call it after the children are added, so each carries the visible
+tag rather than inheriting it silently.
+
+### The default is a promise
+
+Absence of a label is not "unknown", it is "frozen" — forgetting to label
+over-promises. `TestStabilityRegistry_pinsPublicContract` in `cmd/gplay` walks
+every runnable leaf and fails on any that is not explicitly classified, so a new
+command cannot join the contract by omission.
+
+### Where the label shows up
+
+The `Short` carries a `[experimental]` marker (visible in the parent's command
+list) and the `Long` opens with the consequence — may change in any release, pin
+an exact release in CI. Both are applied by the helper; commands do not
+hand-write them.
+
+### Sub-feature labels
+
+A few experimental *parts* of frozen commands (APK upload on `releases upload`,
+the icon fields on `apps view`, `--type` on `metadata images list`) are marked
+in prose in the help text. A command-level annotation cannot express those, and
+three cases do not justify a flag-level mechanism.
+
+### Graduation
+
+Dropping the label is additive — a normal minor release. The reverse never
+happens: a frozen command whose surface must change is a major bump.

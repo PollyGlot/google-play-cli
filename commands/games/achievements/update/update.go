@@ -63,7 +63,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "update <achievementId>",
-		Short: "[experimental] Update an achievement configuration (draft)",
+		Short: "Update an achievement configuration (draft)",
 		Long: `Update an achievement configuration by its ID. The write affects the editable
 draft; the published copy is read-only and there is no publish method (ADR-0033).
 
@@ -75,9 +75,7 @@ en-US) send only what they name; --from-json supplies a full body verbatim and
 is mutually exclusive with them.
 
 Routine write (no --confirm); rehearse with --dry-run (no HTTP — --output json
-shows the request body). GPLAY_READONLY refuses the live write (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+shows the request body). GPLAY_READONLY refuses the live write (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

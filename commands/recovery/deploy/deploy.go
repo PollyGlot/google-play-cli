@@ -57,15 +57,13 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "deploy <appRecoveryId>",
-		Short: "[experimental] Activate a draft recovery (force-updates impacted users)",
+		Short: "Activate a draft recovery (force-updates impacted users)",
 		Long: `Activate a draft app recovery action: this is the production-impacting step
 that force-pushes users impacted by the bad versionCode to a safe app version
 via remote in-app update.
 
 Requires --confirm (missing → exit 3); rehearse first with --dry-run.
-GPLAY_READONLY refuses it (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+GPLAY_READONLY refuses it (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

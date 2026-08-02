@@ -235,7 +235,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "upload <app.apk|app.aab>",
-		Short: "[experimental] Upload a build to Internal App Sharing and print its shareable link",
+		Short: "Upload a build to Internal App Sharing and print its shareable link",
 		Long: `Upload an APK or AAB to Google Play Internal App Sharing and print the
 private, shareable downloadUrl an authorized tester follows to install it.
 This bypasses tracks and the Edit lifecycle entirely — a QA/preview gesture,
@@ -248,9 +248,7 @@ APK vs AAB is auto-detected by file extension (.apk / .aab); pass
 (downloadUrl, certificateFingerprint, sha256). --dry-run validates the package
 and the local artifact without any HTTP call. No --confirm is required (the
 link is private and creates no track or production release); GPLAY_READONLY
-still refuses it (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+still refuses it (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

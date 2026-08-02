@@ -52,13 +52,11 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "delete <leaderboardId>",
-		Short: "[experimental] Delete a leaderboard configuration (irreversible)",
+		Short: "Delete a leaderboard configuration (irreversible)",
 		Long: `Delete a leaderboard configuration by its ID. This is irreversible.
 
 Requires --confirm (missing → exit 3); CI=true never auto-confirms. Rehearse
-first with --dry-run. GPLAY_READONLY refuses the live delete (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+first with --dry-run. GPLAY_READONLY refuses the live delete (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

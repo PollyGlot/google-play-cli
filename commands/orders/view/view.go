@@ -304,7 +304,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "view <orderId> [<orderId>...]",
-		Short: "[experimental] Look up Google Play orders by order ID",
+		Short: "Look up Google Play orders by order ID",
 		Long: `Look up one or more Google Play orders by order ID — the admin-side commerce
 diagnostic: a human or agent holds an order ID from a buyer complaint or a
 payout report and reads its state, total, and line items. This is the order
@@ -327,9 +327,7 @@ history, sales channel, …).
 
 Reading orders requires the service account to hold the CAN_VIEW_FINANCIAL_DATA
 permission (never part of a Role bundle); a 403 names it. An unknown order ID
-fails with exit 30.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+fails with exit 30.`,
 		Args:          cobra.MinimumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -37,16 +37,36 @@ Toute la surface MVP est implémentée et mergée dans `main` :
 | reviews | list / reply | [#6](https://github.com/PollyGlot/google-play-cli/issues/6) ✅ |
 | output | dispatcher TTY-aware + markdown | [#26](https://github.com/PollyGlot/google-play-cli/issues/26) ✅ |
 
-## Mode de livraison — `0.x` rolling, gel 1.0 différé
+## Mode de livraison — `1.0` GA, contrat public en vigueur
 
-**Décision (2026-06-01).** Pas de gel 1.0 à court terme : on reste en `0.x` et on
-**shippe large** (plusieurs features/correctifs par mineure, breaking changes
-permis — SemVer `0.x`, [ADR-0008](adr/0008-release-pipeline.md)). La politique de
-stabilité [ADR-0010](adr/0010-versioning-public-contract-and-ga.md) reste valable
-mais **en sommeil**. Le trigger de la checklist de durcissement
-[#98](https://github.com/PollyGlot/google-play-cli/issues/98) est franchi, gardé
-en **attente délibérée** : on continue à shipper l'outillage interne et la surface
-additive avant de décider du gel.
+**Décision (2026-08-01, [ADR-0042](adr/0042-one-zero-ga-and-stability-label-mechanism.md)).**
+La `1.0.0` est coupée : le contrat public de
+[ADR-0010](adr/0010-versioning-public-contract-and-ga.md) n'est plus en sommeil,
+il **s'applique** à toute commande non étiquetée `[experimental]` — noms de
+commandes/flags, sémantique, exit codes, schéma de config, précédence Account,
+garantie passthrough du `--output json`. Un breaking sur cette surface = bump
+majeur.
+
+Le gel est **granulaire** : `kernel.Experimental` pose l'étiquette à
+l'enregistrement (`cmd/gplay/main.go`), et
+`TestStabilityRegistry_pinsPublicContract` échoue sur toute feuille non
+classée — une commande neuve ne peut plus rejoindre le contrat par omission.
+Ship `[experimental]` à la 1.0 : `schema`, `orders`, `subscriptions`, `iap`,
+`games`, `recovery`, `device-tiers`, `customapps`, `releases sharing` /
+`expansion-files` / `generated`, `reviews history`.
+
+> **Historique.** Décision précédente (2026-06-01) : rester en `0.x` et shipper
+> large, gel différé. Elle tenait tant que la surface bougeait ; ce qui reste au
+> backlog est désormais **additif** (nouveaux namespaces), donc absorbable en
+> `1.x` sans majeure. La checklist [#98](https://github.com/PollyGlot/google-play-cli/issues/98)
+> n'est pas cochée intégralement — le dogfooding CI externe manque, et
+> l'étiquetage par commande est la mitigation assumée (ADR-0042 §« What we
+> lose »).
+
+**Ce que ça change au quotidien :** un `feat`/`fix` sur une commande gelée doit
+rester rétro-compatible ; s'il ne peut pas l'être, c'est un `!` et une majeure.
+Sur une commande `[experimental]`, rien ne change. Retirer l'étiquette
+(graduation) est additif → mineure.
 
 ## Thème livré ✅ — First-release readiness
 
@@ -88,7 +108,9 @@ autorité imposable par l'environnement, introspection de schéma embarquée.
 
 Durcissement interne clos, le thème bascule vers la **couverture des admin APIs
 restantes** : compléter la surface jusqu'à ce que toute opération admin Play soit
-pilotable depuis le CLI. Toujours en `0.x`, sans attendre de gel. L'arc
+pilotable depuis le CLI. Le thème continue **après** le gel 1.0 : ce qui reste
+est additif (nouveaux namespaces), donc livrable en `1.x` sans majeure — les
+surfaces neuves arrivent `[experimental]` (ADR-0042). L'arc
 *publier → durcir → observer* est **complété** — vitals
 [#49](https://github.com/PollyGlot/google-play-cli/issues/49) livré (PR #263).
 Les **games** (#241, CRUD achievements/leaderboards, ADR-0033) et les **orders**

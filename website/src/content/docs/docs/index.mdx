@@ -49,13 +49,17 @@ The full, generated command reference lives at
 [CLI reference](/docs/reference/) — one page per command, produced from the
 binary's own `--help` output.
 
-## Status: public preview
+## Status: generally available
 
-gplay is **pre-1.0**. The surface above is implemented and usable today, and
-this is an invitation to test and give feedback — breaking changes are still
-possible before `v1.0`, where per-command stability labels will mark what's
-frozen. Development is documentation-first: design conventions and
-architecture decision records are public in the
+gplay is **1.0**. The Public contract is in force: for every command not marked
+`[experimental]`, names, flags, semantics and exit codes will not change without
+a major version bump. Newer namespaces ship `[experimental]` — supported, but
+free to evolve — and `--help` tells you which is which. See [Stability and the
+Public contract](/docs/concepts/stability/), or [Migrating to
+1.0](/docs/guides/migrate-to-1-0/) if you are coming from `0.x`.
+
+Development is documentation-first: design conventions and architecture
+decision records are public in the
 [GitHub repository](https://github.com/PollyGlot/google-play-cli).
 
 ## Next steps

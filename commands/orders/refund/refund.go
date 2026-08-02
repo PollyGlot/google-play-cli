@@ -182,7 +182,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "refund <orderId>",
-		Short: "[experimental] Refund a Google Play order (money-moving, irreversible)",
+		Short: "Refund a Google Play order (money-moving, irreversible)",
 		Long: `Refund a single Google Play order by its order ID via orders.refund — a
 money-moving, irreversible write. By default the money is returned but the
 buyer keeps access to what they bought; pass --revoke to additionally terminate
@@ -197,9 +197,7 @@ at a time.
 Refunding requires the service account to hold the CAN_MANAGE_ORDERS permission
 (never part of a Role bundle); a 403 names it. Google does not allow refunding
 orders older than 3 years — that surfaces as a specific refusal, not a generic
-error.
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+error.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

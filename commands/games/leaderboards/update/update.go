@@ -62,7 +62,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "update <leaderboardId>",
-		Short: "[experimental] Update a leaderboard configuration (draft)",
+		Short: "Update a leaderboard configuration (draft)",
 		Long: `Update a leaderboard configuration by its ID. The write affects the editable
 draft; the published copy is read-only and there is no publish method (ADR-0033).
 
@@ -73,9 +73,7 @@ edit it, and resend it with --from-json. The field flags (--name, --score-order,
 --from-json supplies a full body verbatim and is mutually exclusive with them.
 
 Routine write (no --confirm); rehearse with --dry-run (no HTTP — --output json
-shows the request body). GPLAY_READONLY refuses the live write (exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+shows the request body). GPLAY_READONLY refuses the live write (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

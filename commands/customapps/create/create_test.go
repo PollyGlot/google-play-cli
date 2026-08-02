@@ -377,9 +377,9 @@ func TestNewCommand_flags(t *testing.T) {
 			t.Errorf("missing --%s flag", name)
 		}
 	}
-	if !strings.Contains(cmd.Short, "[experimental]") {
-		t.Errorf("Short should mark [experimental]: %q", cmd.Short)
-	}
+	// The [experimental] label is no longer a literal in this Short: it is
+	// applied at registration by kernel.Experimental and pinned centrally by
+	// TestStabilityRegistry_pinsPublicContract (ADR-0010/ADR-0042).
 }
 
 func mustErr(_ output.Renderable, err error) error { return err }

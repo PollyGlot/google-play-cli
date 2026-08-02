@@ -163,8 +163,7 @@ func TestNewCommand_surface(t *testing.T) {
 	if cmd.Flags().Lookup("output") == nil {
 		t.Error("missing --output flag")
 	}
-	// [experimental] marker is a plain-text prefix in the Short string (D9).
-	if !strings.HasPrefix(cmd.Short, "[experimental]") {
-		t.Errorf("Short = %q, want it to start with [experimental]", cmd.Short)
-	}
+	// The [experimental] marker is no longer a plain-text prefix here (D9): it
+	// is applied at registration by kernel.Experimental and pinned centrally by
+	// TestStabilityRegistry_pinsPublicContract (ADR-0010/ADR-0042).
 }

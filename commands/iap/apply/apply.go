@@ -488,7 +488,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "[experimental] Reconcile the live one-time-product catalog to the catalog files (v2 writes only)",
+		Short: "Reconcile the live one-time-product catalog to the catalog files (v2 writes only)",
 		Long: `Compute the create/patch/delete plan between the on-disk catalog (--dir,
 default ` + iapcmd.DefaultDir + `) and the app's live one-time products, then
 execute it — writing the v2 model (monetization.onetimeproducts) only. The
@@ -511,9 +511,7 @@ lifecycle states are not yet reconciled (normalized out of the diff).
 
 --regions-version pins the regions version sent with writes (default
 ` + iapcmd.DefaultRegionsVersion + `). GPLAY_READONLY refuses the command
-(exit 4).
-
-[experimental] — the surface may still evolve (ADR-0010).`,
+(exit 4).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
