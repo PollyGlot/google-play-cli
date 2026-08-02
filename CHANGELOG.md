@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.0](https://github.com/PollyGlot/google-play-cli/compare/v0.18.0...v1.0.0) (2026-08-02)
 
+**gplay is now GA.** For every command not marked `[experimental]`, names,
+flags, semantics and exit codes will not change without a major bump.
+
+**Upgrading from 0.x?** One thing changed: a missing `--confirm` now exits `3`
+instead of `2`. Full details, and what the contract does and does not cover:
+→ https://gplay.sh/docs/guides/migrate-to-1-0/
 
 ### ⚠ BREAKING CHANGES
 
