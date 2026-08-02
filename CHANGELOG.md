@@ -5,6 +5,23 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0](https://github.com/PollyGlot/google-play-cli/compare/v0.18.0...v1.0.0) (2026-08-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* every missing --confirm refusal exits 3, not 2 ([#410](https://github.com/PollyGlot/google-play-cli/issues/410))
+
+### Features
+
+* **kernel:** per-command stability labels for the 1.0 Public contract ([#411](https://github.com/PollyGlot/google-play-cli/issues/411)) ([7f51ddf](https://github.com/PollyGlot/google-play-cli/commit/7f51ddf46e26414b82855a6da01567c265c2217c))
+
+
+### Bug Fixes
+
+* **compliance:** datasafety set exits 3 (not 2) when --confirm is missing ([#407](https://github.com/PollyGlot/google-play-cli/issues/407)) ([e4b197a](https://github.com/PollyGlot/google-play-cli/commit/e4b197af2ae4b5ceda9822805e7dc73633a876e8))
+* every missing --confirm refusal exits 3, not 2 ([#410](https://github.com/PollyGlot/google-play-cli/issues/410)) ([a1f5d8d](https://github.com/PollyGlot/google-play-cli/commit/a1f5d8d42ed77bb3161d6301a7dbfedd2aceb540))
+
 ## [0.18.0](https://github.com/PollyGlot/google-play-cli/compare/v0.17.0...v0.18.0) (2026-07-29)
 
 
