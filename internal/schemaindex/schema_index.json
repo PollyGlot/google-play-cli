@@ -1,5 +1,5 @@
 {
-  "revision": "20260723",
+  "revision": "20260730",
   "methods": {
     "androidpublisher.applications.dataSafety": {
       "httpMethod": "POST",
