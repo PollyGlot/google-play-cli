@@ -358,10 +358,28 @@ third-party action is SHA-pinned (see
 
 A leading **`changes`** job ([`dorny/paths-filter`](https://github.com/dorny/paths-filter))
 classifies each diff and exposes a `code` output. A change is `code: true` if it
-touches any of `**/*.go`, `go.mod`, `go.sum`, `Makefile`, `.github/**`,
-`scripts/**`, or `install.sh` — the same "not docs-only" boundary as
-[`CLAUDE.md`](../CLAUDE.md). Everything else (Markdown, `docs/**`, `website/**`,
-doc assets) is docs/site-only.
+touches any of `cmd/**`, `commands/**`, `internal/**`, `**/*.go`, `go.mod`,
+`go.sum`, `Makefile`, `.github/**`, `scripts/**`, `install.sh`, or
+`docs/discovery/**` — the same "not docs-only" boundary as
+[`CLAUDE.md`](../CLAUDE.md). Everything else (Markdown, the rest of `docs/**`,
+`website/**`, doc assets) is docs/site-only.
+
+Two entries in that list are easy to get wrong, and both were:
+
+- **The Go source directories are matched wholesale, not by `*.go` extension.**
+  The binary embeds non-Go files — `internal/schemaindex/schema_index.json` and
+  `internal/compliance/datasafety/reference.csv`, both `go:embed` — so an
+  extension-based filter classified a snapshot refresh as docs-only and skipped
+  the tests that guard it (notably `internal/schemaindex/integrity_test.go`,
+  which asserts the committed snapshots derive byte-identically to the embedded
+  index). Directory globs keep any future `go:embed` covered by default.
+- **`docs/discovery/**` is code, despite living under `docs/`.** Those snapshots
+  are the inputs to `make schema-index-update`, so changing them can
+  desynchronise the embedded Schema index even when nothing under `internal/`
+  moves.
+
+The rule of thumb: `code` means *"can this change the built binary?"*, not
+*"does this end in `.go`?"*.
 
 On a docs-only PR the heavy jobs short-circuit, so the frequent self-merged doc
 PRs don't pay the ~2m40s build + ~1m50s fuzz. **The required-check interplay is
@@ -378,10 +396,14 @@ the subtle part:**
 - **`docs`** ("Docs sanity") always runs — it's required, cheap, and relevant to
   every PR.
 
-Net effect: docs-only PRs get a fast green pipeline; any `.go`/`go.mod`/
-`Makefile`/`.github`/`scripts` touch flips `code` true and runs the full
-pipeline unchanged — gating is by changed path, never by trust, so there's no
-loss of safety.
+Net effect: docs-only PRs get a fast green pipeline; any touch to a Go source
+directory, `go.mod`, `Makefile`, `.github`, `scripts`, or the Discovery
+snapshots flips `code` true and runs the full pipeline unchanged — gating is by
+changed path, never by trust, so there's no loss of safety.
+
+When adding a path that the build consumes, add it to the filter in the same PR.
+A green "Build, lint, test" that finished in seconds means the job *skipped*, not
+that it passed — check the job's step list before reading it as a signal.
 
 ### CodeQL
 

@@ -54,10 +54,13 @@ a `gplay-cli-usage` foundation. Install:
   sanctioned mechanism is the admin override `gh pr merge <n> --admin --squash`
   — but **only after you have confirmed every CI check is green** (`--admin`
   bypasses required checks too, so you are the gate; never override a failing or
-  pending run). **Docs-only means zero non-doc files**: any change to `*.go`,
-  `Makefile`, `.github/**`, `go.mod`/`go.sum`, or install/release scripts
-  disqualifies the PR — those still need explicit approval and a normal reviewed
-  merge.
+  pending run). **Docs-only means zero non-doc files**: any change under
+  `cmd/**`, `commands/**`, `internal/**` (*whatever the extension* — the binary
+  embeds JSON and CSV too), or to `Makefile`, `.github/**`, `go.mod`/`go.sum`,
+  install/release scripts, or `docs/discovery/**` (Discovery snapshots are build
+  inputs, not docs) disqualifies the PR — those still need explicit approval and
+  a normal reviewed merge. This list is mirrored by the `code` path filter in
+  [`ci.yml`](.github/workflows/ci.yml); keep the two in sync.
 
 ## Commit types & releases
 

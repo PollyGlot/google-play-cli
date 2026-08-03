@@ -36,8 +36,20 @@ jobs:
           # `code` = anything that can change the built binary or the CI/build
           # machinery itself. Mirrors the docs-only definition in CLAUDE.md: a
           # PR touching none of these is docs/site-only and skips build+fuzz.
+          #
+          # The Go source directories are matched wholesale rather than by
+          # `*.go` extension, because the binary embeds non-Go files too
+          # (`internal/schemaindex/schema_index.json`,
+          # `internal/compliance/datasafety/reference.csv`). Gating on the
+          # extension let those through as "docs-only", skipping the very tests
+          # that guard them. Directory-level globs keep any future `go:embed`
+          # covered by default; there are no docs under these paths, so nothing
+          # is over-triggered.
           filters: |
             code:
+              - 'cmd/**'
+              - 'commands/**'
+              - 'internal/**'
               - '**/*.go'
               - 'go.mod'
               - 'go.sum'
@@ -45,6 +57,9 @@ jobs:
               - '.github/**'
               - 'scripts/**'
               - 'install.sh'
+              # Inputs to `make schema-index-update`: they live under docs/ but
+              # a change here can desynchronise the embedded Schema index.
+              - 'docs/discovery/**'
 
   build:
     name: Build, lint, test
