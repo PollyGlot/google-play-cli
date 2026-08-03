@@ -49,18 +49,21 @@ a `gplay-cli-usage` foundation. Install:
 
 - **Docs-only PRs: merge without asking.** If a PR changes *only* documentation
   — Markdown and doc assets (`*.md`: `README`, `CLAUDE.md`, `CONTEXT.md`,
-  everything under `docs/` incl. ROADMAP/BACKLOG/DESIGN/ADRs) — squash-merge it
-  to `main` yourself, no confirmation needed. `main` is review-protected, so the
-  sanctioned mechanism is the admin override `gh pr merge <n> --admin --squash`
-  — but **only after you have confirmed every CI check is green** (`--admin`
-  bypasses required checks too, so you are the gate; never override a failing or
-  pending run). **Docs-only means zero non-doc files**: any change under
-  `cmd/**`, `commands/**`, `internal/**` (*whatever the extension* — the binary
-  embeds JSON and CSV too), or to `Makefile`, `.github/**`, `go.mod`/`go.sum`,
-  install/release scripts, or `docs/discovery/**` (Discovery snapshots are build
-  inputs, not docs) disqualifies the PR — those still need explicit approval and
-  a normal reviewed merge. This list is mirrored by the `code` path filter in
-  [`ci.yml`](.github/workflows/ci.yml); keep the two in sync.
+  everything under `docs/` incl. ROADMAP/BACKLOG/DESIGN/ADRs, **except**
+  `docs/discovery/**`) — squash-merge it to `main` yourself, no confirmation
+  needed. `main` is review-protected, so the sanctioned mechanism is the admin
+  override `gh pr merge <n> --admin --squash` — but **only after you have
+  confirmed every CI check is green** (`--admin` bypasses required checks too,
+  so you are the gate; never override a failing or pending run).
+
+  **Docs-only means zero non-doc files.** The disqualifying set is exactly the
+  `code` path filter in [`ci.yml`](.github/workflows/ci.yml) — keep the two in
+  sync: `cmd/**`, `commands/**`, `internal/**`, `**/*.go`, `go.mod`, `go.sum`,
+  `Makefile`, `.github/**`, `scripts/**`, `install.sh`, `docs/discovery/**`.
+  Touching any of them still needs explicit approval and a normal reviewed
+  merge. Two entries are easy to misread: the code directories match *whatever
+  the extension* (the binary embeds JSON and CSV via `go:embed`), and
+  `docs/discovery/**` lives under `docs/` but is a build input, not docs.
 
 ## Commit types & releases
 
