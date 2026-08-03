@@ -138,7 +138,7 @@ Full command reference: `gplay --help` (or `gplay <subcommand> --help`).
 
 ## The Fastlane-replacement surface
 
-The CLI the skills above drive — all working today (public preview):
+The CLI the skills above drive — all working today, all in the frozen contract:
 
 ```bash
 # Upload an AAB to the internal track, with localized release notes.
