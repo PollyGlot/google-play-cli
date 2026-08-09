@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
@@ -65,6 +66,43 @@ func RequirePlayPackage(pkg, usage string) (string, error) {
 	return pkg, nil
 }
 
+// ParseRFC3339 validates a required RFC 3339 timestamp flag (the `google-datetime`
+// format the API's time-range parameters take). It returns the parsed instant —
+// for range checks — and the trimmed original string, which is what travels on
+// the wire so the caller's offset is preserved verbatim. A missing or malformed
+// value is CLI misuse (exit 2) naming the flag and a valid example, so a CI run
+// fails fast instead of paying for a round trip that the API would reject.
+func ParseRFC3339(flag, value string) (time.Time, string, error) {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return time.Time{}, "", &usageError{msg: "missing --" + flag + ": an RFC 3339 timestamp is required, e.g. --" + flag + " 2026-07-01T00:00:00Z"}
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, "", &usageError{msg: fmt.Sprintf("invalid --%s %q: expected an RFC 3339 timestamp, e.g. 2026-07-01T00:00:00Z or 2026-07-01T02:00:00+02:00", flag, v)}
+	}
+	return t, v, nil
+}
+
+// ValidateTimeRange validates the required --start-time / --end-time pair and
+// returns the two strings to send. The range is [start, end) — the API documents
+// the start as inclusive and the end as exclusive — so an end at or before the
+// start can only ever return nothing and is rejected as CLI misuse (exit 2).
+func ValidateTimeRange(startFlag, endFlag string) (string, string, error) {
+	start, startStr, err := ParseRFC3339("start-time", startFlag)
+	if err != nil {
+		return "", "", err
+	}
+	end, endStr, err := ParseRFC3339("end-time", endFlag)
+	if err != nil {
+		return "", "", err
+	}
+	if !end.After(start) {
+		return "", "", &usageError{msg: fmt.Sprintf("invalid time range: --end-time %q must be after --start-time %q (the range is [start, end), end exclusive)", endStr, startStr)}
+	}
+	return startStr, endStr, nil
+}
+
 // forbiddenError wraps a 403 with an agent-resolvable hint: the catalog export
 // is granted per app store, so the usual fix is an enrollment/allow-list gap on
 // the app store package name, not a per-app permission. It carries no ExitCode
@@ -104,6 +142,34 @@ func ClassifyAppView(storePkg, playPkg string, err error) error {
 			return &forbiddenError{storePkg: storePkg, cause: err}
 		case http.StatusNotFound:
 			return &notFoundError{storePkg: storePkg, playPkg: playPkg, cause: err}
+		}
+	}
+	return err
+}
+
+// storeNotFoundError wraps a 404 on a store-scoped read: there is no Play app in
+// play here, only the app store package name, so the hint names that alone.
+type storeNotFoundError struct {
+	storePkg string
+	cause    error
+}
+
+func (e *storeNotFoundError) Error() string {
+	return fmt.Sprintf("no catalog export for app store %q — verify --store-package names an app store enrolled for the Google Play Catalog Export: %v", e.storePkg, e.cause)
+}
+func (e *storeNotFoundError) Unwrap() error { return e.cause }
+
+// ClassifyStoreRead adds 403/404 hints to a read keyed by the app store package
+// name alone (no Play app), leaving the *api.Error to drive the exit code
+// (403 → 11, 404 → 30). Any other error passes through.
+func ClassifyStoreRead(storePkg string, err error) error {
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusForbidden:
+			return &forbiddenError{storePkg: storePkg, cause: err}
+		case http.StatusNotFound:
+			return &storeNotFoundError{storePkg: storePkg, cause: err}
 		}
 	}
 	return err

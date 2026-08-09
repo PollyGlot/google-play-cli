@@ -286,3 +286,10 @@ Google's read-only snapshot of one Play app as it appears in the **Catalog Expor
 Deliberately **distinct from apps view**, gplay's identity card for the *developer's own* app built from the Edits resources: a Catalog app view is the *app store operator's* view of somebody else's published app, and gplay can never write it. Equally distinct from a [Listing](#listing) — the developer-authored per-locale text; a Catalog app view merely *reports* the localized store listings Play already serves.
 
 _Avoid_: calling it "app metadata" (metadata is the per-locale [Store front](#store-front) gplay writes) or implying it is writable.
+
+### Update event
+One entry of the Catalog Export's incremental-sync feed (`RecentUpdateEvent`, listed by `appstorecatalog.recentupdateevents.list`): `{playAppPackageName, eventTime, updateType}`, where the update type is **`MODIFICATION`** (the app changed — re-fetch its [Catalog app view](#catalog-app-view)) or **`DELETION`** (the app stopped being eligible for catalog inclusion or was removed from the Play Store — delist it). Listed by `gplay appstore catalog events list --start-time <t> --end-time <t>`: the time range is **required by the API**, RFC 3339, and half-open — start inclusive, end exclusive — and gplay validates it client-side so a malformed range costs no round trip. One page per invocation, `--page-size`/`--page-token`.
+
+It is the *delta* channel of the Catalog Export, whose *snapshot* channel is the Catalog app view: an app store polls the update events for a range, then re-reads only the apps they name.
+
+_Avoid_: "change", "diff" or "notification" as the noun — the canonical term is **update event**; and do not confuse it with a Real-time Developer Notification (a Pub/Sub message about a *purchase*, which gplay does not ingest).

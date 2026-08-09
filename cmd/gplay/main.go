@@ -16,6 +16,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/removecmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/viewcmd"
+	appstorecatalogeventslist "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/events/list"
 	appstorecatalogview "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/view"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
@@ -499,6 +500,18 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	appstoreCatalog.AddCommand(appstorecatalogview.NewCommand(boot))
+	// `events` is a grouping noun under `catalog`: the update-event feed is its
+	// own resource (a time-ranged list of changes), not a mode of `catalog view`
+	// (a new noun, never a flag — ADR-0019).
+	appstoreCatalogEvents := &cobra.Command{
+		Use:           "events",
+		Short:         "Read the catalog update-event feed (incremental catalog sync)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	appstoreCatalogEvents.AddCommand(appstorecatalogeventslist.NewCommand(boot))
+	appstoreCatalog.AddCommand(appstoreCatalogEvents)
 	appstore.AddCommand(appstoreCatalog)
 	// [experimental] (ADR-0010/ADR-0042): a brand-new namespace serving a persona
 	// gplay has never served, whose addressing axis (the app store package name)

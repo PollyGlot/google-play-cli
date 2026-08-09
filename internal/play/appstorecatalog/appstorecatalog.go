@@ -18,13 +18,35 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// opRecentAppViewGet is the native RPC id, used as the Operation on any
-// *api.Error so the shared classifier maps 403 → exit 11, 404 → exit 30, etc.
-const opRecentAppViewGet = "appstorecatalog.recentappviews.get"
+// op* are the native RPC ids, used as the Operation on any *api.Error so the
+// shared classifier maps 403 → exit 11, 404 → exit 30, etc.
+const (
+	opRecentAppViewGet       = "appstorecatalog.recentappviews.get"
+	opRecentUpdateEventsList = "appstorecatalog.recentupdateevents.list"
+)
+
+// Update type values of a RecentUpdateEvent, per the Discovery snapshot.
+const (
+	// UpdateTypeModification means the app was modified.
+	UpdateTypeModification = "MODIFICATION"
+	// UpdateTypeDeletion means the app stopped being eligible for catalog
+	// inclusion or was removed from the Play Store.
+	UpdateTypeDeletion = "DELETION"
+)
+
+// DefaultPageSize is the number of update events the server returns when
+// pageSize is unset, and MaxPageSize the cap it coerces larger values down to
+// (both per the recentupdateevents.list Discovery description). Named here so
+// the command's --help can state them without hard-coding a second copy.
+const (
+	DefaultPageSize = 100
+	MaxPageSize     = 1000
+)
 
 // Money mirrors the Money schema: an amount split into whole units (a decimal
 // int64 string) plus nano (10^-9) units, tagged with an ISO-4217 currency.
@@ -156,6 +178,60 @@ func GetRecentAppView(ctx context.Context, hc *http.Client, storePkg, playPkg st
 		return RecentAppView{}, nil, &api.Error{Operation: opRecentAppViewGet, Package: playPkg, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return v, raw, nil
+}
+
+// RecentUpdateEvent mirrors the RecentUpdateEvent schema: one entry of the
+// incremental catalog-sync feed — which Play app changed, when, and whether the
+// change was a MODIFICATION or a DELETION.
+type RecentUpdateEvent struct {
+	PlayAppPackageName string `json:"playAppPackageName,omitempty"`
+	EventTime          string `json:"eventTime,omitempty"`
+	UpdateType         string `json:"updateType,omitempty"`
+}
+
+// ListRecentUpdateEventsResponse mirrors the ListRecentUpdateEvents envelope:
+// one page of update events plus the continuation token.
+type ListRecentUpdateEventsResponse struct {
+	RecentUpdateEvents []RecentUpdateEvent `json:"recentUpdateEvents,omitempty"`
+	NextPageToken      string              `json:"nextPageToken,omitempty"`
+}
+
+// ListRecentUpdateEvents reads one page of update events for the apps eligible
+// for the app store's catalog, in the [startTime, endTime) range. Both times are
+// REQUIRED by the API and travel as RFC 3339 query parameters (the caller
+// validates them client-side so a malformed range never costs a round trip).
+// Pagination is caller-driven — one page per call, the accessible-apps /
+// device-tiers convention: pass pageToken from a previous response's
+// NextPageToken to fetch the next page, keeping every other parameter identical.
+// pageSize <= 0 lets the server apply its default (DefaultPageSize; larger
+// values are coerced down to MaxPageSize). Returns the parsed page and the
+// verbatim body for the ADR-0003 --output json pass-through.
+func ListRecentUpdateEvents(ctx context.Context, hc *http.Client, storePkg, startTime, endTime string, pageSize int, pageToken string) (ListRecentUpdateEventsResponse, json.RawMessage, error) {
+	q := url.Values{}
+	q.Set("startTime", startTime)
+	q.Set("endTime", endTime)
+	if pageSize > 0 {
+		q.Set("pageSize", strconv.Itoa(pageSize))
+	}
+	if pageToken != "" {
+		q.Set("pageToken", pageToken)
+	}
+	u := api.AndroidPubBase + "/appstorecatalog/" + url.PathEscape(storePkg) +
+		"/recentUpdateEvents?" + q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return ListRecentUpdateEventsResponse{}, nil, &api.Error{Operation: opRecentUpdateEventsList, Message: err.Error(), Cause: err}
+	}
+	raw, err := do(hc, opRecentUpdateEventsList, "", req)
+	if err != nil {
+		return ListRecentUpdateEventsResponse{}, nil, err
+	}
+	var resp ListRecentUpdateEventsResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return ListRecentUpdateEventsResponse{}, nil, &api.Error{Operation: opRecentUpdateEventsList, Message: "decode response: " + err.Error(), Cause: err}
+	}
+	return resp, raw, nil
 }
 
 // do runs req and maps the response to (raw body, *api.Error): a non-2xx body
