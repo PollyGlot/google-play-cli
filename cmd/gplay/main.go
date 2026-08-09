@@ -16,6 +16,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/removecmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/viewcmd"
+	appstorecatalogview "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/view"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
@@ -473,6 +474,36 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// organisation-scoped API with no read to verify the result — the surface
 	// least able to prove it got the shape right.
 	root.AddCommand(kernel.Experimental(customapps))
+
+	// `gplay appstore` — the surface for the operator of an ALTERNATIVE APP
+	// STORE, not the app-developer persona the rest of gplay serves. Addressing
+	// rides the app store package name (--store-package / the
+	// GPLAY_APP_STORE_PACKAGE env var), a distinct axis from the Android package
+	// of the repo's own app, so there is no project-pin cascade. `appstore` and
+	// `catalog` are grouping nouns (kernel.GroupRunE — bare prints help, an
+	// unknown subcommand is exit-2 misuse). Everything under `catalog` is
+	// read-only (the Catalog Export for app stores) and Edit-free, so no leaf is
+	// MarkMutating. See PRD #396 / CONTEXT.md (Catalog app view).
+	appstore := &cobra.Command{
+		Use:           "appstore",
+		Short:         "Alternative app store operations (Play catalog export for app stores)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	appstoreCatalog := &cobra.Command{
+		Use:           "catalog",
+		Short:         "Read Google Play's catalog export for app stores",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	appstoreCatalog.AddCommand(appstorecatalogview.NewCommand(boot))
+	appstore.AddCommand(appstoreCatalog)
+	// [experimental] (ADR-0010/ADR-0042): a brand-new namespace serving a persona
+	// gplay has never served, whose addressing axis (the app store package name)
+	// has not yet been exercised against a real enrolled app store.
+	root.AddCommand(kernel.Experimental(appstore))
 
 	// `gplay edits` — the EXPLICIT Edit lifecycle (begin/commit/discard/status,
 	// docs/DESIGN.md §4 / CONTEXT.md "Edit"). Most write commands run their own

@@ -385,6 +385,10 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		// customapps
 		{[]string{"customapps", "create"}, true},
 
+		// appstore — the alternative-app-store persona. Everything under
+		// `catalog` is a read of Play's catalog export; nothing mutates.
+		{[]string{"appstore", "catalog", "view"}, false},
+
 		// edits — begin/commit/discard mutate Play state (insert/commit/delete);
 		// status is a local-pin read.
 		{[]string{"edits", "begin"}, true},
@@ -596,6 +600,11 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"recovery", "cancel"}, true},
 		{[]string{"recovery", "add-targeting"}, true},
 		{[]string{"customapps", "create"}, true},
+
+		// appstore — a brand-new namespace for a persona gplay has never served,
+		// on an addressing axis (the app store package name) never exercised
+		// against a real enrolled app store. Experimental until it has been.
+		{[]string{"appstore", "catalog", "view"}, true},
 
 		// team / edits — exercised on every real account and every write
 		// respectively, frozen.
