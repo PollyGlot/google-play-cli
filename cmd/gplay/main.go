@@ -16,6 +16,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/removecmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/viewcmd"
+	appstorecreate "github.com/PollyGlot/google-play-cli/commands/appstore/create"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
@@ -453,6 +454,30 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	team.AddCommand(teamGrants)
 
 	root.AddCommand(team)
+
+	// `gplay appstore` — the surface a third-party Android app store uses to
+	// submit the apps it hosts to Google for review (`appstoreappsreview`, the
+	// DMA / alternative-distribution obligation; PRD #377). Its addressing axis
+	// is the app store package name (`appstore/{appStorePackageName}/...`) — a
+	// third axis alongside the package axis and the developer-account axis
+	// (ADR-0015): the caller is the store, the subject is the app it hosts, so
+	// every leaf carries --store-package on top of --package. Edit-free.
+	// `create` (#378) is the mandatory first call for any hosted app — Google
+	// rejects every other RPC until it has succeeded — and is MarkMutating so
+	// GPLAY_READONLY refuses it (exit 4). See CONTEXT.md ("Hosted app",
+	// "App store package name").
+	appstoreGroup := &cobra.Command{
+		Use:           "appstore",
+		Short:         "Submit the apps a third-party app store hosts to Google for review",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	appstoreGroup.AddCommand(kernel.MarkMutating(appstorecreate.NewCommand(boot)))
+	// [experimental] (ADR-0010/ADR-0042): a brand-new namespace on a new
+	// addressing axis, none of it yet exercised against a real enrolled app
+	// store — exactly the surface least able to prove it got the shape right.
+	root.AddCommand(kernel.Experimental(appstoreGroup))
 
 	// `gplay customapps` — managed Google Play private app creation
 	// (playcustomapp.accounts.customApps.create). Like `team` it is keyed by the

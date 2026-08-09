@@ -274,3 +274,17 @@ _Avoid_: "IAP" for subscriptions (sibling catalogs, distinct resources); writing
 The action set `subscriptions apply` computes between a [Monetization catalog](#monetization-catalog) and the live catalog: create/patch/delete of subscriptions and of their offers, plus the lifecycle activations/deactivations reconciling a declared `state:` (ACTIVE/INACTIVE — omitted means unmanaged) through the dedicated endpoints, never a patch. `--dry-run` prints the plan and stops; without it the plan executes, except that a plan containing any **delete** refuses to run without `--confirm` (exit 3). `--output json` renders the plan as a gplay-owned shape (`[experimental]`), an explicit exception to pure API pass-through since no single API response describes a diff.
 
 _Avoid_: calling an executed plan "synced" when deletes were skipped by refusal — the refusal is the whole plan not running, never a partial apply.
+
+### Hosted app
+An app **distributed by a third-party Android app store** rather than by Google Play, whose store submits it to Google for review — the alternative-distribution (DMA) obligation. Backed by the `appstoreappsreview` resource of the [Android Publisher API](#android-publisher-api) and surfaced under the `gplay appstore` namespace. A Hosted app exists as a **record** that must be created first: Google's own contract is that `appstoreappsreview.createappstorehostedapp` "must be called before any other RPCs for this hosted app", so `gplay appstore create --store-package <sp> --package <pkg>` is the entry point of the whole namespace — metadata updates, APK uploads, image uploads, policy declaration files and publish-status changes all presuppose it. The record is **Edit-free** (it joins no [Edit](#edit)) and is addressed by the [App store package name](#app-store-package-name) plus the app's own package name.
+
+Two identifiers are always in play and must never be swapped: the **app store** is the *caller* (the path key), the Hosted app is the *subject* (the request body).
+
+_Avoid_: calling it a "third-party app" or a "hosted application"; and confusing it with a [Custom app](#custom-app) — a Custom app is a private app **Google Play** distributes to one organisation through managed Google Play, whereas a Hosted app is distributed by someone else's store and only *reviewed* by Google.
+
+### App store package name
+The package name of the **third-party Android app store itself** (e.g. the store's own app), used as the addressing key of the `appstoreappsreview` surface: `appstore/{appStorePackageName}/...`. It is gplay's **third addressing axis**, alongside the package axis (`applications/{packageName}/...`) and the developer-account axis ([ADR-0015](docs/adr/0015-developer-account-addressing-rides-on-account.md)) — and the only one where the caller and the subject are different parties. Carried by the `--store-package` flag on every `gplay appstore` leaf.
+
+Deliberately **not** defaultable from the [Project](#project) pin: a Project pins a *package*, never a store, and the two values sit on opposite sides of the call (the store package identifies who is calling, `--package` identifies the [Hosted app](#hosted-app) being acted on).
+
+_Avoid_: writing "store package" as a synonym for the hosted app's package name, or calling it a "store id" — it is a package name, and the canonical term is **App store package name**.

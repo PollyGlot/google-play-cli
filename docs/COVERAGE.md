@@ -40,7 +40,7 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 By method count, of the **~159 admin methods** across the four APIs:
 
-- **~114 shipped (~72%)** — essentially the entire *publish / first-release /
+- **~115 shipped (~72%)** — essentially the entire *publish / first-release /
   team / observability* half plus the admin commerce-reads and games config
   (incl. `edits.apks.upload` via `releases upload`, ADR-0036,
   `generatedapks`, PRD #299 / ADR-0034, `customapps`, PRD #242 / ADR-0032,
@@ -56,12 +56,14 @@ By method count, of the **~159 admin methods** across the four APIs:
   pull and one-way `--migrate` promotion (#371–#372). **All six slices of
   PRD #51 are shipped**; the remaining monetization methods are the iap
   lifecycle states and batch/read-single redundancies.
-- **~67 methods remain**, of which **~50 are the rest of the monetization
+- **~66 methods remain**, of which **~50 are the rest of the monetization
   continent** (subscription nesting + one-time products under #51, legacy IAP,
-  external transactions #295); the other ~17 are long-tail (`edits.apks`,
+  external transactions #295); the other ~16 are long-tail (`edits.apks`,
   `systemapks`, voided purchases, `orders.reviewrefund` (#352, parked 2026-07-17),
-  the two reporting helpers, plus the 6-method `appstoreappsreview` hosted-app
-  surface (PRD #377, surfaced 2026-07-20 by the Discovery refresh PR #374)).
+  the two reporting helpers, plus the remaining 5 of the 6-method
+  `appstoreappsreview` hosted-app surface (PRD #377, surfaced 2026-07-20 by the
+  Discovery refresh PR #374; slice #378 shipped `createappstorehostedapp` and
+  the `appstore` namespace)).
   Monetization remains the biggest block in flight, and the honest answer to
   "are we near the end?": **the commerce half is now started, not finished.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
@@ -88,7 +90,7 @@ By method count, of the **~159 admin methods** across the four APIs:
 | `applications.deviceTierConfigs` | 3 | ✅ | `device-tiers` |
 | `applications.tracks.releases.list` | 1 | ✅ | `releases list` |
 | `apprecovery` | 5 | ✅ | `recovery` |
-| `appstoreappsreview` | 6 | 🔵 | `appstore` — hosted-app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377), slices [#378](https://github.com/PollyGlot/google-play-cli/issues/378)/[#379](https://github.com/PollyGlot/google-play-cli/issues/379)/[#380](https://github.com/PollyGlot/google-play-cli/issues/380)/[#381](https://github.com/PollyGlot/google-play-cli/issues/381); surfaced 2026-07-20 by Discovery PR #374 |
+| `appstoreappsreview` | 6 | 1 ✅ | `appstore` — hosted-app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377), slices [#378](https://github.com/PollyGlot/google-play-cli/issues/378)/[#379](https://github.com/PollyGlot/google-play-cli/issues/379)/[#380](https://github.com/PollyGlot/google-play-cli/issues/380)/[#381](https://github.com/PollyGlot/google-play-cli/issues/381); surfaced 2026-07-20 by Discovery PR #374. **`createappstorehostedapp` shipped** as `appstore create` (#378) — the namespace root, its `--store-package` axis and the hosted-app record, the mandatory precondition for every other method here. Remaining 🔵: `updateappstorehostedapp`, `updateappstorehostedapppublishstatus`, `uploadapk`, `uploadimage`, `uploadappstoreapppolicydeclarationfile` |
 | `internalappsharingartifacts` | 2 | ✅ | `releases sharing` |
 | `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |

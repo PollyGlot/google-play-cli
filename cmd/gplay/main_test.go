@@ -382,6 +382,11 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"team", "grants", "set"}, true},
 		{[]string{"team", "grants", "remove"}, true},
 
+		// appstore — createappstorehostedapp creates a server-side record on
+		// the app store axis; a dropped MarkMutating would let it run under
+		// GPLAY_READONLY=1 instead of exit 4.
+		{[]string{"appstore", "create"}, true},
+
 		// customapps
 		{[]string{"customapps", "create"}, true},
 
@@ -596,6 +601,10 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"recovery", "cancel"}, true},
 		{[]string{"recovery", "add-targeting"}, true},
 		{[]string{"customapps", "create"}, true},
+
+		// appstore — a brand-new namespace (PRD #377) on a new addressing axis,
+		// none of it exercised against a real enrolled app store yet.
+		{[]string{"appstore", "create"}, true},
 
 		// team / edits — exercised on every real account and every write
 		// respectively, frozen.
