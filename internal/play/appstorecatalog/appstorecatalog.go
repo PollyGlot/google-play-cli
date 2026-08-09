@@ -64,31 +64,21 @@ type Date struct {
 	Day   int `json:"day,omitempty"`
 }
 
-// DeveloperDetails mirrors the DeveloperDetails schema: who publishes the app.
+// DeveloperDetails mirrors the DeveloperDetails schema, deliberately partial:
+// only the developer name feeds the human renderers; the contact block reaches
+// the caller through the ADR-0003 JSON pass-through.
 type DeveloperDetails struct {
 	DeveloperName string `json:"developerName,omitempty"`
-	ContactEmail  string `json:"contactEmail,omitempty"`
-	PhoneNumber   string `json:"phoneNumber,omitempty"`
-	Website       string `json:"website,omitempty"`
-	Address       string `json:"address,omitempty"`
 }
 
-// AppContactInformation mirrors the AppContactInformation schema: the
-// developer-provided contact block shown for the app itself.
-type AppContactInformation struct {
-	ContactEmail string `json:"contactEmail,omitempty"`
-	PhoneNumber  string `json:"phoneNumber,omitempty"`
-	WebsiteURL   string `json:"websiteUrl,omitempty"`
-}
-
-// LocalizedStoreListing mirrors the text fields of one locale's store listing.
-// The image/video assets are intentionally not modelled — they reach the caller
-// through the ADR-0003 JSON pass-through.
+// LocalizedStoreListing mirrors the text fields of one locale's store listing,
+// deliberately partial: the full description and the image/video assets are
+// intentionally not modelled — they reach the caller through the ADR-0003 JSON
+// pass-through.
 type LocalizedStoreListing struct {
 	LanguageCode     string `json:"languageCode,omitempty"`
 	AppName          string `json:"appName,omitempty"`
 	ShortDescription string `json:"shortDescription,omitempty"`
-	FullDescription  string `json:"fullDescription,omitempty"`
 }
 
 // LocalizedStoreListings mirrors the LocalizedStoreListings envelope: the
@@ -143,7 +133,6 @@ type CatalogAppView struct {
 	HasInAppPurchases               bool                              `json:"hasInAppPurchases,omitempty"`
 	PrivacyPolicyURL                string                            `json:"privacyPolicyUrl,omitempty"`
 	DeveloperDetails                *DeveloperDetails                 `json:"developerDetails,omitempty"`
-	AppContactInformation           *AppContactInformation            `json:"appContactInformation,omitempty"`
 	LocalizedStoreListings          *LocalizedStoreListings           `json:"localizedStoreListings,omitempty"`
 	Permissions                     []CatalogPermission               `json:"permissions,omitempty"`
 	PermissionsSdk23                []CatalogPermission               `json:"permissionsSdk23,omitempty"`

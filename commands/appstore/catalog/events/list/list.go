@@ -15,6 +15,7 @@ package list
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"strconv"
 
@@ -51,10 +52,21 @@ type Payload struct {
 	Raw    json.RawMessage
 }
 
+// renderJSON emits the verbatim API bytes (ADR-0003 pass-through). An empty Raw
+// is a bug, never a valid render: erroring loudly beats zero bytes at exit 0 on
+// the CI default format.
+func (p Payload) renderJSON(w io.Writer) error {
+	if len(p.Raw) == 0 {
+		return fmt.Errorf("missing raw update events payload for --output json")
+	}
+	_, err := w.Write(p.Raw)
+	return err
+}
+
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return output.RenderTable(w, columns, p.Events) },
-		JSON:     func(w io.Writer) error { _, err := w.Write(p.Raw); return err },
+		JSON:     p.renderJSON,
 		Markdown: func(w io.Writer) error { return output.RenderMarkdown(w, columns, p.Events) },
 	}
 }
@@ -86,7 +98,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, appstorecmd.ClassifyStoreRead(storePkg, err)
 	}
 	if resp.NextPageToken != "" && rc.Stderr != nil {
-		_, _ = io.WriteString(rc.Stderr, "NOTE: more update events available — re-run with --page-token "+resp.NextPageToken+" (and the same --start-time/--end-time) for the next page.\n")
+		_, _ = io.WriteString(rc.Stderr, "NOTE: more update events available — re-run with --page-token "+resp.NextPageToken+" (keeping the same --start-time/--end-time/--page-size: the API rejects a page token when any other parameter changes) for the next page.\n")
 	}
 	return Payload{Events: resp.RecentUpdateEvents, Raw: raw}, nil
 }
@@ -124,7 +136,8 @@ pin: pass --store-package <pkg> or export ` + appstorecmd.EnvStorePackage + `.
 Pagination is one page per invocation. --page-size defaults to the server's
 ` + strconv.Itoa(appstorecatalog.DefaultPageSize) + ` when unset, and anything above ` + strconv.Itoa(appstorecatalog.MaxPageSize) + ` is coerced down to it; pass the
 previous response's nextPageToken as --page-token, keeping the SAME
---start-time/--end-time across pages. In table/markdown output a note on stderr
+--start-time/--end-time AND --page-size across pages (the API rejects a page
+token when any other parameter changes). In table/markdown output a note on stderr
 carries the next --page-token when more events are available; --output json
 passes the ListRecentUpdateEventsResponse through verbatim (ADR-0003),
 nextPageToken included. stdout carries the data, stderr the logs.

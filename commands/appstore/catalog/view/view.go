@@ -173,7 +173,7 @@ func listingLines(l *appstorecatalog.LocalizedStoreListings) []string {
 	for _, sl := range l.LocalizedListings {
 		label := sl.LanguageCode
 		if sl.AppName != "" {
-			label = strings.TrimSpace(label + "  " + sl.AppName)
+			label = strings.TrimSpace(label + "  " + oneLine(sl.AppName))
 		}
 		if sl.ShortDescription != "" {
 			label = strings.TrimSpace(label + " — " + oneLine(sl.ShortDescription))
