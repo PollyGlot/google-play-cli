@@ -1,4 +1,4 @@
-# Appstore hosted-app surface: `$GPLAY_APP_STORE_PACKAGE` cascade and gate placement on submit, not create
+# Appstore hosted app surface: `$GPLAY_APP_STORE_PACKAGE` cascade and gate placement on submit, not create
 
 ## Status
 
@@ -16,7 +16,7 @@ several commands would repeat the same value every time.
 The surface's entry point, `appstore create`
 ([#378](https://github.com/PollyGlot/google-play-cli/issues/378), PR
 [#423](https://github.com/PollyGlot/google-play-cli/pull/423)), creates the
-hosted-app record — per Google, "this must be called before any other RPCs for
+hosted app record — per Google, "this must be called before any other RPCs for
 this hosted app". The API exposes no read and no delete for that record.
 Formally that matches the situation that made
 [ADR-0032](./0032-custom-apps-account-axis-gated-creation.md) put `--confirm` on

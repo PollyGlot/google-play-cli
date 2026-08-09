@@ -64,7 +64,7 @@ nature):
   writes, external transactions #295); the other ~14 are long-tail
   (`edits.apks` list/addexternallyhosted, `systemapks`, voided purchases #346,
   `orders.reviewrefund` (#352, parked 2026-07-17), the reporting filter helper
-  #348, plus the remaining 5 of the 6-method `appstoreappsreview` hosted-app
+  #348, plus the remaining 5 of the 6-method `appstoreappsreview` hosted app
   surface (PRD #377, surfaced 2026-07-20 by the Discovery refresh PR #374;
   slice #378 shipped `createappstorehostedapp` and the `appstore` namespace)).
   Monetization remains the biggest block in flight, and the honest answer to
@@ -93,7 +93,7 @@ nature):
 | `applications.deviceTierConfigs` | 3 | ✅ | `device-tiers` |
 | `applications.tracks.releases.list` | 1 | ✅ | `releases list` |
 | `apprecovery` | 5 | ✅ | `recovery` |
-| `appstoreappsreview` | 6 | 1 ✅ | `appstore` — hosted-app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377), slices [#378](https://github.com/PollyGlot/google-play-cli/issues/378)/[#379](https://github.com/PollyGlot/google-play-cli/issues/379)/[#380](https://github.com/PollyGlot/google-play-cli/issues/380)/[#381](https://github.com/PollyGlot/google-play-cli/issues/381); surfaced 2026-07-20 by Discovery PR #374. **`createappstorehostedapp` shipped** as `appstore create` (#378) — the namespace root, its `--store-package` axis and the hosted-app record, the mandatory precondition for every other method here. Remaining 🔵: `updateappstorehostedapp`, `updateappstorehostedapppublishstatus`, `uploadapk`, `uploadimage`, `uploadappstoreapppolicydeclarationfile` |
+| `appstoreappsreview` | 6 | 1 ✅ | `appstore` — hosted app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377), slices [#378](https://github.com/PollyGlot/google-play-cli/issues/378)/[#379](https://github.com/PollyGlot/google-play-cli/issues/379)/[#380](https://github.com/PollyGlot/google-play-cli/issues/380)/[#381](https://github.com/PollyGlot/google-play-cli/issues/381); surfaced 2026-07-20 by Discovery PR #374. **`createappstorehostedapp` shipped** as `appstore create` (#378) — the namespace root, its `--store-package` axis and the hosted app record, the mandatory precondition for every other method here. Remaining 🔵: `updateappstorehostedapp`, `updateappstorehostedapppublishstatus`, `uploadapk`, `uploadimage`, `uploadappstoreapppolicydeclarationfile` |
 | `internalappsharingartifacts` | 2 | ✅ | `releases sharing` |
 | `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |
