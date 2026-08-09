@@ -38,9 +38,11 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 ## Headline
 
-By method count, of the **~159 admin methods** across the four APIs:
+By method count, of the **~162 admin methods** across the four APIs (173 in
+the tables below, minus the 11 runtime `purchases.*` methods excluded by
+nature):
 
-- **~115 shipped (~72%)** — essentially the entire *publish / first-release /
+- **~115 shipped (~71%)** — essentially the entire *publish / first-release /
   team / observability* half plus the admin commerce-reads and games config
   (incl. `edits.apks.upload` via `releases upload`, ADR-0036,
   `generatedapks`, PRD #299 / ADR-0034, `customapps`, PRD #242 / ADR-0032,
@@ -56,14 +58,15 @@ By method count, of the **~159 admin methods** across the four APIs:
   pull and one-way `--migrate` promotion (#371–#372). **All six slices of
   PRD #51 are shipped**; the remaining monetization methods are the iap
   lifecycle states and batch/read-single redundancies.
-- **~66 methods remain**, of which **~50 are the rest of the monetization
-  continent** (subscription nesting + one-time products under #51, legacy IAP,
-  external transactions #295); the other ~16 are long-tail (`edits.apks`,
-  `systemapks`, voided purchases, `orders.reviewrefund` (#352, parked 2026-07-17),
-  the two reporting helpers, plus the remaining 5 of the 6-method
-  `appstoreappsreview` hosted-app surface (PRD #377, surfaced 2026-07-20 by the
-  Discovery refresh PR #374; slice #378 shipped `createappstorehostedapp` and
-  the `appstore` namespace)).
+- **~47 methods remain**, of which **~33 are the rest of the monetization
+  continent** (the redundant/lifecycle subscription and one-time-product
+  methods left 🟡 by #51, the 8 deliberately unwrapped legacy `inappproducts`
+  writes, external transactions #295); the other ~14 are long-tail
+  (`edits.apks` list/addexternallyhosted, `systemapks`, voided purchases #346,
+  `orders.reviewrefund` (#352, parked 2026-07-17), the reporting filter helper
+  #348, plus the remaining 5 of the 6-method `appstoreappsreview` hosted-app
+  surface (PRD #377, surfaced 2026-07-20 by the Discovery refresh PR #374;
+  slice #378 shipped `createappstorehostedapp` and the `appstore` namespace)).
   Monetization remains the biggest block in flight, and the honest answer to
   "are we near the end?": **the commerce half is now started, not finished.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
