@@ -274,3 +274,22 @@ _Avoid_: "IAP" for subscriptions (sibling catalogs, distinct resources); writing
 The action set `subscriptions apply` computes between a [Monetization catalog](#monetization-catalog) and the live catalog: create/patch/delete of subscriptions and of their offers, plus the lifecycle activations/deactivations reconciling a declared `state:` (ACTIVE/INACTIVE — omitted means unmanaged) through the dedicated endpoints, never a patch. `--dry-run` prints the plan and stops; without it the plan executes, except that a plan containing any **delete** refuses to run without `--confirm` (exit 3). `--output json` renders the plan as a gplay-owned shape (`[experimental]`), an explicit exception to pure API pass-through since no single API response describes a diff.
 
 _Avoid_: calling an executed plan "synced" when deletes were skipped by refusal — the refusal is the whole plan not running, never a partial apply.
+
+### App store package name
+The package name of the **alternative app store** on whose behalf a `gplay appstore` request is made — the `{appStorePackageName}` path root shared by the `appstorecatalog` and `appstoreappsreview` resources. It names the **caller's store**, never the app being read or submitted, so it is a distinct addressing axis from the Android package the rest of gplay targets: there is no [Project](#project) pin cascade for it (that pin is the repo's own app, a different thing entirely). Resolved non-interactively so CI never blocks, later layer winning: `--store-package` → `$GPLAY_APP_STORE_PACKAGE`. An unresolved value is CLI misuse (exit 2), never a prompt.
+
+_Avoid_: writing "package" unqualified anywhere near an `appstore` command — two package names are in play at once, the store's and the Play app's.
+
+### Catalog app view
+Google's read-only snapshot of one Play app as it appears in the **Catalog Export for app stores** (`CatalogAppView`, wrapped in a `RecentAppView` envelope by `appstorecatalog.recentappviews.get`): package name and category, active version names, last publish time and first release date, developer details and contact information, the localized store listings Play serves, declared permissions (all-SDK and SDK 23+), device compatibility requirements and exclusions, US price and sale price, IARC certificate id and adult-only flag, privacy policy URL, and the **delivery token** used with the Google Play Inline Install API. Addressed by an [App store package name](#app-store-package-name) plus the Play app package name; surfaced by `gplay appstore catalog view <play-package>`. Read-only and **outside the [Edit](#edit) model** — it opens no Edit.
+
+Deliberately **distinct from apps view**, gplay's identity card for the *developer's own* app built from the Edits resources: a Catalog app view is the *app store operator's* view of somebody else's published app, and gplay can never write it. Equally distinct from a [Listing](#listing) — the developer-authored per-locale text; a Catalog app view merely *reports* the localized store listings Play already serves.
+
+_Avoid_: calling it "app metadata" (metadata is the per-locale [Store front](#store-front) gplay writes) or implying it is writable.
+
+### Update event
+One entry of the Catalog Export's incremental-sync feed (`RecentUpdateEvent`, listed by `appstorecatalog.recentupdateevents.list`): `{playAppPackageName, eventTime, updateType}`, where the update type is **`MODIFICATION`** (the app changed — re-fetch its [Catalog app view](#catalog-app-view)) or **`DELETION`** (the app stopped being eligible for catalog inclusion or was removed from the Play Store — delist it). Listed by `gplay appstore catalog events list --start-time <t> --end-time <t>`: the time range is **required by the API**, RFC 3339, and half-open — start inclusive, end exclusive — and gplay validates it client-side so a malformed range costs no round trip. One page per invocation, `--page-size`/`--page-token`.
+
+It is the *delta* channel of the Catalog Export, whose *snapshot* channel is the Catalog app view: an app store polls the update events for a range, then re-reads only the apps they name.
+
+_Avoid_: "change", "diff" or "notification" as the noun — the canonical term is **update event**; and do not confuse it with a Real-time Developer Notification (a Pub/Sub message about a *purchase*, which gplay does not ingest).

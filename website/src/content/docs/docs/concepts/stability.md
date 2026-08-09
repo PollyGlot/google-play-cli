@@ -62,6 +62,7 @@ As of 1.0:
 - `gplay subscriptions`, `gplay iap` — the declarative monetization catalog
 - `gplay games`
 - `gplay recovery`, `gplay device-tiers`, `gplay customapps`
+- `gplay appstore` — the alternative-app-store surface
 - `gplay releases sharing`, `gplay releases expansion-files`, `gplay releases generated`
 - `gplay reviews history`
 

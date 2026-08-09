@@ -38,9 +38,11 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 ## Headline
 
-By method count, of the **~159 admin methods** across the four APIs:
+By method count, of the **~164 admin methods** across the four APIs (175 in
+the tables below, minus the 11 runtime `purchases.*` methods excluded by
+nature):
 
-- **~114 shipped (~72%)** — essentially the entire *publish / first-release /
+- **~116 shipped (~71%)** — essentially the entire *publish / first-release /
   team / observability* half plus the admin commerce-reads and games config
   (incl. `edits.apks.upload` via `releases upload`, ADR-0036,
   `generatedapks`, PRD #299 / ADR-0034, `customapps`, PRD #242 / ADR-0032,
@@ -56,12 +58,15 @@ By method count, of the **~159 admin methods** across the four APIs:
   pull and one-way `--migrate` promotion (#371–#372). **All six slices of
   PRD #51 are shipped**; the remaining monetization methods are the iap
   lifecycle states and batch/read-single redundancies.
-- **~67 methods remain**, of which **~50 are the rest of the monetization
-  continent** (subscription nesting + one-time products under #51, legacy IAP,
-  external transactions #295); the other ~17 are long-tail (`edits.apks`,
-  `systemapks`, voided purchases, `orders.reviewrefund` (#352, parked 2026-07-17),
-  the two reporting helpers, plus the 6-method `appstoreappsreview` hosted-app
-  surface (PRD #377, surfaced 2026-07-20 by the Discovery refresh PR #374)).
+- **~48 methods remain**, of which **~33 are the rest of the monetization
+  continent** (the redundant/lifecycle subscription and one-time-product
+  methods left 🟡 by #51, the 8 deliberately unwrapped legacy `inappproducts`
+  writes, external transactions #295); the other ~15 are long-tail
+  (`edits.apks` list/addexternallyhosted, `systemapks`, voided purchases #346,
+  `orders.reviewrefund` (#352, parked 2026-07-17), the reporting filter helper
+  #348, plus the 6-method `appstoreappsreview` hosted-app surface (PRD #377,
+  surfaced 2026-07-20 by the Discovery refresh PR #374)). The sibling
+  `appstorecatalog` surface (PRD #396) is **shipped in full**.
   Monetization remains the biggest block in flight, and the honest answer to
   "are we near the end?": **the commerce half is now started, not finished.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
@@ -70,7 +75,7 @@ By method count, of the **~159 admin methods** across the four APIs:
 
 ---
 
-## `androidpublisher` v3 — 141 methods
+## `androidpublisher` v3 — 143 methods
 
 | Surface (resource) | Methods | State | gplay namespace / issue |
 |---|---|---|---|
@@ -89,6 +94,7 @@ By method count, of the **~159 admin methods** across the four APIs:
 | `applications.tracks.releases.list` | 1 | ✅ | `releases list` |
 | `apprecovery` | 5 | ✅ | `recovery` |
 | `appstoreappsreview` | 6 | 🔵 | `appstore` — hosted-app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377), slices [#378](https://github.com/PollyGlot/google-play-cli/issues/378)/[#379](https://github.com/PollyGlot/google-play-cli/issues/379)/[#380](https://github.com/PollyGlot/google-play-cli/issues/380)/[#381](https://github.com/PollyGlot/google-play-cli/issues/381); surfaced 2026-07-20 by Discovery PR #374 |
+| `appstorecatalog` | 2 | ✅ | `appstore catalog` — Play's Catalog Export for app stores, [PRD #396](https://github.com/PollyGlot/google-play-cli/issues/396) **shipped in full**: `recentappviews.get` → `appstore catalog view <play-package>` (slice [#397](https://github.com/PollyGlot/google-play-cli/issues/397)), `recentupdateevents.list` → `appstore catalog events list --start-time/--end-time` (slice [#398](https://github.com/PollyGlot/google-play-cli/issues/398)). Read-only, Edit-free, addressed by the app store package name; surfaced 2026-07-27 by Discovery PR #395 |
 | `internalappsharingartifacts` | 2 | ✅ | `releases sharing` |
 | `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |
 | `users` | 4 | ✅ | `team users` |
