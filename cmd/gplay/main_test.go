@@ -385,6 +385,11 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"team", "grants", "set"}, true},
 		{[]string{"team", "grants", "remove"}, true},
 
+		// appstore — createappstorehostedapp creates a server-side record on
+		// the app store axis; a dropped MarkMutating would let it run under
+		// GPLAY_READONLY=1 instead of exit 4.
+		{[]string{"appstore", "create"}, true},
+
 		// customapps
 		{[]string{"customapps", "create"}, true},
 
@@ -608,6 +613,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		// appstore — a brand-new namespace for a persona gplay has never served,
 		// on an addressing axis (the app store package name) never exercised
 		// against a real enrolled app store. Experimental until it has been.
+		{[]string{"appstore", "create"}, true},
 		{[]string{"appstore", "catalog", "view"}, true},
 		{[]string{"appstore", "catalog", "events", "list"}, true},
 

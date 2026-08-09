@@ -18,6 +18,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/apps/viewcmd"
 	appstorecatalogeventslist "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/events/list"
 	appstorecatalogview "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/view"
+	appstorecreate "github.com/PollyGlot/google-play-cli/commands/appstore/create"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
@@ -482,16 +483,20 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// GPLAY_APP_STORE_PACKAGE env var), a distinct axis from the Android package
 	// of the repo's own app, so there is no project-pin cascade. `appstore` and
 	// `catalog` are grouping nouns (kernel.GroupRunE — bare prints help, an
-	// unknown subcommand is exit-2 misuse). Everything under `catalog` is
-	// read-only (the Catalog Export for app stores) and Edit-free, so no leaf is
-	// MarkMutating. See PRD #396 / CONTEXT.md (Catalog app view).
+	// unknown subcommand is exit-2 misuse). The namespace carries the two
+	// sibling surfaces of that persona: everything under `catalog` is read-only
+	// (the Catalog Export for app stores, PRD #396) and `create` (#378, PRD
+	// #377) opens the hosted app review path — the mandatory first call for any
+	// hosted app, MarkMutating so GPLAY_READONLY refuses it (exit 4). All of it
+	// is Edit-free. See CONTEXT.md ("Catalog app view", "Hosted app").
 	appstore := &cobra.Command{
 		Use:           "appstore",
-		Short:         "Alternative app store operations (Play catalog export for app stores)",
+		Short:         "Alternative app store operations (catalog export, hosted app review)",
 		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	appstore.AddCommand(kernel.MarkMutating(appstorecreate.NewCommand(boot)))
 	appstoreCatalog := &cobra.Command{
 		Use:           "catalog",
 		Short:         "Read Google Play's catalog export for app stores",

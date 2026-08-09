@@ -1,20 +1,24 @@
 // Package appstorecmd holds the wiring shared by every `gplay appstore` leaf:
-// app store package name resolution, the exit-2 usage error, and the 403/404
-// hint classification that turns a bare API rejection into an agent-resolvable
-// refusal. Mirrors commands/orders/orderscmd and commands/games/gamescmd, and
-// keeps the leaves thin.
+// app store package name resolution, the exit-2 usage error, RFC 3339 time
+// validation, and the 403/404 hint classifications that turn a bare API
+// rejection into an agent-resolvable refusal. Mirrors commands/orders/orderscmd
+// and commands/games/gamescmd, and keeps the leaves thin.
+//
+// The namespace wraps two sibling surfaces sharing one addressing axis:
+// `appstorecatalog` (read-only catalog export) and `appstoreappsreview` (the
+// hosted app review path — see CONTEXT.md "Hosted app" and PRD #377).
 //
 // Addressing rides the APP STORE PACKAGE NAME — the package of the alternative
 // app store on whose behalf the request is made — which is a different axis
 // from the Android package the rest of gplay targets: it names the *caller's
-// store*, not the app being read. There is therefore no `.gplay/config.json`
-// project-pin cascade (that pin is the repo's own app); resolution is
-// deliberately non-interactive and CI-friendly:
+// store*, not the app being read or acted on. There is therefore no
+// `.gplay/config.json` project-pin cascade for it (that pin is the repo's own
+// app); resolution is deliberately non-interactive and CI-friendly:
 //
 //	--store-package  →  $GPLAY_APP_STORE_PACKAGE
 //
-// Later layers win, mirroring ADR-0004. An unresolved value is CLI misuse
-// (exit 2) naming both ways to set it.
+// Later layers win, mirroring ADR-0004 (see ADR-0043). An unresolved value is
+// CLI misuse (exit 2) naming both ways to set it.
 package appstorecmd
 
 import (
@@ -25,12 +29,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// EnvStorePackage supplies the app store package name from the environment. It
-// sits below the --store-package flag in the cascade so a CI job can export it
-// once and every `gplay appstore` command inherits it.
+// FlagStorePackage is the flag name carrying the app store package name. Named
+// once here so every leaf in the namespace spells it identically.
+const FlagStorePackage = "store-package"
+
+// EnvStorePackage supplies the app store package name from the environment
+// (ADR-0043). It sits below the --store-package flag in the cascade so a CI job
+// can export it once and every `gplay appstore` command inherits it.
 const EnvStorePackage = "GPLAY_APP_STORE_PACKAGE"
 
 // usageError is a CLI-misuse error with ExitCode()=2 (docs/DESIGN.md §9).
@@ -41,6 +52,13 @@ func (e *usageError) ExitCode() int { return 2 }
 
 // Usagef builds a usage error (exit 2) for the leaves to share.
 func Usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf(format, a...)} }
+
+// RegisterStorePackageFlag declares --store-package on a leaf. Every `appstore`
+// leaf calls this rather than spelling the flag itself, so the name and usage
+// string stay defined in one place.
+func RegisterStorePackageFlag(cmd *cobra.Command, target *string) {
+	cmd.Flags().StringVar(target, FlagStorePackage, "", "package name of the third-party app store making the call (falls back to $"+EnvStorePackage+")")
+}
 
 // ResolveStorePackage resolves the app store package name from the
 // --store-package flag, falling back to $GPLAY_APP_STORE_PACKAGE. Nothing is
@@ -53,8 +71,8 @@ func ResolveStorePackage(flag string) (string, error) {
 	if v := strings.TrimSpace(os.Getenv(EnvStorePackage)); v != "" {
 		return v, nil
 	}
-	return "", &usageError{msg: "no app store package name — pass --store-package <pkg> or export " + EnvStorePackage +
-		" (the package name of the app store on whose behalf the request is made, not the app being read)"}
+	return "", &usageError{msg: "no app store package name — pass --" + FlagStorePackage + " <pkg> or export " + EnvStorePackage +
+		" (the package name of the app store on whose behalf the request is made, not the app being read or acted on)"}
 }
 
 // RequirePlayPackage validates a required Play app package name, returning a
@@ -62,6 +80,20 @@ func ResolveStorePackage(flag string) (string, error) {
 func RequirePlayPackage(pkg, usage string) (string, error) {
 	if pkg = strings.TrimSpace(pkg); pkg == "" {
 		return "", &usageError{msg: usage}
+	}
+	return pkg, nil
+}
+
+// ResolvePackage resolves the target app package: --package wins, else the
+// project pin. This is the app the store hosts, addressed the same way as
+// everywhere else in gplay.
+func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
+	pkg := strings.TrimSpace(flag)
+	if pkg == "" && rc != nil && rc.Resolved != nil {
+		pkg = strings.TrimSpace(rc.Resolved.Pin)
+	}
+	if pkg == "" {
+		return "", &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
 	}
 	return pkg, nil
 }
@@ -170,6 +202,49 @@ func ClassifyStoreRead(storePkg string, err error) error {
 			return &forbiddenError{storePkg: storePkg, cause: err}
 		case http.StatusNotFound:
 			return &storeNotFoundError{storePkg: storePkg, cause: err}
+		}
+	}
+	return err
+}
+
+// reviewForbiddenError wraps a 403 on the `appstoreappsreview` write path.
+// Access is granted to enrolled third-party app stores, so the refusal names
+// both halves of what has to be true. No ExitCode of its own — the wrapped
+// *api.Error (403 → exit 11) stays authoritative.
+type reviewForbiddenError struct {
+	storePkg string
+	cause    error
+}
+
+func (e *reviewForbiddenError) Error() string {
+	return fmt.Sprintf("service account cannot act as app store %q — the app store package name must be one Google has enrolled for alternative distribution, and the service account must be linked to that store's Developer account, then retry: %v", e.storePkg, e.cause)
+}
+func (e *reviewForbiddenError) Unwrap() error { return e.cause }
+
+// reviewStoreNotFoundError wraps a 404 on the app store path key of a review
+// write with an actionable hint. The wrapped *api.Error drives the exit code
+// (404 → exit 30).
+type reviewStoreNotFoundError struct {
+	storePkg string
+	cause    error
+}
+
+func (e *reviewStoreNotFoundError) Error() string {
+	return fmt.Sprintf("app store %q not found — verify the --%s value names the third-party app store's own package name (not the hosted app's): %v", e.storePkg, FlagStorePackage, e.cause)
+}
+func (e *reviewStoreNotFoundError) Unwrap() error { return e.cause }
+
+// ClassifyReview adds 403/404 hints to an `appstoreappsreview` write failure,
+// leaving the *api.Error to drive the exit code (403 → 11, 404 → 30). Any other
+// error passes through unchanged.
+func ClassifyReview(storePkg string, err error) error {
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusForbidden:
+			return &reviewForbiddenError{storePkg: storePkg, cause: err}
+		case http.StatusNotFound:
+			return &reviewStoreNotFoundError{storePkg: storePkg, cause: err}
 		}
 	}
 	return err

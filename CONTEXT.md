@@ -275,6 +275,13 @@ The action set `subscriptions apply` computes between a [Monetization catalog](#
 
 _Avoid_: calling an executed plan "synced" when deletes were skipped by refusal — the refusal is the whole plan not running, never a partial apply.
 
+### Hosted app
+An app **distributed by a third-party Android app store** rather than by Google Play, whose store submits it to Google for review — the alternative-distribution (DMA) obligation. Backed by the `appstoreappsreview` resource of the [Android Publisher API](#android-publisher-api) and surfaced under the `gplay appstore` namespace. A Hosted app exists as a **record** that must be created first: Google's own contract is that `appstoreappsreview.createappstorehostedapp` "must be called before any other RPCs for this hosted app", so `gplay appstore create --store-package <sp> --package <pkg>` is the entry point of the whole namespace — metadata updates, APK uploads, image uploads, policy declaration files and publish-status changes all presuppose it. The record is **Edit-free** (it joins no [Edit](#edit)) and is addressed by the [App store package name](#app-store-package-name) plus the app's own package name.
+
+Two identifiers are always in play and must never be swapped: the **app store** is the *caller* (the path key), the Hosted app is the *subject* (the request body).
+
+_Avoid_: calling it a "third-party app" or a "hosted application"; and confusing it with a [Custom app](#custom-app) — a Custom app is a private app **Google Play** distributes to one organisation through managed Google Play, whereas a Hosted app is distributed by someone else's store and only *reviewed* by Google.
+
 ### App store package name
 The package name of the **alternative app store** on whose behalf a `gplay appstore` request is made — the `{appStorePackageName}` path root shared by the `appstorecatalog` and `appstoreappsreview` resources. It names the **caller's store**, never the app being read or submitted, so it is a distinct addressing axis from the Android package the rest of gplay targets: there is no [Project](#project) pin cascade for it (that pin is the repo's own app, a different thing entirely). Resolved non-interactively so CI never blocks, later layer winning: `--store-package` → `$GPLAY_APP_STORE_PACKAGE`. An unresolved value is CLI misuse (exit 2), never a prompt.
 
