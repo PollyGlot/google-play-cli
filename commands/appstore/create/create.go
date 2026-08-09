@@ -191,11 +191,14 @@ succeeded.
 Two identifiers meet here, and mixing them up is the common mistake:
 
   --store-package  the app store's OWN package name (the caller — the
-                   third-party store enrolled for alternative distribution)
+                   third-party store enrolled for alternative distribution),
+                   falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
   --package        the hosted app's package name (the subject), defaulting to
                    the repo's .gplay/config.json pin when omitted
 
-The call is Edit-free — it opens no Edit and joins none. Creating the record
+The call is Edit-free — it opens no Edit and joins none. The API exposes
+NO delete for the record: once created it cannot be removed (there is no
+delete verb to look for), only its publish status can change. Creating the record
 twice is rejected by the API as a conflict (exit 60), so the command is safe to
 retry but not to re-run blindly.
 

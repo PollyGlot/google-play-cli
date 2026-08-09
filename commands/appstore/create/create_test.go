@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
 	createcmd "github.com/PollyGlot/google-play-cli/commands/appstore/create"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
@@ -296,6 +297,7 @@ func TestRun_dryRun_validatesFirst(t *testing.T) {
 // required and its absence is CLI misuse — it identifies the caller and has no
 // project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
+	t.Setenv(appstorecmd.EnvStorePackage, "")
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
 
@@ -306,6 +308,29 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 	}
 	if len(rt.calls) != 0 {
 		t.Errorf("validation must fail before any HTTP call, got %v", rt.calls)
+	}
+}
+
+// TestRun_storePackageEnvCascade asserts the ADR-0043 cascade: the
+// --store-package flag wins, $GPLAY_APP_STORE_PACKAGE fills in when the flag is
+// absent — so a CI job exports the store identity once for the whole namespace.
+func TestRun_storePackageEnvCascade(t *testing.T) {
+	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
+	rt := &testRoundTripper{}
+	rc := newRC(t, rt)
+
+	if _, err := createcmd.Run(rc, createcmd.Input{Package: "com.example.app"}); err != nil {
+		t.Fatalf("Run with env fallback: %v", err)
+	}
+	if !strings.Contains(rt.apiURL, "/appstore/com.env.store/") {
+		t.Errorf("url %q should carry the env-supplied app store package name", rt.apiURL)
+	}
+
+	if _, err := createcmd.Run(rc, createcmd.Input{StorePackage: "com.flag.store", Package: "com.example.app"}); err != nil {
+		t.Fatalf("Run with flag over env: %v", err)
+	}
+	if !strings.Contains(rt.apiURL, "/appstore/com.flag.store/") {
+		t.Errorf("url %q — the --store-package flag must win over the env var", rt.apiURL)
 	}
 }
 
@@ -373,9 +398,10 @@ func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 			t.Errorf("--%s is not declared", flag)
 		}
 	}
-	// The Long text must carry the precondition — it is the one fact a caller
-	// cannot discover from the flag names.
-	for _, want := range []string{"hosted app", "before any other"} {
+	// The Long text must carry the precondition and the absence of a delete
+	// verb (ADR-0043 §3) — the two facts a caller cannot discover from the flag
+	// names.
+	for _, want := range []string{"hosted app", "before any other", "no delete"} {
 		if !strings.Contains(strings.ToLower(cmd.Long), want) {
 			t.Errorf("--help should state %q; got:\n%s", want, cmd.Long)
 		}

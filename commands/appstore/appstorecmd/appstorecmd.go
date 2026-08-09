@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,9 +27,13 @@ import (
 )
 
 // FlagStorePackage is the flag name carrying the app store package name. Named
-// once here so every leaf in the namespace spells it identically and a future
-// project-level default has a single place to land.
+// once here so every leaf in the namespace spells it identically.
 const FlagStorePackage = "store-package"
+
+// EnvStorePackage supplies the app store package name from the environment
+// (ADR-0043). It sits below the --store-package flag in the cascade so a CI job
+// can export it once and every `gplay appstore` command inherits it.
+const EnvStorePackage = "GPLAY_APP_STORE_PACKAGE"
 
 type usageError struct{ msg string }
 
@@ -39,20 +44,24 @@ func (e *usageError) ExitCode() int { return 2 }
 // leaf calls this rather than spelling the flag itself, so the name, usage
 // string and (later) any project-level default stay defined in one place.
 func RegisterStorePackageFlag(cmd *cobra.Command, target *string) {
-	cmd.Flags().StringVar(target, FlagStorePackage, "", "package name of the third-party app store making the call (required)")
+	cmd.Flags().StringVar(target, FlagStorePackage, "", "package name of the third-party app store making the call (falls back to $"+EnvStorePackage+")")
 }
 
 // ResolveStorePackage resolves the app store package name — the
-// `appstore/{appStorePackageName}` path key. It comes from --store-package
-// only: it identifies the *calling store*, not the app, so the project pin
-// (which pins a package, never a store — CONTEXT.md "Project") is deliberately
-// not consulted here.
+// `appstore/{appStorePackageName}` path key — from the --store-package flag,
+// falling back to $GPLAY_APP_STORE_PACKAGE (ADR-0043). It identifies the
+// *calling store*, not the app, so the project pin (which pins a package, never
+// a store — CONTEXT.md "Project") is deliberately not consulted; nothing is
+// ever prompted for, an unresolved value is a usage error (exit 2) naming both
+// layers so CI fails fast and legibly.
 func ResolveStorePackage(flag string) (string, error) {
-	sp := strings.TrimSpace(flag)
-	if sp == "" {
-		return "", &usageError{msg: "no app store package name — pass --" + FlagStorePackage + " <appStorePackageName> (the package name of the third-party app store making the call)"}
+	if v := strings.TrimSpace(flag); v != "" {
+		return v, nil
 	}
-	return sp, nil
+	if v := strings.TrimSpace(os.Getenv(EnvStorePackage)); v != "" {
+		return v, nil
+	}
+	return "", &usageError{msg: "no app store package name — pass --" + FlagStorePackage + " <appStorePackageName> or export " + EnvStorePackage + " (the package name of the third-party app store making the call, not the hosted app)"}
 }
 
 // ResolvePackage resolves the target app package: --package wins, else the

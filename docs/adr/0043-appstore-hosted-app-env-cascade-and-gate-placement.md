@@ -19,7 +19,7 @@ The surface's entry point, `appstore create`
 hosted-app record — per Google, "this must be called before any other RPCs for
 this hosted app". The API exposes no read and no delete for that record.
 Formally that matches the situation that made
-[ADR-0032](./0032-custom-apps-account-gated-creation.md) put `--confirm` on
+[ADR-0032](./0032-custom-apps-account-axis-gated-creation.md) put `--confirm` on
 `customapps create` ("creating an app record is irreversible, no delete
 endpoint"), so the two decisions look contradictory unless the distinction is
 written down.
