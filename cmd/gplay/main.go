@@ -16,6 +16,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/removecmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/viewcmd"
+	appstorecatalogeventslist "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/events/list"
+	appstorecatalogview "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/view"
 	appstorecreate "github.com/PollyGlot/google-play-cli/commands/appstore/create"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
@@ -455,30 +457,6 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 
 	root.AddCommand(team)
 
-	// `gplay appstore` — the surface a third-party Android app store uses to
-	// submit the apps it hosts to Google for review (`appstoreappsreview`, the
-	// DMA / alternative-distribution obligation; PRD #377). Its addressing axis
-	// is the app store package name (`appstore/{appStorePackageName}/...`) — a
-	// third axis alongside the package axis and the developer-account axis
-	// (ADR-0015): the caller is the store, the subject is the app it hosts, so
-	// every leaf carries --store-package on top of --package. Edit-free.
-	// `create` (#378) is the mandatory first call for any hosted app — Google
-	// rejects every other RPC until it has succeeded — and is MarkMutating so
-	// GPLAY_READONLY refuses it (exit 4). See CONTEXT.md ("Hosted app",
-	// "App store package name").
-	appstoreGroup := &cobra.Command{
-		Use:           "appstore",
-		Short:         "Submit the apps a third-party app store hosts to Google for review",
-		RunE:          kernel.GroupRunE,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	appstoreGroup.AddCommand(kernel.MarkMutating(appstorecreate.NewCommand(boot)))
-	// [experimental] (ADR-0010/ADR-0042): a brand-new namespace on a new
-	// addressing axis, none of it yet exercised against a real enrolled app
-	// store — exactly the surface least able to prove it got the shape right.
-	root.AddCommand(kernel.Experimental(appstoreGroup))
-
 	// `gplay customapps` — managed Google Play private app creation
 	// (playcustomapp.accounts.customApps.create). Like `team` it is keyed by the
 	// Developer account, not a package (ADR-0015) — the app does not yet exist to
@@ -498,6 +476,52 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// organisation-scoped API with no read to verify the result — the surface
 	// least able to prove it got the shape right.
 	root.AddCommand(kernel.Experimental(customapps))
+
+	// `gplay appstore` — the surface for the operator of an ALTERNATIVE APP
+	// STORE, not the app-developer persona the rest of gplay serves. Addressing
+	// rides the app store package name (--store-package / the
+	// GPLAY_APP_STORE_PACKAGE env var), a distinct axis from the Android package
+	// of the repo's own app, so there is no project-pin cascade. `appstore` and
+	// `catalog` are grouping nouns (kernel.GroupRunE — bare prints help, an
+	// unknown subcommand is exit-2 misuse). The namespace carries the two
+	// sibling surfaces of that persona: everything under `catalog` is read-only
+	// (the Catalog Export for app stores, PRD #396) and `create` (#378, PRD
+	// #377) opens the hosted app review path — the mandatory first call for any
+	// hosted app, MarkMutating so GPLAY_READONLY refuses it (exit 4). All of it
+	// is Edit-free. See CONTEXT.md ("Catalog app view", "Hosted app").
+	appstore := &cobra.Command{
+		Use:           "appstore",
+		Short:         "Alternative app store operations (catalog export, hosted app review)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	appstore.AddCommand(kernel.MarkMutating(appstorecreate.NewCommand(boot)))
+	appstoreCatalog := &cobra.Command{
+		Use:           "catalog",
+		Short:         "Read Google Play's catalog export for app stores",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	appstoreCatalog.AddCommand(appstorecatalogview.NewCommand(boot))
+	// `events` is a grouping noun under `catalog`: the update-event feed is its
+	// own resource (a time-ranged list of changes), not a mode of `catalog view`
+	// (a new noun, never a flag — ADR-0019).
+	appstoreCatalogEvents := &cobra.Command{
+		Use:           "events",
+		Short:         "Read the catalog update-event feed (incremental catalog sync)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	appstoreCatalogEvents.AddCommand(appstorecatalogeventslist.NewCommand(boot))
+	appstoreCatalog.AddCommand(appstoreCatalogEvents)
+	appstore.AddCommand(appstoreCatalog)
+	// [experimental] (ADR-0010/ADR-0042): a brand-new namespace serving a persona
+	// gplay has never served, whose addressing axis (the app store package name)
+	// has not yet been exercised against a real enrolled app store.
+	root.AddCommand(kernel.Experimental(appstore))
 
 	// `gplay edits` — the EXPLICIT Edit lifecycle (begin/commit/discard/status,
 	// docs/DESIGN.md §4 / CONTEXT.md "Edit"). Most write commands run their own

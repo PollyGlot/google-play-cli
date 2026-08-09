@@ -162,7 +162,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	raw, err := appstore.CreateHostedApp(rc.Ctx, httpClient, storePackage, pkg)
 	if err != nil {
-		return nil, appstorecmd.Classify(storePackage, err)
+		return nil, appstorecmd.ClassifyReview(storePackage, err)
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr; stdout stays
