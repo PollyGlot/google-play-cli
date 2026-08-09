@@ -147,7 +147,8 @@ The same `config.json` schema appears at three levels. Later wins:
 $XDG_CONFIG_HOME/gplay/config.json     (global, machine-local — Accounts live here)
 <repo>/.gplay/config.json              (project shared, committed — package pin)
 <repo>/.gplay/config.local.json        (project local, gitignored — per-developer overrides)
-GPLAY_* env vars                       (e.g. GPLAY_ACCOUNT, GPLAY_SERVICE_ACCOUNT)
+GPLAY_* env vars                       (e.g. GPLAY_ACCOUNT, GPLAY_SERVICE_ACCOUNT,
+                                        GPLAY_APP_STORE_PACKAGE — `appstore` axis, ADR-0043)
 CLI flags                              (e.g. --account, --package, --service-account)
 ```
 
