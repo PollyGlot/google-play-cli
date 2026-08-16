@@ -5,6 +5,19 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/PollyGlot/google-play-cli/compare/v1.0.0...v1.1.0) (2026-08-16)
+
+
+### Features
+
+* **appstore:** `appstore catalog view` + `appstore catalog events list` ([#424](https://github.com/PollyGlot/google-play-cli/issues/424)) ([3e52822](https://github.com/PollyGlot/google-play-cli/commit/3e5282249105b610bb8907e929f7f99a706422cf)), closes [#397](https://github.com/PollyGlot/google-play-cli/issues/397) [#398](https://github.com/PollyGlot/google-play-cli/issues/398)
+* **appstore:** `appstore create` — hosted app record + review-path entry point ([#423](https://github.com/PollyGlot/google-play-cli/issues/423)) ([f2d4e46](https://github.com/PollyGlot/google-play-cli/commit/f2d4e46b3d8526d4c2b251b93826bba8af542a88)), closes [#378](https://github.com/PollyGlot/google-play-cli/issues/378)
+
+
+### Reverts
+
+* keep .claude/ out of the public repo ([757fa7a](https://github.com/PollyGlot/google-play-cli/commit/757fa7a05fd49ca8853ab944e63527d035d94f8d))
+
 ## [1.0.0](https://github.com/PollyGlot/google-play-cli/compare/v0.18.0...v1.0.0) (2026-08-02)
 
 **gplay is now GA.** For every command not marked `[experimental]`, names,
