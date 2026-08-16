@@ -235,6 +235,90 @@ func TestGroupCommands_bareInvocationPrintsHelp(t *testing.T) {
 	}
 }
 
+// TestUnknownCommand_suggestsNearMatch asserts the typo-recovery half of the
+// unknown-command contract: when a mistyped token is close to a real command
+// (cobra's Levenshtein/prefix matching, reused via SuggestionsFor), the misuse
+// message carries an additive "Did you mean this?" block naming it. The exit
+// code stays 2, the first line keeps its existing shape, and nothing is written
+// to stdout — the message is main.go's single stderr line.
+//
+// Multi-token paths are kept as SPLIT args (never a contiguous phrase) so the
+// repo-wide verb gate (#168) stays green here.
+func TestUnknownCommand_suggestsNearMatch(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string // command name the suggestion block must offer
+	}{
+		{"root-typo", []string{"relaeses"}, "releases"},
+		{"root-typo-2", []string{"trakcs"}, "tracks"},
+		// A mistyped LEAF under a group: the group's GroupRunE runs the same
+		// path, so suggestions work at any depth, not just the root.
+		{"group-typo", []string{"releases", "upalod"}, "upload"},
+		{"nested-group-typo", []string{"team", "users", "lst"}, "list"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			root.SetArgs(tc.args)
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(io.Discard)
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("%v: expected a misuse error, got nil", tc.args)
+			}
+			if code := exit.For(err); code != 2 {
+				t.Errorf("%v: exit code = %d, want 2 (CLI misuse); err=%v", tc.args, code, err)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "unknown command") {
+				t.Errorf("%v: error = %q, want it to name the unknown command", tc.args, msg)
+			}
+			if !strings.Contains(msg, "Did you mean this?") {
+				t.Errorf("%v: error = %q, want a suggestion block", tc.args, msg)
+			}
+			if !strings.Contains(msg, "\n    "+tc.want) {
+				t.Errorf("%v: error = %q, want it to suggest %q on its own indented line", tc.args, msg, tc.want)
+			}
+			if out.Len() != 0 {
+				t.Errorf("%v: stdout = %q, want empty (data channel stays clean)", tc.args, out.String())
+			}
+		})
+	}
+}
+
+// TestUnknownCommand_noSuggestionWhenNothingIsClose asserts the other half:
+// a token that resembles nothing in the tree gets the bare misuse line, with
+// no "Did you mean this?" noise invented for it.
+func TestUnknownCommand_noSuggestionWhenNothingIsClose(t *testing.T) {
+	for _, args := range [][]string{
+		{"qwertyuiop"},
+		{"releases", "qwertyuiop"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			root.SetArgs(args)
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(io.Discard)
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("%v: expected a misuse error, got nil", args)
+			}
+			if code := exit.For(err); code != 2 {
+				t.Errorf("%v: exit code = %d, want 2 (CLI misuse); err=%v", args, code, err)
+			}
+			if strings.Contains(err.Error(), "Did you mean") {
+				t.Errorf("%v: error = %q, want no suggestion for a nonsense token", args, err)
+			}
+			if out.Len() != 0 {
+				t.Errorf("%v: stdout = %q, want empty", args, out.String())
+			}
+		})
+	}
+}
+
 // TestFlagErrors_areCliMisuse asserts the docs/DESIGN.md §9 contract for the
 // flag-error class: an unknown flag, a bad flag value, or a missing required
 // flag is CLI misuse — exit 2, named in one "gplay: ..." line — not the

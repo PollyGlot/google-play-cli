@@ -71,7 +71,38 @@ func GroupRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return cmd.Help()
 	}
-	return exit.Usagef("unknown command %q for %q", args[0], cmd.CommandPath())
+	return exit.Usagef("unknown command %q for %q%s", args[0], cmd.CommandPath(), suggestionsFor(cmd, args[0]))
+}
+
+// suggestionsFor renders the "Did you mean this?" block for a mistyped
+// subcommand, or "" when nothing is close enough. The matching is cobra's own
+// (SuggestionsFor: Levenshtein within SuggestionsMinimumDistance, plus prefix
+// and explicit SuggestFor), so gplay's typo behaviour tracks the toolkit
+// instead of re-deriving a distance metric; only the rendering is ours, because
+// our misuse path returns an error string (one `gplay: ...` line from main.go)
+// rather than letting cobra print.
+//
+// The block is APPENDED to the existing message: the first line stays exactly
+// `unknown command "x" for "gplay"`, so anything matching on it keeps working.
+func suggestionsFor(cmd *cobra.Command, typed string) string {
+	if cmd.DisableSuggestions {
+		return ""
+	}
+	// cobra only defaults this field inside its own error path; GroupRunE
+	// bypasses that, so apply the same default (2) here.
+	if cmd.SuggestionsMinimumDistance <= 0 {
+		cmd.SuggestionsMinimumDistance = 2
+	}
+	suggestions := cmd.SuggestionsFor(typed)
+	if len(suggestions) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\nDid you mean this?")
+	for _, s := range suggestions {
+		fmt.Fprintf(&sb, "\n    %s", s)
+	}
+	return sb.String()
 }
 
 // mutatingAnnotation is the cobra annotation key a write command sets to declare
