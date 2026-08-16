@@ -1,0 +1,97 @@
+<!doctype html>
+<!--
+  gplay social card — hero (1600×900)
+  Wordmark + tagline + terminal demo. Used for the public README,
+  release announcement primary card, GitHub social preview.
+
+  This is the ONLY template with full-saturation iridescence (it carries
+  the brand). All other templates use the ambient top-right wash.
+
+  Regenerate sparingly — usually only when updating
+  docs/marketing/header.png. Ship via PR, not auto-commit.
+
+  EDIT ONLY the marked lines. Do not touch CSS/palette.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#050507;--ink:#fff;--ink-soft:#d4d4d8;--ink-mute:#8a8a90;--green:#3DDC84;--pearl:255,240,250;--magenta:255,110,195;--lavender:210,165,245;--blue:130,175,255;--cyan:150,225,240}
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:1600px;height:900px;overflow:hidden;background:var(--bg);font-family:'Google Sans Code',monospace}
+    .card{position:relative;width:1600px;height:900px;color:var(--ink);isolation:isolate;overflow:hidden}
+    .card::before{content:"";position:absolute;inset:0;background:var(--bg);z-index:-3}
+    /* Hero iridescence: full saturation (the brand carrier) */
+    .aurora{position:absolute;inset:0;z-index:-2;
+      background:
+        radial-gradient(ellipse 1100px 850px at 92% 25%,rgba(var(--magenta),0.62),transparent 70%),
+        radial-gradient(ellipse 1000px 850px at 100% 65%,rgba(var(--blue),0.58),transparent 70%),
+        radial-gradient(ellipse 900px 750px at 78% 100%,rgba(var(--cyan),0.45),transparent 72%);
+      filter:blur(60px) saturate(130%);pointer-events:none}
+    .shimmer{position:absolute;inset:0;z-index:-2;
+      background:
+        radial-gradient(ellipse 380px 280px at 85% 42%,rgba(var(--pearl),0.50),transparent 62%),
+        radial-gradient(ellipse 500px 400px at 92% 52%,rgba(var(--lavender),0.35),transparent 65%);
+      mix-blend-mode:screen;filter:blur(30px);pointer-events:none}
+    .grid{position:absolute;inset:0;z-index:-1;
+      background-image:linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px);
+      background-size:56px 56px;
+      mask-image:radial-gradient(ellipse 1200px 800px at 20% 50%,black 0%,transparent 75%);pointer-events:none}
+    .stage{position:relative;width:100%;height:100%;display:grid;grid-template-columns:1fr 740px;align-items:center;gap:100px;padding:0 80px}
+    .left{position:relative;min-width:0}
+    .wordmark{font-size:156px;font-weight:700;letter-spacing:-4px;line-height:1.05;margin-bottom:40px;color:var(--ink)}
+    .wordmark .accent{color:var(--green)}
+    .tagline{font-size:24px;font-weight:400;line-height:1.5;color:var(--ink-soft);max-width:640px;letter-spacing:-0.2px}
+    .terminal-wrap{position:relative}
+    .terminal{position:relative;z-index:1;background:#0c0c10;border:1px solid rgba(255,255,255,0.08);border-radius:20px;overflow:hidden;
+      box-shadow:0 0 0 1px rgba(255,255,255,0.04),0 30px 80px rgba(0,0,0,0.5)}
+    .chrome{background:rgba(255,255,255,0.025);padding:18px 24px;display:flex;align-items:center;gap:9px;border-bottom:1px solid rgba(255,255,255,0.05)}
+    .traffic{width:14px;height:14px;border-radius:50%}
+    .traffic.r{background:#ff5f56}.traffic.y{background:#ffbd2e}.traffic.g{background:#27c93f}
+    .chrome .title{flex:1;text-align:center;font-size:19px;color:var(--ink-mute);letter-spacing:0.3px}
+    .chrome .title .ver{color:var(--ink-soft)}
+    .body{padding:44px 42px 48px 42px;font-size:26px;line-height:1.65;color:var(--ink-soft)}
+    .prompt{color:var(--green);margin-right:12px}
+    .arrow{color:var(--green);margin-right:10px}
+    .flag{color:var(--ink-mute)}
+    .ok{color:var(--green)}
+    .spacer{height:22px}
+    .indent{padding-left:32px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="aurora"></div><div class="shimmer"></div><div class="grid"></div>
+    <div class="stage">
+
+      <div class="left">
+        <!-- EDIT: wordmark (usually `gplay_` — leave the accent green underscore) -->
+        <div class="wordmark">gplay<span class="accent">_</span></div>
+        <!-- EDIT: tagline — 1-2 sentences, sentence case, no emoji, no marketing copy -->
+        <div class="tagline">A standalone Go binary for the Google&nbsp;Play Developer&nbsp;API. Built for CI, scripts, and AI&nbsp;agents.</div>
+      </div>
+
+      <div class="terminal-wrap">
+        <div class="terminal">
+          <!-- EDIT: title bar version -->
+          <div class="chrome">
+            <div class="traffic r"></div><div class="traffic y"></div><div class="traffic g"></div>
+            <div class="title">gplay&nbsp;&nbsp;<span class="ver">v0.1.0-alpha.X</span></div>
+          </div>
+          <!-- EDIT: terminal body — short, impactful, ideally 2 commands max -->
+          <div class="body">
+            <div><span class="prompt">$</span>gplay releases upload app.aab</div>
+            <div class="indent"><span class="flag">--track production</span></div>
+            <div><span class="arrow">→</span><span class="ok">draft release created</span></div>
+            <div class="spacer"></div>
+            <div><span class="prompt">$</span>gplay releases rollout <span class="flag">--to 0.05</span></div>
+            <div><span class="arrow">→</span><span class="ok">production at 5%</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

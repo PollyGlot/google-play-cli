@@ -1,0 +1,64 @@
+<!doctype html>
+<!--
+  gplay social card — release announcement (1600×900)
+  EDIT ONLY the marked lines. Do not touch CSS/palette.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#050507;--ink:#fff;--ink-soft:#d4d4d8;--ink-mute:#8a8a90;--ink-faint:#5a5a60;--green:#3DDC84;--magenta:255,110,195;--blue:130,175,255}
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:1600px;height:900px;overflow:hidden;background:var(--bg);font-family:'Google Sans Code',monospace}
+    .card{position:relative;width:1600px;height:900px;overflow:hidden;color:var(--ink)}
+    .aurora{position:absolute;inset:0;z-index:0;
+      background:
+        radial-gradient(ellipse 900px 700px at 95% 15%,rgba(var(--magenta),0.32),transparent 70%),
+        radial-gradient(ellipse 800px 700px at 100% 50%,rgba(var(--blue),0.26),transparent 70%);
+      filter:blur(60px) saturate(120%);pointer-events:none}
+    .grid{position:absolute;inset:0;z-index:1;
+      background-image:linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px);
+      background-size:56px 56px;
+      mask-image:radial-gradient(ellipse 1200px 800px at 20% 50%,black 0%,transparent 75%);pointer-events:none}
+    .brand{position:absolute;top:80px;left:100px;z-index:2;font-weight:700;font-size:48px;letter-spacing:-1.5px;color:var(--ink)}
+    .brand .accent{color:var(--green)}
+    .stage{position:relative;z-index:2;width:100%;height:100%;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:0 100px;gap:64px}
+    .version{font-weight:700;font-size:160px;letter-spacing:-6px;line-height:1.0;color:var(--ink)}
+    .news{display:flex;flex-direction:column;gap:18px;font-size:28px;line-height:1.45;color:var(--ink-soft);max-width:1100px}
+    .bullet{display:flex;align-items:baseline;gap:24px}
+    .bullet .arrow{color:var(--green);font-weight:700;flex-shrink:0}
+    .bullet b{color:var(--ink);font-weight:700}
+    .bullet .sep{color:var(--ink-faint);margin:0 4px}
+    .bullet .desc{color:var(--ink-mute);font-weight:400}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="aurora"></div><div class="grid"></div>
+    <div class="brand">gplay<span class="accent">_</span></div>
+    <div class="stage">
+
+      <!-- EDIT: version string -->
+      <div class="version">v0.1.0-alpha.X</div>
+
+      <!-- EDIT: 2-4 bullets. Pattern: <b>command</b> · description -->
+      <div class="news">
+        <div class="bullet">
+          <span class="arrow">→</span>
+          <span><b>gplay something</b> <span class="sep">·</span> <span class="desc">what it does, briefly</span></span>
+        </div>
+        <div class="bullet">
+          <span class="arrow">→</span>
+          <span><b>gplay other thing</b> <span class="sep">·</span> <span class="desc">what it does, briefly</span></span>
+        </div>
+        <div class="bullet">
+          <span class="arrow">→</span>
+          <span><b>--flag</b> <span class="sep">·</span> <span class="desc">what it does, briefly</span></span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
