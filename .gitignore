@@ -18,8 +18,7 @@ coverage.html
 .DS_Store
 .idea/
 .vscode/
-.claude/*
-!.claude/skills/
+.claude/
 .cursor/
 .aider*
 *.swp
