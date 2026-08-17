@@ -155,8 +155,12 @@ playcustomapp.accounts.customApps.create	POST	playcustomapp/v1/accounts/{account
 playdeveloperreporting.anomalies.list	GET	v1beta1/{+parent}/anomalies
 playdeveloperreporting.apps.fetchReleaseFilterOptions	GET	v1beta1/{+name}:fetchReleaseFilterOptions
 playdeveloperreporting.apps.search	GET	v1beta1/apps:search
+playdeveloperreporting.vitals.anonrssandswapmemoryusage.get	GET	v1beta1/{+name}
+playdeveloperreporting.vitals.anonrssandswapmemoryusage.query	POST	v1beta1/{+name}:query
 playdeveloperreporting.vitals.anrrate.get	GET	v1beta1/{+name}
 playdeveloperreporting.vitals.anrrate.query	POST	v1beta1/{+name}:query
+playdeveloperreporting.vitals.bitmapmemoryusage.get	GET	v1beta1/{+name}
+playdeveloperreporting.vitals.bitmapmemoryusage.query	POST	v1beta1/{+name}:query
 playdeveloperreporting.vitals.crashrate.get	GET	v1beta1/{+name}
 playdeveloperreporting.vitals.crashrate.query	POST	v1beta1/{+name}:query
 playdeveloperreporting.vitals.errors.counts.get	GET	v1beta1/{+name}
