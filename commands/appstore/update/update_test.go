@@ -454,12 +454,21 @@ func TestRun_403_exit11(t *testing.T) {
 	}
 }
 
+// TestRun_404_pointsAtTheMissingRecord: on this path the store is not the only
+// thing that can be missing. `appstore create` is the mandatory precondition,
+// so a 404 must name it rather than sending the caller to audit a
+// --store-package that is probably correct.
 func TestRun_404_exit30(t *testing.T) {
 	rt := &testRoundTripper{status: http.StatusNotFound, resp: `{"error":{"message":"missing"}}`}
 	_, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
 		StorePackage: "com.example.store", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	})
 	assertExit(t, err, 30)
+	for _, want := range []string{"appstore create", "com.example.app", "com.example.store"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("404 hint %q does not mention %q", err, want)
+		}
+	}
 }
 
 // TestNewCommand_helpDocumentsTheVerb pins the public surface: the flags an

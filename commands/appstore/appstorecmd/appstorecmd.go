@@ -207,6 +207,19 @@ func ClassifyStoreRead(storePkg string, err error) error {
 	return err
 }
 
+// ClassifyHostedApp is ClassifyReview for the calls that act on an app the
+// store has ALREADY created — upload, publish-status, update. It differs on
+// 404 only: there, a missing hosted app record is at least as likely as a
+// wrong store, so the hint names both. Use ClassifyReview for `appstore
+// create`, where the record cannot be the thing that is missing.
+func ClassifyHostedApp(storePkg, pkg string, err error) error {
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		return &hostedAppNotFoundError{storePkg: storePkg, pkg: pkg, cause: err}
+	}
+	return ClassifyReview(storePkg, err)
+}
+
 // reviewForbiddenError wraps a 403 on the `appstoreappsreview` write path.
 // Access is granted to enrolled third-party app stores, so the refusal names
 // both halves of what has to be true. No ExitCode of its own — the wrapped
@@ -233,6 +246,26 @@ func (e *reviewStoreNotFoundError) Error() string {
 	return fmt.Sprintf("app store %q not found — verify the --%s value names the third-party app store's own package name (not the hosted app's): %v", e.storePkg, FlagStorePackage, e.cause)
 }
 func (e *reviewStoreNotFoundError) Unwrap() error { return e.cause }
+
+// hostedAppNotFoundError wraps a 404 on a call that addresses an EXISTING
+// hosted app (upload, publish-status, update) rather than creating one. Two
+// things can be missing there, and only one of them is the store: Google's own
+// contract is that `createappstorehostedapp` "must be called before any other
+// RPCs for this hosted app", so a caller who skipped `appstore create` lands
+// here. Naming only the store would send them auditing a --store-package that
+// is very likely correct. The wrapped *api.Error drives the exit code
+// (404 → exit 30).
+type hostedAppNotFoundError struct {
+	storePkg string
+	pkg      string
+	cause    error
+}
+
+func (e *hostedAppNotFoundError) Error() string {
+	return fmt.Sprintf("no hosted app %q in app store %q — run `gplay appstore create --%s %s --package %s` first (it is the mandatory precondition for every other call here), or verify the --%s value names the app store's own package name (not the hosted app's): %v",
+		e.pkg, e.storePkg, FlagStorePackage, e.storePkg, e.pkg, FlagStorePackage, e.cause)
+}
+func (e *hostedAppNotFoundError) Unwrap() error { return e.cause }
 
 // ClassifyReview adds 403/404 hints to an `appstoreappsreview` write failure,
 // leaving the *api.Error to drive the exit code (403 → 11, 404 → 30). Any other

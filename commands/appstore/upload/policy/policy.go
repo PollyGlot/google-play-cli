@@ -194,7 +194,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	fileID, raw, err := appstore.UploadPolicyDeclarationFile(rc.Ctx, httpClient, storePackage, pkg, path)
 	if err != nil {
-		return nil, appstorecmd.ClassifyReview(storePackage, err)
+		return nil, appstorecmd.ClassifyHostedApp(storePackage, pkg, err)
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr; stdout stays

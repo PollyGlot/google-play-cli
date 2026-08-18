@@ -85,4 +85,5 @@ The same criterion resolved the other two gate questions in this batch:
   that id. Irreversible-but-inert.
 - `appstore publish-status` — **no gate**. Withdrawing an app from the store is
   externally visible but *reversible*: the opposite call puts it back. The
-  criterion requires both properties, and reversibility is the one it lacks.
+  criterion requires a write to be both irreversible and externally visible;
+  irreversibility is the property this one lacks.

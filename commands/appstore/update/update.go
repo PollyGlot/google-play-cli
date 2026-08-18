@@ -309,7 +309,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// the recap, not as the payload.
 	raw, err := appstore.UpdateHostedApp(rc.Ctx, httpClient, storePackage, pkg, body)
 	if err != nil {
-		return nil, appstorecmd.ClassifyReview(storePackage, err)
+		return nil, appstorecmd.ClassifyHostedApp(storePackage, pkg, err)
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr; stdout stays
@@ -417,7 +417,7 @@ requires.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	appstorecmd.RegisterStorePackageFlag(cmd, &in.StorePackage)
-	cmd.Flags().StringVar(&in.Package, "package", "", "package name of the hosted app (overrides .gplay/config.json pin and the body's packageName)")
+	cmd.Flags().StringVar(&in.Package, "package", "", "package name of the hosted app (overrides the .gplay/config.json pin; a body naming a DIFFERENT package is refused, not overridden)")
 	cmd.Flags().StringVar(&in.File, "file", "", "path to the JSON UpdateAppStoreHostedAppRequest body (default: stdin, or '-')")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the immediate, irrevocable submission to Google review")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate the file and resolve the target without any HTTP call (reports the --confirm requirement)")
