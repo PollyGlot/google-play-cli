@@ -532,7 +532,7 @@ Under `--output json` the refusal is emitted as the standard error envelope
 |---|---|---|
 | `0` | Success | — |
 | `1` | Generic error (fallback when nothing more specific fits) | No |
-| `2` | CLI misuse (unknown flag, bad value, missing required arg) | No |
+| `2` | CLI misuse (unknown flag, bad value, wrong number of positional args) | No |
 | `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
 | `4` | Denied by environment policy (`GPLAY_READONLY`) — a mutating command was refused; the message names the env var | No — **not** resolvable by adding a flag; change the environment |
 | `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
@@ -556,6 +556,20 @@ the refusal with `exit.SafetyFlag("<flag>", …)` and never with a bespoke error
 type — the helper also feeds `requires: ["<flag>"]` into the `--output json`
 error envelope (§7 / ADR-0023), which is how an agent recovers without scraping
 the message.
+
+**Exit 2 owns the argument count.** A wrong number of positional arguments —
+missing *or* surplus — is CLI misuse (`2`), the same bucket as an unknown flag
+or an unknown subcommand. All three doors are closed centrally, never per
+command: flag-parse failures by the root's `FlagErrorFunc`, unknown subcommands
+by `kernel.GroupRunE`, and positional-argument rejections by
+`kernel.WrapArgErrors` — one walk over the assembled tree, the last statement of
+`newRootCmd`. Commands returned the generic `1` here for a while because cobra
+hands an `Args` validator's error back untyped; that is what
+[#426](https://github.com/PollyGlot/google-play-cli/issues/426) corrected. Like
+the exit-3 harmonisation above, the fix *restores* this documented table rather
+than changing the frozen contract (ADR-0010), which is why it shipped as a
+`fix`. Never hand-roll an argument-count check in a command — declare the cobra
+validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
 
 ---
 
