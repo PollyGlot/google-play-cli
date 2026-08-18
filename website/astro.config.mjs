@@ -60,6 +60,22 @@ export default defineConfig({
           tag: 'meta',
           attrs: { name: 'twitter:card', content: 'summary_large_image' },
         },
+        // Icon fallbacks the SVG favicon can't cover: iOS Safari ignores SVG
+        // icons (an "Add to Home Screen" would screenshot the page instead),
+        // and clients that request /favicon.ico blind — feed readers, crawlers,
+        // older browsers — never read this head at all.
+        {
+          tag: 'link',
+          attrs: { rel: 'icon', href: `${BASE}/favicon.ico`, sizes: '32x32' },
+        },
+        {
+          tag: 'link',
+          attrs: { rel: 'apple-touch-icon', href: `${BASE}/apple-touch-icon.png`, sizes: '180x180' },
+        },
+        {
+          tag: 'link',
+          attrs: { rel: 'manifest', href: `${BASE}/site.webmanifest` },
+        },
         // Responsive browser chrome: match the active theme on mobile.
         {
           tag: 'meta',
