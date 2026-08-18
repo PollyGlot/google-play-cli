@@ -177,7 +177,10 @@ const demoSession = [
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    <link rel="icon" href={`${base}/favicon.ico`} sizes="32x32" />
     <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={`${base}/apple-touch-icon.png`} sizes="180x180" />
+    <link rel="manifest" href={`${base}/site.webmanifest`} />
     <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
     <!-- No-JS fallback: follow the OS (the page also follows the OS without JS).
          With JS, the media-less meta injected above wins and tracks the
