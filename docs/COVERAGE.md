@@ -58,16 +58,15 @@ nature):
   pull and one-way `--migrate` promotion (#371–#372). **All six slices of
   PRD #51 are shipped**; the remaining monetization methods are the iap
   lifecycle states and batch/read-single redundancies.
-- **~47 methods remain**, of which **~33 are the rest of the monetization
+- **~42 methods remain**, of which **~33 are the rest of the monetization
   continent** (the redundant/lifecycle subscription and one-time-product
   methods left 🟡 by #51, the 8 deliberately unwrapped legacy `inappproducts`
-  writes, external transactions #295); the other ~14 are long-tail
+  writes, external transactions #295); the other ~9 are long-tail
   (`edits.apks` list/addexternallyhosted, `systemapks`, voided purchases #346,
   `orders.reviewrefund` (#352, parked 2026-07-17), the reporting filter helper
-  #348, plus the remaining 5 of the 6-method `appstoreappsreview` hosted app
-  surface (PRD #377, surfaced 2026-07-20 by the Discovery refresh PR #374;
-  slice #378 shipped `createappstorehostedapp` and the `appstore` namespace)).
-  The sibling `appstorecatalog` surface (PRD #396) is **shipped in full**.
+  #348). The **whole alternative-app-store persona is now shipped in full**:
+  the 6-method `appstoreappsreview` hosted app surface (PRD #377, slices
+  #378–#381) and its sibling `appstorecatalog` (PRD #396).
   Monetization remains the biggest block in flight, and the honest answer to
   "are we near the end?": **the commerce half is now started, not finished.**
 - **4 surfaces were genuinely untracked** until the 2026-06-22 coverage audit
@@ -94,7 +93,7 @@ nature):
 | `applications.deviceTierConfigs` | 3 | ✅ | `device-tiers` |
 | `applications.tracks.releases.list` | 1 | ✅ | `releases list` |
 | `apprecovery` | 5 | ✅ | `recovery` |
-| `appstoreappsreview` | 6 | 1 ✅ | `appstore` — hosted app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377), slices [#378](https://github.com/PollyGlot/google-play-cli/issues/378)/[#379](https://github.com/PollyGlot/google-play-cli/issues/379)/[#380](https://github.com/PollyGlot/google-play-cli/issues/380)/[#381](https://github.com/PollyGlot/google-play-cli/issues/381); surfaced 2026-07-20 by Discovery PR #374. **`createappstorehostedapp` shipped** as `appstore create` (#378) — the namespace root, its `--store-package` axis and the hosted app record, the mandatory precondition for every other method here. Remaining 🔵: `updateappstorehostedapp`, `updateappstorehostedapppublishstatus`, `uploadapk`, `uploadimage`, `uploadappstoreapppolicydeclarationfile` |
+| `appstoreappsreview` | 6 | ✅ | `appstore` — hosted app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377) **shipped in full**, surfaced 2026-07-20 by Discovery PR #374. `createappstorehostedapp` → `appstore create` (slice [#378](https://github.com/PollyGlot/google-play-cli/issues/378)), the namespace root and its `--store-package` axis, mandatory precondition for every other method here; `uploadapk`/`uploadimage`/`uploadappstoreapppolicydeclarationfile` → `appstore upload apk|image|policy` (slice [#379](https://github.com/PollyGlot/google-play-cli/issues/379)), resumable transfers returning the tracking ids; `updateappstorehostedapppublishstatus` → `appstore publish-status published\|unpublished` (slice [#380](https://github.com/PollyGlot/google-play-cli/issues/380)); `updateappstorehostedapp` → `appstore update --file` (slice [#381](https://github.com/PollyGlot/google-play-cli/issues/381)), the declarative submission that cites those ids and sends the app to review, `--confirm`-gated ([ADR-0043](adr/0043-appstore-hosted-app-env-cascade-and-gate-placement.md)) |
 | `appstorecatalog` | 2 | ✅ | `appstore catalog` — Play's Catalog Export for app stores, [PRD #396](https://github.com/PollyGlot/google-play-cli/issues/396) **shipped in full**: `recentappviews.get` → `appstore catalog view <play-package>` (slice [#397](https://github.com/PollyGlot/google-play-cli/issues/397)), `recentupdateevents.list` → `appstore catalog events list --start-time/--end-time` (slice [#398](https://github.com/PollyGlot/google-play-cli/issues/398)). Read-only, Edit-free, addressed by the app store package name; surfaced 2026-07-27 by Discovery PR #395 |
 | `internalappsharingartifacts` | 2 | ✅ | `releases sharing` |
 | `reviews` | 3 | ✅ | `reviews list`/`reply`/`view` ([#298](https://github.com/PollyGlot/google-play-cli/issues/298) shipped `reviews.get`) |

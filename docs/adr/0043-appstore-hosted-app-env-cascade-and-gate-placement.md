@@ -64,3 +64,26 @@ written down.
   other `GPLAY_*` vars; the whole namespace ships `[experimental]`
   ([ADR-0042](./0042-one-zero-ga-and-stability-label-mechanism.md)), so the
   cascade can still be adjusted before the label comes off.
+
+## Amendment (2026-08-18, PRD #377 slices #379–#381)
+
+Decision 2 above names the gate on `appstore update` `--yes`. That was the
+wording carried over from the slice brief, not a naming decision: every other
+safety gate in the CLI is `--confirm`, raised through
+`exit.SafetyFlag("confirm", …)` for the exit-3 "a named safety flag is missing"
+contract ([ADR-0017](./0017-write-safety-and-agent-resolvable-refusals.md) §1).
+
+**`appstore update` ships `--confirm`.** Shipping `--yes` would have given the
+CLI two names for one concept, forcing an agent to remember which surface uses
+which. The *placement* decision — the gate rides on submit, not on create — is
+unchanged and remains the point of this ADR. No `--yes` alias exists.
+
+The same criterion resolved the other two gate questions in this batch:
+
+- `appstore upload apk|image|policy` — **no gate**. Each hands Google a file and
+  gets back a tracking id; nothing reaches a user until `appstore update` cites
+  that id. Irreversible-but-inert.
+- `appstore publish-status` — **no gate**. Withdrawing an app from the store is
+  externally visible but *reversible*: the opposite call puts it back. The
+  criterion requires a write to be both irreversible and externally visible;
+  irreversibility is the property this one lacks.
