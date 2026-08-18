@@ -367,6 +367,130 @@ func TestFlagErrors_areCliMisuse(t *testing.T) {
 	}
 }
 
+// TestPositionalArgErrors_areCliMisuse asserts the docs/DESIGN.md §9 contract
+// for the third door into CLI misuse: a wrong NUMBER of positional arguments.
+// Flag-parse failures (root FlagErrorFunc) and unknown subcommands
+// (kernel.GroupRunE) were already routed to exit 2; a leaf's `Args` validator
+// was not — cobra calls it from execute() and hands the raw error straight
+// back, which exit.For could only map to the generic exit 1 (#426).
+// kernel.WrapArgErrors closes that door for the whole tree at registration.
+//
+// One case per family (missing argument / surplus argument) across the
+// validator shapes the tree actually uses — MinimumNArgs, ExactArgs, NoArgs —
+// at leaf and nested-group depth. Every case is rejected BEFORE RunE runs, so
+// nothing here touches credentials or the network.
+//
+// Canonical verbs only, and multi-token paths stay SPLIT args (never a
+// contiguous phrase), so the repo-wide verb gate (#168) stays green here.
+func TestPositionalArgErrors_areCliMisuse(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantMsg string // substring the one-line error must contain
+	}{
+		// --- missing positional argument ---
+		{"missing-arg-minimum", []string{"orders", "view"}, "requires at least 1 arg"},
+		{"missing-arg-exact", []string{"appstore", "catalog", "view"}, "accepts 1 arg(s), received 0"},
+		{"missing-arg-nested-group", []string{"games", "achievements", "view"}, "accepts 1 arg(s), received 0"},
+		// --- surplus positional argument ---
+		{"surplus-arg-exact", []string{"tracks", "create", "qa-alpha", "surplus"}, "accepts 1 arg(s), received 2"},
+		{"surplus-arg-none-accepted", []string{"apps", "list", "surplus"}, `unknown command "surplus"`},
+		{"surplus-arg-nested-group", []string{"games", "achievements", "list", "surplus"}, `unknown command "surplus"`},
+		// cobra's own scaffolding, materialised in newRootCmd before the wrap
+		// so it obeys the same contract (#426).
+		{"surplus-arg-cobra-completion", []string{"completion", "bash", "surplus"}, `unknown command "surplus"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+			root.SetArgs(tc.args)
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(io.Discard)
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("%v: expected a CLI-misuse error, got nil", tc.args)
+			}
+			if code := exit.For(err); code != 2 {
+				t.Errorf("%v: exit code = %d, want 2 (CLI misuse); err=%v", tc.args, code, err)
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Errorf("%v: error = %q, want it to contain %q", tc.args, err, tc.wantMsg)
+			}
+			if out.Len() != 0 {
+				t.Errorf("%v: stdout = %q, want empty (data channel stays clean)", tc.args, out.String())
+			}
+		})
+	}
+}
+
+// TestArgsValidators_allRouteThroughUsageExit is the completeness guard behind
+// the case-by-case test above, and the reason #426 is fixed in the kernel
+// rather than per command: it WALKS the real command tree and asserts that
+// EVERY registered positional-argument validator, at any depth, reports a bad
+// argument count as exit 2 — never the generic 1.
+//
+// A leaf added tomorrow with `Args: cobra.ExactArgs(1)` is covered without
+// touching this test, because kernel.WrapArgErrors wraps whatever the tree
+// carries; what this test actually pins is that newRootCmd keeps CALLING it
+// after registration. Dropping that one call turns the whole family red.
+//
+// The validators are invoked directly (they are pure functions of cmd+args), so
+// no RunE fires: no credentials, no keyring, no network. For a runnable command
+// cobra invokes them identically from execute(); the walk also visits the few
+// non-runnable help-topic leaves (`exit-codes`), whose validator cobra
+// short-circuits past in production — wrapped-but-unreachable is harmless, and
+// the property pinned here is that nothing registered can reject with anything
+// but exit 2.
+func TestArgsValidators_allRouteThroughUsageExit(t *testing.T) {
+	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+
+	validators, rejections := 0, 0
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if c.Args != nil {
+			validators++
+			// 0..3 positional args covers both families for every validator
+			// shape in the tree (NoArgs, ExactArgs(1), MinimumNArgs(1),
+			// MaximumNArgs(1), RangeArgs, ArbitraryArgs): at least one count is
+			// wrong for each, and a validator that accepts all four (the
+			// ArbitraryArgs case) simply never contributes a rejection.
+			for n := 0; n <= 3; n++ {
+				args := make([]string, n)
+				for i := range args {
+					args[i] = "surplus"
+				}
+				err := c.Args(c, args)
+				if err == nil {
+					continue
+				}
+				rejections++
+				if code := exit.For(err); code != 2 {
+					t.Errorf("%s: %d positional arg(s) rejected with exit %d, want 2 (CLI misuse); err=%v",
+						c.CommandPath(), n, code, err)
+				}
+			}
+		}
+		for _, k := range c.Commands() {
+			walk(k)
+		}
+	}
+	walk(root)
+
+	// Guard against a vacuous pass: the tree carries ~100 Args validators today
+	// (96 source sites, several instantiated per preset, plus cobra's
+	// materialised completion commands). `rejections` counts (validator, count)
+	// pairs — most validators reject two or three of the four probed counts —
+	// so both floors sit far below their actuals and only trip on a walk that
+	// stopped early or a tree that lost whole namespaces.
+	if validators < 85 {
+		t.Errorf("walked %d Args validators, want >= 85 (did the tree shrink, or did the walk stop early?)", validators)
+	}
+	if rejections < 85 {
+		t.Errorf("only %d bad-arg-count rejections observed, want >= 85 (the assertion above never ran)", rejections)
+	}
+}
+
 // TestMutatingRegistry_pinsWriteCommands is the completeness guard for the
 // GPLAY_READONLY policy (#211 / ADR-0024): it pins exactly which leaf commands
 // carry the mutating annotation (kernel.MarkMutating). A new write command that

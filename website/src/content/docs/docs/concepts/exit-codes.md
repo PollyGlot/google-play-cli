@@ -12,7 +12,7 @@ agent whether retrying can help, without parsing error messages.
 | --- | --- | --- |
 | `0` | Success | — |
 | `1` | Generic error (fallback when nothing more specific fits) | No |
-| `2` | CLI misuse — unknown flag, bad value, missing required argument | No |
+| `2` | CLI misuse — unknown flag, bad value, wrong number of positional arguments | No |
 | `3` | Safety flag required — the command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the error names it | Deterministic: re-run with the named flag |
 | `4` | Denied by environment policy — a mutating command was refused because `GPLAY_READONLY` is set; the message names the env var | No — **not** fixable by a flag; change the environment |
 | `10` | Authentication failure — service account invalid, token refused, scope missing | No |

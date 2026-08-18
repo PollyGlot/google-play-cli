@@ -112,6 +112,17 @@ None of those bump the version or land in the CLI `CHANGELOG.md`. Reserve
   policy refuses it (exit 4, ADR-0024). The mutating-registry guard test in
   `cmd/gplay` fails if a write command is left unmarked (or a read command is
   wrongly marked). Read commands and `--dry-run` paths stay unmarked.
+- **New command taking positional arguments** → just declare the cobra
+  validator (`Args: cobra.ExactArgs(1)`, …) and stop there. `kernel.WrapArgErrors`
+  re-types every registered validator's rejection as CLI misuse (exit 2,
+  `docs/DESIGN.md` §9) from one call at the end of `newRootCmd` — the hidden
+  `__complete` shell plumbing is the one exception — so a hand-rolled
+  per-command arg check is duplicated work that will drift (#426). The
+  tree-walking guard test in `cmd/gplay` fails if any validator ever reports
+  something else. This applies only through the assembled root: a per-package
+  test that executes a bare `NewCommand(boot)` exercises the unwrapped
+  validator (exit 1) — assert exit codes through `newRootCmd`, not in leaf
+  harnesses.
 - **Any new command, full stop** → decide its stability. Since 1.0, an
   unlabelled command joins the frozen Public contract: its names, flags,
   semantics and exit codes cannot change without a major bump (ADR-0010 /

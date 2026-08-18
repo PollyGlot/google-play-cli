@@ -812,7 +812,25 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		},
 	})
 
-	return root
+	// Third and last door into CLI misuse: a wrong number of POSITIONAL
+	// arguments. cobra runs a command's Args validator inside execute() and
+	// hands its error straight back — it never passes the FlagErrorFunc above,
+	// so it reached exit.For untyped and fell back to the generic exit 1 while
+	// the other two doors returned the documented exit 2 (#426). One walk over
+	// the assembled tree re-types every Args rejection as usage, so the whole
+	// binary — including leaves added later — agrees on docs/DESIGN.md §9. It is
+	// the LAST statement on purpose: it wraps what is registered when it runs.
+	//
+	// cobra materialises its default `help` and `completion` commands lazily
+	// inside Execute — after this function returns — which would leave their
+	// own Args validators outside the walk (`gplay completion bash extra`
+	// stuck on exit 1). Materialise them first; both calls are no-ops when the
+	// command already exists, so Execute's own late init stays harmless. The
+	// hidden `__complete` plumbing command has no pre-Execute hook and stays
+	// outside the walk — shell-integration plumbing, not command surface.
+	root.InitDefaultHelpCmd()
+	root.InitDefaultCompletionCmd()
+	return kernel.WrapArgErrors(root)
 }
 
 // resolveVersion picks the best (version, commit, date) triple to print.
