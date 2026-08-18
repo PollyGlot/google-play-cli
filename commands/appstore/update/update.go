@@ -221,10 +221,10 @@ func readBody(rc *kernel.RunContext, file string) ([]byte, error) {
 	return b, nil
 }
 
-// parseBody turns the operator's JSON into the request struct. Unknown fields
-// are tolerated on purpose (Google grows this schema); the policy responses
-// stay json.RawMessage all the way to the wire, so a question type gplay has
-// never heard of travels through intact.
+// parseBody turns the operator's JSON into the request struct — for the RECAP
+// and the packageName reconciliation only. The bytes that reach Google are the
+// operator's own (see Run): parsing here never subsets what is submitted, so a
+// key this struct does not model is neither dropped nor rejected locally.
 func parseBody(body []byte) (appstore.UpdateHostedAppRequest, error) {
 	var req appstore.UpdateHostedAppRequest
 	if len(bytes.TrimSpace(body)) == 0 {
@@ -281,7 +281,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.PackageName = pkg
 	sum := summarize(req)
 
 	// --dry-run short-circuits BEFORE the safety gate (as `customapps create`
@@ -304,7 +303,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	raw, err := appstore.UpdateHostedApp(rc.Ctx, httpClient, storePackage, req)
+	// The operator's own bytes go on the wire, with only packageName forced to
+	// the resolved target: re-serialising the parsed struct would drop any key
+	// it does not model, and this submission cannot be recalled. req is used for
+	// the recap, not as the payload.
+	raw, err := appstore.UpdateHostedApp(rc.Ctx, httpClient, storePackage, pkg, body)
 	if err != nil {
 		return nil, appstorecmd.ClassifyReview(storePackage, err)
 	}
@@ -341,7 +344,9 @@ the policy declarations are a growing oneof and are not expressible as flags,
 and one versionable file is what a CI job wants anyway. Every id in the body
 comes from a prior upload — ` + "`gplay appstore upload apk`" + ` returns the apk ids,
 ` + "`gplay appstore upload image`" + ` the icon/screenshot ids, and
-` + "`gplay appstore upload policy`" + ` the declaration ids.
+` + "`gplay appstore upload policy`" + ` the document ids cited by a policy
+response. The declarationId and questionId values are Google's own — they come
+from the review questionnaire, not from gplay.
 
   {
     "appDetails": {
@@ -369,15 +374,18 @@ comes from a prior upload — ` + "`gplay appstore upload apk`" + ` returns the 
       {
         "declarationId": "decl-1",
         "responses": [
-          { "singleChoiceResponse": { "questionId": "q1", "answerId": "a1" } }
+          { "questionId": "q1", "singleChoiceResponse": { "value": "yes" } },
+          { "questionId": "q2", "documentResponse": { "documentId": "file-1", "nonExpiring": true } }
         ]
       }
     ]
   }
 
-Policy responses travel through VERBATIM: gplay does not model the seven-way
-PolicyResponse oneof, so a question type it has never seen still submits
-correctly.
+The file travels through VERBATIM — only packageName is overwritten with the
+resolved target. gplay does not re-serialise your JSON from its own model, so a
+field it has never seen (a question type Google added, a key it does not model)
+still submits correctly, and a misspelled one is rejected BY GOOGLE rather than
+silently dropped from a submission you cannot recall.
 
 Addressing uses two identifiers, and mixing them up is the common mistake:
 

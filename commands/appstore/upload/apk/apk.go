@@ -22,7 +22,6 @@
 package apk
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -124,15 +123,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return err
 }
 
-// uploadedView is the gplay-shaped success object emitted only when the API
-// returns no body at all (see renderJSON).
-type uploadedView struct {
-	OK                  bool   `json:"ok"`
-	AppStorePackageName string `json:"appStorePackageName"`
-	PackageName         string `json:"packageName"`
-	APKID               string `json:"apkId"`
-}
-
 // dryRunView is the gplay-shaped --dry-run JSON: the resolved target plus the
 // machine-readable `requires` array (ADR-0017 §4) — empty, because an upload
 // needs no safety flag beyond a writable environment.
@@ -149,15 +139,12 @@ func (p Payload) renderJSON(w io.Writer) error {
 		return output.WriteJSON(w, dryRunView{DryRun: true, AppStorePackageName: p.StorePackage, PackageName: p.Package, File: p.Path, Requires: []string{}})
 	}
 	// ADR-0003: the API response is passed through verbatim — it is where the
-	// apkId comes from in the first place. The documented exception applies
-	// only when there is nothing to pass through: a server answering with an
-	// empty body would otherwise leave --output json, the CI default, with zero
-	// bytes to parse.
-	if len(bytes.TrimSpace(p.Raw)) > 0 {
-		_, err := w.Write(p.Raw)
-		return err
-	}
-	return output.WriteJSON(w, uploadedView{OK: true, AppStorePackageName: p.StorePackage, PackageName: p.Package, APKID: p.APKID})
+	// tracking id comes from in the first place. There is no empty-body
+	// fallback here, unlike the acknowledgement-only verbs in this namespace:
+	// an upload whose response carried no id never reaches this point, the
+	// client layer having already failed it (internal/play/appstore.trackingID).
+	_, err := w.Write(p.Raw)
+	return err
 }
 
 // Run is the business function the kernel invokes. It resolves the two

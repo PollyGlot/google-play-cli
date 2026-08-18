@@ -112,7 +112,7 @@ const fullBody = `{
     {"languageCode": "fr-FR", "appName": "Acme", "fullDescription": "longue", "appIconId": "img-icon", "screenshotId": ["img-1"]}
   ],
   "policyDeclarations": [
-    {"declarationId": "decl-1", "responses": [{"questionId": "q1", "documentResponse": {"fileId": "file-9"}}]}
+    {"declarationId": "decl-1", "responses": [{"questionId": "q1", "documentResponse": {"documentId": "file-9"}}]}
   ]
 }`
 

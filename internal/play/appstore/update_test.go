@@ -1,6 +1,7 @@
 package appstore_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,9 +13,22 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
 )
 
+// submissionBody is a complete submission as an operator would write it,
+// including a policy response variant appstore.PolicyDeclaration models only as
+// json.RawMessage.
+const submissionBody = `{
+  "appDetails": {"developerName": "Acme", "contactEmail": "dev@acme.test"},
+  "activeApks": {"activeApkSets": [{"baseApkId": "apk-base", "splitApkId": ["apk-en"]}]},
+  "activeLocalizedStoreListings": [
+    {"languageCode": "en-US", "appName": "Acme", "fullDescription": "d", "appIconId": "img-icon", "screenshotId": ["img-1"]}
+  ],
+  "policyDeclarations": [
+    {"declarationId": "decl-1", "responses": [{"questionId": "q1", "documentResponse": {"documentId": "file-9", "nonExpiring": true}}]}
+  ]
+}`
+
 // TestUpdateHostedApp_requestShape pins the submit call: POST to the
-// app-store-keyed :update endpoint, the whole assembled payload in the body,
-// no Edit.
+// app-store-keyed :update endpoint, no Edit, and the whole payload on the wire.
 func TestUpdateHostedApp_requestShape(t *testing.T) {
 	var gotMethod, gotURL string
 	var gotBody []byte
@@ -26,21 +40,7 @@ func TestUpdateHostedApp_requestShape(t *testing.T) {
 		return resp(200, `{}`), nil
 	})
 
-	in := appstore.UpdateHostedAppRequest{
-		PackageName: "com.example.app",
-		AppDetails:  &appstore.AppDetails{DeveloperName: "Acme", ContactEmail: "dev@acme.test"},
-		ActiveApks: &appstore.ActiveApks{ActiveApkSets: []appstore.ActiveApkSet{
-			{BaseApkID: "apk-base", SplitApkIDs: []string{"apk-en"}},
-		}},
-		ActiveLocalizedStoreListings: []appstore.StoreListing{
-			{LanguageCode: "en-US", AppName: "Acme", FullDescription: "d", AppIconID: "img-icon", ScreenshotIDs: []string{"img-1"}},
-		},
-		PolicyDeclarations: []appstore.PolicyDeclaration{
-			{DeclarationID: "decl-1", Responses: []json.RawMessage{json.RawMessage(`{"questionId":"q1","booleanResponse":{"value":true}}`)}},
-		},
-	}
-
-	if _, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "com.example.store", in); err != nil {
+	if _, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "com.example.store", "com.example.app", json.RawMessage(submissionBody)); err != nil {
 		t.Fatalf("UpdateHostedApp: %v", err)
 	}
 	if gotMethod != http.MethodPost {
@@ -53,48 +53,92 @@ func TestUpdateHostedApp_requestShape(t *testing.T) {
 		t.Errorf("url %q must not open an Edit", gotURL)
 	}
 
-	// Round-trip the body and check every branch of the payload survived,
-	// including the un-modelled policy response variant.
-	var sent map[string]any
+	var sent map[string]json.RawMessage
 	if err := json.Unmarshal(gotBody, &sent); err != nil {
-		t.Fatalf("body %q is not JSON: %v", gotBody, err)
+		t.Fatalf("request body %q is not JSON: %v", gotBody, err)
 	}
 	for _, key := range []string{"packageName", "appDetails", "activeApks", "activeLocalizedStoreListings", "policyDeclarations"} {
 		if _, ok := sent[key]; !ok {
-			t.Errorf("body is missing the required %q field: %s", key, gotBody)
+			t.Errorf("request body is missing the %q field: %s", key, gotBody)
 		}
 	}
-	if !strings.Contains(string(gotBody), `"booleanResponse":{"value":true}`) {
-		t.Errorf("body dropped the policy response variant: %s", gotBody)
-	}
-	if !strings.Contains(string(gotBody), `"screenshotId":["img-1"]`) {
-		t.Errorf("body does not use the API's screenshotId spelling: %s", gotBody)
-	}
-	if !strings.Contains(string(gotBody), `"splitApkId":["apk-en"]`) {
-		t.Errorf("body does not use the API's splitApkId spelling: %s", gotBody)
+	// The media ids from the upload verbs must survive under the API's own
+	// spelling — they are the whole point of having uploaded anything.
+	got := compact(t, gotBody)
+	for _, want := range []string{`"baseApkId":"apk-base"`, `"splitApkId":["apk-en"]`, `"appIconId":"img-icon"`, `"screenshotId":["img-1"]`, `"documentId":"file-9"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("request body is missing %s: %s", want, got)
+		}
 	}
 }
 
-// TestUpdateHostedApp_passesUnknownPolicyVariants proves the oneof stays open:
-// a response shape gplay has never heard of reaches Google untouched.
-func TestUpdateHostedApp_passesUnknownPolicyVariants(t *testing.T) {
+// TestUpdateHostedApp_forcesPackageName: the caller's resolved target wins over
+// whatever packageName the body carried, so the command layer's reconciliation
+// cannot be bypassed by the file.
+func TestUpdateHostedApp_forcesPackageName(t *testing.T) {
+	for _, body := range []string{`{"packageName":"com.stale.app"}`, `{}`} {
+		var gotBody []byte
+		rt := testRoundTripper(func(r *http.Request) (*http.Response, error) {
+			gotBody, _ = io.ReadAll(r.Body)
+			return resp(200, `{}`), nil
+		})
+		if _, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", "com.example.app", json.RawMessage(body)); err != nil {
+			t.Fatalf("UpdateHostedApp(%s): %v", body, err)
+		}
+		var sent struct {
+			PackageName string `json:"packageName"`
+		}
+		if err := json.Unmarshal(gotBody, &sent); err != nil {
+			t.Fatalf("request body %q: %v", gotBody, err)
+		}
+		if sent.PackageName != "com.example.app" {
+			t.Errorf("packageName = %q for body %s, want the resolved target", sent.PackageName, body)
+		}
+	}
+}
+
+// TestUpdateHostedApp_forwardsUnmodelledFields is the reason the body is
+// forwarded verbatim instead of round-tripped through UpdateHostedAppRequest.
+// Anything the struct does not model — a field Google added, or an operator's
+// typo — must reach Google as written: dropping it would ship an incomplete
+// submission that cannot be recalled, and a typo must come back as a readable
+// rejection rather than as silence.
+func TestUpdateHostedApp_forwardsUnmodelledFields(t *testing.T) {
+	body := `{
+      "appDetails": {"developerName": "Acme", "developerNAme": "typo", "futureField": {"x": 1}},
+      "brandNewTopLevelKey": ["a", "b"],
+      "policyDeclarations": [{"declarationId": "d", "responses": [{"questionId": "q", "futureResponse": {"shape": "unknown"}}]}]
+    }`
 	var gotBody []byte
 	rt := testRoundTripper(func(r *http.Request) (*http.Response, error) {
 		gotBody, _ = io.ReadAll(r.Body)
 		return resp(200, `{}`), nil
 	})
 
-	in := appstore.UpdateHostedAppRequest{
-		PackageName: "com.example.app",
-		PolicyDeclarations: []appstore.PolicyDeclaration{
-			{DeclarationID: "d", Responses: []json.RawMessage{json.RawMessage(`{"questionId":"q","futureResponse":{"shape":"unknown"}}`)}},
-		},
-	}
-	if _, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", in); err != nil {
+	if _, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", "p", json.RawMessage(body)); err != nil {
 		t.Fatalf("UpdateHostedApp: %v", err)
 	}
-	if !strings.Contains(string(gotBody), `"futureResponse":{"shape":"unknown"}`) {
-		t.Errorf("an unmodelled policy response variant was dropped: %s", gotBody)
+	got := compact(t, gotBody)
+	for _, want := range []string{`"developerNAme":"typo"`, `"futureField":{"x":1}`, `"brandNewTopLevelKey":["a","b"]`, `"futureResponse":{"shape":"unknown"}`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the wire body dropped %s: %s", want, got)
+		}
+	}
+}
+
+// TestUpdateHostedApp_invalidBody_errors: a body that is not a JSON object
+// cannot have packageName forced onto it, and must fail before the request.
+func TestUpdateHostedApp_invalidBody_errors(t *testing.T) {
+	var called bool
+	rt := testRoundTripper(func(*http.Request) (*http.Response, error) {
+		called = true
+		return resp(200, `{}`), nil
+	})
+	if _, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", "p", json.RawMessage(`["not","an","object"]`)); err == nil {
+		t.Fatal("want an error for a non-object body, got nil")
+	}
+	if called {
+		t.Error("a malformed body must not reach the API")
 	}
 }
 
@@ -104,7 +148,7 @@ func TestUpdateHostedApp_rawPassthrough(t *testing.T) {
 	rt := testRoundTripper(func(*http.Request) (*http.Response, error) {
 		return resp(200, `{"unexpected":"field"}`), nil
 	})
-	raw, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", appstore.UpdateHostedAppRequest{PackageName: "p"})
+	raw, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", "p", json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("UpdateHostedApp: %v", err)
 	}
@@ -142,8 +186,8 @@ func TestUpdatePublishStatus_requestShape(t *testing.T) {
 	}
 }
 
-// TestUpdatePublishStatus_pathEscaped guards both path keys.
-func TestUpdatePublishStatus_pathEscaped(t *testing.T) {
+// TestUpdate_pathEscaped guards both path keys, on both verbs.
+func TestUpdate_pathEscaped(t *testing.T) {
 	var gotURL string
 	rt := testRoundTripper(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
@@ -154,6 +198,13 @@ func TestUpdatePublishStatus_pathEscaped(t *testing.T) {
 	}
 	if !strings.Contains(gotURL, "/appstore/com.example%20store/apps/com.example%2Fapp:") {
 		t.Errorf("url %q does not escape both path keys", gotURL)
+	}
+
+	if _, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "com.example store", "p", json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("UpdateHostedApp: %v", err)
+	}
+	if !strings.Contains(gotURL, "/appstore/com.example%20store/apps:update") {
+		t.Errorf("url %q does not escape the store package", gotURL)
 	}
 }
 
@@ -174,7 +225,7 @@ func TestUpdate_errorTaxonomy(t *testing.T) {
 			rt := testRoundTripper(func(*http.Request) (*http.Response, error) {
 				return resp(tc.status, `{"error":{"message":"boom"}}`), nil
 			})
-			_, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", appstore.UpdateHostedAppRequest{PackageName: "p"})
+			_, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", "p", json.RawMessage(`{}`))
 			assertExitCode(t, err, tc.want)
 
 			_, err = appstore.UpdatePublishStatus(context.Background(), &http.Client{Transport: rt}, "s", "p", appstore.PublishStatePublished)
@@ -190,4 +241,14 @@ func TestUpdate_transport_exit50(t *testing.T) {
 	})
 	_, err := appstore.UpdatePublishStatus(context.Background(), &http.Client{Transport: rt}, "s", "p", appstore.PublishStatePublished)
 	assertExitCode(t, err, 50)
+}
+
+// compact normalises whitespace so a body assertion tests content, not layout.
+func compact(t *testing.T, body []byte) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, body); err != nil {
+		t.Fatalf("compact %q: %v", body, err)
+	}
+	return buf.String()
 }

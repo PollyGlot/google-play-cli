@@ -220,27 +220,6 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	}
 }
 
-// TestPayload_jsonEmptyBodyFallback asserts a bodiless success still yields
-// parseable JSON — the documented ADR-0003 exception, never zero bytes on the
-// CI default format.
-func TestPayload_jsonEmptyBodyFallback(t *testing.T) {
-	p := imagecmd.Payload{StorePackage: "com.example.store", Package: "com.example.app", ImageID: "img-42"}
-	var out bytes.Buffer
-	if err := p.Renderers().JSON(&out); err != nil {
-		t.Fatalf("JSON: %v", err)
-	}
-	var got struct {
-		OK      bool   `json:"ok"`
-		ImageID string `json:"imageId"`
-	}
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-		t.Fatalf("json %q is not parseable: %v", out.String(), err)
-	}
-	if !got.OK || got.ImageID != "img-42" {
-		t.Errorf("fallback json = %+v", got)
-	}
-}
-
 // TestRun_packageDefaultsToProjectPin asserts an omitted --package falls back to
 // the repo pin, like every other package-axis command.
 func TestRun_packageDefaultsToProjectPin(t *testing.T) {

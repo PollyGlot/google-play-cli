@@ -88,20 +88,40 @@ type UpdateHostedAppRequest struct {
 //
 // UpdateAppStoreHostedAppResponse carries no fields: the acknowledgement is the
 // result. The raw body is returned regardless for the ADR-0003 pass-through.
-func UpdateHostedApp(ctx context.Context, hc *http.Client, storePackage string, in UpdateHostedAppRequest) (json.RawMessage, error) {
-	body, err := json.Marshal(in)
+//
+// body is the operator's own JSON, forwarded **verbatim** apart from
+// packageName, which is overwritten with pkg so the resolved target always wins.
+// Round-tripping it through UpdateHostedAppRequest instead would silently drop
+// anything the struct does not model — a field Google added last week, or a
+// typo like `developerNAme` — and this submission cannot be recalled. Sending
+// the operator's keys as written means Google validates them: a misspelling
+// comes back as a rejection the caller can read, never as a submission quietly
+// missing half its content. UpdateHostedAppRequest stays the documented shape
+// of that body and is what the command layer parses to summarise it.
+func UpdateHostedApp(ctx context.Context, hc *http.Client, storePackage, pkg string, body json.RawMessage) (json.RawMessage, error) {
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
+	}
+	target, err := json.Marshal(pkg)
 	if err != nil {
-		return nil, &api.Error{Operation: opUpdateHostedApp, Package: in.PackageName, Message: "marshal request: " + err.Error(), Cause: err}
+		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
+	}
+	fields["packageName"] = target
+
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
 	}
 
 	u := api.AndroidPubBase + "/appstore/" + url.PathEscape(storePackage) + "/apps:update"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(out))
 	if err != nil {
-		return nil, &api.Error{Operation: opUpdateHostedApp, Package: in.PackageName, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
 	}
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 
-	return do(hc, opUpdateHostedApp, in.PackageName, req)
+	return do(hc, opUpdateHostedApp, pkg, req)
 }
 
 // UpdatePublishStatus flips a hosted app between PUBLISHED and UNPUBLISHED via
