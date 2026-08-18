@@ -287,6 +287,18 @@ The package name of the **alternative app store** on whose behalf a `gplay appst
 
 _Avoid_: writing "package" unqualified anywhere near an `appstore` command — two package names are in play at once, the store's and the Play app's.
 
+### Media tracking id
+The identifier Google returns for one file uploaded against a [Hosted app](#hosted-app) — `apkId`, `imageId` or `fileId`, from `gplay appstore upload apk|image|policy` respectively. An upload is **inert**: it parks bytes on Google's side and hands back the id, distributing nothing. The id is the entire product of the call, and the only way to spend it is to cite it in a [Hosted app submission](#hosted-app-submission) — an APK id under `activeApks.activeApkSets[]` as `baseApkId` or a `splitApkId`, an image id as a listing's `appIconId` or one of its `screenshotId` entries, a policy file id inside a policy response. Uploads reuse the shared resumable transfer path (PRD #355) and carry no confirmation gate, because inert-but-irreversible does not meet the [ADR-0043](docs/adr/0043-appstore-hosted-app-env-cascade-and-gate-placement.md) criterion.
+
+_Avoid_: calling it an "upload token" (a token is transient; these ids are the durable handles a submission is built from) or a "version code" — an APK's Media tracking id is not the versionCode `releases upload` reports for the developer's own app.
+
+### Hosted app submission
+The complete assembled state of a [Hosted app](#hosted-app), sent to Google for review by `gplay appstore update --file <json>` (`appstoreappsreview.updateappstorehostedapp`): the developer's `appDetails`, the `activeApks` sets, the `activeLocalizedStoreListings` per locale, and the `policyDeclarations` answering Google's questionnaire — every binary and image among them referenced by [Media tracking id](#media-tracking-id), never re-uploaded. It is **declarative and whole**: the file describes the intended end state, the way `metadata apply` and `compliance datasafety set` do, not a patch.
+
+Submission is **immediate and irrevocable** — the API exposes no staging step and no recall — which is why the command is the one gate of the namespace (`--confirm`, exit 3). Its counterpart is **publish status**, the storefront visibility of an already-reviewed Hosted app: `PUBLISHED` after a submission by default, flipped either way by `gplay appstore publish-status published|unpublished`, and *reversible*, hence ungated.
+
+_Avoid_: calling it a "release" or a "track" — a Hosted app submission joins no [Standard track](#standard-track) and produces no [Release](#release); those belong to Google Play's own distribution, and this app is distributed by someone else's store.
+
 ### Catalog app view
 Google's read-only snapshot of one Play app as it appears in the **Catalog Export for app stores** (`CatalogAppView`, wrapped in a `RecentAppView` envelope by `appstorecatalog.recentappviews.get`): package name and category, active version names, last publish time and first release date, developer details and contact information, the localized store listings Play serves, declared permissions (all-SDK and SDK 23+), device compatibility requirements and exclusions, US price and sale price, IARC certificate id and adult-only flag, privacy policy URL, and the **delivery token** used with the Google Play Inline Install API. Addressed by an [App store package name](#app-store-package-name) plus the Play app package name; surfaced by `gplay appstore catalog view <play-package>`. Read-only and **outside the [Edit](#edit) model** — it opens no Edit.
 

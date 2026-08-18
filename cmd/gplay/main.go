@@ -19,6 +19,11 @@ import (
 	appstorecatalogeventslist "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/events/list"
 	appstorecatalogview "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/view"
 	appstorecreate "github.com/PollyGlot/google-play-cli/commands/appstore/create"
+	appstorepublishstatus "github.com/PollyGlot/google-play-cli/commands/appstore/publishstatus"
+	appstoreupdate "github.com/PollyGlot/google-play-cli/commands/appstore/update"
+	appstoreuploadapk "github.com/PollyGlot/google-play-cli/commands/appstore/upload/apk"
+	appstoreuploadimage "github.com/PollyGlot/google-play-cli/commands/appstore/upload/image"
+	appstoreuploadpolicy "github.com/PollyGlot/google-play-cli/commands/appstore/upload/policy"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
@@ -518,6 +523,32 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	appstoreCatalogEvents.AddCommand(appstorecatalogeventslist.NewCommand(boot))
 	appstoreCatalog.AddCommand(appstoreCatalogEvents)
 	appstore.AddCommand(appstoreCatalog)
+	// `upload` is a grouping noun over the three media endpoints (#379). Each
+	// leaf hands Google a file and gets back a tracking id; nothing is
+	// distributed until `appstore update` cites those ids, so the uploads are
+	// inert writes — MarkMutating (they do create server-side artifacts) but no
+	// confirmation gate, per the ADR-0043 criterion (irreversible AND externally
+	// visible gates; irreversible-but-inert does not).
+	appstoreUpload := &cobra.Command{
+		Use:           "upload",
+		Short:         "Upload hosted app media (APKs, listing images, policy documents)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	appstoreUpload.AddCommand(kernel.MarkMutating(appstoreuploadapk.NewCommand(boot)))
+	appstoreUpload.AddCommand(kernel.MarkMutating(appstoreuploadimage.NewCommand(boot)))
+	appstoreUpload.AddCommand(kernel.MarkMutating(appstoreuploadpolicy.NewCommand(boot)))
+	appstore.AddCommand(appstoreUpload)
+	// `publish-status` (#380) flips the app in or out of the store — an external
+	// effect, but a reversible one (the opposite call puts it back), so it takes
+	// the ordinary write safeguards and no gate.
+	appstore.AddCommand(kernel.MarkMutating(appstorepublishstatus.NewCommand(boot)))
+	// `update` (#381) is the one command in the namespace that submits to
+	// Google's review, immediately and irrevocably — it carries the --confirm
+	// gate (exit 3). ADR-0043 §2 placed the gate here; it names the flag `--yes`,
+	// amended to `--confirm` for consistency with every other gate in the CLI.
+	appstore.AddCommand(kernel.MarkMutating(appstoreupdate.NewCommand(boot)))
 	// [experimental] (ADR-0010/ADR-0042): a brand-new namespace serving a persona
 	// gplay has never served, whose addressing axis (the app store package name)
 	// has not yet been exercised against a real enrolled app store.
