@@ -5,6 +5,19 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/PollyGlot/google-play-cli/compare/v1.1.0...v1.2.0) (2026-08-18)
+
+
+### Features
+
+* **appstore:** complete the hosted app review surface — upload, publish-status, update ([#443](https://github.com/PollyGlot/google-play-cli/issues/443)) ([4fef1a7](https://github.com/PollyGlot/google-play-cli/commit/4fef1a74a319b39c06bdbf1c85e85c35c4f86471))
+* **kernel:** suggest near-match commands on unknown command ([#434](https://github.com/PollyGlot/google-play-cli/issues/434)) ([3e31b70](https://github.com/PollyGlot/google-play-cli/commit/3e31b703eb19521c77497064ba095ab2b208bb66))
+
+
+### Bug Fixes
+
+* **kernel:** route cobra Args validation through the exit-2 usage path ([#441](https://github.com/PollyGlot/google-play-cli/issues/441)) ([876f2c9](https://github.com/PollyGlot/google-play-cli/commit/876f2c9edc524efa92eacdeaf22788da2843b86f)), closes [#426](https://github.com/PollyGlot/google-play-cli/issues/426)
+
 ## [1.1.0](https://github.com/PollyGlot/google-play-cli/compare/v1.0.0...v1.1.0) (2026-08-16)
 
 
