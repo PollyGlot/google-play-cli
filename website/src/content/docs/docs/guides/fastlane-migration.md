@@ -1,12 +1,12 @@
 ---
 title: Migrating from Fastlane
-description: Map fastlane supply to gplay commands — drop the Ruby runtime from your Android CI, keep your metadata tree, and learn the one behavioral difference on production uploads.
+description: "Map fastlane supply to gplay commands: drop the Ruby runtime from your Android CI, keep your metadata tree, and learn the one behavioral difference on production uploads."
 sidebar:
   order: 8
 ---
 
 gplay covers the `fastlane supply` surface (and more) as a single static
-binary — no Ruby in the CI image. Migration is mostly mechanical.
+binary, with no Ruby in the CI image. Migration is mostly mechanical.
 
 ## The one behavioral surprise
 
@@ -33,13 +33,13 @@ The on-disk layout is fastlane's, minus the redundant `android/` segment and
 minus `changelogs/`:
 
 - `title.txt`, `short_description.txt`, `full_description.txt`, `video.txt`
-  per locale — identical names.
+  per locale, under identical names.
 - Release notes move out of the metadata tree: gplay owns them at upload
   time via `--release-notes` or `--release-notes-dir ./whatsnew` (one
   `<locale>.txt` per file, optional `default.txt` fallback).
 
 Start with `gplay metadata pull` into a fresh directory and diff it against
-your fastlane tree — differences are usually un-pushed edits.
+your fastlane tree; differences are usually un-pushed edits.
 
 ## Authentication is the same JSON
 
@@ -50,8 +50,8 @@ as-is. In CI, export it inline as `GPLAY_SERVICE_ACCOUNT`; locally,
 
 ## What you gain
 
-- No Ruby runtime or `bundle install` in CI — one binary, fast cold start.
-- [Semantic exit codes](/docs/concepts/exit-codes/) — retry on `40`/`50`,
+- No Ruby runtime or `bundle install` in CI: one binary, fast cold start.
+- [Semantic exit codes](/docs/concepts/exit-codes/): retry on `40`/`50`,
   fail fast on everything else, no log parsing.
 - JSON output that mirrors the
   [Play API responses](/docs/concepts/output-formats/) for scripting.
@@ -59,8 +59,8 @@ as-is. In CI, export it inline as `GPLAY_SERVICE_ACCOUNT`; locally,
 
 ## Honest gaps
 
-gplay is pre-1.0; a detailed pitfall-by-pitfall migration table is planned
-once more real migrations surface them. If you hit one, please
+There is no pitfall-by-pitfall migration table yet. Writing one needs real
+migrations to surface the pitfalls worth listing, so if you hit one, please
 [open an issue](https://github.com/PollyGlot/google-play-cli/issues).
 
 ## Related

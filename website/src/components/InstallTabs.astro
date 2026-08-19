@@ -34,7 +34,7 @@ const TABS: Tab[] = [
     id: 'binaries',
     label: 'Binaries',
     command: 'https://github.com/PollyGlot/google-play-cli/releases',
-    note: 'Pre-built archives for Linux, macOS, and Windows — with checksums and signatures.',
+    note: 'Pre-built archives for Linux, macOS, and Windows, with checksums and signatures.',
   },
 ];
 ---
@@ -150,7 +150,7 @@ const TABS: Tab[] = [
             button.textContent = 'Copy';
           }, 1600);
         } catch {
-          // Clipboard unavailable (permissions / non-secure context) — no-op.
+          // Clipboard unavailable (permissions / non-secure context): no-op.
         }
       });
     });

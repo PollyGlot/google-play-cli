@@ -1,6 +1,6 @@
 ---
 title: Output formats
-description: TTY-aware output in gplay — table for humans, JSON as raw API pass-through for machines, Markdown for docs and agents, and a strict stdout/stderr split.
+description: "TTY-aware output in gplay: table for humans, JSON as raw API pass-through for machines, Markdown for docs and agents, and a strict stdout/stderr split."
 sidebar:
   order: 4
 ---
@@ -13,7 +13,7 @@ with `--output table|json|markdown`. The default is `auto`:
 - otherwise → `table`
 
 So the same command prints a human table in your terminal and clean JSON in
-a pipe or CI — with `--output` as the explicit override when the
+a pipe or CI, with `--output` as the explicit override when the
 auto-detection isn't what you want (e.g. behind `tee`).
 
 ## `json` is API pass-through
@@ -21,7 +21,7 @@ auto-detection isn't what you want (e.g. behind `tee`).
 For commands that wrap a Google Play Developer API call, `--output json`
 returns the **API's native response shape**, including its per-endpoint
 envelope (`{"reviews": [...]}`, `{"tracks": [...]}`). gplay adds no custom
-envelope — the official Google API documentation *is* the schema
+envelope: the official Google API documentation *is* the schema
 documentation for gplay's JSON output.
 
 Two deliberate exceptions synthesise their own JSON, because they wrap no
@@ -35,7 +35,7 @@ API strings are often user-generated (review text, store-listing copy). The
 `table` and `markdown` renderers strip ANSI escape sequences and control
 characters from every cell, so a hostile value can't inject colour, cursor,
 or terminal-title sequences into your terminal or CI log. The stripping is
-rune-based — accents, CJK, and emoji pass through untouched.
+rune-based, so accents, CJK, and emoji pass through untouched.
 
 `--output json` is **never** sanitized: machine consumers get the bytes
 verbatim (that's the pass-through promise). Fidelity lives on the JSON path,
@@ -49,8 +49,8 @@ you override them.
 
 ## `markdown`
 
-A first-class format, not "a table with pipes": tabular data renders as a
-Markdown table, status output as `- **Field**: value` lines, and checklists
+A real renderer, not `table` with pipes: tabular data renders as a Markdown
+table, status output as `- **Field**: value` lines, and checklists
 (`auth doctor`) as GitHub-style task lists. Useful for PR comments, docs,
 and chat agents.
 
@@ -58,7 +58,7 @@ and chat agents.
 
 The split is strict and scriptable:
 
-- **stdout** carries data only — the requested output, nothing else.
+- **stdout** carries data only: the requested output, nothing else.
 - **stderr** carries logs, warnings, and errors. `--verbose` (short form
   `-v`) adds info-level flow steps (the Edit ID, the deduced versionCode,
   each API call) and works in any position: `gplay --verbose auth status` or
@@ -87,7 +87,7 @@ the failure without scraping stderr:
 - `requires` names the missing safety flag on an exit-3 refusal; omitted
   otherwise.
 
-Under `table` / `markdown` a failure leaves stdout empty — the error goes to
+Under `table` / `markdown` a failure leaves stdout empty: the error goes to
 stderr only. The envelope shape is part of gplay's public contract.
 
 ## Related

@@ -1,12 +1,12 @@
 ---
 title: What is gplay?
-description: gplay is a single-binary Go CLI for the Google Play Developer API — upload releases, manage tracks, sync store listings, reply to reviews, and administer your team from CI pipelines or AI agents.
+description: "gplay is a single-binary Go CLI for the Google Play Developer API: upload releases, manage tracks, sync store listings, reply to reviews, and administer your team from CI pipelines or AI agents."
 ---
 
 **gplay** is a fast, dependency-free command-line interface for the
 [Google Play Developer API](https://developers.google.com/android-publisher).
-It drives the publishing surface of Google Play — releases, tracks, reviews,
-store listings, compliance declarations, and team permissions — from your
+It drives the publishing surface of Google Play (releases, tracks, reviews,
+store listings, compliance declarations, team permissions) from your
 terminal, your CI pipeline, or an AI agent.
 
 Every team shipping an Android app eventually hits the same wall: Fastlane
@@ -16,14 +16,14 @@ is what you'd build today if you started fresh.
 
 ## Why gplay
 
-- **One static binary.** Written in Go, zero runtime dependencies — no Ruby,
+- **One static binary.** Written in Go, zero runtime dependencies: no Ruby,
   no Node, no Python. One file in your CI image, fast cold start.
 - **Built for CI and agents.** TTY-aware output (`table` for humans, `json`
   in pipes and CI), no interactive prompts, explicit flags, and
   [semantic exit codes](/docs/concepts/exit-codes/) that tell scripts whether
   a retry is safe.
 - **API-faithful JSON.** `--output json` returns the raw Google Play
-  Developer API response shape — no custom envelope to learn. The Google
+  Developer API response shape, with no custom envelope to learn. The Google
   docs *are* the schema docs. See
   [output formats](/docs/concepts/output-formats/).
 - **Safe by default on production.** Uploading or promoting to the
@@ -46,15 +46,15 @@ is what you'd build today if you started fresh.
 | `gplay schema` | Offline introspection of the Android Publisher API surface |
 
 The full, generated command reference lives at
-[CLI reference](/docs/reference/) — one page per command, produced from the
+[CLI reference](/docs/reference/): one page per command, produced from the
 binary's own `--help` output.
 
 ## Status: generally available
 
 gplay is **1.0**. The Public contract is in force: for every command not marked
 `[experimental]`, names, flags, semantics and exit codes will not change without
-a major version bump. Newer namespaces ship `[experimental]` — supported, but
-free to evolve — and `--help` tells you which is which. See [Stability and the
+a major version bump. Newer namespaces ship `[experimental]`, supported but
+free to evolve, and `--help` tells you which is which. See [Stability and the
 Public contract](/docs/concepts/stability/), or [Migrating to
 1.0](/docs/guides/migrate-to-1-0/) if you are coming from `0.x`.
 
