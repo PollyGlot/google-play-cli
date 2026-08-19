@@ -23,6 +23,11 @@ Canonical terms live in `CONTEXT.md`; use them verbatim, no synonyms. The core f
 - Gate before every PR: `make format lint test verb-gate` (verb-gate blocks pre-rename verbs, ADR-0019).
 - Tests stay offline: mock with a `testRoundTripper` (`http.RoundTripper`) via `option.WithHTTPClient(...)`; a test that reaches the network is wrong.
 - New leaf command: classify it. Unlabelled means frozen Public contract (ADR-0010/0042); mark `kernel.Experimental(...)` at registration if its flags may still change. The registry test in `cmd/gplay` fails on unclassified leaves.
+- To prove a command **behaves** as advertised, use the project skill `verify`:
+  build, then drive the offline path (`schema`, `auth list`, `--help`). It records
+  the two traps found by running: `--version` does not exist (it is the `version`
+  subcommand), and a pipe masks the exit code (`gplay tracks list` returns 2 alone,
+  0 when piped into `head`).
 
 ## Les pièges de ce repo
 
