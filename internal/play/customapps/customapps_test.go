@@ -1,5 +1,5 @@
 // Package customapps_test exercises the play-layer upload to
-// playcustomapp.accounts.customApps.create against a RoundTripper mock — no
+// playcustomapp.accounts.customApps.create against a RoundTripper mock: no
 // network. The transfer is a resumable upload (PRD #355): the CustomApp
 // metadata opens the session in the initiate POST (uploadType=resumable) and
 // the artifact streams in the chunk PUTs. The tests assert the wire shape (URL,
@@ -105,7 +105,7 @@ const okResp = `{"title":"My Internal App","languageCode":"en-US","packageName":
 // upload endpoint with uploadType=resumable, carries the CustomApp metadata
 // (title/languageCode/organizations) as its JSON body with the media size in
 // X-Upload-Content-Length, and that the artifact bytes travel in the chunk PUT
-// — and that the response is parsed + passed through verbatim.
+// , and that the response is parsed + passed through verbatim.
 func TestCreate_resumableShape(t *testing.T) {
 	rt := &resumeRT{t: t, putBody: okResp}
 	hc := &http.Client{Transport: rt}
@@ -186,7 +186,7 @@ func TestCreate_noOrganizations_omitsField(t *testing.T) {
 }
 
 // TestCreate_403_apiError asserts a 403 on the initiate surfaces as an
-// *api.Error mapping to exit 11 (authorization) — the layer the command turns
+// *api.Error mapping to exit 11 (authorization): the layer the command turns
 // into an agent-resolvable refusal.
 func TestCreate_403_apiError(t *testing.T) {
 	rt := &resumeRT{t: t, initStatus: 403}

@@ -133,7 +133,7 @@ func TestRun_requestShape(t *testing.T) {
 }
 
 // TestRun_stateCaseInsensitive asserts the human word is matched
-// case-insensitively — an agent emitting `UNPUBLISHED` must not be refused —
+// case-insensitively: an agent emitting `UNPUBLISHED` must not be refused,
 // while the wire still carries the exact API enum.
 func TestRun_stateCaseInsensitive(t *testing.T) {
 	for _, word := range []string{"UNPUBLISHED", "Unpublished", "  unPUBLISHed  "} {
@@ -150,7 +150,7 @@ func TestRun_stateCaseInsensitive(t *testing.T) {
 }
 
 // TestRun_invalidState_exit2 asserts an unknown word is CLI misuse, refused
-// before any HTTP call, with an error that enumerates the accepted values —
+// before any HTTP call, with an error that enumerates the accepted values:
 // never a server-side 400.
 func TestRun_invalidState_exit2(t *testing.T) {
 	for _, word := range []string{"draft", "", "APP_STORE_APP_PUBLISH_STATE_UNSPECIFIED"} {
@@ -223,8 +223,8 @@ func TestRun_jsonPassthrough(t *testing.T) {
 }
 
 // TestRun_jsonEmptyBodyFallback asserts an empty API body still yields parseable
-// JSON — the documented ADR-0003 exception (as in `appstore create`), never zero
-// bytes on the CI default format — and that it names the applied state.
+// JSON: the documented ADR-0003 exception (as in `appstore create`), never zero
+// bytes on the CI default format, and that it names the applied state.
 func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 	rt := &testRoundTripper{status: 200, resp: ""}
 	rc := newRC(t, rt)
@@ -252,7 +252,7 @@ func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 }
 
 // TestRun_humanViews asserts the table and markdown views name both identifiers
-// and the applied enum — the response carries no fields, so the echo is the
+// and the applied enum: the response carries no fields, so the echo is the
 // whole view.
 func TestRun_humanViews(t *testing.T) {
 	rt := &testRoundTripper{}
@@ -281,7 +281,7 @@ func TestRun_humanViews(t *testing.T) {
 // TestRun_dryRun_noHTTP asserts --dry-run resolves the target, performs no HTTP
 // call at all (not even the token exchange), and renders the ADR-0017 preview:
 // the human views say "would set", the JSON view carries dryRun plus the
-// (empty) machine-readable requires array — empty because the flip is
+// (empty) machine-readable requires array: empty because the flip is
 // reversible and gated by no safety flag.
 func TestRun_dryRun_noHTTP(t *testing.T) {
 	rt := &testRoundTripper{}
@@ -328,7 +328,7 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 }
 
 // TestRun_dryRun_validatesFirst asserts --dry-run still fails fast on an
-// unresolvable target — the rehearsal previews a real call, not a hypothetical.
+// unresolvable target: the rehearsal previews a real call, not a hypothetical.
 func TestRun_dryRun_validatesFirst(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	rt := &testRoundTripper{}
@@ -342,7 +342,7 @@ func TestRun_dryRun_validatesFirst(t *testing.T) {
 }
 
 // TestRun_missingStorePackage_exit2 asserts the app store package name is
-// required and its absence is CLI misuse — it identifies the caller and has no
+// required and its absence is CLI misuse: it identifies the caller and has no
 // project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
@@ -361,7 +361,7 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 
 // TestRun_storePackageEnvCascade asserts the ADR-0043 cascade: the
 // --store-package flag wins, $GPLAY_APP_STORE_PACKAGE fills in when the flag is
-// absent — so a CI job exports the store identity once for the whole namespace.
+// absent, so a CI job exports the store identity once for the whole namespace.
 func TestRun_storePackageEnvCascade(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
 	rt := &testRoundTripper{}
@@ -378,7 +378,7 @@ func TestRun_storePackageEnvCascade(t *testing.T) {
 		t.Fatalf("Run with flag over env: %v", err)
 	}
 	if !strings.Contains(rt.apiURL, "/appstore/com.flag.store/") {
-		t.Errorf("url %q — the --store-package flag must win over the env var", rt.apiURL)
+		t.Errorf("url %q: the --store-package flag must win over the env var", rt.apiURL)
 	}
 }
 

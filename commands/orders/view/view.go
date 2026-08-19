@@ -1,7 +1,7 @@
 // Package view implements `gplay orders view <orderId> [<orderId>...]`: a
 // Google Play order lookup by order ID, end-to-end. One ID calls orders.get;
-// two to 1000 IDs call orders.batchget — one ergonomic read verb hides the
-// get-vs-batchget routing (ADR-0031). Read-only and Edit-free — a direct
+// two to 1000 IDs call orders.batchget: one ergonomic read verb hides the
+// get-vs-batchget routing (ADR-0031). Read-only and Edit-free: a direct
 // application-scoped GET on the package axis. The human views show a compact
 // summary (single: order id, state, total, creation time, line items; batch:
 // one summary line per order); --output json is the Order (single) /
@@ -67,7 +67,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 }
 
 // single returns the lone order for the single-lookup path; a zero Order if the
-// slice is somehow empty (defensive — Run always populates one).
+// slice is somehow empty (defensive: Run always populates one).
 func (p Payload) single() orders.Order {
 	if len(p.Orders) == 0 {
 		return orders.Order{}
@@ -111,7 +111,7 @@ func renderSingleTable(w io.Writer, o orders.Order) error {
 }
 
 // renderBatchTable writes one tab-separated summary line per order (id, state,
-// total, create time) — a compact roster for the multi-ID lookup.
+// total, create time): a compact roster for the multi-ID lookup.
 func renderBatchTable(w io.Writer, os []orders.Order) error {
 	for _, o := range os {
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", o.OrderID, o.State, formatMoney(o.Total), o.CreateTime); err != nil {
@@ -121,7 +121,7 @@ func renderBatchTable(w io.Writer, os []orders.Order) error {
 	return nil
 }
 
-// renderJSON emits the verbatim API bytes (ADR-0003 pass-through) — the Order
+// renderJSON emits the verbatim API bytes (ADR-0003 pass-through): the Order
 // for a single lookup, the BatchGetOrdersResponse for a batch. Raw is always
 // populated on the Run path; an empty Raw would mean the API body was never
 // captured, so we error rather than emit zero bytes.
@@ -165,7 +165,7 @@ func renderSingleMarkdown(w io.Writer, o orders.Order) error {
 }
 
 // renderBatchMarkdown renders the batch as a heading + one bullet per order
-// (id — state — total — create time), so a pasted multi-order report stands
+// (id: state: total: create time), so a pasted multi-order report stands
 // alone.
 func renderBatchMarkdown(w io.Writer, os []orders.Order) error {
 	if _, err := fmt.Fprintf(w, "## Orders (%d)\n\n", len(os)); err != nil {
@@ -179,14 +179,14 @@ func renderBatchMarkdown(w io.Writer, os []orders.Order) error {
 				kept = append(kept, p)
 			}
 		}
-		if _, err := fmt.Fprintf(w, "- %s\n", strings.Join(kept, " — ")); err != nil {
+		if _, err := fmt.Fprintf(w, "- %s\n", strings.Join(kept, ": ")); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// lineItemSummary renders one line item compactly: "productId (title) — total",
+// lineItemSummary renders one line item compactly: "productId (title): total",
 // dropping the parts that are absent.
 func lineItemSummary(li orders.LineItem) string {
 	label := li.ProductID
@@ -199,7 +199,7 @@ func lineItemSummary(li orders.LineItem) string {
 	}
 	if amount := formatMoney(li.Total); amount != "" {
 		if label != "" {
-			return label + " — " + amount
+			return label + ": " + amount
 		}
 		return amount
 	}
@@ -267,10 +267,10 @@ func trimIDs(raw []string) []string {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	ids := trimIDs(in.OrderIDs)
 	if len(ids) == 0 {
-		return nil, orderscmd.Usagef("no order — pass one or more order IDs: gplay orders view <orderId> [<orderId>...]")
+		return nil, orderscmd.Usagef("no order: pass one or more order IDs: gplay orders view <orderId> [<orderId>...]")
 	}
 	if len(ids) > orders.MaxBatchOrderIDs {
-		return nil, orderscmd.Usagef("too many order IDs (%d) — orders.batchget accepts between 1 and %d per request; split the list into smaller batches", len(ids), orders.MaxBatchOrderIDs)
+		return nil, orderscmd.Usagef("too many order IDs (%d): orders.batchget accepts between 1 and %d per request; split the list into smaller batches", len(ids), orders.MaxBatchOrderIDs)
 	}
 	pkg, err := orderscmd.ResolvePackage(rc, in.Package)
 	if err != nil {
@@ -305,19 +305,19 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "view <orderId> [<orderId>...]",
 		Short: "Look up Google Play orders by order ID",
-		Long: `Look up one or more Google Play orders by order ID — the admin-side commerce
+		Long: `Look up one or more Google Play orders by order ID: the admin-side commerce
 diagnostic: a human or agent holds an order ID from a buyer complaint or a
 payout report and reads its state, total, and line items. This is the order
 lookup boundary of the commerce surface; real-time purchase-token verification
 is a runtime API gplay does not wrap (CONTEXT.md "Order" / ADR-0031).
 
 Pass a single order ID for a detailed lookup (orders.get) or several to look
-them up together (orders.batchget, 1–1000 IDs per request — more is a usage
+them up together (orders.batchget, 1–1000 IDs per request: more is a usage
 error). batchget is all-or-nothing: if any ID is unknown or belongs to another
 package, the whole request fails. The order ID looks like
 ` + "`GPA.1234-5678-9012-34567`" + `. The package defaults to the repo's
 .gplay/config.json pin when --package is omitted. This is a direct
-application-scoped read — it opens no Edit.
+application-scoped read: it opens no Edit.
 
 The human views show a compact summary (single: order id, state, total,
 creation time, line items; multiple: one line per order); --output json passes

@@ -35,7 +35,7 @@ const (
 
 // Type is one of the nine AppImageType values edits.images exposes. The
 // string value IS the API path segment (and the on-disk slot name). There is
-// no Chromebook type — androidpublisher v3's AppImageType enum does not
+// no Chromebook type: androidpublisher v3's AppImageType enum does not
 // expose it (PRD #112 "Hors scope"), so it is deliberately not addressable.
 type Type string
 
@@ -47,7 +47,7 @@ const (
 	PromoGraphic   Type = "promoGraphic"
 
 	// Gallery slots hold an ordered sequence (Play caps each at 8). Display
-	// order is upload order — the API carries no position field (ADR-0013).
+	// order is upload order: the API carries no position field (ADR-0013).
 	PhoneScreenshots     Type = "phoneScreenshots"
 	SevenInchScreenshots Type = "sevenInchScreenshots"
 	TenInchScreenshots   Type = "tenInchScreenshots"
@@ -56,7 +56,7 @@ const (
 )
 
 // Spec is the static metadata of one image Type: its singular/gallery nature.
-// A singular slot holds ≤1 image; a gallery is an ordered set of ≤8 — the
+// A singular slot holds ≤1 image; a gallery is an ordered set of ≤8: the
 // distinction that decides whether `pull` writes `<type>.<ext>` or a
 // `<type>/N.<ext>` directory, and whether `apply` reconciles a value or an
 // ordered sequence.
@@ -185,10 +185,10 @@ func List(ctx context.Context, hc *http.Client, pkg, editID, language string, im
 // Upload sends one image's bytes into a slot at edits.images.upload, using the
 // same simple-media protocol as bundles.upload (the upload sub-host,
 // uploadType=media, Content-Type: application/octet-stream). It returns the
-// Image Google created — crucially its sha256, which `apply` compares against
+// Image Google created: crucially its sha256, which `apply` compares against
 // the local file's hash. images.upload APPENDS to a gallery (there is no
 // position parameter); ordering is the caller's job (upload in name order
-// after a DeleteAll — ADR-0013).
+// after a DeleteAll: ADR-0013).
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, data []byte) (*Image, error) {
 	u := api.UploadBase +
 		"/applications/" + url.PathEscape(pkg) +
@@ -250,8 +250,8 @@ func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 }
 
 // DeleteAll removes every image in a slot at edits.images.deleteall (DELETE on
-// the slot URL, no image id). It is the only way to reorder a gallery —
-// `apply` does DeleteAll + re-upload in name order (ADR-0013) — and the
+// the slot URL, no image id). It is the only way to reorder a gallery:
+// `apply` does DeleteAll + re-upload in name order (ADR-0013), and the
 // destructive primitive behind a full-slot clear. The {"deleted":[...]} body
 // is not parsed; a non-2xx surfaces as an *api.Error.
 func DeleteAll(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type) error {

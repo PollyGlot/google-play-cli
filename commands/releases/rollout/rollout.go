@@ -1,5 +1,5 @@
 // Package rollout implements the staged-rollout state machine as four
-// sibling commands — `gplay releases rollout / halt / resume / complete`.
+// sibling commands: `gplay releases rollout / halt / resume / complete`.
 // Each is thin glue: it resolves --package, validates flags, builds an
 // authenticated HTTP client from the active Account, and hands a StateOpts
 // to internal/releases/orchestrator. The four share this file's Input,
@@ -60,7 +60,7 @@ func (p Payload) Renderers() output.Renderers {
 
 // showsUserFraction reports whether userFraction is worth printing. A live
 // inProgress / halted release always carries a non-zero fraction, so a
-// positive value is the signal — that also hides the synthetic zero a
+// positive value is the signal: that also hides the synthetic zero a
 // halt / resume --dry-run preview leaves behind (those preserve the live
 // fraction, which is unknown without an API call) rather than implying 0%.
 func showsUserFraction(userFraction float64) bool {
@@ -127,7 +127,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	if in.Track == "" {
 		return nil, &usageError{msg: "missing --track"}
@@ -183,7 +183,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 }
 
 // RunRollout validates the --to fraction (AC6: required, numeric, in
-// (0, 1] — every misuse is exit 2 with a range hint) then drives
+// (0, 1]: every misuse is exit 2 with a range hint) then drives
 // orchestrator.Rollout.
 func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.ToSet {

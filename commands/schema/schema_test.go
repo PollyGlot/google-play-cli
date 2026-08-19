@@ -1,5 +1,5 @@
 // Package schema_test exercises `gplay schema` at the business-function seam
-// (Run → output.Renderable), against the REAL embedded index — so these tests
+// (Run → output.Renderable), against the REAL embedded index, so these tests
 // double as proof the command runs fully OFFLINE (no Account, no transport) and
 // that the embed is wired correctly.
 package schema_test

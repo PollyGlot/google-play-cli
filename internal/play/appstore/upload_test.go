@@ -72,7 +72,7 @@ func writeFile(t *testing.T, name string, content []byte) string {
 	return p
 }
 
-// pngBytes is a minimal PNG header — enough for http.DetectContentType.
+// pngBytes is a minimal PNG header: enough for http.DetectContentType.
 var pngBytes = append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
 
 // TestUploadAPK_requestShape pins the wire shape: the upload host (not the

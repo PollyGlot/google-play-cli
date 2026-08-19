@@ -169,7 +169,7 @@ func TestError_Unwrap(t *testing.T) {
 }
 
 // TestError_Error_includesReasons asserts the user-visible string
-// surfaces the structured Reasons slice — without this, the
+// surfaces the structured Reasons slice: without this, the
 // editAlreadyExists / rateLimitExceeded / etc. signal Google ships
 // in the envelope is parsed but invisible in CI logs and `gplay`
 // stderr output.

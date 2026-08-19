@@ -38,7 +38,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to manage users on developer account %s — grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
+	return fmt.Sprintf("service account is not authorized to manage users on developer account %s: grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -147,7 +147,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
-		return nil, exit.Usagef("missing <email> — usage: gplay team users remove <email> --confirm")
+		return nil, exit.Usagef("missing <email>: usage: gplay team users remove <email> --confirm")
 	}
 
 	gate := teamcmd.Gate{Destructive: true}
@@ -204,7 +204,7 @@ off-boarding them, use ` + "`gplay team grants remove`" + ` instead.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.DeveloperID, "developer-id", "", "Play Console Developer account id (overrides the active Account's, env, and project-local)")
-	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the off-boarding (required — this is destructive)")
+	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the off-boarding (required: this is destructive)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "preview the target without any HTTP call")
 	return cmd
 }

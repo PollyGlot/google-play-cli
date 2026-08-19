@@ -1,7 +1,7 @@
 // Package details_test exercises the high-level details.Get entry
 // point: open an Edit (read-only), fetch details.get + listings.get on
 // the default language, discard the Edit. The transport NEVER sees a
-// PUT or a :commit — `apps view` is read-only by construction.
+// PUT or a :commit: `apps view` is read-only by construction.
 package details_test
 
 import (
@@ -22,7 +22,7 @@ import (
 // infoRT routes the apps view sequence: edits.insert, edits.details.get,
 // edits.listings.get(defaultLanguage), edits.delete. Configurable status
 // codes on details.get and listings.get exercise the error paths without
-// re-declaring the transport. A PUT or a :commit fails the test — a
+// re-declaring the transport. A PUT or a :commit fails the test: a
 // read-only info command must never write.
 type infoRT struct {
 	t       *testing.T
@@ -99,7 +99,7 @@ func exitCodeOf(t *testing.T, err error) int {
 // insert → details.get → listings.get(defaultLanguage) → delete. The
 // returned *Details surfaces defaultLanguage, title, contactEmail; the
 // raw payload is the gplay envelope {"details":..,"listing":..} (an
-// explicit exception to ADR-0003 — apps view combines two endpoints).
+// explicit exception to ADR-0003: apps view combines two endpoints).
 func TestGet_happyPath(t *testing.T) {
 	detailsBody := `{"contactEmail":"hi@example.com","contactPhone":"+1","contactWebsite":"https://x","defaultLanguage":"en-US"}`
 	listingBody := `{"language":"en-US","title":"MyApp","shortDescription":"hi","fullDescription":"world","video":""}`
@@ -147,7 +147,7 @@ func TestGet_happyPath(t *testing.T) {
 	}
 
 	// The raw envelope is the gplay-shaped {"details":..,"listing":..}
-	// — explicit exception to ADR-0003 because apps view merges multiple
+	//: explicit exception to ADR-0003 because apps view merges multiple
 	// endpoints. Each sub-object must be the upstream body verbatim so
 	// jq/--output json consumers see the API field names unchanged. With
 	// no icon in the slot, the optional icon key is omitted entirely and
@@ -321,7 +321,7 @@ func TestGet_emptyDefaultLanguage_errorsBeforeListingsCall(t *testing.T) {
 		// defaultLanguage absent → parsed.DefaultLanguage = "".
 		details: `{"contactEmail":"hi@example.com"}`,
 		// Listing body that would be served IF the test ever reached
-		// listings.get — we want the test to fail noisily if it does.
+		// listings.get: we want the test to fail noisily if it does.
 		listing: `{"language":"","title":"WOULDNT-REACH-HERE"}`,
 	}
 	hc := &http.Client{Transport: rt}
@@ -356,7 +356,7 @@ func TestGet_emptyDefaultLanguage_errorsBeforeListingsCall(t *testing.T) {
 }
 
 // brokenBody is a body that errors on the first Read so getJSON's
-// io.ReadAll surfaces an error mid-stream — the case CodeRabbit
+// io.ReadAll surfaces an error mid-stream: the case CodeRabbit
 // flagged: a truncated response on a 2xx status must not be silently
 // passed to json.Unmarshal as if the body were complete.
 type brokenBody struct{}

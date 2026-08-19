@@ -1,6 +1,6 @@
 // Package list implements `gplay releases generated list`: enumerate the APKs
 // Play generated and signed from an uploaded AAB for a given versionCode.
-// Read-only and Edit-free — a direct application-scoped GET (the generatedApks
+// Read-only and Edit-free: a direct application-scoped GET (the generatedApks
 // endpoints are not under /edits/). The API keys the resource on versionCode, so
 // gplay requires --version-code; missing it is CLI misuse (exit 2) caught before
 // any network. Ships [experimental].
@@ -82,7 +82,7 @@ given versionCode. Each artifact carries an opaque downloadId to feed
 flattens the grouped-by-signing-key response to one row per artifact; --output
 json passes the GeneratedApksListResponse through verbatim (ADR-0003).
 
-This is a direct application-scoped read — it opens no Edit.`,
+This is a direct application-scoped read: it opens no Edit.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

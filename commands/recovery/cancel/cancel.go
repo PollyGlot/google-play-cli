@@ -1,8 +1,8 @@
 // Package cancel implements `gplay recovery cancel <appRecoveryId>`: terminate an
 // app recovery action. The action persists with status CANCELED and CANNOT be
-// resumed — irreversible. DESTRUCTIVE tier (ADR-0017): requires --confirm
+// resumed: irreversible. DESTRUCTIVE tier (ADR-0017): requires --confirm
 // (missing → exit 3), MarkMutating. `cancel` is a domain verb admitted under
-// ADR-0019 §2 (see ADR-0030) — not `remove`, since the resource is not deleted.
+// ADR-0019 §2 (see ADR-0030), not `remove`, since the resource is not deleted.
 package cancel
 
 import (
@@ -59,7 +59,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "cancel <appRecoveryId>",
 		Short: "Cancel a recovery action (irreversible)",
 		Long: `Cancel an app recovery action. The action persists with status CANCELED and
-CANNOT be resumed — this is irreversible. To target users again you must create
+CANNOT be resumed: this is irreversible. To target users again you must create
 a new recovery.
 
 Requires --confirm (missing → exit 3); rehearse first with --dry-run.

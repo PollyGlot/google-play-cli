@@ -50,7 +50,7 @@ func TestRun_pureBusiness(t *testing.T) {
 	}
 }
 
-// TestRun_missingSAPath_isCLIError verifies the typed error mapping —
+// TestRun_missingSAPath_isCLIError verifies the typed error mapping:
 // the empty-input case must exit 2 (CLI misuse), not 1 (generic).
 func TestRun_missingSAPath_isCLIError(t *testing.T) {
 	_, _, boot := newCmd(t)

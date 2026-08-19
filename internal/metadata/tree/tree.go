@@ -1,14 +1,14 @@
 // Package tree is the filesystem codec for the Metadata tree: the pure,
 // I/O-only translation between an on-disk `<dir>/<locale>/<field>.txt`
 // layout and the typed listing.Tree model. It is the leaf the higher
-// metadata commands stand on — `metadata pull` writes a Tree here,
-// `metadata apply`/`validate`/`list` read one — and it speaks only the
+// metadata commands stand on: `metadata pull` writes a Tree here,
+// `metadata apply`/`validate`/`list` read one, and it speaks only the
 // filesystem: no HTTP, no auth, no knowledge of the Play API.
 //
 // The Metadata tree mirrors the shape `fastlane supply` reads (one
 // snake_case `.txt` per Listing field, under a per-locale directory),
 // minus fastlane's `android/` segment and its `changelogs/` (release
-// notes live with `releases`, not metadata — CONTEXT.md "Metadata
+// notes live with `releases`, not metadata: CONTEXT.md "Metadata
 // tree"). This package owns the on-disk encoding of the ADR-0011
 // "missing ≠ empty" rule: a field *file* that is absent stays absent
 // from the Listing (unmanaged → "leave online untouched"); a field file
@@ -31,8 +31,8 @@ import (
 // LocaleNoFieldsError is returned by Read when a directory NAMED like a
 // known Play store locale (locale.IsKnown) holds at least one file but none
 // the codec recognizes as a Listing field. That is the signature of a
-// filename typo — e.g. `full-description.txt` (hyphen) instead of
-// `full_description.txt` — which would otherwise make the locale vanish
+// filename typo: e.g. `full-description.txt` (hyphen) instead of
+// `full_description.txt`, which would otherwise make the locale vanish
 // from the Tree silently and, under `metadata apply --prune`, get its live
 // Listing deleted. Erroring here makes the typo loud for every consumer of
 // the tree (validate and apply alike) instead of silently dropping data.
@@ -49,13 +49,13 @@ type LocaleNoFieldsError struct {
 
 func (e *LocaleNoFieldsError) Error() string {
 	return fmt.Sprintf(
-		"locale directory %q contains files but no recognized Listing field (%v); expected one of title.txt, short_description.txt, full_description.txt, video.txt — check for a typo in the file name",
+		"locale directory %q contains files but no recognized Listing field (%v); expected one of title.txt, short_description.txt, full_description.txt, video.txt: check for a typo in the file name",
 		e.Locale, e.Files)
 }
 
 // osReadDir, osReadFile, osMkdirAll, and osWriteFile are package-level
 // seams so a later block can swap the filesystem (e.g. an injected
-// internal/config.FS) without rewriting Read/Write — same pattern as
+// internal/config.FS) without rewriting Read/Write: same pattern as
 // internal/releases/notes. Today they delegate straight to os.
 var (
 	osReadDir   = func(dir string) ([]fs.DirEntry, error) { return os.ReadDir(dir) }
@@ -79,7 +79,7 @@ const (
 // recognizes (title.txt, short_description.txt, full_description.txt,
 // video.txt) becomes a managed field on that locale's Listing. The file
 // contents are taken verbatim except that at most one trailing "\n" is
-// stripped — the exact inverse of the single "\n" Write appends — so a
+// stripped (the exact inverse of the single "\n" Write appends) so a
 // multi-line full_description keeps its internal newlines intact. The codec
 // does not normalize CRLF (see stripOneTrailingNewline): a "\r\n"-saved
 // file keeps its "\r" in the value, preserving the Read(Write(X)) == X
@@ -120,7 +120,7 @@ func Read(dir string) (listing.Tree, error) {
 			return nil, err
 		}
 		// A directory with no recognized field file (e.g. `changelogs/`,
-		// or a locale holding only a README) is not a managed Listing —
+		// or a locale holding only a README) is not a managed Listing:
 		// omit it rather than emit an empty entry. BUT if the directory is
 		// named like a known Play locale and holds an unrecognized *.txt*,
 		// that is a Listing-field filename typo (e.g. `full-description.txt`):
@@ -164,7 +164,7 @@ func readLocale(path, locale string) (listing.Listing, []string, error) {
 		}
 		spec, ok := listing.SpecByFile(e.Name())
 		if !ok {
-			// Unrecognized file (README, *.md, unknown *.txt) — ignore here,
+			// Unrecognized file (README, *.md, unknown *.txt): ignore here,
 			// but remember it so Read can flag a locale-shaped dir that holds
 			// only mis-named files.
 			unrecognized = append(unrecognized, e.Name())
@@ -179,7 +179,7 @@ func readLocale(path, locale string) (listing.Listing, []string, error) {
 	return l, unrecognized, nil
 }
 
-// txtFiles filters names down to the *.txt ones — the file type a Listing
+// txtFiles filters names down to the *.txt ones: the file type a Listing
 // field uses, so a mis-named `full-description.txt` is flagged while a
 // README.md / LICENSE / *.png in a locale dir stays ignored.
 func txtFiles(names []string) []string {
@@ -192,7 +192,7 @@ func txtFiles(names []string) []string {
 	return out
 }
 
-// stripOneTrailingNewline removes a single trailing "\n" — and nothing
+// stripOneTrailingNewline removes a single trailing "\n", and nothing
 // else. It is the EXACT inverse of the one "\n" Write appends, which is
 // what makes Read(Write(X)) == X hold for *every* value, and Write(Read(D))
 // == D for every disk file D (a clean bijection both ways).
@@ -203,7 +203,7 @@ func txtFiles(names []string) []string {
 // "x\r"), silently breaking the pull→apply no-op invariant for Play-sourced
 // text with a trailing carriage return (CodeRabbit review, PR #110). The
 // consequence is that the codec does not normalize CRLF: a file saved with
-// "\r\n" line endings keeps its "\r" inside the value — save field files as
+// "\r\n" line endings keeps its "\r" inside the value: save field files as
 // LF for clean values. Stripping at most one byte (not TrimRight) is what
 // lets a full_description ending in a blank line survive the round-trip.
 func stripOneTrailingNewline(s string) string {
@@ -216,11 +216,11 @@ func stripOneTrailingNewline(s string) string {
 // Write serializes tr under dir, creating locale directories as needed.
 //
 // For each locale, for each *managed* field (present in the Listing's
-// Fields map — the ADR-0011 marker), it writes dir/<locale>/<Spec.File>.
+// Fields map: the ADR-0011 marker), it writes dir/<locale>/<Spec.File>.
 // A non-empty value is written as value+"\n" (a trailing newline, so the
 // file is a clean POSIX text file and `git diff` stays line-oriented); a
 // managed empty value is written as a 0-byte file, preserving on disk the
-// "clear this field online" signal — the file's *presence* says managed,
+// "clear this field online" signal: the file's *presence* says managed,
 // its emptiness says clear, exactly the distinction Read recovers.
 //
 // Write is additive: it never deletes a file. Pruning (removing locales
@@ -250,7 +250,7 @@ func Write(dir string, tr listing.Tree) error {
 			}
 			var b []byte
 			if v != "" {
-				// Append exactly one "\n" — the inverse of Read's
+				// Append exactly one "\n": the inverse of Read's
 				// single-newline strip. An empty value stays 0 bytes so
 				// Read recovers a managed "" (clear), not an unmanaged
 				// field.

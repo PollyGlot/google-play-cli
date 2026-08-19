@@ -74,7 +74,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "List a game's achievement configurations",
 		Long: `List the achievement configurations for a Play Games Services application.
 
-Addressing rides the numeric Play Games application ID (--application-id) — a
+Addressing rides the numeric Play Games application ID (--application-id): a
 distinct ID space from the Android package (ADR-0033). Use --max-results and
 --page-token to page; --output json passes the
 AchievementConfigurationListResponse through verbatim, including nextPageToken

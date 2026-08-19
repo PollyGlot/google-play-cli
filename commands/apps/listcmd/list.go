@@ -61,28 +61,28 @@ func (e *usageError) ExitCode() int { return 2 }
 // reads its packages from the registry, marks the row matching
 // rc.Resolved.Pin (if any), and returns a Renderable payload.
 //
-// Account precedence — must mirror the resolver's so `--account altname`
+// Account precedence: must mirror the resolver's so `--account altname`
 // and `GPLAY_ACCOUNT=altname` are honored exactly as for write-side
 // commands (this is the bug addcmd.go:65-90 explicitly warns against
 // when picking ConfigAccount over AccountName):
 //
-//  1. rc.AccountName when non-empty — populated by the resolver from
+//  1. rc.AccountName when non-empty: populated by the resolver from
 //     --account, GPLAY_ACCOUNT, or the cascade. This is the post-
 //     resolution truth and beats ConfigAccount whenever both are set.
 //  2. rc.Resolved.ConfigAccount when rc.Account == nil AND
-//     rc.AccountName == "" — happens when the keystore could not
+//     rc.AccountName == "": happens when the keystore could not
 //     materialise a credential for the cascade's Active layer (common in
 //     tests, also in CI before `auth login`). Listing is read-only so we
 //     don't need a working credential to surface packages from the
-//     registry — fall back to the cascade name and continue.
-//  3. rc.Account != nil with rc.AccountName == "" — the inline-credential
+//     registry: fall back to the cascade name and continue.
+//  3. rc.Account != nil with rc.AccountName == "": the inline-credential
 //     case (--service-account / GPLAY_SERVICE_ACCOUNT). Inline creds have
 //     no local Account name so the registry cannot be scoped to them; we
 //     return a usageError (exit 2) telling the user this limitation.
-//  4. Neither name nor credential resolved — authError (exit 10).
+//  4. Neither name nor credential resolved: authError (exit 10).
 //
 // Once Account is chosen, we also assert it exists in
-// rc.Resolved.Accounts — a stale local override or a logged-out Account
+// rc.Resolved.Accounts: a stale local override or a logged-out Account
 // would otherwise produce the same "no packages" hint as a fresh
 // Account, while `apps add` would immediately fail with
 // ErrUnknownAccount. Distinct error → distinct user action.
@@ -90,7 +90,7 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	if rc.Resolved == nil {
 		// Defensive: production buildRunContext always populates Resolved,
 		// but a hand-built RunContext (e.g. a future test, a partial-init
-		// refactor) could leave it nil — fail with a clear authError
+		// refactor) could leave it nil: fail with a clear authError
 		// instead of nil-derefing.
 		return nil, &authError{msg: "apps list: no resolved config; run `gplay auth login` to register an Account"}
 	}
@@ -142,7 +142,7 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 }
 
 // accountInResolved reports whether name is registered in the global
-// config's Accounts slice. Mirror of addcmd's accountInGlobal — kept
+// config's Accounts slice. Mirror of addcmd's accountInGlobal: kept
 // private to listcmd because the cascade snapshot lives on
 // rc.Resolved.Accounts here rather than a freshly-loaded *config.Global.
 func accountInResolved(accounts []config.Account, name string) bool {
@@ -220,7 +220,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "list",
 		Short:         "List packages registered under the active Account",
-		Long:          `List every Android package registered under the active Account in gplay's local registry. In table and markdown output the row matching the current repo's .gplay/config.json pin (if any) is marked with a ✓ in the Pinned column; in JSON output the same row carries "pinned": true. Pass no positional arguments — listing scope is always the active Account.`,
+		Long:          `List every Android package registered under the active Account in gplay's local registry. In table and markdown output the row matching the current repo's .gplay/config.json pin (if any) is marked with a ✓ in the Pinned column; in JSON output the same row carries "pinned": true. Pass no positional arguments: listing scope is always the active Account.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

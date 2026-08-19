@@ -8,7 +8,7 @@ import (
 	"unicode/utf16"
 )
 
-// utf16LE encodes s as UTF-16LE with a leading BOM — the exact byte shape of
+// utf16LE encodes s as UTF-16LE with a leading BOM: the exact byte shape of
 // Google's monthly reviews reports.
 func utf16LE(s string) []byte {
 	var buf bytes.Buffer

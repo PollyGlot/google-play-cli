@@ -1,6 +1,6 @@
 // Package add implements `gplay team users add <email>`: invite a member with
 // account-wide permissions via users.create. Permissions are expressed in
-// friendly form — --role <bundle> XOR --permissions <alias,…> — resolved by
+// friendly form (--role <bundle> XOR --permissions <alias,…>) resolved by
 // the vocabulary module in account scope (it appends _GLOBAL).
 //
 // add lands the write-safety scaffold the other `team` writes reuse (ADR-0017):
@@ -52,7 +52,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to manage users on developer account %s — grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
+	return fmt.Sprintf("service account is not authorized to manage users on developer account %s: grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -62,7 +62,7 @@ type alreadyMemberError struct {
 }
 
 func (e *alreadyMemberError) Error() string {
-	return fmt.Sprintf("%s is already a member — use `gplay team users set %s` to change their permissions: %v", e.email, e.email, e.cause)
+	return fmt.Sprintf("%s is already a member: use `gplay team users set %s` to change their permissions: %v", e.email, e.email, e.cause)
 }
 func (e *alreadyMemberError) Unwrap() error { return e.cause }
 
@@ -175,12 +175,12 @@ func (p Payload) renderJSON(w io.Writer) error {
 
 // Run is the business function the kernel invokes. It validates the flag
 // combination, resolves the permissions in account scope, applies the
-// write-safety gate, and — unless --dry-run short-circuits before any network —
+// write-safety gate, and, unless --dry-run short-circuits before any network,
 // creates the member.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
-		return nil, exit.Usagef("missing <email> — usage: gplay team users add <email> --role <bundle>|--permissions <alias,…>")
+		return nil, exit.Usagef("missing <email>: usage: gplay team users add <email> --role <bundle>|--permissions <alias,…>")
 	}
 
 	// --role XOR --permissions: exactly one is required for add (a member must
@@ -242,13 +242,13 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "add <email>",
 		Short: "Invite a member with account-wide permissions",
 		Long: `Invite <email> as a member of the Developer account with account-wide
-permissions, via users.create. Express permissions in friendly form —
---role <bundle> XOR --permissions <alias,…> — resolved in account scope
+permissions, via users.create. Express permissions in friendly form:
+--role <bundle> XOR --permissions <alias,…>: resolved in account scope
 (the _GLOBAL family). Run ` + "`gplay team permissions`" + ` to list aliases and bundles.
 
 add is the routine tier: no confirmation gate, and CI-scriptable. But an
 admin-conferring add (--role admin, or a permission set including the
-all-permissions enum) requires the named --grant-admin — handing out full
+all-permissions enum) requires the named --grant-admin: handing out full
 control is never silent.
 
 Use --dry-run to preview the resolved payload with no HTTP; with --output json

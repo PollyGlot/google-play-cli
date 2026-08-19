@@ -9,11 +9,11 @@ import (
 
 // retryableExitCodes are the docs/DESIGN.md §9 exit codes an automated
 // caller can usefully retry unchanged: 40 (API 5xx, upstream temporarily
-// unhealthy) and 50 (network — timeout, DNS, refused). Everything else
+// unhealthy) and 50 (network: timeout, DNS, refused). Everything else
 // (auth, authorization, client validation, other 4xx) is permanent for
 // the current inputs and credentials. 60 (state conflict) is only
 // "sometimes" retryable per §9, so it is deliberately treated as
-// non-retryable here — surfacing it stops a blind retry loop, which is
+// non-retryable here: surfacing it stops a blind retry loop, which is
 // the safer default for a batch write.
 var retryableExitCodes = map[int]struct{}{
 	40: {},
@@ -30,7 +30,7 @@ func isRetryable(code int) bool {
 // and computes the batch exit code by the non-retryable-wins rule.
 //
 // Why non-retryable-wins: `apps add a b c` is a batch of independent
-// writes. If `b` failed with a permanent error (e.g. 403 — the service
+// writes. If `b` failed with a permanent error (e.g. 403: the service
 // account is not invited on `b`) while `a` and `c` registered, retrying
 // the whole batch would just re-hit `b`'s permanent failure. Reporting a
 // non-retryable exit code tells the agent driving the CLI to inspect and

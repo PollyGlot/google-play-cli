@@ -4,7 +4,7 @@
 // (`vitals crashes`, `vitals anr`, …) are thin wrappers over (#49).
 //
 // Metrics, dimensions and the aggregation period are validated OFFLINE against
-// the embedded Schema index — never invented (the catalog is read from the
+// the embedded Schema index: never invented (the catalog is read from the
 // snapshot). Output is the ADR-0003 JSON pass-through on stdout; table/markdown
 // render the timeline (dates × metrics, sliced by the requested dimensions).
 // A freshness note is always written to stderr so an empty window is never
@@ -59,7 +59,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "query <metric-set>",
 		Short: "Query a Play vitals metric set (crashrate, anrrate, …) over a window",
-		Long: `Query one of the Play Developer Reporting metric sets directly — the
+		Long: `Query one of the Play Developer Reporting metric sets directly: the
 generic, full-coverage form the opinionated presets (vitals crashes, vitals
 anr, …) wrap.
 
@@ -69,7 +69,7 @@ anr, …) wrap.
 
 --metrics and --dimensions are validated OFFLINE against the embedded API
 schema; unknown values are rejected with the valid set listed (names are never
-invented — they come from the snapshot). With no --metrics the set's primary
+invented: they come from the snapshot). With no --metrics the set's primary
 metric is used. Default window: --since 28d, --period DAILY (HOURLY opt-in).
 
 This is a READ-ONLY surface on a distinct Google service (Play Developer

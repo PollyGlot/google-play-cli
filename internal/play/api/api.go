@@ -14,14 +14,14 @@ const (
 	UploadBase = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3"
 
 	// ReportingBase is the data-plane base URL for the Play Developer Reporting
-	// API v1beta1 — a DISTINCT Google service (its own host and OAuth scope)
+	// API v1beta1: a DISTINCT Google service (its own host and OAuth scope)
 	// carrying the read-only post-launch quality surface (crashes/ANR vitals,
 	// anomalies, error reports; #49). Resource paths hang off this base, e.g.
 	// `/apps/{package}/crashRateMetricSet:query`.
 	ReportingBase = "https://playdeveloperreporting.googleapis.com/v1beta1"
 
 	// CustomAppUploadBase is the media-upload base URL for the Play Custom App
-	// Publishing API (playcustomapp) — a DISTINCT Google service (its own host,
+	// Publishing API (playcustomapp): a DISTINCT Google service (its own host,
 	// the androidpublisher OAuth scope) whose entire current surface is one
 	// account-axis method, accounts.customApps.create (ADR-0032). That method is
 	// a multipart media upload, so only the /upload base is needed; resource
@@ -29,7 +29,7 @@ const (
 	CustomAppUploadBase = "https://playcustomapp.googleapis.com/upload/playcustomapp/v1"
 
 	// GamesConfigBase is the data-plane base URL for the Play Games Services
-	// Publishing API (gamesConfiguration) — a DISTINCT Google service (its own
+	// Publishing API (gamesConfiguration): a DISTINCT Google service (its own
 	// host, the androidpublisher OAuth scope) carrying the admin surface for a
 	// game's achievement and leaderboard configurations (#241, ADR-0033).
 	// Addressed by the Play Games application ID (its own ID space, not the
@@ -49,7 +49,7 @@ const (
 	// response body we read for the ADR-0003 JSON pass-through. A
 	// tracks.update response for an app with many locales × release-note
 	// bodies can comfortably exceed 64 KiB, so we use a much larger cap
-	// (4 MiB) — enough headroom for any sane Play response while still
+	// (4 MiB): enough headroom for any sane Play response while still
 	// bounding memory against a runaway server.
 	MaxAPISuccessBodyRead = 4 * 1024 * 1024
 

@@ -30,11 +30,11 @@ const maxAPIBodyRead = 64 * 1024
 
 // Exit codes per docs/DESIGN.md §9.
 const (
-	exitAuth        = 10 // 10 — auth (credential invalid, token mint failed, scope missing)
-	exitAuthz       = 11 // 11 — authorization (403 — SA not invited on the app, etc.)
-	exitAPI4xx      = 30 // 30 — API 4xx other than auth/perms (not found, conflict, gone)
-	exitAPI5xx      = 40 // 40 — API 5xx (upstream temporarily unhealthy)
-	exitNetwork     = 50 // 50 — transport-level failure (timeout, DNS, refused)
+	exitAuth        = 10 // 10: auth (credential invalid, token mint failed, scope missing)
+	exitAuthz       = 11 // 11 (authorization (403) SA not invited on the app, etc.)
+	exitAPI4xx      = 30 // 30: API 4xx other than auth/perms (not found, conflict, gone)
+	exitAPI5xx      = 40 // 40: API 5xx (upstream temporarily unhealthy)
+	exitNetwork     = 50 // 50: transport-level failure (timeout, DNS, refused)
 	androidPubHost  = "https://androidpublisher.googleapis.com"
 	androidPubBase  = androidPubHost + "/androidpublisher/v3"
 	editsPathFmt    = "/applications/%s/edits"
@@ -134,7 +134,7 @@ func tokenSource(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *htt
 // signing a JWT with the SA's private key and exchanging it at the
 // configured token_uri. Failure (non-2xx response, signature problem,
 // any transport error) is mapped to exit code 10. hc is the http.Client
-// the runner threads down — the doctor command wraps it with the scope
+// the runner threads down: the doctor command wraps it with the scope
 // observer, but for this check that wrapping is invisible.
 func CheckOAuth2Mint() Check {
 	return Check{
@@ -162,7 +162,7 @@ func CheckOAuth2Mint() Check {
 // from obs (which the caller wires via transport.WithScopeObserver) and
 // fails when the required scope is absent.
 //
-// obs may be nil — the check then reports a wiring bug instead of a
+// obs may be nil: the check then reports a wiring bug instead of a
 // credential problem.
 //
 // The optional requiredScope variadic exists for the scope-drift
@@ -212,7 +212,7 @@ func CheckScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
 }
 
 // CheckReportingScope asserts that a token can be minted for the
-// playdeveloperreporting scope — the DISTINCT, read-only scope the `gplay
+// playdeveloperreporting scope: the DISTINCT, read-only scope the `gplay
 // vitals` commands request (#49). It mints a reporting-scoped token source and
 // confirms the JWT exchange both succeeds AND requested that scope (read back
 // from obs). Like CheckScope it is a wiring + credential check: a valid
@@ -221,7 +221,7 @@ func CheckScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
 // failed to request the scope. (API-level access to the reporting service, if
 // the SA is not granted it, still surfaces as a 403 at call time.)
 //
-// obs may be nil — the check then reports a wiring bug. The optional
+// obs may be nil: the check then reports a wiring bug. The optional
 // requiredScope variadic exists for the scope-drift test; production callers
 // pass only obs and the check pins to token.ReportingScope.
 func CheckReportingScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
@@ -299,7 +299,7 @@ func ResolutionFailure(err error) []CheckResult {
 // pointing at Play Console → Setup → API access.
 //
 // The check ALWAYS attempts edits.delete after a successful
-// edits.insert — even on cleanup failure — so the Edit is never left
+// edits.insert (even on cleanup failure) so the Edit is never left
 // dangling on the user's package. A cleanup failure is reported (so
 // the user knows the round-trip didn't complete cleanly), but the
 // rest of the doctor chain proceeds normally per the runner contract.
@@ -307,7 +307,7 @@ func ResolutionFailure(err error) []CheckResult {
 // HTTP status → exit-code mapping (per docs/DESIGN.md §9):
 //
 //	200/201        → Passed,  exit 0
-//	403            → Failed,  exit 11 (authorization — SA not invited)
+//	403            → Failed,  exit 11 (authorization: SA not invited)
 //	404            → Failed,  exit 30 (package not visible to SA)
 //	other 4xx      → Failed,  exit 30 (API misuse)
 //	5xx            → Failed,  exit 40 (transient upstream)
@@ -346,7 +346,7 @@ func CheckPackageAccess(packageName string) Check {
 // insertEdit POSTs edits.insert and returns the new Edit ID on success.
 // The third return value is true when the caller should return the
 // CheckResult directly (i.e. on any non-2xx insert). When true, no
-// delete attempt is made — there is no Edit ID to clean up.
+// delete attempt is made: there is no Edit ID to clean up.
 func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount.ServiceAccount, packageName string) (string, CheckResult, bool) {
 	u := androidPubBase + fmt.Sprintf(editsPathFmt, url.PathEscape(packageName))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, http.NoBody)
@@ -364,7 +364,7 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 		return "", CheckResult{
 			Passed:   false,
 			ExitCode: exitNetwork,
-			Hint:     "network failure on edits.insert for " + packageName + " — safe to retry (" + err.Error() + ")",
+			Hint:     "network failure on edits.insert for " + packageName + ": safe to retry (" + err.Error() + ")",
 		}, true
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -376,13 +376,13 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 			ID string `json:"id"`
 		}
 		if err := json.Unmarshal(body, &parsed); err != nil || parsed.ID == "" {
-			// Edit succeeded but we can't extract the ID — there is
+			// Edit succeeded but we can't extract the ID: there is
 			// nothing to clean up, so report a 5xx-shaped failure: the
 			// upstream gave us a malformed body.
 			return "", CheckResult{
 				Passed:   false,
 				ExitCode: exitAPI5xx,
-				Hint:     "edits.insert for " + packageName + " returned a malformed body — no Edit ID to discard",
+				Hint:     "edits.insert for " + packageName + " returned a malformed body: no Edit ID to discard",
 			}, true
 		}
 		return parsed.ID, CheckResult{}, false
@@ -428,7 +428,7 @@ func insertFailureResult(status int, body []byte, sa *serviceaccount.ServiceAcco
 		return CheckResult{
 			Passed:   false,
 			ExitCode: exit,
-			Hint:     fmt.Sprintf("temporary upstream failure — safe to retry (HTTP %d from edits.insert on %s)", status, packageName),
+			Hint:     fmt.Sprintf("temporary upstream failure: safe to retry (HTTP %d from edits.insert on %s)", status, packageName),
 		}
 	}
 	return CheckResult{
@@ -456,7 +456,7 @@ func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editI
 		return CheckResult{
 			Passed:   false,
 			ExitCode: exitNetwork,
-			Hint:     "edits.insert on " + packageName + " succeeded but cleanup failed — safe to retry (" + err.Error() + ")",
+			Hint:     "edits.insert on " + packageName + " succeeded but cleanup failed: safe to retry (" + err.Error() + ")",
 		}, true
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -470,7 +470,7 @@ func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editI
 		return CheckResult{
 			Passed:   false,
 			ExitCode: exit,
-			Hint:     fmt.Sprintf("edits.insert on %s succeeded but cleanup failed — temporary upstream failure, safe to retry (HTTP %d)", packageName, resp.StatusCode),
+			Hint:     fmt.Sprintf("edits.insert on %s succeeded but cleanup failed: temporary upstream failure, safe to retry (HTTP %d)", packageName, resp.StatusCode),
 		}, true
 	}
 	return CheckResult{

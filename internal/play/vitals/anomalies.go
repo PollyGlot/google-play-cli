@@ -18,7 +18,7 @@ const (
 )
 
 // AnomalyListOptions bounds an anomalies.list call: an AIP-160 Filter (the
-// window is expressed as an `activeBetween(...)` filter — see ActiveBetween) and
+// window is expressed as an `activeBetween(...)` filter: see ActiveBetween) and
 // a total Limit (0 = every page). The call auto-paginates to Limit.
 type AnomalyListOptions struct {
 	Filter string

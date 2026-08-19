@@ -25,7 +25,7 @@ type AchievementConfigurationDetail struct {
 	Description *LocalizedStringBundle `json:"description,omitempty"`
 	// PointValue is a *int (not int) so an explicit zero round-trips: omitempty
 	// drops a nil pointer (field genuinely unset) but emits a non-nil &0, which
-	// a plain `int,omitempty` would silently drop — defeating the --point-value 0
+	// a plain `int,omitempty` would silently drop: defeating the --point-value 0
 	// write the gamescmd *Set flags exist to support.
 	PointValue *int   `json:"pointValue,omitempty"`
 	IconURL    string `json:"iconUrl,omitempty"`
@@ -49,7 +49,7 @@ type AchievementConfiguration struct {
 	Token         string                          `json:"token,omitempty"`
 }
 
-// Detail returns the draft when present, else the published detail — the
+// Detail returns the draft when present, else the published detail: the
 // best-available source for the human views (a freshly created achievement
 // has only a draft; a never-edited one read back may surface published).
 func (a AchievementConfiguration) Detail() *AchievementConfigurationDetail {

@@ -1,7 +1,7 @@
 // Package generatedapks reads (and, via Download, fetches) the APKs Google Play
 // generates and signs from an uploaded App Bundle, via the generatedapks.list /
 // generatedapks.download endpoints. Unlike releases/tracks these endpoints are
-// NOT under the Edit lifecycle — they are direct application-scoped reads at
+// NOT under the Edit lifecycle: they are direct application-scoped reads at
 // /applications/{packageName}/generatedApks/{versionCode} (CONTEXT.md "Generated
 // APK"), so the client must never open a read-only Edit. List returns every
 // artifact grouped by signing key, each carrying an opaque downloadId
@@ -104,8 +104,8 @@ func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (
 	return lr, raw, nil
 }
 
-// Download streams the raw signed bytes of one generated APK — addressed by its
-// opaque downloadID under versionCode — to w, via generatedapks.download with
+// Download streams the raw signed bytes of one generated APK: addressed by its
+// opaque downloadID under versionCode: to w, via generatedapks.download with
 // alt=media (supportsMediaDownload + useMediaDownloadService). It streams
 // (io.Copy) rather than buffering, so a large universal APK never lands wholly
 // in memory; it never JSON-unmarshals the success body. Returns the number of

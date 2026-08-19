@@ -61,7 +61,7 @@ func TestRun_pureBusiness(t *testing.T) {
 	}
 }
 
-// roundTripperFunc — canonical CLAUDE.md pattern.
+// roundTripperFunc: canonical CLAUDE.md pattern.
 type roundTripperFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -168,7 +168,7 @@ func signedSAJSON(t *testing.T) []byte {
 // seedActiveAccount writes a service account into whichever backend
 // Select chooses for the given Boot. Using Select (vs. NewFileBackend
 // directly) keeps the seed in step with what the command itself will
-// read — i.e. the test exercises the same code path as production.
+// read: i.e. the test exercises the same code path as production.
 func seedActiveAccount(t *testing.T, boot kernel.Boot, saBytes []byte) {
 	t.Helper()
 	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
@@ -419,7 +419,7 @@ func TestDoctor_markdownOutput_failingCheckAndSkipped(t *testing.T) {
 	if !strings.Contains(out, "_skipped_") {
 		t.Errorf("markdown must mark skipped checks with '_skipped_'; got:\n%s", out)
 	}
-	if !strings.Contains(out, "— hint:") {
+	if !strings.Contains(out, "(hint:") {
 		t.Errorf("markdown must include hint when one is present; got:\n%s", out)
 	}
 }
@@ -637,8 +637,8 @@ func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
 
 // TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause asserts
 // the ADR-0020 behavioral delta: a corrupt active credential (missing a
-// required field) makes check 1 surface the REAL resolution cause —
-// the field-named hint — not the synthetic "no active account" message.
+// required field) makes check 1 surface the REAL resolution cause:
+// the field-named hint, not the synthetic "no active account" message.
 func TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause(t *testing.T) {
 	boot := newBoot(t)
 	// Valid JSON, accepted by the keystore, but missing client_email so

@@ -6,7 +6,7 @@
 //
 // A different data channel than `reviews list` (GCS objects vs Android
 // Publisher), a different OAuth scope (devstorage.read_only, requested via
-// kernel.WithScope), a different axis (--month) — so it is a sibling command,
+// kernel.WithScope), a different axis (--month), so it is a sibling command,
 // not a flag. Read-only by scope construction. Ships [experimental] (ADR-0010).
 package history
 
@@ -118,7 +118,7 @@ type Payload struct {
 
 // Renderers renders the parsed rows. table/markdown draw the selected columns;
 // JSON emits the rows under a {"reviews":[...]} envelope. This JSON is the
-// ADR-0037 documented deviation from the ADR-0003 pass-through — the upstream is
+// ADR-0037 documented deviation from the ADR-0003 pass-through: the upstream is
 // a CSV file, so there is no API response to mirror; the rows carry stable
 // lowerCamel field names instead.
 func (p Payload) Renderers() output.Renderers {
@@ -152,7 +152,7 @@ type bucketAccessError struct {
 
 func (e *bucketAccessError) Error() string {
 	return "cannot read the reporting bucket " + e.bucket +
-		" — grant the service account the \"View app information\" (global) permission in the Play Console, " +
+		": grant the service account the \"View app information\" (global) permission in the Play Console, " +
 		"and if the bucket name differs, copy the authoritative gs:// URI from the Console's Download reports > Reviews page " +
 		"(\"Copy Cloud Storage URI\" button) and pass its suffix via --bucket: " + e.cause.Error()
 }
@@ -161,12 +161,12 @@ func (e *bucketAccessError) Unwrap() error { return e.cause }
 
 // noReportsError signals that no monthly reviews report exists for the package
 // in the bucket (an empty listing when --month was omitted). It is API-misuse
-// shaped (exit 30) — the same class as an unknown package.
+// shaped (exit 30): the same class as an unknown package.
 type noReportsError struct{ pkg, bucket string }
 
 func (e *noReportsError) Error() string {
 	return "no monthly reviews reports found for " + e.pkg + " in " + e.bucket +
-		" — reports appear only after the app has reviews and Play has published a monthly CSV; " +
+		": reports appear only after the app has reviews and Play has published a monthly CSV; " +
 		"pass --month YYYY-MM once one exists, or --bucket if the derived name is wrong"
 }
 func (e *noReportsError) ExitCode() int { return 30 }
@@ -185,7 +185,7 @@ func classify(bucket string, err error) error {
 	return err
 }
 
-// isNotFound reports whether err is a 404 from the reporting bucket — a month
+// isNotFound reports whether err is a 404 from the reporting bucket: a month
 // with no published report. In range mode that is a skipped WARN, not a failure.
 func isNotFound(err error) bool {
 	var apiErr *api.Error
@@ -201,7 +201,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 
 	// Empty --columns yields the curated default subset, not every column: the
@@ -276,7 +276,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Fetch each month. In range mode a missing month (404) is a skipped stderr
-	// WARN — the range is a best-effort sweep over what Play actually published,
+	// WARN: the range is a best-effort sweep over what Play actually published,
 	// not a demand that every month exist. Any other failure (e.g. 403) is fatal.
 	// read counts the months that actually yielded a report.
 	var all []history.Row
@@ -286,7 +286,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if err != nil {
 			if rangeMode && isNotFound(err) {
 				if rc.Stderr != nil {
-					_, _ = fmt.Fprintf(rc.Stderr, "WARN: no reviews report for %s-%s — skipped\n", m[:4], m[4:])
+					_, _ = fmt.Fprintf(rc.Stderr, "WARN: no reviews report for %s-%s: skipped\n", m[:4], m[4:])
 				}
 				continue
 			}
@@ -300,8 +300,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		all = append(all, rows...)
 	}
 
-	// A range that matched no report at all — every month 404'd, typically a
-	// wrong --package or --bucket — is the same "no reports" condition the
+	// A range that matched no report at all (every month 404'd, typically a
+	// wrong --package or --bucket) is the same "no reports" condition the
 	// single-month and default paths raise (exit 30), not a silent empty success.
 	if rangeMode && read == 0 {
 		return nil, &noReportsError{pkg: pkg, bucket: bucket}
@@ -309,9 +309,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	// Merge only when more than one report was actually read: multiple files can
 	// repeat a review across the month boundary, so they need cross-file dedup
-	// (latest update wins) and a submit-time order. A lone report — a single
+	// (latest update wins) and a submit-time order. A lone report (a single
 	// month, a degenerate --from X --to X, or a range where only one month
-	// existed — is one coherent file, left verbatim exactly like --month so the
+	// existed) is one coherent file, left verbatim exactly like --month so the
 	// two spellings of "one month" agree.
 	if read > 1 {
 		all = history.Merge(all)
@@ -329,7 +329,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "history",
 		Short: "Read the full review history for a package from the monthly CSV reports",
 		Long: `Read the full review history for --package from Google's monthly CSV
-reports in the developer's Reporting bucket — the only channel beyond
+reports in the developer's Reporting bucket: the only channel beyond
 ` + "`reviews list`" + `'s 7-day API window (ADR-0037).
 
 The report is read from the Reporting bucket over the Cloud Storage API
@@ -345,7 +345,7 @@ monthly report across the range and merge them into one result set (a
 review edited across the month boundary appears once, latest update
 winning; a month with no report is skipped with a WARN). --month and
 --from/--to are mutually exclusive. Default table columns: date, stars,
-locale, version, title, summary — override with --columns device,reply,...
+locale, version, title, summary: override with --columns device,reply,...
 
 --output json emits the parsed rows as {"reviews":[...]} with stable
 lowerCamel field names (the documented ADR-0037 deviation: the upstream is

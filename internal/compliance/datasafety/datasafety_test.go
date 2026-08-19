@@ -144,7 +144,7 @@ func TestValidate_invalidUTF8(t *testing.T) {
 }
 
 // TestValidate_headerOnly asserts a header with zero data rows is
-// structurally valid (Rows == 0). validate is structural only — whether an
+// structurally valid (Rows == 0). validate is structural only: whether an
 // empty declaration is acceptable is Google's call at POST time.
 func TestValidate_headerOnly(t *testing.T) {
 	raw := []byte(referenceLine(t) + "\n")

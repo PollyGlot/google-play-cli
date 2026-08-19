@@ -1,8 +1,8 @@
 // Package imagetree is the filesystem codec for the Store-image side of the
 // Metadata tree: the pure, I/O-only translation between an on-disk
 // `<dir>/<locale>/images/...` layout and the in-memory Tree. It is the image
-// sibling of internal/metadata/tree — `images pull` writes a Tree here,
-// `images apply`/`validate` read one — and it speaks only the filesystem: no
+// sibling of internal/metadata/tree: `images pull` writes a Tree here,
+// `images apply`/`validate` read one, and it speaks only the filesystem: no
 // HTTP, no auth, no knowledge of the Play API beyond the image Type set.
 //
 // Disk layout (mirrors `fastlane supply`, minus the `android/` segment):
@@ -12,8 +12,8 @@
 //
 // The codec owns the ADR-0013 "missing == empty" rule on disk: an absent or
 // empty slot is simply not represented in the Tree (unmanaged → "leave Play
-// untouched"). Read is lenient — a stray empty directory, a README, or an
-// unrecognized file is benign, never an error and never a phantom slot —
+// untouched"). Read is lenient: a stray empty directory, a README, or an
+// unrecognized file is benign, never an error and never a phantom slot,
 // because git cannot preserve an "empty directory = delete" signal anyway.
 // The text codec (internal/metadata/tree) ignores nested directories, so the
 // text `.txt` files and this `images/` subtree cohabit under one locale dir.
@@ -31,7 +31,7 @@ import (
 // Tree is the on-disk Store-image tree in memory: locale → (image type →
 // ordered image byte blobs). A singular slot holds exactly one blob; a gallery
 // holds its blobs in display order (the on-disk filename sort, ADR-0013). Only
-// non-empty slots are present — an absent/empty slot is unmanaged and has no
+// non-empty slots are present: an absent/empty slot is unmanaged and has no
 // entry (missing == empty).
 type Tree map[string]map[images.Type][][]byte
 
@@ -47,7 +47,7 @@ const imagesSubdir = "images"
 // Ext returns the file extension ("png" or "jpg") sniffed from an image's
 // leading magic bytes, or "" if the bytes are neither PNG nor JPEG. The
 // extension is derived from CONTENT, never from a response Content-Type header
-// (ADR-0013) — Play returns no original filename, so the bytes are the only
+// (ADR-0013): Play returns no original filename, so the bytes are the only
 // authority.
 func Ext(data []byte) string {
 	switch {
@@ -74,7 +74,7 @@ var recognizedExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true}
 // Write is idempotent PER MANAGED SLOT: writing a slot that shrank (a gallery
 // from 3 images to 2) or whose singular extension changed (jpg → png) removes
 // the stale recognized image files so the slot resolves to exactly what tr
-// holds — which keeps a re-`pull` a faithful mirror and `pull → apply` a no-op.
+// holds, which keeps a re-`pull` a faithful mirror and `pull → apply` a no-op.
 // It is NOT a full RemoveAll: an unrecognized file (a hand-added note) and a
 // slot/locale entirely absent from tr are left untouched, matching the
 // additive stance of the text codec (removing an online-gone slot is apply's
@@ -151,7 +151,7 @@ func writeGallery(galleryDir string, ty images.Type, seq [][]byte) error {
 	// Idempotency: prune recognized image files left from a previous, LARGER
 	// write (e.g. a re-pull where the live gallery shrank from 3 to 2), so a
 	// stale N+1.<ext> is not read back as a phantom screenshot and re-uploaded
-	// by apply. Only recognized image files are removed — a hand-added note
+	// by apply. Only recognized image files are removed: a hand-added note
 	// stays put (this is not a destructive RemoveAll of the slot directory).
 	return pruneStaleGallery(galleryDir, written)
 }
@@ -180,8 +180,8 @@ func pruneStaleGallery(galleryDir string, keep map[string]bool) error {
 // images/` for each first-level locale directory: a recognized image file
 // whose stem names a singular type is a singular slot; a sub-directory whose
 // name is a gallery type is a gallery slot (its image files read in
-// filename-sorted display order). Everything else — a README, an unknown
-// extension, a stray empty directory, a non-locale dir — is ignored. An absent
+// filename-sorted display order). Everything else (a README, an unknown
+// extension, a stray empty directory, a non-locale dir) is ignored. An absent
 // dir or absent images/ subtree yields an empty (non-nil) Tree, not an error.
 func Read(dir string) (Tree, error) {
 	tr := make(Tree)
@@ -221,7 +221,7 @@ func readLocale(imgDir string) (map[images.Type][][]byte, error) {
 		if e.IsDir() {
 			ty, ok := images.ParseType(e.Name())
 			if !ok || !ty.Gallery() {
-				continue // stray dir, or a singular type named as a dir — ignore
+				continue // stray dir, or a singular type named as a dir: ignore
 			}
 			seq, err := readGallery(filepath.Join(imgDir, e.Name()))
 			if err != nil {
@@ -240,7 +240,7 @@ func readLocale(imgDir string) (map[images.Type][][]byte, error) {
 		}
 		ty, ok := images.ParseType(stem)
 		if !ok || ty.Gallery() {
-			continue // unknown stem, or a gallery type as a flat file — ignore
+			continue // unknown stem, or a gallery type as a flat file: ignore
 		}
 		data, err := os.ReadFile(filepath.Join(imgDir, e.Name()))
 		if err != nil {

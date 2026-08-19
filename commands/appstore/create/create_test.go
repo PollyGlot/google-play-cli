@@ -105,7 +105,7 @@ func TestRun_requestShape(t *testing.T) {
 	if strings.Contains(rt.apiURL, "/edits/") {
 		t.Errorf("url %q must not open an Edit", rt.apiURL)
 	}
-	// The store package is the PATH key, the hosted app package is the BODY —
+	// The store package is the PATH key, the hosted app package is the BODY:
 	// swapping them is the mistake the two flags exist to prevent.
 	if strings.Contains(rt.apiURL, "com.example.app") {
 		t.Errorf("url %q must not carry the hosted app package", rt.apiURL)
@@ -180,7 +180,7 @@ func TestRun_jsonPassthrough(t *testing.T) {
 }
 
 // TestRun_jsonEmptyBodyFallback asserts an empty API body still yields parseable
-// JSON — the documented ADR-0003 exception (as in `orders refund`), never zero
+// JSON: the documented ADR-0003 exception (as in `orders refund`), never zero
 // bytes on the CI default format.
 func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 	rt := &testRoundTripper{status: 200, resp: ""}
@@ -208,7 +208,7 @@ func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 }
 
 // TestRun_humanViews asserts the table and markdown views name both
-// identifiers — the response carries no fields, so the echo is the whole view.
+// identifiers: the response carries no fields, so the echo is the whole view.
 func TestRun_humanViews(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -281,7 +281,7 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 }
 
 // TestRun_dryRun_validatesFirst asserts --dry-run still fails fast on an
-// unresolvable target — the rehearsal previews a real call, not a hypothetical.
+// unresolvable target: the rehearsal previews a real call, not a hypothetical.
 func TestRun_dryRun_validatesFirst(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -294,7 +294,7 @@ func TestRun_dryRun_validatesFirst(t *testing.T) {
 }
 
 // TestRun_missingStorePackage_exit2 asserts the app store package name is
-// required and its absence is CLI misuse — it identifies the caller and has no
+// required and its absence is CLI misuse: it identifies the caller and has no
 // project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
@@ -313,7 +313,7 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 
 // TestRun_storePackageEnvCascade asserts the ADR-0043 cascade: the
 // --store-package flag wins, $GPLAY_APP_STORE_PACKAGE fills in when the flag is
-// absent — so a CI job exports the store identity once for the whole namespace.
+// absent, so a CI job exports the store identity once for the whole namespace.
 func TestRun_storePackageEnvCascade(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
 	rt := &testRoundTripper{}
@@ -330,7 +330,7 @@ func TestRun_storePackageEnvCascade(t *testing.T) {
 		t.Fatalf("Run with flag over env: %v", err)
 	}
 	if !strings.Contains(rt.apiURL, "/appstore/com.flag.store/") {
-		t.Errorf("url %q — the --store-package flag must win over the env var", rt.apiURL)
+		t.Errorf("url %q: the --store-package flag must win over the env var", rt.apiURL)
 	}
 }
 
@@ -399,7 +399,7 @@ func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 		}
 	}
 	// The Long text must carry the precondition and the absence of a delete
-	// verb (ADR-0043 §3) — the two facts a caller cannot discover from the flag
+	// verb (ADR-0043 §3): the two facts a caller cannot discover from the flag
 	// names.
 	for _, want := range []string{"hosted app", "before any other", "no delete"} {
 		if !strings.Contains(strings.ToLower(cmd.Long), want) {

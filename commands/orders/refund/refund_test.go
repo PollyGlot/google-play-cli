@@ -222,7 +222,7 @@ func TestRun_403_namesManageOrders(t *testing.T) {
 // TestRun_tooOld_specificRefusal asserts the API's older-than-3-years rejection
 // becomes a specific refusal (not a generic error), preserving the API exit
 // code (400 → 30). The assertion keys on a phrase that exists ONLY in
-// refundTooOldError.Error() — never in the raw API message — so it fails if the
+// refundTooOldError.Error() (never in the raw API message) so it fails if the
 // classifier stops wrapping the too-old case (the raw *api.Error would still
 // echo "3 years" and exit 30, which would silently pass a weaker assertion).
 func TestRun_tooOld_specificRefusal(t *testing.T) {

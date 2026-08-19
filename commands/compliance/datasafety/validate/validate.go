@@ -1,16 +1,16 @@
 // Package validatecmd implements `gplay compliance datasafety validate`: an
 // OFFLINE structural check of the canonical Data Safety CSV. Like `metadata
-// validate`, it never authenticates and never makes an HTTP call — it reads
+// validate`, it never authenticates and never makes an HTTP call: it reads
 // the CSV off disk (--file, default ./compliance/data-safety.csv) and runs
 // the pure internal/compliance/datasafety validator, so it is safe in a
 // pre-commit hook or a CI gate with no credentials present.
 //
 // It is STRUCTURAL ONLY (ADR-0014): it checks the CSV is non-empty, valid
-// UTF-8, well-formed, rectangular, and has a header — and warns (non-fatally)
+// UTF-8, well-formed, rectangular, and has a header, and warns (non-fatally)
 // when the header diverges from a bundled reference template. It makes NO
 // semantic claim: gplay cannot read Google's Data Safety schema back (the
 // API is write-only), so "valid" here is deliberately weaker than "Google
-// will accept it" — only the live POST (`set`) arbitrates that. A structural
+// will accept it": only the live POST (`set`) arbitrates that. A structural
 // failure is exit 20 (client-side validation, docs/DESIGN.md §9).
 package validatecmd
 
@@ -40,15 +40,15 @@ type Input struct {
 }
 
 // fileError signals the CSV could not be read (missing or unreadable file).
-// It is a client-side validation failure — the operator pointed --file at
-// something gplay cannot lint — so ExitCode() is 20 per docs/DESIGN.md §9.
+// It is a client-side validation failure: the operator pointed --file at
+// something gplay cannot lint, so ExitCode() is 20 per docs/DESIGN.md §9.
 type fileError struct {
 	file  string
 	cause error
 }
 
 func (e *fileError) Error() string {
-	return fmt.Sprintf("cannot read Data Safety CSV at %s: %v — pass --file <path> to point at your declaration", e.file, e.cause)
+	return fmt.Sprintf("cannot read Data Safety CSV at %s: %v: pass --file <path> to point at your declaration", e.file, e.cause)
 }
 func (e *fileError) ExitCode() int { return 20 }
 func (e *fileError) Unwrap() error { return e.cause }
@@ -120,7 +120,7 @@ func (p Payload) renderText(w io.Writer) error {
 		}
 	}
 	// Structural-only disclaimer: never let "valid" be read as "accepted".
-	_, err := fmt.Fprintln(w, "note: structural check only — only the live `set` POST tells you whether Google accepts the declaration.")
+	_, err := fmt.Fprintln(w, "note: structural check only: only the live `set` POST tells you whether Google accepts the declaration.")
 	return err
 }
 
@@ -139,7 +139,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintln(w, "\n_Structural check only — only the live `set` POST tells you whether Google accepts the declaration._")
+	_, err := fmt.Fprintln(w, "\n_Structural check only: only the live `set` POST tells you whether Google accepts the declaration._")
 	return err
 }
 
@@ -188,11 +188,11 @@ parses as a well-formed, rectangular CSV, and has a header row. A header
 that diverges from gplay's bundled reference template is reported as a
 NON-FATAL hint (Google's template evolves), never a failure.
 
-This command is OFFLINE — it needs no credentials and makes no network
+This command is OFFLINE: it needs no credentials and makes no network
 call, so it is safe in a pre-commit hook or a CI gate. It is also STRUCTURAL
 ONLY: gplay cannot read your live Data Safety declaration back (the API is
 write-only), so a CSV that passes here can still be rejected by Google.
-"Valid" means "well-formed", NOT "Google will accept it" — only the live
+"Valid" means "well-formed", NOT "Google will accept it": only the live
 ` + "`gplay compliance datasafety set`" + ` POST arbitrates that.
 
 Any structural failure exits 20.`,

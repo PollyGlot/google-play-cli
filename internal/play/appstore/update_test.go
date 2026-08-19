@@ -63,7 +63,7 @@ func TestUpdateHostedApp_requestShape(t *testing.T) {
 		}
 	}
 	// The media ids from the upload verbs must survive under the API's own
-	// spelling — they are the whole point of having uploaded anything.
+	// spelling: they are the whole point of having uploaded anything.
 	got := compact(t, gotBody)
 	for _, want := range []string{`"baseApkId":"apk-base"`, `"splitApkId":["apk-en"]`, `"appIconId":"img-icon"`, `"screenshotId":["img-1"]`, `"documentId":"file-9"`} {
 		if !strings.Contains(got, want) {
@@ -99,8 +99,8 @@ func TestUpdateHostedApp_forcesPackageName(t *testing.T) {
 
 // TestUpdateHostedApp_forwardsUnmodelledFields is the reason the body is
 // forwarded verbatim instead of round-tripped through UpdateHostedAppRequest.
-// Anything the struct does not model — a field Google added, or an operator's
-// typo — must reach Google as written: dropping it would ship an incomplete
+// Anything the struct does not model: a field Google added, or an operator's
+// typo: must reach Google as written: dropping it would ship an incomplete
 // submission that cannot be recalled, and a typo must come back as a readable
 // rejection rather than as silence.
 func TestUpdateHostedApp_forwardsUnmodelledFields(t *testing.T) {

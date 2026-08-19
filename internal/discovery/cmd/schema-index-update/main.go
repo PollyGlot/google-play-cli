@@ -1,12 +1,12 @@
 // Command schema-index-update derives the embedded Schema index
 // (internal/schemaindex/schema_index.json) from the committed Discovery
-// snapshots under docs/discovery/ (issue #200). It is OFFLINE — it makes no
+// snapshots under docs/discovery/ (issue #200). It is OFFLINE: it makes no
 // network call;
 // `make discovery-update` is the separate, networked step that refreshes the
 // snapshot this reads.
 //
-// It is a thin wrapper over the importable internal/schemaindex package — the
-// same Derive/Render logic the offline integrity test re-runs — so a
+// It is a thin wrapper over the importable internal/schemaindex package: the
+// same Derive/Render logic the offline integrity test re-runs, so a
 // re-derivation is byte-equal to the committed index. Invoke via
 // `make schema-index-update`.
 //

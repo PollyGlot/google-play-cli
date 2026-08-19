@@ -1,7 +1,7 @@
 // Package testers reads and replaces the authorized audience (Google
 // Groups) of a track via edits.testers.get / edits.testers.update, inside
-// an open Edit. The operations exposed — Get (read the audience) and
-// Update (replace it wholesale) — back the testers-list and testers-set
+// an open Edit. The operations exposed: Get (read the audience) and
+// Update (replace it wholesale): back the testers-list and testers-set
 // commands. The resource has a SINGLE field, googleGroups[]; individual
 // tester emails are not supported by the API.
 package testers
@@ -79,7 +79,7 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Test
 // testers.update is declarative: it REPLACES the whole googleGroups list,
 // so passing the desired set is the entire operation (there is no
 // add/remove). A nil or empty groups slice is normalized to an explicit
-// empty array so the body is {"googleGroups":[]} — the --clear semantics —
+// empty array so the body is {"googleGroups":[]}, the --clear semantics,
 // rather than {"googleGroups":null}, which the API would reject. Returns
 // the parsed Testers and the raw JSON body for --output json pass-through
 // (ADR-0003).

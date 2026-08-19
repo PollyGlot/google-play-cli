@@ -1,10 +1,10 @@
 // Package accessibleapps talks to the Play Developer Reporting API's
-// `apps.search` method (`playdeveloperreporting.apps.search`) — the
+// `apps.search` method (`playdeveloperreporting.apps.search`): the
 // server-authoritative enumeration of the Apps the calling credential can
 // access, backing `gplay apps accessible list` (#347, ADR-0039).
 //
-// Unlike internal/apps/registry — gplay's LOCAL, chosen working set of
-// packages — this is the server's answer to "which Apps can this
+// Unlike internal/apps/registry: gplay's LOCAL, chosen working set of
+// packages: this is the server's answer to "which Apps can this
 // credential see?". The two intentionally do not coincide (ADR-0039): a
 // service account may hold androidpublisher rights on an App without the
 // Reporting access that surfaces it here, and may see hundreds of org Apps
@@ -38,7 +38,7 @@ const opSearch = "playdeveloperreporting.apps.search"
 type App struct {
 	// Name is the resource name, format `apps/{app}`.
 	Name string `json:"name,omitempty"`
-	// PackageName is the Android package, e.g. `com.example.app123` — the
+	// PackageName is the Android package, e.g. `com.example.app123`: the
 	// value an operator feeds straight into `gplay apps add`.
 	PackageName string `json:"packageName,omitempty"`
 	// DisplayName is the latest Play Console title; may not yet match the
@@ -55,7 +55,7 @@ type SearchResponse struct {
 
 // Search issues a single `apps:search` GET and returns the parsed page, the
 // verbatim response body (for the --output json pass-through, ADR-0003),
-// and any error. Pagination is caller-driven — one page per call, the
+// and any error. Pagination is caller-driven: one page per call, the
 // device-tiers/games convention (#347): pass pageToken from a previous
 // response's NextPageToken to fetch the next page. pageSize <= 0 lets the
 // server apply its default (50; max 1000).

@@ -67,7 +67,7 @@ func TestSet_live_replaces(t *testing.T) {
 }
 
 // TestSet_bare_exit2 asserts a bare set (no selector) is a misuse and makes no
-// write — the footgun guard.
+// write: the footgun guard.
 func TestSet_bare_exit2(t *testing.T) {
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)

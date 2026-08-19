@@ -52,15 +52,15 @@ func (e *LocalIOError) ExitCode() int { return 20 }
 //
 // The protocol has three moves:
 //
-//  1. Initiate — POST initiateURL (which the caller builds with
+//  1. Initiate: POST initiateURL (which the caller builds with
 //     uploadType=resumable) carrying X-Upload-Content-Type / -Length and an
 //     empty body. The server answers 200/201 with a session URI in Location.
-//  2. Upload — PUT the content to the session URI in fixed ResumableChunkSize
+//  2. Upload: PUT the content to the session URI in fixed ResumableChunkSize
 //     chunks, each with a Content-Range: bytes {start}-{end}/{total} header.
 //     An intermediate chunk is acknowledged with 308 (Resume Incomplete) whose
 //     Range header names the last stored byte; the final chunk returns 2xx
 //     with the resource body.
-//  3. Resume — on a transient PUT failure (transport error or 5xx) the helper
+//  3. Resume: on a transient PUT failure (transport error or 5xx) the helper
 //     PUTs Content-Range: bytes *\/{total} with an empty body to ask the server
 //     which byte it last committed (another 308 + Range), then continues from
 //     that offset. No bytes are ever re-sent past the acknowledged offset.
@@ -81,7 +81,7 @@ func ResumableUpload(
 }
 
 // ResumableUploadWithInitiateBody is ResumableUpload with a non-empty initiate
-// request body — the case where the resumable session is opened by POSTing
+// request body: the case where the resumable session is opened by POSTing
 // resource metadata (e.g. playcustomapp.customApps.create sends the CustomApp
 // title/languageCode as JSON in the initiate, then streams the artifact in the
 // chunk PUTs). initiateBody is the raw bytes of that body and
@@ -114,7 +114,7 @@ func ResumableUploadWithInitiateBody(
 		// beyond that, offset == size means the server already has everything.
 		resp, putErr := resumablePutChunk(noRetryCtx, hc, sessionURI, contentType, r, offset, size, op)
 		if putErr != nil {
-			// A local read failure is terminal (exit 20) — no point resuming.
+			// A local read failure is terminal (exit 20): no point resuming.
 			if _, ok := putErr.(*LocalIOError); ok {
 				return nil, 0, putErr
 			}
@@ -248,7 +248,7 @@ func resumablePutChunk(ctx context.Context, hc *http.Client, sessionURI, content
 	chunkLen := end - offset
 	buf := make([]byte, chunkLen)
 	if chunkLen > 0 {
-		// A short read — even a clean io.EOF — means the artifact no longer
+		// A short read (even a clean io.EOF) means the artifact no longer
 		// has the bytes this chunk promises; uploading the zero-filled tail
 		// of buf would corrupt the artifact server-side.
 		n, rerr := r.ReadAt(buf, offset)

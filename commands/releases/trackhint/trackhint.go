@@ -1,6 +1,6 @@
 // Package trackhint maps the one operator-facing failure that `releases
 // upload` and `releases promote` share when they target a custom closed
-// track that has not been created yet — a tracks.update 404 — to an
+// track that has not been created yet (a tracks.update 404) to an
 // actionable error pointing at `gplay tracks create <name>`. It is shared by
 // both verbs so an upload and a promote surface the same guidance for the
 // same upstream miss. Like the tracks/releases classifiers, the hint wrapper
@@ -39,7 +39,7 @@ type trackNotFoundError struct {
 // Error renders the not-found message plus the create hint, naming the track
 // twice so the operator can copy the exact `gplay tracks create <name>` line.
 func (e *trackNotFoundError) Error() string {
-	return fmt.Sprintf("track %q does not exist — create it first with `gplay tracks create %s`, then re-run (gplay never auto-creates a track as a side effect of an upload/promote): %v", e.track, e.track, e.cause)
+	return fmt.Sprintf("track %q does not exist: create it first with `gplay tracks create %s`, then re-run (gplay never auto-creates a track as a side effect of an upload/promote): %v", e.track, e.track, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps mapping
@@ -47,8 +47,8 @@ func (e *trackNotFoundError) Error() string {
 func (e *trackNotFoundError) Unwrap() error { return e.cause }
 
 // Classify attaches a `gplay tracks create <track>` hint to a tracks.update
-// 404 — the signal that an upload/promote targeted a closed track that has
-// not been created yet — while leaving the wrapped *api.Error to drive the
+// 404: the signal that an upload/promote targeted a closed track that has
+// not been created yet, while leaving the wrapped *api.Error to drive the
 // exit code. Every other failure (a package miss at edits.insert, a
 // malformed AAB at bundles.upload, an auth 403, a 5xx, an ambiguous-release
 // state conflict, a non-api error) propagates verbatim. nil stays nil.

@@ -20,14 +20,14 @@ const (
 )
 
 // DeclarationFileTypeDocument is the only meaningful value of the required
-// `fileType` field on UploadAppStoreAppPolicyDeclarationFileRequest — the
+// `fileType` field on UploadAppStoreAppPolicyDeclarationFileRequest: the
 // enum's other member is the UNSPECIFIED zero value.
 const DeclarationFileTypeDocument = "DECLARATION_FILE_TYPE_DOCUMENT"
 
 // LocalIOError is returned when the media file cannot be read from the local
 // filesystem (missing path, permission denied, stat failure, non-regular
 // file). It is distinct from *api.Error so the exit code maps to client-side
-// validation (20 per docs/DESIGN.md §9) rather than transport (50) — parity
+// validation (20 per docs/DESIGN.md §9) rather than transport (50): parity
 // with internal/play/apks and internal/play/customapps.
 type LocalIOError struct {
 	Op    string
@@ -83,7 +83,7 @@ func UploadImage(ctx context.Context, hc *http.Client, storePackage, pkg, path s
 //
 // Unlike the other two uploads this method carries a request body: `fileType`
 // is required. It therefore opens the resumable session with that JSON and
-// streams the file in the chunk PUTs — the same shape customApps.create uses
+// streams the file in the chunk PUTs: the same shape customApps.create uses
 // for its metadata.
 func UploadPolicyDeclarationFile(ctx context.Context, hc *http.Client, storePackage, pkg, path string) (string, json.RawMessage, error) {
 	initiate, err := json.Marshal(struct {
@@ -115,7 +115,7 @@ func uploadMedia(ctx context.Context, hc *http.Client, op, storePackage, pkg, co
 	// The resumable helper needs the exact byte count for
 	// X-Upload-Content-Length and the chunk Content-Range headers. A directory
 	// or fifo passes Open+Stat but cannot be streamed, and its Size() would be
-	// meaningless — reject anything but a regular file up front so the failure
+	// meaningless: reject anything but a regular file up front so the failure
 	// stays client-side (exit 20) instead of surfacing as transport (exit 50).
 	info, err := f.Stat()
 	if err != nil {
@@ -174,7 +174,7 @@ func sniffContentType(f *os.File, size int64) (string, error) {
 
 // trackingID pulls the single id field out of an upload response. The id is
 // what makes the call worth running, so a response without one is an error
-// rather than a silently empty result — the operator would otherwise carry an
+// rather than a silently empty result: the operator would otherwise carry an
 // empty string into `appstore update` and get an opaque rejection there.
 func trackingID(op, pkg string, raw json.RawMessage, field string) (string, json.RawMessage, error) {
 	var parsed map[string]json.RawMessage
@@ -188,7 +188,7 @@ func trackingID(op, pkg string, raw json.RawMessage, field string) (string, json
 		}
 	}
 	if id == "" {
-		return "", nil, &api.Error{Operation: op, Package: pkg, Message: "upload succeeded but the response carried no " + field + " — the id is required by `gplay appstore update`"}
+		return "", nil, &api.Error{Operation: op, Package: pkg, Message: "upload succeeded but the response carried no " + field + ": the id is required by `gplay appstore update`"}
 	}
 	return id, raw, nil
 }

@@ -166,7 +166,7 @@ func TestConfirm_happyPath(t *testing.T) {
 }
 
 // TestConfirm_missing_refuses_exit3 asserts a real write without --confirm
-// refuses with exit 3 (safety flag required, docs/DESIGN.md §9 — NOT the
+// refuses with exit 3 (safety flag required, docs/DESIGN.md §9, NOT the
 // generic usage exit 2, #406), points at --dry-run, and makes NO POST.
 func TestConfirm_missing_refuses_exit3(t *testing.T) {
 	path, _, _ := validCSV(t, 1)

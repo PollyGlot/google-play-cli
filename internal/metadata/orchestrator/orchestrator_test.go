@@ -1,5 +1,5 @@
 // Package orchestrator_test drives the apply orchestrator against a fake
-// http.RoundTripper (no /token exchange — Apply receives the *http.Client
+// http.RoundTripper (no /token exchange: Apply receives the *http.Client
 // directly). It exercises the three paths that matter: the read-only
 // dry-run, the --confirm gate, the atomic single-Edit publish, the no-op
 // quota conservation, and the --prune deletegroup plus its defaultLanguage
@@ -138,7 +138,7 @@ func asCoder(err error, target *interface{ ExitCode() int }) bool {
 }
 
 // TestApply_dryRun_readsDiffsDiscards: dry-run opens a read-only Edit,
-// lists, computes the diff, and discards — never commits, never patches.
+// lists, computes the diff, and discards: never commits, never patches.
 func TestApply_dryRun_readsDiffsDiscards(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "New", "full", "Body")}
 	rt := &fakeRT{t: t, editID: "e1",
@@ -163,7 +163,7 @@ func TestApply_dryRun_readsDiffsDiscards(t *testing.T) {
 }
 
 // TestApply_confirmRequired: a real apply without --confirm fails exit 3
-// (safety flag required, docs/DESIGN.md §9 — NOT the generic usage exit 2,
+// (safety flag required, docs/DESIGN.md §9, NOT the generic usage exit 2,
 // #408) before any HTTP, naming --confirm for the JSON envelope's requires[].
 func TestApply_confirmRequired(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")}
@@ -272,7 +272,7 @@ func TestApply_atomicFailure_discardsZeroPublished(t *testing.T) {
 		t.Fatal("expected an error when a locale PATCH fails")
 	}
 	if rt.saw("POST", ":commit") {
-		t.Error("commit happened despite a failed PATCH — not atomic")
+		t.Error("commit happened despite a failed PATCH, not atomic")
 	}
 	if !rt.saw("DELETE", "/edits/eX") {
 		t.Error("Edit was not discarded after the failure")
@@ -329,7 +329,7 @@ func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 }
 
 // TestApply_atomicFailure_deleteFails_discards: when a prune DELETE fails
-// AFTER an earlier locale PATCH succeeded, the whole Edit auto-discards —
+// AFTER an earlier locale PATCH succeeded, the whole Edit auto-discards:
 // the successful patch is rolled back with it, nothing is committed.
 func TestApply_atomicFailure_deleteFails_discards(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "NewT", "full", "F")} // title update
@@ -346,7 +346,7 @@ func TestApply_atomicFailure_deleteFails_discards(t *testing.T) {
 		t.Errorf("expected the en-US PATCH to have run before the failing DELETE; calls=%v", rt.calls)
 	}
 	if rt.saw("POST", ":commit") {
-		t.Error("commit happened despite a failed DELETE — the earlier PATCH was not rolled back")
+		t.Error("commit happened despite a failed DELETE: the earlier PATCH was not rolled back")
 	}
 	if !rt.saw("DELETE", "/edits/eD") {
 		t.Error("Edit was not discarded after the DELETE failure")
@@ -394,7 +394,7 @@ func TestApply_prune_refusesDefaultLanguage(t *testing.T) {
 }
 
 // TestApply_prune_emptyTreeRefused: --prune against an empty local tree is
-// refused (exit 2) BEFORE any network — an empty tree would otherwise
+// refused (exit 2) BEFORE any network: an empty tree would otherwise
 // classify every online locale as a delete and wipe the app's Store
 // presence (the classic mis-pointed --dir). Covers the real-apply path.
 func TestApply_prune_emptyTreeRefused(t *testing.T) {
@@ -428,7 +428,7 @@ func TestApply_dryRunPrune_emptyTreeRefused(t *testing.T) {
 }
 
 // TestApply_emptyTreeNoPrune_isNoop: an empty tree WITHOUT --prune is a
-// legitimate no-op (nothing on disk to upsert, nothing pruned) — it must
+// legitimate no-op (nothing on disk to upsert, nothing pruned): it must
 // NOT be refused. It lists, finds no changes, and discards.
 func TestApply_emptyTreeNoPrune_isNoop(t *testing.T) {
 	rt := &fakeRT{t: t, editID: "e0",

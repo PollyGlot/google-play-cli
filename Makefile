@@ -1,4 +1,4 @@
-.PHONY: help build test lint verb-gate format install-hooks tidy clean release-snapshot discovery-update schema-index-update stats
+.PHONY: help build test lint verb-gate dash-gate format install-hooks tidy clean release-snapshot discovery-update schema-index-update stats
 
 # Project metadata
 BINARY := gplay
@@ -14,11 +14,15 @@ build: ## Build the gplay binary into ./bin/
 test: ## Run tests
 	go test ./...
 
-lint: ## Run golangci-lint
+lint: ## Run golangci-lint + the prose gates
 	golangci-lint run ./...
+	@bash scripts/dash-gate.sh
 
 verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
 	@bash scripts/verb-gate.sh
+
+dash-gate: ## Fail if an em dash reappears in Go source (help text and errors reach users)
+	@bash scripts/dash-gate.sh
 
 format: ## Run gofmt + goimports on the whole tree
 	gofmt -w .

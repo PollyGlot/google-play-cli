@@ -56,11 +56,11 @@ func TestCreateHostedApp_requestShape(t *testing.T) {
 	if strings.Contains(gotURL, "/edits/") {
 		t.Errorf("url %q must not open an Edit", gotURL)
 	}
-	// The app package rides the BODY, not the path — the path key is the app
+	// The app package rides the BODY, not the path: the path key is the app
 	// store package name. A path carrying the app package would be a different
 	// (later-slice) endpoint.
 	if strings.Contains(gotURL, "com.example.app") {
-		t.Errorf("url %q must not carry the app package — it belongs in the request body", gotURL)
+		t.Errorf("url %q must not carry the app package: it belongs in the request body", gotURL)
 	}
 	if !strings.HasPrefix(gotCT, "application/json") {
 		t.Errorf("Content-Type = %q, want application/json", gotCT)
@@ -102,7 +102,7 @@ func TestCreateHostedApp_storePackagePathEscaped(t *testing.T) {
 }
 
 // TestCreateHostedApp_rawPassthrough asserts the verbatim body is returned even
-// when it carries fields the (currently empty) response schema does not model —
+// when it carries fields the (currently empty) response schema does not model:
 // ADR-0003 pass-through must never be filtered through a typed struct.
 func TestCreateHostedApp_rawPassthrough(t *testing.T) {
 	const body = `{"unmodeledFutureField":"kept","nested":{"a":1}}`
@@ -118,7 +118,7 @@ func TestCreateHostedApp_rawPassthrough(t *testing.T) {
 	}
 }
 
-// TestCreateHostedApp_emptyBody asserts a 2xx with no body is not an error — the
+// TestCreateHostedApp_emptyBody asserts a 2xx with no body is not an error: the
 // response schema carries no fields, so an acknowledgement is a success.
 func TestCreateHostedApp_emptyBody(t *testing.T) {
 	rt := testRoundTripper(func(*http.Request) (*http.Response, error) {

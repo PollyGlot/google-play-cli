@@ -1,7 +1,7 @@
 // Package imagediff is the Store-image reconciliation engine: the pure
 // comparison of a local image sequence (files sorted by name, by sha256)
 // against the live sequence (images.list, which carries a sha256 per image but
-// no order field — display order is list order). It produces two things from
+// no order field: display order is list order). It produces two things from
 // one decision: the ADR-0013 §5 diff schema (for `--dry-run --output json`)
 // and an executable per-slot Plan (for the orchestrator). It performs no I/O.
 //
@@ -12,7 +12,7 @@
 //   - a gallery that differs in order is reconciled by deleteall + re-upload in
 //     name order (the only way to reorder), but ONLY when no online-only image
 //     would be lost. Under the additive default (this slice, #134) an
-//     online-only image — one live whose sha256 is in no local file — is never
+//     online-only image (one live whose sha256 is in no local file) is never
 //     deleted; apply only appends the genuinely-new local images. Removing
 //     online-only images (full reconciliation, including reorder past a loss)
 //     is --prune (#135).
@@ -47,10 +47,10 @@ const (
 	// KindAppend: upload each blob in Uploads (images.upload appends in order).
 	KindAppend
 	// KindRewrite: deleteall the slot, then upload each blob in Uploads (the
-	// full local sequence) in order — the only way to reorder or replace.
+	// full local sequence) in order: the only way to reorder or replace.
 	KindRewrite
 	// KindDeleteIDs: delete each live image id in DeleteIDs (a pure removal,
-	// order preserved) — used only under --prune (#135).
+	// order preserved): used only under --prune (#135).
 	KindDeleteIDs
 )
 
@@ -67,7 +67,7 @@ type SlotChange struct {
 	Position  int    `json:"position"`
 }
 
-// Summary is the flat counter tally — kept flat so a CI gate is one jq line:
+// Summary is the flat counter tally: kept flat so a CI gate is one jq line:
 // `.summary.upload + .summary.delete + .summary.reorder > 0`. Upload/Delete
 // count images; Reorder/Unchanged count slots.
 type Summary struct {
@@ -126,7 +126,7 @@ func Plans(slots []SlotInput, prune bool) []Plan {
 
 // Aggregate flattens per-slot plans into the ADR-0013 §5 Result, tallying the
 // summary from the emitted change ops (so re-uploads of unchanged images in a
-// rewrite are not double-counted — only genuine adds/removes/reorders are).
+// rewrite are not double-counted: only genuine adds/removes/reorders are).
 func Aggregate(pkg string, plans []Plan) Result {
 	res := Result{Package: pkg}
 	for _, p := range plans {
@@ -223,7 +223,7 @@ func reconcile(in SlotInput, prune bool) Plan {
 		p.Kind = KindAppend
 	} else {
 		// Nothing to add additively (local ⊆ live); the online-only images are
-		// kept — from the additive view the slot is unchanged.
+		// kept: from the additive view the slot is unchanged.
 		p.Changes = []SlotChange{slotLevel(in, OpUnchanged)}
 	}
 	return p

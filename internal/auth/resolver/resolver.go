@@ -1,13 +1,13 @@
 // Package resolver picks the credential the next API call will use. It
 // implements the credential resolution precedence documented in
-// docs/DESIGN.md §1 — first match wins, in this order:
+// docs/DESIGN.md §1: first match wins, in this order:
 //
 //  1. --service-account flag (path or inline JSON)
 //  2. --account flag (stored Account name)
 //  3. GPLAY_SERVICE_ACCOUNT env var (path or inline JSON)
 //  4. GPLAY_ACCOUNT env var (stored Account name)
 //  5. The active Account in config (after cascade: project-local override
-//     beats global active flag — see config.Resolved.ConfigAccount)
+//     beats global active flag: see config.Resolved.ConfigAccount)
 //
 // Inputs is the per-call carrier for flag values; Deps carries the
 // resolved config cascade and the keystore backend. Both are populated
@@ -61,7 +61,7 @@ type Deps struct {
 // Inputs falls straight through to layer 5 (Deps.Resolved.ConfigAccount).
 //
 // EnvServiceAccount / EnvAccount are read once by the caller (typically
-// the kernel via os.Getenv) and passed in — the resolver stays a pure
+// the kernel via os.Getenv) and passed in: the resolver stays a pure
 // function with no hidden process state.
 type Inputs struct {
 	// ServiceAccountFlag is the value of `--service-account` (path or inline
@@ -138,7 +138,7 @@ func ResolveWithName(ctx context.Context, deps Deps, in Inputs) (*serviceaccount
 
 // ResolveName returns the local Account name the credential WOULD resolve
 // to, WITHOUT touching the keystore. It walks the same precedence chain
-// as ResolveWithName (docs/DESIGN.md §1) but stops at the name — the
+// as ResolveWithName (docs/DESIGN.md §1) but stops at the name: the
 // inline-credential layers (--service-account / GPLAY_SERVICE_ACCOUNT)
 // have no local name and yield "".
 //

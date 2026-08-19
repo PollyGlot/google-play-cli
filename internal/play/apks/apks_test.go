@@ -24,7 +24,7 @@ import (
 // carry the bytes and return the final resource body. It records the
 // method sequence plus the initiate path/query and the chunk headers.
 //
-// initiateStatus (when >= 400) short-circuits at initiate — the error the
+// initiateStatus (when >= 400) short-circuits at initiate: the error the
 // helper surfaces without ever opening the transfer. resumeAfter, when > 0,
 // makes the first N chunk PUTs answer 308 (Resume Incomplete) so the
 // resume path is exercised before the final chunk.

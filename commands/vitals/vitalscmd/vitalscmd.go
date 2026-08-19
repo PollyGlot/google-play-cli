@@ -92,7 +92,7 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 
 	idx, err := schemaindex.Embedded()
@@ -156,7 +156,7 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 	return Payload{Raw: raw, Timeline: tl, Dimensions: dimensions, Metrics: metrics}, nil
 }
 
-// validateOne rejects a single value not present in allowed — the "never
+// validateOne rejects a single value not present in allowed: the "never
 // invented" guard for --period.
 func validateOne(kind, value string, allowed []string) error {
 	for _, a := range allowed {
@@ -212,11 +212,11 @@ func ParseSince(spec string) (time.Duration, error) {
 // dateTime is the google.type.DateTime subset gplay sends. For DAILY the time
 // fields are left unset (the API requires it) and the timezone is left unset so
 // the metric set's default applies (America/Los_Angeles for DAILY, UTC for
-// HOURLY) — see the TimelineSpec prose in the snapshot.
+// HOURLY): see the TimelineSpec prose in the snapshot.
 //
 // Hours is a *int, not an int: an HOURLY window whose boundary lands on
 // midnight (hour 0) must still carry `"hours":0`. With a bare int + omitempty,
-// hour 0 would be dropped, sending a date-only datetime for an HOURLY request —
+// hour 0 would be dropped, sending a date-only datetime for an HOURLY request:
 // indistinguishable from the DAILY (date-only) shape. The pointer omits only
 // the DAILY case (nil) and keeps an explicit 0 for HOURLY.
 type dateTime struct {

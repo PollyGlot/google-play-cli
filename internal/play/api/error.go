@@ -31,8 +31,8 @@ func (e *Error) Error() string {
 	if len(e.Reasons) > 0 {
 		// Reasons carry the discriminating Google API signal (e.g.
 		// editAlreadyExists, rateLimitExceeded). Including them in the
-		// human-visible string means a user reading `gplay` output —
-		// or a CI log — can immediately see why an API rejection
+		// human-visible string means a user reading `gplay` output,
+		// or a CI log: can immediately see why an API rejection
 		// landed without dumping the full envelope. Joined with "," to
 		// keep the line compact when more than one reason is returned.
 		suffix = " [reason: " + strings.Join(e.Reasons, ",") + "]"
@@ -53,7 +53,7 @@ func (e *Error) Unwrap() error { return e.Cause }
 // (bundles.upload / apks.upload), where 400 and 404 mean "malformed
 // artifact" (or, for APKs, an AAB-required app) and must surface as exit
 // 20 (not the generic 30). Auth (403), conflict (409), 5xx and
-// transport-level failures still win over the operation hint — a 403 on
+// transport-level failures still win over the operation hint: a 403 on
 // bundles.upload is still an auth problem.
 func (e *Error) ExitCode() int {
 	if e == nil {
@@ -75,9 +75,9 @@ func (e *Error) ExitCode() int {
 // The full table is in docs/DESIGN.md §9; the cases that matter:
 //
 //	0           → 50 (transport: timeout, DNS, refused)
-//	403         → 11 (authorization — SA not invited on app)
-//	409         → 60 (state conflict — stale Edit, ambiguous target)
-//	429         → 60 (rate-limited — same "transient state, sometimes retry" bucket)
+//	403         → 11 (authorization: SA not invited on app)
+//	409         → 60 (state conflict: stale Edit, ambiguous target)
+//	429         → 60 (rate-limited: same "transient state, sometimes retry" bucket)
 //	5xx         → 40 (upstream temporarily unhealthy, retry-safe)
 //	other 4xx   → 30 (API misuse: not found, bad request, conflict, gone)
 func StatusToExitCode(status int) int {

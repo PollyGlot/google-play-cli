@@ -4,7 +4,7 @@
 // ADR-0039).
 //
 // This is deliberately NOT `apps list`. `apps list` prints gplay's local
-// registry — the chosen working set of packages the operator has run
+// registry: the chosen working set of packages the operator has run
 // `apps add` on. `apps accessible list` asks the server "which Apps can
 // this credential see?". The two do not coincide by design (ADR-0039): a
 // service account may hold androidpublisher rights on an App without the
@@ -18,8 +18,8 @@
 // The read rides the Play Developer Reporting service: a distinct host and
 // the least-privilege token.ReportingScope, annotated via kernel.WithScope
 // on the list command (the same path `vitals` takes). Pagination is
-// caller-driven — one page per invocation with --page-size/--page-token,
-// the device-tiers/games convention — and --output json passes the
+// caller-driven: one page per invocation with --page-size/--page-token,
+// the device-tiers/games convention, and --output json passes the
 // SearchAccessibleAppsResponse through verbatim, nextPageToken included
 // (ADR-0003).
 package accessiblecmd
@@ -74,7 +74,7 @@ func (p Payload) Renderers() output.Renderers {
 
 // Run resolves an authenticated (reporting-scoped) client and fetches one
 // page of accessible Apps. When the page carries a nextPageToken, a note on
-// stderr tells the operator how to fetch the next page — the table/markdown
+// stderr tells the operator how to fetch the next page: the table/markdown
 // views would otherwise silently under-report; --output json keeps the
 // token in the body for a machine caller.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
@@ -90,7 +90,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	if sr.NextPageToken != "" && rc.Stderr != nil {
-		_, _ = io.WriteString(rc.Stderr, "NOTE: more Apps available — re-run with --page-token "+sr.NextPageToken+" for the next page.\n")
+		_, _ = io.WriteString(rc.Stderr, "NOTE: more Apps available, re-run with --page-token "+sr.NextPageToken+" for the next page.\n")
 	}
 	return Payload{Apps: sr.Apps, Raw: raw}, nil
 }
@@ -105,14 +105,14 @@ func newListCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "list",
 		Short: "List the Apps the active credential can access (server-authoritative)",
 		Long: `List the Apps the active credential can access, straight from Google via the
-Play Developer Reporting apps.search method — a server-authoritative
+Play Developer Reporting apps.search method: a server-authoritative
 inventory, not gplay's local registry.
 
 This is distinct from ` + "`gplay apps list`" + `, which prints the packages you
 have run ` + "`gplay apps add`" + ` on (your chosen working set). The two sets do
 not necessarily coincide: a credential may be able to add an App it cannot
 see here, or see org Apps it does not drive (ADR-0039). Use this to
-bootstrap — discover package names, then ` + "`gplay apps add`" + ` the ones you
+bootstrap: discover package names, then ` + "`gplay apps add`" + ` the ones you
 want to work on.
 
 Pagination is one page per invocation: use --page-size and --page-token,
@@ -153,7 +153,7 @@ Reporting API. ` + "`apps accessible list`" + ` enumerates the Apps the active
 credential can access; the bare ` + "`apps accessible`" + ` command prints this
 help.
 
-Distinct from ` + "`apps list`" + ` (gplay's local registry) — see
+Distinct from ` + "`apps list`" + ` (gplay's local registry): see
 ` + "`apps accessible list --help`" + ` and ADR-0039.`,
 		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,

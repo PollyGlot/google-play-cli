@@ -61,7 +61,7 @@ func TestCancel_postsCancelVerb(t *testing.T) {
 // TestAddTargeting_postsTargetingUpdate asserts the :addTargeting verb + the
 // append-only TargetingUpdate body (no versionList). It exercises the
 // regions + sdk-levels dimensions together, asserting androidSdks.sdkLevels
-// reaches the wire — the SDK-level selector was previously unasserted on
+// reaches the wire: the SDK-level selector was previously unasserted on
 // add-targeting, so a JSON-shape regression could have shipped undetected.
 func TestAddTargeting_postsTargetingUpdate(t *testing.T) {
 	var gotURL string
@@ -90,7 +90,7 @@ func TestAddTargeting_postsTargetingUpdate(t *testing.T) {
 }
 
 // TestAddTargeting_allUsersOnWire asserts widening to all users reaches the wire
-// as allUsers.isAllUsersRequested inside targetingUpdate — the "everyone"
+// as allUsers.isAllUsersRequested inside targetingUpdate: the "everyone"
 // dimension of the append-only selector, previously unasserted on add-targeting.
 func TestAddTargeting_allUsersOnWire(t *testing.T) {
 	var gotBody []byte

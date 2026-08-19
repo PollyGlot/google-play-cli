@@ -6,13 +6,13 @@
 //
 // Unlike internal/play/reviews this is a DIFFERENT Google service: a distinct
 // host (api.ReportingBase) and OAuth scope (token.ReportingScope). Everything
-// here is read-only — the API only reads metrics.
+// here is read-only: the API only reads metrics.
 //
 // Metrics, dimensions and aggregation periods are NEVER invented: the catalog
 // is read from the snapshot (ADR-0026). Google documents the supported metrics
 // and dimensions of each metric set in the `metrics`/`dimensions` property prose
 // of its `:query` request schema, and the aggregation periods as the
-// `aggregationPeriod` enum of the TimelineSpec schema — both carried verbatim in
+// `aggregationPeriod` enum of the TimelineSpec schema: both carried verbatim in
 // the embedded Schema index, so validation needs no network and no hand-kept
 // list.
 package vitals
@@ -48,7 +48,7 @@ func (s MetricSet) QueryMethodID() string {
 	return "playdeveloperreporting.vitals." + s.Name + ".query"
 }
 
-// metricSets is the declared set of queryable metric sets — the seven read-only
+// metricSets is the declared set of queryable metric sets: the seven read-only
 // signals the Play Developer Reporting API exposes (#49). It is explicit (like
 // discovery.Services) and gated against the embedded index by an integrity test
 // so a typo or a snapshot drift fails offline.
@@ -94,7 +94,7 @@ const opQuery = "playdeveloperreporting.vitals.query"
 
 // Query issues the metric set's `:query` POST for pkg, following the response's
 // nextPageToken to completion, and returns a rebuilt {rows:[...]} envelope
-// (rows verbatim — an ADR-0003 pass-through across the merged pages). The
+// (rows verbatim: an ADR-0003 pass-through across the merged pages). The
 // metric-set `:query` caps at 1000 rows per page, so a high-cardinality slice
 // (e.g. by country over a wide window) would otherwise be silently truncated. A
 // non-2xx becomes an *api.Error carrying the status, so the shared classifier
@@ -102,7 +102,7 @@ const opQuery = "playdeveloperreporting.vitals.query"
 func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body []byte) (json.RawMessage, error) {
 	// Decode the caller's request into a field map so the continuation
 	// pageToken can be injected without reshaping the other fields (metrics,
-	// timelineSpec, …) — they pass through verbatim.
+	// timelineSpec, …): they pass through verbatim.
 	req := map[string]json.RawMessage{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
@@ -209,7 +209,7 @@ func parseCatalog(desc, marker string) []string {
 
 // requestSchema returns the index Schema for a metric set's `:query` request
 // body, resolved through the method's Request ref. The bool is false when the
-// index lacks the method or schema (a corrupt index — guarded by the integrity
+// index lacks the method or schema (a corrupt index: guarded by the integrity
 // test).
 func requestSchema(idx schemaindex.Index, set MetricSet) (schemaindex.Schema, bool) {
 	m, ok := idx.Methods[set.QueryMethodID()]
@@ -285,7 +285,7 @@ type Timeline struct {
 	Rows []Row
 }
 
-// Empty reports whether the query returned no datapoints — distinct from "zero
+// Empty reports whether the query returned no datapoints: distinct from "zero
 // crashes", which is why the command layer warns about freshness on an empty
 // window.
 func (t Timeline) Empty() bool { return len(t.Rows) == 0 }

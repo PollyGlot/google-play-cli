@@ -17,7 +17,7 @@ import (
 // under the `errors` resource group. Its Name yields the native query method id
 // `playdeveloperreporting.vitals.errors.counts.query`, so the same Query +
 // validation machinery applies. It is deliberately NOT in the metricSets
-// registry — it is surfaced under `vitals errors counts`, not `vitals query`.
+// registry: it is surfaced under `vitals errors counts`, not `vitals query`.
 func ErrorCountSet() MetricSet {
 	return MetricSet{Name: "errors.counts", Resource: "errorCountMetricSet"}
 }
@@ -129,7 +129,7 @@ func ParseErrorIssues(body []byte) ([]ErrorIssue, error) {
 }
 
 // ErrorReport is the render-ready subset of an individual error report. Report
-// is the platform-produced textual stack trace — obfuscated until ProGuard/R8
+// is the platform-produced textual stack trace: obfuscated until ProGuard/R8
 // mappings are uploaded (#250).
 type ErrorReport struct {
 	EventTime  string

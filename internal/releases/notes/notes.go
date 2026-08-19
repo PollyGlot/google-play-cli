@@ -1,4 +1,4 @@
-// Package notes loads release notes from CLI input — either a single
+// Package notes loads release notes from CLI input: either a single
 // text string (assigned to the app's default language) or a directory
 // of per-locale files (`<locale>.txt`) with an optional `default.txt`
 // fallback for the default language.
@@ -43,7 +43,7 @@ type LocaleNote struct {
 // Opts is the input contract for Load. Exactly one of Text or Dir
 // should be set; both empty produces an empty result (uploading without
 // notes is valid). Both populated is a CLI misuse and is rejected with
-// a CodedError carrying ExitCode()=2 — see cycle 12.
+// a CodedError carrying ExitCode()=2: see cycle 12.
 type Opts struct {
 	// Text mode: assign this single string to DefaultLanguage.
 	Text string
@@ -70,7 +70,7 @@ func (e *ValidationError) ExitCode() int { return 2 }
 // Load returns the list of (locale, text) pairs derived from opts.
 // In Text mode the single string is assigned to DefaultLanguage with
 // trailing whitespace trimmed, matching how Dir mode normalizes each
-// file's contents — so `--release-notes "Bug fixes\n"` and a
+// file's contents, so `--release-notes "Bug fixes\n"` and a
 // `--release-notes-dir` with the same content produce identical wire
 // payloads. In Dir mode every `<locale>.txt` under opts.Dir becomes one
 // entry, plus an optional `default.txt` that ships as the
@@ -81,7 +81,7 @@ func (e *ValidationError) ExitCode() int { return 2 }
 func Load(opts Opts) ([]LocaleNote, error) {
 	if opts.Text != "" && opts.Dir != "" {
 		return nil, &ValidationError{
-			Message: "release-notes and release-notes-dir are mutually exclusive — pick one",
+			Message: "release-notes and release-notes-dir are mutually exclusive: pick one",
 		}
 	}
 	if opts.Text != "" {
@@ -146,7 +146,7 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 // readCapped stat-checks p against MaxNoteFileSize before reading the
 // file into memory, then verifies the post-read size as a belt-and-
 // suspenders defence against TOCTOU growth. Files larger than the cap
-// produce a *ValidationError naming the file and the limit — Google
+// produce a *ValidationError naming the file and the limit: Google
 // Play's per-locale notes are capped at 500 characters anyway, so 1 MiB
 // is generous.
 func readCapped(p string) ([]byte, error) {
@@ -156,7 +156,7 @@ func readCapped(p string) ([]byte, error) {
 	}
 	if info.Size() > MaxNoteFileSize {
 		return nil, &ValidationError{
-			Message: fmt.Sprintf("release-notes file %s exceeds the %d-byte cap (got %d bytes) — Google Play limits per-locale notes to 500 characters", p, int64(MaxNoteFileSize), info.Size()),
+			Message: fmt.Sprintf("release-notes file %s exceeds the %d-byte cap (got %d bytes): Google Play limits per-locale notes to 500 characters", p, int64(MaxNoteFileSize), info.Size()),
 		}
 	}
 	text, err := osReadFile(p)
@@ -165,7 +165,7 @@ func readCapped(p string) ([]byte, error) {
 	}
 	if int64(len(text)) > MaxNoteFileSize {
 		return nil, &ValidationError{
-			Message: fmt.Sprintf("release-notes file %s exceeds the %d-byte cap (got %d bytes) — Google Play limits per-locale notes to 500 characters", p, int64(MaxNoteFileSize), len(text)),
+			Message: fmt.Sprintf("release-notes file %s exceeds the %d-byte cap (got %d bytes): Google Play limits per-locale notes to 500 characters", p, int64(MaxNoteFileSize), len(text)),
 		}
 	}
 	return text, nil
@@ -174,7 +174,7 @@ func readCapped(p string) ([]byte, error) {
 // covers reports whether out already has an entry for locale, comparing
 // case-insensitively so that e.g. `en-us.txt` in the release-notes
 // directory correctly suppresses the default.txt fallback for an
-// `en-US` DefaultLanguage — otherwise Google Play would reject the
+// `en-US` DefaultLanguage: otherwise Google Play would reject the
 // upload for emitting two entries that resolve to the same canonical
 // locale.
 func covers(out []LocaleNote, locale string) bool {

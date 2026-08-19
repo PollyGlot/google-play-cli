@@ -1,9 +1,9 @@
 // Package iapcmd holds the wiring shared by the `gplay iap` leaves: package
 // resolution, the default catalog directory, 403/404 hint classification, and
 // the shaping helpers between the catalog file schema and the API resources.
-// The catalog unions two surfaces — the v2 `monetization.onetimeproducts`
+// The catalog unions two surfaces: the v2 `monetization.onetimeproducts`
 // model (all writes) and the read-only legacy `inappproducts` (recognizable by
-// its `sku` field) — so nothing is invisible while legacy is never written in
+// its `sku` field), so nothing is invisible while legacy is never written in
 // place (ADR-0041 §8). Mirrors commands/subscriptions/subscriptionscmd.
 package iapcmd
 
@@ -21,12 +21,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 )
 
-// DefaultDir is the catalog directory the iap leaves default to — the sibling
+// DefaultDir is the catalog directory the iap leaves default to: the sibling
 // segment of ./monetization/subscriptions.
 const DefaultDir = "./monetization/iap"
 
 // DefaultRegionsVersion is the regions version pin sent with v2 writes unless
-// --regions-version overrides it — the latest version Google has published
+// --regions-version overrides it: the latest version Google has published
 // (ADR-0041 §7).
 const DefaultRegionsVersion = "2022/02"
 
@@ -38,7 +38,7 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return "", exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return "", exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 	return pkg, nil
 }
@@ -53,7 +53,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account cannot manage the one-time-product catalog for %q — grant it access to the app's monetization setup in Play Console (Users & permissions), then retry: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account cannot manage the one-time-product catalog for %q: grant it access to the app's monetization setup in Play Console (Users & permissions), then retry: %v", e.pkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -65,7 +65,7 @@ type notFoundError struct {
 }
 
 func (e *notFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — verify --package (or the project pin) names an app this service account can reach: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: verify --package (or the project pin) names an app this service account can reach: %v", e.pkg, e.cause)
 }
 func (e *notFoundError) Unwrap() error { return e.cause }
 
@@ -85,7 +85,7 @@ func Classify(pkg string, err error) error {
 }
 
 // IsLegacy reports whether a catalog file body is a legacy inappproducts
-// resource — recognizable by its `sku` field (the v2 resource carries
+// resource: recognizable by its `sku` field (the v2 resource carries
 // `productId` instead). The shape is the origin marker; no gplay-invented
 // field is needed.
 func IsLegacy(raw json.RawMessage) bool {
@@ -147,7 +147,7 @@ func EmbedOffers(items []iap.Item, offers []iap.OfferItem) (map[string]json.RawM
 			}
 			for optionID := range perOption {
 				if !seen[optionID] {
-					return nil, fmt.Errorf("live offer(s) reference purchase option %q of %q which onetimeproducts.list did not return — refusing an inconsistent catalog", optionID, it.ProductID)
+					return nil, fmt.Errorf("live offer(s) reference purchase option %q of %q which onetimeproducts.list did not return: refusing an inconsistent catalog", optionID, it.ProductID)
 				}
 			}
 		}
@@ -159,7 +159,7 @@ func EmbedOffers(items []iap.Item, offers []iap.OfferItem) (map[string]json.RawM
 		out[it.ProductID] = b
 	}
 	for productID := range byProduct {
-		return nil, fmt.Errorf("live offer(s) reference one-time product %q which onetimeproducts.list did not return — refusing an inconsistent catalog", productID)
+		return nil, fmt.Errorf("live offer(s) reference one-time product %q which onetimeproducts.list did not return: refusing an inconsistent catalog", productID)
 	}
 	return out, nil
 }
@@ -189,7 +189,7 @@ func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessa
 				}
 				offerID, _ := offer["offerId"].(string)
 				if offerID == "" || optionID == "" {
-					return nil, exit.Usagef("catalog file %s.json: an offer under purchase option %q has no offerId (or the purchase option has no purchaseOptionId) — the IDs are the reconciliation keys", productID, optionID)
+					return nil, exit.Usagef("catalog file %s.json: an offer under purchase option %q has no offerId (or the purchase option has no purchaseOptionId): the IDs are the reconciliation keys", productID, optionID)
 				}
 				b, err := json.Marshal(offer)
 				if err != nil {
@@ -207,7 +207,7 @@ func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessa
 }
 
 // StripOffersFromProduct removes every embedded purchaseOptions[].offers array
-// from a declared product body — offers are not a field of the API resource.
+// from a declared product body: offers are not a field of the API resource.
 func StripOffersFromProduct(raw json.RawMessage) (json.RawMessage, error) {
 	var product map[string]any
 	if err := json.Unmarshal(raw, &product); err != nil {

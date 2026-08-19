@@ -1,12 +1,12 @@
 // Package view implements `gplay reviews view <reviewId>`: a read-only, deep
-// view of ONE user review, addressed by reviewId — the `reviews` analogue of
+// view of ONE user review, addressed by reviewId: the `reviews` analogue of
 // `apps view` / `team users view`. The human views show a scalar header
 // (author, star rating, date, locale, device, app version, reviewId) then the
 // user↔developer conversation thread: the review body followed by any developer
 // replies with their last-modified instant. --output json is the matched Review
 // object verbatim (ADR-0003 pass-through), not a gplay envelope.
 //
-// Like `reviews list`/`reply` it is thin glue — resolve --package, build an
+// Like `reviews list`/`reply` it is thin glue: resolve --package, build an
 // authenticated client, call internal/play/reviews.Get, and render. No Edit, no
 // mutation. The reviewId comes from the REVIEW_ID column of `reviews list` and
 // is symmetric with `reviews reply <reviewId>`. A 404 (unknown id, OR a valid
@@ -16,7 +16,7 @@
 //
 // `reviews.get` exposes a translationLanguage query param, but `reviews list`
 // does not wire it either; it is omitted here to stay symmetric and minimal
-// (deferred — noted in --help).
+// (deferred: noted in --help).
 package view
 
 import (
@@ -57,7 +57,7 @@ func formatDate(t time.Time) string {
 // Payload satisfies output.Renderable. Raw carries the matched Review's
 // verbatim bytes for the ADR-0003 JSON pass-through; the typed fields drive the
 // human-shaped table and markdown views. None of the typed fields are
-// json-tagged — the JSON path is the raw pass-through, never the struct.
+// json-tagged: the JSON path is the raw pass-through, never the struct.
 type Payload struct {
 	Review reviews.Review  `json:"-"`
 	Raw    json.RawMessage `json:"-"`
@@ -186,7 +186,7 @@ func blockquote(text string) string {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	reviewID := strings.TrimSpace(in.ReviewID)
 	if reviewID == "" {
-		return nil, exit.Usagef("no review — pass a reviewId: gplay reviews view <reviewId>")
+		return nil, exit.Usagef("no review: pass a reviewId: gplay reviews view <reviewId>")
 	}
 
 	pkg := in.Package
@@ -194,7 +194,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -221,7 +221,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Show one user review: header plus the user↔developer thread",
 		Long: `Show a single user review, addressed by reviewId: a scalar header (author,
 star rating, date, locale, device, app version, reviewId) then the
-conversation thread — the review body followed by any developer replies with
+conversation thread: the review body followed by any developer replies with
 their last-modified date.
 
 The reviewId comes from the REVIEW_ID column of ` + "`gplay reviews list`" + ` and is
@@ -232,7 +232,7 @@ The reviews API only exposes the LAST 7 DAYS, so an unknown OR expired
 reviewId fails with exit 30 (a valid id can become unfetchable once its review
 ages out of the window). There is no --translate flag: ` + "`reviews.get`" + ` exposes a
 translationLanguage param, but ` + "`reviews list`" + ` does not wire it either, so it is
-omitted here for symmetry (deferred — may be added later if requested).
+omitted here for symmetry (deferred: may be added later if requested).
 
 --output json is the Review object verbatim (ADR-0003 pass-through); --output
 markdown renders a record plus the thread as blockquotes.`,

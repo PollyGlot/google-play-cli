@@ -26,7 +26,7 @@ type Input struct {
 	Package           string
 	Track             string
 	AABPath           string
-	Format            string // "" | "apk" | "bundle" — overrides extension auto-detect
+	Format            string // "" | "apk" | "bundle": overrides extension auto-detect
 	Mapping           string
 	ReleaseNotes      string
 	ReleaseNotesDir   string
@@ -48,7 +48,7 @@ func (e *usageError) ExitCode() int { return 2 }
 // resolveFormat classifies the artifact as an APK or an AAB, from an
 // explicit --format override or the file extension (.apk / .aab). It
 // mirrors the `releases sharing upload` convention (ADR-0030), including
-// its exact "cannot tell APK from AAB by extension" message — but as a
+// its exact "cannot tell APK from AAB by extension" message, but as a
 // CLI-misuse usage error (exit 2), matching this command's flag-validation
 // taxonomy. Returns the orchestrator format value (FormatAPK / FormatBundle).
 func resolveFormat(path, formatOverride string) (string, error) {
@@ -64,7 +64,7 @@ func resolveFormat(path, formatOverride string) (string, error) {
 		case ".aab":
 			return orchestrator.FormatBundle, nil
 		default:
-			return "", &usageError{msg: "cannot tell APK from AAB by extension — pass --format apk|bundle"}
+			return "", &usageError{msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
 		}
 	default:
 		return "", &usageError{msg: "--format must be apk or bundle"}
@@ -93,7 +93,7 @@ func (p Payload) Renderers() output.Renderers {
 // shows it when non-zero (the API can omit userFraction on completed
 // responses for 100% rollouts, and we should not surface a misleading
 // "userFraction: 0" in that case). Draft / unspecified statuses always
-// hide it — matches the JSON view's omitempty contract.
+// hide it: matches the JSON view's omitempty contract.
 func showsUserFraction(status string, userFraction float64) bool {
 	if status == "inProgress" {
 		return true
@@ -194,7 +194,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	if in.Track == "" {
 		return nil, &usageError{msg: "missing --track"}
@@ -299,8 +299,8 @@ Performs the full Edit lifecycle in one call:
 
 AAB vs APK is auto-detected by file extension (.aab / .apk); pass
 --format apk|bundle to override when the extension is ambiguous. The rest
-of the pipeline — track assignment, release notes, --mapping, draft-by-
-default on production, --dry-run, --confirm — is identical for both.
+of the pipeline (track assignment, release notes, --mapping, draft-by-
+default on production, --dry-run, --confirm) is identical for both.
 
 Pass --mapping <mapping.txt> to upload the artifact's ProGuard/R8
 deobfuscation file in the same Edit, so Play vitals can symbolicate
@@ -311,7 +311,7 @@ Targeting production defaults to a draft release (ADR-0002) unless
 --complete or --staged is supplied. Any string is accepted as --track
 so closed-test tracks with custom names just work.
 
-[experimental] APK upload — Google has required the AAB for new apps
+[experimental] APK upload: Google has required the AAB for new apps
 since August 2021, so .apk uploads only serve existing apps still
 distributed as APKs; if the app requires an App Bundle, Google's rejection
 of the APK passes through verbatim.`,

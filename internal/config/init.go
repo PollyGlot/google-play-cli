@@ -92,7 +92,7 @@ func ensureGitignore(fsys FS, path string) error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	if err != nil { // file doesn't exist — write fresh
+	if err != nil { // file doesn't exist: write fresh
 		return fsys.WriteFile(path, []byte(managed), 0o644)
 	}
 
@@ -118,7 +118,7 @@ func replaceManagedBlock(existing, newBlock string) (string, bool) {
 	}
 	endIdx := strings.Index(existing[startIdx:], gitignoreMarkerEnd)
 	if endIdx == -1 {
-		// Start marker without end marker — replace from start marker
+		// Start marker without end marker: replace from start marker
 		// through end of file to recover.
 		return existing[:startIdx] + newBlock, true
 	}

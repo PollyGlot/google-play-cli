@@ -22,14 +22,14 @@ import (
 const AndroidPublisherScope = "https://www.googleapis.com/auth/androidpublisher"
 
 // ReportingScope is the OAuth2 scope required to talk to the Play Developer
-// Reporting API — the read-only post-launch quality service (crashes/ANR
+// Reporting API: the read-only post-launch quality service (crashes/ANR
 // vitals, #49). It is a DISTINCT scope from AndroidPublisherScope: `gplay
 // vitals` commands request only this one (least privilege), and the publishing
 // surface never requests it.
 const ReportingScope = "https://www.googleapis.com/auth/playdeveloperreporting"
 
 // StorageReadOnlyScope is the OAuth2 scope required to read the developer's
-// Google Cloud Storage reporting bucket — the monthly CSV exports (reviews
+// Google Cloud Storage reporting bucket: the monthly CSV exports (reviews
 // history, #94). Like ReportingScope it is a DISTINCT, least-privilege scope:
 // `gplay reviews history` requests only this one (read-only by construction),
 // and no publishing or reporting command requests it. Documented at:
@@ -56,7 +56,7 @@ func (*AuthError) ExitCode() int { return 10 }
 // Source returns an oauth2.TokenSource that lazily mints access tokens for the
 // requested scopes by signing a JWT with the service-account key and exchanging
 // it at sa.TokenURI. When no scope is passed it defaults to
-// AndroidPublisherScope — the publishing surface's contract — so existing
+// AndroidPublisherScope (the publishing surface's contract) so existing
 // callers are unaffected; a `gplay vitals` command passes ReportingScope for
 // least-privilege access to the read-only reporting service (#49). Errors from
 // the exchange are wrapped in *AuthError when the HTTP status indicates an auth

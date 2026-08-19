@@ -1,7 +1,7 @@
 // Package sharing uploads an APK or AAB to Google Play Internal App Sharing
 // via the internalappsharingartifacts.uploadapk / uploadbundle endpoints and
 // returns the resulting shareable artifact. Unlike a release upload these
-// endpoints are OUTSIDE the Edit lifecycle (no editId) — they create a private
+// endpoints are OUTSIDE the Edit lifecycle (no editId): they create a private
 // InternalAppSharingArtifact whose downloadUrl an authorized tester follows
 // into the Play Store, bypassing tracks entirely (CONTEXT.md: Internal App
 // Sharing). They use Google's upload sub-host and the simple-media protocol
@@ -33,7 +33,7 @@ const (
 // is returned alongside it for that pass-through (this struct feeds the human
 // table/markdown views only).
 type Artifact struct {
-	// DownloadURL is the private, shareable Play Store install link — the whole
+	// DownloadURL is the private, shareable Play Store install link: the whole
 	// point of the command.
 	DownloadURL string `json:"downloadUrl,omitempty"`
 	// CertificateFingerprint is the SHA-256 of the signing certificate.
@@ -45,7 +45,7 @@ type Artifact struct {
 // LocalIOError is returned when the artifact cannot be read from the local
 // filesystem (missing path, permission denied, stat failure, or a non-regular
 // file). It is distinct from *api.Error so the exit code maps to client-side
-// validation (20 per docs/DESIGN.md §9) rather than transport (50) — mirroring
+// validation (20 per docs/DESIGN.md §9) rather than transport (50): mirroring
 // internal/play/bundles.LocalIOError.
 type LocalIOError struct {
 	Op    string
@@ -87,7 +87,7 @@ func upload(ctx context.Context, hc *http.Client, op, artifactKind, pkg, path st
 	// A directory / fifo / device passes Open+Stat but cannot be streamed as a
 	// request body, and Size() would be wrong for ContentLength. Reject anything
 	// but a regular file up front so it surfaces as the client-side exit-20
-	// LocalIOError, not a transport-level *api.Error (exit 50) — parity with
+	// LocalIOError, not a transport-level *api.Error (exit 50): parity with
 	// internal/play/bundles.Upload.
 	if !info.Mode().IsRegular() {
 		return Artifact{}, nil, &LocalIOError{Op: op, Path: path, Cause: fmt.Errorf("not a regular file")}

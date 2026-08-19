@@ -77,7 +77,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 
 With no open Edit, commit fails with exit 60. If the commit itself fails (for
 example a validation error from Google), the Edit stays open and the pin is
-left in place — fix the cause and re-run, or ` + "`gplay edits discard`" + `.
+left in place: fix the cause and re-run, or ` + "`gplay edits discard`" + `.
 
 The package defaults to the repo's .gplay/config.json pin when --package is
 omitted.`,

@@ -114,7 +114,7 @@ func TestSearch_apiError_carriesStatus(t *testing.T) {
 }
 
 // TestSearch_emptyResult asserts an empty page decodes cleanly to zero Apps
-// and an empty token (a valid, common state — the credential simply sees no
+// and an empty token (a valid, common state: the credential simply sees no
 // Apps on the Reporting side).
 func TestSearch_emptyResult(t *testing.T) {
 	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {

@@ -1,4 +1,4 @@
-// Package addcmd_test — variadic-path coverage for `gplay apps add`
+// Package addcmd_test: variadic-path coverage for `gplay apps add`
 // (ADR-0040). These exercise the multi-package contract: partial success,
 // the non-retryable-wins exit code, argument dedup, and offline
 // --no-verify batches. The single-package non-regression cases live in
@@ -23,7 +23,7 @@ import (
 )
 
 // saveFailFS is an OSFS whose WriteFile always fails, so config.Global.Save
-// returns an error — used to exercise the batch Save-failure report path.
+// returns an error: used to exercise the batch Save-failure report path.
 type saveFailFS struct{ config.OSFS }
 
 func (saveFailFS) WriteFile(string, []byte, iofs.FileMode) error {
@@ -45,7 +45,7 @@ type variadicRT struct {
 }
 
 // pkgFromPath extracts the package from a `/applications/{pkg}/edits...`
-// URL path — the shape internal/play/edits builds.
+// URL path: the shape internal/play/edits builds.
 func pkgFromPath(path string) string {
 	const marker = "/applications/"
 	i := strings.Index(path, marker)

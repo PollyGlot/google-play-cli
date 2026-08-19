@@ -137,7 +137,7 @@ func (m *MemFS) Rename(oldpath, newpath string) error {
 	return nil
 }
 
-// Remove deletes a file. Missing files surface as fs.ErrNotExist —
+// Remove deletes a file. Missing files surface as fs.ErrNotExist:
 // matches os.Remove so callers using errors.Is(_, fs.ErrNotExist) keep
 // working under MemFS.
 func (m *MemFS) Remove(name string) error {

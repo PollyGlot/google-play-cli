@@ -63,7 +63,7 @@ func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	return jsonResp(200, resp), nil
 }
 
-// apiCalls counts the requests that were NOT the token exchange — the number
+// apiCalls counts the requests that were NOT the token exchange: the number
 // that matters when asserting "no HTTP happened".
 func (r *testRoundTripper) apiCalls() int {
 	r.mu.Lock()
@@ -203,7 +203,7 @@ func TestRun_readsStdin(t *testing.T) {
 }
 
 // TestRun_missingConfirm_exit3 is the gate: submission is immediate and cannot
-// be recalled, so the run must refuse — before any HTTP — naming the flag.
+// be recalled, so the run must refuse (before any HTTP) naming the flag.
 func TestRun_missingConfirm_exit3(t *testing.T) {
 	rt := &testRoundTripper{}
 	_, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
@@ -369,7 +369,7 @@ func TestRun_storePackageEnvCascade(t *testing.T) {
 	}
 }
 
-// TestRun_jsonPassthrough: ADR-0003 — whatever the API says is what --output
+// TestRun_jsonPassthrough: ADR-0003: whatever the API says is what --output
 // json prints, verbatim, fields gplay does not model included.
 func TestRun_jsonPassthrough(t *testing.T) {
 	rt := &testRoundTripper{resp: `{"reviewId":"rev-1","unmodelled":{"x":1}}`}
@@ -418,7 +418,7 @@ func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 }
 
 // TestRun_humanViews: the table and markdown views must say the submission is
-// gone to review — the fact an operator most needs to read back.
+// gone to review: the fact an operator most needs to read back.
 func TestRun_humanViews(t *testing.T) {
 	got, err := updatecmd.Run(newRC(t, &testRoundTripper{}, ""), updatecmd.Input{
 		StorePackage: "com.example.store", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,

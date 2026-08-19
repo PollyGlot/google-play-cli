@@ -1,5 +1,5 @@
 // Package set implements `gplay testers set`: it replaces the authorized
-// audience (Google Groups) of a single track, declaratively — the whole
+// audience (Google Groups) of a single track, declaratively: the whole
 // list is sent, mapping 1:1 to edits.testers.update (there is no
 // add/remove). It is a write: an implicit Edit (open → testers.update →
 // commit), with --dry-run (validate + preview, no HTTP) and
@@ -55,7 +55,7 @@ func (e *usageError) ExitCode() int { return 2 }
 // trackNotFoundError wraps a testers.update 404 with an actionable hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
 // the wrapped *api.Error (404 → exit 30) stays authoritative through the
-// Coder chain — an unknown track is an API 4xx, not a CLI misuse.
+// Coder chain: an unknown track is an API 4xx, not a CLI misuse.
 type trackNotFoundError struct {
 	track string
 	cause error
@@ -63,7 +63,7 @@ type trackNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *trackNotFoundError) Error() string {
-	return fmt.Sprintf("track %q not found — run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
+	return fmt.Sprintf("track %q not found: run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -80,7 +80,7 @@ type forbiddenError struct {
 
 // Error renders the forbidden message plus the Play Console grant hint.
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -98,7 +98,7 @@ type packageNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay apps list` hint.
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -108,7 +108,7 @@ func (e *packageNotFoundError) Unwrap() error { return e.cause }
 // Payload satisfies output.Renderable. Raw carries the testers.update body
 // for the ADR-0003 JSON pass-through (empty on --dry-run, which never hits
 // the API); Track and DryRun are gplay-derived context shown above the
-// group list — never in the JSON, which stays a faithful testers.update
+// group list: never in the JSON, which stays a faithful testers.update
 // pass-through. Groups is the audience that was (or would be) written.
 type Payload struct {
 	Track  string          `json:"-"`
@@ -192,7 +192,7 @@ func dryRunSuffix(dryRun bool) string {
 }
 
 // isStatus reports whether err carries a *api.Error with the given HTTP
-// status — the signal used to attach actionable hints to a testers.update
+// status: the signal used to attach actionable hints to a testers.update
 // 404 (unknown track) or a 403 (service account not invited).
 func isStatus(err error, status int) bool {
 	var apiErr *api.Error
@@ -232,7 +232,7 @@ func classifyEditError(pkg string, err error) error {
 // targetGroups resolves the audience to write from the validated flags.
 // --clear yields an empty (non-nil) set; otherwise the trimmed, non-empty
 // entries of --group. The caller has already run the footgun and conflict
-// guards, so this only normalizes — it does not re-validate that a set was
+// guards, so this only normalizes: it does not re-validate that a set was
 // requested.
 func targetGroups(in Input) []string {
 	if in.Clear {
@@ -248,8 +248,8 @@ func targetGroups(in Input) []string {
 }
 
 // Run is the business function the kernel invokes. It validates the flag
-// combination (notably the footgun guard), resolves the package, and —
-// unless --dry-run short-circuits before any network — opens an Edit,
+// combination (notably the footgun guard), resolves the package, and,
+// unless --dry-run short-circuits before any network: opens an Edit,
 // replaces the track's testers, and commits.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
@@ -258,7 +258,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Footgun guard: a bare `set` with neither --group nor --clear must
-	// never reach the API — a forgotten --group would otherwise silently
+	// never reach the API: a forgotten --group would otherwise silently
 	// wipe the list. Emptying on purpose is the explicit --clear.
 	if !in.GroupsSet && !in.Clear {
 		return nil, &usageError{msg: "refusing to change testers without --group or --clear (a forgotten --group must not silently wipe the list); pass --group a@googlegroups.com[,…] to declare the set, or --clear to empty it"}
@@ -280,7 +280,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a missing
@@ -345,7 +345,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Replace the Google Groups authorized to test a track",
 		Long: `Replace the authorized audience of --track with the Google Groups passed
 to --group. testers set is declarative: it replaces the WHOLE list (it
-maps 1:1 to testers.update — there is no add/remove). The testers resource
+maps 1:1 to testers.update: there is no add/remove). The testers resource
 exposes only Google Groups; individual tester emails are not supported by
 the API.
 

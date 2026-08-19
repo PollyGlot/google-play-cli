@@ -33,7 +33,7 @@ type Input struct {
 
 // localIOError is returned when the destination file cannot be created or
 // finalized. It is distinct from *api.Error so the exit code maps to client-side
-// IO (20 per docs/DESIGN.md §9) rather than transport (50) — mirroring
+// IO (20 per docs/DESIGN.md §9) rather than transport (50): mirroring
 // internal/play/sharing.LocalIOError.
 type localIOError struct {
 	path  string
@@ -46,7 +46,7 @@ func (e *localIOError) ExitCode() int { return 20 }
 
 // Run streams the addressed artifact to the destination and emits the success ✓
 // on stderr. It writes the data path itself (binary file or stdout) and returns
-// no Renderable — the bytes are not a Renderable (DESIGN §"Commands without
+// no Renderable: the bytes are not a Renderable (DESIGN §"Commands without
 // --output"), so the kernel renders nothing.
 func Run(rc *kernel.RunContext, in Input) error {
 	if strings.TrimSpace(in.DownloadID) == "" {
@@ -107,10 +107,10 @@ raw signed bytes to disk. Address the artifact by the <downloadId> from
 ` + "`gplay releases generated list`" + ` and the --version-code it was generated from.
 
 The destination is --dest PATH (required); --dest - streams the bytes to stdout
-for piping. This command has no --output flag — its payload is raw bytes, not a
+for piping. This command has no --output flag: its payload is raw bytes, not a
 Renderable. On success a ✓ line on stderr names the byte count and destination.
 
-This is a direct application-scoped read — it opens no Edit and moves no money.`,
+This is a direct application-scoped read: it opens no Edit and moves no money.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

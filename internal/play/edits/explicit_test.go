@@ -11,7 +11,7 @@ import (
 )
 
 // noRequestRT fails the test on ANY HTTP request. The explicit-mode
-// short-circuit must reach neither edits.insert, :commit, nor edits.delete —
+// short-circuit must reach neither edits.insert, :commit, nor edits.delete:
 // fn runs directly against the pinned Edit, so the transport stays untouched.
 type noRequestRT struct{ t *testing.T }
 

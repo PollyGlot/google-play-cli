@@ -1,5 +1,5 @@
 // Package list implements `gplay metadata list`: a read-only summary of
-// the Store front Listings live on Google Play for a package — one row per
+// the Store front Listings live on Google Play for a package: one row per
 // locale, showing which managed fields each locale has and the character
 // length of each. It reads ONLY from Play (never the local metadata tree):
 // resolve --package, open a read-only Edit, consume
@@ -48,7 +48,7 @@ func (e *usageError) ExitCode() int { return 2 }
 // packageNotFoundError wraps an edits.insert 404 with a hint pointing at
 // `gplay apps list`. Like in `tracks list`, it carries no ExitCode of its
 // own so the wrapped *api.Error (404 -> exit 30) stays authoritative
-// through the Coder chain — an unknown package is an API 4xx, not a CLI
+// through the Coder chain: an unknown package is an API 4xx, not a CLI
 // misuse.
 type packageNotFoundError struct {
 	pkg   string
@@ -56,7 +56,7 @@ type packageNotFoundError struct {
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
@@ -70,14 +70,14 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
 // classifyEditError adds an actionable hint to the two operator-facing
-// failures of a read-only listings read — an unknown package (404) and a
-// service account that has not been invited on the app (403) — while
+// failures of a read-only listings read: an unknown package (404) and a
+// service account that has not been invited on the app (403), while
 // leaving the wrapped *api.Error to drive the exit code. Every other
 // failure (5xx, network, edit conflict) propagates verbatim.
 func classifyEditError(pkg string, err error) error {
@@ -126,7 +126,7 @@ func fieldValue(l listings.Listing, f listing.Field) string {
 // BuildRows projects each API Listing onto the four managed fields,
 // recording the character length of every present (non-empty) field. An
 // empty API field ("") is treated as absent per the ADR-0011 "missing ≠
-// empty" display rule for this read-only summary — there is no size to
+// empty" display rule for this read-only summary: there is no size to
 // report for a field Play holds empty, so its cell stays blank. Rows
 // follow the API's locale order (List returns them as Play does).
 func BuildRows(apiListings []listings.Listing) []ListingRow {
@@ -266,7 +266,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	httpClient, err := rc.AuthedClient()

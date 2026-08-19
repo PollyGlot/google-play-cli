@@ -5,12 +5,12 @@
 // The persona is the operator of an alternative app store mirroring Play's
 // public catalog, so addressing rides the app store package name
 // (--store-package / $GPLAY_APP_STORE_PACKAGE) plus the Play app package name
-// as the positional argument. Read-only and Edit-free — a direct GET under
+// as the positional argument. Read-only and Edit-free: a direct GET under
 // /appstorecatalog/. The human views summarize the main catalog fields
 // (identity, versions, publication, price, ratings, delivery token, localized
 // store listings, permissions, device compatibility); --output json is the
 // RecentAppView verbatim (ADR-0003 pass-through), which is where the fields the
-// summary omits — image assets, device exclusions, screen support — live.
+// summary omits (image assets, device exclusions, screen support) live.
 // Ships [experimental] (ADR-0010/ADR-0042).
 package view
 
@@ -76,8 +76,8 @@ func headerRows(v appstorecatalog.CatalogAppView) [][2]string {
 }
 
 // renderTable writes the summary as `FIELD<TAB>VALUE` lines (like `orders view`
-// / `apps view`), then the repeated blocks — localized store listings,
-// permissions, device compatibility requirements — as labelled sections.
+// / `apps view`), then the repeated blocks: localized store listings,
+// permissions, device compatibility requirements, as labelled sections.
 func (p Payload) renderTable(w io.Writer) error {
 	for _, row := range headerRows(p.View) {
 		if _, err := fmt.Fprintf(w, "%s\t%s\n", row[0], row[1]); err != nil {
@@ -103,7 +103,7 @@ func (p Payload) renderTable(w io.Writer) error {
 func (p Payload) renderMarkdown(w io.Writer) error {
 	heading := "Catalog app view"
 	if p.View.PackageName != "" {
-		heading += " — " + p.View.PackageName
+		heading += ": " + p.View.PackageName
 	}
 	if _, err := fmt.Fprintf(w, "## %s\n\n", heading); err != nil {
 		return err
@@ -163,7 +163,7 @@ func sections(v appstorecatalog.CatalogAppView) []section {
 	return out
 }
 
-// listingLines renders one line per locale: "<languageCode>  <appName> — <short
+// listingLines renders one line per locale: "<languageCode>  <appName>: <short
 // description>", dropping the parts the listing leaves empty.
 func listingLines(l *appstorecatalog.LocalizedStoreListings) []string {
 	if l == nil {
@@ -176,7 +176,7 @@ func listingLines(l *appstorecatalog.LocalizedStoreListings) []string {
 			label = strings.TrimSpace(label + "  " + oneLine(sl.AppName))
 		}
 		if sl.ShortDescription != "" {
-			label = strings.TrimSpace(label + " — " + oneLine(sl.ShortDescription))
+			label = strings.TrimSpace(label + ": " + oneLine(sl.ShortDescription))
 		}
 		if label != "" {
 			lines = append(lines, label)
@@ -202,7 +202,7 @@ func permissionLines(perms []appstorecatalog.CatalogPermission) []string {
 	return lines
 }
 
-// compatibilityLines renders one line per requirement set — the SDK range, the
+// compatibilityLines renders one line per requirement set: the SDK range, the
 // required ABIs and the required system features. A device is compatible if it
 // satisfies all requirements of at least one set, so each set is its own line.
 func compatibilityLines(reqs []appstorecatalog.DeviceCompatibilityRequirements) []string {
@@ -221,7 +221,7 @@ func compatibilityLines(reqs []appstorecatalog.DeviceCompatibilityRequirements) 
 		if len(parts) == 0 {
 			continue
 		}
-		lines = append(lines, strings.Join(parts, " — "))
+		lines = append(lines, strings.Join(parts, "; "))
 	}
 	return lines
 }
@@ -363,7 +363,7 @@ func mdLabel(key string) string {
 // and classifies a 403/404 into an agent-resolvable refusal.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	playPkg, err := appstorecmd.RequirePlayPackage(in.PlayPackage,
-		"no Play app package name — pass it as the positional argument: gplay appstore catalog view <play-package>")
+		"no Play app package name: pass it as the positional argument (gplay appstore catalog view <play-package>)")
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ Export for app stores (appstorecatalog.recentappviews.get).
 
 This surface serves the operator of an ALTERNATIVE APP STORE mirroring Play's
 public catalog, not the app developer. Addressing therefore rides the app
-store package name — the store on whose behalf the request is made — and NOT
+store package name (the store on whose behalf the request is made) and NOT
 the repo's .gplay/config.json pin: pass --store-package <pkg> or export
 ` + appstorecmd.EnvStorePackage + `. The Play app to look up is the positional
 argument. Nothing is ever prompted for; a missing app store package name is a
@@ -415,10 +415,10 @@ privacy policy URL, the localized store listings, the declared permissions
 delivery token used with the Google Play Inline Install API.
 
 --output json passes the RecentAppView through verbatim (ADR-0003), including
-everything the summary omits — image assets, device exclusions, screen support,
+everything the summary omits: image assets, device exclusions, screen support,
 full descriptions. stdout carries the data, stderr the logs.
 
-This is a direct read outside the Edit model — it opens no Edit. An app that is
+This is a direct read outside the Edit model: it opens no Edit. An app that is
 not eligible for catalog inclusion fails with exit 30; a credential not
 authorized for the app store's catalog export fails with exit 11.`,
 		Args:          cobra.ExactArgs(1),

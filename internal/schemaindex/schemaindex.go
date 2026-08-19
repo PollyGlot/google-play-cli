@@ -1,22 +1,22 @@
 // Package schemaindex defines the normalized, embeddable projection of a Google
-// API Discovery document — the Schema index (see CONTEXT.md and ADR-0022) that
+// API Discovery document: the Schema index (see CONTEXT.md and ADR-0022) that
 // `gplay schema` queries offline.
 //
 // Unlike internal/discovery (build-and-maintenance tooling that is never
 // compiled into the binary), this package IS compiled in: it carries the index
 // data types, the deterministic derive/render logic, the embedded
 // `schema_index.json` itself (Embedded), and the loader it is parsed with. It
-// imports only the standard library — no net/http, no Google SDK — so embedding
+// imports only the standard library (no net/http, no Google SDK) so embedding
 // it does not contradict ADR-0007: the index is inert reference data, not an
 // API-calling dependency.
 //
 // The index is the normalized two-section shape locked by the PRD (#199):
 //
-//   - Methods — keyed by Google's native RPC method id
+//   - Methods: keyed by Google's native RPC method id
 //     (`androidpublisher.edits.tracks.update`). The id's leading segment is the
 //     service discriminator, so the index is multi-service-ready with no schema
 //     change (vitals, #49).
-//   - Schemas — a dictionary keyed by type name. Methods point at their
+//   - Schemas: a dictionary keyed by type name. Methods point at their
 //     request/response schema by name; nested properties point by `$ref` name
 //     into the same dictionary. The dictionary itself is the depth mechanism;
 //     there is no duplication and no arbitrary depth-truncation.
@@ -28,7 +28,7 @@ import (
 )
 
 // embeddedJSON is the committed, multi-service Schema index compiled into the
-// binary — a deterministic projection of every Discovery snapshot under
+// binary: a deterministic projection of every Discovery snapshot under
 // docs/discovery/ (regenerate via `make schema-index-update`). It lives here,
 // in the shared index package rather than in any one command, so every
 // in-binary consumer reads the SAME index: `gplay schema` introspection and the

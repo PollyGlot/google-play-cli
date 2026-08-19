@@ -1,12 +1,12 @@
 // Package orchestrator (rollout.go) owns the staged-rollout state machine:
 // `gplay releases rollout / halt / resume / complete`. Each verb opens an
 // Edit, reads the target track, picks the release to mutate, rewrites its
-// status / userFraction via tracks.update, and commits — inheriting the
+// status / userFraction via tracks.update, and commits: inheriting the
 // auto-discard / DanglingEditError contract from edits.WithEdit.
 //
 // The release picker (pickTargetRelease) is intentionally separate from
 // promote's pickSourceRelease: the two share a shape but differ in their
-// not-found exit code (here 30 — "release not found" per issue #46; promote
+// not-found exit code (here 30: "release not found" per issue #46; promote
 // uses 60). Factoring the two into one shared picker is deferred to a later
 // PR, so this file carries its own.
 package orchestrator
@@ -26,7 +26,7 @@ import (
 // ReleaseNotFoundError signals that the target track exists but holds no
 // release matching the request: either it has no releases at all, or a
 // supplied --version-code / --release-name matched none. Mapped to exit
-// code 30 (API 4xx / not found) per issue #46 — distinct from promote's
+// code 30 (API 4xx / not found) per issue #46: distinct from promote's
 // NoMatchingReleaseError (exit 60), which is why the rollout family carries
 // its own picker and error type.
 type ReleaseNotFoundError struct {
@@ -103,7 +103,7 @@ type StateOpts struct {
 	// Confirm gates production-impacting transitions. Required (else an
 	// *exit.SafetyFlagError naming --confirm, exit 3) when Track is
 	// "production" AND the
-	// transition would expose the release to real users — rollout / resume
+	// transition would expose the release to real users: rollout / resume
 	// / complete. Halt is exempt (it reduces exposure), and non-production
 	// tracks never need it. Mirrors the upload / promote confirm gate
 	// (ADR-0002) so operators learn the rule once.
@@ -132,7 +132,7 @@ func Halt(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error)
 }
 
 // Resume flips a halted release back to inProgress, leaving the userFraction
-// untouched (AC3) — the rollout continues at the fraction it was halted at.
+// untouched (AC3): the rollout continues at the fraction it was halted at.
 func Resume(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error) {
 	return applyState(ctx, hc, opts, stateTransition{verb: "resume", status: "inProgress"})
 }
@@ -148,7 +148,7 @@ func Complete(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, er
 // status is always set; fraction (nil → preserve the release's current
 // userFraction) is set only by rollout / complete. Applied by patching the
 // raw release JSON (not by re-serializing a typed Release) so every other
-// field — and every other coexisting release on the track — is preserved.
+// field (and every other coexisting release on the track) is preserved.
 type stateTransition struct {
 	verb     string
 	status   string
@@ -169,7 +169,7 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 		return dryRunStateResult(opts, tr), nil
 	}
 	// Inherits ADR-0002's confirm guard: a transition that would reach real
-	// users on production (rollout / resume / complete — not halt) requires
+	// users on production (rollout / resume / complete, not halt) requires
 	// Confirm=true. Runs before any HTTP so a missing --confirm short-circuits
 	// without opening an Edit.
 	if transitionReachesProdUsers(opts.Track, tr.status) && !opts.Confirm {
@@ -292,7 +292,7 @@ func validateStateOpts(opts StateOpts, verb string) error {
 
 // transitionReachesProdUsers reports whether a transition to the given wire
 // status on the given track would expose the release to real production
-// users — the rollout-family analogue of requiresConfirm (upload / promote).
+// users: the rollout-family analogue of requiresConfirm (upload / promote).
 // inProgress / completed reach users; halted does not (it reduces exposure).
 func transitionReachesProdUsers(track, status string) bool {
 	if track != TrackProduction {
@@ -304,7 +304,7 @@ func transitionReachesProdUsers(track, status string) bool {
 // dryRunStateResult previews the transition without HTTP. It can show the
 // status the verb sets and, for rollout / complete, the target fraction.
 // Halt / resume preserve the live fraction (unknown without tracks.get), so
-// the preview leaves UserFraction at 0 — the renderer hides a zero fraction
+// the preview leaves UserFraction at 0: the renderer hides a zero fraction
 // rather than implying a 0% rollout.
 func dryRunStateResult(opts StateOpts, tr stateTransition) *Result {
 	var userFraction float64

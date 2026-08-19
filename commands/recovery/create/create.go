@@ -1,7 +1,7 @@
 // Package create implements `gplay recovery create`: create a DRAFT app recovery
 // action targeting users on a bad versionCode. A draft is harmless (not yet
 // pushed to any user), so create is the ROUTINE tier (ADR-0017): --dry-run
-// rehearses, no --confirm — the dangerous step is `recovery deploy`, which names
+// rehearses, no --confirm: the dangerous step is `recovery deploy`, which names
 // itself. MarkMutating gates it under GPLAY_READONLY. Ships [experimental].
 package create
 
@@ -117,7 +117,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "create",
 		Short: "Create a draft recovery action for a bad versionCode",
 		Long: `Create a DRAFT app recovery action targeting users impacted by a bad APK
-versionCode. A draft is staged but NOT yet pushed to any user — activate it
+versionCode. A draft is staged but NOT yet pushed to any user: activate it
 later with ` + "`gplay recovery deploy <id>`" + ` (which requires --confirm).
 
 Pass --version-code (the bad version) and at least one audience selector:

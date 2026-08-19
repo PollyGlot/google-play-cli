@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verb-gate.sh — guards the ADR-0019 canonical verb vocabulary (#98 / #168).
+# verb-gate.sh: guards the ADR-0019 canonical verb vocabulary (#98 / #168).
 #
 # Fails if a pre-rename command name reappears anywhere in tracked source or
 # docs. The renames (docs/adr/0019-canonical-verb-vocabulary.md):
@@ -26,7 +26,7 @@ list_files() {
 		grep -vE '^(docs/adr/|CHANGELOG\.md$|vendor/|scripts/verb-gate\.sh$)'
 }
 
-# grep_all <extra-grep-args...> <pattern> — grep the file set, always
+# grep_all <extra-grep-args...> <pattern>: grep the file set, always
 # prefixing the filename, never failing the script when there is no match.
 grep_all() {
 	list_files | tr '\n' '\0' | xargs -0 grep -nH "$@" 2>/dev/null || true
@@ -35,7 +35,7 @@ grep_all() {
 fail=0
 report() { # <label> <matches>
 	if [ -n "$2" ]; then
-		echo "verb-gate: forbidden pre-rename name — $1" >&2
+		echo "verb-gate: forbidden pre-rename name: $1" >&2
 		printf '%s\n' "$2" >&2
 		fail=1
 	fi
@@ -45,7 +45,7 @@ report() { # <label> <matches>
 # Patterns use explicit non-word boundaries ([^[:alnum:]_] / ^ / $) and a
 # flexible separator [[:space:]-]+ that matches BOTH the command form ("apps
 # info") and the hyphenated adjective form ("apps-info envelope") in prose, so
-# neither slips through. POSIX classes only — portable GNU/BSD.
+# neither slips through. POSIX classes only, portable GNU/BSD.
 report "apps info -> apps view" \
 	"$(grep_all -E '(^|[^[:alnum:]_])apps[[:space:]-]+info([^[:alnum:]_]|$)')"
 report "tracks status -> tracks view" \
@@ -61,7 +61,7 @@ report "gplay tracks availability (read must be 'tracks availability view')" \
 	"$(grep_all -oE 'gplay[[:space:]]+tracks[[:space:]]+availability([[:space:]]+[a-z-]+)?' | grep -vE 'gplay[[:space:]]+tracks[[:space:]]+availability[[:space:]]+view$' || true)"
 
 if [ "$fail" -ne 0 ]; then
-	echo "verb-gate: FAILED — use the canonical verbs (docs/adr/0019-canonical-verb-vocabulary.md)." >&2
+	echo "verb-gate: FAILED, use the canonical verbs (docs/adr/0019-canonical-verb-vocabulary.md)." >&2
 	exit 1
 fi
-echo "verb-gate: OK — no pre-rename verb names found."
+echo "verb-gate: OK, no pre-rename verb names found."

@@ -5,7 +5,7 @@
 // {defaultLanguage, title, contactEmail} that confirms "yes, I'm
 // looking at the right app".
 //
-// Like `gplay releases list`, it is thin glue over internal/play —
+// Like `gplay releases list`, it is thin glue over internal/play:
 // resolve --package, build an authenticated client, call
 // internal/play/details.Get, and render. The Edit is opened and
 // discarded inside details.Get via edits.WithReadOnlyEdit; nothing is
@@ -52,7 +52,7 @@ func (e *validationError) ExitCode() int { return 20 }
 // addcmd.validatePackage: non-empty + at least one dot (Google Play
 // uses reverse-DNS package names, so a missing dot is a typo). Kept
 // local rather than imported from addcmd to keep its message wording
-// scoped to "apps view" — the two commands surface their errors with
+// scoped to "apps view": the two commands surface their errors with
 // their own command prefix, which is the project's convention.
 func validatePackage(pkg string) error {
 	if !strings.Contains(pkg, ".") {
@@ -66,7 +66,7 @@ func validatePackage(pkg string) error {
 // pass-through (explicit exception to ADR-0003); the typed fields drive
 // the table and markdown renderers. Package is carried for context in
 // the human-facing views. IconSha256 is the [experimental] icon content
-// hash, empty when the default language's icon slot is empty — the
+// hash, empty when the default language's icon slot is empty: the
 // table/markdown views show a sha256 line only when it is non-empty.
 type Payload struct {
 	Package         string          `json:"-"`
@@ -116,7 +116,7 @@ func renderTable(w io.Writer, p Payload) error {
 
 // renderJSON emits the raw {"details":..,"listing":..} envelope
 // verbatim. Falls back to the typed Payload only if the envelope was
-// somehow not captured (defensive — Run always populates Raw on
+// somehow not captured (defensive: Run always populates Raw on
 // success).
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) > 0 {
@@ -127,7 +127,7 @@ func renderJSON(w io.Writer, p Payload) error {
 }
 
 // renderMarkdown emits a `- **Field**: value` list per docs/DESIGN.md
-// §7 — single-record info commands render as a list, not as a GFM
+// §7: single-record info commands render as a list, not as a GFM
 // table. The package name leads as a level-2 heading so the rendered
 // markdown drops cleanly into a PR comment or a docs page.
 func renderMarkdown(w io.Writer, p Payload) error {
@@ -146,7 +146,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 
 // Run is the business function the kernel invokes. It resolves the
 // package (--package flag → repo pin → usage error), builds an
-// authenticated HTTP client, and calls details.Get — which itself
+// authenticated HTTP client, and calls details.Get, which itself
 // opens and discards the Edit, so there is no mutation path here.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg := in.Package
@@ -154,7 +154,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	if err := validatePackage(pkg); err != nil {
 		return nil, err
@@ -192,7 +192,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "view",
 		Short: "Show default language, title, and contact email for an app",
 		Long: `Show the app's defaultLanguage, title (on the default language),
-and contactEmail — the minimum needed to confirm "yes, I'm looking at the
+and contactEmail: the minimum needed to confirm "yes, I'm looking at the
 right app".
 
 Reads from the Google Play Developer API inside a read-only Edit (open →
@@ -203,12 +203,12 @@ committed. The package defaults to the repo's .gplay/config.json pin when
 [experimental] When the default language has a store icon, the view also
 reports the icon's content sha256 (table/markdown) and adds an "icon"
 key {"url":..,"sha256":..} to the JSON envelope. The sha256 is the
-durable content-identity handle; the url is an ephemeral preview link —
+durable content-identity handle; the url is an ephemeral preview link:
 never persist it (fetch the bytes with 'gplay metadata images pull').
 gplay does not cache the icon: each run is a faithful live read.
 
 --output json returns the gplay envelope
-{"details":..,"listing":..,"icon"?:..} — each sub-object is the upstream
+{"details":..,"listing":..,"icon"?:..}: each sub-object is the upstream
 API body verbatim. (Explicit exception to ADR-0003: multiple endpoints
 are merged here, so the JSON shape is gplay-defined rather than a single
 API pass-through. The icon key is omitted when the icon slot is empty.)`,

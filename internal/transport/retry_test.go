@@ -154,13 +154,13 @@ func TestRetry_editsCommitNeverRetried(t *testing.T) {
 		t.Errorf("final status = %d, want 500 returned (no retry)", resp.StatusCode)
 	}
 	if inner.calls != 1 {
-		t.Errorf("edits.commit attempts = %d, want 1 (never auto-retried — could double-publish)", inner.calls)
+		t.Errorf("edits.commit attempts = %d, want 1 (never auto-retried: could double-publish)", inner.calls)
 	}
 }
 
 func TestRetry_withoutRetryContextNeverRetried(t *testing.T) {
 	// A request whose context carries WithoutRetry (the resumable-upload
-	// chunk PUTs) must pass through once even on a 5xx — the caller owns its
+	// chunk PUTs) must pass through once even on a 5xx: the caller owns its
 	// own resume-from-offset recovery, so a blind transport retry would
 	// double-send bytes.
 	inner := &scriptRT{t: t, steps: []step{{status: 500}}}

@@ -1,7 +1,7 @@
 // Package expansionfiles performs the hand-rolled HTTP calls for the legacy OBB
 // expansion-file surface (edits.expansionfiles; ADR-0007 raw HTTP). An
 // ExpansionFile is an Android Publisher Edit artifact keyed by an APK
-// apkVersionCode and a type (main|patch) — structurally a sibling of a Mapping
+// apkVersionCode and a type (main|patch): structurally a sibling of a Mapping
 // (CONTEXT.md), uploaded with the same scope and Edit model. The Edit lifecycle
 // (begin/commit/discard) is the caller's concern (edits.WithEdit /
 // WithReadOnlyEdit); these functions perform a single call inside an already-open
@@ -30,7 +30,7 @@ const (
 	opGet    = "expansionfiles.get"
 )
 
-// Expansion file types — the expansionFileType path segment. The Discovery
+// Expansion file types: the expansionFileType path segment. The Discovery
 // enum's zero value (expansionFileTypeUnspecified) is never sent.
 const (
 	TypeMain  = "main"
@@ -130,7 +130,7 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID string, versionCode i
 }
 
 // openRegular opens the file and rejects a non-regular path up front as a
-// client-side *LocalIOError (exit 20) — parity with bundles/mappings.Upload —
+// client-side *LocalIOError (exit 20), for parity with bundles/mappings.Upload,
 // so a directory/fifo never surfaces as a transport error (exit 50). It returns
 // the os.FileInfo so the caller sets ContentLength without a second Stat.
 func openRegular(path string) (*os.File, os.FileInfo, error) {

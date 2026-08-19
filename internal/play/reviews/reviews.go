@@ -1,6 +1,6 @@
 // Package reviews reads the user reviews of a Google Play app via the
 // reviews.list endpoint. Unlike tracks/releases it does NOT run inside an
-// Edit — reviews are a direct read on the application. The API exposes only
+// Edit: reviews are a direct read on the application. The API exposes only
 // the last 7 days (docs/DESIGN.md §5); historical retrieval (GCS CSV) is in
 // docs/BACKLOG.md. List owns auto-pagination; the client-side `--stars`
 // filter and the 7-day stderr warning are command-layer concerns.
@@ -47,8 +47,8 @@ func (ts *Timestamp) Time() time.Time {
 }
 
 // UserComment is the API-shaped subset of a review's user comment gplay
-// reads: the rating, the reviewer's locale, the body, when it changed, and —
-// for the deep single-review view — the device and app-version context.
+// reads: the rating, the reviewer's locale, the body, when it changed, and:
+// for the deep single-review view: the device and app-version context.
 type UserComment struct {
 	Text             string     `json:"text"`
 	StarRating       int        `json:"starRating"`
@@ -68,7 +68,7 @@ type DeveloperComment struct {
 }
 
 // Comment is one entry in a review's comments array. The API interleaves
-// user and developer comments; gplay reads both — the user comment carries
+// user and developer comments; gplay reads both: the user comment carries
 // the rating/locale/text, the developer comment(s) the reply thread.
 type Comment struct {
 	UserComment      *UserComment      `json:"userComment"`
@@ -163,7 +163,7 @@ func (r Review) AppVersion() string {
 	}
 }
 
-// DeveloperReplies returns the developer comments in conversation order — the
+// DeveloperReplies returns the developer comments in conversation order: the
 // reply thread beneath the user's review. Empty when the developer has not
 // responded.
 func (r Review) DeveloperReplies() []DeveloperComment {
@@ -177,7 +177,7 @@ func (r Review) DeveloperReplies() []DeveloperComment {
 }
 
 // Reply posts a developer response to reviewID via reviews.reply. Like
-// List it is a direct call on the application — reviews are NOT mutated
+// List it is a direct call on the application: reviews are NOT mutated
 // inside an Edit. The request body is the API's {"replyText": ...} shape;
 // the verbatim 2xx body is returned for the --output json pass-through
 // (ADR-0003). A non-2xx becomes an *api.Error carrying the status, so the
@@ -229,10 +229,10 @@ func Reply(ctx context.Context, hc *http.Client, pkg, reviewID, text string) (js
 }
 
 // Get fetches a single review by reviewID via reviews.get. Like List/Reply it
-// is a direct read on the application — reviews are NOT read inside an Edit.
+// is a direct read on the application: reviews are NOT read inside an Edit.
 // The returned Review keeps its verbatim JSON in Raw for the `--output json`
 // pass-through (ADR-0003). A non-2xx becomes an *api.Error carrying the
-// status, so the shared classifier maps 403 → exit 11 and 404 → exit 30 — and
+// status, so the shared classifier maps 403 → exit 11 and 404 → exit 30, and
 // a 404 here means an unknown OR expired reviewId (a valid review that has
 // fallen out of the API's 7-day window).
 func Get(ctx context.Context, hc *http.Client, pkg, reviewID string) (Review, error) {

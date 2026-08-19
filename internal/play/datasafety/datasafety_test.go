@@ -16,7 +16,7 @@ import (
 // postRT is a minimal RoundTripper for the write-only Data Safety POST. It
 // captures the request URL, method, and body, and serves a configurable
 // status/body so the success and error paths can be exercised. There is no
-// /token exchange here — Post is called with a ready http.Client.
+// /token exchange here: Post is called with a ready http.Client.
 type postRT struct {
 	t      *testing.T
 	code   int // 0 → 200

@@ -18,7 +18,7 @@ var ErrNotFound = errors.New("keystore: credential not found")
 
 // Backend is the storage contract. Implementations must persist arbitrary
 // byte blobs (the SA JSON) under human-friendly names. ctx is threaded
-// for future cancellation support — today's backends are synchronous
+// for future cancellation support: today's backends are synchronous
 // but a remote/HSM-backed backend would honour it.
 type Backend interface {
 	Save(ctx context.Context, name string, data []byte) error

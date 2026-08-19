@@ -1,7 +1,7 @@
 // Package imageslist_test exercises `gplay metadata images list` at the
 // kernel level: a RunContext built by hand, a RoundTripper injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. The command is
-// READ-ONLY — it enumerates the 9 image types across the app's locales
+// READ-ONLY: it enumerates the 9 image types across the app's locales
 // inside one Edit that is opened and discarded, never committed. The
 // transport FAILS on any :commit, upload, or mutating DELETE.
 package imageslist_test
@@ -272,7 +272,7 @@ func TestRun_invalidType_exit20_noHTTP(t *testing.T) {
 
 // TestRun_typeFilter_jsonMatchesUnfiltered asserts that for the icon
 // slot, --type icon --output json is byte-identical to the icon slot in
-// the unfiltered JSON — --type only narrows which slots appear, never
+// the unfiltered JSON: --type only narrows which slots appear, never
 // reshapes them.
 func TestRun_typeFilter_jsonMatchesUnfiltered(t *testing.T) {
 	listingsResp, slots := twoLocales()

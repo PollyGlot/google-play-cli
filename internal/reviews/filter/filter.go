@@ -1,7 +1,7 @@
 // Package filter implements the client-side `--stars` selector for
 // `gplay reviews list`. The Google Play reviews API has no server-side
 // rating filter (docs/DESIGN.md §5), so gplay applies it after the call.
-// The package is pure — no IO, no exit codes — so the grammar is exhaustively
+// The package is pure (no IO, no exit codes) so the grammar is exhaustively
 // table-tested here and the command layer maps a parse failure to exit 2.
 package filter
 
@@ -23,7 +23,7 @@ const (
 
 // Selector is a parsed `--stars` filter: the set of star ratings (1..5) it
 // admits. The zero value admits every rating, which is the "no --stars
-// given" behavior — the command can call Matches unconditionally.
+// given" behavior: the command can call Matches unconditionally.
 type Selector struct {
 	allowed map[int]bool
 }

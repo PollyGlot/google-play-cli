@@ -67,14 +67,14 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Update an achievement configuration by its ID. The write affects the editable
 draft; the published copy is read-only and there is no publish method (ADR-0033).
 
-This is a full PUT replace — the body REPLACES the draft. For a partial edit,
+This is a full PUT replace: the body REPLACES the draft. For a partial edit,
 fetch the current config with 'gplay games achievements view <id> --output json',
 edit it, and resend it with --from-json. The field flags (--name, --description,
 --type, --initial-state, --point-value, --steps-to-unlock; --locale, default
 en-US) send only what they name; --from-json supplies a full body verbatim and
 is mutually exclusive with them.
 
-Routine write (no --confirm); rehearse with --dry-run (no HTTP — --output json
+Routine write (no --confirm); rehearse with --dry-run (no HTTP: --output json
 shows the request body). GPLAY_READONLY refuses the live write (exit 4).`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,

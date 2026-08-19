@@ -99,7 +99,7 @@ func TestDeveloperID_explicitFlag_doesNotOverwrite(t *testing.T) {
 }
 
 // TestDeveloperID_adHocCredential_noPersist asserts an inline credential (no
-// Account name) resolves but persists nothing — and does not panic.
+// Account name) resolves but persists nothing, and does not panic.
 func TestDeveloperID_adHocCredential_noPersist(t *testing.T) {
 	t.Setenv("GPLAY_DEVELOPER_ID", "")
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{}, kernel.Inputs{})

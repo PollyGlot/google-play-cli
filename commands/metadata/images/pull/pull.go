@@ -12,7 +12,7 @@
 // `N.<ext>` in display order, with the extension sniffed from the image bytes
 // (PNG/JPEG magic), not the response Content-Type. A slot with no images
 // online writes no directory/file, so pull never emits the "empty" form and a
-// later `apply` sees no delta — the pull → apply no-op invariant.
+// later `apply` sees no delta: the pull → apply no-op invariant.
 package imagespull
 
 import (
@@ -62,7 +62,7 @@ type packageNotFoundError struct {
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
@@ -72,7 +72,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -158,7 +158,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	dir := in.Dir
 	if dir == "" {
@@ -213,8 +213,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // download GETs the image bytes at url (the API gives no original filename, so
 // the bytes are downloaded from the url images.list returns). It uses the
-// authenticated client — Play's image urls are Google-owned hosts, so carrying
-// the androidpublisher token is harmless — and caps the read at maxImageBytes.
+// authenticated client: Play's image urls are Google-owned hosts, so carrying
+// the androidpublisher token is harmless, and caps the read at maxImageBytes.
 func download(ctx context.Context, hc *http.Client, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -236,7 +236,7 @@ func download(ctx context.Context, hc *http.Client, url string) ([]byte, error) 
 }
 
 // readCapped reads up to max bytes from r and FAILS if the source has more,
-// rather than silently truncating — a truncated image would be written to disk
+// rather than silently truncating: a truncated image would be written to disk
 // as a corrupt file. It reads one extra byte to detect the overflow.
 func readCapped(r io.Reader, max int64) ([]byte, error) {
 	b, err := io.ReadAll(io.LimitReader(r, max+1))
@@ -250,7 +250,7 @@ func readCapped(r io.Reader, max int64) ([]byte, error) {
 }
 
 // appLocales returns the app's locale codes (those carrying a Listing), sorted,
-// inside the already-open Edit — the enumeration domain for the 9 image types.
+// inside the already-open Edit: the enumeration domain for the 9 image types.
 func appLocales(rc *kernel.RunContext, hc *http.Client, pkg, editID string) ([]string, error) {
 	parsed, _, err := listings.List(rc.Ctx, hc, pkg, editID)
 	if err != nil {
@@ -307,7 +307,7 @@ slots as ` + "`<locale>/images/<type>.<ext>`" + ` and gallery slots as
 ` + "`<locale>/images/<type>/1.<ext>…N.<ext>`" + ` in display order.
 
 Reads inside a read-only Edit (open → list slots → download bytes →
-discard); nothing is committed. The write is additive — a slot with no
+discard); nothing is committed. The write is additive: a slot with no
 images online writes nothing, so pull never emits an empty slot and a
 ` + "`metadata images apply`" + ` immediately after a pull is a no-op
 (ADR-0013). Filenames are synthesized (the API carries none) and the

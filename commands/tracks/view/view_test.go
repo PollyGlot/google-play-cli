@@ -3,7 +3,7 @@
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // `tracks list` harness, but routes tracks.get (the single-track deep
 // read, GET .../tracks/<name>) instead of tracks.list. The transport
-// FAILS on any PUT or :commit — a read-only track view opens, reads,
+// FAILS on any PUT or :commit: a read-only track view opens, reads,
 // and discards the Edit, never writes or commits it.
 package view_test
 
@@ -36,7 +36,7 @@ import (
 // read-only single-track sequence: edits.insert, tracks.get
 // (GET .../tracks/<name>), edits.delete. It deliberately has NO PUT or
 // :commit branch: reaching one means the command tried to mutate or
-// commit, which a read-only status view must never do — so the transport
+// commit, which a read-only status view must never do, so the transport
 // fails the test.
 type statusRT struct {
 	t          *testing.T
@@ -216,7 +216,7 @@ func TestRenderTable_halted_isVisuallyDistinct(t *testing.T) {
 	if !strings.Contains(out, "!HALTED") {
 		t.Errorf("table missing halted marker !HALTED:\n%s", out)
 	}
-	// The healthy rollout stays in its plain API form — it must NOT pick
+	// The healthy rollout stays in its plain API form: it must NOT pick
 	// up the halted marker, otherwise the marker stops meaning "halted".
 	if !strings.Contains(out, "inProgress") {
 		t.Errorf("table missing plain inProgress status:\n%s", out)
@@ -238,8 +238,8 @@ func lineContaining(out, needle string) string {
 }
 
 // TestRenderTable_listsEveryCoexistingRelease asserts the deep view: every
-// release coexisting on the track — draft, inProgress, halted, completed
-// alike — gets its own row under the default columns, and the release-notes
+// release coexisting on the track: draft, inProgress, halted, completed
+// alike: gets its own row under the default columns, and the release-notes
 // locale count is rendered as the count of localized entries.
 func TestRenderTable_listsEveryCoexistingRelease(t *testing.T) {
 	p := view.Payload{
@@ -335,7 +335,7 @@ func TestDefaultColumns_documentedOrder(t *testing.T) {
 
 // mustDefaultColumns resolves the default column set for a Payload built
 // directly in a render test, failing the test if resolution errors (it
-// cannot, for the empty spec — this just keeps the call sites terse).
+// cannot, for the empty spec: this just keeps the call sites terse).
 func mustDefaultColumns(t *testing.T) []output.Column[tracks.Release] {
 	t.Helper()
 	cols, err := view.ResolveColumns("")
@@ -389,7 +389,7 @@ func TestRun_unknownColumn_exit2(t *testing.T) {
 
 // TestRenderMarkdown_isGFMTable_marksHalted asserts the markdown view is a
 // GFM table (header + `---` separator) over the same releases, and that
-// the halted marker carries into it — markdown is a human-facing view, so
+// the halted marker carries into it: markdown is a human-facing view, so
 // a halted rollout must stand out there too.
 func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	p := view.Payload{
@@ -427,7 +427,7 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 // Payload with no captured raw body rather than silently writing zero
 // bytes (exit 0). Every Payload field is json:"-", so an empty Raw could
 // only ever produce a bare body and break the ADR-0003 pass-through
-// contract — defensive parity with the tracks.list sibling.
+// contract: defensive parity with the tracks.list sibling.
 func TestRenderJSON_emptyRaw_errors(t *testing.T) {
 	var buf bytes.Buffer
 	if err := (view.Payload{}).Renderers().JSON(&buf); err == nil {
@@ -467,7 +467,7 @@ func TestRun_unknownTrack_exit30WithHint(t *testing.T) {
 
 // TestRun_unknownPackage_exit30WithHint asserts that an unknown package
 // (edits.insert 404, raised before the read closure runs) maps to exit 30
-// with a hint pointing the operator at `gplay apps list` — mirroring the
+// with a hint pointing the operator at `gplay apps list`: mirroring the
 // sibling `gplay tracks list`. The closure never runs, so the track is
 // never read; the package miss is caught at insert, distinct from the
 // tracks.get 404 (unknown track) that points at `gplay tracks list`.
@@ -570,7 +570,7 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 // TestRun_whitespaceTrack_exit2 asserts a --track that is only whitespace
 // is treated as missing: a usage error (exit 2) caught before any HTTP
 // call, not a track named "   " sent to the API. Mirrors the empty-track
-// guard — leading/trailing whitespace from a shell or CI variable must be
+// guard: leading/trailing whitespace from a shell or CI variable must be
 // trimmed at the input boundary.
 func TestRun_whitespaceTrack_exit2(t *testing.T) {
 	rt := &statusRT{t: t}

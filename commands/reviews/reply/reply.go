@@ -1,6 +1,6 @@
 // Package reply implements `gplay reviews reply`: post developer responses
 // to user reviews, one at a time (--review-id + --reply) or in bulk from a
-// TSV stream (--batch <file>|-). It is thin glue — resolve --package, build
+// TSV stream (--batch <file>|-). It is thin glue: resolve --package, build
 // an authenticated client, and drive internal/play/reviews.Reply, with the
 // TSV grammar owned by internal/reviews/batch and the 403/404 hints by
 // commands/reviews/reviewerr (shared with `reviews list`).
@@ -10,7 +10,7 @@
 // API body on stdout under --output json; batch → per-line OK/ERR on stderr
 // plus a {"results":[...]} envelope on stdout under --output json) does not
 // fit the three-Renderer payload model. Run therefore returns only an error
-// — nil on full success, or one carrying the aggregate exit code.
+// : nil on full success, or one carrying the aggregate exit code.
 package reply
 
 import (
@@ -50,14 +50,14 @@ func (e *usageError) ExitCode() int { return 2 }
 // to single- or batch-reply. It writes all user-facing output itself and
 // returns only an error (nil on full success).
 func Run(rc *kernel.RunContext, in Input) error {
-	// Mode selection is pure CLI misuse — validate before any resolution or
+	// Mode selection is pure CLI misuse: validate before any resolution or
 	// network so a bad invocation fails fast with exit 2.
 	if in.BatchSet && (in.ReviewID != "" || in.Reply != "") {
 		return &usageError{msg: "--batch is mutually exclusive with --review-id / --reply"}
 	}
 	if !in.BatchSet {
 		if in.ReviewID == "" {
-			return &usageError{msg: "nothing to reply to — pass --review-id <id> --reply <text>, or --batch <file>"}
+			return &usageError{msg: "nothing to reply to: pass --review-id <id> --reply <text>, or --batch <file>"}
 		}
 		if in.Reply == "" {
 			return &usageError{msg: "--review-id requires --reply <text>"}
@@ -69,7 +69,7 @@ func Run(rc *kernel.RunContext, in Input) error {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	// --dry-run never touches the network, so a missing Account is fine.
@@ -115,7 +115,7 @@ type rowResult struct {
 }
 
 // batchError carries the aggregate exit code of a batch run: the highest
-// exit code seen across rows (per issue #62 — a 404 row, exit 30, outranks a
+// exit code seen across rows (per issue #62: a 404 row, exit 30, outranks a
 // malformed line, exit 2). It is returned only when at least one row failed.
 type batchError struct {
 	code   int
@@ -143,7 +143,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 
 	lines := batch.Parse(src)
 	if len(lines) == 0 {
-		return &usageError{msg: "batch is empty — no <review-id>\\t<reply> rows found"}
+		return &usageError{msg: "batch is empty: no <review-id>\\t<reply> rows found"}
 	}
 
 	worst := 0

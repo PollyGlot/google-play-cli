@@ -75,7 +75,7 @@ func TestRemove_existingPackage_dropsIt(t *testing.T) {
 
 // TestRemove_missingPackage_isNoOp confirms Remove on a package that was
 // never registered is a no-op rather than an error. The intent is "make
-// sure this is not in the registry" — calling Remove twice should not
+// sure this is not in the registry": calling Remove twice should not
 // fail.
 func TestRemove_missingPackage_isNoOp(t *testing.T) {
 	accounts := []config.Account{

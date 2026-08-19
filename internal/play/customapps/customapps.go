@@ -1,5 +1,5 @@
 // Package customapps creates a private, organisation-scoped app through managed
-// Google Play via playcustomapp.accounts.customApps.create — the one Developer
+// Google Play via playcustomapp.accounts.customApps.create: the one Developer
 // API path that creates an app *record* (public apps are Console-only). It is
 // keyed by the developer-account axis (accounts/{account}, ADR-0015), not a
 // package: the app does not yet exist to be keyed by package. The call is a
@@ -8,7 +8,7 @@
 // artifact streams in chunked PUTs, resuming from a server-acknowledged offset
 // on a transient failure.
 //
-// The whole upstream surface is this one method — there is NO get/list (no
+// The whole upstream surface is this one method: there is NO get/list (no
 // read) and NO delete, which is why creation is gated behind --confirm at the
 // command layer (irreversible; ADR-0032). Every upstream failure surfaces as an
 // *api.Error so the gplay exit-code taxonomy maps transparently (403→11,
@@ -55,7 +55,7 @@ type CreateOpts struct {
 // LocalIOError is returned when the artifact cannot be read from the local
 // filesystem (missing path, permission denied, stat failure, non-regular
 // file). It is distinct from *api.Error so the exit code maps to client-side
-// validation (20 per docs/DESIGN.md §9) rather than transport (50) — parity
+// validation (20 per docs/DESIGN.md §9) rather than transport (50): parity
 // with bundles.upload.
 type LocalIOError struct {
 	Path  string
@@ -75,11 +75,11 @@ func (e *LocalIOError) ExitCode() int { return 20 }
 // Create uploads artifactPath plus the CustomApp metadata to
 // customApps.create and returns the created CustomApp (carrying its
 // output-only packageName) plus the raw JSON response (ADR-0003). account is
-// the developer-account ID — the accounts/{account} path key.
+// the developer-account ID: the accounts/{account} path key.
 //
 // The transfer is a resumable upload (PRD #355): the CustomApp metadata JSON
 // opens the session in the initiate POST (uploadType=resumable) and the
-// artifact streams in the chunk PUTs. The surface is unchanged — the resource
+// artifact streams in the chunk PUTs. The surface is unchanged: the resource
 // body Google returns on the final chunk is the same CustomApp payload the
 // former multipart upload returned.
 func Create(ctx context.Context, hc *http.Client, account, artifactPath string, opts CreateOpts) (CustomApp, json.RawMessage, error) {
@@ -100,7 +100,7 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 	// Stat the artifact for its size (the resumable helper needs the exact
 	// byte count for X-Upload-Content-Length and the chunk Content-Range
 	// headers). A directory / fifo passes Open+Stat but cannot be streamed, so
-	// reject anything but a regular file up front — parity with bundles.upload.
+	// reject anything but a regular file up front: parity with bundles.upload.
 	info, err := f.Stat()
 	if err != nil {
 		return CustomApp{}, nil, &LocalIOError{Path: artifactPath, Cause: err}

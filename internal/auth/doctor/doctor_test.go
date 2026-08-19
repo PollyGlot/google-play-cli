@@ -312,7 +312,7 @@ func TestRun_stopsOnFirstFailure(t *testing.T) {
 	sa := mustParseSA(t, validSAJSON)
 	sa.ClientEmail = ""
 
-	// Use a RoundTripper that would FAIL THE TEST if invoked — to prove
+	// Use a RoundTripper that would FAIL THE TEST if invoked: to prove
 	// downstream checks were not run.
 	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
 		t.Fatalf("RoundTripper should not be called when check #1 fails; got %s", req.URL)

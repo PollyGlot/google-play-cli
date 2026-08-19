@@ -1,14 +1,14 @@
 // Package schema implements `gplay schema`: an OFFLINE, no-auth,
 // `[experimental]` reference command that introspects the Android Publisher API
 // surface from an embedded Schema index (ADR-0022). It makes no network call
-// and needs no credentials — it queries the index compiled into the binary.
+// and needs no credentials: it queries the index compiled into the binary.
 //
 // It is a category-3 reference/diagnostic meta-command (ADR-0019): a bare
 // `gplay schema <query>` is a consistent shape, modeled on `team permissions`
 // (a real Renderable command), not a verb-less resource read.
 //
 // The query matches, case-insensitively, across three projections OR'd
-// together — native RPC method id, REST path, and schema/type name. A matched
+// together: native RPC method id, REST path, and schema/type name. A matched
 // method inline-expands its request/response schema one hop (nested $refs are
 // shown by name). --list prints the compact method catalog; --method filters by
 // HTTP verb. A zero-match query prints a note on stderr and exits 0.
@@ -73,7 +73,7 @@ func match(idx schemaindex.Index, in Input) result {
 		}
 	}
 
-	// Schema-name projection — only in search mode (a browse is a method
+	// Schema-name projection: only in search mode (a browse is a method
 	// catalog). A schema carries no HTTP verb, so --method does not apply to it.
 	if !browse && q != "" {
 		for name, s := range idx.Schemas {
@@ -86,7 +86,7 @@ func match(idx schemaindex.Index, in Input) result {
 }
 
 // Payload renders a matched slice of the Schema index. The JSON view is
-// synthesized (the matched slice), NOT API pass-through — `gplay schema` wraps
+// synthesized (the matched slice), NOT API pass-through: `gplay schema` wraps
 // no Developer API call, so ADR-0003's pass-through rule does not apply (live
 // precedent: `team permissions`).
 type Payload struct {
@@ -124,7 +124,7 @@ func (p Payload) sortedSchemaNames() []string {
 
 // expandedSchemas is the set of schemas the JSON view carries: the schema-name
 // matches, plus each matched method's request/response schema resolved one hop
-// from the full index. Nested $refs inside those schemas are NOT expanded —
+// from the full index. Nested $refs inside those schemas are NOT expanded:
 // they appear as `$ref` names, the depth mechanism the dictionary provides.
 func (p Payload) expandedSchemas() map[string]schemaindex.Schema {
 	out := make(map[string]schemaindex.Schema, len(p.Result.Schemas))
@@ -317,7 +317,7 @@ func (p Payload) renderMethod(w io.Writer, f renderFormat, id string, m schemain
 	}
 
 	// One-hop inline expansion of request/response. When both point at the same
-	// schema (common — e.g. tracks.update), render it once under a combined
+	// schema (common: e.g. tracks.update), render it once under a combined
 	// label.
 	if m.Request != "" && m.Request == m.Response {
 		return p.renderRefSchema(w, f, "Request & response: "+m.Request, m.Request, shown)
@@ -390,7 +390,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 // Run is the business function the kernel invokes. Fully offline: it loads the
 // embedded index, matches the query, and returns the matched slice. A zero-match
 // query writes a note to stderr and still returns a (empty) Renderable so the
-// command exits 0 — "found nothing" is not a failure.
+// command exits 0: "found nothing" is not a failure.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {
@@ -430,7 +430,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "schema [query]",
 		Short: "Introspect the Android Publisher API surface offline",
 		Long: `Query an embedded, offline projection of the Android Publisher API
-(the Schema index) — does a method exist, what does it send and return, what
+(the Schema index): does a method exist, what does it send and return, what
 fields and enums does a type carry.
 
 This command is OFFLINE: it makes no API call and needs no credentials. It

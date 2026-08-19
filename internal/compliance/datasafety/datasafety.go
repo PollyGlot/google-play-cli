@@ -1,11 +1,11 @@
 // Package datasafety owns the OFFLINE structural validation of an app's
-// Data Safety CSV — the canonical on-disk artifact for the
+// Data Safety CSV: the canonical on-disk artifact for the
 // applications.dataSafety declaration (ADR-0014). It is pure and
 // network-free: it parses the CSV, checks it is well-formed and rectangular,
 // and reports a non-fatal hint when the header diverges from a bundled
 // reference template.
 //
-// It makes NO semantic claim. gplay does not own — and cannot read back —
+// It makes NO semantic claim. gplay does not own, and cannot read back,
 // Google's Data Safety schema (the API is write-only), so "structurally
 // valid" is deliberately weaker than "Google will accept it": only the live
 // POST arbitrates the declaration's correctness. This is the file-only half
@@ -27,7 +27,7 @@ import (
 // reject the file, and the canonical Payload we hand to `set` carries none.
 var bom = []byte{0xEF, 0xBB, 0xBF}
 
-// referenceCSV is the bundled reference template — a SNAPSHOT of the Play
+// referenceCSV is the bundled reference template: a SNAPSHOT of the Play
 // Console Data Safety CSV header at the time of writing. Google evolves this
 // template, and gplay can neither read the live declaration nor own the
 // schema (ADR-0014), so a divergence from it is reported as a NON-FATAL
@@ -62,7 +62,7 @@ type Problem struct {
 }
 
 // ReferenceHeader returns the header fields of the bundled reference
-// template. Exposed so callers — and tests — can see exactly what gplay
+// template. Exposed so callers (and tests) can see exactly what gplay
 // compares an input header against. The template is a snapshot and may
 // drift from Google's current export, which is why a mismatch is a
 // non-fatal warning rather than an error.
@@ -95,15 +95,15 @@ func Validate(raw []byte) (*Report, []Problem) {
 	canonical := stripBOM(raw)
 
 	if len(bytes.TrimSpace(canonical)) == 0 {
-		return nil, []Problem{{Message: "Data Safety CSV is empty — it must contain a header row and at least one data row (only the live POST validates the contents)"}}
+		return nil, []Problem{{Message: "Data Safety CSV is empty: it must contain a header row and at least one data row (only the live POST validates the contents)"}}
 	}
 	if !utf8.Valid(canonical) {
-		return nil, []Problem{{Message: "Data Safety CSV is not valid UTF-8 — re-export it as UTF-8 (a leading byte-order mark is tolerated and stripped)"}}
+		return nil, []Problem{{Message: "Data Safety CSV is not valid UTF-8: re-export it as UTF-8 (a leading byte-order mark is tolerated and stripped)"}}
 	}
 
 	r := csv.NewReader(bytes.NewReader(canonical))
 	// FieldsPerRecord defaults to 0: the first record sets the expected
-	// column count and a later row with a different count is an error — that
+	// column count and a later row with a different count is an error: that
 	// is exactly the rectangular-rows guarantee we want for free.
 	records, err := r.ReadAll()
 	if err != nil {
@@ -122,7 +122,7 @@ func Validate(raw []byte) (*Report, []Problem) {
 	}
 	if !headerMatchesReference(header) {
 		rep.Warnings = append(rep.Warnings,
-			"header differs from gplay's bundled reference template — this is a hint, not an error (Google's Data Safety CSV template evolves, and only the live POST validates the declaration). Double-check that --file points at a Data Safety export.")
+			"header differs from gplay's bundled reference template: this is a hint, not an error (Google's Data Safety CSV template evolves, and only the live POST validates the declaration). Double-check that --file points at a Data Safety export.")
 	}
 	return rep, nil
 }
@@ -135,9 +135,9 @@ func csvProblem(err error) string {
 	if errors.As(err, &pe) {
 		switch {
 		case errors.Is(pe.Err, csv.ErrFieldCount):
-			return fmt.Sprintf("Data Safety CSV is not rectangular — row %d has a different column count than the header; every row must have the same number of columns", pe.Line)
+			return fmt.Sprintf("Data Safety CSV is not rectangular: row %d has a different column count than the header; every row must have the same number of columns", pe.Line)
 		case errors.Is(pe.Err, csv.ErrQuote) || errors.Is(pe.Err, csv.ErrBareQuote):
-			return fmt.Sprintf("Data Safety CSV has malformed quoting near line %d — every opening quote must be closed and quotes inside a field must be doubled", pe.Line)
+			return fmt.Sprintf("Data Safety CSV has malformed quoting near line %d: every opening quote must be closed and quotes inside a field must be doubled", pe.Line)
 		}
 	}
 	return "Data Safety CSV does not parse: " + err.Error()

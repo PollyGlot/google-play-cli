@@ -25,7 +25,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// liveV2 serves one product with one purchase option (state ACTIVE) — files
+// liveV2 serves one product with one purchase option (state ACTIVE): files
 // never declare that state, the normalizer keeps it out of every diff.
 const liveV2 = `{"oneTimeProducts":[
   {"productId":"coins100","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE"}]}
@@ -211,7 +211,7 @@ func TestRun_v2CreateIsUpsert(t *testing.T) {
 }
 
 // TestRun_deletes_gated asserts omitting a live v2 product refuses without
-// --confirm and deletes with it (offers excluded — the parent delete takes
+// --confirm and deletes with it (offers excluded: the parent delete takes
 // them).
 func TestRun_deletes_gated(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{

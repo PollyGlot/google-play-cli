@@ -24,7 +24,7 @@ type FS interface {
 	Remove(name string) error
 }
 
-// OSFS is the production FS — it forwards every call to the os package.
+// OSFS is the production FS: it forwards every call to the os package.
 // Stateless (no fields), safe to pass by value.
 type OSFS struct{}
 

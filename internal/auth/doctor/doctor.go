@@ -9,7 +9,7 @@
 // Each check is a Check value (name + exit-code + run func). The
 // non-API portion of `gplay auth doctor` (issue #11) is DefaultChecks;
 // the per-package round-trip (issue #12) is one more Check appended to
-// the slice — the runner itself does not need to change.
+// the slice: the runner itself does not need to change.
 package doctor
 
 import (

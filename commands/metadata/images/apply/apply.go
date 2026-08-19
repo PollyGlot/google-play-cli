@@ -1,6 +1,6 @@
 // Package imagesapply implements `gplay metadata images apply`: reconcile the
 // local Store-image tree with the images live on Google Play. It is thin glue
-// — resolve --package/--dir, read the image tree off disk (internal/metadata/
+// : resolve --package/--dir, read the image tree off disk (internal/metadata/
 // imagetree), validate the --type flags, and hand it to
 // internal/metadata/imageorchestrator, which owns the Edit lifecycle, the diff,
 // the --confirm gate, and the offline validate pre-check. The command only
@@ -13,7 +13,7 @@
 //     {package, slots[], summary} so a CI gate is one jq line:
 //     jq -e '.summary.upload + .summary.delete + .summary.reorder > 0'.
 //   - --confirm performs the real publish (one Edit, one commit, atomic).
-//     Without --confirm a real apply refuses (exit 3 — safety flag required)
+//     Without --confirm a real apply refuses (exit 3: safety flag required)
 //     and points at --dry-run; CI=true never auto-confirms. Images are live-on-commit (no draft).
 package imagesapply
 
@@ -76,7 +76,7 @@ type packageNotFoundError struct {
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
@@ -86,7 +86,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -175,7 +175,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	dir := in.Dir
 	if dir == "" {
@@ -247,7 +247,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 }
 
 // managedLocales returns the locale codes the on-disk tree manages (has images
-// for), sorted — used to name the available locales when a --locale is unknown.
+// for), sorted: used to name the available locales when a --locale is unknown.
 func managedLocales(local imagetree.Tree) []string {
 	out := make([]string, 0, len(local))
 	for loc := range local {
@@ -276,7 +276,7 @@ managed slot is left intact (removing online-only images is ` +
 on disk is unmanaged and never touched.
 
 --dry-run reads the live images and prints the per-slot delta without
-committing (it is ONLINE — it diffs disk against Play). --output json is
+committing (it is ONLINE: it diffs disk against Play). --output json is
 the diff schema {package, slots[], summary}, so a CI gate is one jq line:
 jq -e '.summary.upload + .summary.delete + .summary.reorder > 0'.
 
