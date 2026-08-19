@@ -9,13 +9,13 @@
 // Two read paths and one write path:
 //
 //   - Apply(DryRun): opens a read-only Edit, fetches the live Listings,
-//     computes the diff, and discards — the online preview ADR-0011 §3
+//     computes the diff, and discards: the online preview ADR-0011 §3
 //     mandates (apply reconciles, so a meaningful dry-run must read the
 //     other side). Nothing is committed.
 //   - Apply(Confirm): opens ONE write Edit, fetches, diffs, patches every
 //     changed locale (and deletes pruned ones), and commits once. On any
 //     per-locale failure the Edit auto-discards (edits.WithEdit), so 0
-//     locales are published — atomicity for free. When the diff is a no-op
+//     locales are published: atomicity for free. When the diff is a no-op
 //     the Edit is discarded rather than committed, conserving Google's
 //     daily publish quota (no empty commits).
 package orchestrator
@@ -48,7 +48,7 @@ type Opts struct {
 
 	// Confirm authorizes a real publish. Required for any non-dry-run
 	// Apply (ADR-0011 §4); without it Apply returns an *exit.SafetyFlagError
-	// naming --confirm (exit 3). CI=true must NOT flow into this field — env
+	// naming --confirm (exit 3). CI=true must NOT flow into this field: env
 	// governs output format, never mutation.
 	Confirm bool
 
@@ -97,7 +97,7 @@ func confirmRequired(prune bool) error {
 // ValidationError signals that the local tree fails an offline lint that
 // must block a publish (a char-limit overflow, an unknown locale, or a
 // required field cleared). It maps to exit 20. A required field that is
-// merely *missing* is NOT blocking here — apply is additive (ADR-0011 §1),
+// merely *missing* is NOT blocking here: apply is additive (ADR-0011 §1),
 // so an omitted field just leaves the online value untouched; that case is
 // filtered out before this error is built.
 type ValidationError struct{ Problems []validate.Problem }
@@ -115,14 +115,14 @@ func (e *ValidationError) ExitCode() int { return 20 }
 
 // PruneDefaultLanguageError signals that --prune would delete the app's
 // defaultLanguage Listing, which Play requires to exist. It maps to exit 2
-// (a guardrail refusal, like EmptyTreePrune — no safety flag resolves it, so
+// (a guardrail refusal, like EmptyTreePrune: no safety flag resolves it, so
 // it is not the exit-3 case) and names the locale so the operator can add it
 // to the tree or drop --prune.
 type PruneDefaultLanguageError struct{ Locale string }
 
 func (e *PruneDefaultLanguageError) Error() string {
 	return fmt.Sprintf(
-		"refusing to prune the defaultLanguage Listing %q — Play requires it to exist; add %q to your metadata tree, or run apply without --prune",
+		"refusing to prune the defaultLanguage Listing %q: Play requires it to exist; add %q to your metadata tree, or run apply without --prune",
 		e.Locale, e.Locale)
 }
 
@@ -131,12 +131,12 @@ func (e *PruneDefaultLanguageError) ExitCode() int { return 2 }
 // EmptyTreePruneError signals --prune was requested against an empty local
 // tree. Pruning an empty tree classifies EVERY online locale as a delete
 // (only the defaultLanguage is otherwise spared), so it would wipe the
-// app's entire Store presence — almost never the intent, and the classic
+// app's entire Store presence: almost never the intent, and the classic
 // symptom of a mis-pointed --dir (a typo'd path that still resolves to a
 // readable-but-empty directory, or a dir holding only a README / files the
 // codec does not recognize). It is refused before any network, in dry-run
 // too, and maps to exit 2 (a guardrail refusal, like PruneDefaultLanguage).
-// It stays 2 rather than 3: no safety flag resolves it — the fix is to point
+// It stays 2 rather than 3: no safety flag resolves it: the fix is to point
 // --dir somewhere else or drop --prune, not to acknowledge anything.
 type EmptyTreePruneError struct{}
 
@@ -171,7 +171,7 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 
 	// 3. Empty-tree prune guard. With no locale on disk, --prune would
 	// classify every online locale as a delete (sparing only the
-	// defaultLanguage) and wipe the app's Store presence — almost always a
+	// defaultLanguage) and wipe the app's Store presence: almost always a
 	// mis-pointed --dir, never a real intent. Refuse before any network, in
 	// dry-run too, so the preview also says "no" rather than rendering a
 	// delete-everything plan. (Without --prune an empty tree is a legitimate
@@ -202,7 +202,7 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	// errNoChanges so the Edit auto-discards (no empty commit) and any
 	// per-locale failure also auto-discards → 0 locales published (atomic). In
 	// EXPLICIT mode (opts.ExplicitEditID set) WithEdit reuses the pinned Edit
-	// and never commits or discards — the staged changes stay in the open Edit
+	// and never commits or discards: the staged changes stay in the open Edit
 	// for the user to `gplay edits commit`/`discard`.
 	patched := make(map[string]json.RawMessage)
 	var pruned []string
@@ -272,7 +272,7 @@ func plan(ctx context.Context, hc *http.Client, opts Opts, editID string, local 
 // onlineTree projects the play-layer's []listings.Listing onto a
 // listing.Tree: one entry per online locale (so untouchedLocale/delete
 // detection is by key presence), with each non-empty field managed. An
-// empty online field is left unmanaged — there is no value to diff against.
+// empty online field is left unmanaged: there is no value to diff against.
 func onlineTree(apiListings []listings.Listing) listing.Tree {
 	tr := make(listing.Tree, len(apiListings))
 	for _, al := range apiListings {
@@ -354,7 +354,7 @@ func deleteLocales(d diff.Result) []string {
 // patchBody builds the edits.listings.patch body for one locale: a JSON
 // object carrying each changed field's target value (the disk value for a
 // create/update, "" for a clear) plus "language". PATCH merge semantics
-// mean fields absent from the body are left untouched online — the
+// mean fields absent from the body are left untouched online: the
 // missing ≠ empty rule enforced on the wire (ADR-0011 §2).
 func patchBody(local listing.Tree, loc string, d diff.Result) []byte {
 	m := map[string]string{"language": loc}
@@ -373,7 +373,7 @@ func patchBody(local listing.Tree, loc string, d diff.Result) []byte {
 			m[c.Field] = v
 		}
 	}
-	// map[string]string of small, known keys — Marshal cannot fail.
+	// map[string]string of small, known keys: Marshal cannot fail.
 	body, _ := json.Marshal(m)
 	return body
 }

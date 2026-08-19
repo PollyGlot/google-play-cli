@@ -1,7 +1,7 @@
 // Package availability_test exercises `gplay tracks availability view` at
 // the kernel level: a RunContext built by hand, a RoundTripper injected via
 // the oauth2.HTTPClient context key, and Run invoked directly. Mirrors
-// the tracks-view harness — the transport FAILS on any PUT/:commit,
+// the tracks-view harness: the transport FAILS on any PUT/:commit,
 // because reading Country availability is read-only (open Edit →
 // countryAvailability.get → discard, never commit). Availability is also
 // read-only at the API level: there is no writer to test.
@@ -36,7 +36,7 @@ import (
 // availability read sequence: edits.insert, countryAvailability.get,
 // edits.delete. It has NO PUT/:commit branch: reaching one means the
 // command tried to mutate state, which a read-only command must never do
-// — so the transport fails the test.
+// , so the transport fails the test.
 type availRT struct {
 	t      *testing.T
 	editID string
@@ -138,7 +138,7 @@ func exitCodeOf(t *testing.T, err error) int {
 // then edits.insert, countryAvailability.get(track), edits.delete (no
 // commit). The payload carries syncWithProduction, restOfWorld, and the
 // country codes; --output json emits the countryavailability.get body
-// verbatim (clean ADR-0003 pass-through — a single endpoint).
+// verbatim (clean ADR-0003 pass-through: a single endpoint).
 func TestRun_happyPath(t *testing.T) {
 	body := `{"syncWithProduction":false,"restOfWorld":true,"countries":[{"countryCode":"US"},{"countryCode":"GB"}]}`
 	rt := &availRT{t: t, editID: "edit-avail", body: body}
@@ -309,7 +309,7 @@ func TestRenderMarkdown_showsAvailabilityFields(t *testing.T) {
 }
 
 // TestGroup_bareAvailabilityIsPureNoun asserts the ADR-0019 shape: `tracks
-// availability` is a pure grouping noun — the bare command prints help and
+// availability` is a pure grouping noun: the bare command prints help and
 // never reads (the read lives under `view`) and, being read-only at the
 // Developer API level, holds no `set`. Its RunE is the shared grouping RunE
 // (kernel.GroupRunE: help when bare, loud exit-2 misuse on an unknown
@@ -326,12 +326,12 @@ func TestGroup_bareAvailabilityIsPureNoun(t *testing.T) {
 	if group.RunE == nil {
 		t.Fatal("bare `tracks availability` must have the grouping RunE (help when bare, loud on unknown subcommand)")
 	}
-	// Bare invocation prints help and succeeds — it never performs a read.
+	// Bare invocation prints help and succeeds: it never performs a read.
 	group.SetOut(io.Discard)
 	if err := group.RunE(group, nil); err != nil {
 		t.Errorf("bare `tracks availability` should print help and succeed, got err=%v", err)
 	}
-	// An unknown subcommand is rejected loudly, naming the command — not
+	// An unknown subcommand is rejected loudly, naming the command, not
 	// silently helped with exit 0.
 	if err := group.RunE(group, []string{"nonesuch"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("unknown subcommand of `tracks availability` should be rejected naming the command; got err=%v", err)
@@ -349,7 +349,7 @@ func TestGroup_bareAvailabilityIsPureNoun(t *testing.T) {
 		t.Error("`tracks availability` must hold a `view` subcommand (the read)")
 	}
 	if hasSet {
-		t.Error("`tracks availability` is read-only — it must not gain a `set`")
+		t.Error("`tracks availability` is read-only: it must not gain a `set`")
 	}
 }
 

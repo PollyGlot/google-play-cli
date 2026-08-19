@@ -10,7 +10,7 @@
 // The first two (in-config) layers are pre-merged into config.Resolved.DeveloperID
 // by config.Load; this package applies the higher-precedence env var and flag
 // on top. An unresolved id is an auth-family failure (exit 10), not a usage
-// error — a missing developer-id is a credential-configuration gap, like a
+// error: a missing developer-id is a credential-configuration gap, like a
 // missing Account.
 package addressing
 
@@ -30,7 +30,7 @@ const EnvDeveloperID = "GPLAY_DEVELOPER_ID"
 type unresolvedError struct{}
 
 func (unresolvedError) Error() string {
-	return "no developer-id resolved for the active Account — set it with `gplay auth login --developer-id <id>`, " +
+	return "no developer-id resolved for the active Account: set it with `gplay auth login --developer-id <id>`, " +
 		"export GPLAY_DEVELOPER_ID, pin it in .gplay/config.local.json, or pass --developer-id <id> " +
 		"(find it in the Play Console URL: play.google.com/console/u/0/developers/<developerId>/...)"
 }

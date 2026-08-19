@@ -160,7 +160,7 @@ func signedSAJSON(t *testing.T) []byte {
 }
 
 // writeFakeAAB creates a non-empty file with a .aab extension. The
-// RoundTripper does not validate the bytes — bundles.Upload just needs
+// RoundTripper does not validate the bytes: bundles.Upload just needs
 // os.Open to succeed.
 func writeFakeAAB(t *testing.T) string {
 	t.Helper()
@@ -265,7 +265,7 @@ func TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP(t *testing.T) {
 
 // TestRun_productionPublishWithoutConfirm_exit3_noHTTP asserts that a
 // production --complete without --confirm hits the orchestrator's confirm
-// guard before any HTTP — including the /token exchange. The oauth2 library
+// guard before any HTTP: including the /token exchange. The oauth2 library
 // is lazy, so a buggy refactor that pre-mints a token would show up as a
 // non-zero call count here. The refusal is exit 3 (safety flag required,
 // docs/DESIGN.md §9), not the generic usage exit 2 (#408).
@@ -341,7 +341,7 @@ func TestRun_productionPublishWithConfirm_succeedsAndHitsAPI(t *testing.T) {
 // TestRun_uploadToMissingClosedTrack_hintsTracksCreate asserts that an
 // upload whose --track has not been created yet (tracks.update 404) fails
 // with a `gplay tracks create <name>` hint, preserves the underlying exit
-// code (30, not rewritten by the hint), and never auto-creates the track —
+// code (30, not rewritten by the hint), and never auto-creates the track:
 // gplay only ever PUTs tracks.update, never POSTs a fresh track on upload.
 func TestRun_uploadToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 	aab := writeFakeAAB(t)
@@ -368,7 +368,7 @@ func TestRun_uploadToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 		t.Errorf("exit.For(err) = %d, want 30 (underlying *api.Error preserved); err=%v", code, err)
 	}
 	// No auto-create: gplay must never POST a fresh track as a side effect of
-	// an upload — only PUT tracks.update against the (expected-to-exist) track.
+	// an upload: only PUT tracks.update against the (expected-to-exist) track.
 	for _, c := range rt.calls {
 		if c == "POST /androidpublisher/v3/applications/com.example.app/edits/edit-miss/tracks" {
 			t.Errorf("upload auto-created a track (saw %q); it must only PUT tracks.update", c)
@@ -378,7 +378,7 @@ func TestRun_uploadToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 
 // TestNewCommand_registersExpectedFlags is a thin smoke test for the
 // cobra wiring. It does not exercise Run end-to-end (the kernel-level
-// tests above do that) — its job is to catch a flag-plumbing regression
+// tests above do that): its job is to catch a flag-plumbing regression
 // where a future refactor of NewCommand drops or renames a flag and
 // the Input struct silently goes unwired.
 func TestNewCommand_registersExpectedFlags(t *testing.T) {
@@ -409,7 +409,7 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 
 // TestRun_happyPath_emitsConfirmationOnStderr asserts a committed upload
 // prints a single ✓ success line on stderr (DESIGN §8) carrying the
-// versionCode, track, and status — in addition to the stdout payload.
+// versionCode, track, and status: in addition to the stdout payload.
 func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt := &uploadRT{
@@ -454,7 +454,7 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 }
 
 // TestRun_inProgressRollout_confirmationShowsUserFractionPercent asserts the
-// ✓ line renders userFraction as a percentage when status is inProgress —
+// ✓ line renders userFraction as a percentage when status is inProgress:
 // the one status where the fraction informs (DESIGN §8).
 func TestRun_inProgressRollout_confirmationShowsUserFractionPercent(t *testing.T) {
 	aab := writeFakeAAB(t)
@@ -477,7 +477,7 @@ func TestRun_inProgressRollout_confirmationShowsUserFractionPercent(t *testing.T
 }
 
 // writeFakeMapping creates a non-empty mapping.txt. The RoundTripper does
-// not validate the bytes — mappings.Upload just needs os.Open to succeed.
+// not validate the bytes: mappings.Upload just needs os.Open to succeed.
 func writeFakeMapping(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "mapping.txt")
@@ -537,7 +537,7 @@ func TestRun_withMapping_uploadsMappingInSameEditAndConfirms(t *testing.T) {
 }
 
 // writeFakeAPK creates a non-empty .apk file. The RoundTripper does not
-// validate the bytes — apks.Upload just needs os.Open to succeed.
+// validate the bytes: apks.Upload just needs os.Open to succeed.
 func writeFakeAPK(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "app.apk")
@@ -550,8 +550,8 @@ func writeFakeAPK(t *testing.T) string {
 // TestRun_apkExtension_ridesApksUploadEndpoint asserts a .apk artifact is
 // auto-detected and uploaded via edits.apks.upload (resumable POST-initiate
 // + PUT to .../apks?uploadType=resumable)
-// instead of bundles.upload, while the rest of the Edit lifecycle — insert,
-// tracks.update, commit — is byte-for-byte the AAB pipeline (ADR-0036).
+// instead of bundles.upload, while the rest of the Edit lifecycle: insert,
+// tracks.update, commit: is byte-for-byte the AAB pipeline (ADR-0036).
 func TestRun_apkExtension_ridesApksUploadEndpoint(t *testing.T) {
 	apk := writeFakeAPK(t)
 	rt := &uploadRT{
@@ -590,7 +590,7 @@ func TestRun_apkExtension_ridesApksUploadEndpoint(t *testing.T) {
 
 // TestRun_formatApkOverride_forcesApkPathForNonApkFilename asserts that
 // --format apk routes a file whose extension is NOT .apk through the APK
-// endpoint — the override wins over extension auto-detect (ADR-0030 parity).
+// endpoint: the override wins over extension auto-detect (ADR-0030 parity).
 func TestRun_formatApkOverride_forcesApkPathForNonApkFilename(t *testing.T) {
 	// A file with a .bin extension the auto-detect could not classify.
 	p := filepath.Join(t.TempDir(), "build.bin")
@@ -629,7 +629,7 @@ func TestRun_formatApkOverride_forcesApkPathForNonApkFilename(t *testing.T) {
 
 // TestRun_unknownExtension_noFormat_exit2_noHTTP asserts that an artifact
 // with an unrecognized extension and no --format is a usage error (exit 2)
-// before any HTTP — mirroring the `releases sharing upload` message.
+// before any HTTP: mirroring the `releases sharing upload` message.
 func TestRun_unknownExtension_noFormat_exit2_noHTTP(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "build.bin")
 	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {

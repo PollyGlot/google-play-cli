@@ -1,5 +1,5 @@
 // Package editpin persists the open *explicit* Edit ID for a package to
-// .gplay/edit-<package>.json — the file `gplay edits begin` writes and every
+// .gplay/edit-<package>.json: the file `gplay edits begin` writes and every
 // write command consults to reuse an open Edit instead of opening its own
 // (docs/DESIGN.md §4 / CONTEXT.md "Edit"). The directory is the project's
 // .gplay/ (the same dir that holds config.json), which `gplay init` already
@@ -19,8 +19,8 @@ import (
 )
 
 // Pin is the on-disk shape of .gplay/edit-<package>.json: the open Edit ID and
-// the package it belongs to (the latter is informational — the filename already
-// carries the package — but makes a hand-inspected file self-describing).
+// the package it belongs to (the latter is informational: the filename already
+// carries the package, but makes a hand-inspected file self-describing).
 type Pin struct {
 	EditID  string `json:"editId"`
 	Package string `json:"package"`
@@ -39,7 +39,7 @@ func Path(gplayDir, pkg string) string {
 }
 
 // Lookup reads the pin for pkg from gplayDir. It returns ok=false (with a nil
-// error) when no pin file exists — the common implicit-mode case a write
+// error) when no pin file exists: the common implicit-mode case a write
 // command treats as "open your own Edit". A present-but-corrupt file, or one
 // missing its editId, is an error: a broken pin must surface, not silently fall
 // back to opening a fresh (conflicting) Edit while the real one stays open.
@@ -76,7 +76,7 @@ func Lookup(fsys config.FS, gplayDir, pkg string) (Pin, bool, error) {
 // The write is atomic: the bytes go to a sibling `<path>.tmp` first, then a
 // rename swaps them onto path (the same tmp+rename pattern as config.Save, and
 // why config.FS exposes Rename/Remove). On POSIX (and Windows for same-volume
-// renames) rename is atomic, so a crash — SIGKILL, power loss, disk-full —
+// renames) rename is atomic, so a crash (SIGKILL, power loss, disk-full)
 // mid-write leaves either the OLD pin or the NEW one, never a truncated or
 // zero-length file. That matters because Lookup treats a present-but-corrupt
 // pin as a FATAL error, which would wedge every later write command AND block

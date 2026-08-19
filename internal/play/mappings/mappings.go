@@ -7,8 +7,8 @@
 //
 // Despite being functionally coupled to Vitals (it is what makes
 // obfuscated crash stack traces readable in Play vitals), a Mapping is
-// architecturally a publisher Edit upload — same OAuth scope and Edit
-// model as a release upload, NOT the read-only Reporting service — so it
+// architecturally a publisher Edit upload: same OAuth scope and Edit
+// model as a release upload, NOT the read-only Reporting service, so it
 // is surfaced under `releases`, never `vitals` (CONTEXT.md / ADR-0027).
 package mappings
 
@@ -32,7 +32,7 @@ const op = "deobfuscationfiles.upload"
 // `deobfuscationFileTypeUnspecified` is intentionally omitted: gplay never
 // sends it.
 const (
-	// TypeProguard is the ProGuard/R8 mapping.txt — the common case.
+	// TypeProguard is the ProGuard/R8 mapping.txt: the common case.
 	TypeProguard = "proguard"
 	// TypeNativeCode is the native debugging symbols file.
 	TypeNativeCode = "nativeCode"
@@ -91,7 +91,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 	// *api.Error (exit 50, transport) instead of the client-side
 	// *LocalIOError (exit 20) this path is for, and Size() would be wrong
 	// for ContentLength. Reject anything but a regular file up front. A
-	// symlink to a regular file is fine — os.Open already followed it, so
+	// symlink to a regular file is fine: os.Open already followed it, so
 	// info describes the target, not the link.
 	if !info.Mode().IsRegular() {
 		return nil, &LocalIOError{Path: path, Cause: fmt.Errorf("not a regular file")}

@@ -20,7 +20,7 @@ type Column[T any] struct {
 
 // ColumnSet is the full, ordered set of columns a list command can render.
 // Its declaration order is BOTH the registry (the valid --columns keys) and
-// the default render order — so the "DefaultColumns matches the registry"
+// the default render order, so the "DefaultColumns matches the registry"
 // invariant every list command used to assert locally is now a structural
 // guarantee: there is a single list, and it cannot drift from itself.
 //
@@ -42,7 +42,7 @@ func NewColumnSet[T any](cols ...Column[T]) ColumnSet[T] {
 	return ColumnSet[T]{all: cols, index: index}
 }
 
-// DefaultKeys returns the canonical column keys in declaration order — the
+// DefaultKeys returns the canonical column keys in declaration order: the
 // set rendered when --columns is unset. A command builds its --columns flag
 // help from this so the documented default cannot drift from the code.
 func (cs ColumnSet[T]) DefaultKeys() []string {
@@ -56,8 +56,8 @@ func (cs ColumnSet[T]) DefaultKeys() []string {
 // Resolve turns a --columns spec into the ordered, validated columns to
 // render. An empty/whitespace spec yields every column in declaration
 // order; otherwise the spec is split on commas, each key trimmed and looked
-// up, and blank entries skipped. An unknown key — or a spec that names no
-// valid column at all — is a CLI misuse (*exit.UsageError, exit 2), with the
+// up, and blank entries skipped. An unknown key, or a spec that names no
+// valid column at all: is a CLI misuse (*exit.UsageError, exit 2), with the
 // valid set listed in the message.
 func (cs ColumnSet[T]) Resolve(spec string) ([]Column[T], error) {
 	if strings.TrimSpace(spec) == "" {

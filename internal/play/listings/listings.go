@@ -1,7 +1,7 @@
 // Package listings reads and writes the per-locale Store front Listings of
-// a Google Play app within an open Edit. The operations exposed — List
+// a Google Play app within an open Edit. The operations exposed: List
 // (every locale's Listing), Get (one locale), Patch (upsert one locale),
-// and Delete (drop one locale's whole Listing) — back the metadata
+// and Delete (drop one locale's whole Listing): back the metadata
 // list / pull / apply commands. Every function runs inside an Edit the
 // caller has already opened (edits.WithEdit / edits.WithReadOnlyEdit);
 // none opens or commits an Edit of its own.
@@ -95,7 +95,7 @@ func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Listing, 
 
 // Get fetches a single locale's Listing at edits.listings.get. Returns the
 // parsed Listing and the raw JSON body for the --output json pass-through
-// (ADR-0003). A 404 here means "no Listing for this locale" — the caller
+// (ADR-0003). A 404 here means "no Listing for this locale": the caller
 // maps it via the gplay exit-code taxonomy.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, language string) (*Listing, json.RawMessage, error) {
 	u := api.AndroidPubBase +
@@ -150,7 +150,7 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, language string) (*L
 // caller-built body verbatim. The body is built by the caller (the apply
 // command) and carries exactly the fields it means to write; PATCH (not
 // PUT) is used on purpose so a field absent from the body is left
-// untouched online — the ADR-0011 "missing ≠ empty" rule, enforced at the
+// untouched online: the ADR-0011 "missing ≠ empty" rule, enforced at the
 // wire level. Returns the raw response body (the patched Listing) for the
 // per-locale --output json pass-through (ADR-0003).
 func Patch(ctx context.Context, hc *http.Client, pkg, editID, language string, body []byte) (json.RawMessage, error) {
@@ -181,7 +181,7 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID, language string, b
 		}
 	}
 	// The success body is the ADR-0003 per-locale JSON pass-through; cap
-	// it at MaxAPISuccessBodyRead — a fullDescription alone can run to
+	// it at MaxAPISuccessBodyRead: a fullDescription alone can run to
 	// 4000 chars, comfortably past the error-body cap.
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	return raw, nil
@@ -189,7 +189,7 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID, language string, b
 
 // Delete drops a whole locale's Listing at edits.listings.delete: every
 // managed field for that locale is removed online in one call. This is the
-// operation ADR-0011 calls "deletegroup" — there is no separate
+// operation ADR-0011 calls "deletegroup": there is no separate
 // edits.listings.deletegroup endpoint; the real androidpublisher surface
 // that deletes a single locale's Listing is edits.listings.delete, and
 // that is what gplay calls. A 2xx/204 with no body is expected. Op

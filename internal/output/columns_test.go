@@ -39,7 +39,7 @@ func keysOf(cs []output.Column[row]) []string {
 // in declaration order; an explicit spec selects and REORDERS; blanks are
 // skipped; and an unknown or empty selection is a CLI misuse (exit 2). The
 // default↔registry invariant that used to be re-tested per command is here
-// structural — DefaultKeys IS the declaration order — and asserted once.
+// structural (DefaultKeys IS the declaration order) and asserted once.
 func TestColumnSet_Resolve(t *testing.T) {
 	cs := cols()
 

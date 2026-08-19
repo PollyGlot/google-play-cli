@@ -116,7 +116,7 @@ func TestRun_discardsAndClearsPin(t *testing.T) {
 }
 
 func TestRun_discard404_isSuccessAndClearsPin(t *testing.T) {
-	// A 404 means the Edit is already gone — the discard's desired end state.
+	// A 404 means the Edit is already gone: the discard's desired end state.
 	// The pin must still be cleared and the command must succeed.
 	rt := &discardRT{t: t, deleteStatus: 404}
 	rc, gplayDir := newRC(t, rt)
@@ -135,7 +135,7 @@ func TestRun_discard404_isSuccessAndClearsPin(t *testing.T) {
 func TestRun_discardServerError_clearsPinButReturnsError(t *testing.T) {
 	// A non-404 server error: the user asked to abandon the Edit, so the local
 	// pin must still be cleared (it auto-expires in ~24h), but the failed remote
-	// discard must surface — a filesystem clear must not mask it.
+	// discard must surface: a filesystem clear must not mask it.
 	rt := &discardRT{t: t, deleteStatus: 500}
 	rc, gplayDir := newRC(t, rt)
 	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-stuck"); err != nil {
@@ -147,7 +147,7 @@ func TestRun_discardServerError_clearsPinButReturnsError(t *testing.T) {
 		t.Fatal("a non-404 remote discard error must surface")
 	}
 	if rt.deleteCalls != 1 {
-		t.Errorf("deleteCalls = %d, want 1 — the remote discard must be attempted before the pin is cleared", rt.deleteCalls)
+		t.Errorf("deleteCalls = %d, want 1: the remote discard must be attempted before the pin is cleared", rt.deleteCalls)
 	}
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); ok {
 		t.Error("the pin must be cleared even when the remote discard failed")

@@ -1,5 +1,5 @@
 // Package serviceaccount loads and validates Google Cloud service-account
-// JSON files. It performs pure parsing — no network, no token minting.
+// JSON files. It performs pure parsing: no network, no token minting.
 package serviceaccount
 
 import (

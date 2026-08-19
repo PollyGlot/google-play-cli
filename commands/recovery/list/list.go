@@ -2,7 +2,7 @@
 // given (bad) versionCode. Read-only. The API marks versionCode required, so
 // gplay requires --version-code (a list with no version is semantically empty);
 // missing it is CLI misuse (exit 2) caught before any network. There is no
-// `recovery view` — the apprecovery resource exposes only list.
+// `recovery view`: the apprecovery resource exposes only list.
 package list
 
 import (
@@ -76,7 +76,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 status, and creation time. --version-code is required (recoveries are keyed by
 version); --output json passes the ListAppRecoveriesResponse through verbatim.
 
-There is no ` + "`recovery view`" + ` — the API exposes only list.`,
+There is no ` + "`recovery view`" + `: the API exposes only list.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

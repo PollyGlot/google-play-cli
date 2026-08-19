@@ -1,10 +1,10 @@
 // Package gcs is gplay's minimal, resource-agnostic client for the Google
 // Cloud Storage JSON API. It exists because the developer's monthly Play
 // reports (reviews history, #94 / ADR-0037) live as plain GCS objects in the
-// reporting bucket — a third Google service reached the same way as the second
+// reporting bucket: a third Google service reached the same way as the second
 // (raw HTTP, ADR-0007; a distinct read-only OAuth scope, ADR-0027). Only the
 // two operations gplay needs are implemented: list the objects under a prefix
-// and fetch one object's bytes. Both are reads — no mutating surface exists
+// and fetch one object's bytes. Both are reads: no mutating surface exists
 // here (read-only by scope construction, token.StorageReadOnlyScope).
 //
 // The *http.Client is injected by the caller (kernel.AuthedClient), so tests
@@ -39,7 +39,7 @@ const (
 	maxObjectRead   = 64 * 1024 * 1024
 )
 
-// Object is the sliver of a GCS object resource gplay reads — just its name
+// Object is the sliver of a GCS object resource gplay reads: just its name
 // (the full key under the bucket, e.g. "reviews/reviews_com.x_202606.csv").
 type Object struct {
 	Name string `json:"name"`
@@ -112,7 +112,7 @@ func listPage(ctx context.Context, hc *http.Client, bucket, prefix, pageToken st
 
 // FetchObject returns the raw bytes of object in bucket via the JSON API's
 // media download (?alt=media). It is a read (storage.objects.get). The object
-// name is a single, un-split path segment — GCS keys legitimately contain
+// name is a single, un-split path segment: GCS keys legitimately contain
 // slashes ("reviews/..."), so the whole name is percent-encoded into one path
 // component rather than joined raw.
 func FetchObject(ctx context.Context, hc *http.Client, bucket, object string) ([]byte, error) {

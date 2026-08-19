@@ -45,7 +45,7 @@ func TestGroupRunE_bareInvocationPrintsHelp(t *testing.T) {
 // TestGroupRunE_unknownSubcommandIsMisuse asserts the unknown-subcommand
 // contract: a leftover token is surfaced as a *exit.UsageError (exit 2 per
 // docs/DESIGN.md §9) whose message names both the unknown token and the group
-// path — so a typo or a removed verb fails loudly rather than silently helping.
+// path, so a typo or a removed verb fails loudly rather than silently helping.
 func TestGroupRunE_unknownSubcommandIsMisuse(t *testing.T) {
 	cmd := &cobra.Command{Use: "grp"}
 	err := kernel.GroupRunE(cmd, []string{"nonesuch", "extra"})
@@ -68,7 +68,7 @@ const fakeSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-// unavailableKeyring is a KeyringAPI whose probe always fails — Select
+// unavailableKeyring is a KeyringAPI whose probe always fails: Select
 // then falls back to the file backend.
 type unavailableKeyring struct{}
 
@@ -81,7 +81,7 @@ func (unavailableKeyring) Delete(string, string) error { return errBoom }
 // countingKeyring is an in-memory KeyringAPI that tallies every call so a
 // test can assert exactly when (and whether) a run reaches the OS keyring.
 // Its probe succeeds (Set/Delete return nil), so Select picks the keyring
-// backend — the credential round-trips through `store`.
+// backend: the credential round-trips through `store`.
 type countingKeyring struct {
 	store            map[string]string
 	sets, gets, dels int
@@ -127,7 +127,7 @@ func (s stringError) Error() string { return string(s) }
 // faultyGetKeyring passes Select's Set+Delete probe (so the keyring backend
 // is chosen) but fails every Get with a generic, non-NotFound error. It
 // stands in for a keyring that is reachable yet returns an IO/permission
-// fault when a stored credential is actually read — the "invalid" bucket's
+// fault when a stored credential is actually read: the "invalid" bucket's
 // non-NotFound keystore-error case (ADR-0020).
 type faultyGetKeyring struct{}
 
@@ -173,7 +173,7 @@ func seedActiveAccount(t *testing.T, boot kernel.Boot) {
 }
 
 // seedActiveConfigOnly writes a global config whose active Account is "ci"
-// but stores NO key for it — so resolution reaches the keystore and gets
+// but stores NO key for it, so resolution reaches the keystore and gets
 // back keystore.ErrNotFound (the logged-out / never-stored case). Used to
 // distinguish the benign-absent path from a present-but-invalid credential.
 func seedActiveConfigOnly(t *testing.T, boot kernel.Boot) {
@@ -295,7 +295,7 @@ func TestRun_verbose_logsBackendOnce(t *testing.T) {
 	boot.Stderr = &stderr
 	if err := kernel.Run(boot, kernel.Inputs{Verbose: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
 		// The backend label is logged when the keystore is first used, not
-		// at boot — force selection twice to prove the log is memoised to
+		// at boot: force selection twice to prove the log is memoised to
 		// exactly one line.
 		if _, err := rc.Backend(); err != nil {
 			return nil, err
@@ -366,7 +366,7 @@ func TestRun_authNeedingCommand_probesKeyring(t *testing.T) {
 //
 // These drive the production lazy path (kernel.Run → buildRunContext,
 // lazy=true) and assert only external behavior: the error EnsureAccount
-// returns, its exit.For code, and whether rc.Account stayed nil — never the
+// returns, its exit.For code, and whether rc.Account stayed nil: never the
 // private accountErr/accountDone fields. The three states are injected
 // through the real resolution seams (resolver.Inputs, the keyring fakes, an
 // OSFS config), exactly as a command would hit them.
@@ -581,7 +581,7 @@ func TestRun_readonly_refusesMutatingCommand_exit4(t *testing.T) {
 		t.Errorf("refusal message should name %s; got %q", kernel.EnvReadonly, err.Error())
 	}
 	if called {
-		t.Error("business fn ran — refusal must happen BEFORE fn (no credential resolution, no network)")
+		t.Error("business fn ran: refusal must happen BEFORE fn (no credential resolution, no network)")
 	}
 }
 
@@ -645,7 +645,7 @@ func TestRun_notReadonly_runsMutatingCommand(t *testing.T) {
 
 // TestRunCobra_readonly_marksAndEnforces wires the whole chain: a cobra command
 // declared mutating (MarkMutating) + GPLAY_READONLY=1 in the env is refused
-// (exit 4) without reaching the business fn — proving the annotation and env
+// (exit 4) without reaching the business fn: proving the annotation and env
 // reading in FromCobra connect to the Run-time enforcement.
 func TestRunCobra_readonly_marksAndEnforces(t *testing.T) {
 	t.Setenv(kernel.EnvReadonly, "1")
@@ -689,7 +689,7 @@ func TestRunCobra_readonly_unmarkedReadCommandRuns(t *testing.T) {
 // These drive the production kernel.Run path and assert the external contract:
 // under --output json a failure emits exactly one {"error":{...}} object on
 // stdout carrying the semantic exit code, message, and (when present) the
-// upstream reasons[] / safety requires[] — while exit codes and the table /
+// upstream reasons[] / safety requires[], while exit codes and the table /
 // markdown / success paths are untouched.
 
 type envelopeShape struct {
@@ -797,7 +797,7 @@ func TestRun_jsonFailure_selfRendered_noDoubleEnvelope(t *testing.T) {
 		}
 		return nil, exit.Usagef("a check failed")
 	})
-	// Exactly one JSON value — the command's own — survives; no appended envelope.
+	// Exactly one JSON value (the command's own) survives; no appended envelope.
 	dec := json.NewDecoder(strings.NewReader(stdout))
 	var first map[string]any
 	if err := dec.Decode(&first); err != nil {
@@ -852,7 +852,7 @@ func TestAuthedClient_invalidCredential_propagatesCauseAndExit10(t *testing.T) {
 }
 
 // signedAccount returns a ServiceAccount backed by a freshly generated RSA key,
-// so AuthedClient / UploadClient can build a real OAuth2 token source (lazily —
+// so AuthedClient / UploadClient can build a real OAuth2 token source (lazily:
 // no network) and the returned client's deadline can be inspected.
 func signedAccount(t *testing.T) *serviceaccount.ServiceAccount {
 	t.Helper()
@@ -984,7 +984,7 @@ func TestAuthedClient_absent_keepsLoginHint(t *testing.T) {
 
 // TestConfirmf_writesCheckmarkLineToStderr asserts rc.Confirmf prepends the
 // ✓ marker, appends a newline, formats its args, and writes the result to
-// stderr only — never stdout. Per DESIGN §8 the success line is a stderr log
+// stderr only: never stdout. Per DESIGN §8 the success line is a stderr log
 // line that must survive --output json (where stdout is verbatim API data).
 func TestConfirmf_writesCheckmarkLineToStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
@@ -1002,7 +1002,7 @@ func TestConfirmf_writesCheckmarkLineToStderr(t *testing.T) {
 }
 
 // TestConfirmf_nilStderrIsSafe asserts Confirmf is a no-op (no panic) when a
-// hand-built RunContext leaves Stderr nil — the kernel paths always wire it,
+// hand-built RunContext leaves Stderr nil: the kernel paths always wire it,
 // but the helper must not assume so.
 func TestConfirmf_nilStderrIsSafe(t *testing.T) {
 	rc := &kernel.RunContext{} // Stderr deliberately nil

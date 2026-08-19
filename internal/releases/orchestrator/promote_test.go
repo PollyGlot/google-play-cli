@@ -200,7 +200,7 @@ func TestPromote_internalToProduction_safeDefault_sendsDraftStatus(t *testing.T)
 
 // TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction
 // asserts that --staged 0.05 (Status=InProgress + UserFraction=0.05)
-// on a production target ships inProgress at 5% — overriding the
+// on a production target ships inProgress at 5%: overriding the
 // ADR-0002 safe-default for that destination. Production publish that
 // reaches real users requires Confirm=true (mirrors upload).
 func TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction(t *testing.T) {
@@ -240,7 +240,7 @@ func TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction(t *test
 // coexisting releases (e.g. inProgress + halted) and the caller did
 // not pass --version-code or --release-name, Promote must refuse with
 // an *AmbiguousReleaseError (ExitCode=60) listing the candidate
-// versionCodes — and MUST NOT write to the destination.
+// versionCodes, and MUST NOT write to the destination.
 func TestPromote_ambiguousSource_noDisambiguator_returnsExit60Error(t *testing.T) {
 	rt := &promoteRT{
 		t:      t,
@@ -393,7 +393,7 @@ func TestPromote_versionCodeNotFound_returnsExit60Error(t *testing.T) {
 // still matched multiple releases (Play allows duplicate names), the
 // AmbiguousReleaseError message tells them to TIGHTEN the filter
 // rather than the unhelpful default "pass --release-name to pick
-// one" — which they already did.
+// one", which they already did.
 func TestPromote_ambiguousAfterReleaseName_hintSaysFilterAlreadyApplied(t *testing.T) {
 	rt := &promoteRT{
 		t:      t,
@@ -431,7 +431,7 @@ func TestPromote_ambiguousAfterReleaseName_hintSaysFilterAlreadyApplied(t *testi
 
 // TestPromote_noMatchingRelease_listsBothCriteria asserts that when
 // both --version-code AND --release-name are supplied, the
-// NoMatchingReleaseError message names both — not just one. Without
+// NoMatchingReleaseError message names both, not just one. Without
 // this, an operator looking at the error sees only the version-code
 // constraint, misses that --release-name also constrained the match,
 // and burns time debugging the wrong filter.
@@ -470,7 +470,7 @@ func TestPromote_noMatchingRelease_listsBothCriteria(t *testing.T) {
 // --release-notes nor --release-notes-dir is passed, the source
 // release's releaseNotes payload is forwarded verbatim to the
 // destination (the AC5 default behavior from issue #45). No call to
-// edits.details.get — the source already carries locale-keyed text.
+// edits.details.get: the source already carries locale-keyed text.
 func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 	rt := &promoteRT{
 		t:      t,
@@ -508,7 +508,7 @@ func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 		}
 	}
 
-	// No edits.details.get round-trip — the source already gave us
+	// No edits.details.get round-trip: the source already gave us
 	// locale-keyed notes, no DefaultLanguage resolution needed.
 	for _, c := range rt.calls {
 		if strings.HasPrefix(c, "GET ") && strings.HasSuffix(c, "/details") {
@@ -612,7 +612,7 @@ func TestPromote_releaseNotesFlag_overridesCarryOver(t *testing.T) {
 // asserts that an override directory containing no .txt files refuses
 // the promote rather than silently dropping the source's notes. The
 // promote DEFAULT is verbatim carry-over; if the user passes a dir
-// that yields zero notes, they have asked to override with nothing —
+// that yields zero notes, they have asked to override with nothing,
 // which would erase the source's release notes on the destination.
 // Fail-loud beats silent data loss.
 func TestPromote_releaseNotesDir_emptyOrTypod_refusesRatherThanDropSource(t *testing.T) {
@@ -661,7 +661,7 @@ func TestPromote_releaseNotesDir_emptyOrTypod_refusesRatherThanDropSource(t *tes
 // refuses rather than silently dropping the locales the override
 // does not cover. Without this guard, `--release-notes-dir ./fix`
 // containing only fr-FR.txt against a source with en-US + de-DE + fr-FR
-// would ship a release with only fr-FR — wiping the other two
+// would ship a release with only fr-FR: wiping the other two
 // locales on the destination.
 func TestPromote_releaseNotesDir_partialOverride_refusesRatherThanDropOtherLocales(t *testing.T) {
 	partialDir := t.TempDir()
@@ -705,7 +705,7 @@ func TestPromote_releaseNotesDir_partialOverride_refusesRatherThanDropOtherLocal
 // TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds asserts
 // the inverse: when the override dir DOES cover every source locale
 // (here, en-US is the only source locale and the dir has en-US.txt),
-// the promote succeeds — no spurious refusal.
+// the promote succeeds: no spurious refusal.
 func TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Fresh English notes"), 0644); err != nil {
@@ -844,7 +844,7 @@ func TestPromote_trackUpdateFail_triggersEditDelete(t *testing.T) {
 }
 
 // TestPromote_validateOpts_libraryCallers asserts that orchestrator.Promote
-// rejects malformed PromoteOpts before opening an Edit — symmetric with
+// rejects malformed PromoteOpts before opening an Edit: symmetric with
 // Upload's validateOpts. The CLI layer ALSO catches these cases, but
 // the orchestrator is documented as a library entry point and must
 // enforce its own contract so library / future-MCP callers do not
@@ -956,7 +956,7 @@ func TestPromote_dryRun_makesNoHTTPCalls(t *testing.T) {
 }
 
 // TestPromote_dryRun_productionSafeDefault asserts dry-run also applies
-// the ADR-0002 safe-default — production target with no status flag
+// the ADR-0002 safe-default: production target with no status flag
 // previews as draft, with no HTTP and without needing --confirm.
 func TestPromote_dryRun_productionSafeDefault(t *testing.T) {
 	rt := &promoteRT{t: t}
@@ -1005,7 +1005,7 @@ func TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate(t *testi
 }
 
 // TestPromote_dryRun_invalidOptsStillCaught asserts that orchestrator-
-// level validation (validatePromoteOpts) runs even in dry-run mode —
+// level validation (validatePromoteOpts) runs even in dry-run mode,
 // so a caller previewing with bad inputs still gets the right error
 // instead of a misleading "looks fine, would have shipped" preview.
 func TestPromote_dryRun_invalidOptsStillCaught(t *testing.T) {
@@ -1034,7 +1034,7 @@ func TestPromote_dryRun_invalidOptsStillCaught(t *testing.T) {
 // Status value outside the four declared constants is rejected with
 // *InvalidOptsError (exit 2) before any HTTP. Without this guard,
 // statusPayload's switch falls through to `return "", 0` and ships a
-// release with status=” that the API rejects opaquely — and a future
+// release with status=” that the API rejects opaquely, and a future
 // new Status constant added to the enum but not wired in statusPayload
 // would silently break.
 func TestPromote_unknownStatusValue_returnsExit2Error(t *testing.T) {
@@ -1072,7 +1072,7 @@ func TestPromote_unknownStatusValue_returnsExit2Error(t *testing.T) {
 // TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error asserts
 // that a source release with no versionCodes (a legitimate draft
 // placeholder on the Play API) does NOT panic on the
-// `source.VersionCodes[0]` index — instead the orchestrator returns a
+// `source.VersionCodes[0]` index: instead the orchestrator returns a
 // typed error carrying ExitCode=60 (state conflict). Without this
 // guard, the index-out-of-range panic also unwinds past WithEdit's
 // auto-discard path and leaks the open Edit for ~24h.

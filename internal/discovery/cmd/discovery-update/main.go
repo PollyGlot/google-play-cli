@@ -1,10 +1,10 @@
 // Command discovery-update regenerates the offline Discovery snapshots under
 // docs/discovery/ (issue #52). It is a thin wrapper over the importable
-// internal/discovery package — the same fetch/normalize/derive logic the
+// internal/discovery package: the same fetch/normalize/derive logic the
 // offline integrity test re-runs. Invoke via `make discovery-update`.
 //
 // This command is NOT part of the shipped gplay binary; it is maintenance
-// tooling run by a human on demand (no per-PR network gate — see #52).
+// tooling run by a human on demand (no per-PR network gate: see #52).
 package main
 
 import (

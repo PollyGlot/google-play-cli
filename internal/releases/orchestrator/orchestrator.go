@@ -26,7 +26,7 @@ import (
 
 // confirmRequired builds the refusal for a production publish that needs an
 // explicit --confirm to proceed (ADR-0002). It is an *exit.SafetyFlagError, so
-// it exits 3 — "safety flag required", docs/DESIGN.md §9 — and names the
+// it exits 3 ("safety flag required", docs/DESIGN.md §9) and names the
 // missing flag in the --output json error envelope's requires[] (ADR-0017 /
 // ADR-0023). It is deliberately NOT exit 2: the invocation is well-formed, and
 // the refusal is deterministically resolvable by re-running with --confirm.
@@ -48,7 +48,7 @@ func (e *InvalidOptsError) ExitCode() int { return 2 }
 // validateStatusValue rejects any Status value outside the four
 // declared constants. Used by both validateOpts (upload) and
 // validatePromoteOpts (promote) so an out-of-band Status fails fast
-// with *InvalidOptsError (exit 2) — without this, statusPayload and
+// with *InvalidOptsError (exit 2): without this, statusPayload and
 // resolvedStatus silently fall through to status="" and ship an
 // invalid wire payload.
 func validateStatusValue(status Status) error {
@@ -240,7 +240,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		var localized []tracks.LocalizedText
 		if opts.ReleaseNotes != "" || opts.ReleaseNotesDir != "" {
 			// details.get is an extra round-trip; only do it when the
-			// notes loader actually needs DefaultLanguage — i.e. when
+			// notes loader actually needs DefaultLanguage: i.e. when
 			// the user supplied --release-notes text, or when the
 			// directory contains a default.txt fallback. A directory
 			// with only explicit per-locale files works without it.
@@ -291,7 +291,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		// mode WithEdit auto-discards so we never commit a release whose mapping
 		// silently failed to attach; in EXPLICIT mode the pinned Edit is left
 		// open for the user to retry or discard. Either way the release is not
-		// committed without its mapping — the whole point is readable crash
+		// committed without its mapping: the whole point is readable crash
 		// stacks (#250).
 		if opts.MappingPath != "" {
 			if _, err := mappings.Upload(ctx, hc, opts.Package, editID, versionCode, mappings.TypeProguard, opts.MappingPath); err != nil {
@@ -331,7 +331,7 @@ func validateOpts(opts Opts) error {
 	}
 	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
 		return &InvalidOptsError{
-			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive — pick one",
+			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
 		}
 	}
 	if opts.Status == StatusInProgress {
@@ -406,7 +406,7 @@ func dryRunResult(opts Opts) (*Result, error) {
 		}
 		// Parity with the live path (bundles.Upload): a directory passes
 		// Stat but cannot be streamed, so reject non-regular files here too
-		// — otherwise --dry-run would green-light what the live upload rejects.
+		//: otherwise --dry-run would green-light what the live upload rejects.
 		if !st.Mode().IsRegular() {
 			return nil, &dryRunError{msg: "artifact is not a regular file: " + opts.AABPath}
 		}
@@ -419,7 +419,7 @@ func dryRunResult(opts Opts) (*Result, error) {
 		}
 		// Parity with the live path (mappings.Upload): a directory passes
 		// Stat but cannot be streamed, so reject non-regular files here too
-		// — otherwise --dry-run would green-light what the live upload rejects.
+		//: otherwise --dry-run would green-light what the live upload rejects.
 		if !st.Mode().IsRegular() {
 			return nil, &dryRunError{msg: "mapping is not a regular file: " + opts.MappingPath}
 		}

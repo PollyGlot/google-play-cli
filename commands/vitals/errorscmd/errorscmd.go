@@ -1,14 +1,14 @@
 // Package errorscmd implements `gplay vitals errors`: the error-reporting
 // surface of the Play Developer Reporting API (#49). Three read-only views:
 //
-//   - counts  — errors.counts.query: the errorReportCount/distinctUsers metric
+//   - counts : errors.counts.query: the errorReportCount/distinctUsers metric
 //     set (a timeline, reusing the metric-set query machinery).
-//   - issues  — errors.issues.search: clustered error issues.
-//   - reports — errors.reports.search: individual reports, i.e. the stack traces.
+//   - issues : errors.issues.search: clustered error issues.
+//   - reports: errors.reports.search: individual reports, i.e. the stack traces.
 //
 // Stack frames come back OBFUSCATED until ProGuard/R8 mappings are uploaded
 // (#250, `releases mappings upload`); that is a documented degradation, not a
-// blocker — these commands work today, the frames are just not symbolicated. A
+// blocker: these commands work today, the frames are just not symbolicated. A
 // stderr note says so on the issues/reports views.
 package errorscmd
 
@@ -31,7 +31,7 @@ import (
 
 // mappingsNote documents the obfuscation degradation (#250) on the views that
 // carry stack frames.
-const mappingsNote = "NOTE: stack frames are obfuscated until you upload ProGuard/R8 mappings (gplay releases mappings upload — #250); until then frames are not symbolicated."
+const mappingsNote = "NOTE: stack frames are obfuscated until you upload ProGuard/R8 mappings (gplay releases mappings upload, #250); until then frames are not symbolicated."
 
 // NewCommand returns the `gplay vitals errors` group. Every leaf is wrapped with
 // kernel.WithScope so it mints a least-privilege playdeveloperreporting token,
@@ -69,7 +69,7 @@ func resolvePackage(rc *kernel.RunContext, pkg string) (string, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return "", exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return "", exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 	return pkg, nil
 }
@@ -117,7 +117,7 @@ func newCountsCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "counts",
 		Short: "Error report counts over a window (errorCount metric set)",
-		Long: `Query the errorCount metric set — errorReportCount / distinctUsers — as a
+		Long: `Query the errorCount metric set (errorReportCount / distinctUsers) as a
 timeline, the count side of vitals errors.
 
   gplay vitals errors counts --package com.example.app
@@ -209,8 +209,8 @@ func newIssuesCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "issues",
 		Short: "List clustered error issues (crashes/ANRs grouped by cause)",
-		Long: `Search the clustered error issues — crashes and ANRs grouped by cause and
-location — over a window.
+		Long: `Search the clustered error issues: crashes and ANRs grouped by cause and
+location: over a window.
 
   gplay vitals errors issues --package com.example.app
   gplay vitals errors issues --filter "errorIssueType = CRASH" --since 7d --limit 20
@@ -301,7 +301,7 @@ func newReportsCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reports",
 		Short: "List individual error reports (the stack traces)",
-		Long: `Search individual error reports — the platform-produced stack traces — over a
+		Long: `Search individual error reports (the platform-produced stack traces) over a
 window.
 
   gplay vitals errors reports --package com.example.app

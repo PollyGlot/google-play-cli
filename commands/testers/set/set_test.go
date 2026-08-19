@@ -85,7 +85,7 @@ func jsonResp(status int, body string) *http.Response {
 }
 
 // signedSAJSON returns a minimal but well-formed service-account JSON with
-// a real RSA key — enough for token.Source to mint a signed JWT.
+// a real RSA key: enough for token.Source to mint a signed JWT.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -125,7 +125,7 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 }
 
 // TestRun_bareSet_exit2_noHTTP asserts the footgun guard: a bare `set`
-// with neither --group nor --clear is misuse — it must short-circuit with
+// with neither --group nor --clear is misuse: it must short-circuit with
 // exit 2 before any HTTP, so a forgotten --group can never silently wipe
 // the list.
 func TestRun_bareSet_exit2_noHTTP(t *testing.T) {
@@ -145,7 +145,7 @@ func TestRun_bareSet_exit2_noHTTP(t *testing.T) {
 }
 
 // TestRun_groupAndClear_exit2 asserts --group and --clear together is
-// contradictory — exit 2 before any HTTP.
+// contradictory: exit 2 before any HTTP.
 func TestRun_groupAndClear_exit2(t *testing.T) {
 	rt := &setRT{t: t}
 	rc, _ := newRC(t, rt)

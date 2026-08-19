@@ -1,6 +1,6 @@
 // Package imagevalidate_test exercises the offline Store-image rule engine:
 // the image analog of the text char-limit validator. Every check is pure and
-// offline — dimensions and format come from image.DecodeConfig (header only),
+// offline: dimensions and format come from image.DecodeConfig (header only),
 // the rest from a versioned in-code table (ADR-0013 §4).
 package imagevalidate_test
 
@@ -126,7 +126,7 @@ func TestValidate_perImageByteCap(t *testing.T) {
 }
 
 // TestRulesVersion_isDatestampedAndCitesDoc asserts the rule table is
-// versioned and cites the source — the ADR-0013 §4 "single versioned source"
+// versioned and cites the source: the ADR-0013 §4 "single versioned source"
 // requirement.
 func TestRulesVersion_isDatestampedAndCitesDoc(t *testing.T) {
 	if imagevalidate.RulesVersion == "" {

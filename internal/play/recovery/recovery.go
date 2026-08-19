@@ -2,7 +2,7 @@
 // apprecovery resource; ADR-0007 raw HTTP). A recovery action is a targeted
 // incident-response remediation that pushes users impacted by a bad release
 // back to a safe app version via remote in-app update. Like internal/play/team
-// these calls are app-scoped and OUTSIDE the Edit model — they target
+// these calls are app-scoped and OUTSIDE the Edit model: they target
 // /applications/{packageName}/appRecoveries, with their own appRecoveryId and a
 // draft→active→canceled lifecycle, never an editId.
 //
@@ -29,7 +29,7 @@ const (
 	opList   = "apprecovery.list"
 )
 
-// Action is the parsed AppRecoveryAction — the fields the human views need. The
+// Action is the parsed AppRecoveryAction: the fields the human views need. The
 // full body round-trips verbatim via the raw return (ADR-0003).
 type Action struct {
 	AppRecoveryID  string `json:"appRecoveryId,omitempty"`
@@ -86,7 +86,7 @@ type CreateOpts struct {
 	AllUsers          bool
 	Regions           []string
 	SdkLevels         []int64
-	RemoteInAppUpdate bool // default true — the only recovery type Play models today
+	RemoteInAppUpdate bool // default true: the only recovery type Play models today
 }
 
 // BuildTargeting assembles the audience selector from the user-dimension flags

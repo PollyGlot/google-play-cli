@@ -1,12 +1,12 @@
 // Package team performs the hand-rolled HTTP calls for the Google Play
-// Developer account's people/permissions surface — `users.*` and `grants.*`
+// Developer account's people/permissions surface: `users.*` and `grants.*`
 // under developers/{developerId} (ADR-0007: raw HTTP, not the generated SDK).
 // Unlike most internal/play/* modules these calls are OUTSIDE the Edits model:
 // they target the Developer account, not an app's edit transaction.
 //
 // The whole upstream surface is 7 methods with two hard shapes (PRD #147):
 //
-//   - there is NO users.get and NO grants.list/grants.get — a User's Grants
+//   - there is NO users.get and NO grants.list/grants.get: a User's Grants
 //     are a FIELD of the User resource, so the only way to read a User (or any
 //     Grant) is users.list. FindUser powers every read-then-decide path.
 //   - users.list is paginated; ListUsers follows nextPageToken to completion
@@ -47,7 +47,7 @@ const (
 const listPageSize = 100
 
 // User is the API-shaped Developer-account member. json tags mirror the API
-// verbatim for the ADR-0003 pass-through. Grants are a field of the User —
+// verbatim for the ADR-0003 pass-through. Grants are a field of the User:
 // there is no standalone grants endpoint.
 type User struct {
 	Name                        string   `json:"name,omitempty"`
@@ -108,7 +108,7 @@ func ListUsers(ctx context.Context, hc *http.Client, developerID string) ([]User
 	}
 
 	// Normalise to an empty slice so an account with no members marshals as
-	// {"users":[]} rather than {"users":null} — the conventional empty-array
+	// {"users":[]} rather than {"users":null}: the conventional empty-array
 	// shape a consumer parsing `.users` expects.
 	if rawAll == nil {
 		rawAll = []json.RawMessage{}
@@ -124,7 +124,7 @@ func ListUsers(ctx context.Context, hc *http.Client, developerID string) ([]User
 
 // listUsersRaw fetches every member of the developer account, following
 // nextPageToken to completion (no silent truncation), and returns the parsed
-// Users together with the verbatim per-User bytes the API returned — parallel
+// Users together with the verbatim per-User bytes the API returned: parallel
 // slices sharing an index. It is the shared core of ListUsers (which merges the
 // raw bytes into one `{"users":[…]}` body) and FindUserRaw (which filters to the
 // one matched member). An *api.Error surfaces on any failure.
@@ -178,7 +178,7 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 }
 
 // FindUserRaw reads a single member (and their Grants) by email, returning the
-// parsed User and the verbatim bytes users.list returned for it — the raw object
+// parsed User and the verbatim bytes users.list returned for it: the raw object
 // an addressed read (`team users view`) passes through under ADR-0003. The API
 // has no users.get, so it lists to completion and filters. Email match is
 // case-insensitive (Google stores the address as entered, but addresses are
@@ -197,7 +197,7 @@ func FindUserRaw(ctx context.Context, hc *http.Client, developerID, email string
 	return nil, nil, false, nil
 }
 
-// FindUser reads a single member (and their Grants) by email — the "read a User
+// FindUser reads a single member (and their Grants) by email: the "read a User
 // + their grants" helper every read-then-decide path reuses (#150). It is
 // FindUserRaw without the raw pass-through bytes, for callers that only need the
 // parsed shape. Returns (nil, false, nil) when no member matches.

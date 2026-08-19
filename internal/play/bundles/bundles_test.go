@@ -42,7 +42,7 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP asserts a
 // non-regular path (a directory) is rejected as a client-side validation
-// error (exit 20) BEFORE any HTTP — os.Open+Stat both succeed on a
+// error (exit 20) BEFORE any HTTP: os.Open+Stat both succeed on a
 // directory, so without an explicit regular-file guard it would only fail
 // later as a transport error (exit 50). Mirrors the mappings.Upload guard.
 func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {

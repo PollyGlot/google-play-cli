@@ -1,7 +1,7 @@
 // Package list implements `gplay reviews list`: a read-only listing of the
 // user reviews the Google Play API exposes for a package. The API serves
 // only the last 7 days (docs/DESIGN.md §5), so the command always prints a
-// stderr warning to that effect. It is thin glue — resolve --package, build
+// stderr warning to that effect. It is thin glue: resolve --package, build
 // an authenticated client, consume internal/play/reviews.List (which owns
 // auto-pagination), apply the client-side --stars filter and --limit cap,
 // then render. No Edit, no mutation.
@@ -27,7 +27,7 @@ import (
 // sevenDayWarning is printed to stderr on every successful invocation: the
 // reviews API only exposes the last 7 days, so a quiet empty result would
 // otherwise read as "no reviews" when it really means "none in the window".
-const sevenDayWarning = "WARN: the Google Play reviews API only returns reviews from the last 7 days; older reviews are not available here — use `gplay reviews history` for the full history from the monthly CSV reports."
+const sevenDayWarning = "WARN: the Google Play reviews API only returns reviews from the last 7 days; older reviews are not available here: use `gplay reviews history` for the full history from the monthly CSV reports."
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
@@ -80,8 +80,8 @@ func formatDate(t time.Time) string {
 
 // summary is a one-line, table-friendly digest of a comment: the first line
 // that carries visible text (so a comment opening with a blank line is not
-// summarized as empty), with interior whitespace — tabs, stray carriage
-// returns, runs of spaces — collapsed to single spaces so the cell cannot
+// summarized as empty), with interior whitespace: tabs, stray carriage
+// returns, runs of spaces: collapsed to single spaces so the cell cannot
 // inject an extra tabwriter column or break a Markdown row, then truncated
 // to maxSummaryLen runes with an ellipsis.
 func summary(text string) string {
@@ -147,7 +147,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 
 	sel, err := filter.Parse(in.Stars)

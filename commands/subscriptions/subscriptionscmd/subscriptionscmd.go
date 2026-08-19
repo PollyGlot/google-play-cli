@@ -23,7 +23,7 @@ import (
 const DefaultDir = "./monetization/subscriptions"
 
 // DefaultRegionsVersion is the regions version pin sent with subscription
-// writes (create/patch) unless --regions-version overrides it — the latest
+// writes (create/patch) unless --regions-version overrides it: the latest
 // version Google has published (ADR-0041 §7).
 const DefaultRegionsVersion = "2022/02"
 
@@ -36,7 +36,7 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return "", exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return "", exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 	return pkg, nil
 }
@@ -52,7 +52,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account cannot manage the subscription catalog for %q — grant it access to the app's monetization setup in Play Console (Users & permissions), then retry: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account cannot manage the subscription catalog for %q: grant it access to the app's monetization setup in Play Console (Users & permissions), then retry: %v", e.pkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -65,7 +65,7 @@ type notFoundError struct {
 }
 
 func (e *notFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — verify --package (or the project pin) names an app this service account can reach: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: verify --package (or the project pin) names an app this service account can reach: %v", e.pkg, e.cause)
 }
 func (e *notFoundError) Unwrap() error { return e.cause }
 

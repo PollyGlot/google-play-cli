@@ -1,7 +1,7 @@
 // Package set implements `gplay team users set <email>`: replace a member's
 // account-wide permissions declaratively via users.patch (like `testers set`).
 // It is the routine tier (ADR-0017): --role XOR --permissions, no confirmation
-// gate for a normal replace — even a permission-REDUCING set is a previewable
+// gate for a normal replace, even a permission-REDUCING set is a previewable
 // declarative statement, not a separately gated event.
 //
 // A bare `set` (neither --role nor --permissions nor --clear) is a misuse
@@ -49,7 +49,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to manage users on developer account %s — grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
+	return fmt.Sprintf("service account is not authorized to manage users on developer account %s: grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -59,7 +59,7 @@ type notMemberError struct {
 }
 
 func (e *notMemberError) Error() string {
-	return fmt.Sprintf("%s is not a member — use `gplay team users add %s` to invite them first: %v", e.email, e.email, e.cause)
+	return fmt.Sprintf("%s is not a member: use `gplay team users add %s` to invite them first: %v", e.email, e.email, e.cause)
 }
 func (e *notMemberError) Unwrap() error { return e.cause }
 
@@ -178,11 +178,11 @@ func selectorCount(in Input) int {
 
 // Run is the business function the kernel invokes. It enforces the declarative
 // footgun guard, resolves the replacement permission set, applies the gate, and
-// — unless --dry-run short-circuits — replaces the member's permissions.
+// (unless --dry-run short-circuits) replaces the member's permissions.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
-		return nil, exit.Usagef("missing <email> — usage: gplay team users set <email> --role <bundle>|--permissions <alias,…>|--clear")
+		return nil, exit.Usagef("missing <email>: usage: gplay team users set <email> --role <bundle>|--permissions <alias,…>|--clear")
 	}
 
 	switch selectorCount(in) {
@@ -242,7 +242,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set <email>",
 		Short: "Replace a member's account-wide permissions (declarative)",
-		Long: `Replace <email>'s account-wide permissions declaratively via users.patch —
+		Long: `Replace <email>'s account-wide permissions declaratively via users.patch:
 the whole set is sent, not merged. Express the set in friendly form:
 --role <bundle> XOR --permissions <alias,…> (account scope). Run
 ` + "`gplay team permissions`" + ` to list aliases and bundles.

@@ -1,7 +1,7 @@
 // Package countryavailability reads the Country availability of a track
 // via edits.countryavailability.get, inside an Edit the caller has
 // already opened. The resource is READ-ONLY (the Developer API exposes no
-// insert/patch/update) and keyed by TRACK, not by app — see ADR-0012.
+// insert/patch/update) and keyed by TRACK, not by app: see ADR-0012.
 // gplay surfaces it at that real grain (per track) and at that real
 // capability (read-only); a user who wants to change availability is
 // pointed at the Play Console.

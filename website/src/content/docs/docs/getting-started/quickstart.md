@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: From zero to a release upload in five commands — login, doctor, project pinning, and the core gplay release workflow.
+description: "From zero to a release upload in five commands: login, doctor, project pinning, and the core gplay release workflow."
 sidebar:
   order: 3
 ---
@@ -37,8 +37,8 @@ gplay init --package com.example.myapp
 ```
 
 `gplay init` writes `.gplay/config.json` at the repo root. Every gplay
-command run inside that tree now targets `com.example.myapp` by default — no
-more `--package` on each call. The pin is meant to be committed; see
+command run inside that tree now targets `com.example.myapp` by default, with
+no more `--package` on each call. The pin is meant to be committed; see
 [Configuration](/docs/concepts/configuration/).
 
 ## 4. Look around
@@ -58,7 +58,7 @@ gplay reviews list --stars 1-2
 # Upload an AAB to the internal track with localized release notes.
 gplay releases upload app.aab --track internal --release-notes-dir ./whatsnew
 
-# Promote the latest internal build to beta — same versionCode, no re-upload.
+# Promote the latest internal build to beta: same versionCode, no re-upload.
 gplay releases promote --from internal --to beta
 
 # Stage a production rollout at 10%, then advance it.
@@ -67,15 +67,15 @@ gplay releases rollout --track production --to 0.10
 
 :::note[Safe by default]
 Targeting `production` creates a **draft** release unless you explicitly
-pass `--complete` or `--staged <fraction>` — and completing or staging a
+pass `--complete` or `--staged <fraction>`. Completing or staging a
 production release additionally requires `--confirm`. Nothing reaches users
 by accident. See [Tracks & releases](/docs/concepts/tracks-and-releases/).
 :::
 
 ## Where to go next
 
-- [Release flow guide](/docs/guides/release-flow/) — the full
+- [Release flow guide](/docs/guides/release-flow/): the full
   upload → promote → rollout lifecycle.
-- [CI/CD guide](/docs/guides/ci-cd/) — the same flow in GitHub Actions.
-- [Metadata sync](/docs/guides/metadata-sync/) — keep store listings in git.
-- [CLI reference](/docs/reference/) — every command and flag.
+- [CI/CD guide](/docs/guides/ci-cd/): the same flow in GitHub Actions.
+- [Metadata sync](/docs/guides/metadata-sync/): keep store listings in git.
+- [CLI reference](/docs/reference/): every command and flag.

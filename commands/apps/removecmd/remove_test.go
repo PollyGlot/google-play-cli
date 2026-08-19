@@ -1,7 +1,7 @@
 // Package removecmd_test exercises `gplay apps remove` at the kernel
 // level: a RunContext built by hand and Run invoked directly. Mirrors
 // the commands/apps/addcmd and commands/auth/logout patterns. The
-// command is a pure local-state op — zero HTTP calls — so tests never
+// command is a pure local-state op (zero HTTP calls) so tests never
 // install a token exchange or RoundTripper machinery (an opt-in
 // failOnCallRT proves the no-network invariant where it matters).
 package removecmd_test
@@ -31,7 +31,7 @@ import (
 // newRC builds a RunContext with a fresh global config at a temp path,
 // seeded with one Account named "playci" (active) carrying the given
 // packages. rc.AccountName is populated to mirror the post-resolver
-// state — remove reads it as the authoritative scope (mirrors addcmd).
+// state: remove reads it as the authoritative scope (mirrors addcmd).
 // The stderr buffer is plumbed through rc.Stderr so tests can assert on
 // the human-facing notices remove emits (no-op hint, pin warning).
 func newRC(t *testing.T, stderr *bytes.Buffer, packages []string) *kernel.RunContext {
@@ -59,7 +59,7 @@ func newRC(t *testing.T, stderr *bytes.Buffer, packages []string) *kernel.RunCon
 // TestRun_happyPath_removesAndPersists is the tracer bullet: the
 // active Account has the package registered, Run drops it, and the
 // change is visible on the next config load. Renderable must be nil
-// (remove has no payload — like auth logout).
+// (remove has no payload: like auth logout).
 func TestRun_happyPath_removesAndPersists(t *testing.T) {
 	var stderr bytes.Buffer
 	rc := newRC(t, &stderr, []string{"com.example.myapp", "com.example.other"})
@@ -79,7 +79,7 @@ func TestRun_happyPath_removesAndPersists(t *testing.T) {
 	if registry.Has(g.Accounts, "playci", "com.example.myapp") {
 		t.Errorf("package still in registry after Run; accounts=%+v", g.Accounts)
 	}
-	// The other package must survive — Run targets exactly one entry.
+	// The other package must survive: Run targets exactly one entry.
 	if !registry.Has(g.Accounts, "playci", "com.example.other") {
 		t.Errorf("sibling package was wrongly removed; accounts=%+v", g.Accounts)
 	}
@@ -87,7 +87,7 @@ func TestRun_happyPath_removesAndPersists(t *testing.T) {
 
 // TestRun_emptyPackage_rejectsClientSide asserts the symmetry-with-add
 // invariant: an empty <package> positional (which ExactArgs(1) lets
-// through — it only counts args, doesn't inspect them) must be
+// through: it only counts args, doesn't inspect them) must be
 // rejected client-side with exit 2 (CLI misuse), not silently no-op
 // against an empty key in the registry. Without this branch, the
 // user types `gplay apps remove ""` and sees a cryptic
@@ -103,7 +103,7 @@ func TestRun_emptyPackage_rejectsClientSide(t *testing.T) {
 	if got := exit.For(err); got != 2 {
 		t.Errorf("exit.For = %d, want 2 (CLI misuse); err = %v", got, err)
 	}
-	// The registry must be untouched — no Save, no churn.
+	// The registry must be untouched: no Save, no churn.
 	g, err := config.LoadGlobalOrEmpty(rc.Ctx, config.OSFS{}, rc.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty: %v", err)
@@ -161,7 +161,7 @@ func TestRun_inlineCredential_refusesWithExit2(t *testing.T) {
 // TestRun_accountNotInGlobal_refusesWithExit10 asserts the distinct
 // error path users get when they hit a stale `.gplay/config.local.json`
 // or a logged-out Account: rc.AccountName is set, but the Account is
-// not in the global config. Mirrors addcmd's pre-flight check —
+// not in the global config. Mirrors addcmd's pre-flight check:
 // without it, `apps remove ghost-account-pkg` would silently no-op
 // (registry.Remove on an unknown account is a no-op), masking a
 // broken state until the next `apps add`.
@@ -210,13 +210,13 @@ func TestRun_noCredentialAtAll_refusesWithExit10(t *testing.T) {
 // pin-handling rule from the issue: when the removed package matches
 // rc.Resolved.Pin, Run prints a stderr warning so the user knows their
 // `.gplay/config.json` pin now points at a package the registry no
-// longer carries — but `apps remove` must NOT rewrite the project
+// longer carries, but `apps remove` must NOT rewrite the project
 // config (whether to repin or leave the dangling pin is the caller's
 // decision, not a side effect of this command).
 //
 // The assertion is byte-for-byte equality on the project config file
-// before and after Run, so any silent rewrite — even a no-op
-// marshal/unmarshal that reorders keys — fails the test.
+// before and after Run, so any silent rewrite, even a no-op
+// marshal/unmarshal that reorders keys: fails the test.
 func TestRun_pinnedPackage_warnsButDoesNotTouchProjectConfig(t *testing.T) {
 	var stderr bytes.Buffer
 	rc := newRC(t, &stderr, []string{"com.example.pinned"})
@@ -242,7 +242,7 @@ func TestRun_pinnedPackage_warnsButDoesNotTouchProjectConfig(t *testing.T) {
 	}
 
 	// The pin warning must reach stderr AND must reference the
-	// project config — without it the user has no signal that their
+	// project config: without it the user has no signal that their
 	// `.gplay/config.json` pin now points at a package the registry no
 	// longer carries. We assert on ".gplay/config.json" specifically so
 	// the test fails when the warning is missing even though the
@@ -269,7 +269,7 @@ func TestRun_pinnedPackage_warnsButDoesNotTouchProjectConfig(t *testing.T) {
 // runCmd executes a fresh `gplay apps remove ...` cobra tree against
 // the given seed config file. Mirrors the production root's
 // PersistentFlags declarations from cmd/gplay/main.go so
-// kernel.FromCobra reads the same flag surface the binary exposes —
+// kernel.FromCobra reads the same flag surface the binary exposes:
 // a future regression of main.go that drops `--verbose` or `--account`
 // would then surface here as a test failure instead of slipping
 // through silently (FromCobra calls cmd.Flags().GetBool(\"verbose\")
@@ -310,13 +310,13 @@ func seedGlobal(t *testing.T, packages []string) string {
 // cobra root declares the same PersistentFlags as production
 // (cmd/gplay/main.go). Passing `--verbose`, `--account`, and
 // `--service-account` at the top level must NOT yield "unknown flag"
-// errors — if cobra rejects any of them, the runCmd helper has
+// errors, if cobra rejects any of them, the runCmd helper has
 // drifted from production and the rest of the cobra-level tests are
 // running in a fictional flag environment.
 //
 // The test asserts on the failure mode: a flag-parsing error from
 // cobra surfaces as "unknown flag: --foo". Any non-cobra error
-// (business logic, auth) is fine — the persistent flags reached the
+// (business logic, auth) is fine: the persistent flags reached the
 // parser, which is the whole point.
 func TestCobra_persistentFlags_inheritedFromRoot(t *testing.T) {
 	cfgPath := seedGlobal(t, nil)
@@ -327,10 +327,10 @@ func TestCobra_persistentFlags_inheritedFromRoot(t *testing.T) {
 			// A regression of cmd/gplay/main.go that drops one of
 			// these PersistentFlags would surface here as cobra's
 			// `unknown flag: ...` error. Any other error (business
-			// logic, auth) is acceptable — it proves the flag
+			// logic, auth) is acceptable: it proves the flag
 			// reached the parser successfully.
 			if err != nil && strings.Contains(err.Error(), "unknown flag") {
-				t.Errorf("cobra rejected %s as unknown — runCmd drifted from production root: %v", flag, err)
+				t.Errorf("cobra rejected %s as unknown: runCmd drifted from production root: %v", flag, err)
 			}
 		})
 	}
@@ -367,7 +367,7 @@ func TestCobra_extraArgs_isRejectedByExactArgs(t *testing.T) {
 }
 
 // failOnCallRT fails the test on any HTTP call. Tests pass it through
-// the oauth2.HTTPClient context key — the same seam addcmd uses for
+// the oauth2.HTTPClient context key: the same seam addcmd uses for
 // its --no-verify assertion. `apps remove` is pure local state and
 // MUST never hit the network; this RoundTripper is the assertion.
 type failOnCallRT struct{ t *testing.T }
@@ -379,7 +379,7 @@ func (r *failOnCallRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // TestRun_makesZeroHTTPCalls is the no-network invariant from the
 // issue's acceptance criteria. The package is registered, Run drops
-// it, and the failOnCallRT never sees a request — proving the
+// it, and the failOnCallRT never sees a request: proving the
 // "pure local state op" contract held end-to-end (not just by the
 // absence of an HTTP client in the current implementation).
 func TestRun_makesZeroHTTPCalls(t *testing.T) {
@@ -411,7 +411,7 @@ func TestRun_packageAbsent_isNoOpWithStderrNote(t *testing.T) {
 	if !strings.Contains(stderr.String(), "not in registry") {
 		t.Errorf("stderr should explain the no-op; got %q", stderr.String())
 	}
-	// The other package must still be there — no rewrite, no churn.
+	// The other package must still be there: no rewrite, no churn.
 	g, err := config.LoadGlobalOrEmpty(rc.Ctx, config.OSFS{}, rc.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty: %v", err)
@@ -425,7 +425,7 @@ func TestRun_packageAbsent_isNoOpWithStderrNote(t *testing.T) {
 // real cobra command through the production lazy path with a malformed
 // inline GPLAY_SERVICE_ACCOUNT. The AccountName == "" branch must surface
 // the invalid-credential error (exit 10, the real cause) instead of the
-// misdirecting "run gplay auth login" authError — and must NOT mutate the
+// misdirecting "run gplay auth login" authError, and must NOT mutate the
 // cascade Account's registry (#180, ADR-0020).
 func TestRemove_cobra_malformedInlineCredential_exits10NoMutation(t *testing.T) {
 	t.Setenv(resolver.EnvAccount, "")
@@ -449,7 +449,7 @@ func TestRemove_cobra_malformedInlineCredential_exits10NoMutation(t *testing.T) 
 		t.Errorf("error should preserve the underlying JSON parse cause; got %q", err.Error())
 	}
 	// Under --output json (auto-resolved off a non-TTY) a failure emits the
-	// structured error envelope on stdout (ADR-0023) — the error only, never a
+	// structured error envelope on stdout (ADR-0023): the error only, never a
 	// data payload. The no-mutation contract below is the load-bearing guard.
 	if out := stdout.String(); !strings.Contains(out, `"exitCode": 10`) {
 		t.Errorf("json hard-error path should emit the exit-10 error envelope; got %q", out)

@@ -6,10 +6,10 @@
 //
 // The namespace wraps two sibling surfaces sharing one addressing axis:
 // `appstorecatalog` (read-only catalog export) and `appstoreappsreview` (the
-// hosted app review path — see CONTEXT.md "Hosted app" and PRD #377).
+// hosted app review path: see CONTEXT.md "Hosted app" and PRD #377).
 //
-// Addressing rides the APP STORE PACKAGE NAME — the package of the alternative
-// app store on whose behalf the request is made — which is a different axis
+// Addressing rides the APP STORE PACKAGE NAME: the package of the alternative
+// app store on whose behalf the request is made, which is a different axis
 // from the Android package the rest of gplay targets: it names the *caller's
 // store*, not the app being read or acted on. There is therefore no
 // `.gplay/config.json` project-pin cascade for it (that pin is the repo's own
@@ -71,7 +71,7 @@ func ResolveStorePackage(flag string) (string, error) {
 	if v := strings.TrimSpace(os.Getenv(EnvStorePackage)); v != "" {
 		return v, nil
 	}
-	return "", &usageError{msg: "no app store package name — pass --" + FlagStorePackage + " <pkg> or export " + EnvStorePackage +
+	return "", &usageError{msg: "no app store package name: pass --" + FlagStorePackage + " <pkg> or export " + EnvStorePackage +
 		" (the package name of the app store on whose behalf the request is made, not the app being read or acted on)"}
 }
 
@@ -93,14 +93,14 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return "", &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	return pkg, nil
 }
 
 // ParseRFC3339 validates a required RFC 3339 timestamp flag (the `google-datetime`
-// format the API's time-range parameters take). It returns the parsed instant —
-// for range checks — and the trimmed original string, which is what travels on
+// format the API's time-range parameters take). It returns the parsed instant:
+// for range checks, and the trimmed original string, which is what travels on
 // the wire so the caller's offset is preserved verbatim. A missing or malformed
 // value is CLI misuse (exit 2) naming the flag and a valid example, so a CI run
 // fails fast instead of paying for a round trip that the API would reject.
@@ -117,8 +117,8 @@ func ParseRFC3339(flag, value string) (time.Time, string, error) {
 }
 
 // ValidateTimeRange validates the required --start-time / --end-time pair and
-// returns the two strings to send. The range is [start, end) — the API documents
-// the start as inclusive and the end as exclusive — so an end at or before the
+// returns the two strings to send. The range is [start, end): the API documents
+// the start as inclusive and the end as exclusive, so an end at or before the
 // start can only ever return nothing and is rejected as CLI misuse (exit 2).
 func ValidateTimeRange(startFlag, endFlag string) (string, string, error) {
 	start, startStr, err := ParseRFC3339("start-time", startFlag)
@@ -145,7 +145,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account cannot read the Play catalog export on behalf of app store %q — verify --store-package names an app store enrolled for the Catalog Export and that the credential is authorized for it: %v", e.storePkg, e.cause)
+	return fmt.Sprintf("service account cannot read the Play catalog export on behalf of app store %q: verify --store-package names an app store enrolled for the Catalog Export and that the credential is authorized for it: %v", e.storePkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -159,7 +159,7 @@ type notFoundError struct {
 }
 
 func (e *notFoundError) Error() string {
-	return fmt.Sprintf("no catalog app view for Play app %q (app store %q) — the app may not be eligible for catalog inclusion, may have been removed from the Play Store, or the app store package name may be wrong: %v", e.playPkg, e.storePkg, e.cause)
+	return fmt.Sprintf("no catalog app view for Play app %q (app store %q): the app may not be eligible for catalog inclusion, may have been removed from the Play Store, or the app store package name may be wrong: %v", e.playPkg, e.storePkg, e.cause)
 }
 func (e *notFoundError) Unwrap() error { return e.cause }
 
@@ -187,7 +187,7 @@ type storeNotFoundError struct {
 }
 
 func (e *storeNotFoundError) Error() string {
-	return fmt.Sprintf("no catalog export for app store %q — verify --store-package names an app store enrolled for the Google Play Catalog Export: %v", e.storePkg, e.cause)
+	return fmt.Sprintf("no catalog export for app store %q: verify --store-package names an app store enrolled for the Google Play Catalog Export: %v", e.storePkg, e.cause)
 }
 func (e *storeNotFoundError) Unwrap() error { return e.cause }
 
@@ -208,7 +208,7 @@ func ClassifyStoreRead(storePkg string, err error) error {
 }
 
 // ClassifyHostedApp is ClassifyReview for the calls that act on an app the
-// store has ALREADY created — upload, publish-status, update. It differs on
+// store has ALREADY created: upload, publish-status, update. It differs on
 // 404 only: there, a missing hosted app record is at least as likely as a
 // wrong store, so the hint names both. Use ClassifyReview for `appstore
 // create`, where the record cannot be the thing that is missing.
@@ -222,7 +222,7 @@ func ClassifyHostedApp(storePkg, pkg string, err error) error {
 
 // reviewForbiddenError wraps a 403 on the `appstoreappsreview` write path.
 // Access is granted to enrolled third-party app stores, so the refusal names
-// both halves of what has to be true. No ExitCode of its own — the wrapped
+// both halves of what has to be true. No ExitCode of its own: the wrapped
 // *api.Error (403 → exit 11) stays authoritative.
 type reviewForbiddenError struct {
 	storePkg string
@@ -230,7 +230,7 @@ type reviewForbiddenError struct {
 }
 
 func (e *reviewForbiddenError) Error() string {
-	return fmt.Sprintf("service account cannot act as app store %q — the app store package name must be one Google has enrolled for alternative distribution, and the service account must be linked to that store's Developer account, then retry: %v", e.storePkg, e.cause)
+	return fmt.Sprintf("service account cannot act as app store %q: the app store package name must be one Google has enrolled for alternative distribution, and the service account must be linked to that store's Developer account, then retry: %v", e.storePkg, e.cause)
 }
 func (e *reviewForbiddenError) Unwrap() error { return e.cause }
 
@@ -243,7 +243,7 @@ type reviewStoreNotFoundError struct {
 }
 
 func (e *reviewStoreNotFoundError) Error() string {
-	return fmt.Sprintf("app store %q not found — verify the --%s value names the third-party app store's own package name (not the hosted app's): %v", e.storePkg, FlagStorePackage, e.cause)
+	return fmt.Sprintf("app store %q not found: verify the --%s value names the third-party app store's own package name (not the hosted app's): %v", e.storePkg, FlagStorePackage, e.cause)
 }
 func (e *reviewStoreNotFoundError) Unwrap() error { return e.cause }
 
@@ -262,7 +262,7 @@ type hostedAppNotFoundError struct {
 }
 
 func (e *hostedAppNotFoundError) Error() string {
-	return fmt.Sprintf("no hosted app %q in app store %q — run `gplay appstore create --%s %s --package %s` first (it is the mandatory precondition for every other call here), or verify the --%s value names the app store's own package name (not the hosted app's): %v",
+	return fmt.Sprintf("no hosted app %q in app store %q: run `gplay appstore create --%s %s --package %s` first (it is the mandatory precondition for every other call here), or verify the --%s value names the app store's own package name (not the hosted app's): %v",
 		e.pkg, e.storePkg, FlagStorePackage, e.storePkg, e.pkg, FlagStorePackage, e.cause)
 }
 func (e *hostedAppNotFoundError) Unwrap() error { return e.cause }

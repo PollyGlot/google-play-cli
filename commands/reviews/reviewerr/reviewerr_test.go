@@ -57,7 +57,7 @@ func TestClassifyReply(t *testing.T) {
 	}{
 		// 403 reuses the SHARED "Reply to reviews" grant hint (issue #62).
 		{"forbidden shares the grant hint", 403, 11, "Reply to reviews"},
-		// 404 on reply means the reviewId is unknown — NOT the package, so it
+		// 404 on reply means the reviewId is unknown, NOT the package, so it
 		// must not point the operator at `gplay apps list`.
 		{"not found names the review", 404, 30, "review"},
 		{"server error passthrough", 500, 40, ""},

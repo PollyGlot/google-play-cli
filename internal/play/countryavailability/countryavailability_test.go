@@ -132,7 +132,7 @@ func TestGet_404_mapsExit30(t *testing.T) {
 	}
 }
 
-// brokenBody errors on the first Read so io.ReadAll fails mid-stream — a
+// brokenBody errors on the first Read so io.ReadAll fails mid-stream: a
 // truncated 2xx response must surface as an I/O failure, not be silently
 // passed to json.Unmarshal as if the body were complete.
 type brokenBody struct{}

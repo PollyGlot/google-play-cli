@@ -182,7 +182,7 @@ func TestParseTimeline_hourlyMidnightCarriesTime(t *testing.T) {
 }
 
 // TestQuery_emptyBodyTolerated asserts an empty 2xx page body does not surface
-// as a decode error — it yields an empty {rows:[]} envelope.
+// as a decode error: it yields an empty {rows:[]} envelope.
 func TestQuery_emptyBodyTolerated(t *testing.T) {
 	set, _ := vitals.MetricSetByName("crashrate")
 	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {

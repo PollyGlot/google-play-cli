@@ -17,7 +17,7 @@ import (
 // cascade (active Account → project-local → GPLAY_DEVELOPER_ID → flag) and
 // performs the type-once capture (#151): when the --developer-id flag supplied
 // the value AND the active Account has none yet, it is persisted to the global
-// Account record — mirroring how `apps add` populates Packages. An Account that
+// Account record: mirroring how `apps add` populates Packages. An Account that
 // already carries a developer-id is NOT overwritten; an explicit flag then
 // overrides for that invocation only. Persistence always targets the global
 // Account record, never the committed project config, and a hiccup is reported
@@ -49,7 +49,7 @@ func captureTypeOnce(rc *kernel.RunContext, id string) {
 			continue
 		}
 		if strings.TrimSpace(g.Accounts[i].DeveloperID) != "" {
-			return // already set — an explicit flag is an invocation-only override
+			return // already set: an explicit flag is an invocation-only override
 		}
 		g.Accounts[i].DeveloperID = id
 		if err := g.Save(rc.Ctx, fsOrDefault(rc), rc.ConfigPath); err != nil {

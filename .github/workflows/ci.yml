@@ -144,8 +144,9 @@ jobs:
   docs:
     name: Docs sanity
     runs-on: ubuntu-latest
-    # Always runs: it's a required check, and its steps (verb gate, shellcheck,
-    # required-files) are cheap and relevant to every PR regardless of scope.
+    # Always runs: it's a required check, and its steps (verb gate, dash gate,
+    # shellcheck, required-files) are cheap and relevant to every PR regardless
+    # of scope.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -153,6 +154,9 @@ jobs:
 
       - name: Verb vocabulary gate (ADR-0019)
         run: bash scripts/verb-gate.sh
+
+      - name: Em dash gate (help text and error messages reach users)
+        run: bash scripts/dash-gate.sh
 
       - name: shellcheck install.sh
         run: shellcheck install.sh

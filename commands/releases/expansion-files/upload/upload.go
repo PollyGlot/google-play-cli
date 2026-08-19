@@ -139,7 +139,7 @@ APK versionCode, via the full Edit lifecycle (insert → upload → commit;
 auto-discarded on failure unless --keep-edit-on-failure).
 
 LEGACY: expansion files are the pre-AAB mechanism for >150 MB out-of-APK
-assets — most apps use Play Asset Delivery instead. Only APK-based apps use OBB.
+assets: most apps use Play Asset Delivery instead. Only APK-based apps use OBB.
 
 --type is main or patch (the two expansion files per APK). --dry-run validates
 the local file and inputs without any HTTP call. GPLAY_READONLY refuses it.`,

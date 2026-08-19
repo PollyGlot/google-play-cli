@@ -34,13 +34,13 @@ metadata/
 ```
 
 The file names match `fastlane supply`, so an existing fastlane metadata
-tree is a drop-in — minus fastlane's redundant `android/` segment and minus
+tree is a drop-in, minus fastlane's redundant `android/` segment and minus
 `changelogs/` (release notes belong to `releases upload`, not metadata).
 Plain text keeps a 4000-character description human-editable with
 line-by-line git diffs.
 
-Google's limits — title 30, short description 80, full description 4000
-characters — are enforced **offline** by `gplay metadata validate`, before
+Google's limits (title 30, short description 80, full description 4000
+characters) are enforced **offline** by `gplay metadata validate`, before
 any API call.
 
 ## Missing vs. empty
@@ -48,7 +48,7 @@ any API call.
 Within a locale, a **missing** field file and an **empty** one mean
 different things to `apply`:
 
-- missing → "I don't manage this field — leave the online value alone"
+- missing → "I don't manage this field, leave the online value alone"
 - empty → "clear this field online"
 
 `pull` writes a file only for non-empty online fields, so a `pull` followed
@@ -57,7 +57,7 @@ by an unmodified `apply` is a no-op.
 ## Additive sync
 
 `metadata apply` only ever **upserts** the locales and fields it finds on
-disk. Anything live on Play but absent locally is left untouched — never
+disk. Anything live on Play but absent locally is left untouched, never
 deleted by omission. Deletion is opt-in with `--prune`, which still refuses
 to remove the app's default-language listing.
 
@@ -66,7 +66,7 @@ turns a partial `pull` + `apply` into a data-loss event.
 
 ## Images: reconciliation by content hash
 
-The images API has no caller-assigned keys — Google identifies each image by
+The images API has no caller-assigned keys: Google identifies each image by
 a server-assigned ID and a SHA-256 of its content. So `metadata images
 apply` reconciles each **slot** (a `(locale, type)` pair) by content:
 
@@ -75,7 +75,7 @@ apply` reconciles each **slot** (a `(locale, type)` pair) by content:
 - **Gallery slots** (`phoneScreenshots`, `sevenInchScreenshots`,
   `tenInchScreenshots`, `tvScreenshots`, `wearScreenshots`) are directories
   whose files, **sorted by filename, define the display order** (the API
-  carries no order field — display order is upload order).
+  carries no order field, so display order is upload order).
 
 If a gallery's local sequence matches the live one by content hash, nothing
 happens; if it differs in content *or* order, gplay clears the slot and

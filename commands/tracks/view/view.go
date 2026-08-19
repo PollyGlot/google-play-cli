@@ -2,7 +2,7 @@
 // view of a single track tuned for the "is something wrong right now?"
 // question. It lists every release coexisting on --track (draft,
 // inProgress, halted, completed) one row each, and makes a halted
-// rollout visually unmissable. It is thin glue — resolve --package, open
+// rollout visually unmissable. It is thin glue: resolve --package, open
 // a read-only Edit, consume internal/play/tracks.Get, and render. The
 // Edit is opened and discarded via edits.WithReadOnlyEdit, never
 // committed.
@@ -37,7 +37,7 @@ type Input struct {
 // trackNotFoundError wraps a tracks.get 404 with an actionable hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
 // the wrapped *api.Error (404 → exit 30) stays authoritative through the
-// Coder chain — an unknown track is an API 4xx, not a CLI misuse.
+// Coder chain: an unknown track is an API 4xx, not a CLI misuse.
 type trackNotFoundError struct {
 	track string
 	cause error
@@ -45,7 +45,7 @@ type trackNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *trackNotFoundError) Error() string {
-	return fmt.Sprintf("track %q not found — run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
+	return fmt.Sprintf("track %q not found: run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -62,7 +62,7 @@ type forbiddenError struct {
 
 // Error renders the forbidden message plus the Play Console grant hint.
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -82,7 +82,7 @@ type packageNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay apps list` hint.
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -132,7 +132,7 @@ func formatFraction(f float64) string {
 
 // standardTracks are the four well-known tracks Google Play provisions for
 // every app. Any other name is a custom closed track. The classification
-// is gplay-derived — the tracks.get payload has no such field — so it
+// is gplay-derived (the tracks.get payload has no such field) so it
 // lives only in the human views, never the JSON pass-through.
 var standardTracks = map[string]bool{
 	"internal":   true,
@@ -163,7 +163,7 @@ func markStatus(s string) string {
 // Payload satisfies output.Renderable. Raw carries the tracks.get body
 // for the ADR-0003 JSON pass-through; Columns is the resolved display
 // order (validated in Run, so renderers can trust every key). Track and
-// Kind are gplay-derived context shown above the table — never in the
+// Kind are gplay-derived context shown above the table: never in the
 // JSON, which stays a faithful tracks.get pass-through.
 type Payload struct {
 	Track    string                          `json:"-"`
@@ -227,7 +227,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 }
 
 // isStatus reports whether err carries a *api.Error with the given HTTP
-// status — the signal used to attach actionable hints to a tracks.get 404
+// status: the signal used to attach actionable hints to a tracks.get 404
 // (unknown track) or a 403 (service account not invited).
 func isStatus(err error, status int) bool {
 	var apiErr *api.Error
@@ -278,7 +278,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 
 	cols, err := ResolveColumns(in.Columns)

@@ -18,7 +18,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/teamtest"
 )
 
-// aliceUser is the verbatim User object users.list returns for alice — an
+// aliceUser is the verbatim User object users.list returns for alice: an
 // account-wide admin (CAN_MANAGE_PERMISSIONS_GLOBAL) with one app grant. The
 // JSON view must echo these exact bytes (ADR-0003 pass-through).
 const aliceUser = `{"email":"alice@example.com","accessState":"PENDING_SIGNUP","developerAccountPermissions":["CAN_MANAGE_PERMISSIONS_GLOBAL","CAN_VIEW_FINANCIAL_DATA_GLOBAL"],"grants":[{"packageName":"com.example.foo","appLevelPermissions":["CAN_VIEW_APP_QUALITY"]}]}`
@@ -26,7 +26,7 @@ const aliceUser = `{"email":"alice@example.com","accessState":"PENDING_SIGNUP","
 // bobUser is a plain (non-admin) member with no grants.
 const bobUser = `{"email":"bob@example.com","accessState":"INVITED"}`
 
-// carolUser is a non-admin member with TWO app grants — exercises the grants
+// carolUser is a non-admin member with TWO app grants: exercises the grants
 // count and multi-row rendering (every other fixture has ≤1 grant).
 const carolUser = `{"email":"carol@example.com","accessState":"PENDING_SIGNUP","grants":[{"packageName":"com.example.foo","appLevelPermissions":["CAN_VIEW_APP_QUALITY"]},{"packageName":"com.example.bar","appLevelPermissions":["CAN_MANAGE_TRACK_USERS","CAN_VIEW_APP_QUALITY"]}]}`
 
@@ -245,7 +245,7 @@ func TestMultiGrantMember(t *testing.T) {
 
 // TestMatchedMemberOnSecondPage proves FindUserRaw paginates to completion and
 // returns the matched member's verbatim bytes even when it sits on a later page
-// — the cross-page raw[i] alignment guard.
+// : the cross-page raw[i] alignment guard.
 func TestMatchedMemberOnSecondPage(t *testing.T) {
 	page1 := `{"users":[` + bobUser + `],"nextPageToken":"tok"}`
 	page2 := usersBody(aliceUser)

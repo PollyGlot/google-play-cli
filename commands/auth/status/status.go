@@ -54,7 +54,7 @@ func (p Payload) Renderers() output.Renderers {
 // the "no active account" payload.
 func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	// status reports auth state, so resolving the credential (and probing
-	// the keystore) is exactly its job — do it now rather than at boot.
+	// the keystore) is exactly its job: do it now rather than at boot.
 	// EnsureAccount splits the two failure shapes (ADR-0020): an *invalid*
 	// credential (malformed JSON, missing field, unreadable file) returns an
 	// exit-10 error, which we surface before rendering so a corrupt active
@@ -67,12 +67,12 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	if rc.Account == nil {
 		return Payload{Active: false}, nil
 	}
-	// rc.AccountName is the credential actually in use — it honours
+	// rc.AccountName is the credential actually in use: it honours
 	// --account / GPLAY_ACCOUNT overrides, unlike rc.Resolved.ConfigAccount,
 	// which only reflects the cascade. It is empty only for an inline
 	// credential (--service-account / GPLAY_SERVICE_ACCOUNT) that never came
 	// from the keystore, so the backend label is probed only when there IS a
-	// stored Account — keeping the inline/env-override path keyring-free. For
+	// stored Account: keeping the inline/env-override path keyring-free. For
 	// a stored Account EnsureAccount already selected the backend while
 	// loading the credential, so this Backend() call is a memoised no-op.
 	activeName := rc.AccountName
@@ -104,7 +104,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		// Now that status has a real error path (a corrupt active credential
 		// returns exit 10, #178), silence cobra's usage banner and error echo
 		// so a runtime failure surfaces as main.go's single `gplay: ...` line
-		// on stderr — never a usage dump on stdout. Matches every other leaf
+		// on stderr: never a usage dump on stdout. Matches every other leaf
 		// command (doctor, apps, ...).
 		SilenceUsage:  true,
 		SilenceErrors: true,

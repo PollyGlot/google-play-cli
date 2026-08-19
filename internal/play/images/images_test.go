@@ -53,7 +53,7 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // TestTypes_modelsTheNineApiTypes asserts the package models exactly the 9
 // AppImageType values the API exposes, with the singular/gallery split
-// explicit — and no Chromebook type (not in AppImageType).
+// explicit, and no Chromebook type (not in AppImageType).
 func TestTypes_modelsTheNineApiTypes(t *testing.T) {
 	got := images.Types()
 	if len(got) != 9 {
@@ -109,7 +109,7 @@ func TestList_parsesImages_andReturnsRawBody(t *testing.T) {
 
 // TestList_absentSlotIsEmpty asserts a slot with no images online (the API
 // returns no `images` key, or an empty list) parses to a zero-length slice
-// and no error — the "missing == empty" precondition on the read side.
+// and no error: the "missing == empty" precondition on the read side.
 func TestList_absentSlotIsEmpty(t *testing.T) {
 	transport := &rt{body: `{"kind":"androidpublisher#imagesListResponse"}`}
 	hc := &http.Client{Transport: transport}
@@ -173,7 +173,7 @@ func TestDelete_targetsOneImage(t *testing.T) {
 }
 
 // TestDeleteAll_clearsTheSlot asserts DeleteAll DELETEs the slot path (no
-// imageId) — the only way to reorder a gallery per ADR-0013.
+// imageId): the only way to reorder a gallery per ADR-0013.
 func TestDeleteAll_clearsTheSlot(t *testing.T) {
 	transport := &rt{body: `{"deleted":[{"id":"a1"},{"id":"b2"}]}`}
 	hc := &http.Client{Transport: transport}
@@ -265,6 +265,6 @@ func TestSha256Soundness_uploadThenList(t *testing.T) {
 		t.Fatalf("got %d images after upload, want 1", len(got))
 	}
 	if got[0].Sha256 != wantHex {
-		t.Errorf("remote sha256 = %q, want sha256(local) = %q — content-hash identity is UNSOUND, use always-replace fallback (ADR-0013)", got[0].Sha256, wantHex)
+		t.Errorf("remote sha256 = %q, want sha256(local) = %q: content-hash identity is UNSOUND, use always-replace fallback (ADR-0013)", got[0].Sha256, wantHex)
 	}
 }

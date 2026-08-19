@@ -1,16 +1,16 @@
 // Package batch parses the TSV stream consumed by `gplay reviews reply
-// --batch`: one `<review-id>\t<reply text>` record per line. It is pure —
-// no IO beyond the supplied reader, no exit codes — so the quoting and
+// --batch`: one `<review-id>\t<reply text>` record per line. It is pure:
+// no IO beyond the supplied reader, no exit codes, so the quoting and
 // comment/blank rules are exhaustively table-tested here while the command
 // layer owns the per-line OK/ERR reporting and the aggregate exit code.
 //
-// The grammar is RFC 4180 with a TAB field separator (not comma — a comma
+// The grammar is RFC 4180 with a TAB field separator (not comma: a comma
 // collides too often with reply prose, see issue #62 "out of scope"):
 //
 //   - Blank lines and lines beginning with `#` are skipped.
 //   - A reply containing tabs or newlines must be double-quoted; inside a
 //     quoted field a literal quote is written `""`. A bare double-quote in
-//     reply prose (e.g. `say "hi"`) is taken literally — quotes only matter
+//     reply prose (e.g. `say "hi"`) is taken literally: quotes only matter
 //     when a field begins with one (LazyQuotes), so common prose does not
 //     need escaping.
 //   - Every data line must have exactly two fields, a non-empty review-id,
@@ -21,7 +21,7 @@
 //     double-quote and never closes it: under LazyQuotes the quoted field
 //     absorbs the rest of the stream into that one record (so following
 //     rows are not parsed separately) rather than erroring. Replies that
-//     merely contain a quote mid-prose are unaffected — only a leading
+//     merely contain a quote mid-prose are unaffected: only a leading
 //     unbalanced quote triggers this.
 package batch
 
@@ -97,7 +97,7 @@ func Parse(r io.Reader) []Line {
 // parseErrLine pulls the source line out of a *csv.ParseError, or 0 when
 // the error carries no position. With LazyQuotes the csv reader no longer
 // raises quote-balancing errors, so in practice this fires only for a
-// reader-level IO failure (which carries no position) — it stays as a
+// reader-level IO failure (which carries no position): it stays as a
 // defensive fallback.
 func parseErrLine(err error) int {
 	var pe *csv.ParseError

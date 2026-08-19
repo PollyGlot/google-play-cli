@@ -27,7 +27,7 @@ import (
 func TestRun_pureBusiness(t *testing.T) {
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{KeystoreRoot: "/keys"}, kernel.Inputs{})
 	rc.Account = &serviceaccount.ServiceAccount{ClientEmail: "playci@x"}
-	rc.AccountName = "playci" // the credential in use — status keys the name off this
+	rc.AccountName = "playci" // the credential in use: status keys the name off this
 	rc.Resolved = &config.Resolved{ConfigAccount: "playci"}
 	rc.KeystoreLabel = keystore.BackendFile
 
@@ -45,7 +45,7 @@ func TestRun_pureBusiness(t *testing.T) {
 }
 
 // fakeKeyring is a minimal in-process double for keystore.KeyringAPI used by
-// the status tests. Each test constructs a fresh one — never touches the
+// the status tests. Each test constructs a fresh one: never touches the
 // real OS keystore.
 type fakeKeyring struct {
 	mu          sync.Mutex
@@ -263,7 +263,7 @@ func TestStatus_keyringBackend_displaysKeyringLabelAndOmitsPath(t *testing.T) {
 		t.Errorf("output missing %q backend label; got %q", keystore.BackendKeyring, out)
 	}
 	// File path is meaningless when the keyring is active and must not
-	// appear — otherwise users go hunting for a file that doesn't exist.
+	// appear: otherwise users go hunting for a file that doesn't exist.
 	if strings.Contains(out, filepath.Join(boot.KeystoreRoot, "playci.json")) {
 		t.Errorf("output should omit file path when keyring is active; got %q", out)
 	}
@@ -481,14 +481,14 @@ func TestStatus_inlineCredential_reportsEnvOverrideWithoutProbing(t *testing.T) 
 		t.Errorf("json.name = %q, want \"(env override)\"", payload.Name)
 	}
 	if payload.Backend != "" {
-		t.Errorf("json.backend = %q, want empty — an inline credential must not probe the keystore", payload.Backend)
+		t.Errorf("json.backend = %q, want empty: an inline credential must not probe the keystore", payload.Backend)
 	}
 }
 
 // TestStatus_corruptActiveCredential_malformedJSON_isExit10 locks in the
 // ADR-0020 invalid path: an active Account whose stored bytes are not valid
 // JSON must hard-error (exit 10) with the "could not read credential" message
-// and render no payload — status must not paper over a corrupt credential.
+// and render no payload: status must not paper over a corrupt credential.
 func TestStatus_corruptActiveCredential_malformedJSON_isExit10(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	seedCorruptAccount(t, boot, []byte("{ not valid json"))

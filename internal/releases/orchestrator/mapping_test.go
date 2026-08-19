@@ -1,7 +1,7 @@
-// Package orchestrator_test — UploadMapping exercises the standalone
+// Package orchestrator_test: UploadMapping exercises the standalone
 // mapping-upload choreography behind `gplay releases mappings upload`:
 // open an Edit, POST the deobfuscation file keyed by an explicit
-// versionCode, and commit — no track update. Reuses playRT and the
+// versionCode, and commit: no track update. Reuses playRT and the
 // helpers from orchestrator_test.go (same package).
 package orchestrator_test
 
@@ -16,7 +16,7 @@ import (
 
 // TestUploadMapping_happyPath_beginUploadCommit asserts the standalone
 // flow opens its own Edit, uploads the mapping keyed by the explicit
-// versionCode + proguard type, and commits — a one-shot begin → upload →
+// versionCode + proguard type, and commits: a one-shot begin → upload →
 // commit, no track update (#250).
 func TestUploadMapping_happyPath_beginUploadCommit(t *testing.T) {
 	mapping := writeFakeMapping(t)
@@ -174,7 +174,7 @@ func TestUploadMapping_dryRun_validatesFile_noHTTP(t *testing.T) {
 
 // TestUploadMapping_uploadFails_discardsEdit asserts a failed
 // deobfuscation upload auto-discards the open Edit (edits.delete) so no
-// 24h lock leaks — the implicit-edit cleanup contract (DESIGN §4).
+// 24h lock leaks: the implicit-edit cleanup contract (DESIGN §4).
 func TestUploadMapping_uploadFails_discardsEdit(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt := &playRT{
@@ -205,7 +205,7 @@ func TestUploadMapping_uploadFails_discardsEdit(t *testing.T) {
 }
 
 // TestUploadMapping_dryRun_directoryPath_exit20_noHTTP asserts dry-run
-// rejects a non-regular mapping path (a directory) as exit 20 — parity
+// rejects a non-regular mapping path (a directory) as exit 20: parity
 // with the live path, which cannot stream a directory (PR #264 review).
 func TestUploadMapping_dryRun_directoryPath_exit20_noHTTP(t *testing.T) {
 	dir := t.TempDir()

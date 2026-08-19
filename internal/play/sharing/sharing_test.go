@@ -15,7 +15,7 @@ import (
 )
 
 // roundTripperFunc adapts a function to http.RoundTripper so a test can route
-// the single upload request without a network. No /token exchange here — these
+// the single upload request without a network. No /token exchange here: these
 // API-layer tests call the package directly with a bare *http.Client.
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 

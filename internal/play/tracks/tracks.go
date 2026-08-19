@@ -1,7 +1,7 @@
 // Package tracks reads and updates the release configuration of Google
-// Play tracks within an open Edit. The operations exposed — Get (one
+// Play tracks within an open Edit. The operations exposed (Get (one
 // track), List (every track), Update, and Create (a new closed-testing
-// track) — are shared by the upload, promote, rollout, halt, resume,
+// track)) are shared by the upload, promote, rollout, halt, resume,
 // complete, tracks-list, and tracks-create commands.
 package tracks
 
@@ -186,7 +186,7 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, rel
 // UpdateRaw PUTs a caller-built track body to edits.tracks.update verbatim.
 // tracks.update REPLACES the track's whole releases array, so a caller that
 // mutates one release on a track holding several (the rollout state machine)
-// must send every release — and must preserve fields gplay does not model
+// must send every release, and must preserve fields gplay does not model
 // (e.g. countryTargeting). Building the body from the raw tracks.get JSON
 // and patching only the target release is the lossless way to do that;
 // round-tripping through the typed Release struct would drop the rest.
@@ -239,7 +239,7 @@ func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, 
 // hardcodes it; formFactor is DEFAULT (phone) for now (WEAR/AUTOMOTIVE
 // deferred). Returns the parsed Track and the raw JSON body for the
 // --output json pass-through (ADR-0003). Creating a track that already
-// exists is an API 4xx surfaced verbatim — gplay does not fake idempotency.
+// exists is an API 4xx surfaced verbatim: gplay does not fake idempotency.
 func Create(ctx context.Context, hc *http.Client, pkg, editID, name, formFactor string) (*Track, json.RawMessage, error) {
 	payload, err := json.Marshal(TrackConfig{Track: name, Type: TrackTypeClosedTesting, FormFactor: formFactor})
 	if err != nil {

@@ -1,5 +1,5 @@
 // Package deploy implements `gplay recovery deploy <appRecoveryId>`: activate a
-// draft recovery action — the production-impacting moment that force-pushes
+// draft recovery action: the production-impacting moment that force-pushes
 // impacted users to a safe app version. DESTRUCTIVE tier (ADR-0017): requires
 // --confirm (missing → exit 3), MarkMutating for GPLAY_READONLY. `deploy` is a
 // domain verb admitted under ADR-0019 §2 (see ADR-0030). Ships [experimental].

@@ -89,7 +89,7 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 
 // TestRun_mirrorsLiveCatalogToDir asserts pull follows pagination to
 // completion, writes one stripped file per subscription, removes stale catalog
-// files, and passes the merged envelope through as json — no Edit anywhere.
+// files, and passes the merged envelope through as json: no Edit anywhere.
 func TestRun_mirrorsLiveCatalogToDir(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "stale.json"), []byte(`{"productId":"stale"}`), 0o644); err != nil {
@@ -169,7 +169,7 @@ func TestRun_humanSummary(t *testing.T) {
 
 // TestRun_embedsOffersUnderBasePlans asserts pull nests each live offer under
 // its base plan's offers array in the file, with the packageName echo stripped
-// — while --output json stays the plain subscriptions envelope.
+// , while --output json stays the plain subscriptions envelope.
 func TestRun_embedsOffersUnderBasePlans(t *testing.T) {
 	dir := t.TempDir()
 	rt := &subsRT{offersBody: `{"subscriptionOffers":[{"packageName":"com.example.app","productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P1W"}]}]}`}

@@ -27,7 +27,7 @@ import (
 
 // liveCatalog is what subscriptions.list serves: premium (patchable) and gone
 // (delete candidate). premium's base plan carries the output-only state the
-// files never declare — the engine normalizer must keep it out of every diff.
+// files never declare: the engine normalizer must keep it out of every diff.
 const liveCatalog = `{"subscriptions":[
   {"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]},
   {"productId":"gone","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Gone"}]}
@@ -164,7 +164,7 @@ func driftedCatalog(t *testing.T) string {
 }
 
 // TestRun_noChanges_isNoOp asserts a catalog matching live plans nothing and
-// mutates nothing — the pull-then-apply invariant.
+// mutates nothing: the pull-then-apply invariant.
 func TestRun_noChanges_isNoOp(t *testing.T) {
 	rt := &subsRT{}
 	rc, _ := newRC(t, rt)
@@ -301,7 +301,7 @@ func TestRun_confirmedPlan_executesInOrder(t *testing.T) {
 	if !strings.Contains(stderr.String(), "1 created, 1 patched, 1 deleted") {
 		t.Errorf("stderr %q should confirm the applied plan", stderr.String())
 	}
-	// The PRD #51 invariant: apply never reprices an existing subscriber — no
+	// The PRD #51 invariant: apply never reprices an existing subscriber: no
 	// plan, whatever it contains, may reach basePlans.migratePrices.
 	for _, c := range rt.calls {
 		if strings.Contains(c, ":migratePrices") {
@@ -320,7 +320,7 @@ func TestRun_confirmedPlan_executesInOrder(t *testing.T) {
 }
 
 // TestRun_basePlanPriceDrift_patchesBasePlans asserts a base-plan edit (price)
-// produces a patch whose updateMask carries basePlans — while a live-only
+// produces a patch whose updateMask carries basePlans, while a live-only
 // output-only state never does (covered by the engine normalizer): the file
 // here omits state, live carries state=ACTIVE, and only the price difference
 // drives the diff.
@@ -328,7 +328,7 @@ func TestRun_basePlanPriceDrift_patchesBasePlans(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","regionalConfigs":[{"regionCode":"US","price":{"currencyCode":"USD","units":"9"}}]}]}`,
 		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
-	}) // file omits state; live carries state=ACTIVE — only the price drives the diff
+	}) // file omits state; live carries state=ACTIVE: only the price drives the diff
 	rt := &subsRT{}
 	rc, _ := newRC(t, rt)
 	if _, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir}); err != nil {
@@ -424,7 +424,7 @@ func TestRun_offerPatch_scopedMask(t *testing.T) {
 
 // TestRun_offerCreateAndStates asserts a declared new offer is created after
 // its parent exists, a DRAFT base plan declared ACTIVE is activated, and an
-// ACTIVE offer declared INACTIVE is deactivated — with the plan surfacing all
+// ACTIVE offer declared INACTIVE is deactivated: with the plan surfacing all
 // of it under distinct ops in the json view.
 func TestRun_offerCreateAndStates(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{

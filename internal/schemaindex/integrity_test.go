@@ -30,7 +30,7 @@ var (
 // truncated or wrong snapshot, not a normal API change.
 const methodFloor = 120
 
-// sentinelMethods must survive any regeneration — a cheap guard against a
+// sentinelMethods must survive any regeneration: a cheap guard against a
 // truncated or wrong-service index. They span all four snapshotted services so a
 // dropped service (or a wrong merge order) is caught.
 var sentinelMethods = []string{
@@ -45,7 +45,7 @@ var sentinelMethods = []string{
 
 // TestEmbeddedIndexMatchesSnapshot is the freshness gate (D10): the committed
 // index must be byte-equal to a re-derivation from the committed snapshots. A
-// stale index left behind after a snapshot refresh — or a hand-edit — fails
+// stale index left behind after a snapshot refresh (or a hand-edit) fails
 // here, with no network and no new CI step. The re-derivation merges every
 // committed snapshot in declared order (RenderAll), matching the generator.
 func TestEmbeddedIndexMatchesSnapshot(t *testing.T) {
@@ -66,7 +66,7 @@ func TestEmbeddedIndexMatchesSnapshot(t *testing.T) {
 		t.Fatalf("read index: %v (run `make schema-index-update`)", err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Errorf("%s is stale — run `make schema-index-update` and commit the result", indexPath)
+		t.Errorf("%s is stale: run `make schema-index-update` and commit the result", indexPath)
 	}
 }
 

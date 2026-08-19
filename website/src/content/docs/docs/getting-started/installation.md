@@ -6,7 +6,7 @@ sidebar:
 ---
 
 gplay ships as a single static binary. Pick whichever method fits your
-machine or CI image — they all install the same thing.
+machine or CI image: they all install the same thing.
 
 ## Homebrew (macOS / Linux)
 
@@ -23,7 +23,7 @@ curl -fsSL https://gplay.sh/install | sh
 ```
 
 The script **verifies the downloaded archive's SHA-256 against the release
-`checksums.txt` and fails closed** — a missing checksum file, no entry for
+`checksums.txt` and fails closed**: a missing checksum file, no entry for
 your platform, or a mismatch all abort the install. For air-gapped or
 mirrored installs where the checksum file is unreachable, set
 `GPLAY_INSTALL_NO_VERIFY=1` to bypass (it prints a warning and stays greppable
@@ -50,7 +50,7 @@ trusting `gplay` in a pipeline: a **GitHub build-provenance attestation** over
 each archive, and a **keyless cosign signature** over `checksums.txt`.
 
 ```sh
-# Provenance — proves the archive was built by this repo's release workflow.
+# Provenance: proves the archive was built by this repo's release workflow.
 gh attestation verify gplay_<version>_<os>_<arch>.tar.gz \
   -R PollyGlot/google-play-cli
 
@@ -72,7 +72,7 @@ gplay version
 gplay --help
 ```
 
-`gplay --help` prints the live command tree — it is always the source of
+`gplay --help` prints the live command tree, and it is always the source of
 truth for what your installed version supports.
 
 ## In CI

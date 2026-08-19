@@ -212,7 +212,7 @@ func TestKeyringBackend_list_returnsSavedNamesAndExcludesReservedIndex(t *testin
 	}
 }
 
-// TestSelect_probesOnEveryCall — after #37 the process-level cache is
+// TestSelect_probesOnEveryCall, after #37 the process-level cache is
 // gone. The probe is cheap, so calling Select repeatedly is fine; the
 // kernel calls it once per RunContext and passes the Backend down.
 func TestSelect_probesOnEveryCall(t *testing.T) {
@@ -224,7 +224,7 @@ func TestSelect_probesOnEveryCall(t *testing.T) {
 		t.Fatalf("first Select: %v", err)
 	}
 	// Reset the probe flag; the second call must hit the keyring again
-	// — that's the contract now that there is no caching.
+	//: that's the contract now that there is no caching.
 	fk.mu.Lock()
 	fk.probed = false
 	fk.mu.Unlock()

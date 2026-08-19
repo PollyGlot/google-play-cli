@@ -74,7 +74,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "List a game's leaderboard configurations",
 		Long: `List the leaderboard configurations for a Play Games Services application.
 
-Addressing rides the numeric Play Games application ID (--application-id) — a
+Addressing rides the numeric Play Games application ID (--application-id): a
 distinct ID space from the Android package (ADR-0033). Use --max-results and
 --page-token to page; --output json passes the
 LeaderboardConfigurationListResponse through verbatim, including nextPageToken

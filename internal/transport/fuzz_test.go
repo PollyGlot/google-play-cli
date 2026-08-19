@@ -6,8 +6,8 @@ import (
 )
 
 // FuzzScopesFromAssertion fuzzes the JWT scope-claim extractor used by
-// `auth doctor`. It parses an OAuth2 assertion JWT — attacker-influenceable
-// bytes (a malformed token, a hostile server echo) — without verifying the
+// `auth doctor`. It parses an OAuth2 assertion JWT: attacker-influenceable
+// bytes (a malformed token, a hostile server echo): without verifying the
 // signature, so it must never panic on garbage and must never surface an empty
 // scope. Seeded with real-shaped JWTs plus malformed inputs.
 func FuzzScopesFromAssertion(f *testing.F) {

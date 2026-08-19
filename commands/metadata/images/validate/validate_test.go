@@ -1,5 +1,5 @@
 // Package imagesvalidate_test exercises `gplay metadata images validate` at
-// the kernel level. The command is fully OFFLINE — no auth, no network — so
+// the kernel level. The command is fully OFFLINE (no auth, no network) so
 // the RunContext carries no account and no transport; it reads the on-disk
 // image tree and runs the pure rule engine.
 package imagesvalidate_test

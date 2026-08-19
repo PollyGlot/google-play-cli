@@ -12,8 +12,8 @@ import (
 )
 
 // TestNormalize_sortsStripsEtagAndIsIdempotent feeds a deliberately
-// un-normalized document — keys out of order, a transport "etag", an HTML char
-// in a description — and asserts Normalize sorts keys, drops "etag", and is
+// un-normalized document: keys out of order, a transport "etag", an HTML char
+// in a description, and asserts Normalize sorts keys, drops "etag", and is
 // idempotent. Idempotence is the property the offline integrity gate leans on.
 func TestNormalize_sortsStripsEtagAndIsIdempotent(t *testing.T) {
 	raw := []byte(`{

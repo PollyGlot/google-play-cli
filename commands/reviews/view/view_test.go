@@ -46,7 +46,7 @@ func (r *getRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		r.tokenHits++
 		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
 	}
-	// reviews.get is GET .../reviews/<id> — not the collection, not :reply.
+	// reviews.get is GET .../reviews/<id>, not the collection, not :reply.
 	if req.Method != http.MethodGet || !strings.Contains(req.URL.Path, "/reviews/") {
 		r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 		return nil, nil
@@ -181,7 +181,7 @@ func TestRun_json_passthroughVerbatim(t *testing.T) {
 	if err := output.Render(&buf, output.FormatJSON, r.Renderers()); err != nil {
 		t.Fatalf("Render json: %v", err)
 	}
-	// --output json is the Review object verbatim (ADR-0003) — same reviewId,
+	// --output json is the Review object verbatim (ADR-0003): same reviewId,
 	// and the developerComment survives the pass-through.
 	var got struct {
 		ReviewID string `json:"reviewId"`

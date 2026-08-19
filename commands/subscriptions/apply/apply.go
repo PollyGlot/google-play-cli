@@ -1,16 +1,16 @@
 // Package apply implements `gplay subscriptions apply`: compute the
 // Reconciliation plan between the on-disk Monetization catalog (--dir) and the
-// live catalog — subscriptions, their base plans, their offers, and the
-// declared lifecycle state of base plans and offers — print it, and execute
+// live catalog: subscriptions, their base plans, their offers, and the
+// declared lifecycle state of base plans and offers: print it, and execute
 // it. Creates and patches run directly; any plan containing a delete
 // (subscription or offer) refuses without --confirm (exit 3, ADR-0017 family;
 // CI=true never auto-confirms). --dry-run prints the plan online and stops.
 // State transitions ride the dedicated activate/deactivate endpoints, never a
 // patch; they are surfaced prominently in every plan view (they move buyer
-// availability) but are not gated — they are reversible. The updateMask of
+// availability) but are not gated: they are reversible. The updateMask of
 // every patch is exactly the changed managed fields (ADR-0041). Edit-free,
 // package axis. MarkMutating so GPLAY_READONLY refuses it (exit 4). --output
-// json emits the plan — a gplay-owned shape, a recorded ADR-0003 exception
+// json emits the plan: a gplay-owned shape, a recorded ADR-0003 exception
 // like metadata apply. Ships [experimental] (ADR-0010).
 package apply
 
@@ -33,12 +33,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
-// managedFields is the subscription-level projection apply reconciles — and
+// managedFields is the subscription-level projection apply reconciles, and
 // therefore the widest updateMask a parent patch can ever send (ADR-0041 §5).
 // basePlans (slice #368) is declarable config riding the parent patch; its
 // output-only state subfield is reconciled via activate/deactivate instead
 // (slice #369) and its embedded offers array is a catalog-file construct the
-// API resource does not carry — both are normalized out of the comparison.
+// API resource does not carry: both are normalized out of the comparison.
 var managedFields = []reconcile.Field{
 	{Name: "listings"},
 	{Name: "taxAndComplianceSettings"},
@@ -66,7 +66,7 @@ type Input struct {
 	Confirm        bool
 }
 
-// Payload renders the Reconciliation plan — planned under --dry-run, executed
+// Payload renders the Reconciliation plan: planned under --dry-run, executed
 // otherwise. Requires lists the safety gate when the plan is destructive
 // (ADR-0017 §4).
 type Payload struct {
@@ -101,7 +101,7 @@ func (p Payload) changeCount() int {
 
 func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 	if markdown {
-		if _, err := fmt.Fprintf(w, "## subscriptions apply — %s\n\n", p.Package); err != nil {
+		if _, err := fmt.Fprintf(w, "## subscriptions apply: %s\n\n", p.Package); err != nil {
 			return err
 		}
 	}
@@ -180,7 +180,7 @@ func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 }
 
 // jsonChange is one plan entry of the flat --output json schema (a gplay-owned
-// shape — ADR-0003 exception — kept flat so a CI gate is one jq line). Offer
+// shape (ADR-0003 exception) kept flat so a CI gate is one jq line). Offer
 // entries carry basePlanId/offerId; state entries use op activate/deactivate
 // with kind and from/to.
 type jsonChange struct {
@@ -366,10 +366,10 @@ func stateTransition(kind, productID, basePlanID, offerID, declared, live string
 		// reachable from DRAFT and INACTIVE via :activate
 	case "INACTIVE":
 		if live != "ACTIVE" {
-			return nil, exit.Usagef("%s %s declares state INACTIVE while live is %s — only an ACTIVE %s can be deactivated; fix the state: field or activate it first", kind, target, live, kind)
+			return nil, exit.Usagef("%s %s declares state INACTIVE while live is %s: only an ACTIVE %s can be deactivated; fix the state: field or activate it first", kind, target, live, kind)
 		}
 	default:
-		return nil, exit.Usagef("%s %s declares state %q while live is %s — the API can only reach ACTIVE (:activate) or INACTIVE (:deactivate); fix the state: field", kind, target, declared, live)
+		return nil, exit.Usagef("%s %s declares state %q while live is %s: the API can only reach ACTIVE (:activate) or INACTIVE (:deactivate); fix the state: field", kind, target, declared, live)
 	}
 	return &reconcile.StateChange{Kind: kind, ProductID: productID, BasePlanID: basePlanID, OfferID: offerID, From: live, To: declared}, nil
 }
@@ -385,7 +385,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	local, err := catalog.Read(dir)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, exit.Usagef("catalog directory %q does not exist — run gplay subscriptions pull first, or pass --dir", dir)
+			return nil, exit.Usagef("catalog directory %q does not exist: run gplay subscriptions pull first, or pass --dir", dir)
 		}
 		return nil, err
 	}
@@ -412,10 +412,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	// A declared catalog that is empty while Play holds subscriptions is far
 	// more likely a mis-pointed --dir than an intent to delete the whole
-	// catalog — refuse even under --dry-run (the metadata --prune empty-tree
+	// catalog: refuse even under --dry-run (the metadata --prune empty-tree
 	// guard, ported).
 	if len(local) == 0 && len(live) > 0 {
-		return nil, exit.Usagef("catalog directory %q holds no .json catalog files while %q has %d live subscription(s) — applying it would delete them all; run gplay subscriptions pull first, or pass the right --dir", dir, pkg, len(live))
+		return nil, exit.Usagef("catalog directory %q holds no .json catalog files while %q has %d live subscription(s): applying it would delete them all; run gplay subscriptions pull first, or pass the right --dir", dir, pkg, len(live))
 	}
 
 	liveOffers, err := subscriptions.ListAllOffers(rc.Ctx, httpClient, pkg)
@@ -429,7 +429,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Offer diff: same engine, composite keys. Offers of a subscription the
-	// plan deletes are not individually deleted — the parent delete takes them.
+	// plan deletes are not individually deleted: the parent delete takes them.
 	deletedProducts := map[string]bool{}
 	for _, c := range plan.Deletes {
 		deletedProducts[c.ProductID] = true
@@ -472,7 +472,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if regionsVersion == "" {
 		regionsVersion = subscriptionscmd.DefaultRegionsVersion
 	}
-	// Execution order: grow, then move state, then shrink — parent
+	// Execution order: grow, then move state, then shrink: parent
 	// creates/patches, offer creates/patches, activations, deactivations,
 	// offer deletes, parent deletes. Not transactional (no batch spans these
 	// verbs); a failure surfaces immediately and a re-run converges.
@@ -552,22 +552,22 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "apply",
 		Short: "Reconcile the live subscription catalog to the catalog files",
 		Long: `Compute the plan between the on-disk catalog (--dir, default
-` + subscriptionscmd.DefaultDir + `) and the app's live subscription catalog —
+` + subscriptionscmd.DefaultDir + `) and the app's live subscription catalog:
 subscriptions, base plans (config + per-territory prices), offers, and the
-declared lifecycle state — then execute it. The directory is the complete
+declared lifecycle state, then execute it. The directory is the complete
 declared catalog: a live subscription or offer with no declaration is a delete
-in the plan (mirror semantics — deliberately not the additive stance of
+in the plan (mirror semantics: deliberately not the additive stance of
 metadata apply).
 
 --dry-run reads live Play and prints the plan without changing anything.
 Creates and patches run directly; a plan containing any delete refuses without
---confirm (exit 3, naming the flag) — CI=true never auto-confirms. A base
+--confirm (exit 3, naming the flag): CI=true never auto-confirms. A base
 plan's or offer's "state" field is reconciled through the dedicated
 activate/deactivate endpoints (declare ACTIVE or INACTIVE; omit the field to
-leave state unmanaged) — state changes are listed prominently in the plan
+leave state unmanaged): state changes are listed prominently in the plan
 because they move buyer availability, but are not gated: they are reversible.
 Use "subscriptions prices convert" to derive regional prices in bulk. Editing
-prices in files affects new purchases only — migrating existing subscribers is
+prices in files affects new purchases only: migrating existing subscribers is
 a separate, gated command.
 
 --regions-version pins the regions version sent with creates and patches

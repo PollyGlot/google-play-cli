@@ -1,7 +1,7 @@
 // Package reconcile computes the Reconciliation plan (CONTEXT.md) of the
 // Monetization catalog: the pure create/patch/delete diff between a declared
 // catalog (files) and the live one, restricted to the managed fields of the
-// calling slice. No I/O, no clock, no auth — the same split as
+// calling slice. No I/O, no clock, no auth: the same split as
 // internal/metadata/diff vs its orchestrator. Later slices widen the managed
 // field set (basePlans with #368); the engine itself does not change
 // (ADR-0041).
@@ -15,7 +15,7 @@ import (
 )
 
 // Field is one managed top-level field of the resource. Normalize, when set,
-// rewrites the decoded value on both sides before comparison — the hook that
+// rewrites the decoded value on both sides before comparison: the hook that
 // keeps server-derived output-only subfields (basePlans[].state) from
 // producing phantom patches while the field itself stays declarable. It never
 // affects what apply sends (the file body travels verbatim; the server ignores
@@ -58,7 +58,7 @@ func StripKeys(keys ...string) func(any) any {
 }
 
 // Change is one planned action on one product. Fields names the changed managed
-// fields (patch only) — it is both the human diff summary and the exact
+// fields (patch only): it is both the human diff summary and the exact
 // updateMask the executor sends, which is what keeps unmanaged nesting out of
 // reach (ADR-0041 §5).
 type Change struct {
@@ -70,7 +70,7 @@ type Change struct {
 // offer whose declared state: differs from live, reconciled via the dedicated
 // activate/deactivate endpoints rather than a patch. Kind is "basePlan" or
 // "offer"; To is the declared target ("ACTIVE" → activate, "INACTIVE" →
-// deactivate). Surfaced prominently in every plan view — a state change moves
+// deactivate). Surfaced prominently in every plan view: a state change moves
 // buyer availability.
 type StateChange struct {
 	Kind       string `json:"kind"`
@@ -103,9 +103,9 @@ func (p Plan) HasChanges() bool {
 		len(p.StateChanges) > 0
 }
 
-// HasDeletes reports whether the plan is destructive — the condition that
+// HasDeletes reports whether the plan is destructive: the condition that
 // gates execution behind --confirm (ADR-0041 §3). Offer deletes count: they
-// remove catalog state just like subscription deletes. State changes do not —
+// remove catalog state just like subscription deletes. State changes do not:
 // activate/deactivate are reversible.
 func (p Plan) HasDeletes() bool { return len(p.Deletes)+len(p.OfferDeletes) > 0 }
 

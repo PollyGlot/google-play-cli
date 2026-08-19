@@ -1,7 +1,7 @@
 // Package set implements `gplay releases expansion-files set`: declaratively
 // point an APK's expansion file at another APK versionCode's already-uploaded
 // file (no new binary). It wraps edits.expansionfiles.update (PUT) inside the
-// Edit lifecycle. `set` covers both the API's update (PUT) and patch (PATCH) —
+// Edit lifecycle. `set` covers both the API's update (PUT) and patch (PATCH):
 // a 1-writable-field resource needs one declarative verb (ADR-0019 / ADR-0030).
 // ROUTINE tier: MarkMutating, --dry-run, no --confirm. Ships [experimental].
 package set

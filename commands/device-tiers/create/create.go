@@ -1,7 +1,7 @@
 // Package create implements `gplay device-tiers create`: create a new (immutable)
 // Device Tier Config on Play from a JSON DeviceTierConfig body read from --file
 // or stdin. The resource is app-scoped and OUTSIDE the Edit lifecycle, and the
-// API has no update/patch/delete — so create is the ROUTINE tier (ADR-0017):
+// API has no update/patch/delete, so create is the ROUTINE tier (ADR-0017):
 // --dry-run rehearses, no --confirm (a create can never overwrite or destroy).
 // MarkMutating gates it under GPLAY_READONLY (exit 4). Ships [experimental].
 package create
@@ -103,7 +103,7 @@ func readBody(rc *kernel.RunContext, file string) ([]byte, error) {
 // output-only; its presence means the caller wants an update the API lacks).
 func validateBody(body []byte) error {
 	if len(bytes.TrimSpace(body)) == 0 {
-		return &validationError{msg: "the DeviceTierConfig body is empty — pass --file <path> or pipe JSON on stdin"}
+		return &validationError{msg: "the DeviceTierConfig body is empty: pass --file <path> or pipe JSON on stdin"}
 	}
 	if !json.Valid(body) {
 		return &validationError{msg: "the DeviceTierConfig body is not valid JSON"}
@@ -112,7 +112,7 @@ func validateBody(body []byte) error {
 		ID json.RawMessage `json:"deviceTierConfigId"`
 	}
 	if err := json.Unmarshal(body, &probe); err == nil && len(probe.ID) > 0 && string(probe.ID) != "null" {
-		return &validationError{msg: "remove deviceTierConfigId from the body — it is server-assigned and device tier configs are immutable (the API has no update method)"}
+		return &validationError{msg: "remove deviceTierConfigId from the body: it is server-assigned and device tier configs are immutable (the API has no update method)"}
 	}
 	return nil
 }
@@ -165,8 +165,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 body read from --file (or stdin when --file is omitted or "-"). The server
 assigns the deviceTierConfigId; do not include it in the body.
 
-Device tier configs are immutable — the API has create/get/list only, no
-update or delete — so create needs no --confirm (it can never overwrite or
+Device tier configs are immutable: the API has create/get/list only, no
+update or delete, so create needs no --confirm (it can never overwrite or
 destroy an existing config); use --dry-run to validate the body and resolve the
 target without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
 		Args:          cobra.NoArgs,

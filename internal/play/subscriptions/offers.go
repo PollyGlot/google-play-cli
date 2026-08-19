@@ -1,8 +1,8 @@
-// offers.go — the level-3 surface of the Monetization catalog (slice #369):
+// offers.go: the level-3 surface of the Monetization catalog (slice #369):
 // subscription offers (monetization.subscriptions.basePlans.offers) and the
 // lifecycle state ops of base plans and offers. Offers are a real sub-resource
-// with their own CRUD — unlike base plans, whose config rides the parent
-// subscription patch — so the catalog embeds them in the files while apply
+// with their own CRUD: unlike base plans, whose config rides the parent
+// subscription patch, so the catalog embeds them in the files while apply
 // reconciles them through these endpoints (ADR-0041 §5).
 package subscriptions
 
@@ -45,7 +45,7 @@ type offersPage struct {
 }
 
 // ListAllOffers reads every offer of the app in one wildcard walk
-// (productId='-', basePlanId='-'), following nextPageToken to completion —
+// (productId='-', basePlanId='-'), following nextPageToken to completion:
 // one paginated call instead of one per base plan, and no silent truncation
 // (a missing page would read as offer deletes in a Reconciliation plan).
 func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferItem, error) {
@@ -84,7 +84,7 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err}
 			}
 			if o.ProductID == "" || o.BasePlanID == "" || o.OfferID == "" {
-				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/basePlanId/offerId) — refusing a catalog entry that cannot be addressed"}
+				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/basePlanId/offerId): refusing a catalog entry that cannot be addressed"}
 			}
 			items = append(items, OfferItem{ProductID: o.ProductID, BasePlanID: o.BasePlanID, OfferID: o.OfferID, Raw: rawOffer})
 		}
@@ -146,7 +146,7 @@ func DeleteOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanI
 	return err
 }
 
-// SetBasePlanState activates (true) or deactivates (false) a base plan — the
+// SetBasePlanState activates (true) or deactivates (false) a base plan: the
 // reconciliation arm of the declarative state: field in the catalog files. The
 // body is an empty object; the identity rides the path.
 func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, activate bool) (json.RawMessage, error) {
@@ -197,10 +197,10 @@ type MigrateBasePlanPricesRequest struct {
 }
 
 // MigrateBasePlanPrices migrates EXISTING subscribers of one base plan to the
-// current price (basePlans.migratePrices) — the sole imperative escape hatch
+// current price (basePlans.migratePrices): the sole imperative escape hatch
 // of the Monetization catalog (ADR-0041 §4): apply never reprices a live
 // purchaser, this call is how an operator deliberately does. One base plan per
-// call — the batch sibling is deliberately not wrapped (no bulk money-moving,
+// call: the batch sibling is deliberately not wrapped (no bulk money-moving,
 // the ADR-0031 stance). The command gates it behind --confirm before reaching
 // here.
 func MigrateBasePlanPrices(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, request MigrateBasePlanPricesRequest) (json.RawMessage, error) {

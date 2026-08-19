@@ -1,6 +1,6 @@
 // Package list implements `gplay team grants list`: list the per-app Grants
-// across the Developer account's members. The API has no grants.list/get —
-// Grants are a field of the User — so this reads the full user list
+// across the Developer account's members. The API has no grants.list/get:
+// Grants are a field of the User, so this reads the full user list
 // (paginated to completion via internal/play/team) and projects the grants.
 //
 // Optional filters: --package answers "who can touch this app", --user answers
@@ -40,7 +40,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to read users on developer account %s — grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
+	return fmt.Sprintf("service account is not authorized to read users on developer account %s: grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -50,7 +50,7 @@ type developerNotFoundError struct {
 }
 
 func (e *developerNotFoundError) Error() string {
-	return fmt.Sprintf("developer account %s not found, or this credential is not a member of it — verify the developerId in your Play Console URL: %v", e.developerID, e.cause)
+	return fmt.Sprintf("developer account %s not found, or this credential is not a member of it: verify the developerId in your Play Console URL: %v", e.developerID, e.cause)
 }
 func (e *developerNotFoundError) Unwrap() error { return e.cause }
 
@@ -68,7 +68,7 @@ func classifyError(developerID string, err error) error {
 }
 
 // GrantRow is one projected per-app grant (member + package + app-level
-// permissions). It is NOT a native API shape — it is assembled from each
+// permissions). It is NOT a native API shape: it is assembled from each
 // User's grants field.
 type GrantRow struct {
 	Email       string

@@ -1,9 +1,9 @@
 // Package addtargeting implements `gplay recovery add-targeting <appRecoveryId>`:
 // widen the audience of a recovery action. The API's addTargeting is APPEND-ONLY
-// — it can only add users/regions/sdk-levels, never narrow. Because it increases
+// : it can only add users/regions/sdk-levels, never narrow. Because it increases
 // the force-update blast radius it is the DESTRUCTIVE tier (ADR-0017): requires
 // --confirm (missing → exit 3), MarkMutating. `add-targeting` is a domain verb
-// admitted under ADR-0019 §2 (see ADR-0030) — not `set` (it cannot replace).
+// admitted under ADR-0019 §2 (see ADR-0030), not `set` (it cannot replace).
 package addtargeting
 
 import (
@@ -67,7 +67,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "add-targeting <appRecoveryId>",
 		Short: "Widen a recovery's audience (append-only)",
 		Long: `Widen the audience of an app recovery action by adding users, regions, or
-Android SDK levels. This is APPEND-ONLY — it can only widen, never narrow; to
+Android SDK levels. This is APPEND-ONLY: it can only widen, never narrow; to
 shrink the blast radius, cancel the recovery and create a new one.
 
 Pass at least one of --all-users, --regions <CC,CC>, or --sdk-levels <N,N>.

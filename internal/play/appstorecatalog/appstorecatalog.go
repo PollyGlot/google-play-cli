@@ -4,8 +4,8 @@
 // (`appstorecatalog.recentappviews.get`) and the update events of a time range
 // (`appstorecatalog.recentupdateevents.list`).
 //
-// Addressing rides the app store package name — the package of the app store on
-// whose behalf the request is made — not the calling credential's own app, and
+// Addressing rides the app store package name: the package of the app store on
+// whose behalf the request is made, not the calling credential's own app, and
 // not an Edit (these endpoints live outside the Edit model entirely). Raw HTTP
 // (ADR-0007), never the google-go-sdk; --output json passes the response body
 // through verbatim (ADR-0003), so the typed views below stay deliberately
@@ -56,7 +56,7 @@ type Money struct {
 	Nanos        int32  `json:"nanos,omitempty"`
 }
 
-// Date mirrors google.type.Date — a whole or partial calendar date. Any
+// Date mirrors google.type.Date: a whole or partial calendar date. Any
 // component may be 0 to mean "unspecified".
 type Date struct {
 	Year  int `json:"year,omitempty"`
@@ -73,7 +73,7 @@ type DeveloperDetails struct {
 
 // LocalizedStoreListing mirrors the text fields of one locale's store listing,
 // deliberately partial: the full description and the image/video assets are
-// intentionally not modelled — they reach the caller through the ADR-0003 JSON
+// intentionally not modelled: they reach the caller through the ADR-0003 JSON
 // pass-through.
 type LocalizedStoreListing struct {
 	LanguageCode     string `json:"languageCode,omitempty"`
@@ -95,7 +95,7 @@ type CatalogPermission struct {
 	MaxSdkVersion int    `json:"maxSdkVersion,omitempty"`
 }
 
-// SdkVersion mirrors CatalogSdkVersion — the SDK range a compatibility
+// SdkVersion mirrors CatalogSdkVersion: the SDK range a compatibility
 // requirement set covers. int64-formatted fields arrive as JSON strings.
 type SdkVersion struct {
 	MinSdkVersion    string `json:"minSdkVersion,omitempty"`
@@ -114,8 +114,8 @@ type DeviceCompatibilityRequirements struct {
 }
 
 // CatalogAppView mirrors the subset of the CatalogAppView schema the human view
-// reads. The complete resource — device exclusions, screen support, image
-// assets, … — is always available verbatim via --output json (ADR-0003), so
+// reads. The complete resource (device exclusions, screen support, image
+// assets, …) is always available verbatim via --output json (ADR-0003), so
 // this stays intentionally partial.
 type CatalogAppView struct {
 	PackageName                     string                            `json:"packageName,omitempty"`
@@ -170,7 +170,7 @@ func GetRecentAppView(ctx context.Context, hc *http.Client, storePkg, playPkg st
 }
 
 // RecentUpdateEvent mirrors the RecentUpdateEvent schema: one entry of the
-// incremental catalog-sync feed — which Play app changed, when, and whether the
+// incremental catalog-sync feed, which Play app changed, when, and whether the
 // change was a MODIFICATION or a DELETION.
 type RecentUpdateEvent struct {
 	PlayAppPackageName string `json:"playAppPackageName,omitempty"`
@@ -189,7 +189,7 @@ type ListRecentUpdateEventsResponse struct {
 // for the app store's catalog, in the [startTime, endTime) range. Both times are
 // REQUIRED by the API and travel as RFC 3339 query parameters (the caller
 // validates them client-side so a malformed range never costs a round trip).
-// Pagination is caller-driven — one page per call, the accessible-apps /
+// Pagination is caller-driven: one page per call, the accessible-apps /
 // device-tiers convention: pass pageToken from a previous response's
 // NextPageToken to fetch the next page, keeping every other parameter identical.
 // pageSize <= 0 lets the server apply its default (DefaultPageSize; larger

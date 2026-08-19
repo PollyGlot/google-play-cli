@@ -39,7 +39,7 @@ func TestSanitizeCell(t *testing.T) {
 }
 
 // TestSanitizeCell_noEscapeBytesSurvive is a property check: whatever the input,
-// the output never contains an ESC (0x1b) or BEL (0x07) byte — the carriers of
+// the output never contains an ESC (0x1b) or BEL (0x07) byte: the carriers of
 // an ANSI injection.
 func TestSanitizeCell_noEscapeBytesSurvive(t *testing.T) {
 	for _, in := range []string{
@@ -55,7 +55,7 @@ func TestSanitizeCell_noEscapeBytesSurvive(t *testing.T) {
 	}
 }
 
-// hostileColumn renders a fixed hostile string for any item — the untrusted-cell
+// hostileColumn renders a fixed hostile string for any item: the untrusted-cell
 // stand-in for the render-boundary integration tests.
 const hostileCell = "\x1b[31mRED\x1b[0m\x07start \x1b]0;pwn\x07 café 漢字 🎉"
 const hostileWant = "REDstart  café 漢字 🎉"

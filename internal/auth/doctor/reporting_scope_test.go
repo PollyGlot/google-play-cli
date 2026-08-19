@@ -13,7 +13,7 @@ import (
 
 // TestCheckReportingScope_happyPath_observesReportingScope asserts the new
 // reporting-scope check (#49) mints a token for the playdeveloperreporting
-// scope and confirms the exchange requested it — the read-only vitals service
+// scope and confirms the exchange requested it: the read-only vitals service
 // uses a DISTINCT scope, and `auth doctor` now reports whether a token can be
 // minted for it.
 func TestCheckReportingScope_happyPath_observesReportingScope(t *testing.T) {
@@ -47,7 +47,7 @@ func TestCheckReportingScope_happyPath_observesReportingScope(t *testing.T) {
 }
 
 // TestScopeChain_reportingNotContaminatedByAndroidPublisher runs the real
-// default ordering — CheckScope (androidpublisher) then CheckReportingScope —
+// default ordering (CheckScope for androidpublisher, then CheckReportingScope)
 // through ONE shared ScopeObserver, the way `auth doctor` does. The observer
 // only records the most recent token exchange, so this pins the invariant the
 // reporting check's honesty depends on: its own exchange must overwrite the

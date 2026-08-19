@@ -40,7 +40,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to manage users on developer account %s — grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
+	return fmt.Sprintf("service account is not authorized to manage users on developer account %s: grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -151,7 +151,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	pkg := strings.TrimSpace(in.Package)
 	if email == "" {
-		return nil, exit.Usagef("missing <email> — usage: gplay team grants remove <email> --package <pkg> --confirm")
+		return nil, exit.Usagef("missing <email>: usage: gplay team grants remove <email> --package <pkg> --confirm")
 	}
 	if pkg == "" {
 		return nil, exit.Usagef("missing --package <pkg> (the app whose access to remove)")
@@ -193,7 +193,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "remove <email> --package <pkg>",
 		Short: "Remove a member's access to one app (keeps their membership)",
 		Long: `Remove <email>'s access to one app (--package) via grants.delete, WITHOUT
-removing them from the Developer account — only the per-app grant is deleted.
+removing them from the Developer account: only the per-app grant is deleted.
 To off-board a member entirely, use ` + "`gplay team users remove`" + ` instead.
 
 This is destructive, so it refuses without --confirm (exit 3, naming the flag);
@@ -212,7 +212,7 @@ call.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.DeveloperID, "developer-id", "", "Play Console Developer account id (overrides the active Account's, env, and project-local)")
 	cmd.Flags().StringVar(&in.Package, "package", "", "the app (package name) whose access to remove")
-	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the removal (required — this is destructive)")
+	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the removal (required: this is destructive)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "preview the target without any HTTP call")
 	return cmd
 }

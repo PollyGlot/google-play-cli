@@ -1,12 +1,12 @@
 // Package imagevalidate is the offline Store-image rule engine: the image
 // analog of internal/metadata/validate's char-limit check. The edits.images
-// API exposes no endpoint that returns its asset rules — dimensions, ratios,
+// API exposes no endpoint that returns its asset rules: dimensions, ratios,
 // byte sizes, and counts live only in Google's published docs and are
-// enforced only at upload/commit — so this package encodes them as a
+// enforced only at upload/commit, so this package encodes them as a
 // VERSIONED, datestamped table in code (single source, citing the doc URL)
 // and checks them all OFFLINE: no credentials, no network. Dimensions and
 // format are read via the stdlib image.DecodeConfig (header only, no pixel
-// decode, no external dependency — ADR-0007), with the png/jpeg decoders
+// decode, no external dependency: ADR-0007), with the png/jpeg decoders
 // registered by blank import.
 //
 // The checks are deliberately strict ("respect the guidelines to the pixel"),
@@ -62,8 +62,8 @@ const (
 )
 
 // rules is the canonical, versioned rule table (see RulesVersion / RulesDoc).
-// promoGraphic carries no exact-dimension rule — ADR-0013 §4 does not fix one
-// — so only its format, byte cap, and count are checked.
+// promoGraphic carries no exact-dimension rule: ADR-0013 §4 does not fix one
+// , so only its format, byte cap, and count are checked.
 var rules = map[images.Type]rule{
 	images.Icon:                 {exactW: 512, exactH: 512, maxCount: 1, maxBytes: 1 * mib},
 	images.FeatureGraphic:       {exactW: 1024, exactH: 500, maxCount: 1, maxBytes: 15 * mib},
@@ -97,7 +97,7 @@ type Problem struct {
 // Validate checks every image in tr against the versioned rule table, fully
 // offline. It returns one Problem per violation, in (locale, canonical type,
 // position) order, so a CI log shows the full picture in one run. An empty
-// tree (no images) yields no problems — required-slot minimums are Play's job
+// tree (no images) yields no problems: required-slot minimums are Play's job
 // at commit, not this offline lint (ADR-0013 §4).
 func Validate(tr imagetree.Tree) []Problem {
 	var problems []Problem

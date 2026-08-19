@@ -109,7 +109,7 @@ func TestWrite_refusesUnsafeProductID(t *testing.T) {
 
 // TestWrite_roundTrip asserts Write lays down one pretty-printed <productId>.json
 // per entry, strips server-side noise (packageName, archived), removes stale
-// .json files, and leaves foreign files alone — so pull then Read is a no-op
+// .json files, and leaves foreign files alone, so pull then Read is a no-op
 // input to the reconciler.
 func TestWrite_roundTrip(t *testing.T) {
 	dir := t.TempDir()

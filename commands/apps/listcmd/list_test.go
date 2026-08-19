@@ -26,7 +26,7 @@ import (
 // newRC seeds a RunContext with one Account named "playci" (active) and
 // the given packages registered under it, with rc.AccountName populated
 // to mirror the post-resolver state (the production resolver populates
-// AccountName from the credential that actually resolved — list reads
+// AccountName from the credential that actually resolved: list reads
 // it as the source of truth for which Account to scope to). Pin defaults
 // to empty unless the test overrides rc.Resolved.Pin after the call.
 func newRC(t *testing.T, stdout, stderr *bytes.Buffer, packages []string) *kernel.RunContext {
@@ -46,9 +46,9 @@ func newRC(t *testing.T, stdout, stderr *bytes.Buffer, packages []string) *kerne
 // TestRun_emptyActiveAccount_returnsEmptyPayload is the tracer bullet:
 // when the active Account has no registered packages, Run returns an
 // empty Payload. The empty-state UX (placeholder message) is owned by
-// each renderer rather than Run itself — see
+// each renderer rather than Run itself: see
 // TestPayload_table_empty_rendersPlaceholderOnStdout and the markdown
-// equivalent — so `gplay apps list --output markdown 2>&1` no longer
+// equivalent, so `gplay apps list --output markdown 2>&1` no longer
 // double-prints the empty notice.
 func TestRun_emptyActiveAccount_returnsEmptyPayload(t *testing.T) {
 	var stdout, stderr bytes.Buffer
@@ -122,7 +122,7 @@ func TestRun_marksPinnedRow(t *testing.T) {
 // the central account-resolution invariant: when --account / GPLAY_ACCOUNT
 // pick a credential other than the cascade's active, list MUST scope to
 // the resolver's choice (rc.AccountName), not to rc.Resolved.ConfigAccount.
-// Mirrors addcmd's TestRun_persistsUnderAccountThatActuallyRanProbe — the
+// Mirrors addcmd's TestRun_persistsUnderAccountThatActuallyRanProbe: the
 // same pattern that locked addcmd's fix in place.
 func TestRun_accountFlagOverride_listsAccountThatActuallyResolved(t *testing.T) {
 	var stdout, stderr bytes.Buffer
@@ -156,7 +156,7 @@ func TestRun_accountFlagOverride_listsAccountThatActuallyResolved(t *testing.T) 
 // --service-account / GPLAY_SERVICE_ACCOUNT branch: when a credential
 // resolved but no local Account name is attached (inline credentials are
 // per-invocation and have no name to scope the registry to), list MUST
-// return a clear error telling the user the limitation — NOT a misleading
+// return a clear error telling the user the limitation, NOT a misleading
 // "run gplay auth login" hint that ignores the credential they just
 // supplied. Mirrors addcmd.go:85-87.
 func TestRun_inlineCredential_returnsClearError(t *testing.T) {
@@ -185,7 +185,7 @@ func TestRun_inlineCredential_returnsClearError(t *testing.T) {
 // missing-account branch: when the resolved Account name is not present
 // in rc.Resolved.Accounts (race with `gplay auth logout`, or a stale
 // .gplay/config.local.json pointing at a removed Account), list MUST
-// return a distinct error telling the user the Account itself is gone —
+// return a distinct error telling the user the Account itself is gone,
 // NOT the empty-registry hint that points at `gplay apps add` (which
 // would itself fail with ErrUnknownAccount).
 func TestRun_accountNotInGlobal_returnsDistinctError(t *testing.T) {
@@ -245,7 +245,7 @@ func TestRun_accountScope_ignoresPackagesUnderOtherAccounts(t *testing.T) {
 
 // TestRun_noCredentialAtAll_returnsAuthErrorWithHint asserts the
 // nothing-resolved case: no --account, no --service-account, no env,
-// no cascade active — Run returns an error carrying exit code 10 (no
+// no cascade active: Run returns an error carrying exit code 10 (no
 // credential resolved) and the message points at `gplay auth login`.
 // Distinct from the inline-credential case (rc.Account != nil, exit 2)
 // and the missing-account case (Account name set but not in registry).
@@ -305,7 +305,7 @@ func TestPayload_jsonShape(t *testing.T) {
 // TestPayload_table_empty_rendersPlaceholderOnStdout asserts the empty-
 // state UX contract: when there are no rows, the table renderer prints
 // a visible placeholder on stdout (matching commands/auth/list/list.go).
-// The previous behavior — render nothing — left a TTY user staring at a
+// The previous behavior (render nothing) left a TTY user staring at a
 // blank screen when stderr was redirected.
 func TestPayload_table_empty_rendersPlaceholderOnStdout(t *testing.T) {
 	p := listcmd.Payload{Apps: []listcmd.AppRow{}}
@@ -409,7 +409,7 @@ func seedGlobal(t *testing.T, packages []string) string {
 // arguments are explicitly rejected: `gplay apps list com.example.foo`
 // (typo for `apps add`, or a stale --filter expectation) must NOT be
 // silently accepted. Without Args: cobra.NoArgs the default is
-// ArbitraryArgs and the typo would print a normal listing — making the
+// ArbitraryArgs and the typo would print a normal listing: making the
 // user believe their argument took effect.
 func TestList_cobra_extraArg_rejectedByNoArgs(t *testing.T) {
 	cfgPath := seedGlobal(t, nil)
@@ -425,7 +425,7 @@ func TestList_cobra_extraArg_rejectedByNoArgs(t *testing.T) {
 
 // TestList_cobra_emptyRegistry_jsonStaysParseable asserts the pipe-
 // friendliness invariant: the empty-list path produces a valid `{"apps":
-// []}` on stdout and writes nothing to stderr — scripts doing
+// []}` on stdout and writes nothing to stderr: scripts doing
 // `gplay apps list --output json | jq '.apps | length'` get 0, not an
 // error. The empty-state hint lives in the table/markdown renderers, not
 // in the JSON path, so machine-readable output stays pristine.
@@ -536,7 +536,7 @@ func TestList_cobra_malformedInlineCredential_exits10NotFallback(t *testing.T) {
 	}
 	// Under --output json a failure emits the structured error envelope on
 	// stdout (ADR-0023). It carries only the error (exit 10 + the real cause)
-	// — never a data payload — so the cascade leak guarded above still cannot
+	// (never a data payload) so the cascade leak guarded above still cannot
 	// appear here; assert the envelope rather than an empty stdout.
 	if out := stdout.String(); !strings.Contains(out, `"exitCode": 10`) {
 		t.Errorf("json hard-error path should emit the exit-10 error envelope; got %q", out)

@@ -70,7 +70,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	base := doctorBaseHTTP(rc)
 	wrapped, obs := transport.WithScopeObserver(base.Transport)
 	// Clone the base client so injected Timeout/CheckRedirect/Jar
-	// survive — only the Transport is replaced.
+	// survive: only the Transport is replaced.
 	hc := *base
 	hc.Transport = wrapped
 
@@ -230,7 +230,7 @@ func renderMarkdown(w io.Writer, results []authdoctor.CheckResult) error {
 			line = fmt.Sprintf("- [ ] _skipped_: %s\n", r.Name)
 		case !r.Passed:
 			if r.Hint != "" {
-				line = fmt.Sprintf("- [ ] %s — hint: %s\n", r.Name, r.Hint)
+				line = fmt.Sprintf("- [ ] %s (hint: %s)\n", r.Name, r.Hint)
 			} else {
 				line = fmt.Sprintf("- [ ] %s\n", r.Name)
 			}

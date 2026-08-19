@@ -25,7 +25,7 @@ func JoinOrNone(s []string) string {
 }
 
 // NonNil normalises a nil slice to an empty one so JSON renders [] rather than
-// null — the shape an agent parsing the dry-run payload expects.
+// null: the shape an agent parsing the dry-run payload expects.
 func NonNil(s []string) []string {
 	if s == nil {
 		return []string{}

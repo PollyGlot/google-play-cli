@@ -52,7 +52,7 @@ func token200(_ *http.Request) (*http.Response, error) {
 }
 
 // TestSource_defaultsToAndroidPublisherScope asserts that with no explicit
-// scope, Source keeps requesting the androidpublisher scope — the contract
+// scope, Source keeps requesting the androidpublisher scope: the contract
 // every existing publishing command relies on (least surprise on the default
 // path).
 func TestSource_defaultsToAndroidPublisherScope(t *testing.T) {

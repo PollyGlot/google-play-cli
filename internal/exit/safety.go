@@ -5,8 +5,8 @@ import "fmt"
 // SafetyFlagError is the exit-3 error of docs/DESIGN.md §9: the command is
 // well-formed, but a named safety-acknowledgment flag (--confirm /
 // --grant-admin) is missing. It is deliberately distinct from UsageError
-// (exit 2, malformed): exit 3 is *deterministically resolvable* — re-run with
-// the named flag — which is the one distinction an automated caller most needs
+// (exit 2, malformed): exit 3 is *deterministically resolvable*: re-run with
+// the named flag, which is the one distinction an automated caller most needs
 // (ADR-0017). The Flag field names the missing flag (no leading --) so callers
 // can branch structurally; the Msg states it verbatim for humans.
 type SafetyFlagError struct {

@@ -1,4 +1,4 @@
-// offers.go — shaping helpers between the catalog file schema and the API
+// offers.go: shaping helpers between the catalog file schema and the API
 // resources (slice #369). The catalog file nests each base plan's offers under
 // basePlans[].offers, but the API keeps offers a separate sub-resource: pull
 // embeds them (EmbedOffers), apply splits them back out (ExtractOffers) and
@@ -66,7 +66,7 @@ func EmbedOffers(items []subscriptions.Item, offers []subscriptions.OfferItem) (
 			}
 			for planID := range perPlan {
 				if !seen[planID] {
-					return nil, fmt.Errorf("live offer(s) reference base plan %q of %q which subscriptions.list did not return — refusing an inconsistent catalog", planID, it.ProductID)
+					return nil, fmt.Errorf("live offer(s) reference base plan %q of %q which subscriptions.list did not return: refusing an inconsistent catalog", planID, it.ProductID)
 				}
 			}
 		}
@@ -78,7 +78,7 @@ func EmbedOffers(items []subscriptions.Item, offers []subscriptions.OfferItem) (
 		out[it.ProductID] = b
 	}
 	for productID := range byProduct {
-		return nil, fmt.Errorf("live offer(s) reference subscription %q which subscriptions.list did not return — refusing an inconsistent catalog", productID)
+		return nil, fmt.Errorf("live offer(s) reference subscription %q which subscriptions.list did not return: refusing an inconsistent catalog", productID)
 	}
 	return out, nil
 }
@@ -108,7 +108,7 @@ func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessa
 				}
 				offerID, _ := offer["offerId"].(string)
 				if offerID == "" || planID == "" {
-					return nil, exit.Usagef("catalog file %s.json: an offer under base plan %q has no offerId (or the base plan has no basePlanId) — the IDs are the reconciliation keys", productID, planID)
+					return nil, exit.Usagef("catalog file %s.json: an offer under base plan %q has no offerId (or the base plan has no basePlanId): the IDs are the reconciliation keys", productID, planID)
 				}
 				b, err := json.Marshal(offer)
 				if err != nil {
@@ -126,7 +126,7 @@ func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessa
 }
 
 // StripOffersFromSubscription removes every embedded basePlans[].offers array
-// from a declared subscription body — offers are not a field of the API
+// from a declared subscription body: offers are not a field of the API
 // Subscription resource, so parent create/patch bodies must not carry them.
 func StripOffersFromSubscription(raw json.RawMessage) (json.RawMessage, error) {
 	var sub map[string]any

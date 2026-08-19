@@ -6,7 +6,7 @@ import "fmt"
 // by an environment policy (today: GPLAY_READONLY), independent of the flags
 // passed. It is deliberately distinct from both UsageError (exit 2, malformed)
 // and SafetyFlagError (exit 3, "re-run with the named flag"): exit 4 means the
-// refusal is NOT resolvable by adding a flag — the authority boundary lives in
+// refusal is NOT resolvable by adding a flag: the authority boundary lives in
 // the environment, not the model's flag choices. An automated caller reading
 // exit 4 must change the environment (or stop), never retry with `--confirm`.
 type PolicyError struct{ Msg string }

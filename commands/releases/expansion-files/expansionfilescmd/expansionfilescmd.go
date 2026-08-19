@@ -28,7 +28,7 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return "", &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	return pkg, nil
 }

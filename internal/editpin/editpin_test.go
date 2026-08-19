@@ -42,7 +42,7 @@ func TestWriteThenLookup(t *testing.T) {
 }
 
 func TestWriteCreatesGplayDir(t *testing.T) {
-	// Write into a .gplay/ that does not exist yet — begin must not require
+	// Write into a .gplay/ that does not exist yet: begin must not require
 	// the directory to be pre-created (beyond the project root).
 	dir := filepath.Join(t.TempDir(), ".gplay")
 	if err := editpin.Write(config.OSFS{}, dir, pkg, "edit-1"); err != nil {
@@ -57,7 +57,7 @@ func TestWriteCreatesGplayDir(t *testing.T) {
 // final swap fails must leave the *prior* pin intact, never a truncated or
 // half-written one. Because a corrupt pin is fatal to Lookup (and would wedge
 // every later write command plus block `gplay edits begin` recovery), Write
-// stages to `<pin>.tmp` and renames — so a failed write is a no-op on the live
+// stages to `<pin>.tmp` and renames, so a failed write is a no-op on the live
 // pin. A non-atomic WriteFile-in-place would clobber it. MemFS mirrors the
 // FS-level contract (as config's atomic-Save test does).
 func TestWriteFailedSwapKeepsPriorPin(t *testing.T) {
@@ -79,7 +79,7 @@ func TestWriteFailedSwapKeepsPriorPin(t *testing.T) {
 		t.Fatalf("Lookup after failed swap: ok=%v err=%v, want the prior pin intact", ok, err)
 	}
 	if got.EditID != "edit-old" {
-		t.Errorf("EditID = %q, want edit-old — a failed write must not clobber the prior pin", got.EditID)
+		t.Errorf("EditID = %q, want edit-old: a failed write must not clobber the prior pin", got.EditID)
 	}
 	// No `.tmp` fragment left masquerading as pin state.
 	if _, err := fsys.Stat(path + ".tmp"); err == nil {
@@ -88,7 +88,7 @@ func TestWriteFailedSwapKeepsPriorPin(t *testing.T) {
 }
 
 // TestWriteLeavesNoTmpBehind asserts a successful fresh write (no prior pin)
-// lands the pin and cleans up after itself — the rename consumes the `.tmp`
+// lands the pin and cleans up after itself: the rename consumes the `.tmp`
 // sibling, leaving nothing for a later Lookup to trip over.
 func TestWriteLeavesNoTmpBehind(t *testing.T) {
 	dir := t.TempDir()
@@ -132,7 +132,7 @@ func TestLookupMissingEditIDIsAnError(t *testing.T) {
 
 func TestLookupPackageMismatchIsAnError(t *testing.T) {
 	dir := t.TempDir()
-	// File is edit-com.example.app.json but its embedded package disagrees — a
+	// File is edit-com.example.app.json but its embedded package disagrees: a
 	// copied/renamed pin. Lookup must reject it as corruption.
 	if err := (config.OSFS{}).WriteFile(editpin.Path(dir, pkg), []byte(`{"editId":"e1","package":"com.other.app"}`), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)

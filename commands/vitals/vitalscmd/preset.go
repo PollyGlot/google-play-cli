@@ -34,7 +34,7 @@ var byDimension = map[string]string{
 }
 
 // ByChoices is the pipe-joined list of all --by keys, for the (set-independent)
-// flag help. Which keys actually apply depends on the metric set — see
+// flag help. Which keys actually apply depends on the metric set: see
 // ByChoicesFor for the set-aware list used in error messages.
 func ByChoices() string {
 	keys := make([]string, 0, len(byDimension))
@@ -47,7 +47,7 @@ func ByChoices() string {
 
 // ByChoicesFor is the pipe-joined list of --by keys whose mapped dimension the
 // given metric set actually supports (read from the snapshot). Not every set
-// supports every dimension — e.g. errorCount has no countryCode — so this is
+// supports every dimension (e.g. errorCount has no countryCode) so this is
 // what an actionable "--by not available" error lists.
 func ByChoicesFor(idx schemaindex.Index, set vitals.MetricSet) string {
 	supported := vitals.SupportedDimensions(idx, set)
@@ -116,7 +116,7 @@ type presetInput struct {
 }
 
 // runPreset resolves the friendly preset flags into Params and delegates to
-// Execute. Metrics are left empty so the set's primary metric is used — the
+// Execute. Metrics are left empty so the set's primary metric is used: the
 // whole point of a preset is that the common case needs no metric knowledge.
 func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (output.Renderable, error) {
 	idx, err := schemaindex.Embedded()
@@ -131,7 +131,7 @@ func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (out
 }
 
 // NewPresetCommand builds the cobra command for one preset. It panics at
-// construction (not runtime) if spec.Set is not a registered metric set — a
+// construction (not runtime) if spec.Set is not a registered metric set: a
 // programmer error caught by any test that builds the command tree.
 func NewPresetCommand(boot kernel.Boot, spec PresetSpec) *cobra.Command {
 	set, ok := vitals.MetricSetByName(spec.Set)
@@ -149,7 +149,7 @@ func NewPresetCommand(boot kernel.Boot, spec PresetSpec) *cobra.Command {
 		Long: spec.Short + `.
 
 An opinionated preset over ` + "`gplay vitals query " + spec.Set + "`" + `: no
-metric or dimension knowledge required — the set's primary metric is reported
+metric or dimension knowledge required: the set's primary metric is reported
 over the default 28-day DAILY window.
 
   gplay vitals ` + spec.Use + ` --package com.example.app
@@ -178,7 +178,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	return cmd
 }
 
-// Presets is the declared list of opinionated metric-set commands — one per
+// Presets is the declared list of opinionated metric-set commands: one per
 // queryable metric set (the seven read-only signals). Adding a metric set to
 // the registry without a preset here fails TestPresets_coverEveryMetricSet.
 var Presets = []PresetSpec{

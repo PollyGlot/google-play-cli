@@ -1,5 +1,5 @@
 // Package validatecmd_test exercises `gplay metadata validate` end to end
-// at the kernel level — but, crucially, OFFLINE. The RunContext is built
+// at the kernel level, but, crucially, OFFLINE. The RunContext is built
 // with NO Account and NO injected transport: any attempt to authenticate
 // or make an HTTP call would fail (kernel.AuthedClient errors without an
 // Account, and there is no RoundTripper to serve a request). A passing
@@ -23,13 +23,13 @@ import (
 
 // newRC builds an offline RunContext: no Account, no transport. If the
 // command under test tried to authenticate or hit the network, it would
-// fail here — which is exactly the offline guarantee we want to assert.
+// fail here, which is exactly the offline guarantee we want to assert.
 func newRC(t *testing.T) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	var stdout bytes.Buffer
 	boot := kernel.Boot{Stdout: &stdout}
 	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{Format: output.FormatJSON})
-	// rc.Account stays nil — no credentials of any kind.
+	// rc.Account stays nil: no credentials of any kind.
 	return rc, &stdout
 }
 
@@ -106,7 +106,7 @@ func TestRun_charLimit_exit20(t *testing.T) {
 }
 
 // TestRun_requiredEmpty_exit20 asserts an empty full_description file
-// (managed but empty) fails — it is not a clear for a required field.
+// (managed but empty) fails: it is not a clear for a required field.
 func TestRun_requiredEmpty_exit20(t *testing.T) {
 	l := listing.NewListing("en-US")
 	l.Set(listing.Title, "My App")

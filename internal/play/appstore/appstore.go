@@ -1,4 +1,4 @@
-// Package appstore wraps the Android Publisher `appstoreappsreview` resource —
+// Package appstore wraps the Android Publisher `appstoreappsreview` resource:
 // the surface a third-party Android app store uses to submit the apps it hosts
 // to Google for review (the DMA / alternative-distribution obligation). It is
 // keyed by the **app store package name** (the path key
@@ -9,8 +9,8 @@
 //
 // This package ships the first slice of that surface (#378 of PRD #377):
 // `createappstorehostedapp`, which creates the **hosted app** record. Google's
-// own method description makes it the mandatory precondition — "This must be
-// called before any other RPCs for this hosted app" — so every later slice
+// own method description makes it the mandatory precondition: "This must be
+// called before any other RPCs for this hosted app", so every later slice
 // (update, APK upload, image upload, policy declaration, publish status) hangs
 // off a record this call created.
 //
@@ -46,7 +46,7 @@ type CreateHostedAppRequest struct {
 //
 // It returns the verbatim response body for the ADR-0003 --output json
 // pass-through. CreateAppStoreHostedAppResponse carries no fields in the
-// Discovery snapshot — the acknowledgement IS the result — so there is nothing
+// Discovery snapshot (the acknowledgement IS the result) so there is nothing
 // to parse into a typed struct and the raw bytes are the whole return value.
 // They may legitimately be `{}` or empty; the command layer, not this package,
 // decides what to render for an empty body.

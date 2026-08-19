@@ -3,7 +3,7 @@
 // the release to copy, attach it (same versionCode) to the destination
 // track, and commit. Inherits the ADR-0002 safe-default rule (via
 // statusPayload) and the auto-discard / DanglingEditError contract
-// from edits.WithEdit — so production promotes default to draft, and
+// from edits.WithEdit, so production promotes default to draft, and
 // any failure mid-Edit cleans up the orphan unless --keep-edit-on-failure.
 package orchestrator
 
@@ -39,7 +39,7 @@ func (e *AmbiguousReleaseError) Error() string {
 	var b strings.Builder
 	b.WriteString("track ")
 	b.WriteString(e.Track)
-	b.WriteString(" has multiple coexisting releases — ")
+	b.WriteString(" has multiple coexisting releases: ")
 	if e.FilterApplied {
 		b.WriteString("the supplied --version-code/--release-name still matched more than one; tighten by combining both filters or pick a more specific value. Candidates: ")
 	} else {
@@ -113,7 +113,7 @@ func (e *NoMatchingReleaseError) Error() string {
 func (e *NoMatchingReleaseError) ExitCode() int { return 60 }
 
 // EmptyVersionCodesError signals that the picked source release has
-// no versionCodes — legal on Google Play (e.g. a draft "name-only"
+// no versionCodes: legal on Google Play (e.g. a draft "name-only"
 // placeholder created without an attached AAB) but there is nothing
 // to promote. Mapped to exit 60 (state conflict): the source track
 // state is unsuitable, not a CLI misuse.
@@ -312,7 +312,7 @@ func validatePromoteOpts(opts PromoteOpts) error {
 	}
 	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
 		return &InvalidOptsError{
-			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive — pick one",
+			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
 		}
 	}
 	if opts.Status == StatusInProgress {
@@ -327,7 +327,7 @@ func validatePromoteOpts(opts PromoteOpts) error {
 
 // dryRunPromoteResult previews what Promote would send for the given
 // opts, without any HTTP. The real VersionCode would come from
-// tracks.get on the source — synthesized as 0 here. The Status /
+// tracks.get on the source: synthesized as 0 here. The Status /
 // UserFraction reflect the ADR-0002 safe-default rule via
 // statusPayload so the preview shows exactly what the wire payload
 // would look like.

@@ -5,18 +5,18 @@
 //
 // Exit-code table (mirrored from docs/DESIGN.md §9):
 //
-//	0  — success
-//	1  — generic (fallback when nothing else fits)
-//	2  — CLI misuse, unknown account
-//	3  — safety flag required (well-formed, but a named --confirm/--grant-admin is missing)
-//	4  — denied by environment policy (GPLAY_READONLY); not resolvable by adding a flag
-//	10 — auth (SA invalid, token refused, scope missing, no source)
-//	11 — authorization (403 from the API)
-//	20 — client-side validation
-//	30 — API 4xx other than auth/perms
-//	40 — API 5xx
-//	50 — network failure
-//	60 — state conflict (open edit, rate-limited, ambiguous target)
+//	0 : success
+//	1 : generic (fallback when nothing else fits)
+//	2 : CLI misuse, unknown account
+//	3 : safety flag required (well-formed, but a named --confirm/--grant-admin is missing)
+//	4 : denied by environment policy (GPLAY_READONLY); not resolvable by adding a flag
+//	10: auth (SA invalid, token refused, scope missing, no source)
+//	11: authorization (403 from the API)
+//	20: client-side validation
+//	30: API 4xx other than auth/perms
+//	40: API 5xx
+//	50: network failure
+//	60: state conflict (open edit, rate-limited, ambiguous target)
 package exit
 
 import "errors"

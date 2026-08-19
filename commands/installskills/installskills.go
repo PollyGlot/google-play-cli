@@ -7,7 +7,7 @@
 // "no Node" pillar: the pillar is scoped to the CI/runtime path (driving the
 // Play API needs zero runtime deps), and `install-skills` is a dev-workstation
 // setup convenience that never runs in CI. Node was already required to install
-// skills via `npx skills add` regardless — this wraps that one dependency, it
+// skills via `npx skills add` regardless: this wraps that one dependency, it
 // adds none (ADR-0028 §3). The `--help` text states the requirement plainly.
 package installskills
 
@@ -34,7 +34,7 @@ const skillsBrowseURL = "https://github.com/" + skillsRepo
 //		npx --yes skills add PollyGlot/google-play-cli-skills --global --agent '*' --yes
 //
 //	  - --global    skills drive the binary, useful in every project, not just CWD
-//	  - --agent '*' all detected agents — gplay is agent-agnostic (CLAUDE.md + AGENTS.md)
+//	  - --agent '*' all detected agents: gplay is agent-agnostic (CLAUDE.md + AGENTS.md)
 //	  - --yes (x2)  non-interactive, required by DESIGN's no-prompts rule
 func recipeArgs() []string {
 	return []string{
@@ -78,7 +78,7 @@ func defaultRun(ctx context.Context, npxPath string, args []string, stdin io.Rea
 
 // errNpxMissing is the concise one-liner main turns into `gplay: ...`; the rich,
 // actionable recipe is printed to stderr first (see run). exit.For maps it to 1
-// (generic fallback — no Play-API code fits a missing local dep, ADR-0028 §4).
+// (generic fallback: no Play-API code fits a missing local dep, ADR-0028 §4).
 var errNpxMissing = errors.New("npx (Node.js) not found on PATH")
 
 // NewCommand returns the cobra command for `gplay install-skills`.
@@ -99,7 +99,7 @@ for overrides, e.g.:
     gplay install-skills --agent claude     # one agent only
     gplay install-skills --project          # this repo only, not --global
 
-Requires Node.js / npx on PATH — this is the one gplay command that does. It is
+Requires Node.js / npx on PATH: this is the one gplay command that does. It is
 a dev-workstation convenience and never runs on the CI/runtime path, so the
 "no Node" promise for driving the Play API still holds (ADR-0028).`,
 		// Everything after `install-skills` passes through verbatim to
@@ -136,13 +136,13 @@ func run(cmd *cobra.Command, opts Options, passthrough []string) error {
 	if err != nil {
 		// Only a true "not found" means the dependency is absent. Any other
 		// lookup failure (e.g. npx present but not executable) is a different
-		// problem — the "install Node.js" recipe would mislead, so surface the
+		// problem: the "install Node.js" recipe would mislead, so surface the
 		// real cause instead (still a generic exit 1, no Coder in the chain).
 		if !errors.Is(err, exec.ErrNotFound) {
 			return fmt.Errorf("resolve npx on PATH: %v", err)
 		}
 		// npx absent: print the manual recipe so an agent leaves with what to do,
-		// then exit 1 (ADR-0028 §4). The stderr write is best-effort — the exit
+		// then exit 1 (ADR-0028 §4). The stderr write is best-effort: the exit
 		// code is the load-bearing signal.
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 			"npx requires Node.js, which was not found.\n"+

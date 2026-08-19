@@ -91,7 +91,7 @@ func jsonResp(status int, body string) *http.Response {
 }
 
 // signedSAJSON returns a minimal but well-formed service-account JSON
-// with a real RSA key — enough for token.Source to mint a signed JWT.
+// with a real RSA key: enough for token.Source to mint a signed JWT.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -211,7 +211,7 @@ func TestRun_happyPath_createsClosedTrack(t *testing.T) {
 
 // TestRun_createOnExistingTrack_exit30 asserts that creating a track
 // that already exists surfaces the API 400 verbatim (exit 30 via
-// StatusToExitCode) — gplay does not fake idempotency — and that the
+// StatusToExitCode) (gplay does not fake idempotency) and that the
 // failed Edit is auto-discarded (DELETE) since keep-edit-on-failure is
 // off by default.
 func TestRun_createOnExistingTrack_exit30(t *testing.T) {

@@ -34,7 +34,7 @@ func (g Gate) Requires() []string {
 // Verify checks the provided flags satisfy the gate, returning a
 // *exit.SafetyFlagError (exit 3) naming the first missing flag, or nil. It is
 // the LIVE-path guard; --dry-run never calls it (it reports Requires instead).
-// CI=true is irrelevant here — gplay never auto-confirms (ADR-0017 §6); a gate
+// CI=true is irrelevant here: gplay never auto-confirms (ADR-0017 §6); a gate
 // is satisfied only by its explicit flag.
 func (g Gate) Verify(confirm, grantAdmin bool) error {
 	if g.Destructive && !confirm {

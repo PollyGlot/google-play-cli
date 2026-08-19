@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import rehypeBaseLinks from './scripts/rehype-base-links.mjs';
 
-// The site is served from gplay.sh (a Cloudflare Worker with static assets —
+// The site is served from gplay.sh (a Cloudflare Worker with static assets,
 // see deploy/gplay.sh/ and ADR-0025). SITE_URL/SITE_BASE stay overridable so a
 // preview build can target a different origin/base; everything (canonical URLs,
 // sitemap, llms.txt, internal links) follows from the pair.
@@ -26,13 +26,13 @@ export default defineConfig({
     starlight({
       title: 'gplay',
       description:
-        'gplay is a fast, dependency-free CLI for the Google Play Developer API — releases, tracks, reviews, metadata, compliance and team management from your terminal, CI pipeline, or AI agent.',
+        'gplay is a fast, dependency-free CLI for the Google Play Developer API: releases, tracks, reviews, metadata, compliance and team management from your terminal, CI pipeline, or AI agent.',
       logo: {
         // Per-theme mark: the glowing iridescent mark on dark, a deepened,
         // glow-free variant on light so it reads on white (ADR-0035).
         dark: './src/assets/logo-mark.svg',
         light: './src/assets/logo-mark-light.svg',
-        alt: 'gplay — three forward chevrons',
+        alt: 'gplay: three forward chevrons',
       },
       favicon: '/favicon.svg',
       social: [
@@ -62,8 +62,8 @@ export default defineConfig({
         },
         // Icon fallbacks the SVG favicon can't cover: iOS Safari ignores SVG
         // icons (an "Add to Home Screen" would screenshot the page instead),
-        // and clients that request /favicon.ico blind — feed readers, crawlers,
-        // older browsers — never read this head at all.
+        // and clients that request /favicon.ico blind (feed readers, crawlers,
+        // older browsers) never read this head at all.
         {
           tag: 'link',
           attrs: { rel: 'icon', href: `${BASE}/favicon.ico`, sizes: '32x32' },
@@ -121,7 +121,7 @@ export default defineConfig({
         starlightLlmsTxt({
           projectName: 'gplay',
           description:
-            'gplay — a single-binary Go CLI for the Google Play Developer API. Upload and stage releases, manage tracks and testers, sync store listings, reply to reviews, push Data Safety declarations, and administer team permissions from CI or AI agents.',
+            'gplay: a single-binary Go CLI for the Google Play Developer API. Upload and stage releases, manage tracks and testers, sync store listings, reply to reviews, push Data Safety declarations, and administer team permissions from CI or AI agents.',
           details:
             'gplay is open source (MIT), distributed as one static binary, and designed agent-first: JSON output mirrors the Google Play Developer API responses, exit codes are semantic (retry-safe vs terminal), and every command is non-interactive.',
           customSets: [

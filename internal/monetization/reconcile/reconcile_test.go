@@ -54,7 +54,7 @@ func TestCompute_partitionsActions(t *testing.T) {
 }
 
 // TestCompute_unmanagedFieldsInvisible asserts a difference outside the managed
-// fields (basePlans, until slice #368) never produces a patch — the walking
+// fields (basePlans, until slice #368) never produces a patch: the walking
 // skeleton cannot clobber nesting it does not own.
 func TestCompute_unmanagedFieldsInvisible(t *testing.T) {
 	local := map[string]json.RawMessage{
@@ -68,7 +68,7 @@ func TestCompute_unmanagedFieldsInvisible(t *testing.T) {
 		t.Fatalf("Compute: %v", err)
 	}
 	if plan.HasChanges() {
-		t.Errorf("plan %+v should be empty — only basePlans differ and they are unmanaged", plan)
+		t.Errorf("plan %+v should be empty: only basePlans differ and they are unmanaged", plan)
 	}
 }
 
@@ -102,7 +102,7 @@ func TestCompute_normalizerExcludesOutputOnly(t *testing.T) {
 		t.Fatalf("Compute: %v", err)
 	}
 	if plan.HasChanges() {
-		t.Errorf("plan %+v should be empty — only the output-only state differs", plan)
+		t.Errorf("plan %+v should be empty: only the output-only state differs", plan)
 	}
 
 	livePriceDrift := map[string]json.RawMessage{
@@ -113,7 +113,7 @@ func TestCompute_normalizerExcludesOutputOnly(t *testing.T) {
 		t.Fatalf("Compute: %v", err)
 	}
 	if len(plan.Patches) != 1 || plan.Patches[0].Fields[0] != "basePlans" {
-		t.Errorf("plan %+v should patch basePlans — the price genuinely differs", plan)
+		t.Errorf("plan %+v should patch basePlans: the price genuinely differs", plan)
 	}
 }
 

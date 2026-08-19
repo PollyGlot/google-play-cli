@@ -1,6 +1,6 @@
 // Package discard implements `gplay edits discard`: discard the explicit Edit
 // pinned in .gplay/edit-<package>.json (edits.delete) and clear the pin. The
-// pin is cleared REGARDLESS of the API outcome — an Edit that has already
+// pin is cleared REGARDLESS of the API outcome: an Edit that has already
 // expired or vanished server-side (404) is the desired end state either way, so
 // the local pin must not be left behind to block the next `edits begin`. With
 // no open Edit it fails with exit 60.
@@ -26,7 +26,7 @@ type Input struct {
 	Package string
 }
 
-// alreadyGone reports whether err is a 404 from edits.delete — the Edit is
+// alreadyGone reports whether err is a 404 from edits.delete: the Edit is
 // already gone (expired or discarded elsewhere), which is success for a
 // discard: the end state we wanted.
 func alreadyGone(err error) bool {

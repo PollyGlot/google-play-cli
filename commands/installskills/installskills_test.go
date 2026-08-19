@@ -154,7 +154,7 @@ func TestInstallSkills_npxLookupError(t *testing.T) {
 // exitErr mimics *exec.ExitError: it carries the child process's exit code via
 // an ExitCode() method (os.ProcessState promotes one). exit.Coder has the same
 // shape, so a naive %w-wrap of the real npx error would leak the child's code
-// as gplay's — the regression this test pins.
+// as gplay's: the regression this test pins.
 type exitErr struct{ code int }
 
 func (e exitErr) Error() string { return fmt.Sprintf("exit status %d", e.code) }

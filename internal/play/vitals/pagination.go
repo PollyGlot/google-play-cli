@@ -15,7 +15,7 @@ import (
 // (e.g. 10 anomalies, 50 error issues) and returns a `nextPageToken`. A single
 // page therefore silently under-reports. These helpers follow the token to
 // completion (bounded by an optional total `limit`), then rebuild the response
-// envelope from the verbatim item objects — items are preserved byte-for-byte
+// envelope from the verbatim item objects: items are preserved byte-for-byte
 // so `--output json` stays an ADR-0003 pass-through even though several upstream
 // pages were merged (the same stance internal/play/reviews takes after
 // pagination).
@@ -49,7 +49,7 @@ func rebuildEnvelope(itemsKey string, items []json.RawMessage) (json.RawMessage,
 	return json.Marshal(map[string][]json.RawMessage{itemsKey: items})
 }
 
-// tokenLoopError is the api.Error a non-progressing pagination token raises —
+// tokenLoopError is the api.Error a non-progressing pagination token raises:
 // the same defence internal/play/reviews uses, so a server that repeats a token
 // fails loudly instead of looping until the context is cancelled.
 func tokenLoopError(op, pkg, what string) error {

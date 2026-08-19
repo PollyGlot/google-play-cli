@@ -1,13 +1,13 @@
 // Package upload implements `gplay releases sharing upload`: upload an APK or
 // AAB to Google Play Internal App Sharing and print the private, shareable
 // download link (CONTEXT.md: Internal App Sharing). It bypasses tracks and the
-// Edit lifecycle — a QA/preview gesture, not a release. APK vs AAB is
+// Edit lifecycle: a QA/preview gesture, not a release. APK vs AAB is
 // auto-detected by file extension (.apk / .aab) with a --format override.
 //
 // Write-safety is the ROUTINE tier (ADR-0017): no --confirm (it mints only a
 // private link, touches no track or production release). It is still a Play
-// state mutation, so the command is MarkMutating — GPLAY_READONLY refuses it
-// with exit 4 (ADR-0024) — and --dry-run validates the package + the local
+// state mutation, so the command is MarkMutating: GPLAY_READONLY refuses it
+// with exit 4 (ADR-0024), and --dry-run validates the package + the local
 // artifact with zero network I/O. Ships [experimental] (ADR-0010).
 package upload
 
@@ -30,7 +30,7 @@ import (
 type Input struct {
 	Package      string
 	ArtifactPath string
-	Format       string // "" | "apk" | "bundle" — overrides extension auto-detect
+	Format       string // "" | "apk" | "bundle": overrides extension auto-detect
 	DryRun       bool
 }
 
@@ -43,7 +43,7 @@ func (e *usageError) ExitCode() int { return 2 }
 // classifyError signals that gplay could not determine or read the artifact: an
 // unrecognized extension with no --format, or a missing/unreadable/non-regular
 // path. It is a client-side validation failure (exit 20), matching the way
-// internal/play/sharing reports a bad path on the live path — so the same exit
+// internal/play/sharing reports a bad path on the live path, so the same exit
 // code applies whether the file is rejected here (dry-run + live pre-check) or
 // inside the uploader.
 type classifyError struct {
@@ -83,7 +83,7 @@ func classify(path, formatOverride string) (artifact, error) {
 		case ".aab":
 			kind = "bundle"
 		default:
-			return artifact{}, &classifyError{path: path, msg: "cannot tell APK from AAB by extension — pass --format apk|bundle"}
+			return artifact{}, &classifyError{path: path, msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
 		}
 	default:
 		return artifact{}, &usageError{msg: "--format must be apk or bundle"}
@@ -122,7 +122,7 @@ func (p Payload) renderTable(w io.Writer) error {
 		_, err := fmt.Fprintf(w, "would upload %s (%d bytes) to Internal App Sharing for %s (dry-run)\n", p.Kind, p.Bytes, p.Package)
 		return err
 	}
-	// downloadUrl leads — it is the whole point of the command.
+	// downloadUrl leads: it is the whole point of the command.
 	if _, err := fmt.Fprintf(w, "downloadUrl:             %s\n", p.Artifact.DownloadURL); err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	art, err := classify(in.ArtifactPath, in.Format)
@@ -223,7 +223,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr (never on --dry-run).
-	rc.Confirmf("uploaded %s to Internal App Sharing for %q — %s", art.kind, pkg, artResp.DownloadURL)
+	rc.Confirmf("uploaded %s to Internal App Sharing for %q: %s", art.kind, pkg, artResp.DownloadURL)
 	return Payload{Package: pkg, Kind: art.kind, Bytes: art.size, Artifact: artResp, Raw: raw}, nil
 }
 
@@ -238,7 +238,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Upload a build to Internal App Sharing and print its shareable link",
 		Long: `Upload an APK or AAB to Google Play Internal App Sharing and print the
 private, shareable downloadUrl an authorized tester follows to install it.
-This bypasses tracks and the Edit lifecycle entirely — a QA/preview gesture,
+This bypasses tracks and the Edit lifecycle entirely: a QA/preview gesture,
 not a release.
 
 APK vs AAB is auto-detected by file extension (.apk / .aab); pass

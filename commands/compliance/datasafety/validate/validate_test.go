@@ -1,5 +1,5 @@
 // Package validatecmd_test exercises `gplay compliance datasafety validate`
-// end to end at the kernel level — and, crucially, OFFLINE. The RunContext
+// end to end at the kernel level, and, crucially, OFFLINE. The RunContext
 // is built with NO Account and NO injected transport: any attempt to
 // authenticate or make an HTTP call would fail (there is no credential and
 // no RoundTripper). A passing suite is itself proof that validate never

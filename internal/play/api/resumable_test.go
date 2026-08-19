@@ -186,7 +186,7 @@ func TestResumable_5xxMidUpload_resumesFromAckedOffset(t *testing.T) {
 }
 
 // TestResumable_transportErrorMidUpload_probeAndResume: a transport error (not
-// an HTTP status) on a chunk PUT is recovered the same way — probe, then
+// an HTTP status) on a chunk PUT is recovered the same way: probe, then
 // resume from the acknowledged offset.
 func TestResumable_transportErrorMidUpload_probeAndResume(t *testing.T) {
 	size := api.ResumableChunkSize + 100
@@ -266,7 +266,7 @@ func TestResumable_terminal4xxDuringChunks(t *testing.T) {
 }
 
 // TestResumable_probeTransientFailure_retriesUnderStallBound: a 5xx to the
-// offset probe itself is transient — the helper retries the probe under the
+// offset probe itself is transient: the helper retries the probe under the
 // stall bound instead of aborting the upload on the first failure.
 func TestResumable_probeTransientFailure_retriesUnderStallBound(t *testing.T) {
 	size := api.ResumableChunkSize + 300
@@ -289,7 +289,7 @@ func TestResumable_probeTransientFailure_retriesUnderStallBound(t *testing.T) {
 	}
 }
 
-// TestResumable_probeTerminal4xx_isImmediate: a 4xx to the probe is terminal —
+// TestResumable_probeTerminal4xx_isImmediate: a 4xx to the probe is terminal:
 // no retry, the error surfaces with its upstream status.
 func TestResumable_probeTerminal4xx_isImmediate(t *testing.T) {
 	size := api.ResumableChunkSize + 300
@@ -345,7 +345,7 @@ func (s *shortReader) ReadAt(p []byte, off int64) (int, error) {
 }
 
 // TestResumable_shortRead_isLocalIOError: a short ReadAt (clean io.EOF
-// included) must not upload the zero-filled tail of the buffer — it is a
+// included) must not upload the zero-filled tail of the buffer: it is a
 // LocalIOError (exit 20).
 func TestResumable_shortRead_isLocalIOError(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{}}

@@ -3,7 +3,7 @@
 // context key, Run invoked directly, and the resulting Metadata tree written
 // into t.TempDir(). Mirrors the `metadata list` harness, but pull projects the
 // online Listings onto the managed-field model (non-empty values only) and
-// writes them to disk via internal/metadata/tree.Write — never committing the
+// writes them to disk via internal/metadata/tree.Write: never committing the
 // read-only Edit. The transport FAILS on any PATCH, PUT, DELETE-on-listing, or
 // :commit: pull is a read-then-write-to-disk, never a write-to-Play.
 package pull_test
@@ -292,7 +292,7 @@ func TestRun_emptyOnlineField_writesNoFile(t *testing.T) {
 }
 
 // TestRun_localLocaleAbsentOnline_isNotDeleted asserts pull's additive
-// contract: a locale that exists only on disk (absent online) is left intact —
+// contract: a locale that exists only on disk (absent online) is left intact:
 // pull never deletes from the local tree.
 func TestRun_localLocaleAbsentOnline_isNotDeleted(t *testing.T) {
 	dir := t.TempDir()
@@ -443,7 +443,7 @@ func TestRun_noListings_emptySummaryNotError(t *testing.T) {
 }
 
 // TestRun_jsonSummaryShape asserts the gplay summary JSON shape: package, dir,
-// pulled[] with API camelCase field keys, and the summary totals — NOT an API
+// pulled[] with API camelCase field keys, and the summary totals, NOT an API
 // pass-through.
 func TestRun_jsonSummaryShape(t *testing.T) {
 	dir := t.TempDir()

@@ -1,6 +1,6 @@
 ---
 title: Agent skills
-description: Pre-built agent skills for gplay — one per command namespace, installable with npx skills add, for Claude Code and compatible AI coding tools.
+description: "Pre-built agent skills for gplay: one per command namespace, installable with npx skills add, for Claude Code and compatible AI coding tools."
 sidebar:
   order: 2
 ---
@@ -21,25 +21,28 @@ format.
 
 ## The roster
 
-One skill per shipped namespace, plus a foundation skill for cross-cutting
-conventions:
+One skill per workflow, plus a foundation skill for the conventions they all
+share:
 
 | Skill | Drives |
 | --- | --- |
-| `gplay-cli-usage` | Cross-cutting conventions: output, exit codes, auth resolution (foundation) |
-| `gplay-setup` | Auth onboarding — service account, login, doctor |
-| `gplay-apps` | Apps registry + app details |
-| `gplay-release-flow` | upload / promote / staged rollouts |
-| `gplay-tracks` | Tracks + closed-track testers |
-| `gplay-reviews` | Review triage and replies |
-| `gplay-metadata-sync` | Store listings + images sync |
+| `gplay-cli-usage` | Credential and package resolution, output, exit codes, safety gates, the Edit lifecycle (foundation) |
+| `gplay-setup` | Auth onboarding: service account, login, doctor |
+| `gplay-apps` | App registry, reachable apps, app details |
+| `gplay-release-flow` | Upload, promote, staged rollouts, mappings, Internal App Sharing |
+| `gplay-tracks` | Tracks, closed-track testers, country availability |
+| `gplay-reviews` | Review triage, replies, the monthly CSV history |
+| `gplay-metadata-sync` | Store listing text and images |
 | `gplay-compliance` | Data Safety declarations |
 | `gplay-team` | Users, grants, permission vocabulary |
-
-Two more are gated until their CLI surfaces ship: `gplay-vitals`
-([#49](https://github.com/PollyGlot/google-play-cli/issues/49)) and
-`gplay-subscription-management`
-([#51](https://github.com/PollyGlot/google-play-cli/issues/51)).
+| `gplay-monetization` | Subscriptions and one-time products as declarative files |
+| `gplay-orders` | Order lookup and refunds |
+| `gplay-vitals` | Crash/ANR rates, error reports, Play-detected anomalies |
+| `gplay-games` | Achievements and leaderboards configuration |
+| `gplay-recovery` | App recovery actions when a shipped build is broken |
+| `gplay-device-tiers` | Device tier configs for tiered asset delivery |
+| `gplay-customapps` | Private app creation for managed Google Play |
+| `gplay-appstore` | Alternative app store: catalog, update feed, hosted-app review |
 
 ## Why skills instead of raw prompting?
 

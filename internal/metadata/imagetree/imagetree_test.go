@@ -123,7 +123,7 @@ func TestRead_galleryOrderIsFilenameSort(t *testing.T) {
 
 // TestRead_emptyAndStrayAreHarmless asserts an absent images/ dir, a stray
 // empty gallery dir, and an unrecognized file are all benign (missing ==
-// empty, ADR-0013) — never an error, never a phantom slot.
+// empty, ADR-0013): never an error, never a phantom slot.
 func TestRead_emptyAndStrayAreHarmless(t *testing.T) {
 	dir := t.TempDir()
 	// A locale with a README and an empty stray gallery dir, no images.
@@ -147,7 +147,7 @@ func TestRead_emptyAndStrayAreHarmless(t *testing.T) {
 }
 
 // TestRead_absentDir_isEmptyNotError asserts reading a metadata root that has
-// no image trees at all yields an empty (non-nil) Tree, no error — so apply
+// no image trees at all yields an empty (non-nil) Tree, no error, so apply
 // against a text-only tree is a clean no-op.
 func TestRead_absentDir_isEmptyNotError(t *testing.T) {
 	dir := t.TempDir()

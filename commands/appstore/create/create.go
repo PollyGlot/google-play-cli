@@ -3,7 +3,7 @@
 // store needs before it can do anything else with an app it hosts, via
 // `appstoreappsreview.createappstorehostedapp`.
 //
-// It is the entry point of the whole `appstore` surface — Google's own method
+// It is the entry point of the whole `appstore` surface: Google's own method
 // description is "This must be called before any other RPCs for this hosted
 // app", so every later gesture (metadata update, APK upload, image upload,
 // policy declaration file, publish status) presupposes a record this command
@@ -12,7 +12,7 @@
 // the hosted app (the request body), defaulting to the project pin.
 //
 // MarkMutating so GPLAY_READONLY refuses it (exit 4); --dry-run previews the
-// resolved target without any HTTP call. Edit-free — the call is not under
+// resolved target without any HTTP call. Edit-free: the call is not under
 // `/edits/`. Ships [experimental] (ADR-0010/ADR-0042): a brand-new namespace on
 // a third addressing axis, none of it exercised against a real enrolled app
 // store yet.
@@ -60,7 +60,7 @@ func (p Payload) Renderers() output.Renderers {
 }
 
 // renderTable writes the two identifying values as `FIELD<TAB>VALUE` lines
-// (like `apps view` / `orders view`) — the record has no server-assigned id to
+// (like `apps view` / `orders view`): the record has no server-assigned id to
 // lead with. A dry-run leads with the rehearsed action instead.
 func (p Payload) renderTable(w io.Writer) error {
 	if p.DryRun {
@@ -112,7 +112,7 @@ type createdView struct {
 }
 
 // dryRunView is the gplay-shaped --dry-run JSON: the resolved target plus the
-// machine-readable `requires` array (ADR-0017 §4) — empty, because create needs
+// machine-readable `requires` array (ADR-0017 §4): empty, because create needs
 // no safety flag beyond a writable environment.
 type dryRunView struct {
 	DryRun              bool     `json:"dryRun"`
@@ -126,7 +126,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 		return output.WriteJSON(w, dryRunView{DryRun: true, AppStorePackageName: p.StorePackage, PackageName: p.Package, Requires: []string{}})
 	}
 	// ADR-0003: the API response is passed through verbatim. The documented
-	// exception applies only when there is nothing to pass through —
+	// exception applies only when there is nothing to pass through:
 	// CreateAppStoreHostedAppResponse models no fields, so a server that
 	// answers with an empty body (rather than `{}`) would leave --output json,
 	// the CI default, with zero bytes to parse. As in `orders refund` and
@@ -139,8 +139,8 @@ func (p Payload) renderJSON(w io.Writer) error {
 }
 
 // Run is the business function the kernel invokes. It resolves the app store
-// package name and the hosted app's package, then — unless --dry-run
-// short-circuits before any network — issues the create call.
+// package name and the hosted app's package, then, unless --dry-run
+// short-circuits before any network: issues the create call.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	storePackage, err := appstorecmd.ResolveStorePackage(in.StorePackage)
 	if err != nil {
@@ -184,19 +184,19 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 so the store can submit it to Google for review.
 
 This is the FIRST call for any hosted app: Google requires it before any other
-request for that app, so nothing else in the appstore surface — metadata,
-artifacts, images, policy declarations, publish status — works until it has
+request for that app, so nothing else in the appstore surface (metadata,
+artifacts, images, policy declarations, publish status) works until it has
 succeeded.
 
 Two identifiers meet here, and mixing them up is the common mistake:
 
-  --store-package  the app store's OWN package name (the caller — the
+  --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
                    falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
   --package        the hosted app's package name (the subject), defaulting to
                    the repo's .gplay/config.json pin when omitted
 
-The call is Edit-free — it opens no Edit and joins none. The API exposes
+The call is Edit-free: it opens no Edit and joins none. The API exposes
 NO delete for the record: once created it cannot be removed (there is no
 delete verb to look for), only its publish status can change. Creating the record
 twice is rejected by the API as a conflict (exit 60), so the command is safe to

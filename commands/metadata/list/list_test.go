@@ -3,7 +3,7 @@
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // `tracks list` harness, but routes edits.listings.list (the per-locale
 // Store front read) instead of tracks.list. The transport FAILS on any
-// PATCH, PUT, DELETE-on-listing, or :commit — a read-only summary opens,
+// PATCH, PUT, DELETE-on-listing, or :commit: a read-only summary opens,
 // reads, and discards the Edit, never writes or commits it.
 package list_test
 
@@ -57,7 +57,7 @@ func rowByLocale(rows []list.ListingRow) map[string]list.ListingRow {
 // edits.delete. It deliberately has NO PATCH/PUT/:commit branch and fails
 // on a DELETE that targets a /listings/ path: reaching one means the
 // command tried to mutate or commit, which a read-only list must never do
-// — so the transport fails the test. A DELETE on the bare /edits/<id> path
+// , so the transport fails the test. A DELETE on the bare /edits/<id> path
 // is the expected Edit discard.
 type listRT struct {
 	t            *testing.T

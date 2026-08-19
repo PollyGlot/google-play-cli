@@ -75,7 +75,7 @@ func jsonResp(status int, body string) *http.Response {
 }
 
 // signedSAJSON returns a minimal but well-formed service-account JSON with
-// a real RSA key — enough for token.Source to mint a signed JWT.
+// a real RSA key: enough for token.Source to mint a signed JWT.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -116,7 +116,7 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 
 // TestRun_happyPath_listsGroups asserts the full read-only vertical slice:
 // /token exchange precedes edits.insert, then testers.get reads the
-// audience, then the Edit is discarded (edits.delete) — never committed.
+// audience, then the Edit is discarded (edits.delete): never committed.
 // --output json must be the raw testers.get body verbatim (ADR-0003).
 func TestRun_happyPath_listsGroups(t *testing.T) {
 	rt := &listRT{
@@ -155,7 +155,7 @@ func TestRun_happyPath_listsGroups(t *testing.T) {
 		}
 	}
 
-	// ADR-0003: --output json must be API pass-through — the raw
+	// ADR-0003: --output json must be API pass-through: the raw
 	// testers.get response body verbatim.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {

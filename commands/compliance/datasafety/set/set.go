@@ -1,6 +1,6 @@
 // Package set implements `gplay compliance datasafety set`: it pushes the
 // app's Data Safety declaration to Google from the canonical CSV. The
-// declaration is WRITE-ONLY and OUTSIDE the Edits model (ADR-0014) — a direct
+// declaration is WRITE-ONLY and OUTSIDE the Edits model (ADR-0014): a direct
 // POST to /applications/{package}/dataSafety, not an edit transaction.
 //
 // set runs `validate` implicitly first, so a structurally invalid CSV never
@@ -12,7 +12,7 @@
 //   - the real write requires --confirm (a bad declaration blocks releases or
 //     misstates data practices). Without it set refuses, exits 3 (safety flag
 //     required, docs/DESIGN.md §9), and points at --dry-run. CI=true NEVER
-//     auto-confirms — CI governs output format only, never mutation.
+//     auto-confirms: CI governs output format only, never mutation.
 package set
 
 import (
@@ -57,10 +57,10 @@ func (e *usageError) ExitCode() int { return 2 }
 // confirmRequired builds the refusal returned when a real write is invoked
 // without --confirm. It is an *exit.SafetyFlagError, so it exits 3 (safety
 // flag required, docs/DESIGN.md §9) and names the missing flag in the
-// --output json envelope's requires[] — the same shape every other gated
+// --output json envelope's requires[]: the same shape every other gated
 // command uses (ADR-0017). It points at --dry-run and reuses gplay's
 // --confirm meaning (ADR-0002 / ADR-0011 item 4, recorded in ADR-0014).
-// CI=true must never reach this as an auto-confirm — env governs output
+// CI=true must never reach this as an auto-confirm: env governs output
 // format, not mutation.
 func confirmRequired() error {
 	return exit.SafetyFlag("confirm", "compliance datasafety set replaces the app's live Data Safety declaration (a stale or wrong declaration can block releases); pass --confirm to proceed (preview first with --dry-run)")
@@ -68,14 +68,14 @@ func confirmRequired() error {
 
 // packageNotFoundError / forbiddenError attach actionable hints to a 404 /
 // 403 on the POST, leaving the wrapped *api.Error to drive the exit code
-// (404→30, 403→11) — mirroring `testers set` / `metadata apply`.
+// (404→30, 403→11): mirroring `testers set` / `metadata apply`.
 type packageNotFoundError struct {
 	pkg   string
 	cause error
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
@@ -85,7 +85,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -106,14 +106,14 @@ func classifyError(pkg string, err error) error {
 }
 
 // fileError signals the CSV could not be read; ExitCode()=20 (client-side
-// validation — the operator pointed --file at something gplay cannot read).
+// validation: the operator pointed --file at something gplay cannot read).
 type fileError struct {
 	file  string
 	cause error
 }
 
 func (e *fileError) Error() string {
-	return fmt.Sprintf("cannot read Data Safety CSV at %s: %v — pass --file <path> to point at your declaration", e.file, e.cause)
+	return fmt.Sprintf("cannot read Data Safety CSV at %s: %v: pass --file <path> to point at your declaration", e.file, e.cause)
 }
 func (e *fileError) ExitCode() int { return 20 }
 func (e *fileError) Unwrap() error { return e.cause }
@@ -146,7 +146,7 @@ func (e *ValidationError) Error() string {
 // is the rehearsal report: the resolved package/account and the size of the
 // declaration that would be posted. On a real write Raw carries the
 // dataSafety POST response body for the ADR-0003 --output json pass-through
-// (which may be empty — see renderJSON).
+// (which may be empty: see renderJSON).
 type Payload struct {
 	Package  string
 	Account  string
@@ -228,7 +228,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 	}
 	// Real write: pass the API response through verbatim (ADR-0003). The
 	// dataSafety POST may return an EMPTY body on success, in which case
-	// there is nothing to pass through — a documented exception to ADR-0003.
+	// there is nothing to pass through: a documented exception to ADR-0003.
 	// We emit a gplay-shaped success object instead of zero bytes so a CI
 	// pipeline (where --output json is the default) always gets parseable
 	// output rather than an empty stream.
@@ -277,7 +277,7 @@ func resolvePackage(rc *kernel.RunContext, in Input) (string, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return "", &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	return pkg, nil
 }
@@ -300,7 +300,7 @@ func loadAndValidate(file string) (*datasafety.Report, error) {
 
 // Run is the business function the kernel invokes. It reads + validates the
 // CSV (implicitly, so an invalid declaration never reaches a POST or claims a
-// successful rehearsal), resolves the target package, and — on --dry-run —
+// successful rehearsal), resolves the target package, and, on --dry-run,
 // reports the target without any network I/O.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	file := in.File
@@ -335,7 +335,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	// Confirm gate (real writes only). Evaluated before any network so a
 	// missing --confirm fails instantly, never after a POST. CI=true does NOT
-	// flow into in.Confirm — env governs output format, never mutation.
+	// flow into in.Confirm: env governs output format, never mutation.
 	if !in.Confirm {
 		return nil, confirmRequired()
 	}
@@ -374,12 +374,12 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Push the app's Data Safety declaration from the canonical CSV",
 		Long: `Push the canonical Data Safety CSV (--file, default
 ./compliance/data-safety.csv) to Google as the app's Data Safety declaration.
-The declaration is write-only and replaces the whole document — a direct POST
+The declaration is write-only and replaces the whole document: a direct POST
 outside the Edits model (ADR-0014). gplay cannot read it back; only this POST
 validates the contents.
 
 set runs ` + "`validate`" + ` implicitly first, so a structurally invalid CSV
-never reaches the network. Use --dry-run to rehearse the write — it validates
+never reaches the network. Use --dry-run to rehearse the write: it validates
 the CSV, resolves the target package and Account, and reports "would POST N
 bytes / N rows to <package>" without any network call (and without needing
 --confirm).

@@ -31,7 +31,7 @@ func Usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf
 type NoOpenEditError struct{ Package string }
 
 func (e *NoOpenEditError) Error() string {
-	return fmt.Sprintf("no open explicit edit for %s — run `gplay edits begin --package %s` first (nothing to commit or discard)", e.Package, e.Package)
+	return fmt.Sprintf("no open explicit edit for %s: run `gplay edits begin --package %s` first (nothing to commit or discard)", e.Package, e.Package)
 }
 func (e *NoOpenEditError) ExitCode() int { return 60 }
 
@@ -44,7 +44,7 @@ type AlreadyOpenError struct {
 }
 
 func (e *AlreadyOpenError) Error() string {
-	return fmt.Sprintf("an explicit edit is already open for %s (%s) — run `gplay edits commit` or `gplay edits discard` first", e.Package, e.EditID)
+	return fmt.Sprintf("an explicit edit is already open for %s (%s): run `gplay edits commit` or `gplay edits discard` first", e.Package, e.EditID)
 }
 func (e *AlreadyOpenError) ExitCode() int { return 60 }
 
@@ -56,7 +56,7 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return "", Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return "", Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 	return pkg, nil
 }
@@ -64,11 +64,11 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 // RequireGplayDir returns the project's .gplay/ directory, or a usage error
 // (exit 2) when no project was found. Explicit edits live in the project's
 // .gplay/ (gitignored for edit-*.json), so they require an initialised
-// project — the error names `gplay init`.
+// project: the error names `gplay init`.
 func RequireGplayDir(rc *kernel.RunContext) (string, error) {
 	dir, ok := rc.GplayDir()
 	if !ok {
-		return "", Usagef("no project found — run `gplay init --package <pkg>` first (explicit edits are stored in the project's .gplay/)")
+		return "", Usagef("no project found: run `gplay init --package <pkg>` first (explicit edits are stored in the project's .gplay/)")
 	}
 	return dir, nil
 }
@@ -76,7 +76,7 @@ func RequireGplayDir(rc *kernel.RunContext) (string, error) {
 // Payload is the renderable the edits leaves return: the package, the Edit ID
 // acted on (or the open one, for status), whether an Edit is open, and the past
 // action (began/committed/discarded; empty for status). --output json emits it
-// as a small gplay envelope — these are local-pin operations, not an API
+// as a small gplay envelope: these are local-pin operations, not an API
 // pass-through, so there is no upstream body to mirror.
 type Payload struct {
 	Package string `json:"package"`

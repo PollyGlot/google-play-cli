@@ -7,7 +7,7 @@ import (
 )
 
 // FuzzParseErrorEnvelope fuzzes the Google API error-envelope parser, which
-// consumes non-2xx response bodies gplay does not control — a malformed or
+// consumes non-2xx response bodies gplay does not control: a malformed or
 // hostile server can return anything. The invariant that must hold for every
 // input: the parser never panics, and it always yields a non-empty message
 // (the fallback chain guarantees at least "HTTP <status>"), so a caller is

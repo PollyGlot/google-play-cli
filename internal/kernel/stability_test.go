@@ -10,7 +10,7 @@ import (
 )
 
 // TestExperimental_roundTrips asserts the label round-trips and that an
-// unlabelled command reports false — the "frozen by default" side of ADR-0010,
+// unlabelled command reports false: the "frozen by default" side of ADR-0010,
 // where absence of a label means the Public contract applies.
 func TestExperimental_roundTrips(t *testing.T) {
 	marked := kernel.Experimental(&cobra.Command{Use: "pull", Short: "Pull the catalog"})
@@ -20,7 +20,7 @@ func TestExperimental_roundTrips(t *testing.T) {
 
 	plain := &cobra.Command{Use: "list", Short: "List apps"}
 	if kernel.IsExperimental(plain) {
-		t.Error("IsExperimental(unmarked) = true, want false — unlabelled commands are in the frozen contract")
+		t.Error("IsExperimental(unmarked) = true, want false: unlabelled commands are in the frozen contract")
 	}
 }
 
@@ -64,8 +64,8 @@ func TestExperimental_synthesisesLongFromShort(t *testing.T) {
 }
 
 // TestExperimental_labelsRegisteredSubtree asserts one call on a namespace
-// covers the children already registered under it — the registration shape
-// cmd/gplay/main.go uses — so each child carries the tag in its own help
+// covers the children already registered under it: the registration shape
+// cmd/gplay/main.go uses, so each child carries the tag in its own help
 // instead of inheriting it invisibly.
 func TestExperimental_labelsRegisteredSubtree(t *testing.T) {
 	group := &cobra.Command{Use: "subscriptions", Short: "Manage subscriptions"}
@@ -98,12 +98,12 @@ func TestIsExperimental_inheritsFromAncestor(t *testing.T) {
 	group.AddCommand(late)
 
 	if !kernel.IsExperimental(late) {
-		t.Error("IsExperimental(late child) = false, want true — the namespace is experimental")
+		t.Error("IsExperimental(late child) = false, want true: the namespace is experimental")
 	}
 }
 
-// TestExperimental_idempotent asserts labelling a child and then its parent —
-// the order a namespace-wide call produces when a child was marked on its own —
+// TestExperimental_idempotent asserts labelling a child and then its parent:
+// the order a namespace-wide call produces when a child was marked on its own:
 // does not stack two markers in the help text.
 func TestExperimental_idempotent(t *testing.T) {
 	group := &cobra.Command{Use: "games", Short: "Manage Play Games config"}

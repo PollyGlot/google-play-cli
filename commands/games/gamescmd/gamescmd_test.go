@@ -179,7 +179,7 @@ func TestBuildRows_readsDraftThenPublished(t *testing.T) {
 
 // TestBuildAchievementBody_explicitZeroIsSent is the regression guard for the
 // *int fields: an explicit --point-value 0 / --steps-to-unlock 0 (PointValueSet /
-// StepsSet true) MUST reach the wire — a plain `int,omitempty` would drop the
+// StepsSet true) MUST reach the wire: a plain `int,omitempty` would drop the
 // zero and silently defeat the *Set mechanism.
 func TestBuildAchievementBody_explicitZeroIsSent(t *testing.T) {
 	body, err := gamescmd.BuildAchievementBody(nil, gamescmd.AchievementWrite{

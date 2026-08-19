@@ -1,10 +1,10 @@
 // Package datasafety performs the write-only Data Safety declaration POST.
 // Unlike every other internal/play/* write, applications.dataSafety is
 // OUTSIDE the Edits model (ADR-0014): a direct POST on the application, not an
-// edits.* resource, so it joins no edit transaction. There is no `get` — the
-// live declaration cannot be read back — so this package exposes only Post.
+// edits.* resource, so it joins no edit transaction. There is no `get`: the
+// live declaration cannot be read back, so this package exposes only Post.
 //
-// The body is one opaque CSV blob, {"safetyLabels":"<CSV>"} — the same
+// The body is one opaque CSV blob, {"safetyLabels":"<CSV>"}: the same
 // import/export CSV the Play Console uses, adopted verbatim (gplay does not
 // re-model Google's evolving schema).
 package datasafety
@@ -34,9 +34,9 @@ type request struct {
 // /applications/{packageName}/dataSafety with body {"safetyLabels":"<CSV>"}.
 // It replaces the whole declaration.
 //
-// Returns the raw response body for the ADR-0003 --output json pass-through —
+// Returns the raw response body for the ADR-0003 --output json pass-through,
 // which may legitimately be empty (the API echoes nothing meaningful on
-// success; the command layer documents that exception) — or an *api.Error so
+// success; the command layer documents that exception), or an *api.Error so
 // the gplay exit-code taxonomy maps transparently: 403→11, 404→30, 5xx→40,
 // network→50.
 func Post(ctx context.Context, hc *http.Client, pkg string, csv []byte) (json.RawMessage, error) {

@@ -1,7 +1,7 @@
 // Package viewcmd_test exercises `gplay apps view` at the kernel level:
 // a RunContext built by hand, a RoundTripper injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// releases/list harness — the transport FAILS on any PUT or :commit,
+// releases/list harness: the transport FAILS on any PUT or :commit,
 // because `apps view` is a read-only listing (open Edit → details.get
 // → listings.get → discard, never commit).
 package viewcmd_test
@@ -35,7 +35,7 @@ import (
 // sequence: edits.insert, edits.details.get, edits.listings.get(lang),
 // edits.delete. It deliberately has NO PUT or :commit branch: reaching
 // one means the command tried to mutate state, which a read-only
-// listing must never do — so the transport fails the test.
+// listing must never do, so the transport fails the test.
 type viewRT struct {
 	t       *testing.T
 	editID  string
@@ -422,7 +422,7 @@ func TestRun_invalidPackage_exit20(t *testing.T) {
 }
 
 // TestRun_noAccount_exit10 asserts that with no resolved Account the
-// command fails auth (exit 10) before any HTTP call — there is no
+// command fails auth (exit 10) before any HTTP call: there is no
 // dry-run path for a read-only listing.
 func TestRun_noAccount_exit10(t *testing.T) {
 	rt := &viewRT{t: t}
@@ -470,7 +470,7 @@ func TestRun_detailsGet404_exit30(t *testing.T) {
 }
 
 // TestRenderTable_showsAllThreeFields asserts the table view surfaces
-// defaultLanguage, title, contactEmail — the three fields documented
+// defaultLanguage, title, contactEmail: the three fields documented
 // in the AC. The exact layout is up to the renderer; the contract is
 // that each value appears somewhere in the output.
 func TestRenderTable_showsAllThreeFields(t *testing.T) {
