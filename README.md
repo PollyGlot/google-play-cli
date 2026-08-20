@@ -219,7 +219,7 @@ anything bigger than a typo, branch from `main`, open a PR.
 
 ## License
 
-[MIT](LICENSE). © 2026 Pavlo Trinko and contributors.
+[MIT](LICENSE). © 2026 Pavlo Trinko.
 
 ## Not affiliated with Google
 
