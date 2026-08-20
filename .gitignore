@@ -15,10 +15,12 @@ coverage.txt
 coverage.html
 
 # Editor / OS / agents
+# No trailing slash on .claude: worktrees symlink it to the repo root, and a
+# `dir/` pattern never matches a symlink.
 .DS_Store
 .idea/
 .vscode/
-.claude/
+.claude
 .cursor/
 .aider*
 *.swp
