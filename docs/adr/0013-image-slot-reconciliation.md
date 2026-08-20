@@ -146,7 +146,7 @@ Two properties of `edits.images` break the text model:
   by sniffing the image bytes (PNG/JPEG magic number), not the response
   `Content-Type`. App name and per-locale title are deliberately **not**
   in filenames — the tree root already scopes one package and the path
-  already carries locale + type + order (the `fastlane`/asc convention).
+  already carries locale + type + order (the `fastlane` convention).
 - Driving a slot to zero images is not possible in this PRD's scope;
   attempting it (an empty/absent directory) is a silent no-op by design.
   The `metadata images clear` escape hatch is parked in `docs/BACKLOG.md`.

@@ -25,12 +25,11 @@ Two things changed that calculus:
    Console already shows" are exactly what users want to pull into *their own*
    dashboards.
 
-The precedent exists: `asc` (rorkai/App-Store-Connect-CLI) covers the App
-Store Connect API quasi-exhaustively (1,216 paths in its OpenAPI snapshot),
-advertises that coverage as its core positioning, and manages risk with
-stability labels instead of a gatekeeping backlog. It demonstrates the
-approach scales in a single Go binary with an offline spec snapshot — the same
-architecture gplay already has (Discovery snapshots, schema index).
+The approach is known to scale: quasi-exhaustive coverage of a
+~1,200-endpoint API fits in a single Go binary driven by an offline spec
+snapshot, with risk managed by stability labels instead of a gatekeeping
+backlog. That is the architecture gplay already has (Discovery snapshots,
+schema index).
 
 ## Decision
 

@@ -23,9 +23,9 @@ Three things make now the right time and shape this decision:
   writable today. Only vitals ([#49](https://github.com/PollyGlot/google-play-cli/issues/49))
   and subscriptions ([#51](https://github.com/PollyGlot/google-play-cli/issues/51))
   remain ungated.
-- **A close analogue exists.** asc (sibling CLI) ships a separate
-  `app-store-connect-cli-skills` repo, installed via `npx skills add`, with a
-  foundational `asc-cli-usage` skill plus ~23 workflow skills.
+- **The packaging is a solved shape.** A companion skills repo installed via
+  `npx skills add`, built around a foundational CLI-usage skill plus per-area
+  workflow skills, is an established layout.
 
 This ADR settles: where skills live, how many and along what axis, what a
 `SKILL.md` must contain, how skills stay correct as the CLI evolves, and how they
@@ -38,9 +38,10 @@ relate to the dormant 1.0 freeze.
 `PollyGlot/google-play-cli-skills` — **not** a `skills/` directory in this repo.
 Reasons: (a) the install contract is `npx skills add <org>/<repo>`, so the repo
 *is* the unit; (b) skills version on their own cadence — they track the CLI's
-*observable behavior*, not its source tree; (c) it matches asc; (d) it keeps the
-Go module clean. Layout: one folder per skill, each with a `SKILL.md` plus
-optional `scripts/` / `references/`. License MIT, matching this repo.
+*observable behavior*, not its source tree; (c) it matches the established
+companion-repo layout; (d) it keeps the Go module clean. Layout: one folder per
+skill, each with a `SKILL.md` plus optional `scripts/` / `references/`. License
+MIT, matching this repo.
 
 ### 2. Comprehensive, area-aligned roster — not the minimal "GA-4"
 
@@ -63,12 +64,12 @@ The minimal "v1 GA = 4 skills" framing from #98 is **superseded**: we ship
 coverage of everything that exists. A gated area gets its skill when its commands
 land (vitals, subscriptions). There is deliberately **no `gplay-id-resolver`
 analogue** — package names and the local apps registry are already human-legible
-handles, so asc's ID-resolution skill has no gplay counterpart; a place where
+handles, so an ID-resolution skill has no gplay counterpart; a place where
 gplay's addressing design erases an entire skill.
 
 **Granularity rule:** *skill := one namespace*, unless two namespaces are
 meaningless apart — testers exist only for closed tracks (DESIGN §10 couples
-"Tracks and testers"), so they fold into `gplay-tracks`. Finer asc-style workflow
+"Tracks and testers"), so they fold into `gplay-tracks`. Finer workflow
 splits (a dedicated whats-new-writer, an ASO audit, a localization skill) are
 **future additive** skills, not a v1 cut.
 
@@ -131,7 +132,7 @@ not a gate.
   module.
 - **Minimal "GA-4" only** (issue 53 / #98). Rejected per the product call: cover
   the whole shipped surface now; the 4 are a subset of the 9.
-- **Clone asc's fine-grained split** (several skills per area). Deferred: the
+- **A fine-grained split** (several skills per area). Deferred: the
   right altitude for v1 is one-per-namespace; finer workflow skills are additive
   later, not a launch requirement.
 - **Freeze flag lists inside each `SKILL.md`.** Rejected: they drift; `--help` is
@@ -142,7 +143,7 @@ not a gate.
   the drift gate (#184) was closed won't-do. A docs-only repo of nine
   hand-written files does not justify a CI pipeline (or a `gplay` binary in it);
   review plus `--help`-first authoring covers it. See §5.
-- **Ship a `gplay install-skills` CLI command** (asc has `asc install-skills`).
+- **Ship a `gplay install-skills` CLI command.**
   Parked: it is a CLI feature in *this* repo, separate from bootstrapping the
   skills repo; `npx skills add` suffices now. **Later adopted** in
   [ADR-0028](0028-install-skills-command.md): field feedback showed agents do not

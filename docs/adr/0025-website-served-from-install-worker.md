@@ -80,11 +80,11 @@ also covers the static-assets upload, and DNS stays out of CI permanently.
   static hosting with per-PR previews, but two systems on `gplay.sh` and a new
   `Cloudflare Pages:Edit` token scope. Rejected for the seam and the extra
   credential.
-- **A hosted docs SaaS (e.g. Mintlify, as the sibling `asc` uses).** Forfeits
+- **A hosted docs SaaS (e.g. Mintlify).** Forfeits
   the binary-generated reference and the tailored `llms.txt`, adds an external
   dependency and a paid tier for custom domains — at odds with gplay's
-  "single static binary, zero runtime deps" positioning. Following `asc`'s
-  subdomain *URL shape* is reasonable; following its *vendor* is not.
+  "single static binary, zero runtime deps" positioning. The `docs.` subdomain
+  *URL shape* is worth keeping; the vendor dependency is not.
 - **Keep GitHub Pages, point a CNAME at it.** Leaves `/install` on a separate
   Worker and the site on a separate host, and Pages can't run the dynamic
   install proxy. No reason to keep two hosts once one Worker can do both.

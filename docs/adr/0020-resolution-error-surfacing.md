@@ -43,14 +43,14 @@ it was simply being fed a synthetic `errors.New("no active account")`
 instead of the cause `EnsureAccount` had thrown away. The handler for the
 error already exists; this ADR just stops starving it.
 
-The sibling CLI `asc` (App Store Connect) was used as a precedent. Its
-`auth status` exits 0 for an absent credential and **non-zero with the
-underlying cause in the message** for a corrupt one; its `doctor` folds
-the parse failure into its checklist rather than aborting. Same shape as
-the decision below. `asc` differs on two points we deliberately do not
-copy: it has no semantic exit taxonomy (every invalid credential is exit
-`1`), and it treats an empty config field as *absent* — see Considered
-options.
+The conventional CLI shape for this is settled: `auth status` exits 0 for
+an absent credential and **non-zero with the underlying cause in the
+message** for a corrupt one, and a `doctor` command folds the parse
+failure into its checklist rather than aborting. Same shape as the
+decision below. gplay adds two things that convention usually lacks: a
+semantic exit taxonomy (rather than a blanket exit `1` for every invalid
+credential), and treating an empty required field as *invalid* rather
+than *absent*, see Considered options.
 
 ## Decision
 
@@ -100,15 +100,15 @@ options.
   error).** Rejected: it regresses `auth status` (exit 0 → non-zero) and
   read-only `apps list` for every logged-out or unconfigured user. "Absent"
   is a legitimate benign state, not a failure.
-- **Treat a missing required field as *absent* (the `asc` choice).**
+- **Treat a missing required field as *absent*.**
   Rejected: gplay's `MissingFieldError` fires from `serviceaccount.Parse`
   on a credential the user actually *provided* — an inline
   `--service-account` that is broken right now, or stored bytes that are
   corrupt (`auth login` validates before storing, so a stored Account
   cannot be "half-configured"). "Invalid" is the accurate read, and
-  `asc`'s "run `auth login`" advice would misdirect the inline path.
-  `asc`'s missing-field-is-absent holds only because its trigger is an
-  empty *config template field* — a different data model.
+  the "run `auth login`" advice that pairs with *absent* would misdirect
+  the inline path. Missing-field-is-absent holds only when the trigger is
+  an empty *config template field*, a different data model.
 - **Scatter `Coder` types at each boundary (`serviceaccount` +
   `keystore`).** Rejected: it spreads the exit-10 guarantee across
   packages and risks a missed path; the kernel resolution step is the
