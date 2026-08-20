@@ -47,7 +47,7 @@ func recipeArgs() []string {
 type RunFunc func(ctx context.Context, npxPath string, args []string, stdin io.Reader, stdout, stderr io.Writer) error
 
 // Options injects the two process-boundary dependencies so tests run without a
-// real npx or network (ADR-0028 acceptance: mock exec/LookPath, asc-style).
+// real npx or network (ADR-0028 acceptance: mock exec/LookPath).
 // Production wiring leaves both nil and the defaults shell out for real.
 type Options struct {
 	// LookPath resolves an executable on PATH. Defaults to exec.LookPath.

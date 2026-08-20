@@ -23,8 +23,7 @@ which also stays a working fallback.
 
 1. **A short, trustworthy install URL.** `curl -fsSL https://gplay.sh/install | sh`
    reads as a real product; the raw `raw.githubusercontent.com/PollyGlot/…/main/install.sh`
-   does not. It also mirrors the sibling project `asc` (`asccli.sh`), aligning
-   the two CLIs down to the install command.
+   does not.
 
 2. **Worker proxy, not a static copy.** The Worker fetches `install.sh` from
    `main` on each request (with a short cache). The repo stays the single source
@@ -60,10 +59,10 @@ which also stays a working fallback.
   mechanism: it leaks the GitHub URL, can't pin a version or add headers, and
   depends on redirect-following. The Worker is barely more code and strictly
   more controllable.
-- **Static copy of the script** deployed alongside a Worker/Pages site (what
-  `asc` appears to do). Rejected: reintroduces drift between the served script
-  and `install.sh` in the repo.
-- **A full landing site at `gplay.sh`** (docs, wall-of-apps, like `asccli.sh`).
+- **Static copy of the script** deployed alongside a Worker/Pages site.
+  Rejected: reintroduces drift between the served script and `install.sh` in
+  the repo.
+- **A full landing site at `gplay.sh`** (docs, wall of apps).
   Out of scope *for this ADR* — a much larger, orthogonal effort tracked as
   issue #86. Now decided in
   [ADR-0025](./0025-website-served-from-install-worker.md): the site rides on
