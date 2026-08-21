@@ -153,7 +153,7 @@ func (r *failOnCallRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // TestRun_noVerify_skipsAPIAndRecordsAnyway asserts the --no-verify
 // escape hatch: zero HTTP traffic but the package is still persisted
-// under the active Account. The RoundTripper is the assertion — any
+// under the active Account. The RoundTripper is the assertion: any
 // network call would fail the test.
 func TestRun_noVerify_skipsAPIAndRecordsAnyway(t *testing.T) {
 	rt := &failOnCallRT{t: t}
@@ -262,7 +262,7 @@ func TestRun_accountNotInGlobal_refusesBeforeProbe(t *testing.T) {
 }
 
 // TestRun_apiError_doesNotPersistPackage asserts the most important
-// safety property of `apps add`: a failed validate (here a 403 — SA
+// safety property of `apps add`: a failed validate (here a 403: SA
 // not invited on the app) must NOT add the package to the registry.
 // Persisting on failure would defeat the whole purpose of validate-
 // by-default: users would end up with a registry full of packages
@@ -315,7 +315,7 @@ func TestRun_happyPath_validatesAndPersists(t *testing.T) {
 // production lazy path (kernel.Run → buildRunContext) with a malformed
 // inline --service-account. The AccountName == "" branch must surface the
 // invalid-credential error (exit 10, the real cause) instead of the
-// misdirecting "run gplay auth login" authError — and the package must NOT
+// misdirecting "run gplay auth login" authError, and the package must NOT
 // be registered under the cascade Account (#180, ADR-0020).
 func TestRun_malformedInlineCredential_exits10NotRegistered(t *testing.T) {
 	t.Setenv(resolver.EnvServiceAccount, "")

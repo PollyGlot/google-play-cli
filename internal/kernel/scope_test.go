@@ -9,8 +9,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestWithScope_roundTrips asserts the per-command OAuth scope annotation —
-// the reporting-scope analogue of MarkMutating — round-trips: WithScope marks
+// TestWithScope_roundTrips asserts the per-command OAuth scope annotation:
+// the reporting-scope analogue of MarkMutating: round-trips: WithScope marks
 // a command, ScopeFor reads it back, and an unmarked command reports "" (the
 // default-scope sentinel the kernel resolves to AndroidPublisherScope).
 func TestWithScope_roundTrips(t *testing.T) {

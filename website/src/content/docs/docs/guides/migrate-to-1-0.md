@@ -1,6 +1,6 @@
 ---
 title: Migrating to 1.0
-description: What changes when you upgrade gplay from 0.x to 1.0 — one exit-code fix on missing --confirm refusals, and what the new Public contract promises.
+description: "What changes when you upgrade gplay from 0.x to 1.0: one exit-code fix on missing --confirm refusals, and what the new Public contract promises."
 sidebar:
   order: 9
 ---
@@ -23,7 +23,7 @@ Affected:
 | `gplay auth logout` | removing a stored credential |
 | `gplay compliance datasafety set` | pushing a Data Safety declaration |
 
-**You are unaffected** if your scripts treat any non-zero exit as failure —
+**You are unaffected** if your scripts treat any non-zero exit as failure,
 which is the common case.
 
 ### If you do branch on the exit code
@@ -38,14 +38,14 @@ which is the common case.
 ```
 
 Better still, stop branching on the number and read the flag out of the JSON
-error envelope — it names what is missing:
+error envelope, which names what is missing:
 
 ```bash
 gplay auth logout ci-account
 ```
 
 Off a TTY the output is JSON by default ([Output
-formats](/docs/concepts/output-formats/)). Do not rely on that in CI — a runner
+formats](/docs/concepts/output-formats/)). Do not rely on that in CI: a runner
 can allocate a TTY. On the commands that accept it, pass `--output json`
 explicitly when you intend to parse the result; `auth logout` has no such flag,
 so it follows the TTY default alone.
@@ -80,8 +80,8 @@ From this release on, the commands **not** marked `[experimental]` are covered
 by the Public contract: their names, flags, semantics and exit codes cannot
 change without a major version bump.
 
-Commands marked `[experimental]` — the monetization catalog, `games`,
-`recovery`, `orders`, and a handful of others — are shipped and supported but
+Commands marked `[experimental]` (the monetization catalog, `games`,
+`recovery`, `orders`, and a handful of others) are shipped and supported but
 stay free to evolve. Read [Stability and the Public
 contract](/docs/concepts/stability/) before wiring one into a pipeline, and
 check `--help` for the label:

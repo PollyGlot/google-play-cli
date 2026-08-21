@@ -6,11 +6,11 @@ import (
 )
 
 // FuzzParse fuzzes the reply-batch TSV parser, which consumes user-authored
-// files or stdin — fully untrusted bytes. The parser is contractually
+// files or stdin: fully untrusted bytes. The parser is contractually
 // crash-free (every problem is reported on a Line's Err, never as a panic or a
 // returned error), so the fuzz invariants are: it never panics, and every
 // successfully-parsed Line (Err == nil) carries a non-empty review-id AND a
-// non-empty reply — a malformed record must surface as an Err, never as a
+// non-empty reply: a malformed record must surface as an Err, never as a
 // half-populated Record. Seeded from the unit-test fixtures plus edge cases.
 func FuzzParse(f *testing.F) {
 	for _, seed := range []string{

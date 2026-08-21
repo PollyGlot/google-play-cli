@@ -9,7 +9,7 @@ import (
 )
 
 // writeDryRunView is the gplay-shaped --dry-run report for a create/update: the
-// verb, the addressing target, and the exact request body that WOULD be sent —
+// verb, the addressing target, and the exact request body that WOULD be sent,
 // so an agent can inspect the payload offline before writing live.
 type writeDryRunView struct {
 	DryRun bool            `json:"dryRun"`
@@ -79,7 +79,7 @@ func (p LeaderboardWritePayload) Renderers() output.Renderers {
 }
 
 // DeletePayload renders a delete result. The API returns no body, so the JSON
-// view is a synthesized {"id":...,"deleted":true} (not an API pass-through —
+// view is a synthesized {"id":...,"deleted":true} (not an API pass-through:
 // there is nothing to pass through). --dry-run reports the --confirm gate.
 type DeletePayload struct {
 	Kind   string // "achievement" | "leaderboard"

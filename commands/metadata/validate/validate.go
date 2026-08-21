@@ -1,13 +1,13 @@
 // Package validatecmd implements `gplay metadata validate`: an OFFLINE
 // lint of the on-disk Metadata tree. Unlike every other gplay command
 // that touches Play, this one never authenticates and never makes an HTTP
-// call — it reads the tree off disk via internal/metadata/tree and runs
+// call: it reads the tree off disk via internal/metadata/tree and runs
 // the pure internal/metadata/validate engine, so it is safe to wire into
 // a pre-commit hook or a CI gate with no credentials present.
 //
 // This is the offline half of the metadata sync model (ADR-0011 §3): the
 // online `metadata apply --dry-run` diffs disk against Play, while
-// `metadata validate` checks the rules that need no network — char
+// `metadata validate` checks the rules that need no network: char
 // limits, known locales, required-non-empty fields. A non-empty result is
 // exit 20 (client-side validation, docs/DESIGN.md §9).
 package validatecmd
@@ -37,8 +37,8 @@ type Input struct {
 }
 
 // dirError signals the metadata tree could not be read (missing or
-// unreadable directory). It is a client-side validation failure — the
-// operator pointed --dir at something gplay cannot lint — so ExitCode()
+// unreadable directory). It is a client-side validation failure: the
+// operator pointed --dir at something gplay cannot lint, so ExitCode()
 // is 20 per docs/DESIGN.md §9.
 type dirError struct {
 	dir   string
@@ -46,7 +46,7 @@ type dirError struct {
 }
 
 func (e *dirError) Error() string {
-	return fmt.Sprintf("cannot read metadata tree at %s: %v — pass --dir <path> to point at your metadata directory", e.dir, e.cause)
+	return fmt.Sprintf("cannot read metadata tree at %s: %v: pass --dir <path> to point at your metadata directory", e.dir, e.cause)
 }
 
 func (e *dirError) ExitCode() int { return 20 }
@@ -167,11 +167,11 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Lint the on-disk metadata tree offline (no network, no auth)",
 		Long: `Lint the Metadata tree under --dir without contacting Google Play:
 checks character limits (title 30, short description 80, full description
-4000), required non-empty fields (title and full description — an empty
+4000), required non-empty fields (title and full description: an empty
 file is a validation error, not a clear), and that every locale directory
 names a known Play store locale.
 
-This command is OFFLINE — it needs no credentials and makes no network
+This command is OFFLINE: it needs no credentials and makes no network
 call, so it is safe in a pre-commit hook or a CI gate. Diffing the tree
 against what is live on Play is the job of ` +
 			"`gplay metadata apply --dry-run`" + `.

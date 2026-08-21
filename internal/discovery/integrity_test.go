@@ -13,7 +13,7 @@ import (
 // package directory as the working directory).
 var docsDir = filepath.Join("..", "..", "docs", "discovery")
 
-// sentinelMethods are known method ids that must survive any regeneration —
+// sentinelMethods are known method ids that must survive any regeneration:
 // a cheap guard against a truncated or wrong-service snapshot.
 var sentinelMethods = []string{
 	"androidpublisher.edits.commit",
@@ -23,7 +23,7 @@ var sentinelMethods = []string{
 
 // TestSnapshotIsSelfNormalized asserts each committed snapshot is byte-equal to
 // its own re-normalization. This catches a hand-edit or an un-normalized commit
-// without any network call — the integrity gate runs inside `go test ./...`.
+// without any network call: the integrity gate runs inside `go test ./...`.
 func TestSnapshotIsSelfNormalized(t *testing.T) {
 	for _, svc := range discovery.Services {
 		path := filepath.Join(docsDir, svc.SnapshotFilename())
@@ -36,7 +36,7 @@ func TestSnapshotIsSelfNormalized(t *testing.T) {
 			t.Fatalf("normalize %s: %v", path, err)
 		}
 		if !bytes.Equal(committed, renorm) {
-			t.Errorf("%s is not in normalized form — run `make discovery-update` and commit the result", path)
+			t.Errorf("%s is not in normalized form: run `make discovery-update` and commit the result", path)
 		}
 	}
 }
@@ -65,7 +65,7 @@ func TestPathsIndexMatchesSnapshot(t *testing.T) {
 		t.Fatalf("read %s: %v", pathsFile, err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Errorf("%s is stale — run `make discovery-update` and commit the result", pathsFile)
+		t.Errorf("%s is stale: run `make discovery-update` and commit the result", pathsFile)
 	}
 }
 

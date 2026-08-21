@@ -1,5 +1,5 @@
 // Package availability implements `tracks availability`, a pure grouping
-// noun over the Country availability of a single track — which
+// noun over the Country availability of a single track, which
 // countries an app's artifacts are distributed to on --track.
 //
 // Per ADR-0019 a read always carries a verb, so the bare `availability`
@@ -9,7 +9,7 @@
 // and discarded via edits.WithReadOnlyEdit, never committed.
 //
 // The resource is read-only at the API level (no insert/patch/update) and
-// keyed by TRACK, not by app — so --track is REQUIRED (no implicit
+// keyed by TRACK, not by app, so --track is REQUIRED (no implicit
 // production default) and gplay introduces no availability writer (the
 // group holds only `view`, no `set`). See ADR-0012. A user who wants to
 // CHANGE where an app is available is pointed at the Play Console.
@@ -50,7 +50,7 @@ func (e *usageError) ExitCode() int { return 2 }
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
 // the wrapped *api.Error (404 → exit 30) stays authoritative through the
 // Coder chain. Availability is track-scoped, so a 404's most likely cause
-// is a wrong/missing track — `gplay tracks list` is the right next step
+// is a wrong/missing track: `gplay tracks list` is the right next step
 // for both track and package misses.
 type notFoundError struct {
 	track string
@@ -59,7 +59,7 @@ type notFoundError struct {
 
 // Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *notFoundError) Error() string {
-	return fmt.Sprintf("track %q or package not found — run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
+	return fmt.Sprintf("track %q or package not found: run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -76,7 +76,7 @@ type forbiddenError struct {
 
 // Error renders the forbidden message plus the Play Console grant hint.
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -179,13 +179,13 @@ func renderMarkdown(w io.Writer, p Payload) error {
 }
 
 // Run is the business function the kernel invokes. It validates that
-// --track is present (REQUIRED — no implicit default), resolves the
+// --track is present (REQUIRED: no implicit default), resolves the
 // package, builds an authenticated HTTP client, then opens a read-only
 // Edit and reads the track's Country availability.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	track := strings.TrimSpace(in.Track)
 	if track == "" {
-		return nil, &usageError{msg: "missing --track — Country availability is keyed by track; pass --track <name> (e.g. production)"}
+		return nil, &usageError{msg: "missing --track: Country availability is keyed by track; pass --track <name> (e.g. production)"}
 	}
 
 	pkg := strings.TrimSpace(in.Package)
@@ -193,7 +193,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -231,7 +231,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // NewViewCommand returns the read command `tracks availability view`: it
 // reads a track's Country availability. Per ADR-0019 the read carries an
-// explicit verb — the bare `availability` group prints help.
+// explicit verb: the bare `availability` group prints help.
 func NewViewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
@@ -251,7 +251,7 @@ countryavailability.get → discard); nothing is committed. To CHANGE where
 an app is available, use the Play Console.
 
 --output json returns the edits.countryavailability.get body verbatim (a
-clean ADR-0003 pass-through — a single endpoint is read).`,
+clean ADR-0003 pass-through: a single endpoint is read).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -276,7 +276,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "availability",
 		Short: "Read a track's Country availability (read-only)",
-		Long: `Group for a track's Country availability — which countries an app's
+		Long: `Group for a track's Country availability, which countries an app's
 artifacts are distributed to on a track.
 
 ` + "`tracks availability view`" + ` reads it. The resource is read-only at the

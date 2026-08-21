@@ -2,9 +2,9 @@
 // codec (internal/metadata/tree), the validator
 // (internal/metadata/validate), and the diff engine
 // (internal/metadata/diff). It defines the four Listing fields gplay
-// manages — their fastlane-style on-disk file names, their Google Play
+// manages: their fastlane-style on-disk file names, their Google Play
 // API JSON keys, their character limits, and whether Play requires them
-// non-empty — plus the in-memory Listing/Tree model those modules read
+// non-empty, plus the in-memory Listing/Tree model those modules read
 // and write.
 //
 // The model encodes the ADR-0011 "missing ≠ empty" rule structurally: a
@@ -39,7 +39,7 @@ const (
 
 // Spec is the static metadata of one Field: its on-disk file name
 // (snake_case, byte-identical to `fastlane supply` so an existing tree is
-// a drop-in — CONTEXT.md "Listing"), its Google Play API JSON key
+// a drop-in: CONTEXT.md "Listing"), its Google Play API JSON key
 // (camelCase, the edits.listings field name), its character limit
 // (0 = unlimited), and whether Play requires it non-empty.
 type Spec struct {
@@ -50,8 +50,8 @@ type Spec struct {
 	Required bool   // Play rejects an empty value (title, fullDescription)
 }
 
-// specs is the canonical, ordered field table. The order — title, short,
-// full, video — is the display order used by `metadata list`, the diff
+// specs is the canonical, ordered field table. The order (title, short,
+// full, video) is the display order used by `metadata list`, the diff
 // changes[] within a locale, and the validator's reporting. The char
 // limits cite Google's documented Listing limits:
 // https://support.google.com/googleplay/android-developer/answer/9866151
@@ -128,7 +128,7 @@ func CharCount(s string) int {
 
 // Listing is one locale's managed Listing fields. A Field present in
 // Fields is *managed*; its value may be the empty string (a clear). A
-// Field absent from Fields is *not managed* — the ADR-0011 missing ≠
+// Field absent from Fields is *not managed*: the ADR-0011 missing ≠
 // empty rule, encoded as map presence. Locale is the BCP-47-ish Play
 // locale code (e.g. "en-US", "fr-FR").
 type Listing struct {

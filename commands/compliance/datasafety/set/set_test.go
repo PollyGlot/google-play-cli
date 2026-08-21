@@ -74,7 +74,7 @@ func validCSV(t *testing.T, dataRows int) (path string, bytesLen, rows int) {
 
 // TestDryRun_valid_reportsTarget is the #141 tracer bullet: a valid CSV
 // dry-run resolves the package, makes zero network calls, and reports the
-// target — package + "would POST N bytes / N rows".
+// target: package + "would POST N bytes / N rows".
 func TestDryRun_valid_reportsTarget(t *testing.T) {
 	path, nbytes, rows := validCSV(t, 4)
 	rc, _ := newOfflineRC(t)

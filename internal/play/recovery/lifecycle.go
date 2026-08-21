@@ -11,11 +11,11 @@ import (
 )
 
 // The production-impacting lifecycle leaves: deploy (activate a draft), cancel
-// (terminate — irreversible), add-targeting (widen the audience — append-only).
+// (terminate (irreversible), add-targeting (widen the audience) append-only).
 // Each is a POST to a custom verb on the recovery resource. deploy and cancel
 // take an empty request body; add-targeting carries a TargetingUpdate (the
 // append-only subset of Targeting). All return the (often empty {}) response
-// verbatim — gplay never fabricates a status object (ADR-0003).
+// verbatim: gplay never fabricates a status object (ADR-0003).
 
 const (
 	opDeploy       = "apprecovery.deploy"
@@ -27,7 +27,7 @@ type addTargetingRequest struct {
 	TargetingUpdate *Targeting `json:"targetingUpdate,omitempty"`
 }
 
-// actionURL builds .../appRecoveries/{id}:{verb} — the colon-verb is a literal
+// actionURL builds .../appRecoveries/{id}:{verb}: the colon-verb is a literal
 // path suffix, not an escaped segment.
 func actionURL(pkg, id, verb string) string {
 	return base(pkg) + "/" + url.PathEscape(id) + ":" + verb
@@ -45,7 +45,7 @@ func Cancel(ctx context.Context, hc *http.Client, pkg, id string) (json.RawMessa
 }
 
 // AddTargeting widens a recovery's audience (apprecovery.addTargeting). The
-// TargetingUpdate is append-only — it can only add users/regions/sdk-levels.
+// TargetingUpdate is append-only: it can only add users/regions/sdk-levels.
 func AddTargeting(ctx context.Context, hc *http.Client, pkg, id string, t *Targeting) (json.RawMessage, error) {
 	body, err := json.Marshal(addTargetingRequest{TargetingUpdate: t})
 	if err != nil {
@@ -59,7 +59,7 @@ func AddTargeting(ctx context.Context, hc *http.Client, pkg, id string, t *Targe
 	return do(hc, opAddTargeting, pkg, req)
 }
 
-// emptyPost issues a POST with no request body (Content-Length 0) — the shape
+// emptyPost issues a POST with no request body (Content-Length 0): the shape
 // the deploy/cancel custom verbs expect.
 func emptyPost(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawMessage, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, http.NoBody)

@@ -30,7 +30,7 @@ import (
 
 // --- test doubles ----------------------------------------------------------
 
-// utf16LE encodes s as UTF-16LE with a BOM — the byte shape of a real report.
+// utf16LE encodes s as UTF-16LE with a BOM: the byte shape of a real report.
 func utf16LE(s string) []byte {
 	var buf bytes.Buffer
 	buf.Write([]byte{0xFF, 0xFE})
@@ -337,7 +337,7 @@ func TestPayload_JSON_emitsParsedRows(t *testing.T) {
 // --- range mode (--from/--to) -----------------------------------------------
 
 // monthRT serves a per-month CSV for the range tests: a month present in bodies
-// returns its report; a month absent returns 404 — a gap Play never published.
+// returns its report; a month absent returns 404: a gap Play never published.
 type monthRT struct {
 	mu     sync.Mutex
 	calls  []string
@@ -464,7 +464,7 @@ func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 }
 
 // TestRun_range_allMissing_exit30: a range where every month 404s (e.g. a wrong
-// package) is the "no reports" condition — exit 30, not a silent empty success.
+// package) is the "no reports" condition: exit 30, not a silent empty success.
 func TestRun_range_allMissing_exit30(t *testing.T) {
 	rt := &monthRT{bodies: map[string][]byte{}} // nothing published → every month 404
 	rc, _, _, _ := newRC(t, rt)
@@ -476,7 +476,7 @@ func TestRun_range_allMissing_exit30(t *testing.T) {
 }
 
 // TestRun_singleMonthRange_verbatimLikeMonth: --from X --to X reads exactly one
-// file and must return it in file order, identical to --month X — the merge/sort
+// file and must return it in file order, identical to --month X: the merge/sort
 // step only applies when more than one report is actually read.
 func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
 	// Two rows whose submit millis DESCEND, so a submit-time sort would reorder
@@ -495,7 +495,7 @@ func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("want 2 rows, got %d", len(rows))
 	}
-	// File order preserved (NOT sorted by submit) — same as --month would give.
+	// File order preserved (NOT sorted by submit): same as --month would give.
 	if rows[0].ReviewText != "first" || rows[1].ReviewText != "second" {
 		t.Errorf("single-month range should be verbatim like --month, got %q then %q", rows[0].ReviewText, rows[1].ReviewText)
 	}

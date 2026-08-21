@@ -44,7 +44,7 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return "", &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	return pkg, nil
 }
@@ -57,7 +57,7 @@ type orderNotFoundError struct {
 }
 
 func (e *orderNotFoundError) Error() string {
-	return fmt.Sprintf("order %q not found — verify the order ID from the buyer's receipt or a payout report, and that --package names the app the order belongs to: %v", e.orderID, e.cause)
+	return fmt.Sprintf("order %q not found: verify the order ID from the buyer's receipt or a payout report, and that --package names the app the order belongs to: %v", e.orderID, e.cause)
 }
 func (e *orderNotFoundError) Unwrap() error { return e.cause }
 
@@ -70,7 +70,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account cannot read orders for %q — grant it the %s permission (Play Console → Users & permissions; it is never part of a Role bundle), then retry: %v", e.pkg, PermViewFinancialData, e.cause)
+	return fmt.Sprintf("service account cannot read orders for %q: grant it the %s permission (Play Console → Users & permissions; it is never part of a Role bundle), then retry: %v", e.pkg, PermViewFinancialData, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -98,7 +98,7 @@ type batchNotFoundError struct {
 }
 
 func (e *batchNotFoundError) Error() string {
-	return fmt.Sprintf("one or more of the %d order IDs were not found — orders.batchget fails the whole request if any ID is unknown or belongs to another package; verify every ID and that --package names the app they belong to: %v", e.count, e.cause)
+	return fmt.Sprintf("one or more of the %d order IDs were not found: orders.batchget fails the whole request if any ID is unknown or belongs to another package; verify every ID and that --package names the app they belong to: %v", e.count, e.cause)
 }
 func (e *batchNotFoundError) Unwrap() error { return e.cause }
 
@@ -126,7 +126,7 @@ type refundForbiddenError struct {
 }
 
 func (e *refundForbiddenError) Error() string {
-	return fmt.Sprintf("service account cannot refund orders for %q — grant it the %s permission (Play Console → Users & permissions; it is never part of a Role bundle), then retry: %v", e.pkg, PermManageOrders, e.cause)
+	return fmt.Sprintf("service account cannot refund orders for %q: grant it the %s permission (Play Console → Users & permissions; it is never part of a Role bundle), then retry: %v", e.pkg, PermManageOrders, e.cause)
 }
 func (e *refundForbiddenError) Unwrap() error { return e.cause }
 
@@ -141,7 +141,7 @@ type refundTooOldError struct {
 }
 
 func (e *refundTooOldError) Error() string {
-	return fmt.Sprintf("order %q cannot be refunded — Google does not allow refunding orders older than 3 years (this is a hard API limit, not a permission issue): %v", e.orderID, e.cause)
+	return fmt.Sprintf("order %q cannot be refunded: Google does not allow refunding orders older than 3 years (this is a hard API limit, not a permission issue): %v", e.orderID, e.cause)
 }
 func (e *refundTooOldError) Unwrap() error { return e.cause }
 
@@ -170,7 +170,7 @@ func ClassifyRefund(pkg, orderID string, err error) error {
 // refund rejection.
 //
 // CAVEAT: the exact runtime wording is Google's and is NOT captured in the
-// Discovery snapshot — only the method *description* states "Orders older than
+// Discovery snapshot: only the method *description* states "Orders older than
 // 3 years cannot be refunded", which is documentation, not the error-envelope
 // `message` the API returns at refund time. So we scan both the human message
 // and the structured reason codes (api.Error.Reasons) for the stable fragments

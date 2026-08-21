@@ -1,5 +1,5 @@
 // Package games performs the hand-rolled HTTP calls for a game's Play Games
-// Services configuration — the achievementConfigurations and
+// Services configuration: the achievementConfigurations and
 // leaderboardConfigurations resources of the gamesConfiguration service
 // (ADR-0007 raw HTTP, ADR-0033). It is a DISTINCT Google service from the
 // Android Publisher API: its own host (api.GamesConfigBase) reached with the
@@ -43,7 +43,7 @@ type LocalizedStringBundle struct {
 }
 
 // First returns the first translation's value (or "" when the bundle is nil or
-// empty) — the single string the table/markdown views show for a resource
+// empty): the single string the table/markdown views show for a resource
 // whose name is otherwise a per-locale bundle.
 func (b *LocalizedStringBundle) First() string {
 	if b == nil {

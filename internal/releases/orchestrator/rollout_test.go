@@ -4,7 +4,7 @@
 // verb mutates the status / userFraction of the latest release on a track
 // inside one Edit: edits.insert → tracks.get → tracks.update → edits.commit.
 //
-// These tests deliberately do NOT reuse promote's pickSourceRelease — the
+// These tests deliberately do NOT reuse promote's pickSourceRelease: the
 // rollout family carries its own picker (pickTargetRelease) with its own
 // not-found semantics (exit 30, vs promote's exit 60), so the suites stay
 // independent.
@@ -93,7 +93,7 @@ func TestRollout_setsInProgressAtTargetFraction(t *testing.T) {
 	}
 }
 
-// TestHalt_setsHaltedPreservesFraction is AC2: halt freezes the rollout —
+// TestHalt_setsHaltedPreservesFraction is AC2: halt freezes the rollout:
 // status becomes halted, userFraction is preserved as-is.
 func TestHalt_setsHaltedPreservesFraction(t *testing.T) {
 	rt := &stateRT{
@@ -192,7 +192,7 @@ func TestComplete_rampsToFullRollout(t *testing.T) {
 
 // TestState_preservesReleaseNotes guards against silent data loss: a state
 // transition PUTs the whole release back, so the current release's
-// releaseNotes (and versionCodes) MUST be carried over verbatim — dropping
+// releaseNotes (and versionCodes) MUST be carried over verbatim: dropping
 // them would wipe the track's notes on the next commit.
 func TestState_preservesReleaseNotes(t *testing.T) {
 	rt := &stateRT{
@@ -356,7 +356,7 @@ func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 
 // TestState_preservesUnmodeledFields asserts that fields gplay does not model
 // on the Release struct (here inAppUpdatePriority, and a nested
-// countryTargeting) survive a transition — the raw-JSON patch must not strip
+// countryTargeting) survive a transition: the raw-JSON patch must not strip
 // them, since tracks.update would otherwise wipe configuration set elsewhere.
 func TestState_preservesUnmodeledFields(t *testing.T) {
 	rt := &stateRT{
@@ -427,7 +427,7 @@ func TestState_releaseNameDisambiguates(t *testing.T) {
 // TestState_noReleasesOnTrack_returnsExit30 asserts that an existing track
 // with zero releases surfaces as "release not found" (exit 30), distinct
 // from the ambiguous case (60). Promote treats this as exit 2; the rollout
-// family follows issue #46's exit-30 contract instead — hence its own picker.
+// family follows issue #46's exit-30 contract instead: hence its own picker.
 func TestState_noReleasesOnTrack_returnsExit30(t *testing.T) {
 	rt := &stateRT{
 		t:                  t,
@@ -563,7 +563,7 @@ func TestRollout_fractionOutOfRange_returnsExit2(t *testing.T) {
 }
 
 // TestState_missingTrack_returnsExit2 asserts the orchestrator rejects an
-// empty Track before any HTTP — symmetric with promote's validateOpts so
+// empty Track before any HTTP: symmetric with promote's validateOpts so
 // library / future-MCP callers do not burn an Edit on bad input.
 func TestState_missingTrack_returnsExit2(t *testing.T) {
 	rt := &stateRT{

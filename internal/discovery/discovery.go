@@ -3,7 +3,7 @@
 //
 // Nothing in this package is imported by cmd/gplay: it is build-and-maintenance
 // tooling, never compiled into the shipped binary (ADR-0007 spirit). The
-// fetch/normalize/derive logic lives here — importable — so the offline
+// fetch/normalize/derive logic lives here (importable) so the offline
 // integrity test can re-derive committed artifacts without a network call; the
 // `discovery-update` command is a thin main wrapper over these functions.
 package discovery
@@ -30,11 +30,11 @@ type Service struct {
 
 // Services is the declared snapshot set. androidpublisher v3 is the primary
 // publishing surface; playdeveloperreporting v1beta1 is the read-only
-// post-launch quality service (crashes/ANR vitals, #49) — a distinct host and
+// post-launch quality service (crashes/ANR vitals, #49): a distinct host and
 // OAuth scope, snapshotted the same way. gamesConfiguration v1configuration
 // (Play Games Services Publishing, #241) and playcustomapp v1 (managed Google
 // Play private apps, #242) are further Play admin APIs (ADR-0026), each its own
-// host — declared here so agents can query their shapes offline before the
+// host: declared here so agents can query their shapes offline before the
 // commands ship.
 var Services = []Service{
 	{Name: "androidpublisher", Host: "androidpublisher.googleapis.com", Version: "v3"},
@@ -55,7 +55,7 @@ func (s Service) DiscoveryURL() string {
 }
 
 // Fetch GETs the raw Discovery document for s. The returned bytes are the
-// upstream body verbatim — call Normalize before persisting.
+// upstream body verbatim: call Normalize before persisting.
 func Fetch(ctx context.Context, c *http.Client, s Service) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.DiscoveryURL(), nil)
 	if err != nil {

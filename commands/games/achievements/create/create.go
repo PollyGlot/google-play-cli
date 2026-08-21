@@ -64,7 +64,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Create an achievement configuration (draft)",
 		Long: `Create a new achievement configuration for a Play Games Services application.
 The write affects the editable draft; the published copy is read-only and there
-is no publish method — publishing to players is Console-only (ADR-0033).
+is no publish method: publishing to players is Console-only (ADR-0033).
 
 Provide the achievement either field-by-field or whole:
 
@@ -74,11 +74,11 @@ Provide the achievement either field-by-field or whole:
   --point-value             integer point value
   --steps-to-unlock         steps (INCREMENTAL only)
   --from-json <file|->      a full AchievementConfiguration JSON body, passed
-                            verbatim — the round-trip of 'view --output json',
+                            verbatim: the round-trip of 'view --output json',
                             and the way to set multiple locales at once
 
 --from-json and the field flags are mutually exclusive. A draft create is
-routine (no --confirm); rehearse with --dry-run (no HTTP — --output json shows
+routine (no --confirm); rehearse with --dry-run (no HTTP: --output json shows
 the request body). GPLAY_READONLY refuses the live write (exit 4).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,

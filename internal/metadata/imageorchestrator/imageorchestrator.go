@@ -3,7 +3,7 @@
 // engine → images.upload / deleteall / delete, applying the ADR-0011 stance
 // with ADR-0013 mechanics: --confirm gates every real write, the offline
 // imagevalidate runs as a fail-fast pre-check (bypassable with --no-validate),
-// the sync is additive (online-only images are never deleted — that is
+// the sync is additive (online-only images are never deleted: that is
 // --prune, #135), and every slot is reconciled inside a single Edit committed
 // once. It is the image analogue of internal/metadata/orchestrator.
 //
@@ -55,7 +55,7 @@ type Opts struct {
 	Prune bool
 
 	// NoValidate bypasses the offline imagevalidate fail-fast pre-check
-	// (ADR-0013 §4 — gplay must never be permanently stricter than Play).
+	// (ADR-0013 §4: gplay must never be permanently stricter than Play).
 	NoValidate bool
 
 	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
@@ -147,7 +147,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 	// IMPLICIT mode a no-op diff returns errNoChanges so the Edit auto-discards
 	// and any per-slot failure also auto-discards → 0 slots published (atomic).
 	// In EXPLICIT mode (opts.ExplicitEditID set) WithEdit reuses the pinned Edit
-	// and never commits or discards — staged changes wait for `gplay edits
+	// and never commits or discards: staged changes wait for `gplay edits
 	// commit`/`discard`.
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
 		plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types, opts.Prune)
@@ -252,7 +252,7 @@ func filterTypes(allow []string) []images.Type {
 }
 
 // scopedTree builds the subset of local restricted to the considered
-// locales/types — the managed slots the validator should check.
+// locales/types: the managed slots the validator should check.
 func scopedTree(local imagetree.Tree, locales []string, types []images.Type) imagetree.Tree {
 	tySet := make(map[images.Type]bool, len(types))
 	for _, ty := range types {

@@ -2,7 +2,7 @@
 // entry point backing the `apps details` group: open a read-only Edit, do
 // ONLY edits.details.get, discard the Edit. Unlike Get (which backs
 // `apps view` and also hits listings.get), GetDetails touches a SINGLE
-// endpoint, so its raw payload is the details.get body verbatim — a
+// endpoint, so its raw payload is the details.get body verbatim: a
 // clean ADR-0003 pass-through with no gplay envelope. The transport
 // FAILS on any PUT/PATCH/:commit AND on listings.get: a read of the App
 // details resource must never mutate and must never reach a second
@@ -25,8 +25,8 @@ import (
 
 // getDetailsRT routes the apps-details read sequence: edits.insert,
 // edits.details.get, edits.delete. A configurable status code on
-// details.get exercises the error paths. Any other request — a PUT, a
-// :commit, or listings.get — fails the test: GetDetails is read-only and
+// details.get exercises the error paths. Any other request: a PUT, a
+// :commit, or listings.get: fails the test: GetDetails is read-only and
 // single-endpoint by construction.
 type getDetailsRT struct {
 	t      *testing.T
@@ -61,7 +61,7 @@ func (r *getDetailsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 // TestGetDetails_happyPath asserts the single-endpoint read-only sequence:
 // insert → details.get → delete. The returned *AppDetails surfaces all
 // four fields, and the raw payload is the details.get body verbatim (a
-// clean ADR-0003 pass-through — no envelope, unlike Get).
+// clean ADR-0003 pass-through: no envelope, unlike Get).
 func TestGetDetails_happyPath(t *testing.T) {
 	body := `{"contactEmail":"hi@example.com","contactPhone":"+1 555 0100","contactWebsite":"https://x.example","defaultLanguage":"en-US"}`
 	rt := &getDetailsRT{t: t, editID: "edit-details", body: body}
@@ -101,7 +101,7 @@ func TestGetDetails_happyPath(t *testing.T) {
 		}
 	}
 
-	// The raw payload is the details.get body verbatim — no envelope.
+	// The raw payload is the details.get body verbatim: no envelope.
 	if strings.TrimSpace(string(raw)) != strings.TrimSpace(body) {
 		t.Errorf("raw = %s\nwant details.get body verbatim = %s", raw, body)
 	}
@@ -109,7 +109,7 @@ func TestGetDetails_happyPath(t *testing.T) {
 
 // TestGetDetails_get403_mapsExit11_discardsEdit asserts a 403 on
 // details.get bubbles up as an *api.Error (ExitCode = 11) AND the opened
-// Edit is still discarded — a dangling Edit on a permission failure would
+// Edit is still discarded: a dangling Edit on a permission failure would
 // block the user's next publish for ~24h.
 func TestGetDetails_get403_mapsExit11_discardsEdit(t *testing.T) {
 	rt := &getDetailsRT{
@@ -143,7 +143,7 @@ func TestGetDetails_get403_mapsExit11_discardsEdit(t *testing.T) {
 }
 
 // TestGetDetails_get404_mapsExit30 asserts a 404 on details.get surfaces
-// as exit 30 (API 4xx other than auth/perms) — e.g. an unknown package.
+// as exit 30 (API 4xx other than auth/perms): e.g. an unknown package.
 func TestGetDetails_get404_mapsExit30(t *testing.T) {
 	rt := &getDetailsRT{
 		t:      t,

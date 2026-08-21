@@ -33,7 +33,7 @@ const (
 	opListingsGet  = "listings.get"
 )
 
-// Details surfaces the fields `gplay apps view` displays — the minimum
+// Details surfaces the fields `gplay apps view` displays: the minimum
 // needed to confirm "yes, I'm looking at the right app".
 // defaultLanguage and contactEmail come from edits.details.get; title
 // comes from edits.listings.get on the default language; Icon is the
@@ -62,7 +62,7 @@ type Icon struct {
 // from a Listing), AppDetails is exactly the four fields the
 // edits.details resource owns. json tags mirror the API verbatim so the
 // --output json pass-through (ADR-0003) carries the upstream field names
-// unchanged — and since GetDetails reads a SINGLE endpoint, no envelope
+// unchanged, and since GetDetails reads a SINGLE endpoint, no envelope
 // exception is needed.
 type AppDetails struct {
 	DefaultLanguage string `json:"defaultLanguage"`
@@ -75,12 +75,12 @@ type AppDetails struct {
 // (no listings.get, unlike Get), discards the Edit, and returns both the
 // typed *AppDetails and the raw details.get body verbatim. Because a
 // single endpoint is read, the raw payload is a clean ADR-0003
-// pass-through — there is no gplay envelope to document an exception for.
+// pass-through: there is no gplay envelope to document an exception for.
 //
 // Errors propagate as *api.Error so the gplay exit-code taxonomy maps
 // transparently: 403 → 11, 404 → 30, 5xx → 40, network → 50. The Edit is
 // always discarded (WithReadOnlyEdit's deferred cleanup) even on failure
-// — a dangling read-only Edit would block the user's next publish for
+// : a dangling read-only Edit would block the user's next publish for
 // ~24h. Unlike fetchDetails (whose empty-defaultLanguage guard exists to
 // protect a downstream listings.get URL), GetDetails surfaces whatever
 // the API returns: there is no second call to protect, and the read must
@@ -122,7 +122,7 @@ func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, 
 // discards the Edit, and returns both the typed *Details and the raw
 // JSON envelope. The envelope shape is
 // {"details": <details.get verbatim>, "listing": <listings.get verbatim>,
-// "icon": {"url":..,"sha256":..}} — an explicit exception to ADR-0003
+// "icon": {"url":..,"sha256":..}}: an explicit exception to ADR-0003
 // documented in the ADR's Exceptions section, because apps view combines
 // multiple endpoints. The [experimental] icon key carries verbatim
 // edits.images field values and is omitted entirely when the default
@@ -131,7 +131,7 @@ func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, 
 // Errors propagate as *api.Error so the gplay exit-code taxonomy maps
 // transparently: 403 → 11, 404 → 30, 5xx → 40, network → 50. The Edit
 // is always discarded (WithReadOnlyEdit's deferred cleanup) even on
-// failure — a dangling Edit would block the user's next publish for ~24h.
+// failure: a dangling Edit would block the user's next publish for ~24h.
 func Get(ctx context.Context, hc *http.Client, pkg string) (*Details, json.RawMessage, error) {
 	var (
 		out *Details
@@ -149,7 +149,7 @@ func Get(ctx context.Context, hc *http.Client, pkg string) (*Details, json.RawMe
 		// [experimental] optional icon read, inside the SAME read-only
 		// Edit. edits.images.list on the default language's icon slot:
 		// missing == empty (ADR-0013), so an absent icon returns an
-		// empty slice and no error — the key is then omitted entirely.
+		// empty slice and no error: the key is then omitted entirely.
 		// Faithful live read, no cache (ADR-0038).
 		icon, err := fetchIcon(ctx, hc, pkg, editID, defaultLang)
 		if err != nil {
@@ -171,9 +171,9 @@ func Get(ctx context.Context, hc *http.Client, pkg string) (*Details, json.RawMe
 			// reference. The envelope marshal happens locally and has
 			// no upstream peer; use a "details." prefix so a reader
 			// sees "this came from the details package, not from a
-			// listings.get response we mishandled". Defensive — both
+			// listings.get response we mishandled". Defensive: both
 			// inputs are json.RawMessage and can't actually fail
-			// json.Marshal — but if the struct ever sprouts a typed
+			// json.Marshal, but if the struct ever sprouts a typed
 			// field, the tag stays in-domain.
 			return &api.Error{Operation: "details.envelope", Package: pkg, Message: "marshal envelope: " + err.Error(), Cause: err}
 		}
@@ -194,13 +194,13 @@ func Get(ctx context.Context, hc *http.Client, pkg string) (*Details, json.RawMe
 // AppDetailsPatch is a partial update of the edits.details resource. Each
 // field is a *string with the missing-vs-empty contract (ADR-0011):
 //   - nil   → the field is OMITTED from the patch body (left intact upstream)
-//   - non-nil → the field is SENT (including a pointer to "" — which CLEARS it)
+//   - non-nil → the field is SENT (including a pointer to "", which CLEARS it)
 //
 // The json tags carry ,omitempty so encoding/json drops nil pointers but
 // keeps a non-nil pointer to the empty string: a nil pointer is "empty"
 // and omitted, while a non-nil *string is never empty regardless of the
 // string it points at. That is exactly the "set what you're given, leave
-// the rest" semantics — no manual map-building needed.
+// the rest" semantics: no manual map-building needed.
 type AppDetailsPatch struct {
 	DefaultLanguage *string `json:"defaultLanguage,omitempty"`
 	ContactEmail    *string `json:"contactEmail,omitempty"`
@@ -210,7 +210,7 @@ type AppDetailsPatch struct {
 
 // Patch PATCHes a partial AppDetailsPatch to edits.details.patch inside an
 // Edit the caller has already opened. Only the non-nil fields of patch
-// reach the wire (see AppDetailsPatch) — a field the caller left nil is
+// reach the wire (see AppDetailsPatch): a field the caller left nil is
 // absent from the body and stays intact upstream; a field set to a
 // pointer-to-"" is sent empty and clears it. Returns the parsed
 // *AppDetails (the patched resource the API echoes back) and the raw JSON
@@ -361,7 +361,7 @@ func fetchListing(ctx context.Context, hc *http.Client, pkg, editID, language st
 // inside the already-open Edit and returns the optional *Icon carrier.
 // A singular icon slot holds at most one image (ADR-0013); an absent
 // icon is missing == empty, so List returns an empty slice and no error
-// and fetchIcon returns (nil, nil) — the caller omits the key entirely.
+// and fetchIcon returns (nil, nil): the caller omits the key entirely.
 // The url + sha256 are verbatim edits.images field values (ADR-0038):
 // sha256 is the durable content-identity handle, url an ephemeral
 // preview link the caller must never persist. Errors propagate as
@@ -386,7 +386,7 @@ func fetchIcon(ctx context.Context, hc *http.Client, pkg, editID, language strin
 // the HTTP status alongside the body lets callers stamp a downstream
 // decode-failure *api.Error with the real status (200 in practice, but
 // 204 or 206 are valid 2xx the server might emit) rather than hardcoding
-// it — keeping parity with GetDefaultLanguage's behavior.
+// it: keeping parity with GetDefaultLanguage's behavior.
 func getJSON(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawMessage, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
 	if err != nil {
@@ -402,7 +402,7 @@ func getJSON(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawM
 		// otherwise mask the real reason behind a generic
 		// ParseErrorEnvelope fallback ("HTTP <status>"). Surface the
 		// read failure verbatim so the operator knows the request
-		// reached the server but the response stream broke — a
+		// reached the server but the response stream broke: a
 		// retryable network condition mapped to exit 50 by
 		// StatusToExitCode when StatusCode is 0, or to the HTTP class
 		// otherwise.
@@ -484,7 +484,7 @@ func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string
 	}
 	if parsed.DefaultLanguage == "" {
 		// An empty defaultLanguage with a 2xx response is an API
-		// contract violation — downstream callers would emit release
+		// contract violation: downstream callers would emit release
 		// notes with empty language keys.
 		return "", &api.Error{
 			Operation:  "edits.details.get",

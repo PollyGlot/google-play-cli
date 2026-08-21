@@ -1,11 +1,11 @@
 // Package update implements `gplay appstore update --store-package <sp>
 // [--package <pkg>] --file <submission.json> --confirm`: assemble a hosted
-// app's details — developer identity, active APK sets, per-locale store
-// listings, policy questionnaire answers — and SUBMIT it to Google's review,
+// app's details: developer identity, active APK sets, per-locale store
+// listings, policy questionnaire answers, and SUBMIT it to Google's review,
 // via `appstoreappsreview.updateAppStoreHostedApp`.
 //
 // The input is declarative and file-only: the body mirrors
-// UpdateAppStoreHostedAppRequest. There is deliberately no flag set for it —
+// UpdateAppStoreHostedAppRequest. There is deliberately no flag set for it:
 // the policy declarations are a seven-way oneof Google keeps growing, and are
 // simply not expressible as flags (see internal/play/appstore/update.go). One
 // file, versionable next to the app, is also what a CI job wants.
@@ -13,7 +13,7 @@
 // The call submits the app to review IMMEDIATELY: no staging step, no recall.
 // That puts it in the destructive tier (ADR-0017): --confirm is mandatory
 // (missing → exit 3 naming the flag), and --dry-run rehearses the whole thing
-// — read, parse, resolve, count — with zero HTTP, reporting the gate in the
+// (read, parse, resolve, count) with zero HTTP, reporting the gate in the
 // machine-readable `requires` array. MarkMutating gates it under
 // GPLAY_READONLY (exit 4). Edit-free: the call is not under `/edits/`.
 package update
@@ -46,7 +46,7 @@ type Input struct {
 
 // summary is what a human needs to recognise the submission they are about to
 // make (or just made), derived from the parsed body rather than from the
-// response — UpdateAppStoreHostedAppResponse carries no fields.
+// response: UpdateAppStoreHostedAppResponse carries no fields.
 type summary struct {
 	DeveloperName      string
 	Locales            int
@@ -112,14 +112,14 @@ func (p Payload) renderTable(w io.Writer) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w, "\nsubmitted to Google review — the submission is immediate and cannot be recalled\n")
+	_, err := fmt.Fprintf(w, "\nsubmitted to Google review: the submission is immediate and cannot be recalled\n")
 	return err
 }
 
 func (p Payload) renderMarkdown(w io.Writer) error {
 	if p.DryRun {
 		_, err := fmt.Fprintf(w,
-			"- **dry-run**: would submit hosted app `%s` in app store `%s` to Google review (%d locale(s), %d APK set(s), %d policy declaration(s)) — requires --confirm\n",
+			"- **dry-run**: would submit hosted app `%s` in app store `%s` to Google review (%d locale(s), %d APK set(s), %d policy declaration(s)): requires --confirm\n",
 			p.Package, p.StorePackage, p.Sum.Locales, p.Sum.ApkSets, p.Sum.PolicyDeclarations)
 		return err
 	}
@@ -133,7 +133,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	if err := output.MarkdownTable(w, []string{"FIELD", "VALUE"}, rows); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(w, "\nSubmitted to Google review — the submission is immediate and cannot be recalled.\n")
+	_, err := fmt.Fprintf(w, "\nSubmitted to Google review: the submission is immediate and cannot be recalled.\n")
 	return err
 }
 
@@ -178,7 +178,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 		})
 	}
 	// ADR-0003: the API response goes through verbatim. The documented
-	// exception applies only when there is nothing to pass through —
+	// exception applies only when there is nothing to pass through:
 	// UpdateAppStoreHostedAppResponse models no fields, so a server answering
 	// with an empty body (rather than `{}`) would leave --output json, the CI
 	// default, with zero bytes to parse. As in `appstore create`, a
@@ -206,7 +206,7 @@ func readBody(rc *kernel.RunContext, file string) ([]byte, error) {
 	file = strings.TrimSpace(file)
 	if file == "" || file == "-" {
 		if rc == nil || rc.Stdin == nil {
-			return nil, appstorecmd.Usagef("no --file and no stdin to read the hosted app submission from — pass --file <path> or pipe the JSON body on stdin")
+			return nil, appstorecmd.Usagef("no --file and no stdin to read the hosted app submission from: pass --file <path> or pipe the JSON body on stdin")
 		}
 		b, err := io.ReadAll(rc.Stdin)
 		if err != nil {
@@ -221,14 +221,14 @@ func readBody(rc *kernel.RunContext, file string) ([]byte, error) {
 	return b, nil
 }
 
-// parseBody turns the operator's JSON into the request struct — for the RECAP
+// parseBody turns the operator's JSON into the request struct: for the RECAP
 // and the packageName reconciliation only. The bytes that reach Google are the
 // operator's own (see Run): parsing here never subsets what is submitted, so a
 // key this struct does not model is neither dropped nor rejected locally.
 func parseBody(body []byte) (appstore.UpdateHostedAppRequest, error) {
 	var req appstore.UpdateHostedAppRequest
 	if len(bytes.TrimSpace(body)) == 0 {
-		return req, appstorecmd.Usagef("the hosted app submission body is empty — pass --file <path> or pipe the JSON body on stdin")
+		return req, appstorecmd.Usagef("the hosted app submission body is empty: pass --file <path> or pipe the JSON body on stdin")
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		return req, appstorecmd.Usagef("the hosted app submission body is not a valid UpdateAppStoreHostedAppRequest: %v", err)
@@ -239,7 +239,7 @@ func parseBody(body []byte) (appstore.UpdateHostedAppRequest, error) {
 // resolveTarget reconciles the package the flags/pin resolve to with the
 // packageName the body carries. The flag (then the .gplay/config.json pin) is
 // authoritative; a body naming a DIFFERENT app is refused (exit 2) rather than
-// silently resolved one way — this call submits to review, so guessing is not
+// silently resolved one way: this call submits to review, so guessing is not
 // an option. A body with no packageName inherits the resolved one; a
 // self-contained body is accepted when nothing else resolves.
 func resolveTarget(rc *kernel.RunContext, flag string, bodyPkg string) (string, error) {
@@ -255,7 +255,7 @@ func resolveTarget(rc *kernel.RunContext, flag string, bodyPkg string) (string, 
 	}
 	if bodyPkg != "" && bodyPkg != pkg {
 		return "", appstorecmd.Usagef(
-			"the submission body names packageName %q but the resolved target is %q — pass --package %s, or remove packageName from the body (the --package flag and the .gplay/config.json pin win, and gplay will not pick between them silently)",
+			"the submission body names packageName %q but the resolved target is %q: pass --package %s, or remove packageName from the body (the --package flag and the .gplay/config.json pin win, and gplay will not pick between them silently)",
 			bodyPkg, pkg, bodyPkg)
 	}
 	return pkg, nil
@@ -290,12 +290,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return Payload{StorePackage: storePackage, Package: pkg, Sum: sum, DryRun: true}, nil
 	}
 
-	// Destructive tier: the call submits the app to Google's review at once —
+	// Destructive tier: the call submits the app to Google's review at once:
 	// no staging, no recall. --confirm is mandatory (exit 3 naming the flag);
 	// CI=true never auto-confirms (gplay never auto-confirms, ADR-0017).
 	if !in.Confirm {
 		return nil, exit.SafetyFlag("confirm",
-			"submitting hosted app %s to Google review is immediate and irrevocable — there is no staging step and no way to recall the submission; pass --confirm to proceed (rehearse first with --dry-run)", pkg)
+			"submitting hosted app %s to Google review is immediate and irrevocable: there is no staging step and no way to recall the submission; pass --confirm to proceed (rehearse first with --dry-run)", pkg)
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -328,8 +328,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Submit a hosted app's assembled details to Google review (immediate, irrevocable)",
-		Long: `Assemble a hosted app's details — developer identity, active APK sets,
-per-locale store listings, policy questionnaire answers — and SUBMIT it to
+		Long: `Assemble a hosted app's details: developer identity, active APK sets,
+per-locale store listings, policy questionnaire answers, and SUBMIT it to
 Google for review, on behalf of a third-party Android app store.
 
 The submission is IMMEDIATE and IRREVOCABLE: Google reviews what this call
@@ -342,10 +342,10 @@ The whole request is a JSON file (--file <path>, or "-" / omitted to read
 stdin) shaped like UpdateAppStoreHostedAppRequest. There is no flag set for it:
 the policy declarations are a growing oneof and are not expressible as flags,
 and one versionable file is what a CI job wants anyway. Every id in the body
-comes from a prior upload — ` + "`gplay appstore upload apk`" + ` returns the apk ids,
+comes from a prior upload: ` + "`gplay appstore upload apk`" + ` returns the apk ids,
 ` + "`gplay appstore upload image`" + ` the icon/screenshot ids, and
 ` + "`gplay appstore upload policy`" + ` the document ids cited by a policy
-response. The declarationId and questionId values are Google's own — they come
+response. The declarationId and questionId values are Google's own: they come
 from the review questionnaire, not from gplay.
 
   {
@@ -381,7 +381,7 @@ from the review questionnaire, not from gplay.
     ]
   }
 
-The file travels through VERBATIM — only packageName is overwritten with the
+The file travels through VERBATIM: only packageName is overwritten with the
 resolved target. gplay does not re-serialise your JSON from its own model, so a
 field it has never seen (a question type Google added, a key it does not model)
 still submits correctly, and a misspelled one is rejected BY GOOGLE rather than
@@ -389,7 +389,7 @@ silently dropped from a submission you cannot recall.
 
 Addressing uses two identifiers, and mixing them up is the common mistake:
 
-  --store-package  the app store's OWN package name (the caller — the
+  --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
                    falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
   --package        the hosted app's package name (the subject), defaulting to
@@ -400,7 +400,7 @@ refused (exit 2) rather than resolved silently. A file with no packageName
 inherits the resolved one.
 
 ` + "`gplay appstore create`" + ` must have run for this hosted app first. The call is
-Edit-free — it opens no Edit and joins none. The response carries no fields (the
+Edit-free: it opens no Edit and joins none. The response carries no fields (the
 acknowledgement IS the result), so --output json passes the API response
 through verbatim (ADR-0003), falling back to a gplay-shaped success object only
 when the API answers with no body at all. GPLAY_READONLY refuses the write

@@ -19,7 +19,7 @@ import (
 
 // rt is a minimal RoundTripper that returns a canned response for the
 // tracks.list GET (and the tracks.create POST) and records the request
-// line — plus the request body, for write ops — for assertion.
+// line (plus the request body, for write ops) for assertion.
 type rt struct {
 	t      *testing.T
 	status int

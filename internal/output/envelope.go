@@ -15,8 +15,8 @@ import (
 // without scraping human-oriented stderr text. Its shape is part of the
 // public contract (ADR-0010); see ADR-0023.
 //
-// All the data it carries already exists internally — the semantic exit code,
-// the upstream API reasons[], the missing safety flag — it was simply never
+// All the data it carries already exists internally: the semantic exit code,
+// the upstream API reasons[], the missing safety flag: it was simply never
 // serialized before.
 type ErrorEnvelope struct {
 	Error ErrorDetail `json:"error"`
@@ -30,7 +30,7 @@ type ErrorEnvelope struct {
 //   - Message is the human-readable error string (the same text stderr shows).
 //   - Reasons carries the upstream Google API error.errors[].reason values
 //     (e.g. "editAlreadyExists", "rateLimitExceeded") when an API envelope was
-//     parsed — the discriminating signal behind a shared HTTP status. Omitted
+//     parsed: the discriminating signal behind a shared HTTP status. Omitted
 //     when absent.
 //   - Requires names the missing safety-acknowledgment flag on an exit-3
 //     refusal (--confirm / --grant-admin). A safety refusal carries exactly one

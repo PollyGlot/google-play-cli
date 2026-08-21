@@ -111,7 +111,7 @@ func (a Alias) IsAdminConferring() bool { return a.stem == adminStem }
 
 // Bundle is a frozen role bundle (ADR-0016 §3): a closed, gplay-defined preset
 // that expands to a fixed set of alias members. Membership never changes
-// silently — only by an explicit, versioned gplay change (a Public-contract
+// silently: only by an explicit, versioned gplay change (a Public-contract
 // event).
 type Bundle struct {
 	// Name is the role name selected with --role (e.g. "release-manager").
@@ -128,7 +128,7 @@ var readBase = []string{"view-app-info", "view-app-quality"}
 // capabilities first, then the management capabilities, then the sensitive
 // money capabilities, then the six account-only capabilities. Declaration
 // order is the order `team permissions` prints. The deprecated values
-// (CAN_SEE_ALL_APPS, CAN_ACCESS_APP) are deliberately NOT aliases — gplay
+// (CAN_SEE_ALL_APPS, CAN_ACCESS_APP) are deliberately NOT aliases: gplay
 // never offers a deprecated value, steering raw users to the modern one
 // (ADR-0016 §2 / consequences).
 var aliases = []Alias{
@@ -144,7 +144,7 @@ var aliases = []Alias{
 	{Name: "manage-deeplinks", stem: "CAN_MANAGE_DEEPLINKS", Label: "Manage deep links setup"},
 	{Name: "view-financial", stem: "CAN_VIEW_FINANCIAL_DATA", Label: "View financial data (sales, payouts, breakdowns)"},
 	{Name: "manage-orders", stem: "CAN_MANAGE_ORDERS", Label: "Manage orders & subscriptions"},
-	{Name: "manage-permissions", stem: adminStem, Label: "Admin — manage permissions for this scope (confers full control)"},
+	{Name: "manage-permissions", stem: adminStem, Label: "Admin: manage permissions for this scope (confers full control)"},
 	// Account-only capabilities: no per-app enum, never inside a bundle.
 	{Name: "edit-games", stem: "CAN_EDIT_GAMES", accountOnly: true, Label: "Edit Play Games Services projects (account-wide)"},
 	{Name: "publish-games", stem: "CAN_PUBLISH_GAMES", accountOnly: true, Label: "Publish Play Games Services projects (account-wide)"},
@@ -156,7 +156,7 @@ var aliases = []Alias{
 
 // bundles is the frozen role-bundle registry in display order, least to most
 // privilege. Money (view-financial, manage-orders) and account-only
-// capabilities are deliberately absent — they are reachable only via explicit
+// capabilities are deliberately absent: they are reachable only via explicit
 // --permissions or a raw enum, never tucked inside a friendly role (ADR-0016
 // §4). admin is exactly the all-permissions alias (ADR-0016 §5).
 var bundles = []Bundle{
@@ -169,7 +169,7 @@ var bundles = []Bundle{
 
 // deprecated maps a deprecated raw enum (as a caller might type it) to the
 // modern equivalent the steering warning points at (ADR-0016 §2). Both values
-// are accepted verbatim — gplay never gates — but warn.
+// are accepted verbatim (gplay never gates) but warn.
 var deprecated = map[string]string{
 	"CAN_SEE_ALL_APPS": "CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL", // legacy account-wide
 	"CAN_ACCESS_APP":   "CAN_VIEW_NON_FINANCIAL_DATA",        // legacy app-level
@@ -196,7 +196,7 @@ func Aliases() []Alias { return append([]Alias{}, aliases...) }
 // Bundles returns the frozen role-bundle registry in display order (a copy).
 func Bundles() []Bundle { return append([]Bundle{}, bundles...) }
 
-// RoleNames returns the frozen role names in display order — used to build
+// RoleNames returns the frozen role names in display order: used to build
 // flag help and the unknown-role error message.
 func RoleNames() []string {
 	names := make([]string, len(bundles))
@@ -231,7 +231,7 @@ func (b Bundle) IsAdminConferring() bool {
 }
 
 // BundlesContaining returns the names of the role bundles that include
-// aliasName, in bundle display order — the "including-bundles" column of
+// aliasName, in bundle display order: the "including-bundles" column of
 // `team permissions`.
 func BundlesContaining(aliasName string) []string {
 	var out []string
@@ -246,7 +246,7 @@ func BundlesContaining(aliasName string) []string {
 	return out
 }
 
-// isAdminEnum reports whether e is the all-permissions enum in either scope —
+// isAdminEnum reports whether e is the all-permissions enum in either scope,
 // so admin is detected however it was expressed (alias, role, or a raw enum in
 // the "wrong" scope).
 func isAdminEnum(e string) bool {
@@ -254,7 +254,7 @@ func isAdminEnum(e string) bool {
 }
 
 // IsAdminConferring reports whether a resolved enum set includes the
-// all-permissions enum (CAN_MANAGE_PERMISSIONS[_GLOBAL]) — the trigger for the
+// all-permissions enum (CAN_MANAGE_PERMISSIONS[_GLOBAL]): the trigger for the
 // --grant-admin gate (ADR-0017 §1).
 func IsAdminConferring(enums []string) bool {
 	for _, e := range enums {
@@ -268,8 +268,8 @@ func IsAdminConferring(enums []string) bool {
 // ResolvePermissions resolves a list of --permissions tokens (each an alias or
 // a raw CAN_* enum) to API enum values under scope, in input order with
 // duplicates removed. It returns any steering warnings (a deprecated raw enum
-// was used) and a *exit.UsageError (exit 2) — whose message points at
-// `gplay team permissions` — for an unknown alias, a `*_UNSPECIFIED` sentinel,
+// was used) and a *exit.UsageError (exit 2), whose message points at
+// `gplay team permissions`: for an unknown alias, a `*_UNSPECIFIED` sentinel,
 // or an account-only alias used under Scope App.
 func ResolvePermissions(scope Scope, tokens []string) (enums []string, warnings []string, err error) {
 	seen := make(map[string]bool, len(tokens))
@@ -309,7 +309,7 @@ func ResolvePermissions(scope Scope, tokens []string) (enums []string, warnings 
 			continue
 		}
 
-		return nil, nil, exit.Usagef("unknown permission %q — run `gplay team permissions` to list valid aliases, or pass a raw CAN_* enum", tok)
+		return nil, nil, exit.Usagef("unknown permission %q: run `gplay team permissions` to list valid aliases, or pass a raw CAN_* enum", tok)
 	}
 	return enums, warnings, nil
 }
@@ -320,12 +320,12 @@ func ResolvePermissions(scope Scope, tokens []string) (enums []string, warnings 
 func ResolveRole(scope Scope, role string) ([]string, error) {
 	b, ok := bundleByName[strings.TrimSpace(role)]
 	if !ok {
-		return nil, exit.Usagef("unknown role %q (valid: %s) — run `gplay team permissions` to see what each grants", role, strings.Join(RoleNames(), ", "))
+		return nil, exit.Usagef("unknown role %q (valid: %s): run `gplay team permissions` to see what each grants", role, strings.Join(RoleNames(), ", "))
 	}
 	return b.Enums(scope), nil
 }
 
-// SortedEnums returns enums sorted lexicographically — a stable form for a
+// SortedEnums returns enums sorted lexicographically: a stable form for a
 // diff or a deterministic payload preview. The resolver preserves input order;
 // callers wanting determinism across differently-ordered inputs sort.
 func SortedEnums(enums []string) []string {

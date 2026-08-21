@@ -52,7 +52,7 @@ type loopingRT struct {
 func (r *loopingRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.calls++
 	if r.calls > 10 {
-		r.t.Fatalf("List made %d calls without terminating — pagination token loop not guarded", r.calls)
+		r.t.Fatalf("List made %d calls without terminating: pagination token loop not guarded", r.calls)
 	}
 	body := `{"reviews":[{"reviewId":"r","comments":[{"userComment":{"starRating":5,"reviewerLanguage":"en"}}]}],"tokenPagination":{"nextPageToken":"LOOP"}}`
 	return &http.Response{
@@ -62,7 +62,7 @@ func (r *loopingRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// replyRT captures the reviews.reply POST — method, path, and request body —
+// replyRT captures the reviews.reply POST (method, path, and request body)
 // and serves a canned response. code/errBody force a non-2xx for the
 // error-mapping test (0 → 200).
 type replyRT struct {
@@ -270,7 +270,7 @@ func TestList_singlePage(t *testing.T) {
 	}
 }
 
-// getRT captures the reviews.get GET — method and path — and serves a canned
+// getRT captures the reviews.get GET (method and path) and serves a canned
 // body, or a forced non-2xx for the error-mapping test (code 0 → 200).
 type getRT struct {
 	code int

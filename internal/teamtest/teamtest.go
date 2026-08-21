@@ -87,7 +87,7 @@ func (r *RT) Calls() []Call {
 }
 
 // Wrote reports whether any captured call used a mutating method (POST / PATCH
-// / DELETE) — the assertion a refused write makes no network mutation.
+// / DELETE): the assertion a refused write makes no network mutation.
 func (r *RT) Wrote() bool {
 	for _, c := range r.Calls() {
 		switch c.Method {
@@ -138,7 +138,7 @@ func Pages(bodies ...string) Responder {
 }
 
 // Fail forces status+body for any call whose method matches and whose path ends
-// with pathSuffix — the error-mapping and write-path responders.
+// with pathSuffix: the error-mapping and write-path responders.
 func Fail(method, pathSuffix string, status int, body string) Responder {
 	return func(c Call) (int, string, bool) {
 		if c.Method == method && strings.HasSuffix(c.Path, pathSuffix) {

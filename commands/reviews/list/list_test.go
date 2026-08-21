@@ -169,7 +169,7 @@ const fourReviewsBody = `{"reviews":[
 ]}`
 
 func TestRun_limitCapsAfterFilter(t *testing.T) {
-	// stars=1 keeps r2 and r4 (in order); limit=1 then caps to r2 — proving
+	// stars=1 keeps r2 and r4 (in order); limit=1 then caps to r2: proving
 	// the cap is applied AFTER the filter, not against the raw page.
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
 	rc, _, _ := newRC(t, rt)
@@ -357,7 +357,7 @@ func TestPayload_JSON_reflectsFilteredSet_verbatim(t *testing.T) {
 	if got.ReviewID != "r2" {
 		t.Errorf("survivor reviewId = %q, want r2", got.ReviewID)
 	}
-	// The review object is passed through verbatim — nested fields intact.
+	// The review object is passed through verbatim: nested fields intact.
 	if got.Comments[0].UserComment.StarRating != 1 || got.Comments[0].UserComment.ReviewerLanguage != "fr-FR" {
 		t.Errorf("verbatim review fields lost: %+v", got)
 	}
@@ -377,7 +377,7 @@ func TestRun_forbidden_exit11_withReplyHint(t *testing.T) {
 }
 
 // timeoutRT serves the /token exchange instantly but blocks the reviews.list
-// call until the request context is canceled — standing in for a hung upstream
+// call until the request context is canceled: standing in for a hung upstream
 // connection. A well-behaved transport observes ctx cancellation, which is how
 // the kernel-applied deadline (the global --timeout / 60s default) interrupts
 // the request.
@@ -394,7 +394,7 @@ func (timeoutRT) RoundTrip(req *http.Request) (*http.Response, error) {
 // TestRun_timeout_mapsToExit50 drives `reviews list` against a transport whose
 // API call hangs, with a tight global --timeout. The kernel-applied deadline
 // must interrupt the request, and the transport-level failure must surface as
-// exit 50 (network) — bounded well under the would-be hang, not stalling until
+// exit 50 (network): bounded well under the would-be hang, not stalling until
 // a runner-level kill.
 func TestRun_timeout_mapsToExit50(t *testing.T) {
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
@@ -419,7 +419,7 @@ func TestRun_timeout_mapsToExit50(t *testing.T) {
 }
 
 // retryRT serves the /token exchange, then fails the first reviews.list call
-// with a 500 and serves a valid page on the second — exercising the kernel's
+// with a 500 and serves a valid page on the second: exercising the kernel's
 // --retry wiring end-to-end through a real command.
 type retryRT struct {
 	body           string
@@ -521,7 +521,7 @@ func TestRun_hostileReviewText_tableSanitized_jsonByteFaithful(t *testing.T) {
 		}
 	}
 
-	// JSON: byte-faithful — decoding the output yields the original text,
+	// JSON: byte-faithful: decoding the output yields the original text,
 	// control bytes and all (no sanitization on the machine path).
 	var jbuf bytes.Buffer
 	if err := output.Render(&jbuf, output.FormatJSON, r.Renderers()); err != nil {

@@ -24,7 +24,7 @@ type Entry struct {
 }
 
 // Read loads every *.json file of dir as one product each, keyed by product ID.
-// The file's productId must match its filename stem — a mismatch is refused
+// The file's productId must match its filename stem: a mismatch is refused
 // rather than silently renamed, since the filename is the reconciliation key.
 // Non-.json files and subdirectories are ignored (they are not catalog files).
 func Read(dir string) (map[string]json.RawMessage, error) {
@@ -49,10 +49,10 @@ func Read(dir string) (map[string]json.RawMessage, error) {
 		}
 		id := strings.TrimSuffix(de.Name(), ".json")
 		if id == "" {
-			return nil, fmt.Errorf("catalog file %q has an empty filename stem — the stem is the product ID and cannot be empty", de.Name())
+			return nil, fmt.Errorf("catalog file %q has an empty filename stem: the stem is the product ID and cannot be empty", de.Name())
 		}
 		if probe.ProductID != "" && probe.ProductID != id {
-			return nil, fmt.Errorf("catalog file %q declares productId %q — the filename stem is the reconciliation key and must match", de.Name(), probe.ProductID)
+			return nil, fmt.Errorf("catalog file %q declares productId %q: the filename stem is the reconciliation key and must match", de.Name(), probe.ProductID)
 		}
 		local[id] = json.RawMessage(b)
 	}
@@ -62,8 +62,8 @@ func Read(dir string) (map[string]json.RawMessage, error) {
 // Write lays down one pretty-printed <productId>.json per entry and removes any
 // stale *.json file that no longer matches a live product, so the directory
 // mirrors the live catalog after a pull. Server-derived noise that would churn
-// review diffs without being declarable state — packageName (redundant with
-// --package) and archived (output-only in the current Discovery snapshot) — is
+// review diffs without being declarable state (packageName (redundant with
+// --package) and archived (output-only in the current Discovery snapshot)) is
 // stripped. Foreign files (non-.json) are never touched. It returns the names
 // of the removed files.
 func Write(dir string, entries []Entry) ([]string, error) {
@@ -72,13 +72,13 @@ func Write(dir string, entries []Entry) ([]string, error) {
 	}
 	keep := map[string]struct{}{}
 	for _, e := range entries {
-		// The product ID names the file, and it arrives from the API response —
+		// The product ID names the file, and it arrives from the API response:
 		// never trust it as a path. Play product IDs are lowercase
 		// letters/digits/underscores/periods, so anything path-like is refused
 		// rather than joined into dir.
 		if e.ProductID == "" || e.ProductID != filepath.Base(e.ProductID) ||
 			e.ProductID == "." || e.ProductID == ".." || strings.ContainsAny(e.ProductID, `/\`) {
-			return nil, fmt.Errorf("live subscription has unsafe productId %q — refusing to write it as a catalog filename", e.ProductID)
+			return nil, fmt.Errorf("live subscription has unsafe productId %q: refusing to write it as a catalog filename", e.ProductID)
 		}
 		var m map[string]any
 		if err := json.Unmarshal(e.Raw, &m); err != nil {
@@ -118,7 +118,7 @@ func Write(dir string, entries []Entry) ([]string, error) {
 }
 
 // writeNoFollow writes a catalog file via a temp file + rename so a
-// pre-existing <productId>.json symlink is replaced, never followed —
+// pre-existing <productId>.json symlink is replaced, never followed:
 // os.WriteFile on the destination would write through the link into whatever
 // it points at.
 func writeNoFollow(dir, name string, data []byte) error {

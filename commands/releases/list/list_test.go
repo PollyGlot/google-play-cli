@@ -2,7 +2,7 @@
 // a RunContext built by hand, a RoundTripper injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // promote/upload harness, but the transport FAILS on any PUT or :commit
-// — a read-only listing must open, read (tracks.get), and discard the
+// : a read-only listing must open, read (tracks.get), and discard the
 // Edit, never write or commit it.
 package list_test
 
@@ -34,7 +34,7 @@ import (
 // listRT terminates the OAuth2 /token exchange and routes the read-only
 // list sequence: edits.insert, tracks.get, edits.delete. It deliberately
 // has NO PUT or :commit branch: reaching one means the command tried to
-// mutate or commit, which a read-only list must never do — so the
+// mutate or commit, which a read-only list must never do, so the
 // transport fails the test.
 type listRT struct {
 	t            *testing.T
@@ -135,8 +135,8 @@ func exitCodeOf(t *testing.T, err error) int {
 
 // TestRun_listsAllReleases_happyPath asserts the read-only vertical
 // slice: /token precedes edits.insert, then tracks.get, then the Edit is
-// DISCARDED (never committed). Every coexisting release on the track —
-// draft, inProgress, halted, completed — comes back, and --output json
+// DISCARDED (never committed). Every coexisting release on the track:
+// draft, inProgress, halted, completed: comes back, and --output json
 // is the raw tracks.get payload (ADR-0003 pass-through).
 func TestRun_listsAllReleases_happyPath(t *testing.T) {
 	raw := `{"track":"production","releases":[` +
@@ -243,7 +243,7 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 }
 
 // TestRun_noAccount_exit10 asserts that with no resolved Account the
-// command fails auth (exit 10) before any HTTP call — there is no
+// command fails auth (exit 10) before any HTTP call: there is no
 // dry-run path for a read-only listing.
 func TestRun_noAccount_exit10(t *testing.T) {
 	rt := &listRT{t: t}

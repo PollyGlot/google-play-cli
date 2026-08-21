@@ -1,8 +1,8 @@
-// Package orchestrator — UploadMapping owns the standalone
+// Package orchestrator: UploadMapping owns the standalone
 // mapping-upload choreography behind `gplay releases mappings upload`:
 // open an Edit, POST the deobfuscation file keyed by an explicit
 // versionCode, and commit. Unlike Upload it touches no track and uploads
-// no AAB — it attaches a ProGuard/R8 mapping (a Mapping, per CONTEXT.md)
+// no AAB: it attaches a ProGuard/R8 mapping (a Mapping, per CONTEXT.md)
 // to an already-published version after the fact, so Play vitals can
 // symbolicate that version's obfuscated crash stacks (#250).
 package orchestrator

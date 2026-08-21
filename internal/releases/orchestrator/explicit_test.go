@@ -22,15 +22,15 @@ func TestUpload_explicitEdit_reusesPinNoInsertNoCommit(t *testing.T) {
 		versionCode:        7,
 		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"7","status":"completed","versionCodes":["7"],"userFraction":1.0}]}`,
 		insertHandler: func(*http.Request) (*http.Response, error) {
-			t.Fatalf("edits.insert called in explicit mode — the pinned Edit must be reused")
+			t.Fatalf("edits.insert called in explicit mode: the pinned Edit must be reused")
 			return nil, nil
 		},
 		commitHandler: func(*http.Request) (*http.Response, error) {
-			t.Fatalf("edits.commit called in explicit mode — the user owns commit")
+			t.Fatalf("edits.commit called in explicit mode: the user owns commit")
 			return nil, nil
 		},
 		deleteHandler: func(*http.Request) (*http.Response, error) {
-			t.Fatalf("edits.delete called in explicit mode — no auto-discard")
+			t.Fatalf("edits.delete called in explicit mode: no auto-discard")
 			return nil, nil
 		},
 	}

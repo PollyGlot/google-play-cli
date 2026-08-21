@@ -207,7 +207,7 @@ func TestRun_dryRun_jsonDiffSchema(t *testing.T) {
 
 // TestRun_applyWithoutConfirm_exit3 asserts a real apply refuses without
 // --confirm, before opening any Edit, with exit 3 (safety flag required,
-// docs/DESIGN.md §9 — NOT the generic usage exit 2, #408).
+// docs/DESIGN.md §9, NOT the generic usage exit 2, #408).
 func TestRun_applyWithoutConfirm_exit3(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
 	rt := &applyRT{t: t, editID: "e1"}

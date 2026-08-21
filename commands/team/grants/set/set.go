@@ -57,7 +57,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to manage users on developer account %s — grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
+	return fmt.Sprintf("service account is not authorized to manage users on developer account %s: grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -67,7 +67,7 @@ func (e *forbiddenError) Unwrap() error { return e.cause }
 type notMemberError struct{ email string }
 
 func (e *notMemberError) Error() string {
-	return fmt.Sprintf("%s is not a member of this developer account — add them with `gplay team users add %s` before granting per-app access", e.email, e.email)
+	return fmt.Sprintf("%s is not a member of this developer account: add them with `gplay team users add %s` before granting per-app access", e.email, e.email)
 }
 func (e *notMemberError) ExitCode() int { return 30 }
 
@@ -193,7 +193,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 }
 
 // diff returns the sorted add (desired \ current) and remove (current \
-// desired) sets — the permission delta surfaced in the dry-run JSON.
+// desired) sets: the permission delta surfaced in the dry-run JSON.
 func diff(current, desired []string) (add, remove []string) {
 	cur := make(map[string]bool, len(current))
 	for _, c := range current {
@@ -238,7 +238,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	pkg := strings.TrimSpace(in.Package)
 	if email == "" {
-		return nil, exit.Usagef("missing <email> — usage: gplay team grants set <email> --package <pkg> --role <bundle>|--permissions <alias,…>")
+		return nil, exit.Usagef("missing <email>: usage: gplay team grants set <email> --package <pkg> --role <bundle>|--permissions <alias,…>")
 	}
 	if pkg == "" {
 		return nil, exit.Usagef("missing --package <pkg> (the app to grant access to)")
@@ -325,8 +325,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Grant or adjust a member's per-app access (upsert)",
 		Long: `Grant or adjust <email>'s access to one app (--package) via an upsert:
 gplay reads the member's current grants, then creates the grant if absent or
-updates it if present. Express permissions in friendly form — --role <bundle>
-XOR --permissions <alias,…> — resolved in app scope. Run
+updates it if present. Express permissions in friendly form: --role <bundle>
+XOR --permissions <alias,…>: resolved in app scope. Run
 ` + "`gplay team permissions --scope app`" + ` to list them.
 
 Use --dry-run to rehearse: it reads the current state (an idempotent read, no

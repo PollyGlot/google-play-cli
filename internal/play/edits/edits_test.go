@@ -1,6 +1,6 @@
 // Package edits_test exercises the Edit transactional lifecycle. The
 // focus here is on the failure paths that don't already have coverage
-// via the orchestrator-level tests — chiefly the panic-recovery
+// via the orchestrator-level tests: chiefly the panic-recovery
 // branch, where a runaway panic inside the closure must still trigger
 // auto-discard before propagating so a 24h Edit lock does not leak.
 package edits_test
@@ -141,7 +141,7 @@ func TestWithEdit_panicInClosure_keepOnFailure_doesNotDiscard(t *testing.T) {
 
 // TestWithReadOnlyEdit_happyPath_insertsThenDiscardsNeverCommits asserts
 // the read-only lifecycle: open an Edit, run the closure, then ALWAYS
-// discard — never commit. A read-only listing (tracks.get) has no
+// discard: never commit. A read-only listing (tracks.get) has no
 // changes to commit; committing would at best burn a daily-publish slot
 // and at worst mutate state, so the Edit must be discarded on success.
 func TestWithReadOnlyEdit_happyPath_insertsThenDiscardsNeverCommits(t *testing.T) {
@@ -211,7 +211,7 @@ func TestWithReadOnlyEdit_closureError_stillDiscardsAndPropagates(t *testing.T) 
 
 // TestValidate_happyPath_insertsThenDiscardsNeverCommits asserts that
 // edits.Validate (the cheap access probe used by `gplay apps add`)
-// opens an Edit, never commits, then discards — so it does not burn a
+// opens an Edit, never commits, then discards, so it does not burn a
 // daily-publish slot or leak the open Edit.
 func TestValidate_happyPath_insertsThenDiscardsNeverCommits(t *testing.T) {
 	rt := &editsRT{t: t, editID: "edit-validate"}
@@ -257,7 +257,7 @@ func TestValidate_403_mapsToExitCode11(t *testing.T) {
 
 // TestValidate_404_mapsToExitCode30 asserts that a 404 from the
 // upstream insert call (the package does not exist on the developer
-// account) is surfaced as exit 30 — a typo or unknown package, not an
+// account) is surfaced as exit 30: a typo or unknown package, not an
 // auth problem. The active credential is fine; the input is wrong.
 func TestValidate_404_mapsToExitCode30(t *testing.T) {
 	rt := &insertStatusRT{t: t, status: http.StatusNotFound}

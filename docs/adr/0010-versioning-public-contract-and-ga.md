@@ -11,9 +11,9 @@ The decisions:
 - **No GitHub milestones.** Versioning is owned end-to-end by
   release-please/SemVer from commit history. Scope is grouped by PRD issues and
   `type:*` / `area:*` labels, not by version-named milestones. Version-named
-  milestones drift out of sync with auto-computed versions and rot — observed
-  first-hand on the sibling `asc` project (App-Store-Connect-CLI), which carries
-  a graveyard of stale `0.2x`–`0.3x` milestones while shipping `1.6.x`.
+  milestones drift out of sync with auto-computed versions and rot: the known
+  failure mode is a graveyard of stale `0.2x`–`0.3x` milestones on a project
+  already shipping `1.6.x`.
 - **Two maturity states, communicated explicitly.** *Public preview* (`v0.x`):
   publicly installable, an invitation to test, breaking changes still possible.
   *GA* (`v1.0`+): the Public contract is in force.
@@ -21,7 +21,7 @@ The decisions:
   reviews) — it does **not** wait for Fastlane `supply` parity. Metadata,
   vitals, and subscriptions are additive and ship in `1.x` without a major bump.
 - **The Public contract is granular, scoped by stability labels**, not a
-  monolithic freeze (pattern borrowed from `asc`):
+  monolithic freeze:
   - no label = part of the Public contract (frozen; breaking = major bump)
   - `[experimental]` = shipped but outside the contract, free to evolve
   - `DEPRECATED:` = a compatibility path kept during a migration
@@ -94,7 +94,7 @@ The decisions:
   rejected. Couples a stability promise to feature breadth, so 1.0 never ships.
   Metadata is additive and lands in `1.x`.
 - **Keep version-named milestones, align them by hand** — rejected. Fights
-  release-please; the `asc` graveyard of stale milestones is the cautionary tale.
+  release-please; the stale-milestone graveyard above is the cautionary tale.
 - **Ship CLI `1.0` alone, skills later** — rejected as the default. Workable, but
   the GA announcement loses the agent-first story that differentiates gplay.
 

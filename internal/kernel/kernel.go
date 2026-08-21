@@ -3,9 +3,9 @@
 // layer captures the request-shaped Inputs, and kernel.Run resolves
 // Format and the Account *name* once before handing a populated
 // RunContext to the command's business function. The credential bytes and
-// the keystore backend are resolved lazily — only when a command asks for
+// the keystore backend are resolved lazily: only when a command asks for
 // them via RunContext.EnsureAccount / Backend (both reached through
-// AuthedClient) — so a pre-auth command never probes the OS keyring. See
+// AuthedClient), so a pre-auth command never probes the OS keyring. See
 // RunContext.Backend for why that deferral matters.
 //
 // Each command exposes
@@ -16,7 +16,7 @@
 // the returned Renderable; commands with no payload (login, logout
 // side-effects) return (nil, nil).
 //
-// RunContext is not safe for concurrent use — one cobra invocation,
+// RunContext is not safe for concurrent use: one cobra invocation,
 // one RunContext.
 package kernel
 
@@ -50,19 +50,19 @@ import (
 // invocation prints the group help; any leftover token is an unknown
 // subcommand, surfaced as CLI misuse (exit 2 per docs/DESIGN.md §9).
 //
-// It is a RunE — not an Args validator — on purpose: cobra short-circuits a
+// It is a RunE (not an Args validator) on purpose: cobra short-circuits a
 // NON-runnable command (no Run/RunE) straight to its help text BEFORE arg
 // validation runs, so a child group with only an Args hook would still
 // silently print help (exit 0) on a mistyped or removed subcommand. Giving the
-// group a RunE makes the rejection actually fire, so a typo — or a hard rename
-// (ADR-0019) where a CI step still calls the old name — breaks loudly instead
+// group a RunE makes the rejection actually fire, so a typo, or a hard rename
+// (ADR-0019) where a CI step still calls the old name: breaks loudly instead
 // of "succeeding" with exit 0.
 //
 // cobra's default Args validator (legacyArgs) only rejects unknown commands
 // for the ROOT, never for a child group, which is why every name-group needs
 // this helper for a consistent UX. The root itself, to route through here
 // rather than legacyArgs (which yields a plain error → exit 1, not exit 2),
-// sets Args: cobra.ArbitraryArgs alongside this RunE — see cmd/gplay/main.go.
+// sets Args: cobra.ArbitraryArgs alongside this RunE: see cmd/gplay/main.go.
 //
 // Pair GroupRunE with SilenceUsage:true and SilenceErrors:true on the command
 // so the failure surfaces as the single `gplay: ...` line main.go prints,
@@ -107,7 +107,7 @@ func suggestionsFor(cmd *cobra.Command, typed string) string {
 
 // mutatingAnnotation is the cobra annotation key a write command sets to declare
 // itself subject to the GPLAY_READONLY policy. One key, set in one place per
-// command (MarkMutating), is the whole registry — there are no per-command
+// command (MarkMutating), is the whole registry: there are no per-command
 // readonly checks scattered through the business functions (ADR-0024).
 const mutatingAnnotation = "gplay.mutating"
 
@@ -115,7 +115,7 @@ const mutatingAnnotation = "gplay.mutating"
 // it composes inline at registration: `releases.AddCommand(kernel.MarkMutating(
 // upload.NewCommand(boot)))`. Under GPLAY_READONLY a marked command is refused
 // (exit 4) unless invoked with --dry-run. Every new write command MUST be
-// marked — see CONTRIBUTING.
+// marked: see CONTRIBUTING.
 func MarkMutating(cmd *cobra.Command) *cobra.Command {
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}
@@ -150,7 +150,7 @@ func WithScope(cmd *cobra.Command, oauthScope string) *cobra.Command {
 }
 
 // ScopeFor returns the OAuth scope cmd declared via WithScope, or "" when it
-// declared none — the sentinel the kernel resolves to the default
+// declared none: the sentinel the kernel resolves to the default
 // androidpublisher scope (token.Source's zero-scope default).
 func ScopeFor(cmd *cobra.Command) string {
 	if cmd == nil {
@@ -216,14 +216,14 @@ type Inputs struct {
 
 	// Timeout mirrors the global --timeout persistent flag: an explicit
 	// per-request deadline applied to every API call (control-plane AND media
-	// upload). Zero means "unset" — control-plane calls then fall back to the
+	// upload). Zero means "unset": control-plane calls then fall back to the
 	// 60s default while uploads stay unbounded. See RunContext.AuthedClient /
 	// UploadClient.
 	Timeout time.Duration
 
 	// Retry mirrors the global --retry persistent flag: the number of automatic
 	// retries (transport errors / 5xx / 429) layered onto the authed client.
-	// Zero (the default) is today's behavior — no retry. When set, --timeout
+	// Zero (the default) is today's behavior: no retry. When set, --timeout
 	// becomes a per-attempt bound.
 	Retry int
 
@@ -255,7 +255,7 @@ type RunContext struct {
 	Ctx context.Context
 
 	// Account is the resolved credential. It is populated lazily by
-	// EnsureAccount (which AuthedClient calls) — zero until a command asks
+	// EnsureAccount (which AuthedClient calls): zero until a command asks
 	// for it, so reading this field directly only sees a value after an
 	// EnsureAccount / AuthedClient call. nil when nothing resolved (status
 	// renders an informational message; doctor synthesises a check-1
@@ -272,7 +272,7 @@ type RunContext struct {
 	// ignores --account/--service-account/env overrides.
 	AccountName string
 
-	// Format is the resolved output Format — never FormatAuto.
+	// Format is the resolved output Format: never FormatAuto.
 	Format output.Format
 
 	// Resolved is the full cascade snapshot. Commands access the
@@ -282,7 +282,7 @@ type RunContext struct {
 
 	// Keystore is the selected backend and KeystoreLabel its stable label.
 	// Both are populated lazily by Backend() (the first keystore use), not
-	// at boot — read them via Backend()/EnsureAccount, not directly, on the
+	// at boot: read them via Backend()/EnsureAccount, not directly, on the
 	// production path.
 	Keystore      keystore.Backend
 	KeystoreLabel string
@@ -320,7 +320,7 @@ type RunContext struct {
 	// buildRunContext leaves Account, Keystore and KeystoreLabel zero and
 	// arms these fields instead, so a pre-auth command (a failed --package
 	// / --track / --confirm validation, a --dry-run, --help) never touches
-	// the OS keyring — the probe that pops the macOS "keychain locked"
+	// the OS keyring: the probe that pops the macOS "keychain locked"
 	// dialog is deferred until something actually needs a credential
 	// (Backend / EnsureAccount, both reached via AuthedClient). AccountName
 	// is the exception: it is resolved keystore-free up front (see
@@ -396,13 +396,13 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 		return err
 	}
 	// GPLAY_READONLY policy (ADR-0024): refuse a mutating, non-dry-run command
-	// here — after the local config/format resolution buildRunContext does, but
+	// here, after the local config/format resolution buildRunContext does, but
 	// BEFORE fn runs, so before any credential bytes are loaded (EnsureAccount
 	// is lazy, reached only via fn → AuthedClient) and before any network I/O.
 	// The authority boundary is the environment, not the flags fn would parse.
 	if in.Readonly && in.Mutating && !in.DryRun {
 		refusal := exit.Policyf(
-			"refused by %s: this command mutates Google Play state and is blocked by the read-only environment policy. This is not resolvable by adding a flag — unset %s to allow writes, or run with --dry-run to preview.",
+			"refused by %s: this command mutates Google Play state and is blocked by the read-only environment policy. This is not resolvable by adding a flag: unset %s to allow writes, or run with --dry-run to preview.",
 			EnvReadonly, EnvReadonly)
 		rc.maybeWriteErrorEnvelope(refusal)
 		return refusal
@@ -412,7 +412,7 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 		// Under --output json, serialize the failure as a structured envelope
 		// on stdout so an agent/CI consumer can branch without scraping stderr
 		// (ADR-0023). main still prints the human line to stderr and exits with
-		// exit.For(runErr) — exit codes and stderr are unchanged.
+		// exit.For(runErr): exit codes and stderr are unchanged.
 		rc.maybeWriteErrorEnvelope(runErr)
 		return runErr
 	}
@@ -426,13 +426,13 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 // the ✓ marker and terminated by a newline (DESIGN §8). It is the one funnel
 // every payload-bearing mutation routes its committed-success line through, so
 // a future --quiet flag can suppress them all in one place. Callers pass the
-// message body only — no ✓, no trailing newline — and lean on canonical terms
+// message body only (no ✓, no trailing newline) and lean on canonical terms
 // (track, status, versionCode, userFraction), never naming the Play "release"
 // object. It is never called on a --dry-run: ✓ means the change was committed.
 //
 // The write is best-effort (the command's exit code and stdout payload are the
-// authoritative signals) and a nil Stderr — possible on a hand-built
-// RunContext — is a no-op rather than a panic.
+// authoritative signals) and a nil Stderr (possible on a hand-built
+// RunContext) is a no-op rather than a panic.
 func (rc *RunContext) Confirmf(format string, args ...any) {
 	if rc.Stderr == nil {
 		return
@@ -444,7 +444,7 @@ func (rc *RunContext) Confirmf(format string, args ...any) {
 // default IMPLICIT Edit mode it is the committed ✓ (DESIGN §8: ✓ means the
 // change was committed). When explicitEditID is non-empty the mutation was
 // staged into a user-owned open Edit (`gplay edits begin`) and is NOT yet
-// published — so a committed ✓ would lie — and it prints a distinct, non-✓
+// published (so a committed ✓ would lie) and it prints a distinct, non-✓
 // "staged" line pointing at `gplay edits commit` instead, preserving the
 // ✓ = committed invariant. Callers pass the same message body they would give
 // Confirmf; like Confirmf it is best-effort, never fires on a --dry-run (the
@@ -457,12 +457,12 @@ func (rc *RunContext) ConfirmMutation(explicitEditID, format string, args ...any
 	if rc.Stderr == nil {
 		return
 	}
-	prefix := fmt.Sprintf("• staged in open edit %s — run `gplay edits commit` to publish (not live yet): ", explicitEditID)
+	prefix := fmt.Sprintf("• staged in open edit %s: run `gplay edits commit` to publish (not live yet): ", explicitEditID)
 	_, _ = fmt.Fprintf(rc.Stderr, prefix+format+"\n", args...)
 }
 
-// GplayDir returns the project's .gplay/ directory — the one found via walk-up
-// that holds config.json — and ok=true when a project was resolved. It is the
+// GplayDir returns the project's .gplay/ directory: the one found via walk-up
+// that holds config.json, and ok=true when a project was resolved. It is the
 // home of the explicit-Edit pin (.gplay/edit-<pkg>.json) and is gitignored for
 // edit-*.json by `gplay init`, so a pin written here never lands in version
 // control. ok=false means no .gplay/ was found (no `gplay init`); callers that
@@ -477,7 +477,7 @@ func (rc *RunContext) GplayDir() (string, bool) {
 
 // ExplicitEditID returns the open explicit-Edit ID pinned for pkg in the
 // project's .gplay/edit-<pkg>.json, or "" when none is pinned (or no project
-// was resolved) — the signal a write command uses to reuse an open Edit instead
+// was resolved): the signal a write command uses to reuse an open Edit instead
 // of opening its own (docs/DESIGN.md §4). A corrupt pin file is an error so a
 // broken pin surfaces rather than silently opening a conflicting Edit.
 func (rc *RunContext) ExplicitEditID(pkg string) (string, error) {
@@ -496,7 +496,7 @@ func (rc *RunContext) ExplicitEditID(pkg string) (string, error) {
 // resolved format is JSON AND the failing command produced no stdout of its
 // own. The byte-count guard is what keeps a self-rendering command (doctor
 // writes its checklist then returns an error) from getting a second JSON
-// object appended — there it has already emitted to stdout, so the envelope is
+// object appended: there it has already emitted to stdout, so the envelope is
 // suppressed. The write is best-effort: the authoritative signal is the error
 // main prints to stderr and the exit code, both unaffected by a failure here.
 func (rc *RunContext) maybeWriteErrorEnvelope(err error) {
@@ -509,7 +509,7 @@ func (rc *RunContext) maybeWriteErrorEnvelope(err error) {
 	_ = output.WriteErrorEnvelope(rc.Stdout, err)
 }
 
-// countingWriter forwards every write to w while tallying the bytes written —
+// countingWriter forwards every write to w while tallying the bytes written:
 // the kernel uses the tally to decide whether a failing command already
 // produced stdout (see maybeWriteErrorEnvelope).
 type countingWriter struct {
@@ -568,7 +568,7 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 
 	// Keystore selection (the probe) and credential loading are deferred:
 	// see RunContext.Backend / EnsureAccount. Only the Account *name* is
-	// resolved now, and ResolveName is keystore-free — so a pre-auth
+	// resolved now, and ResolveName is keystore-free, so a pre-auth
 	// command never touches the keyring, while registry-scoping commands
 	// (apps add/list/remove) and the --dry-run preview still get the name
 	// for free. The credential bytes (and the probe) wait until a command
@@ -604,7 +604,7 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 // Backend lazily selects the credential keystore backend, running the OS
 // keyring probe at most once per invocation and memoising the result into
 // rc.Keystore / rc.KeystoreLabel. The verbose "keystore: using <label>"
-// line is emitted here — when the backend is first actually used — rather
+// line is emitted here (when the backend is first actually used) rather
 // than unconditionally at boot, so `-v` on a pre-auth command stays quiet
 // and probe-free.
 //
@@ -639,12 +639,12 @@ func (rc *RunContext) Backend() (keystore.Backend, error) {
 //
 // Resolution splits two states (ADR-0020, DESIGN §1):
 //
-//   - Absent — resolution fails with resolver.ErrNoSource or
+//   - Absent: resolution fails with resolver.ErrNoSource or
 //     keystore.ErrNotFound (no source configured, or the active/named
 //     Account has no key in the store: logged out, or never stored).
-//     EnsureAccount returns nil and leaves rc.Account nil — the benign
+//     EnsureAccount returns nil and leaves rc.Account nil: the benign
 //     signal status/doctor/apps list key off.
-//   - Invalid — any other resolution error (malformed JSON, a missing
+//   - Invalid: any other resolution error (malformed JSON, a missing
 //     required field, an unreadable file, a non-NotFound keystore/IO
 //     error). EnsureAccount wraps it in a credentialError (ExitCode 10,
 //     "could not read credential: <cause>") and returns it; rc.Account
@@ -662,7 +662,7 @@ func (rc *RunContext) EnsureAccount() error {
 	}
 	rc.accountDone = true
 	// resolverKeystore defers Backend() (and its probe) until the resolver
-	// actually reaches a stored layer and calls Load — inline layers never
+	// actually reaches a stored layer and calls Load: inline layers never
 	// touch it.
 	sa, err := resolver.Resolve(rc.Ctx, resolver.Deps{
 		Resolved: rc.Resolved,
@@ -670,7 +670,7 @@ func (rc *RunContext) EnsureAccount() error {
 	}, rc.resolverInputs)
 	if err != nil {
 		// Absent bucket: no credential is configured at all, or the
-		// named/active Account has no key in the store. Benign — leave
+		// named/active Account has no key in the store. Benign: leave
 		// rc.Account nil and return nil so the no-account paths still fire.
 		if errors.Is(err, resolver.ErrNoSource) || errors.Is(err, keystore.ErrNotFound) {
 			return nil
@@ -691,7 +691,7 @@ func (rc *RunContext) EnsureAccount() error {
 // <cause>", wrapping the cause with Unwrap so the typed error underneath
 // (e.g. serviceaccount.MissingFieldError and its field name) stays
 // reachable via errors.As. The exit-10 guarantee for an invalid credential
-// lives here and only here — serviceaccount and keystore do NOT each carry
+// lives here and only here: serviceaccount and keystore do NOT each carry
 // their own Coder for this.
 type credentialError struct{ cause error }
 
@@ -759,7 +759,7 @@ const defaultControlPlaneTimeout = 60 * time.Second
 //
 // The base transport is read from rc.Ctx's oauth2.HTTPClient value (falling
 // back to http.DefaultClient), and that same value (wrapped with the deadline)
-// is threaded into the context oauth2.NewClient receives — so a single
+// is threaded into the context oauth2.NewClient receives, so a single
 // test-injected RoundTripper covers BOTH the /token exchange and the
 // subsequent androidpublisher calls, and the deadline bounds both. This is the
 // test seam the command tests rely on.
@@ -774,7 +774,7 @@ func (rc *RunContext) AuthedClient() (*http.Client, error) {
 
 // UploadClient is AuthedClient for media-upload commands (bundles, images):
 // a multi-hundred-MB transfer must not be killed by the short control-plane
-// default, so the returned client carries NO deadline — UNLESS the global
+// default, so the returned client carries NO deadline, UNLESS the global
 // --timeout was set explicitly (rc.Timeout), which then bounds every request
 // including the upload. Same auth handshake and test seam as AuthedClient.
 func (rc *RunContext) UploadClient() (*http.Client, error) {
@@ -784,7 +784,7 @@ func (rc *RunContext) UploadClient() (*http.Client, error) {
 }
 
 // scopes returns the OAuth scope list to mint a token for: a one-element slice
-// when the command requested a non-default scope via WithScope, else nil — the
+// when the command requested a non-default scope via WithScope, else nil: the
 // signal token.Source reads as "default to androidpublisher". Keeping the empty
 // case nil means the publishing path passes exactly what it always did.
 func (rc *RunContext) scopes() []string {
@@ -819,8 +819,8 @@ func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) 
 	}
 	// The /token exchange runs through the context's HTTP client (jwt.Config
 	// captures the context it is given), so bound it with the same deadline by
-	// wrapping the base client — WITHOUT mutating the shared base or
-	// http.DefaultClient — before threading it into the context the token
+	// wrapping the base client: WITHOUT mutating the shared base or
+	// http.DefaultClient, before threading it into the context the token
 	// source captures. timeout==0 leaves the wrapper deadline-free.
 	base := baseHTTPClient(rc.Ctx)
 	timedBase := &http.Client{Transport: base.Transport, Timeout: timeout}
@@ -876,7 +876,7 @@ func (e *authError) ExitCode() int { return 10 }
 // FromCobra builds an Inputs from cmd's persistent flag values
 // (--verbose, --service-account, --account), the credential env vars,
 // and cmd.Context(). Reading os.Getenv here (once per invocation) is
-// the kernel's single concession to process state — the resolver
+// the kernel's single concession to process state: the resolver
 // itself stays pure.
 func FromCobra(cmd *cobra.Command, format string) Inputs {
 	verbose, _ := cmd.Flags().GetBool("verbose")
@@ -885,7 +885,7 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	retry, _ := cmd.Flags().GetInt("retry")
 	// GetBool returns (false, err) when the command has no --dry-run flag; the
-	// error is ignored on purpose — "no dry-run flag" means "not a dry run".
+	// error is ignored on purpose: "no dry-run flag" means "not a dry run".
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	return Inputs{
 		Ctx:      cmd.Context(),

@@ -7,7 +7,7 @@ import (
 )
 
 // TestSpecs_canonicalTable pins the four managed fields' file names, API
-// keys, char limits, and required-ness — the contract every metadata
+// keys, char limits, and required-ness: the contract every metadata
 // module builds on. A change here is a deliberate contract change.
 func TestSpecs_canonicalTable(t *testing.T) {
 	want := []struct {

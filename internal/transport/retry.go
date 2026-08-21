@@ -18,7 +18,7 @@ const (
 // RetryOptions configures WithRetry.
 type RetryOptions struct {
 	// MaxRetries is the number of *additional* attempts after the first
-	// (0 disables retry — WithRetry is then a no-op passthrough).
+	// (0 disables retry: WithRetry is then a no-op passthrough).
 	MaxRetries int
 	// Timeout bounds each individual attempt (0 = no per-attempt deadline).
 	// Retry makes the global --timeout a per-attempt bound rather than a single
@@ -32,7 +32,7 @@ type RetryOptions struct {
 // WithRetry wraps inner so transport-level failures, HTTP 5xx, and HTTP 429
 // (honoring Retry-After) are retried up to opts.MaxRetries times with
 // exponential backoff plus jitter. Other 4xx (auth, validation) are never
-// retried — retrying them just wastes time. `edits.commit` is never retried:
+// retried: retrying them just wastes time. `edits.commit` is never retried:
 // it is the one operation where a duplicate could double-publish (its exit-60
 // conflict classification already guides the caller). Request bodies are
 // recreated per attempt via Request.GetBody, so a retried upload re-sends from a
@@ -100,7 +100,7 @@ func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			_ = resp.Body.Close()
 		}
 		if !rt.sleep(req.Context(), rt.backoff(attempt, resp)) {
-			// Context canceled during backoff — return the last result instead
+			// Context canceled during backoff: return the last result instead
 			// of spinning through doomed attempts.
 			return resp, err
 		}
@@ -139,7 +139,7 @@ type noRetryKey struct{}
 
 // WithoutRetry marks ctx so that any request issued with it is excluded from
 // the WithRetry middleware's automatic retry loop (transport error / 5xx /
-// 429). It is used by callers that implement their own recovery — notably the
+// 429). It is used by callers that implement their own recovery: notably the
 // resumable-upload helper, whose chunk PUTs must not be blindly re-sent.
 func WithoutRetry(ctx context.Context) context.Context {
 	return context.WithValue(ctx, noRetryKey{}, struct{}{})
@@ -148,7 +148,7 @@ func WithoutRetry(ctx context.Context) context.Context {
 // cloneWithFreshBody clones req with a body rebuilt from GetBody, so every
 // attempt sends the full payload from the start. NewRequestWithContext sets
 // GetBody automatically for the in-memory body types gplay uses (bytes/strings
-// readers), and the upload paths set it explicitly — so a replayable body is
+// readers), and the upload paths set it explicitly, so a replayable body is
 // always available for a request that has one.
 func cloneWithFreshBody(req *http.Request) (*http.Request, error) {
 	clone := req.Clone(req.Context())

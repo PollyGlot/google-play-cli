@@ -13,9 +13,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// TestClassify_tracksUpdate404_addsCreateHint asserts a tracks.update 404 —
-// the signal that the destination closed track has not been created — is
-// wrapped with a `gplay tracks create <name>` hint while the underlying
+// TestClassify_tracksUpdate404_addsCreateHint asserts a tracks.update 404 (the
+// signal that the destination closed track has not been created) is wrapped
+// with a `gplay tracks create <name>` hint while the underlying
 // *api.Error keeps driving the exit code (404 → 30).
 func TestClassify_tracksUpdate404_addsCreateHint(t *testing.T) {
 	cause := &api.Error{Operation: "tracks.update", Package: "com.example.app", StatusCode: 404, Message: "Track not found."}

@@ -18,7 +18,7 @@ import (
 // JWT exchange request body. Real payloads are a few KB; capping the
 // observed slice at 64 KB stops a malformed or hostile server from
 // blowing up RAM. The wire payload itself is passed through unchanged
-// — only the observation buffer is bounded.
+// : only the observation buffer is bounded.
 const maxObservedBody = 64 * 1024
 
 // ScopeObserver wraps an http.RoundTripper and captures the OAuth2

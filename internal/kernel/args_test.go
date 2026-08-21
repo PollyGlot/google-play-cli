@@ -37,7 +37,7 @@ func newLeaf(use string, args cobra.PositionalArgs) *cobra.Command {
 }
 
 // TestWrapArgErrors_argCountRejectionIsUsage is the core of #426: a validator
-// rejection — missing argument or surplus argument — comes back as CLI misuse
+// rejection (missing argument or surplus argument) comes back as CLI misuse
 // (exit 2 per docs/DESIGN.md §9) with cobra's message intact, instead of the
 // untyped error exit.For could only map to the generic exit 1.
 func TestWrapArgErrors_argCountRejectionIsUsage(t *testing.T) {
@@ -86,8 +86,8 @@ func TestWrapArgErrors_acceptedArgsStayAccepted(t *testing.T) {
 
 // TestWrapArgErrors_keepsTypedExitCodes asserts the wrapper only supplies a code
 // where there is none. A validator that returns an error carrying its own
-// exit.Coder — a missing safety flag (exit 3), a client-side validation failure
-// (exit 20) — keeps it, verbatim error and all. Exit 3 in particular "has no
+// exit.Coder: a missing safety flag (exit 3), a client-side validation failure
+// (exit 20): keeps it, verbatim error and all. Exit 3 in particular "has no
 // exceptions" (docs/DESIGN.md §9), so silently demoting it to 2 here would break
 // the one distinction an automated caller most needs.
 func TestWrapArgErrors_keepsTypedExitCodes(t *testing.T) {
@@ -106,7 +106,7 @@ func TestWrapArgErrors_keepsTypedExitCodes(t *testing.T) {
 }
 
 // TestWrapArgErrors_isIdempotent asserts a second pass over an already-wrapped
-// tree changes nothing observable — no doubled message, no re-typed code. The
+// tree changes nothing observable: no doubled message, no re-typed code. The
 // property holds by construction: the inner wrapper's *exit.UsageError already
 // carries a Coder, so the outer asUsageError passes it through untouched. This
 // test pins that contract for a tree assembled from shared constructors, where
@@ -126,7 +126,7 @@ func TestWrapArgErrors_isIdempotent(t *testing.T) {
 	}
 }
 
-// TestWrapArgErrors_walksTheWholeSubtree asserts the walk reaches every depth —
+// TestWrapArgErrors_walksTheWholeSubtree asserts the walk reaches every depth:
 // the property that makes one call at the root cover `gplay games achievements
 // view` as surely as `gplay version`.
 func TestWrapArgErrors_walksTheWholeSubtree(t *testing.T) {

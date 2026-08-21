@@ -1,8 +1,8 @@
 // Package list implements `gplay tracks list`: a read-only, cross-track
-// listing of every track configured for a package — the four standard
+// listing of every track configured for a package: the four standard
 // tracks (internal, alpha, beta, production) plus any custom closed
-// tracks the service account can see — with a one-line summary of the
-// top release on each. It is thin glue — resolve --package, open a
+// tracks the service account can see: with a one-line summary of the
+// top release on each. It is thin glue: resolve --package, open a
 // read-only Edit, consume internal/play/tracks.List, synthesize one row
 // per track, and render. The Edit is opened and discarded via
 // edits.WithReadOnlyEdit, never committed.
@@ -39,7 +39,7 @@ type Input struct {
 // packageNotFoundError wraps an edits.insert 404 with a hint pointing at
 // `gplay apps list`. Like trackNotFoundError in `releases list`, it
 // carries no ExitCode of its own so the wrapped *api.Error (404 -> exit
-// 30) stays authoritative through the Coder chain — an unknown package is
+// 30) stays authoritative through the Coder chain: an unknown package is
 // an API 4xx, not a CLI misuse.
 type packageNotFoundError struct {
 	pkg   string
@@ -47,7 +47,7 @@ type packageNotFoundError struct {
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
@@ -61,14 +61,14 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
 // classifyEditError adds an actionable hint to the two operator-facing
-// failures of a read-only tracks listing — an unknown package (404) and a
-// service account that has not been invited on the app (403) — while
+// failures of a read-only tracks listing: an unknown package (404) and a
+// service account that has not been invited on the app (403), while
 // leaving the wrapped *api.Error to drive the exit code. Every other
 // failure (5xx, network, edit conflict) propagates verbatim.
 func classifyEditError(pkg string, err error) error {
@@ -86,8 +86,8 @@ func classifyEditError(pkg string, err error) error {
 
 // StandardTracks are the four well-known tracks Google Play provisions
 // for every app, in promotion order. They always appear in the
-// table/markdown view — even when edits.tracks.list omits one because it
-// was never configured — so the operator sees the track exists. The
+// table/markdown view, even when edits.tracks.list omits one because it
+// was never configured, so the operator sees the track exists. The
 // order here is the row order applied before any custom tracks.
 var StandardTracks = []string{"internal", "alpha", "beta", "production"}
 
@@ -108,7 +108,7 @@ type TrackRow struct {
 
 // BuildRows turns the raw edits.tracks.list result into one row per
 // track for the table/markdown views. The four standard tracks always
-// appear first, in canonical order, marked kind=standard — even when the
+// appear first, in canonical order, marked kind=standard, even when the
 // API omitted a never-configured one (its row is empty). Custom closed
 // tracks the API returned follow, in API order, marked kind=custom.
 func BuildRows(apiTracks []tracks.Track) []TrackRow {
@@ -150,8 +150,8 @@ func makeRow(name, kind string, t tracks.Track) TrackRow {
 	return row
 }
 
-// topRelease picks the release with the highest version code — the newest
-// build on the track — as the one-line summary. A track can carry several
+// topRelease picks the release with the highest version code: the newest
+// build on the track, as the one-line summary. A track can carry several
 // coexisting releases (e.g. an inProgress staged rollout above a completed
 // one, or a draft staged above production); the highest version code is
 // the deterministic, order-independent "what is newest here" signal, and
@@ -220,7 +220,7 @@ func ResolveColumns(spec string) ([]output.Column[TrackRow], error) {
 
 // formatUserFraction renders a release's rollout fraction as a percent,
 // but leaves it blank where the number carries no meaning: a track with
-// no release, a completed release (already at 100% — the rollout is
+// no release, a completed release (already at 100%: the rollout is
 // over), and a draft (not yet live, so the fraction is irrelevant).
 func formatUserFraction(r TrackRow) string {
 	if !r.HasRelease {
@@ -277,7 +277,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 
 	cols, err := ResolveColumns(in.Columns)

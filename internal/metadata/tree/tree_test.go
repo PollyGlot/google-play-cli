@@ -130,7 +130,7 @@ func TestRead_ignoresStraysAndChangelogs(t *testing.T) {
 	if v, ok := get(t, en, listing.Title); !ok || v != "Title" {
 		t.Errorf("title = %q, %v; want Title, true", v, ok)
 	}
-	// Only title.txt was recognized — the locale has exactly one field.
+	// Only title.txt was recognized: the locale has exactly one field.
 	if len(en.Fields) != 1 {
 		t.Errorf("en-US manages %d fields, want 1 (strays ignored): %v", len(en.Fields), en.Fields)
 	}
@@ -157,7 +157,7 @@ func TestRead_localeWithNoRecognizedFieldIsOmitted(t *testing.T) {
 
 // TestRead_knownLocaleMisnamedFieldFile asserts the typo guard: a
 // directory named like a KNOWN Play locale that holds an unrecognized
-// *.txt and no recognized field file is a filename typo — Read returns a
+// *.txt and no recognized field file is a filename typo: Read returns a
 // *LocaleNoFieldsError rather than silently dropping the locale (which,
 // under apply --prune, would delete the live Listing).
 func TestRead_knownLocaleMisnamedFieldFile(t *testing.T) {
@@ -184,7 +184,7 @@ func TestRead_knownLocaleMisnamedFieldFile(t *testing.T) {
 }
 
 // TestRead_knownLocaleReadmeOnlyIsBenign asserts a known-locale dir holding
-// only a non-.txt stray (a README) is NOT a typo error — it stays silently
+// only a non-.txt stray (a README) is NOT a typo error: it stays silently
 // ignored, matching the documented metadata/releases boundary.
 func TestRead_knownLocaleReadmeOnlyIsBenign(t *testing.T) {
 	dir := t.TempDir()
@@ -252,7 +252,7 @@ func TestRead_trimsOnlyOneTrailingNewline(t *testing.T) {
 	// Internal newlines kept; exactly one trailing \n stripped → the
 	// value retains its own trailing blank line.
 	writeFile(t, filepath.Join(dir, "en-US", "full_description.txt"), "line1\nline2\n\n")
-	// CRLF line ending: only the final \n is stripped — the preceding \r
+	// CRLF line ending: only the final \n is stripped: the preceding \r
 	// is part of the value. The codec strips EXACTLY what Write appends (one
 	// \n) and does not normalize CRLF, so Read stays the exact inverse of
 	// Write (save field files as LF for clean values).
@@ -313,7 +313,7 @@ func TestWrite_exactBytesPerField(t *testing.T) {
 }
 
 // TestWrite_isAdditive asserts Write never deletes a pre-existing file,
-// even one for an unmanaged field — pruning is a higher-layer concern.
+// even one for an unmanaged field: pruning is a higher-layer concern.
 func TestWrite_isAdditive(t *testing.T) {
 	dir := t.TempDir()
 	// Pre-existing file for a field the Listing won't manage.
@@ -350,7 +350,7 @@ func TestWrite_createsLocaleDirs(t *testing.T) {
 
 // TestRoundTrip_writeReadIsIdentity is the key invariant: for any Tree
 // shaped like one a Read produces, Read(Write(X)) == X at the value
-// level — including a managed-empty field that transits via a 0-byte
+// level: including a managed-empty field that transits via a 0-byte
 // file. The "+\n" write and the "strip one \n" read are inverses.
 func TestRoundTrip_writeReadIsIdentity(t *testing.T) {
 	cases := map[string]listing.Tree{

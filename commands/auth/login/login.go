@@ -28,7 +28,7 @@ func (missingFlagError) ExitCode() int { return 2 }
 
 // Input carries login-specific flags. SAPath comes from the root
 // persistent --service-account flag (docs/DESIGN.md §1); the kernel
-// hands it through via rc.* — but since the flag is captured at the
+// hands it through via rc.*, but since the flag is captured at the
 // cobra wrapper level, the closure passes it explicitly here.
 type Input struct {
 	SAPath      string
@@ -69,7 +69,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// First Account always activates so the registry is never empty.
 	wasEmpty := len(cfg.Accounts) == 0
 	cfg.AddAccount(name)
-	// Record the Developer account id on this Account if supplied — the
+	// Record the Developer account id on this Account if supplied: the
 	// explicit capture point for `gplay team` addressing (ADR-0015 / #151).
 	// login is explicit, so a re-login with --developer-id updates it.
 	devID := strings.TrimSpace(in.DeveloperID)

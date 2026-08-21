@@ -9,8 +9,8 @@ import "fmt"
 // the code lives here, so a command can no longer drift from the documented
 // meaning of "CLI misuse".
 //
-// It satisfies Coder (ExitCode()=2), so exit.For maps it — and any error
-// that wraps it — to 2 without a dispatcher edit.
+// It satisfies Coder (ExitCode()=2), so exit.For maps it, and any error
+// that wraps it: to 2 without a dispatcher edit.
 type UsageError struct{ Msg string }
 
 // Error returns the misuse message.
@@ -19,7 +19,7 @@ func (e *UsageError) Error() string { return e.Msg }
 // ExitCode reports 2 (CLI misuse) per docs/DESIGN.md §9.
 func (e *UsageError) ExitCode() int { return 2 }
 
-// Usagef builds a *UsageError from a printf-style message — the ergonomic
+// Usagef builds a *UsageError from a printf-style message: the ergonomic
 // form for the many call sites that compose a misuse message with a
 // dynamic value (an offending flag, the valid set, …).
 func Usagef(format string, a ...any) *UsageError {

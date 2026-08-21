@@ -96,7 +96,7 @@ func jsonResp(status int, body string) *http.Response {
 }
 
 // signedSAJSON returns a minimal but well-formed service-account JSON
-// with a real RSA key — enough for token.Source to mint a signed JWT.
+// with a real RSA key: enough for token.Source to mint a signed JWT.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -138,7 +138,7 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 // TestRenderTable_includesDefaultLanguage asserts that promote's
 // table renderer prints the resolved DefaultLanguage when set, so the
 // operator sees which locale a --release-notes override was attached
-// to. Mirrors upload's behavior (upload.go:101-105) — without this
+// to. Mirrors upload's behavior (upload.go:101-105): without this
 // row, the operator has no visibility into the locale resolution.
 func TestRenderTable_includesDefaultLanguage(t *testing.T) {
 	p := promote.Payload{Result: &orchestrator.Result{
@@ -163,7 +163,7 @@ func TestRenderTable_includesDefaultLanguage(t *testing.T) {
 
 // TestRenderMarkdown_includesDefaultLanguageAndLocales asserts that
 // the markdown renderer surfaces the same notes-resolution fields
-// (DefaultLanguage, Locales) that the table renderer prints — so
+// (DefaultLanguage, Locales) that the table renderer prints, so
 // `--output markdown` and `--output table` don't diverge.
 func TestRenderMarkdown_includesDefaultLanguageAndLocales(t *testing.T) {
 	p := promote.Payload{Result: &orchestrator.Result{
@@ -194,7 +194,7 @@ func TestRenderMarkdown_includesDefaultLanguageAndLocales(t *testing.T) {
 }
 
 // TestRun_internalToBeta_happyPath asserts the full vertical slice from
-// CLI input to wire — /token exchange precedes the androidpublisher
+// CLI input to wire: /token exchange precedes the androidpublisher
 // edits.insert, then the canonical promote 4-call sequence runs.
 func TestRun_internalToBeta_happyPath(t *testing.T) {
 	rt := &promoteRT{
@@ -236,7 +236,7 @@ func TestRun_internalToBeta_happyPath(t *testing.T) {
 		}
 	}
 
-	// ADR-0003: --output json must be API pass-through — the raw
+	// ADR-0003: --output json must be API pass-through: the raw
 	// tracks.update response body, not a gplay-shaped re-serialization.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {

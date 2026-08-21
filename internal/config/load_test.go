@@ -31,7 +31,7 @@ func newLoadFixture(t *testing.T) *loadFixture {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
 	xdg := filepath.Join(home, ".config", "gplay")
-	// repo sits BELOW home so $HOME is genuinely an ancestor — the
+	// repo sits BELOW home so $HOME is genuinely an ancestor: the
 	// barrier check has to be ineffective only when the file is found
 	// below $HOME, never at/above.
 	repo := filepath.Join(home, "work", "myrepo")
@@ -167,7 +167,7 @@ func TestLoad_projectShared_accountField_isRejected(t *testing.T) {
 	}
 }
 
-// `"account": null` is still presence of the forbidden field — must be
+// `"account": null` is still presence of the forbidden field: must be
 // rejected the same as a non-null value.
 func TestLoad_projectShared_accountFieldExplicitlyNull_isRejected(t *testing.T) {
 	f := newLoadFixture(t)
@@ -197,7 +197,7 @@ func TestLoad_projectLocal_accountField_isAccepted(t *testing.T) {
 
 func TestLoad_projectShared_atHomeDir_isIgnored(t *testing.T) {
 	f := newLoadFixture(t)
-	// Place a .gplay/config.json directly in $HOME — must NOT be picked
+	// Place a .gplay/config.json directly in $HOME: must NOT be picked
 	// up via walk-up, even though it sits between cwd and the root.
 	if err := os.MkdirAll(filepath.Join(f.homeDir, ".gplay"), 0o755); err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestLoad_paths_arePopulatedWhenFilesExist(t *testing.T) {
 	}
 }
 
-// Sanity: the loader must not error on a nonexistent global path — the
+// Sanity: the loader must not error on a nonexistent global path: the
 // global is created lazily by `auth login`.
 func TestLoad_missingGlobal_isOK(t *testing.T) {
 	f := newLoadFixture(t)

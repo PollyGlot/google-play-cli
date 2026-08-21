@@ -1,6 +1,6 @@
 ---
 title: Reviews
-description: Read recent Google Play user reviews and reply to them with gplay — star filtering, JSON pass-through, and batch replies from a TSV file or stdin.
+description: "Read recent Google Play user reviews and reply to them with gplay: star filtering, JSON pass-through, and batch replies from a TSV file or stdin."
 sidebar:
   order: 4
 ---
@@ -16,10 +16,9 @@ gplay reviews list --limit 20            # cap the count
 
 :::caution[The 7-day window]
 The Google Play Developer API only exposes reviews from the **last 7 days**.
-gplay prints a `WARN` line to stderr on every run — including an empty
+gplay prints a `WARN` line to stderr on every run, including an empty
 result, so "no output" never silently reads as "this app has no reviews".
-Long-history retrieval (Google's CSV reports in Cloud Storage) is on the
-roadmap.
+For anything older, use `gplay reviews history` (see below).
 :::
 
 `--stars` filters **client-side** (the API has no server-side rating
@@ -34,13 +33,33 @@ gplay reviews view REVIEW_ID              # the REVIEW_ID column of `reviews lis
 
 `view` is the deep read of a single review: a scalar header (author, star
 rating, date, locale, device, app version, reviewId) followed by the
-**user↔developer conversation** — the review body and any developer replies
+**user↔developer conversation**: the review body and any developer replies
 with their dates. `--output json` is the `Review` object verbatim; `--output
 markdown` renders a record plus the thread as blockquotes.
 
 Because the API only serves the last 7 days, a `REVIEW_ID` that is unknown
 **or has aged out of the window** fails with exit 30 and a message naming the
-window — a valid id can still become unfetchable.
+window. A valid id can still become unfetchable.
+
+## Beyond the 7-day window
+
+`gplay reviews history` reads the monthly review CSVs Google drops in your
+Reporting bucket, the only channel that goes further back than the API:
+
+```sh
+gplay reviews history                          # latest month present
+gplay reviews history --month 2026-03
+gplay reviews history --from 2026-01 --to 2026-06   # merged across months
+```
+
+It talks to Cloud Storage, not the Developer API, so the service account
+needs the *"View app information"* global permission, and gplay mints a
+separate read-only storage token for it. The bucket defaults to
+`pubsite_prod_rev_<developerId>`; pass `--bucket` when the Console-issued URI
+differs. `--output json` emits `{"reviews": [...]}` with stable lowerCamel
+field names (the upstream is a CSV file, not a JSON API response, so this is
+the one documented exception to pass-through). The subcommand is
+`[experimental]`: the bucket layout belongs to Google.
 
 ## Replying
 
@@ -51,7 +70,7 @@ gplay reviews reply --review-id REVIEW_ID --reply "Thanks for the feedback!"
 ## Batch replies
 
 For support workflows (or an agent drafting replies for approval), `reply`
-takes a TSV stream — one `<review-id>\t<reply text>` line per reply, `-` for
+takes a TSV stream: one `<review-id>\t<reply text>` line per reply, `-` for
 stdin:
 
 ```sh
@@ -60,7 +79,7 @@ gplay reviews list --stars 1-2 --output json | my-draft-tool | gplay reviews rep
 ```
 
 Blank lines and `#` comments are skipped; replies containing tabs or
-newlines use RFC 4180 double-quoting. Each line posts sequentially — a
+newlines use RFC 4180 double-quoting. Each line posts sequentially: a
 failing line is reported on stderr and does **not** abort the rest, and the
 process exits with the highest exit code seen.
 
@@ -70,7 +89,7 @@ API.
 ## Permissions
 
 Replying requires the *"Reply to reviews"* permission on the service
-account in the Play Console — `gplay auth doctor` and the
+account in the Play Console. `gplay auth doctor` and the
 [service account setup](/docs/getting-started/service-account/) page cover
 granting it.
 

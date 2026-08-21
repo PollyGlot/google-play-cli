@@ -27,7 +27,7 @@ const op = "apks.upload"
 // filesystem (missing path, permission denied, stat failure, or a
 // non-regular file). It is distinct from *api.Error so the exit code maps
 // to client-side validation (20 per docs/DESIGN.md §9) rather than
-// transport (50) — mirroring internal/play/bundles.LocalIOError.
+// transport (50): mirroring internal/play/bundles.LocalIOError.
 type LocalIOError struct {
 	Path  string
 	Cause error
@@ -69,7 +69,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, apkPath string) (
 	// *api.Error (exit 50, transport) instead of the client-side
 	// *LocalIOError (exit 20) this path is for, and Size() would be wrong
 	// for ContentLength. Reject anything but a regular file up front. A
-	// symlink to a regular file is fine — os.Open already followed it, so
+	// symlink to a regular file is fine: os.Open already followed it, so
 	// info describes the target, not the link.
 	if !info.Mode().IsRegular() {
 		return 0, &LocalIOError{Path: apkPath, Cause: fmt.Errorf("not a regular file")}

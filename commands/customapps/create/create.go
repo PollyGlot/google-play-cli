@@ -1,13 +1,13 @@
 // Package create implements `gplay customapps create`: create a private app
 // distributed to one organisation through managed Google Play, via
-// playcustomapp.accounts.customApps.create — the one Developer API path that
+// playcustomapp.accounts.customApps.create: the one Developer API path that
 // creates an app *record* (ADR-0032). It is keyed by the developer-account axis
 // (accounts/{account}, ADR-0015), not a package: the app does not yet exist to
 // be keyed by package. A resumable AAB/APK upload carries the CustomApp
 // metadata (--title, --default-language, repeatable --organization) in the
 // initiate request, then streams the artifact in chunks (PRD #355).
 //
-// Creation is IRREVERSIBLE — the API exposes no delete (and no read), so the
+// Creation is IRREVERSIBLE: the API exposes no delete (and no read), so the
 // app permanently occupies the account. That puts it in the destructive tier
 // (ADR-0017): --confirm is required (missing → exit 3 naming the flag), CI=true
 // never auto-confirms, and --dry-run rehearses offline. The account must be
@@ -54,7 +54,7 @@ func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
 
 // localFileError is a client-side artifact-validation failure (exit 20),
-// matching the *customapps.LocalIOError the live uploader returns — so the same
+// matching the *customapps.LocalIOError the live uploader returns, so the same
 // exit code applies whether the artifact is rejected here (offline pre-check /
 // --dry-run) or inside Create.
 type localFileError struct {
@@ -82,7 +82,7 @@ type notEnrolledError struct {
 }
 
 func (e *notEnrolledError) Error() string {
-	return fmt.Sprintf("developer account %s cannot create custom apps — enroll it in managed Google Play and grant the service account the account-level CAN_CREATE_MANAGED_PLAY_APPS capability (Play Console → Users & permissions), then retry: %v", e.account, e.cause)
+	return fmt.Sprintf("developer account %s cannot create custom apps: enroll it in managed Google Play and grant the service account the account-level CAN_CREATE_MANAGED_PLAY_APPS capability (Play Console → Users & permissions), then retry: %v", e.account, e.cause)
 }
 func (e *notEnrolledError) Unwrap() error { return e.cause }
 
@@ -143,7 +143,7 @@ func (p Payload) renderTable(w io.Writer) error {
 		_, err := fmt.Fprintf(w, "would create custom app %q (default language %s) on developer account %s (dry-run); requires --confirm\n", p.Title, p.Lang, p.Account)
 		return err
 	}
-	// packageName leads — it is the identity of the app the call created.
+	// packageName leads: it is the identity of the app the call created.
 	if _, err := fmt.Fprintf(w, "packageName:   %s\n", p.App.PackageName); err != nil {
 		return err
 	}
@@ -247,7 +247,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr (never on --dry-run).
-	rc.Confirmf("created custom app %q on developer account %s — packageName %s", app.Title, account, app.PackageName)
+	rc.Confirmf("created custom app %q on developer account %s: packageName %s", app.Title, account, app.PackageName)
 	return Payload{Account: account, App: app, Raw: raw}, nil
 }
 
@@ -266,7 +266,7 @@ This is the one Google Play Developer API path that creates an app record
 (public apps can only be created in the Play Console).
 
 The app is created on the Developer account (the account axis, not a package):
-resolve the account through the gplay cascade (later wins) — the active
+resolve the account through the gplay cascade (later wins): the active
 Account's developer-id, .gplay/config.local.json, GPLAY_DEVELOPER_ID, then
 --developer-id; an unresolved id fails with exit 10.
 
@@ -274,7 +274,7 @@ Pass --title, --default-language (BCP 47, e.g. en-US), and the artifact path.
 Restrict the app to specific organizations with a repeatable --organization
 <organizationId> (omit to default to the organization linked to the account).
 
-Creating a custom app is IRREVERSIBLE — the API exposes no delete (and no
+Creating a custom app is IRREVERSIBLE: the API exposes no delete (and no
 read), so the app permanently occupies the account. It therefore requires
 --confirm (missing → exit 3); CI=true never auto-confirms. Rehearse first with
 --dry-run (validates inputs and the artifact with zero HTTP). The account must

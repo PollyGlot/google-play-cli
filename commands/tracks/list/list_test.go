@@ -3,7 +3,7 @@
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // `releases list` harness, but routes edits.tracks.list (the cross-track
 // read) instead of tracks.get. The transport FAILS on any PUT or :commit
-// — a read-only listing opens, reads, and discards the Edit, never
+// : a read-only listing opens, reads, and discards the Edit, never
 // writes or commits it.
 package list_test
 
@@ -45,7 +45,7 @@ func rowByTrack(rows []list.TrackRow) map[string]list.TrackRow {
 // tracks-list sequence: edits.insert, tracks.list (GET .../tracks),
 // edits.delete. It deliberately has NO PUT or :commit branch: reaching
 // one means the command tried to mutate or commit, which a read-only
-// list must never do — so the transport fails the test.
+// list must never do, so the transport fails the test.
 type listRT struct {
 	t          *testing.T
 	editID     string
@@ -205,7 +205,7 @@ func TestRun_listsEveryTrack_happyPath(t *testing.T) {
 // when the API omits them), in canonical order, marked kind=standard;
 // custom tracks the API returns appear after them marked kind=custom.
 func TestBuildRows_injectsAbsentStandardTracks_andMarksKind(t *testing.T) {
-	// API returns only production and a custom closed track — alpha,
+	// API returns only production and a custom closed track: alpha,
 	// beta, internal were never configured.
 	api := []tracks.Track{
 		{Track: "production", Releases: []tracks.Release{{Name: "142", Status: "completed", VersionCodes: []string{"142"}, UserFraction: 1.0}}},
@@ -250,7 +250,7 @@ func trackNames(rows []list.TrackRow) []string {
 
 // TestBuildRows_topRelease_isHighestVersionCode asserts that when a track
 // carries several coexisting releases the row summarizes the one with the
-// highest version code — the newest build on the track — including a
+// highest version code (the newest build on the track) including a
 // draft when it is the highest (status disambiguates it for the reader).
 func TestBuildRows_topRelease_isHighestVersionCode(t *testing.T) {
 	api := []tracks.Track{
@@ -421,7 +421,7 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	if !strings.Contains(err.Error(), "apps list") {
 		t.Errorf("error %q, want a hint mentioning `gplay apps list`", err.Error())
 	}
-	// edits.insert failed, so no Edit was opened — nothing to discard.
+	// edits.insert failed, so no Edit was opened: nothing to discard.
 	for _, c := range rt.calls {
 		if strings.HasPrefix(c, "DELETE ") {
 			t.Errorf("unexpected DELETE after failed insert; calls = %v", rt.calls)

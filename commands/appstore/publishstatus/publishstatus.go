@@ -6,7 +6,7 @@
 // Google documents the state as already PUBLISHED after
 // `UpdateAppStoreHostedApp` ("It is not necessary to call this RPC explicitly to
 // set an app to PUBLISHED"), so in practice this command exists to pull an app
-// back OUT of the store — and to put it back. That symmetry is the whole design:
+// back OUT of the store, and to put it back. That symmetry is the whole design:
 // the operation is reversible in both directions by a single call, which is why
 // it carries no --confirm gate (ADR-0043 gates what is irreversible *and*
 // externally visible; this is only the latter). --dry-run still previews the
@@ -20,7 +20,7 @@
 // APP_STORE_APP_PUBLISH_STATE_UNSPECIFIED, is documented "Do not use" and is
 // therefore deliberately not reachable from the CLI.
 //
-// Edit-free — the call is not under `/edits/`.
+// Edit-free: the call is not under `/edits/`.
 package publishstatus
 
 import (
@@ -59,7 +59,7 @@ type Input struct {
 
 // resolveState maps the human word onto the API enum. The comparison is
 // case-insensitive (an agent may well emit `PUBLISHED`), and anything else is a
-// usage error naming both accepted values — never a 400 from the server.
+// usage error naming both accepted values: never a 400 from the server.
 func resolveState(word string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(word)) {
 	case statePublished:
@@ -99,7 +99,7 @@ func (p Payload) Renderers() output.Renderers {
 }
 
 // renderTable writes the identifying values as `FIELD<TAB>VALUE` lines (like
-// `appstore create`) — the call returns no server-assigned field to lead with.
+// `appstore create`): the call returns no server-assigned field to lead with.
 // A dry-run leads with the rehearsed action instead.
 func (p Payload) renderTable(w io.Writer) error {
 	if p.DryRun {
@@ -154,7 +154,7 @@ type updatedView struct {
 }
 
 // dryRunView is the gplay-shaped --dry-run JSON: the resolved target and state,
-// plus the machine-readable `requires` array (ADR-0017 §4) — empty, because
+// plus the machine-readable `requires` array (ADR-0017 §4): empty, because
 // flipping the publish status is reversible and needs no safety flag beyond a
 // writable environment.
 type dryRunView struct {
@@ -176,7 +176,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 		})
 	}
 	// ADR-0003: the API response is passed through verbatim. The documented
-	// exception applies only when there is nothing to pass through —
+	// exception applies only when there is nothing to pass through:
 	// UpdateAppStoreHostedAppPublishStatusResponse models no fields, so a server
 	// answering with an empty body (rather than `{}`) would leave --output json,
 	// the CI default, with zero bytes to parse. As in `appstore create`, a
@@ -189,8 +189,8 @@ func (p Payload) renderJSON(w io.Writer) error {
 }
 
 // Run is the business function the kernel invokes. It validates the requested
-// state and resolves both addressing values (all exit 2), then — unless
-// --dry-run short-circuits before any network — issues the publish-status call.
+// state and resolves both addressing values (all exit 2), then, unless
+// --dry-run short-circuits before any network: issues the publish-status call.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// The positional word is validated first: it is the argument the command is
 	// about, and a typo there is the misuse most worth naming precisely.
@@ -245,7 +245,7 @@ value is refused as CLI misuse (exit 2) before any HTTP call. It maps onto the
 API's APP_STORE_APP_PUBLISH_STATE_PUBLISHED / _UNPUBLISHED enum.
 
 Google documents the state as ALREADY PUBLISHED after a successful
-` + "`gplay appstore update`" + ` — it is not necessary to call this to publish a freshly
+` + "`gplay appstore update`" + `: it is not necessary to call this to publish a freshly
 updated app. In practice this command serves to take an app back OUT of the
 store, and to put it back in later.
 
@@ -257,14 +257,14 @@ no HTTP call.
 
 Two identifiers meet here, as everywhere in this namespace:
 
-  --store-package  the app store's OWN package name (the caller — the
+  --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
                    falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
   --package        the hosted app's package name (the subject), defaulting to
                    the repo's .gplay/config.json pin when omitted
 
 The record must already exist: run ` + "`gplay appstore create`" + ` first, or the call is
-rejected. The call is Edit-free — it opens no Edit and joins none.
+rejected. The call is Edit-free: it opens no Edit and joins none.
 
 The response carries no fields (the acknowledgement IS the result), so the human
 views echo the identifiers and the applied state; --output json passes the API

@@ -153,7 +153,7 @@ func TestRun_requestShape(t *testing.T) {
 }
 
 // TestRun_rendersTrackingID asserts the human views lead with the apkId and say
-// where it has to be cited — an id with no destination is a dead end.
+// where it has to be cited: an id with no destination is a dead end.
 func TestRun_rendersTrackingID(t *testing.T) {
 	rt := &testRoundTripper{respBody: `{"apkId":"apk-42"}`}
 	rc := newRC(t, rt)
@@ -215,7 +215,7 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 
 // TestRun_dryRun_noHTTPNoFileRead asserts --dry-run resolves the target,
 // performs no HTTP call at all (not even the token exchange) and never opens
-// the file — the path deliberately does not exist, so a CI job can rehearse an
+// the file: the path deliberately does not exist, so a CI job can rehearse an
 // upload before its build step has produced the artifact.
 func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 	rt := &testRoundTripper{}
@@ -263,7 +263,7 @@ func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 }
 
 // TestRun_missingStorePackage_exit2 asserts the app store package name is
-// required and its absence is CLI misuse — it identifies the caller and has no
+// required and its absence is CLI misuse: it identifies the caller and has no
 // project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")

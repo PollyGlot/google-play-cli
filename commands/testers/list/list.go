@@ -1,5 +1,5 @@
 // Package list implements `gplay testers list`: a read-only view of the
-// authorized audience (Google Groups) of a single track. It is thin glue —
+// authorized audience (Google Groups) of a single track. It is thin glue:
 // resolve --package, open a read-only Edit, consume
 // internal/play/testers.Get, and render. The Edit is opened and discarded
 // via edits.WithReadOnlyEdit, never committed.
@@ -44,7 +44,7 @@ func (e *usageError) ExitCode() int { return 2 }
 // trackNotFoundError wraps a testers.get 404 with an actionable hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
 // the wrapped *api.Error (404 → exit 30) stays authoritative through the
-// Coder chain — an unknown track is an API 4xx, not a CLI misuse.
+// Coder chain: an unknown track is an API 4xx, not a CLI misuse.
 type trackNotFoundError struct {
 	track string
 	cause error
@@ -52,7 +52,7 @@ type trackNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *trackNotFoundError) Error() string {
-	return fmt.Sprintf("track %q not found — run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
+	return fmt.Sprintf("track %q not found: run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -69,7 +69,7 @@ type forbiddenError struct {
 
 // Error renders the forbidden message plus the Play Console grant hint.
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -87,7 +87,7 @@ type packageNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay apps list` hint.
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -96,7 +96,7 @@ func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
 // Payload satisfies output.Renderable. Raw carries the testers.get body
 // for the ADR-0003 JSON pass-through; Track is gplay-derived context shown
-// above the group list — never in the JSON, which stays a faithful
+// above the group list: never in the JSON, which stays a faithful
 // testers.get pass-through. Groups is the parsed googleGroups[] used by the
 // human views.
 type Payload struct {
@@ -170,7 +170,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 }
 
 // isStatus reports whether err carries a *api.Error with the given HTTP
-// status — the signal used to attach actionable hints to a testers.get 404
+// status: the signal used to attach actionable hints to a testers.get 404
 // (unknown track) or a 403 (service account not invited).
 func isStatus(err error, status int) bool {
 	var apiErr *api.Error
@@ -221,7 +221,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -264,8 +264,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "list",
 		Short: "List the Google Groups authorized to test a track",
 		Long: `List the authorized audience of --track: the Google Groups that may
-test it. The testers resource exposes only Google Groups — individual
-tester emails are not supported by the API — so this lists groups
+test it. The testers resource exposes only Google Groups: individual
+tester emails are not supported by the API, so this lists groups
 exclusively.
 
 Reads the audience inside a read-only Edit (open → testers.get → discard);

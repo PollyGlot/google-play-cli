@@ -6,7 +6,7 @@
 // commands/device-tiers/devicetierscmd and keeps the leaves thin.
 //
 // Addressing rides the Play Games application ID (--application-id, numeric) for
-// list/create and the resource ID (positional) for view/update/delete — a
+// list/create and the resource ID (positional) for view/update/delete: a
 // distinct axis from the Android package (ADR-0033), so there is no project-pin
 // cascade: --application-id is simply required where the API needs it.
 package gamescmd
@@ -208,7 +208,7 @@ type AchievementWrite struct {
 
 func (w AchievementWrite) hasFieldFlags() bool {
 	// Trim the string flags so a whitespace-only value (e.g. --type=' ') is not
-	// counted as set — it would otherwise pass the requireField check yet marshal
+	// counted as set: it would otherwise pass the requireField check yet marshal
 	// to nothing (the body builder trims before assigning), sending an empty body.
 	return strings.TrimSpace(w.Name) != "" ||
 		strings.TrimSpace(w.Description) != "" ||
@@ -363,7 +363,7 @@ type notFoundError struct {
 }
 
 func (e *notFoundError) Error() string {
-	return fmt.Sprintf("%q not found — check the resource ID, or the --application-id, and list with `gplay games achievements list --application-id <id>` / `gplay games leaderboards list --application-id <id>`: %v", e.ref, e.cause)
+	return fmt.Sprintf("%q not found: check the resource ID, or the --application-id, and list with `gplay games achievements list --application-id <id>` / `gplay games leaderboards list --application-id <id>`: %v", e.ref, e.cause)
 }
 func (e *notFoundError) Unwrap() error { return e.cause }
 
@@ -373,7 +373,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to Play Games application %q — in the Play Console grant it the Play Games Services permission, then retry: %v", e.ref, e.cause)
+	return fmt.Sprintf("service account is not granted access to Play Games application %q: in the Play Console grant it the Play Games Services permission, then retry: %v", e.ref, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 

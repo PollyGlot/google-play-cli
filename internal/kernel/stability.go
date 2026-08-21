@@ -1,4 +1,4 @@
-// stability.go — the per-command stability label that makes the v1.0 Public
+// stability.go: the per-command stability label that makes the v1.0 Public
 // contract granular (ADR-0010). Without it a major release freezes everything
 // at once, which forces the false choice the ADR rejects: delay 1.0 until every
 // command is certain, or over-promise on the ones that are three days old.
@@ -18,7 +18,7 @@ import (
 // stabilityAnnotation is the cobra annotation key carrying a command's
 // stability state. Absent = the command is part of the frozen Public contract
 // (ADR-0010): its name, flags, semantics and exit codes cannot change without a
-// major bump. "Frozen by default" is deliberate — forgetting to label a
+// major bump. "Frozen by default" is deliberate: forgetting to label a
 // command over-promises rather than under-promises, which is the failure mode
 // a user can actually plan around.
 const stabilityAnnotation = "gplay.stability"
@@ -29,8 +29,8 @@ const stabilityAnnotation = "gplay.stability"
 const StabilityExperimental = "experimental"
 
 // experimentalTag is the marker prefixed onto an experimental command's Short,
-// so the label shows up in the parent's subcommand list — the place a CI author
-// actually browses — and not only in the command's own help page.
+// so the label shows up in the parent's subcommand list: the place a CI author
+// actually browses, and not only in the command's own help page.
 const experimentalTag = "[experimental]"
 
 // experimentalNotice is the paragraph prefixed onto an experimental command's
@@ -46,8 +46,8 @@ const experimentalNotice = experimentalTag + " Outside the Public contract: flag
 	"release if you depend on this in CI.\n" +
 	"See https://gplay.sh/docs/concepts/stability/"
 
-// Experimental declares cmd — and every subcommand already registered under it
-// — as shipped but outside the frozen Public contract, and returns it so it
+// Experimental declares cmd, and every subcommand already registered under it
+// , as shipped but outside the frozen Public contract, and returns it so it
 // composes inline at registration like MarkMutating:
 //
 //	root.AddCommand(kernel.Experimental(subscriptionsGroup))
@@ -55,8 +55,8 @@ const experimentalNotice = experimentalTag + " Outside the Public contract: flag
 // Call it AFTER the group's children have been added: it walks the subtree it
 // is given so a whole young namespace is labelled in one call, and each child
 // carries the tag in its own help rather than only inheriting it silently.
-// Children added afterwards are still covered — IsExperimental walks up the
-// parent chain — they just miss the visible tag, which is why registration
+// Children added afterwards are still covered: IsExperimental walks up the
+// parent chain: they just miss the visible tag, which is why registration
 // order matters for the UX and not for the semantics.
 //
 // The function is idempotent: labelling a child and then its parent does not

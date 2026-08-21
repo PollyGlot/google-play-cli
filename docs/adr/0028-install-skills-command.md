@@ -15,10 +15,10 @@ the user had to read the README and explicitly instruct the agent to run
 `npx skills add`. The thing that failed is exactly the parked option's premise —
 that discoverability was already solved.
 
-The asc sibling CLI ships this command (`asc install-skills`), confirming the
-shape is viable. This ADR un-parks it, settles its behavior and defaults,
-reconciles it with gplay's "no Node" identity, and records why discoverability is
-surfaced passively rather than via a per-invocation nudge.
+A CLI-owned installer is a proven shape for this problem. This ADR un-parks it,
+settles its behavior and defaults, reconciles it with gplay's "no Node"
+identity, and records why discoverability is surfaced passively rather than via
+a per-invocation nudge.
 
 ## Decision
 
@@ -45,11 +45,10 @@ npx --yes skills add PollyGlot/google-play-cli-skills --global --agent '*' --yes
 
 - **`--global`** — skills drive the *binary*, installed user-wide, so they are
   useful in every project, not just the current one. Without `-g`, the skills
-  CLI's `-y` auto-detects "project" inside a repo — the wrong scope. (asc forces
-  `--global` for the same reason.)
+  CLI's `-y` auto-detects "project" inside a repo — the wrong scope.
 - **`--agent '*'`** — all detected agents. gplay is agent-agnostic (`CLAUDE.md`
   *and* `AGENTS.md` exist; positioning is "driven by AI agents," not one vendor).
-  This deliberately diverges from asc, which hardcodes `--agent codex`.
+  Pinning the install to a single agent vendor is deliberately avoided.
 - **`--yes` (twice)** — non-interactive, required by DESIGN's
   no-interactive-prompts rule; an interactive `npx` prompt would break agent and
   CI invocations.
@@ -104,8 +103,8 @@ surfaces:
    reliable channel for the "install gplay" → agent flow.
 3. The README's skills section elevated toward the top.
 
-A per-invocation nudge (asc's `skills_check.go` style — shell out to check on
-every run) is **rejected**: it puts `npx`/Node on the hot path of every command,
+A per-invocation nudge (shell out on every run to check whether skills are
+installed) is **rejected**: it puts `npx`/Node on the hot path of every command,
 contradicting ADR-0007 reason #3 (cold start is in the critical path for every CI
 invocation), and cross-agent "are skills installed?" detection is fragile. The
 three passive surfaces cover the flow without the cold-start cost.
@@ -131,13 +130,12 @@ three passive surfaces cover the flow without the cold-start cost.
 
 - **A `skills` namespace** (`gplay skills install`, + future `skills
   list`/`update`). Rejected: elevates skills to a resource, contradicting
-  ADR-0021's "skills = meta, not domain"; YAGNI (asc ships only the flat command,
-  no `skills *` family).
-- **Hardcode a single agent** (asc's `--agent codex`). Rejected: gplay is
-  multi-agent; `--agent '*'` matches positioning.
-- **A per-invocation discoverability nudge** (asc's `skills_check.go`). Rejected
-  on cold-start grounds (ADR-0007 #3) and detection fragility; passive surfaces
-  chosen instead.
+  ADR-0021's "skills = meta, not domain"; YAGNI (the flat command covers the
+  need; no `skills *` family is planned).
+- **Hardcode a single agent vendor.** Rejected: gplay is multi-agent;
+  `--agent '*'` matches positioning.
+- **A per-invocation discoverability nudge.** Rejected on cold-start grounds
+  (ADR-0007 #3) and detection fragility; passive surfaces chosen instead.
 - **Soften the README "no Node" claim.** Rejected: the claim is CI/runtime-scoped
   and stays true; Node was already required to install skills via npx regardless.
 - **Keep it parked** (status quo, "`npx skills add` suffices"). Rejected: real

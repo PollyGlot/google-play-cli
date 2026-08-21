@@ -1,7 +1,7 @@
 // Package detailscmd_test exercises `gplay apps details view` (the record
 // read) at the kernel level: a RunContext built by hand, a RoundTripper
 // injected via the oauth2.HTTPClient context key, and Run invoked
-// directly. Mirrors the apps-view harness — the transport FAILS on any
+// directly. Mirrors the apps-view harness: the transport FAILS on any
 // PUT/PATCH/:commit AND on listings.get, because reading App details is a
 // read-only, single-endpoint operation (open Edit → details.get →
 // discard, never commit, never a second endpoint).
@@ -37,7 +37,7 @@ import (
 // edits.delete. It has NO PUT/PATCH/:commit branch and NO listings.get
 // branch: reaching either means the command tried to mutate state or hit
 // a second endpoint, which a single-endpoint read-only command must
-// never do — so the transport fails the test.
+// never do, so the transport fails the test.
 type readRT struct {
 	t       *testing.T
 	editID  string
@@ -140,7 +140,7 @@ func exitCodeOf(t *testing.T, err error) int {
 // /token first, then edits.insert, details.get, edits.delete (no
 // listings.get, no commit). The returned payload carries the four App
 // details fields, and --output json emits the details.get body verbatim
-// (clean ADR-0003 pass-through — no envelope).
+// (clean ADR-0003 pass-through: no envelope).
 func TestRun_happyPath(t *testing.T) {
 	body := `{"contactEmail":"hi@example.com","contactPhone":"+1 555 0100","contactWebsite":"https://x.example","defaultLanguage":"en-US"}`
 	rt := &readRT{t: t, editID: "edit-details", details: body}
@@ -221,7 +221,7 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 }
 
 // TestRun_noAccount_exit10 asserts that with no resolved Account the
-// command fails auth (exit 10) before any HTTP call — there is no
+// command fails auth (exit 10) before any HTTP call: there is no
 // dry-run path for a read.
 func TestRun_noAccount_exit10(t *testing.T) {
 	rt := &readRT{t: t}
@@ -324,7 +324,7 @@ func TestRenderMarkdown_showsAllFourFields(t *testing.T) {
 }
 
 // TestGroup_bareDetailsIsPureNoun asserts the ADR-0019 shape: `apps details`
-// is a pure grouping noun — the bare command prints help and never reads (the
+// is a pure grouping noun: the bare command prints help and never reads (the
 // read lives under `view`), and `set` stays present. Its RunE is the shared
 // grouping RunE (kernel.GroupRunE: help when bare, loud exit-2 misuse on an
 // unknown subcommand), NOT a business reader. This is the structural guard for
@@ -338,12 +338,12 @@ func TestGroup_bareDetailsIsPureNoun(t *testing.T) {
 	if group.RunE == nil {
 		t.Fatal("bare `apps details` must have the grouping RunE (help when bare, loud on unknown subcommand)")
 	}
-	// Bare invocation prints help and succeeds — it never performs a read.
+	// Bare invocation prints help and succeeds: it never performs a read.
 	group.SetOut(io.Discard)
 	if err := group.RunE(group, nil); err != nil {
 		t.Errorf("bare `apps details` should print help and succeed, got err=%v", err)
 	}
-	// An unknown subcommand is rejected loudly, naming the command — not
+	// An unknown subcommand is rejected loudly, naming the command, not
 	// silently helped with exit 0.
 	if err := group.RunE(group, []string{"nonesuch"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("unknown subcommand of `apps details` should be rejected naming the command; got err=%v", err)
@@ -376,7 +376,7 @@ func TestViewCommand_hasReadSurface(t *testing.T) {
 		t.Error("`apps details view` must expose --package")
 	}
 	// Per the repo contract, every command supports --output with table/json/
-	// markdown — lock that on the read surface too.
+	// markdown: lock that on the read surface too.
 	out := view.Flags().Lookup("output")
 	if out == nil {
 		t.Fatal("`apps details view` must expose --output")

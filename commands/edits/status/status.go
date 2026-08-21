@@ -1,6 +1,6 @@
 // Package status implements `gplay edits status`: report the open explicit Edit
 // pinned in .gplay/edit-<package>.json, or "no open explicit edit" when none is
-// pinned. It is a purely LOCAL read — no auth, no network — so it works offline
+// pinned. It is a purely LOCAL read (no auth, no network) so it works offline
 // and never provokes a credential probe.
 package status
 
@@ -48,7 +48,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Report the open explicit Edit pinned in .gplay/edit-<package>.json, or
 "no open explicit edit" when none is pinned.
 
-This is a local read — no auth, no network — so it works offline. The package
+This is a local read (no auth, no network) so it works offline. The package
 defaults to the repo's .gplay/config.json pin when --package is omitted.
 
 --output json emits {"package","editId","open"}.`,

@@ -83,7 +83,7 @@ func TestPrune_neverTouchesUnmanagedSlot(t *testing.T) {
 }
 
 // TestPrune_offByDefault_keepsOnlineOnly: the same slot WITHOUT prune keeps the
-// online-only image (additive) — the #134 guarantee, re-asserted via the new
+// online-only image (additive): the #134 guarantee, re-asserted via the new
 // signature.
 func TestPrune_offByDefault_keepsOnlineOnly(t *testing.T) {
 	in := imagediff.SlotInput{

@@ -67,7 +67,7 @@ type PolicyDeclaration struct {
 	Responses     []json.RawMessage `json:"responses,omitempty"`
 }
 
-// UpdateHostedAppRequest mirrors UpdateAppStoreHostedAppRequest — the full
+// UpdateHostedAppRequest mirrors UpdateAppStoreHostedAppRequest: the full
 // submission: who the developer is, what binaries are active, what the store
 // listing says in each locale, and the answers to Google's policy
 // questionnaire.
@@ -82,7 +82,7 @@ type UpdateHostedAppRequest struct {
 // UpdateHostedApp submits the assembled hosted app to Google's review via
 // `POST androidpublisher/v3/appstore/{appStorePackageName}/apps:update`.
 //
-// Per Google this call submits the app to review immediately — there is no
+// Per Google this call submits the app to review immediately: there is no
 // staging step and no way to recall it, which is why the command layer gates
 // it behind --confirm (ADR-0017 destructive tier, refined by ADR-0043).
 //
@@ -92,8 +92,8 @@ type UpdateHostedAppRequest struct {
 // body is the operator's own JSON, forwarded **verbatim** apart from
 // packageName, which is overwritten with pkg so the resolved target always wins.
 // Round-tripping it through UpdateHostedAppRequest instead would silently drop
-// anything the struct does not model — a field Google added last week, or a
-// typo like `developerNAme` — and this submission cannot be recalled. Sending
+// anything the struct does not model: a field Google added last week, or a
+// typo like `developerNAme`, and this submission cannot be recalled. Sending
 // the operator's keys as written means Google validates them: a misspelling
 // comes back as a rejection the caller can read, never as a submission quietly
 // missing half its content. UpdateHostedAppRequest stays the documented shape
@@ -132,7 +132,7 @@ func UpdateHostedApp(ctx context.Context, hc *http.Client, storePackage, pkg str
 // state defaults to PUBLISHED after UpdateAppStoreHostedApp, so this call is
 // only needed to pull an app back out of the store (or to put it back).
 //
-// The response carries no fields — same acknowledgement shape as create.
+// The response carries no fields: same acknowledgement shape as create.
 func UpdatePublishStatus(ctx context.Context, hc *http.Client, storePackage, pkg, state string) (json.RawMessage, error) {
 	body, err := json.Marshal(struct {
 		PublishState string `json:"publishState"`

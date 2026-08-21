@@ -19,7 +19,7 @@ import (
 // errors counts/issues/reports, anomalies) must request the playdeveloperreporting
 // scope via kernel.WithScope. A dropped wrapper anywhere in the registration
 // (main.go or errorscmd.NewCommand) makes that leaf silently fall back to the
-// androidpublisher scope — this walks the real command tree and catches it.
+// androidpublisher scope: this walks the real command tree and catches it.
 func TestVitalsLeavesAreReportingScoped(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 
@@ -61,7 +61,7 @@ func TestVitalsLeavesAreReportingScoped(t *testing.T) {
 // the user-facing command-tree level: the canonical names resolve to a
 // command, and the pre-rename names are gone (a hard rename leaves no
 // alias, so the old verb is not a registered subcommand). This is the
-// contract guard for the verb audit (#98) — one e2e case per rename,
+// contract guard for the verb audit (#98): one e2e case per rename,
 // exercised through the real cobra tree via Command.Find, which resolves
 // commands without executing them or touching auth/network.
 //
@@ -95,7 +95,7 @@ func TestVerbVocabulary_canonicalNames(t *testing.T) {
 			if tc.wantGone {
 				// The old verb must stay unconsumed (Find stops at the parent
 				// group and leaves the unknown name in rest). If rest is empty
-				// the old name still resolved — the hard rename is incomplete.
+				// the old name still resolved: the hard rename is incomplete.
 				if len(rest) == 0 {
 					t.Fatalf("%v: expected the old name to be unresolved (a hard rename leaves no alias), but it resolved to %q", tc.path, cmd.CommandPath())
 				}
@@ -116,8 +116,8 @@ func TestVerbVocabulary_canonicalNames(t *testing.T) {
 // TestVerbVocabulary_oldLeafNamesFailLoudly asserts the runtime half of the
 // hard rename: executing a removed leaf verb under its group does not quietly
 // print group help with exit 0 (cobra's default for an unknown subcommand of
-// a child group). The group rejects it as CLI misuse — exit 2, message naming
-// the unknown command — so a CI step still calling the old name breaks.
+// a child group). The group rejects it as CLI misuse: exit 2, message naming
+// the unknown command, so a CI step still calling the old name breaks.
 func TestVerbVocabulary_oldLeafNamesFailLoudly(t *testing.T) {
 	// Old names kept as SPLIT args (never a contiguous phrase) for the #168 gate.
 	for _, args := range [][]string{
@@ -144,7 +144,7 @@ func TestVerbVocabulary_oldLeafNamesFailLoudly(t *testing.T) {
 	}
 }
 
-// groupPaths is the full set of grouping nouns in the command tree — pure
+// groupPaths is the full set of grouping nouns in the command tree: pure
 // nouns that carry no business logic, whose only job is to hold subcommands
 // (and, when bare, print help). The empty path is the root. Every entry must
 // behave identically: bare → help (exit 0), unknown subcommand → loud CLI
@@ -178,7 +178,7 @@ var groupPaths = [][]string{
 
 // TestGroupCommands_unknownSubcommandFailsLoudly asserts the UX contract for
 // EVERY grouping noun (and the root): a mistyped or unknown subcommand is
-// rejected as CLI misuse — exit 2, message naming the unknown command — never
+// rejected as CLI misuse (exit 2, message naming the unknown command) never
 // the cobra default of silently printing group help with exit 0. This is the
 // generalisation of TestVerbVocabulary_oldLeafNamesFailLoudly (which guards
 // the specific ADR-0019 renames) to the whole tree, so a typo against any
@@ -241,7 +241,7 @@ func TestGroupCommands_bareInvocationPrintsHelp(t *testing.T) {
 // (cobra's Levenshtein/prefix matching, reused via SuggestionsFor), the misuse
 // message carries an additive "Did you mean this?" block naming it. The exit
 // code stays 2, the first line keeps its existing shape, and nothing is written
-// to stdout — the message is main.go's single stderr line.
+// to stdout: the message is main.go's single stderr line.
 //
 // Multi-token paths are kept as SPLIT args (never a contiguous phrase) so the
 // repo-wide verb gate (#168) stays green here.
@@ -322,7 +322,7 @@ func TestUnknownCommand_noSuggestionWhenNothingIsClose(t *testing.T) {
 
 // TestFlagErrors_areCliMisuse asserts the docs/DESIGN.md §9 contract for the
 // flag-error class: an unknown flag, a bad flag value, or a missing required
-// flag is CLI misuse — exit 2, named in one "gplay: ..." line — not the
+// flag is CLI misuse (exit 2, named in one "gplay: ..." line) not the
 // generic exit 1 cobra hands back for a plain flag-parse error. The root's
 // FlagErrorFunc routes parse errors (unknown flag, bad value) through
 // exit.Usagef, and is inherited down the whole cobra tree so a leaf's parse
@@ -372,12 +372,12 @@ func TestFlagErrors_areCliMisuse(t *testing.T) {
 // for the third door into CLI misuse: a wrong NUMBER of positional arguments.
 // Flag-parse failures (root FlagErrorFunc) and unknown subcommands
 // (kernel.GroupRunE) were already routed to exit 2; a leaf's `Args` validator
-// was not — cobra calls it from execute() and hands the raw error straight
+// was not: cobra calls it from execute() and hands the raw error straight
 // back, which exit.For could only map to the generic exit 1 (#426).
 // kernel.WrapArgErrors closes that door for the whole tree at registration.
 //
 // One case per family (missing argument / surplus argument) across the
-// validator shapes the tree actually uses — MinimumNArgs, ExactArgs, NoArgs —
+// validator shapes the tree actually uses (MinimumNArgs, ExactArgs, NoArgs)
 // at leaf and nested-group depth. Every case is rejected BEFORE RunE runs, so
 // nothing here touches credentials or the network.
 //
@@ -429,7 +429,7 @@ func TestPositionalArgErrors_areCliMisuse(t *testing.T) {
 // the case-by-case test above, and the reason #426 is fixed in the kernel
 // rather than per command: it WALKS the real command tree and asserts that
 // EVERY registered positional-argument validator, at any depth, reports a bad
-// argument count as exit 2 — never the generic 1.
+// argument count as exit 2: never the generic 1.
 //
 // A leaf added tomorrow with `Args: cobra.ExactArgs(1)` is covered without
 // touching this test, because kernel.WrapArgErrors wraps whatever the tree
@@ -440,7 +440,7 @@ func TestPositionalArgErrors_areCliMisuse(t *testing.T) {
 // no RunE fires: no credentials, no keyring, no network. For a runnable command
 // cobra invokes them identically from execute(); the walk also visits the few
 // non-runnable help-topic leaves (`exit-codes`), whose validator cobra
-// short-circuits past in production — wrapped-but-unreachable is harmless, and
+// short-circuits past in production: wrapped-but-unreachable is harmless, and
 // the property pinned here is that nothing registered can reject with anything
 // but exit 2.
 func TestArgsValidators_allRouteThroughUsageExit(t *testing.T) {
@@ -481,7 +481,7 @@ func TestArgsValidators_allRouteThroughUsageExit(t *testing.T) {
 	// Guard against a vacuous pass: the tree carries ~100 Args validators today
 	// (96 source sites, several instantiated per preset, plus cobra's
 	// materialised completion commands). `rejections` counts (validator, count)
-	// pairs — most validators reject two or three of the four probed counts —
+	// pairs, because most validators reject two or three of the four probed counts,
 	// so both floors sit far below their actuals and only trip on a walk that
 	// stopped early or a tree that lost whole namespaces.
 	if validators < 85 {
@@ -495,16 +495,16 @@ func TestArgsValidators_allRouteThroughUsageExit(t *testing.T) {
 // TestMutatingRegistry_pinsWriteCommands is the completeness guard for the
 // GPLAY_READONLY policy (#211 / ADR-0024): it pins exactly which leaf commands
 // carry the mutating annotation (kernel.MarkMutating). A new write command that
-// forgets MarkMutating, or a read command wrongly marked, fails here — so the
+// forgets MarkMutating, or a read command wrongly marked, fails here, so the
 // policy's authority boundary cannot silently rot as the tree grows.
 //
 // Crucially it does NOT trust a hand-maintained allow-list to enumerate the
 // tree: it WALKS the real cobra tree and asserts EVERY runnable leaf is present
-// in `want` with the matching annotation. A leaf that nobody classified — the
-// exact way a new surface slips past a static list by simply being absent — is a
+// in `want` with the matching annotation. A leaf that nobody classified (the
+// exact way a new surface slips past a static list by simply being absent) is a
 // test failure, not a silent pass. The reverse guard also fails a `want` entry
 // that resolves to no leaf, so a rename can't leave a stale line "covering"
-// nothing. (No execution, no auth/network — Command.Name/Commands only.)
+// nothing. (No execution, no auth/network: Command.Name/Commands only.)
 //
 // Multi-token paths are kept as SPLIT args (never a contiguous phrase) so the
 // repo-wide verb gate (#168) stays green on this file; the map key is joined at
@@ -512,7 +512,7 @@ func TestArgsValidators_allRouteThroughUsageExit(t *testing.T) {
 func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 	// leaf classification: true = mutating Google Play state (MarkMutating;
 	// GPLAY_READONLY refuses it, exit 4). false = a read, an offline validator,
-	// or a local-only registry/credential op — must stay UNmarked so dashboards
+	// or a local-only registry/credential op: must stay UNmarked so dashboards
 	// and agents can still observe and plan with a production credential.
 	type leaf struct {
 		path     []string
@@ -526,18 +526,18 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"exit-codes"}, false},
 		{[]string{"install-skills"}, false},
 
-		// auth — local credential ops, none mutate Play state
+		// auth: local credential ops, none mutate Play state
 		{[]string{"auth", "login"}, false},
 		{[]string{"auth", "logout"}, false},
 		{[]string{"auth", "status"}, false},
 		{[]string{"auth", "list"}, false},
 		{[]string{"auth", "doctor"}, false},
 
-		// apps — local registry ops + reads
+		// apps: local registry ops + reads
 		{[]string{"apps", "init"}, false},
 		{[]string{"apps", "add"}, false},
 		{[]string{"apps", "list"}, false},
-		{[]string{"apps", "accessible", "list"}, false}, // #347 — Reporting apps.search, read-only
+		{[]string{"apps", "accessible", "list"}, false}, // #347: Reporting apps.search, read-only
 		{[]string{"apps", "view"}, false},
 		{[]string{"apps", "details", "view"}, false},
 		{[]string{"apps", "details", "set"}, true},
@@ -574,7 +574,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"device-tiers", "view"}, false},
 		{[]string{"device-tiers", "list"}, false},
 
-		// recovery — deploy/cancel/add-targeting are the production-impacting
+		// recovery: deploy/cancel/add-targeting are the production-impacting
 		// lifecycle writes; a dropped MarkMutating on any would let a force-push
 		// to users run under GPLAY_READONLY=1 instead of exit 4.
 		{[]string{"recovery", "create"}, true},
@@ -594,7 +594,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"team", "grants", "set"}, true},
 		{[]string{"team", "grants", "remove"}, true},
 
-		// appstore — createappstorehostedapp creates a server-side record on
+		// appstore: createappstorehostedapp creates a server-side record on
 		// the app store axis; a dropped MarkMutating would let it run under
 		// GPLAY_READONLY=1 instead of exit 4.
 		{[]string{"appstore", "create"}, true},
@@ -602,12 +602,12 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		// customapps
 		{[]string{"customapps", "create"}, true},
 
-		// appstore — the alternative-app-store persona. Everything under
+		// appstore: the alternative-app-store persona. Everything under
 		// `catalog` is a read of Play's catalog export; nothing mutates.
 		{[]string{"appstore", "catalog", "view"}, false},
 		{[]string{"appstore", "catalog", "events", "list"}, false},
 
-		// appstore review path — every one of these writes to the hosted app.
+		// appstore review path: every one of these writes to the hosted app.
 		// The uploads create server-side media artifacts, publish-status flips
 		// storefront visibility, and update submits to Google's review; a
 		// dropped MarkMutating would let any of them run under GPLAY_READONLY=1
@@ -618,7 +618,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"appstore", "publish-status"}, true},
 		{[]string{"appstore", "update"}, true},
 
-		// edits — begin/commit/discard mutate Play state (insert/commit/delete);
+		// edits: begin/commit/discard mutate Play state (insert/commit/delete);
 		// status is a local-pin read.
 		{[]string{"edits", "begin"}, true},
 		{[]string{"edits", "commit"}, true},
@@ -641,7 +641,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"orders", "view"}, false},
 		{[]string{"orders", "refund"}, true},
 
-		// subscriptions — pull writes only local catalog files; apply
+		// subscriptions: pull writes only local catalog files; apply
 		// reconciles the live catalog (ADR-0041). prices convert is a pure
 		// computation (derives regional prices, writes nothing).
 		{[]string{"subscriptions", "pull"}, false},
@@ -649,7 +649,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"subscriptions", "prices", "convert"}, false},
 		{[]string{"subscriptions", "prices", "migrate"}, true},
 
-		// iap — pull writes only local catalog files; apply reconciles the
+		// iap: pull writes only local catalog files; apply reconciles the
 		// live v2 catalog (legacy is read-only, ADR-0041 §8).
 		{[]string{"iap", "pull"}, false},
 		{[]string{"iap", "apply"}, true},
@@ -660,7 +660,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"reviews", "view"}, false},
 		{[]string{"reviews", "history"}, false},
 
-		// vitals — the whole namespace is read-only (Play Developer Reporting).
+		// vitals: the whole namespace is read-only (Play Developer Reporting).
 		{[]string{"vitals", "query"}, false},
 		{[]string{"vitals", "crashes"}, false},
 		{[]string{"vitals", "anr"}, false},
@@ -674,7 +674,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"vitals", "errors", "reports"}, false},
 		{[]string{"vitals", "anomalies"}, false},
 
-		// metadata — validate leaves are offline; only apply mutates.
+		// metadata: validate leaves are offline; only apply mutates.
 		{[]string{"metadata", "list"}, false},
 		{[]string{"metadata", "pull"}, false},
 		{[]string{"metadata", "validate"}, false},
@@ -693,7 +693,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 	for _, e := range classified {
 		key := strings.Join(e.path, " ")
 		if _, dup := want[key]; dup {
-			t.Fatalf("duplicate classification for %q — remove one", key)
+			t.Fatalf("duplicate classification for %q: remove one", key)
 		}
 		want[key] = e.mutating
 	}
@@ -720,14 +720,14 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		seen[key] = true
 		wantMut, ok := want[key]
 		if !ok {
-			t.Errorf("leaf %q is not classified in the mutating registry — every leaf must be pinned as mutating or read-only (a new write command MUST be kernel.MarkMutating so GPLAY_READONLY refuses it, exit 4)", c.CommandPath())
+			t.Errorf("leaf %q is not classified in the mutating registry: every leaf must be pinned as mutating or read-only (a new write command MUST be kernel.MarkMutating so GPLAY_READONLY refuses it, exit 4)", c.CommandPath())
 			return
 		}
 		if got := kernel.IsMutating(c); got != wantMut {
 			if wantMut {
-				t.Errorf("%q must be marked mutating (kernel.MarkMutating) — GPLAY_READONLY would not refuse it", key)
+				t.Errorf("%q must be marked mutating (kernel.MarkMutating): GPLAY_READONLY would not refuse it", key)
 			} else {
-				t.Errorf("%q is marked mutating but is a read/local command — GPLAY_READONLY would wrongly refuse it", key)
+				t.Errorf("%q is marked mutating but is a read/local command: GPLAY_READONLY would wrongly refuse it", key)
 			}
 		}
 	}
@@ -736,11 +736,11 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 	}
 
 	// Reverse guard: a classified path that matches no real leaf is a stale
-	// entry (the command was renamed or removed) — fail so the list can't drift
+	// entry (the command was renamed or removed): fail so the list can't drift
 	// into "covering" commands that no longer exist.
 	for key := range want {
 		if !seen[key] {
-			t.Errorf("classified path %q resolves to no leaf — stale entry (renamed or removed?)", key)
+			t.Errorf("classified path %q resolves to no leaf: stale entry (renamed or removed?)", key)
 		}
 	}
 }
@@ -752,21 +752,21 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 // It matters more than a normal registry test because the failure is silent and
 // one-way. Forget kernel.Experimental on a young command and gplay promises,
 // from the next release on, that its flags and semantics will not change without
-// a major bump — a promise that cannot be walked back without breaking someone's
+// a major bump: a promise that cannot be walked back without breaking someone's
 // CI. The walk below makes "unclassified" a build failure instead.
 //
 // Multi-token paths are kept as SPLIT args (never a contiguous phrase) so the
 // repo-wide verb gate (#168) stays green on this file.
 func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 	// leaf classification: true = shipped [experimental] (outside the Public
-	// contract, free to change in any release). false = frozen — its name,
+	// contract, free to change in any release). false = frozen: its name,
 	// flags, semantics and exit codes are the 1.0 promise.
 	type leaf struct {
 		path         []string
 		experimental bool
 	}
 	classified := []leaf{
-		// top-level meta / local-only leaves — the install and diagnostic
+		// top-level meta / local-only leaves: the install and diagnostic
 		// surface CI scripts wrap first, frozen. `schema` is the exception: its
 		// --output json is a projection gplay invented, not a Google resource.
 		{[]string{"init"}, false},
@@ -775,14 +775,14 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"exit-codes"}, false},
 		{[]string{"install-skills"}, false},
 
-		// auth — the oldest surface in the CLI, frozen in full.
+		// auth: the oldest surface in the CLI, frozen in full.
 		{[]string{"auth", "login"}, false},
 		{[]string{"auth", "logout"}, false},
 		{[]string{"auth", "status"}, false},
 		{[]string{"auth", "list"}, false},
 		{[]string{"auth", "doctor"}, false},
 
-		// apps — MVP surface, frozen (ADR-0010 names it explicitly).
+		// apps: MVP surface, frozen (ADR-0010 names it explicitly).
 		{[]string{"apps", "init"}, false},
 		{[]string{"apps", "add"}, false},
 		{[]string{"apps", "list"}, false},
@@ -792,7 +792,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"apps", "details", "set"}, false},
 		{[]string{"apps", "remove"}, false},
 
-		// releases — the core loop is frozen; the three side surfaces bolted on
+		// releases: the core loop is frozen; the three side surfaces bolted on
 		// later (sharing, expansion-files, generated) are not.
 		{[]string{"releases", "upload"}, false},
 		{[]string{"releases", "promote"}, false},
@@ -809,7 +809,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"releases", "generated", "list"}, true},
 		{[]string{"releases", "generated", "download"}, true},
 
-		// tracks / testers — MVP surface, frozen.
+		// tracks / testers: MVP surface, frozen.
 		{[]string{"tracks", "list"}, false},
 		{[]string{"tracks", "view"}, false},
 		{[]string{"tracks", "create"}, false},
@@ -817,7 +817,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"testers", "list"}, false},
 		{[]string{"testers", "set"}, false},
 
-		// device-tiers / recovery / customapps — the #243 long-tail and the
+		// device-tiers / recovery / customapps: the #243 long-tail and the
 		// account-axis creation surface, all shipped for coverage rather than
 		// demand.
 		{[]string{"device-tiers", "create"}, true},
@@ -830,7 +830,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"recovery", "add-targeting"}, true},
 		{[]string{"customapps", "create"}, true},
 
-		// appstore — a brand-new namespace for a persona gplay has never served,
+		// appstore: a brand-new namespace for a persona gplay has never served,
 		// on an addressing axis (the app store package name) never exercised
 		// against a real enrolled app store. Experimental until it has been.
 		{[]string{"appstore", "create"}, true},
@@ -842,7 +842,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"appstore", "publish-status"}, true},
 		{[]string{"appstore", "update"}, true},
 
-		// team / edits — exercised on every real account and every write
+		// team / edits: exercised on every real account and every write
 		// respectively, frozen.
 		{[]string{"team", "permissions"}, false},
 		{[]string{"team", "users", "list"}, false},
@@ -858,7 +858,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"edits", "discard"}, false},
 		{[]string{"edits", "status"}, false},
 
-		// games — a second Google service on its own ID space, draft-only writes.
+		// games: a second Google service on its own ID space, draft-only writes.
 		{[]string{"games", "achievements", "list"}, true},
 		{[]string{"games", "achievements", "view"}, true},
 		{[]string{"games", "achievements", "create"}, true},
@@ -870,7 +870,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"games", "leaderboards", "update"}, true},
 		{[]string{"games", "leaderboards", "delete"}, true},
 
-		// orders / subscriptions / iap — the commerce continent. The declarative
+		// orders / subscriptions / iap: the commerce continent. The declarative
 		// catalog (ADR-0041) shipped in v0.18.0, days before the 1.0 cut, and
 		// exposes a file schema and a reconciliation model as contract.
 		{[]string{"orders", "view"}, true},
@@ -882,14 +882,14 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"iap", "pull"}, true},
 		{[]string{"iap", "apply"}, true},
 
-		// reviews — list/reply/view are MVP and frozen; history reads CSVs out
+		// reviews: list/reply/view are MVP and frozen; history reads CSVs out
 		// of a GCS bucket whose layout Google can change without an API version.
 		{[]string{"reviews", "list"}, false},
 		{[]string{"reviews", "reply"}, false},
 		{[]string{"reviews", "view"}, false},
 		{[]string{"reviews", "history"}, true},
 
-		// vitals — read-only, shipped early and stable since.
+		// vitals: read-only, shipped early and stable since.
 		{[]string{"vitals", "query"}, false},
 		{[]string{"vitals", "crashes"}, false},
 		{[]string{"vitals", "anr"}, false},
@@ -903,7 +903,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"vitals", "errors", "reports"}, false},
 		{[]string{"vitals", "anomalies"}, false},
 
-		// metadata / compliance — the first-release readiness surfaces, driven
+		// metadata / compliance: the first-release readiness surfaces, driven
 		// end-to-end since June, frozen.
 		{[]string{"metadata", "list"}, false},
 		{[]string{"metadata", "pull"}, false},
@@ -921,7 +921,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 	for _, e := range classified {
 		key := strings.Join(e.path, " ")
 		if _, dup := want[key]; dup {
-			t.Fatalf("duplicate classification for %q — remove one", key)
+			t.Fatalf("duplicate classification for %q: remove one", key)
 		}
 		want[key] = e.experimental
 	}
@@ -944,12 +944,12 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		seen[key] = true
 		wantExp, ok := want[key]
 		if !ok {
-			t.Errorf("leaf %q is not classified in the stability registry — every leaf must be pinned as frozen or [experimental]; an unclassified NEW command would silently join the frozen v1.0 Public contract (ADR-0010)", c.CommandPath())
+			t.Errorf("leaf %q is not classified in the stability registry: every leaf must be pinned as frozen or [experimental]; an unclassified NEW command would silently join the frozen v1.0 Public contract (ADR-0010)", c.CommandPath())
 			return
 		}
 		if got := kernel.IsExperimental(c); got != wantExp {
 			if wantExp {
-				t.Errorf("%q must be labelled experimental (kernel.Experimental) — as it stands, gplay promises its surface will not change without a major bump", key)
+				t.Errorf("%q must be labelled experimental (kernel.Experimental), as it stands, gplay promises its surface will not change without a major bump", key)
 			} else {
 				t.Errorf("%q is labelled experimental but is classified as part of the frozen Public contract", key)
 			}
@@ -968,7 +968,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 
 	for key := range want {
 		if !seen[key] {
-			t.Errorf("classified path %q resolves to no leaf — stale entry (renamed or removed?)", key)
+			t.Errorf("classified path %q resolves to no leaf: stale entry (renamed or removed?)", key)
 		}
 	}
 }
@@ -1006,25 +1006,25 @@ func TestResolveVersion(t *testing.T) {
 		wantVersion, wantCommit, wantDateStr string
 	}{
 		{
-			name:      "ldflags present — keep them, ignore BuildInfo",
+			name:      "ldflags present: keep them, ignore BuildInfo",
 			ldVersion: "v9.9.9", ldCommit: "deadbeef", ldDate: "2030-01-01",
 			info: buildInfo, infoOK: true,
 			wantVersion: "v9.9.9", wantCommit: "deadbeef", wantDateStr: "2030-01-01",
 		},
 		{
-			name:      "ldflags default + BuildInfo — fall back to BuildInfo",
+			name:      "ldflags default + BuildInfo: fall back to BuildInfo",
 			ldVersion: "dev", ldCommit: "none", ldDate: "unknown",
 			info: buildInfo, infoOK: true,
 			wantVersion: "v0.1.0-alpha.1", wantCommit: "abc123", wantDateStr: "2026-05-22T12:00:00Z",
 		},
 		{
-			name:      "ldflags default + no BuildInfo — keep defaults",
+			name:      "ldflags default + no BuildInfo: keep defaults",
 			ldVersion: "dev", ldCommit: "none", ldDate: "unknown",
 			info: nil, infoOK: false,
 			wantVersion: "dev", wantCommit: "none", wantDateStr: "unknown",
 		},
 		{
-			name:      "ldflags default + BuildInfo with (devel) version — keep default version, take vcs.* fields",
+			name:      "ldflags default + BuildInfo with (devel) version: keep default version, take vcs.* fields",
 			ldVersion: "dev", ldCommit: "none", ldDate: "unknown",
 			info: &debug.BuildInfo{
 				Main: debug.Module{Version: "(devel)"},
@@ -1037,7 +1037,7 @@ func TestResolveVersion(t *testing.T) {
 			wantVersion: "dev", wantCommit: "abc123", wantDateStr: "2026-05-22T12:00:00Z",
 		},
 		{
-			name:      "ldflags default + BuildInfo missing vcs.* settings — keep commit/date defaults",
+			name:      "ldflags default + BuildInfo missing vcs.* settings: keep commit/date defaults",
 			ldVersion: "dev", ldCommit: "none", ldDate: "unknown",
 			info: &debug.BuildInfo{
 				Main: debug.Module{Version: "v0.2.0"},

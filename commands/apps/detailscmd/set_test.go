@@ -1,7 +1,7 @@
 // Package detailscmd_test also exercises `gplay apps details set` (the
 // field-by-field write) at the kernel level. The key assertions are on
 // the details.patch BODY actually emitted: a partial patch must carry
-// ONLY the fields the user passed — an omitted flag is absent from the
+// ONLY the fields the user passed: an omitted flag is absent from the
 // body (the field stays intact upstream), and an explicit empty value is
 // sent verbatim (it clears the field). The write runs inside an implicit
 // Edit (open → details.patch → commit); --dry-run previews the patch with
@@ -84,7 +84,7 @@ func (r *setRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // TestSet_onlyChangedField_inBody asserts the core partial-patch
 // contract: `set --contact-email X` emits a details.patch body carrying
-// ONLY contactEmail — defaultLanguage, contactPhone, and contactWebsite
+// ONLY contactEmail: defaultLanguage, contactPhone, and contactWebsite
 // are absent (they stay intact upstream). The full implicit-Edit sequence
 // runs (/token → insert → PATCH → commit) and --output json is the
 // details.patch response verbatim.
@@ -178,7 +178,7 @@ func TestSet_clearField_sendsEmpty(t *testing.T) {
 }
 
 // TestSet_multipleFields_inBody asserts that passing several flags emits
-// all of them (and only them) — here defaultLanguage + contactWebsite.
+// all of them (and only them): here defaultLanguage + contactWebsite.
 func TestSet_multipleFields_inBody(t *testing.T) {
 	rt := &setRT{t: t, editID: "edit-multi"}
 	rc, _ := newRC(t, rt)
@@ -211,7 +211,7 @@ func TestSet_multipleFields_inBody(t *testing.T) {
 }
 
 // TestSet_noFieldFlag_exit2_noHTTP asserts the no-flag guard: a bare
-// `set` with no field flag is misuse — it short-circuits with exit 2
+// `set` with no field flag is misuse: it short-circuits with exit 2
 // before any HTTP, so a forgotten flag can never emit an empty patch.
 func TestSet_noFieldFlag_exit2_noHTTP(t *testing.T) {
 	rt := &setRT{t: t}
@@ -263,8 +263,8 @@ func TestSet_dryRun_noHTTP(t *testing.T) {
 }
 
 // TestSet_dryRunJSON_previewsPatch asserts that --dry-run under --output
-// json (the DEFAULT in pipes/CI) produces a parseable preview object —
-// tagged dryRun:true and carrying only the touched fields — rather than
+// json (the DEFAULT in pipes/CI) produces a parseable preview object:
+// tagged dryRun:true and carrying only the touched fields: rather than
 // erroring. This is the contract a CI pipeline relies on; it must not
 // regress. Still zero HTTP.
 func TestSet_dryRunJSON_previewsPatch(t *testing.T) {

@@ -1,4 +1,4 @@
-// args.go — the positional-argument door into the CLI-misuse contract
+// args.go: the positional-argument door into the CLI-misuse contract
 // (docs/DESIGN.md §9, exit 2). gplay has three doors, and they used to disagree:
 //
 //  1. a flag-parse failure  → the root's SetFlagErrorFunc wraps it in
@@ -10,7 +10,7 @@
 //     fall back to the generic exit 1 (#426).
 //
 // WrapArgErrors closes door 3 the same way the other two are closed: in one
-// place, for the whole tree, at registration time — never with a per-command
+// place, for the whole tree, at registration time: never with a per-command
 // check, which is what makes the contract hold for commands nobody has written
 // yet.
 package kernel
@@ -31,7 +31,7 @@ import (
 //
 // It replaces each non-nil Args validator with one that runs the original and
 // re-types its error as *exit.UsageError. Message text is passed through
-// verbatim — deliberately the same treatment the root's FlagErrorFunc gives a
+// verbatim: deliberately the same treatment the root's FlagErrorFunc gives a
 // flag-parse error, so the two misuse doors read identically to a user and to
 // anything grepping stderr. cobra's own wording already names the offending
 // command where it matters (`unknown command "x" for "gplay apps list"`).
@@ -43,8 +43,8 @@ import (
 //     a bare invocation and rejects an unknown subcommand itself (door 2).
 //     Substituting a validator there would break both halves of that contract.
 //     Nothing is lost: cobra's ValidateArgs treats a nil Args as ArbitraryArgs,
-//     and the one nil-Args path that CAN fail — legacyArgs on a root with
-//     subcommands, raised from Find before execute() — is already neutralised
+//     and the one nil-Args path that CAN fail (legacyArgs on a root with
+//     subcommands, raised from Find before execute()) is already neutralised
 //     by the root's explicit Args:ArbitraryArgs (see cmd/gplay/main.go).
 //   - It never re-codes an error that already carries an exit.Coder. A
 //     validator that returns exit.SafetyFlag (exit 3) or a client-side
@@ -52,7 +52,7 @@ import (
 //     cobra's untyped errors, not an override.
 //   - It never CHANGES anything on a second pass. Re-wrapping stacks another
 //     closure, but the inner wrapper's *exit.UsageError already carries a
-//     Coder, so the outer asUsageError passes it through untouched — same
+//     Coder, so the outer asUsageError passes it through untouched: same
 //     message, same code. Idempotent by construction, with no bookkeeping.
 //
 // Call it AFTER the tree is assembled, like Experimental: it walks what is

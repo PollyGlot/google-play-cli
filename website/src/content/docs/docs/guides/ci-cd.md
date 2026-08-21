@@ -1,6 +1,6 @@
 ---
 title: CI/CD integration
-description: Wire gplay into GitHub Actions or any CI — inject the service account as a secret, verify with auth doctor, upload releases, and retry on semantic exit codes.
+description: "Wire gplay into GitHub Actions or any CI: inject the service account as a secret, verify with auth doctor, upload releases, and retry on semantic exit codes."
 sidebar:
   order: 2
 ---
@@ -8,14 +8,14 @@ sidebar:
 gplay is built for CI: one static binary, no runtime, JSON output by default
 when piped, and [exit codes](/docs/concepts/exit-codes/) that make retry
 decisions trivial. The example below is GitHub Actions; the same pattern
-applies to GitLab CI, Bitrise, CircleCI, or Jenkins — only the secret
+applies to GitLab CI, Bitrise, CircleCI, or Jenkins; only the secret
 injection changes.
 
 ## Inject the credential
 
 In CI, **never** use `gplay auth login`. Pass the credential through the
 environment: `GPLAY_SERVICE_ACCOUNT` accepts a file path or the **JSON
-content inline**. Inline is the right choice in CI — no temp file, no
+content inline**. Inline is the right choice in CI: no temp file, no
 private key written to disk.
 
 Store the entire service-account JSON as a repository secret named
@@ -28,7 +28,7 @@ use.)
 :::tip[Least privilege]
 The real authority boundary is the service account's **Play Console
 permission set**, not the flags a job passes. Mint a separate, narrowly-scoped
-account per job archetype — a leaked metadata-job key then can't publish a
+account per job archetype, so a leaked metadata-job key can't publish a
 release. Give dashboards and AI agents a **read-only** account, and add
 `GPLAY_READONLY=1` to their environment as defence in depth: every mutating
 command is refused with exit `4` before any network call, whatever flags the
@@ -77,7 +77,7 @@ jobs:
 ```
 
 JSON output needs no flag in CI: gplay emits JSON when stdout is not a TTY
-(piped/captured output) **or** when `CI=true` is set — each condition
+(piped/captured output) **or** when `CI=true` is set. Each condition
 triggers it on its own, and CI runners satisfy both. An explicit
 `--output table` remains the override if you ever want human-shaped logs.
 See [output formats](/docs/concepts/output-formats/).
@@ -97,8 +97,8 @@ gplay releases upload app.aab --package com.example.myapp --track internal \
 exempt unless set), so a hung connection fails in seconds instead of stalling
 the job. With `--retry`, it's a per-attempt bound.
 
-When you need shell-level control — retrying across *separate* commands, or
-adding alerting — branch on the [exit code](/docs/concepts/exit-codes/)
+When you need shell-level control (retrying across *separate* commands, or
+adding alerting), branch on the [exit code](/docs/concepts/exit-codes/)
 yourself (`40`/`50` are retry-safe; `4`, from `GPLAY_READONLY`, is not, and
 isn't fixable by a flag):
 

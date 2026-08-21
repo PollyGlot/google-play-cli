@@ -8,7 +8,7 @@
 // Source: Google Play Console help, "Supported languages and locales"
 // (https://support.google.com/googleplay/android-developer/answer/9844778).
 // The list below transcribes the Play store-listing locale codes from
-// that page — the exact `language-REGION` strings the edits.listings API
+// that page: the exact `language-REGION` strings the edits.listings API
 // accepts (e.g. `en-US`, `es-419`, `pt-BR`, `zh-CN`). The codes are
 // CASE-SENSITIVE on Play's side (`en-US`, never `en-us`), so IsKnown
 // matches exactly.

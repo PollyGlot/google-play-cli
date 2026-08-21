@@ -1,6 +1,6 @@
 // Package list implements `gplay releases list`: a read-only listing of
 // every release currently attached to a track (draft, inProgress,
-// halted, completed). It is thin glue — resolve --package, open a
+// halted, completed). It is thin glue: resolve --package, open a
 // read-only Edit, consume internal/play/tracks.Get, and render. No
 // orchestrator, no mutation: the Edit is opened and discarded via
 // edits.WithReadOnlyEdit, never committed.
@@ -38,7 +38,7 @@ type Input struct {
 // trackNotFoundError wraps a tracks.get 404 with an actionable hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
 // the wrapped *api.Error (404 → exit 30) stays authoritative through the
-// Coder chain — an unknown track is an API 4xx, not a CLI misuse.
+// Coder chain: an unknown track is an API 4xx, not a CLI misuse.
 type trackNotFoundError struct {
 	track string
 	cause error
@@ -46,7 +46,7 @@ type trackNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *trackNotFoundError) Error() string {
-	return fmt.Sprintf("track %q not found — run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
+	return fmt.Sprintf("track %q not found: run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -150,7 +150,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 
 	cols, err := ResolveColumns(in.Columns)
@@ -187,7 +187,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// isTrackNotFound reports whether err is a tracks.get 404 — the signal
+// isTrackNotFound reports whether err is a tracks.get 404: the signal
 // that the requested track does not exist on this app.
 func isTrackNotFound(err error) bool {
 	var apiErr *api.Error

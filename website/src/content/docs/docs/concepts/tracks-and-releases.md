@@ -9,7 +9,7 @@ sidebar:
 
 Google Play provisions four **standard tracks** for every app, in promotion
 order: `internal`, `alpha`, `beta`, `production`. Beyond those, an app can
-have **closed tracks** with custom names (`qa-team`, `external-beta`, …) —
+have **closed tracks** with custom names (`qa-team`, `external-beta`, …),
 the only kind gplay can create, because closed testing is the only type the
 API's create endpoint supports:
 
@@ -17,12 +17,12 @@ API's create endpoint supports:
 gplay tracks create qa-team
 ```
 
-There is no `tracks delete` — the API exposes none; removing a track is a
+There is no `tracks delete`: the API exposes none, and removing a track is a
 Play Console-only gesture.
 
 The `--track` flag on release commands is **passthrough**: any string is
 accepted, so closed tracks work everywhere the four standard names do. A
-typo'd track name fails at the API — gplay never auto-creates a track as a
+typo'd track name fails at the API, and gplay never auto-creates a track as a
 side effect.
 
 ## Safe production defaults
@@ -31,7 +31,7 @@ What status a new release gets depends on the target track:
 
 | Target track | Default status | Default userFraction |
 | --- | --- | --- |
-| `production` | **`draft`** | — |
+| `production` | **`draft`** | n/a |
 | `internal` / `alpha` / `beta` / closed | `completed` | `1.0` |
 
 Shipping to real users is always explicit: `--complete` (100%) or
@@ -52,7 +52,7 @@ gplay releases complete --track production            # → 100%, completed
 
 ## Targeting a release
 
-- `releases upload <aab>` reads the versionCode **from the AAB** — never a
+- `releases upload <aab>` reads the versionCode **from the AAB**, never a
   flag, so it can't disagree with the artifact.
 - `promote` / `rollout` / `halt` / `resume` / `complete` target the
   **latest** release on the track. Override with `--version-code N` or
@@ -64,9 +64,9 @@ gplay releases complete --track production            # → 100%, completed
 
 Two mutually exclusive flags on `releases upload`:
 
-- `--release-notes "<text>"` — one text, applied to the app's default
+- `--release-notes "<text>"`: one text, applied to the app's default
   language.
-- `--release-notes-dir <dir>` — one file per locale (`en-US.txt`,
+- `--release-notes-dir <dir>`: one file per locale (`en-US.txt`,
   `fr-FR.txt`, …), with an optional `default.txt` fallback for locales
   without a dedicated file.
 

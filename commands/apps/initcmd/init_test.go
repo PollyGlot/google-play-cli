@@ -71,7 +71,7 @@ func TestInitCmd_emitsRegistryHint(t *testing.T) {
 	}
 }
 
-// After init, Load() finds the pin via the cascading loader — end-to-end
+// After init, Load() finds the pin via the cascading loader: end-to-end
 // proof that the tracer bullet works.
 func TestInitCmd_pinIsReadableByLoad(t *testing.T) {
 	repo := t.TempDir()

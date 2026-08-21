@@ -1,5 +1,5 @@
 // Package detailscmd implements `apps details`, a pure grouping noun over
-// the App details resource — the app-global edits.details record
+// the App details resource: the app-global edits.details record
 // holding defaultLanguage and the user-visible contact email/phone/website.
 //
 // Per ADR-0019 a read always carries a verb, so the group holds two
@@ -9,8 +9,8 @@
 //   - `apps details set` writes it field-by-field.
 //
 // The read is thin glue over internal/play/details: resolve --package,
-// build an authenticated client, call details.GetDetails — which opens and
-// discards a read-only Edit internally — and render. Because GetDetails
+// build an authenticated client, call details.GetDetails, which opens and
+// discards a read-only Edit internally, and render. Because GetDetails
 // reads a SINGLE endpoint, --output json is the details.get body verbatim:
 // a clean ADR-0003 pass-through with no gplay envelope (unlike `apps view`,
 // which merges details+listing and carries a documented exception).
@@ -57,7 +57,7 @@ type forbiddenError struct {
 
 // Error renders the forbidden message plus the Play Console grant hint.
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -76,7 +76,7 @@ type packageNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay apps list` hint.
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -150,7 +150,7 @@ func renderTable(w io.Writer, p Payload) error {
 
 // renderJSON emits the raw details.get body verbatim (ADR-0003
 // pass-through). Falls back to the typed Payload only if the body was
-// somehow not captured (defensive — Run always populates Raw on success).
+// somehow not captured (defensive: Run always populates Raw on success).
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) > 0 {
 		_, err := w.Write(p.Raw)
@@ -160,7 +160,7 @@ func renderJSON(w io.Writer, p Payload) error {
 }
 
 // renderMarkdown emits a `- **Field**: value` list per docs/DESIGN.md §7
-// — a single-record read renders as a list, not as a GFM table. The
+// : a single-record read renders as a list, not as a GFM table. The
 // package name leads as a level-2 heading so the rendered markdown drops
 // cleanly into a PR comment or a docs page.
 func renderMarkdown(w io.Writer, p Payload) error {
@@ -172,7 +172,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 
 // Run is the business function the kernel invokes for the read. It
 // resolves the package (--package flag → repo pin → usage error), builds
-// an authenticated HTTP client, and calls details.GetDetails — which
+// an authenticated HTTP client, and calls details.GetDetails, which
 // itself opens and discards a read-only Edit, so there is no mutation
 // path here.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
@@ -181,7 +181,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -205,7 +205,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // NewViewCommand returns the cobra command for `gplay apps details view`:
 // the read of the full edits.details record. Per ADR-0019 the read carries
-// an explicit verb — the bare `details` group prints help, it never reads.
+// an explicit verb: the bare `details` group prints help, it never reads.
 func NewViewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
@@ -222,7 +222,7 @@ details.get → discard); nothing is committed. The package defaults to the
 repo's .gplay/config.json pin when --package is omitted.
 
 --output json returns the edits.details.get body verbatim (a clean
-ADR-0003 pass-through — a single endpoint is read, so there is no gplay
+ADR-0003 pass-through: a single endpoint is read, so there is no gplay
 envelope). This is distinct from ` + "`gplay apps view`" + `, the terse
 cross-resource identity card (package + title + default language).`,
 		Args:          cobra.NoArgs,
@@ -248,7 +248,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "details",
 		Short: "Read and set an app's App details (default language, contact email/phone/website)",
-		Long: `Group for an app's App details — the app-global edits.details record
+		Long: `Group for an app's App details: the app-global edits.details record
 holding defaultLanguage and the user-visible contactEmail, contactPhone,
 and contactWebsite.
 

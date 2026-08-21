@@ -7,8 +7,8 @@
 // The developer-id is resolved through the ADR-0015 cascade (active
 // Account.DeveloperID → project-local → GPLAY_DEVELOPER_ID → --developer-id);
 // an unresolved id is an auth-family failure (exit 10). Output consumes the
-// shared list-command machinery (ADR-0018 / #93) — it is the 4th `list`
-// command — and the table marks account-wide admins distinctly (US24).
+// shared list-command machinery (ADR-0018 / #93): it is the 4th `list`
+// command, and the table marks account-wide admins distinctly (US24).
 // --output json is the verbatim (pagination-merged) users.list response.
 package list
 
@@ -47,7 +47,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to manage users on developer account %s — in the Play Console, open Users & permissions and grant it Admin (or manage-permissions): %v", e.developerID, e.cause)
+	return fmt.Sprintf("service account is not authorized to manage users on developer account %s: in the Play Console, open Users & permissions and grant it Admin (or manage-permissions): %v", e.developerID, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -60,7 +60,7 @@ type developerNotFoundError struct {
 }
 
 func (e *developerNotFoundError) Error() string {
-	return fmt.Sprintf("developer account %s not found, or this credential is not a member of it — verify the developerId in your Play Console URL (play.google.com/console/u/0/developers/<developerId>/...): %v", e.developerID, e.cause)
+	return fmt.Sprintf("developer account %s not found, or this credential is not a member of it: verify the developerId in your Play Console URL (play.google.com/console/u/0/developers/<developerId>/...): %v", e.developerID, e.cause)
 }
 func (e *developerNotFoundError) Unwrap() error { return e.cause }
 

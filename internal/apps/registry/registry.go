@@ -1,7 +1,7 @@
 // Package registry is the pure-data registry of Android package names
 // known to each gplay Account. It operates on a []config.Account slice
 // shared with config.Global / config.Resolved; persistence (config.Save)
-// is the caller's job. No IO, no logging, no global state — every
+// is the caller's job. No IO, no logging, no global state: every
 // behavior is exercised through table-driven tests against an in-memory
 // slice.
 package registry
@@ -76,12 +76,12 @@ func Has(accounts []config.Account, account, pkg string) bool {
 // Remove drops pkg from account's Packages slice. Calling Remove on a
 // (account, pkg) pair that is not registered is a no-op: the intent is
 // "this should not be in the registry", which is already true. An
-// unknown account is also a no-op for the same reason — there is no
+// unknown account is also a no-op for the same reason: there is no
 // state to undo.
 //
 // The new Packages slice is built into fresh storage rather than via
 // `append(pkgs[:j], pkgs[j+1:]...)` so any caller that previously held
-// a slice from List still sees its original contents — `append` over
+// a slice from List still sees its original contents: `append` over
 // the same backing array would otherwise rewrite the element at index
 // j with the element from j+1, leaving the caller's snapshot with a
 // duplicated entry where pkg used to be.

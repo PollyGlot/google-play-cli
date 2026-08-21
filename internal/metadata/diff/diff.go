@@ -1,6 +1,6 @@
 // Package diff is the pure reconciliation engine at the heart of
 // `gplay metadata apply`. Given the local Metadata tree and the Listings
-// live on Play — both as listing.Tree values — it computes the per-locale,
+// live on Play (both as listing.Tree values) it computes the per-locale,
 // per-field delta: what would be created, updated, cleared, left
 // unchanged, or (with --prune) deleted, plus which online-only locales are
 // left untouched. It is the single source of truth shared by
@@ -11,10 +11,10 @@
 //
 //   - Additive. Only locales/fields present on disk are considered for an
 //     upsert. A locale live on Play but absent on disk is reported as
-//     untouchedLocale (or, under --prune, delete) — never silently
+//     untouchedLocale (or, under --prune, delete): never silently
 //     dropped.
 //   - Missing ≠ empty. Inside a locale on disk, a field that is *not
-//     managed* (absent from listing.Listing.Fields) is ignored entirely —
+//     managed* (absent from listing.Listing.Fields) is ignored entirely:
 //     it never appears in the diff. A field that is *managed but empty*
 //     ("" value) is a clear.
 //
@@ -45,14 +45,14 @@ const (
 	OpClear Op = "clear"
 	// OpUnchanged: the managed field already matches online (including
 	// clearing an already-absent field). Counted, but not listed in
-	// Changes — a diff shows what differs.
+	// Changes: a diff shows what differs.
 	OpUnchanged Op = "unchanged"
 	// OpUntouchedLocale: the locale is live on Play but absent on disk.
 	// Left intact (additive default), reported so the operator knows it
 	// exists.
 	OpUntouchedLocale Op = "untouchedLocale"
 	// OpDelete: the locale is live on Play, absent on disk, and --prune was
-	// requested — its whole Listing would be removed.
+	// requested: its whole Listing would be removed.
 	OpDelete Op = "delete"
 )
 
@@ -83,7 +83,7 @@ type Change struct {
 
 // Summary is the per-op tally. The five ADR-0011 counters plus Delete
 // (only ever non-zero under --prune). Flat by design (ADR-0011 §6): a CI
-// gate is one jq line — `.summary.create + .summary.update > 0`.
+// gate is one jq line: `.summary.create + .summary.update > 0`.
 type Summary struct {
 	Create           int `json:"create"`
 	Update           int `json:"update"`
@@ -95,7 +95,7 @@ type Summary struct {
 
 // Result is the whole diff: the package, the actionable change list, and
 // the summary tally. Changes lists every actionable field op (create /
-// update / clear), every untouchedLocale, and — under --prune — every
+// update / clear), every untouchedLocale, and (under --prune) every
 // delete. Unchanged fields are counted in Summary.Unchanged but NOT listed
 // (a diff shows what differs, not what stays); this keeps the output
 // bounded by the real delta even for an app with many fully-synced
@@ -136,7 +136,7 @@ func Compute(pkg string, local, online listing.Tree, prune bool) Result {
 		for _, f := range listing.Fields() {
 			localVal, managed := ll.Get(f)
 			if !managed {
-				// Unmanaged field — additive: leave the online value alone,
+				// Unmanaged field: additive: leave the online value alone,
 				// never even mention it.
 				continue
 			}
@@ -170,7 +170,7 @@ func Compute(pkg string, local, online listing.Tree, prune bool) Result {
 						LiveChars: intPtr(liveChars), LocalChars: intPtr(localChars),
 					})
 				default:
-					res.Summary.Unchanged++ // identical — counted, not listed
+					res.Summary.Unchanged++ // identical: counted, not listed
 				}
 			default:
 				// Local is managed-empty: a clear intent.

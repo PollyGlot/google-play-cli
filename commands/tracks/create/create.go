@@ -1,5 +1,5 @@
 // Package create implements `gplay tracks create <name>`: the CLI glue
-// that creates a custom closed-testing track. It is thin glue — resolve
+// that creates a custom closed-testing track. It is thin glue: resolve
 // --package, open an Edit (open → tracks.create → commit), and render.
 // The create endpoint supports exactly one type (CLOSED_TESTING) and the
 // DEFAULT form factor, so there is no --type / --form-factor flag; and a
@@ -53,7 +53,7 @@ type forbiddenError struct {
 
 // Error renders the forbidden message plus the Play Console grant hint.
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -72,7 +72,7 @@ type packageNotFoundError struct {
 
 // Error renders the not-found message plus the `gplay apps list` hint.
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
@@ -83,9 +83,9 @@ func (e *packageNotFoundError) Unwrap() error { return e.cause }
 // failures of a create, while leaving the wrapped *api.Error to drive
 // the exit code. An edits.insert 404 means the package is unknown (→
 // `gplay apps list` hint, mirroring `tracks list`), a 403 means the
-// service account was not invited on the app. Every other failure — in
+// service account was not invited on the app. Every other failure: in
 // particular the tracks.create 400/409 "track already exists" (exit
-// 30/60), which gplay surfaces verbatim rather than faking idempotency —
+// 30/60), which gplay surfaces verbatim rather than faking idempotency:
 // propagates untouched.
 func classifyEditError(pkg string, err error) error {
 	var apiErr *api.Error
@@ -146,7 +146,7 @@ func renderTable(w io.Writer, p Payload) error {
 
 // renderJSON emits the raw tracks.create body verbatim (ADR-0003
 // pass-through) on the live path. The dry-run path has no API body, so it
-// emits a small gplay-shaped preview of the TrackConfig instead — empty
+// emits a small gplay-shaped preview of the TrackConfig instead: empty
 // bytes would silently break the contract (every Payload field is
 // json:"-").
 func renderJSON(w io.Writer, p Payload) error {
@@ -193,11 +193,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a missing
-	// Account is not a problem here. Mirror promote — short-circuit before
+	// Account is not a problem here. Mirror promote: short-circuit before
 	// AuthedClient and return the previewed TrackConfig.
 	if in.DryRun {
 		return Payload{
@@ -260,7 +260,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Create a custom closed-testing track named <name>.
 
 The create endpoint supports exactly one type (CLOSED_TESTING) and the
-DEFAULT (phone) form factor, so there is no --type / --form-factor flag —
+DEFAULT (phone) form factor, so there is no --type / --form-factor flag:
 every created track is closed. Open / internal track creation has no API
 path. Creating a track that already exists surfaces the API error (exit
 30); gplay does not fake idempotency.

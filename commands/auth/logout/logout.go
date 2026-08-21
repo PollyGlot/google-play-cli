@@ -22,8 +22,8 @@ import (
 var ErrUnknownAccount = config.ErrUnknownAccount
 
 // confirmRequired builds the refusal returned when logout runs without
-// --confirm. It is an *exit.SafetyFlagError, so it exits 3 — "safety flag
-// required" per docs/DESIGN.md §9 — and names the missing flag in the
+// --confirm. It is an *exit.SafetyFlagError, so it exits 3: "safety flag
+// required" per docs/DESIGN.md §9, and names the missing flag in the
 // --output json error envelope's requires[] (ADR-0017 / ADR-0023). The
 // destructive-op contract requires an explicit opt-in; the invocation
 // itself is well-formed, which is why this is not the exit-2 usage error.
@@ -39,7 +39,7 @@ type Input struct {
 
 // Run mutates the registry + keystore. logout has no renderable output
 // (free-form stderr line per docs/DESIGN.md §7), so it returns nil.
-// Refuses to run without Input.Confirm — the destructive-op contract.
+// Refuses to run without Input.Confirm: the destructive-op contract.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.Confirm {
 		return nil, confirmRequired()

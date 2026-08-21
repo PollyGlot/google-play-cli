@@ -172,7 +172,7 @@ func TestUpload_nativeCodeType_inPath(t *testing.T) {
 
 // TestUpload_missingFile_returnsLocalIOError_exit20 asserts a missing
 // mapping path fails as a client-side validation error (exit 20) before
-// any HTTP — distinct from a transport error (50).
+// any HTTP: distinct from a transport error (50).
 func TestUpload_missingFile_returnsLocalIOError_exit20(t *testing.T) {
 	transport := &rt{}
 	hc := &http.Client{Transport: transport}

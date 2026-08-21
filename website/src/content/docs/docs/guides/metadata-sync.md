@@ -1,6 +1,6 @@
 ---
 title: Metadata sync
-description: Keep Google Play store listings and images in git with gplay — pull the live store front, validate offline, preview with dry-run, and apply additively.
+description: "Keep Google Play store listings and images in git with gplay: pull the live store front, validate offline, preview with dry-run, and apply additively."
 sidebar:
   order: 3
 ---
@@ -19,8 +19,8 @@ git add metadata && git commit -m "snapshot store front"
 ```
 
 `pull` writes one directory per locale with `title.txt`,
-`short_description.txt`, `full_description.txt`, optional `video.txt` — the
-same names `fastlane supply` uses, so an existing fastlane tree drops in.
+`short_description.txt`, `full_description.txt`, optional `video.txt`. These
+are the names `fastlane supply` uses, so an existing fastlane tree drops in.
 
 ## Edit, validate, preview
 

@@ -14,7 +14,7 @@
 // managed with its value, so tree.Write writes the file. Because the
 // projection only ever surfaces non-empty values and tree.Read/tree.Write are
 // value-level inverses, re-reading the tree after a pull yields exactly the
-// projection — a later `apply` sees no delta.
+// projection: a later `apply` sees no delta.
 //
 // pull never deletes: tree.Write is additive, so a local locale absent online
 // is left intact on disk. Removing locales/fields no longer online is the
@@ -62,14 +62,14 @@ func (e *usageError) ExitCode() int { return 2 }
 // packageNotFoundError wraps an edits.insert 404 with a hint pointing at
 // `gplay apps list`. Like in `metadata list`, it carries no ExitCode of its
 // own so the wrapped *api.Error (404 -> exit 30) stays authoritative through
-// the Coder chain — an unknown package is an API 4xx, not a CLI misuse.
+// the Coder chain: an unknown package is an API 4xx, not a CLI misuse.
 type packageNotFoundError struct {
 	pkg   string
 	cause error
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
@@ -83,14 +83,14 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
 // classifyEditError adds an actionable hint to the two operator-facing
-// failures of the read-only listings read — an unknown package (404) and a
-// service account that has not been invited on the app (403) — while leaving
+// failures of the read-only listings read: an unknown package (404) and a
+// service account that has not been invited on the app (403), while leaving
 // the wrapped *api.Error to drive the exit code. Every other failure (5xx,
 // network, edit conflict) propagates verbatim. Mirrors `metadata list`.
 func classifyEditError(pkg string, err error) error {
@@ -132,7 +132,7 @@ func fieldValue(l listings.Listing, f listing.Field) string {
 // absent online field is never Set, so it stays unmanaged and tree.Write
 // writes no file for it. A locale whose every managed field is empty online
 // contributes no entry at all (an empty Listing carries no information and
-// would only create an empty directory). Locale order does not matter — the
+// would only create an empty directory). Locale order does not matter: the
 // Tree is keyed by locale and tree.Write iterates it in sorted order.
 //
 // Because the projection only surfaces non-empty values and tree.Read/Write
@@ -177,7 +177,7 @@ type summary struct {
 }
 
 // Payload satisfies output.Renderable. It is a gplay-defined summary of what
-// pull WROTE — not an API pass-through (ADR-0011: pull's JSON is a gplay
+// pull WROTE, not an API pass-through (ADR-0011: pull's JSON is a gplay
 // object, not the edits.listings.list body, since the on-disk result, not the
 // wire payload, is what the operator cares about). Pulled is in tree-sorted
 // locale order for deterministic output.
@@ -272,7 +272,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	dir := in.Dir
@@ -321,7 +321,7 @@ one ` + "`<locale>/<field>.txt`" + ` file per managed field a locale holds
 non-empty online (title, short_description, full_description, video).
 
 Reads the Listings inside a read-only Edit (open → listings.list →
-discard); nothing is committed. The write is additive — a field Play holds
+discard); nothing is committed. The write is additive: a field Play holds
 empty writes no file, and a local locale absent online is left intact.
 Removing locales/fields no longer online is the opt-in job of ` +
 			"`gplay metadata apply --prune`" + `.

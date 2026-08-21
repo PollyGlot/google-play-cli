@@ -12,8 +12,8 @@ Publisher v3 **Discovery snapshot** (#52). Every index entry needs a primary
 key — the thing a caller queries by and the canonical address shown back.
 Three axes were on the table:
 
-- **HTTP `METHOD path`** (`GET /…/tracks/{track}`) — asc's key, forced on the
-  sibling project because OpenAPI is path-keyed.
+- **HTTP `METHOD path`** (`GET /…/tracks/{track}`) — the key an
+  OpenAPI-sourced index is forced into, OpenAPI being path-keyed.
 - **RPC method id** (`androidpublisher.edits.tracks.update`) — Google's native
   dotted id, present verbatim in the Discovery doc as `method.id`.
 - **gplay command** (`tracks set`, `metadata apply`) — the thing users actually
@@ -28,8 +28,9 @@ scope** and deferred to the backlog as a possible future cross-link layer.
 
 Rationale:
 
-- **Native, zero-synthesis key.** Google hands us `method.id` directly; asc had
-  to *manufacture* dot-notation from REST paths because OpenAPI gave it none.
+- **Native, zero-synthesis key.** Google hands us `method.id` directly; an
+  OpenAPI source gives none, forcing dot-notation to be *manufactured* from
+  REST paths.
   Keying off the native id also yields the service discriminator for free (the
   id's leading segment — `androidpublisher.*` vs a future
   `playdeveloperreporting.*`), so the index is multi-service-ready (vitals,
@@ -50,8 +51,9 @@ Rationale:
 ## Consequences
 
 - The query surface keys dot-notation off the native `method.id` — no
-  `pathToDotNotation` synthesis and no `post:` prefix disambiguation that asc
-  needed (Google's ids already encode the action and are self-disambiguating).
+  `pathToDotNotation` synthesis and no `post:` prefix disambiguation, which a
+  path-keyed index needs (Google's ids already encode the action and are
+  self-disambiguating).
 - Switching to gplay-command keying later would be a near-total rewrite
   (different index, generator, and mapping source). The `[experimental]` label
   keeps that option open without promising the current shape.
@@ -61,8 +63,8 @@ Rationale:
 
 ## Considered options
 
-- **HTTP `METHOD path` (asc's key).** Rejected: a synthesized key that discards
-  Google's free native id for a worse one. Path is demoted to a query
-  projection, not the identity.
+- **HTTP `METHOD path`.** Rejected: a synthesized key that discards Google's
+  free native id for a worse one. Path is demoted to a query projection, not
+  the identity.
 - **gplay command.** Rejected as the *primary* key for the derivability and
   scope reasons above; preserved as a backlog cross-link layer.

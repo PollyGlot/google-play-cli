@@ -32,7 +32,7 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return "", &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	return pkg, nil
 }
@@ -47,7 +47,7 @@ const (
 )
 
 // shortHashLen is how many leading hex chars of certificateSha256Hash the table
-// shows — enough to tell two signing keys apart without a 64-char column.
+// shows: enough to tell two signing keys apart without a 64-char column.
 const shortHashLen = 12
 
 // Row is the synthesized one-line-per-artifact view of the grouped response.
@@ -135,7 +135,7 @@ type packageNotFoundError struct {
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found, or no APKs were generated for that versionCode — verify with `gplay apps list` and check the version code of an uploaded bundle: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found, or no APKs were generated for that versionCode: verify with `gplay apps list` and check the version code of an uploaded bundle: %v", e.pkg, e.cause)
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
@@ -145,7 +145,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant it permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant it permission on the app: %v", e.pkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 

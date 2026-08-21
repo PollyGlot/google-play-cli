@@ -53,7 +53,7 @@ func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 			Regions struct {
 				RegionCode []string `json:"regionCode"`
 			} `json:"regions"`
-			// androidSdks.sdkLevels is the SDK-level audience dimension — asserted
+			// androidSdks.sdkLevels is the SDK-level audience dimension: asserted
 			// here so a regression in its JSON shape can't ship silently (the
 			// builder sets it in internal/play/recovery/recovery.go).
 			AndroidSdks struct {
@@ -88,7 +88,7 @@ func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 }
 
 // TestCreate_allUsersTargeting_onWire asserts the --all-users selector reaches
-// the wire as allUsers.isAllUsersRequested — the "everyone" audience dimension,
+// the wire as allUsers.isAllUsersRequested: the "everyone" audience dimension,
 // distinct from the regions/sdk-levels narrowing. Without this the builder could
 // drop or rename the key and no create test would notice.
 func TestCreate_allUsersTargeting_onWire(t *testing.T) {

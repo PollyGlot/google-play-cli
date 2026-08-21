@@ -1,11 +1,11 @@
 // Package apply implements `gplay iap apply`: compute the Reconciliation plan
 // between the on-disk one-time-product catalog (--dir) and the live one, print
-// it, and execute it — writing the v2 model ONLY. Creates ride
+// it, and execute it: writing the v2 model ONLY. Creates ride
 // onetimeproducts.patch with allowMissing (the API has no insert); offer
 // writes ride the per-purchase-option batch endpoints. Legacy inappproducts
 // are inert: an edited, omitted or locally-created legacy file is refused with
 // a message naming the way out (the one-way --migrate promotion arrives with
-// slice #372) — gplay never writes the legacy surface in place (ADR-0041 §8).
+// slice #372): gplay never writes the legacy surface in place (ADR-0041 §8).
 // Any plan containing a delete refuses without --confirm (exit 3); lifecycle
 // states (purchase options, offers) are normalized out and not yet reconciled.
 // Edit-free, package axis. MarkMutating so GPLAY_READONLY refuses it (exit 4).
@@ -34,7 +34,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 )
 
-// managedFields is the v2 product-level projection apply reconciles — and the
+// managedFields is the v2 product-level projection apply reconciles, and the
 // widest updateMask a product patch can ever send (ADR-0041 §5).
 // purchaseOptions is declarable config riding the product patch (the
 // sub-resource only has batch state/delete endpoints); its output-only state
@@ -67,7 +67,7 @@ type Input struct {
 	Migrate        bool
 }
 
-// Payload renders the Reconciliation plan — planned under --dry-run, executed
+// Payload renders the Reconciliation plan: planned under --dry-run, executed
 // otherwise. Migrating marks the creates that are one-way legacy→v2
 // promotions (slice #372), rendered as their own `migrate` op.
 type Payload struct {
@@ -101,7 +101,7 @@ func (p Payload) changeCount() int {
 
 func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 	if markdown {
-		if _, err := fmt.Fprintf(w, "## iap apply — %s\n\n", p.Package); err != nil {
+		if _, err := fmt.Fprintf(w, "## iap apply: %s\n\n", p.Package); err != nil {
 			return err
 		}
 	}
@@ -242,9 +242,9 @@ func (p Payload) renderJSON(w io.Writer) error {
 	})
 }
 
-// guardLegacy enforces the legacy surface's inertness — every legacy file must
+// guardLegacy enforces the legacy surface's inertness: every legacy file must
 // match its live row, every live legacy row must keep its file (unless the v2
-// model shadows it) — and drives the one-way legacy→v2 promotion (slice #372):
+// model shadows it), and drives the one-way legacy→v2 promotion (slice #372):
 // a live legacy product redeclared as a v2 file migrates when --migrate is
 // passed (the returned list feeds the plan's migrate ops), previews under
 // --dry-run without it, and refuses with the named flag (exit 3) on a real
@@ -258,10 +258,10 @@ func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []i
 	for sku, raw := range localLegacy {
 		liveRaw, ok := liveBySKU[sku]
 		if !ok {
-			return nil, exit.Usagef("catalog declares legacy product %q that is not live — gplay never creates legacy inappproducts; declare it as a v2 product instead (v2 schema, no sku field)", sku)
+			return nil, exit.Usagef("catalog declares legacy product %q that is not live: gplay never creates legacy inappproducts; declare it as a v2 product instead (v2 schema, no sku field)", sku)
 		}
 		if !legacyEqual(raw, liveRaw) {
-			return nil, exit.Usagef("catalog edits legacy product %q — gplay never writes the legacy surface in place; to change it, rewrite the file in the v2 schema (productId instead of sku) and apply with --migrate (one-way)", sku)
+			return nil, exit.Usagef("catalog edits legacy product %q: gplay never writes the legacy surface in place; to change it, rewrite the file in the v2 schema (productId instead of sku) and apply with --migrate (one-way)", sku)
 		}
 	}
 	skus := make([]string, 0, len(liveBySKU))
@@ -274,16 +274,16 @@ func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []i
 			continue
 		}
 		if _, inLiveV2 := liveV2[sku]; inLiveV2 {
-			continue // pre-migration shadow of a live v2 product — v2 owns it
+			continue // pre-migration shadow of a live v2 product: v2 owns it
 		}
 		if _, redeclared := localV2[sku]; redeclared {
 			if !migrate && !dryRun {
-				return nil, exit.SafetyFlag("migrate", "catalog declares %q as a v2 product while it is live as a legacy inappproduct — promoting it to v2 is a one-way door (it can never return to inappproducts); pass --migrate to proceed (rehearse first with --dry-run)", sku)
+				return nil, exit.SafetyFlag("migrate", "catalog declares %q as a v2 product while it is live as a legacy inappproduct: promoting it to v2 is a one-way door (it can never return to inappproducts); pass --migrate to proceed (rehearse first with --dry-run)", sku)
 			}
 			migrating = append(migrating, sku)
 			continue
 		}
-		return nil, exit.Usagef("catalog omits legacy product %q — gplay never deletes the legacy surface; restore the file (gplay iap pull) or remove the product in Play Console", sku)
+		return nil, exit.Usagef("catalog omits legacy product %q: gplay never deletes the legacy surface; restore the file (gplay iap pull) or remove the product in Play Console", sku)
 	}
 	return migrating, nil
 }
@@ -309,7 +309,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	local, err := catalog.Read(dir)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, exit.Usagef("catalog directory %q does not exist — run gplay iap pull first, or pass --dir", dir)
+			return nil, exit.Usagef("catalog directory %q does not exist: run gplay iap pull first, or pass --dir", dir)
 		}
 		return nil, err
 	}
@@ -350,7 +350,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Mis-pointed --dir guard (the subscriptions apply stance), against the
 	// union of both live surfaces.
 	if len(local) == 0 && (len(liveV2) > 0 || len(liveLegacy) > 0) {
-		return nil, exit.Usagef("catalog directory %q holds no .json catalog files while %q has %d live one-time product(s) — applying it would delete them all; run gplay iap pull first, or pass the right --dir", dir, pkg, len(liveV2)+len(liveLegacy))
+		return nil, exit.Usagef("catalog directory %q holds no .json catalog files while %q has %d live one-time product(s): applying it would delete them all; run gplay iap pull first, or pass the right --dir", dir, pkg, len(liveV2)+len(liveLegacy))
 	}
 
 	migrating, err := guardLegacy(localLegacy, localV2, liveLegacy, liveV2, in.Migrate, in.DryRun)
@@ -410,7 +410,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if regionsVersion == "" {
 		regionsVersion = iapcmd.DefaultRegionsVersion
 	}
-	// Execution order: grow before shrinking — product upserts, offer batch
+	// Execution order: grow before shrinking: product upserts, offer batch
 	// upserts, offer batch deletes, product deletes. Not transactional; a
 	// failure surfaces immediately and a re-run converges.
 	for _, c := range plan.Creates {
@@ -491,7 +491,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Reconcile the live one-time-product catalog to the catalog files (v2 writes only)",
 		Long: `Compute the create/patch/delete plan between the on-disk catalog (--dir,
 default ` + iapcmd.DefaultDir + `) and the app's live one-time products, then
-execute it — writing the v2 model (monetization.onetimeproducts) only. The
+execute it: writing the v2 model (monetization.onetimeproducts) only. The
 directory is the complete declared catalog: a live v2 product or offer with no
 declaration is a delete in the plan (mirror semantics).
 
@@ -504,9 +504,9 @@ and shows as a distinct "migrate" op in the plan. A legacy product shadowed
 by a live v2 product of the same ID is owned by the v2 file.
 
 --dry-run reads live Play and prints the plan without changing anything.
-Creates and patches run directly (a v2 create is a patch with allowMissing —
+Creates and patches run directly (a v2 create is a patch with allowMissing:
 the API has no insert); a plan containing any delete refuses without
---confirm (exit 3) — CI=true never auto-confirms. Purchase-option and offer
+--confirm (exit 3): CI=true never auto-confirms. Purchase-option and offer
 lifecycle states are not yet reconciled (normalized out of the diff).
 
 --regions-version pins the regions version sent with writes (default

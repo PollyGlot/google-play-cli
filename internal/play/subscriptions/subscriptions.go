@@ -1,12 +1,12 @@
 // Package subscriptions calls the Android Publisher monetization.subscriptions
-// endpoints — the subscription level of the Monetization catalog (CONTEXT.md).
+// endpoints: the subscription level of the Monetization catalog (CONTEXT.md).
 // These are Edit-free, application-scoped calls on the package axis
 // (applications/{packageName}/subscriptions...), like deviceTierConfigs and
 // orders. Raw HTTP (ADR-0007), never the google-go-sdk.
 //
 // This package ships the declarative-catalog surface of PRD #51: the
 // subscription level (list followed to completion, create, patch with a
-// caller-scoped updateMask, delete — slice #367), the pricing helper
+// caller-scoped updateMask, delete: slice #367), the pricing helper
 // convertRegionPrices (#368), and the offers sub-resource plus the base-plan/
 // offer state ops (offers.go, #369). Subscriber price migration (#370) is the
 // remaining monetization write. See ADR-0041.
@@ -61,7 +61,7 @@ type listPage struct {
 }
 
 // List reads the complete live subscription catalog of a package, following
-// nextPageToken to completion (no silent truncation — a missing page would read
+// nextPageToken to completion (no silent truncation: a missing page would read
 // as deletes in a Reconciliation plan). No Edit: the GET is application-scoped.
 func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 	var (
@@ -97,7 +97,7 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 				return nil, &api.Error{Operation: opList, Package: pkg, Message: "decode subscription: " + err.Error(), Cause: err}
 			}
 			if s.ProductID == "" {
-				return nil, &api.Error{Operation: opList, Package: pkg, Message: "response contains a subscription without a productId — refusing a catalog entry that cannot be addressed"}
+				return nil, &api.Error{Operation: opList, Package: pkg, Message: "response contains a subscription without a productId: refusing a catalog entry that cannot be addressed"}
 			}
 			items = append(items, Item{ProductID: s.ProductID, Raw: rawSub})
 		}
@@ -118,7 +118,7 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 
 // Create creates a subscription from the catalog-file resource, sent verbatim
 // as the request body. productId and regionsVersion.version ride as query
-// parameters — the API requires the regions version pin for any write that
+// parameters: the API requires the regions version pin for any write that
 // carries regional prices (ADR-0041 §7).
 func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, body json.RawMessage) (json.RawMessage, error) {
 	q := url.Values{}
@@ -134,7 +134,7 @@ func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion
 }
 
 // Patch updates a subscription from the catalog-file resource, sent verbatim,
-// with the updateMask scoped to exactly the fields the caller reconciles — the
+// with the updateMask scoped to exactly the fields the caller reconciles: the
 // mechanism that keeps anything outside the caller's managed set out of reach
 // of an apply (ADR-0041 §5).
 func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, body json.RawMessage) (json.RawMessage, error) {
@@ -166,7 +166,7 @@ func Delete(ctx context.Context, hc *http.Client, pkg, productID string) error {
 
 // ConvertRegionPrices derives per-region prices from one base price using
 // today's exchange rates and Google's country-specific pricing patterns
-// (monetization.convertRegionPrices) — the pricing helper of the Monetization
+// (monetization.convertRegionPrices): the pricing helper of the Monetization
 // catalog (ADR-0041 §9). Read-only in effect: it computes, it never writes
 // catalog state. The verbatim response is the ADR-0003 pass-through.
 func ConvertRegionPrices(ctx context.Context, hc *http.Client, pkg string, price Money) (json.RawMessage, error) {

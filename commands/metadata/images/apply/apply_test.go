@@ -153,7 +153,7 @@ func exitCodeOf(t *testing.T, err error) int {
 }
 
 // TestRun_realApply_withoutConfirm_refusesExit3 asserts the confirm gate fires
-// before any network, with exit 3 (safety flag required, docs/DESIGN.md §9 —
+// before any network, with exit 3 (safety flag required, docs/DESIGN.md §9,
 // NOT the generic usage exit 2, #408).
 func TestRun_realApply_withoutConfirm_refusesExit3(t *testing.T) {
 	rt := &applyRT{t: t, editID: "e"}
@@ -326,7 +326,7 @@ func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 }
 
 // TestRun_unknownLocale_isUsageError asserts a typo'd --locale is refused
-// upfront (exit 2) instead of silently reconciling nothing — the footgun the
+// upfront (exit 2) instead of silently reconciling nothing: the footgun the
 // --type guard already prevents.
 func TestRun_unknownLocale_isUsageError(t *testing.T) {
 	rt := &applyRT{t: t, editID: "e"}

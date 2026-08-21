@@ -76,7 +76,7 @@ type Renderable interface {
 
 // Render resolves the requested Format for w, picks the matching field
 // from r, and runs it. A nil field surfaces the same uniform
-// "unsupported --output" error as an unknown Format — so a command that
+// "unsupported --output" error as an unknown Format, so a command that
 // ships without (say) a Markdown renderer behaves identically to a typo.
 func Render(w io.Writer, requested Format, r Renderers) error {
 	f, err := Resolve(requested, w)
@@ -100,7 +100,7 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 
 // WriteJSON streams v to w as indented JSON using the gplay-wide
 // "2-space indent, trailing newline" shape. Every command's JSON
-// renderer should call this — keeping the encoder configuration in one
+// renderer should call this: keeping the encoder configuration in one
 // place stops the SetIndent setting from drifting between commands.
 func WriteJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
@@ -114,7 +114,7 @@ func WriteJSON(w io.Writer, v any) error {
 // consistent across commands and can evolve in one place.
 func RegisterFlag(cmd *cobra.Command, dest *string) {
 	cmd.Flags().StringVar(dest, "output", "",
-		"output format: table, json, or markdown (default: auto — table on TTY, json in pipes/CI)")
+		"output format: table, json, or markdown (default: auto, meaning table on TTY and json in pipes/CI)")
 }
 
 // MarkdownTable writes a standard GitHub-Flavored Markdown table: one
@@ -145,7 +145,7 @@ func MarkdownTable(w io.Writer, headers []string, rows [][]string) error {
 	return nil
 }
 
-// joinCells sanitizes each cell (sanitizeCell — strips ANSI escapes and control
+// joinCells sanitizes each cell (sanitizeCell: strips ANSI escapes and control
 // characters, the central markdown render boundary for untrusted API strings)
 // and escapes any literal `|` to `\|` (the GitHub Flavored Markdown convention)
 // before joining with ` | `. Centralising both here keeps every caller of
@@ -186,7 +186,7 @@ func Resolve(requested Format, w io.Writer) (Format, error) {
 // ADR-0005 §"Renderer interface" stays in sync with the code.
 //
 // A bad --output value is CLI misuse, so this returns a *exit.UsageError
-// (ExitCode()=2) per docs/DESIGN.md §9 — the same exit-2 path the sibling
+// (ExitCode()=2) per docs/DESIGN.md §9: the same exit-2 path the sibling
 // --columns validator already uses for an unknown column. Validating the
 // value downstream (here, not in pflag.Set) is why this needs the explicit
 // typing: the root's FlagErrorFunc only sees pflag-level parse errors.

@@ -56,7 +56,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("no package — pass --package <pkg> or run gplay init in your repo")
+		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
 	}
 
 	filter := in.Filter
@@ -86,7 +86,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 }
 
 // warn always notes the reporting delay on stderr so an empty result is not
-// read as a hard "no anomalies, ever" — very recent spikes may not be reported
+// read as a hard "no anomalies, ever": very recent spikes may not be reported
 // yet. Anomalies are exceptional by nature, so an empty result is the common,
 // healthy case; the note just keeps the freshness caveat visible.
 func warn(rc *kernel.RunContext, n int) {
@@ -110,7 +110,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "anomalies",
 		Short: "List Play-detected metric anomalies (unexpected crash/ANR spikes)",
 		Long: `List the anomalies the Play Developer Reporting service has detected for a
-package — unexpected spikes in crash rate, ANR rate, and the other vitals — over
+package (unexpected spikes in crash rate, ANR rate, and the other vitals) over
 a window.
 
   gplay vitals anomalies --package com.example.app

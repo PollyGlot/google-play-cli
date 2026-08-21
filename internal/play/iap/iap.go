@@ -1,5 +1,5 @@
 // Package iap calls the one-time-product surfaces of the Android Publisher
-// API — the IAP branch of the Monetization catalog (PRD #51, ADR-0041 §8):
+// API: the IAP branch of the Monetization catalog (PRD #51, ADR-0041 §8):
 // the v2 model `monetization.onetimeproducts` (nested purchaseOptions →
 // offers) for all reads AND writes, plus a read-only walk of the legacy
 // `inappproducts` so unmigrated products are never invisible (`pull` unions
@@ -51,14 +51,14 @@ type OfferItem struct {
 }
 
 // LegacyItem is one live legacy in-app product: its SKU + verbatim resource
-// (recognizable by its `sku` field — the v2 resource carries `productId`).
+// (recognizable by its `sku` field: the v2 resource carries `productId`).
 type LegacyItem struct {
 	SKU string
 	Raw json.RawMessage
 }
 
 // ListOneTimeProducts reads the complete live v2 catalog, following
-// nextPageToken to completion (no silent truncation — a missing page would
+// nextPageToken to completion (no silent truncation: a missing page would
 // read as deletes in a Reconciliation plan).
 func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 	var (
@@ -97,7 +97,7 @@ func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]It
 				return nil, &api.Error{Operation: opList, Package: pkg, Message: "decode one-time product: " + err.Error(), Cause: err}
 			}
 			if p.ProductID == "" {
-				return nil, &api.Error{Operation: opList, Package: pkg, Message: "response contains a one-time product without a productId — refusing a catalog entry that cannot be addressed"}
+				return nil, &api.Error{Operation: opList, Package: pkg, Message: "response contains a one-time product without a productId: refusing a catalog entry that cannot be addressed"}
 			}
 			items = append(items, Item{ProductID: p.ProductID, Raw: rawP})
 		}
@@ -153,7 +153,7 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err}
 			}
 			if o.ProductID == "" || o.PurchaseOptionID == "" || o.OfferID == "" {
-				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/purchaseOptionId/offerId) — refusing a catalog entry that cannot be addressed"}
+				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/purchaseOptionId/offerId): refusing a catalog entry that cannot be addressed"}
 			}
 			items = append(items, OfferItem{ProductID: o.ProductID, PurchaseOptionID: o.PurchaseOptionID, OfferID: o.OfferID, Raw: rawO})
 		}
@@ -168,11 +168,11 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 	}
 }
 
-// PatchOneTimeProduct upserts (allowMissing=true, the v2 create — the API has
+// PatchOneTimeProduct upserts (allowMissing=true, the v2 create: the API has
 // no insert) or edits (updateMask scoped to the changed managed fields) one
 // product from the catalog-file resource, sent verbatim. The Discovery
 // snapshot paths this method under lowercase `onetimeproducts/`, unlike the
-// reads — followed verbatim.
+// reads: followed verbatim.
 func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, allowMissing bool, body json.RawMessage) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("regionsVersion.version", regionsVersion)
@@ -204,7 +204,7 @@ func DeleteOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID s
 }
 
 // OfferUpdate is one entry of a BatchUpdateOffers call: the offer resource
-// verbatim, upserted when AllowMissing (the offer create — no single insert
+// verbatim, upserted when AllowMissing (the offer create: no single insert
 // exists) or masked to the changed fields.
 type OfferUpdate struct {
 	Offer        json.RawMessage
@@ -213,7 +213,7 @@ type OfferUpdate struct {
 }
 
 // BatchUpdateOffers creates/edits the given offers of one purchase option in
-// one offers:batchUpdate call — the only write path the API exposes for
+// one offers:batchUpdate call: the only write path the API exposes for
 // offers.
 func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, updates []OfferUpdate, regionsVersion string) error {
 	type updateReq struct {
@@ -316,7 +316,7 @@ func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]Lega
 				return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: "decode in-app product: " + err.Error(), Cause: err}
 			}
 			if p.SKU == "" {
-				return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: "response contains an in-app product without a sku — refusing a catalog entry that cannot be addressed"}
+				return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: "response contains an in-app product without a sku: refusing a catalog entry that cannot be addressed"}
 			}
 			items = append(items, LegacyItem{SKU: p.SKU, Raw: rawP})
 		}

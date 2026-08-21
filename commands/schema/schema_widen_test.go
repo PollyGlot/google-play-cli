@@ -129,7 +129,7 @@ func TestSchemaQuery_directTypeWithEnum(t *testing.T) {
 }
 
 // TestZeroMatch_noteOnStderrExit0 asserts a no-match query exits 0 (no error)
-// and writes a note to stderr — so "found nothing" is not mistaken for failure.
+// and writes a note to stderr, so "found nothing" is not mistaken for failure.
 func TestZeroMatch_noteOnStderrExit0(t *testing.T) {
 	r, stderr := runCaptureStderr(t, schemacmd.Input{Query: "zzz-not-a-real-thing"})
 	if stderr == "" {

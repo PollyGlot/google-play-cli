@@ -28,7 +28,7 @@ const (
 
 // reservedIndexUser is the keyring "user" field under which the keyring
 // backend persists its own list of stored Account names. go-keyring exposes
-// Set/Get/Delete keyed by (service, user) — there is no enumeration API —
+// Set/Get/Delete keyed by (service, user): there is no enumeration API,
 // so the backend keeps its own index. The leading and trailing underscores
 // mirror Python dunders to signal "do not poke at this from outside".
 const reservedIndexUser = "__gplay_index__"
@@ -39,7 +39,7 @@ const probeUser = "__gplay_probe__"
 
 // ErrKeyringNotFound is the sentinel exposed for the test double in this
 // package to mirror go-keyring's keyring.ErrNotFound. Production code never
-// touches it — the keyring backend translates both into the package-level
+// touches it: the keyring backend translates both into the package-level
 // ErrNotFound.
 var ErrKeyringNotFound = keyring.ErrNotFound
 
@@ -186,12 +186,12 @@ type SelectOptions struct {
 
 // Select picks the credential backend for this process. It probes the
 // keyring with a Set+Delete round-trip; on any error it falls back to
-// the file backend. No process-level caching is involved — each call is
+// the file backend. No process-level caching is involved: each call is
 // independent.
 //
 // The probe is a real keyring access: on a locked macOS login keychain it
 // can surface the system "keychain wants to unlock" dialog. The kernel
-// therefore does NOT call Select at boot — it defers it behind
+// therefore does NOT call Select at boot: it defers it behind
 // kernel.RunContext.Backend so the probe fires only once a command
 // actually needs a credential (login/logout/status, or any AuthedClient
 // caller). A pre-auth command that fails validation or runs --dry-run
@@ -208,7 +208,7 @@ func Select(_ context.Context, opts SelectOptions) (Backend, string, error) {
 
 // probeKeyring returns true if the keyring accepts a full write+delete
 // round trip. Either step failing (Set or Delete) demotes us to the
-// file backend — if Delete is broken, a later `gplay auth logout` would
+// file backend, if Delete is broken, a later `gplay auth logout` would
 // fail too, and we want that surfaced at selection time rather than
 // halfway through a credential cleanup.
 func probeKeyring(api KeyringAPI) bool {
@@ -226,7 +226,7 @@ func probeKeyring(api KeyringAPI) bool {
 
 // LogBackend writes "keystore: using <label> backend\n" to w. The
 // caller owns the once-per-invocation semantics (see
-// kernel.RunContext.Backend) — this function is a small renderer with
+// kernel.RunContext.Backend): this function is a small renderer with
 // no globals.
 func LogBackend(w io.Writer, label string) {
 	_, _ = fmt.Fprintf(w, "keystore: using %s backend\n", label)

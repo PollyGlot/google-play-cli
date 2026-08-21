@@ -21,7 +21,7 @@ const fakeSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-// saWithEmail returns fakeSAJSON with client_email replaced — useful in
+// saWithEmail returns fakeSAJSON with client_email replaced: useful in
 // precedence cases where every layer needs a distinguishable winner.
 func saWithEmail(email string) string {
 	return strings.Replace(fakeSAJSON, "ci@p.iam.gserviceaccount.com", email, 1)
@@ -30,7 +30,7 @@ func saWithEmail(email string) string {
 // setup returns a Deps wired to a fresh file-backed keystore (caller
 // stashes any bytes it needs). The returned *config.Resolved is the
 // layer-5 surface tests mutate to emulate "this account is active in
-// config". Env vars are no longer touched — the resolver reads its
+// config". Env vars are no longer touched: the resolver reads its
 // EnvServiceAccount / EnvAccount from Inputs.
 func setup(t *testing.T) (resolver.Deps, *config.Resolved, keystore.Backend) {
 	t.Helper()
@@ -153,7 +153,7 @@ func TestResolve_cascade(t *testing.T) {
 }
 
 // TestResolve_precedence asserts the *order* of layers when several are
-// set simultaneously — i.e. the layer that "wins" against every layer
+// set simultaneously: i.e. the layer that "wins" against every layer
 // below it.
 func TestResolve_precedence(t *testing.T) {
 	type seed struct {
@@ -207,7 +207,7 @@ func TestResolve_precedence(t *testing.T) {
 			mustSave(t, be, "acct-active", saWithEmail("active@x"))
 			resolved.ConfigAccount = "acct-active"
 
-			// Apply drops — a non-empty drop field clears that layer.
+			// Apply drops: a non-empty drop field clears that layer.
 			in := resolver.Inputs{
 				ServiceAccountFlag: allLayers.flagSA,
 				AccountFlag:        allLayers.flagAcct,
@@ -238,7 +238,7 @@ func TestResolve_precedence(t *testing.T) {
 	}
 }
 
-// TestResolve_emptyEnvVars_areIgnored — an explicitly empty env var must
+// TestResolve_emptyEnvVars_areIgnored: an explicitly empty env var must
 // fall through, not short-circuit a higher-priority layer.
 func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
 	deps, resolved, be := setup(t)
@@ -254,7 +254,7 @@ func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
 	}
 }
 
-// TestResolve_envServiceAccount_missingPath_failsLoudly — setting layer
+// TestResolve_envServiceAccount_missingPath_failsLoudly: setting layer
 // 3 to a path that doesn't exist must surface the underlying error
 // rather than silently falling through to ErrNoSource.
 func TestResolve_envServiceAccount_missingPath_failsLoudly(t *testing.T) {
@@ -271,7 +271,7 @@ func TestResolve_envServiceAccount_missingPath_failsLoudly(t *testing.T) {
 }
 
 // TestResolve_noSourceHint asserts the actionable hint stays in the
-// ErrNoSource message — users land on this in the cold-start state.
+// ErrNoSource message: users land on this in the cold-start state.
 func TestResolve_noSourceHint(t *testing.T) {
 	deps, _, _ := setup(t)
 	_, err := resolver.Resolve(context.Background(), deps, resolver.Inputs{})

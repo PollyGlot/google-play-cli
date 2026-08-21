@@ -10,7 +10,7 @@ import (
 
 // discoveryDoc mirrors only the fields of a normalized Discovery document the
 // derive walk reads. Everything else (scopes, etag, auth, icons, ...) is
-// intentionally dropped — the index is a trimmed projection (D4).
+// intentionally dropped: the index is a trimmed projection (D4).
 type discoveryDoc struct {
 	Name      string                       `json:"name"`
 	Version   string                       `json:"version"`
@@ -67,7 +67,7 @@ type discoveryItems struct {
 }
 
 // Derive transforms one normalized Discovery snapshot into the Schema index. It
-// is a straight walk of the Discovery structure — no envelope rewrite — keying
+// is a straight walk of the Discovery structure (no envelope rewrite) keying
 // methods by their native id and copying the schema dictionary by type name.
 // Both the generator and the offline integrity test call Derive (via Render),
 // so a re-derivation is byte-identical to the committed index.
@@ -172,8 +172,8 @@ func deriveProperty(p discoveryProperty) Property {
 // Merge folds several derived indexes into one. Methods are keyed by their
 // service-prefixed RPC id and schemas by type name, so entries from distinct
 // services (androidpublisher, playdeveloperreporting) coexist with no
-// collision. The merged Revision is the FIRST input's revision — the primary
-// service's stamp — keeping a single, deterministic top-level value (the index
+// collision. The merged Revision is the FIRST input's revision: the primary
+// service's stamp: keeping a single, deterministic top-level value (the index
 // is keyed by id, not by revision, so this is a label only). Inputs are merged
 // in slice order; with a stable Services order the result is deterministic.
 func Merge(indexes ...Index) Index {
@@ -196,7 +196,7 @@ func Merge(indexes ...Index) Index {
 }
 
 // marshal renders an Index to the committed/embedded form: 2-space indent, HTML
-// escaping off (descriptions carry URLs and punctuation verbatim — ADR-0003),
+// escaping off (descriptions carry URLs and punctuation verbatim: ADR-0003),
 // map keys emitted in sorted order by encoding/json, and a trailing newline.
 func marshal(idx Index) ([]byte, error) {
 	var buf bytes.Buffer

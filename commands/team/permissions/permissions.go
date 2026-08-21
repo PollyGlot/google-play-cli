@@ -1,5 +1,5 @@
 // Package permissions implements `gplay team permissions`: an OFFLINE leaf (no
-// API, no auth, zero network) that publishes gplay's permission vocabulary —
+// API, no auth, zero network) that publishes gplay's permission vocabulary:
 // the curated aliases (alias → account `_GLOBAL` enum → app enum → label →
 // including-bundles) and the frozen role bundles. It is the in-terminal
 // discovery surface (US17) and the contract snapshot for the vocabulary module
@@ -24,7 +24,7 @@ import (
 
 // appEnumNone is the table/markdown placeholder for an account-only alias that
 // has no per-app enum.
-const appEnumNone = "—"
+const appEnumNone = "n/a"
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {

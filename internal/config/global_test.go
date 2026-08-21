@@ -10,7 +10,7 @@ import (
 )
 
 // TestGlobal_addAndSaveLoad_roundTrips verifies the in-memory FS seam
-// without t.TempDir — proof that the FS interface lets the config tests
+// without t.TempDir: proof that the FS interface lets the config tests
 // run hermetic and in-memory.
 func TestGlobal_addAndSaveLoad_roundTrips(t *testing.T) {
 	fsys := config.NewMemFS("/", "/home/u")

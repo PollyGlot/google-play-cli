@@ -69,7 +69,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "view <leaderboardId>",
 		Short: "Read one leaderboard configuration by id",
 		Long: `Read a single leaderboard configuration by its ID. The config carries an
-editable draft and a read-only published detail (there is no publish method —
+editable draft and a read-only published detail (there is no publish method:
 publishing to players is Console-only, ADR-0033). --output json passes the
 LeaderboardConfiguration through verbatim (ADR-0003).`,
 		Args:          cobra.ExactArgs(1),

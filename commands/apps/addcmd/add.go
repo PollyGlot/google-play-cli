@@ -7,9 +7,9 @@
 // The command is variadic (`apps add <pkg>...`, ADR-0040). Each package
 // is an independent unit of work: a probe failure on one does not stop
 // or roll back the others (partial success, not all-or-nothing). The two
-// permissions differ — seeing an App via `apps accessible list`
+// permissions differ: seeing an App via `apps accessible list`
 // (Reporting scope, #347) and being able to `apps add` it
-// (androidpublisher edits scope) are distinct grants — so a mixed batch
+// (androidpublisher edits scope) are distinct grants, so a mixed batch
 // where some packages register and others are refused is the *expected*
 // bootstrap case, not a rare error. The exit code follows a
 // non-retryable-wins rule so an agent driving the CLI does not blindly
@@ -72,11 +72,11 @@ func (e *validationError) Error() string { return e.msg }
 func (e *validationError) ExitCode() int { return 20 }
 
 // Run is the kernel-shaped business function. It resolves the Account
-// once (a whole-command precondition — an unresolved credential aborts
+// once (a whole-command precondition: an unresolved credential aborts
 // the batch before any package is touched), then processes each package
 // independently: validate format (no HTTP), optionally probe the API,
 // register in memory. The global config is saved ONCE at the end so a
-// batch persists exactly the packages whose probe succeeded — a failure
+// batch persists exactly the packages whose probe succeeded: a failure
 // on one package neither blocks nor rolls back the others.
 //
 // A single-package invocation takes a strict non-regression path: it
@@ -85,7 +85,7 @@ func (e *validationError) ExitCode() int { return 20 }
 // print a ✓/✗ line per package and, on any failure, return an
 // aggregateError whose exit code follows the non-retryable-wins rule.
 //
-// The Account the packages are registered under is rc.AccountName — the
+// The Account the packages are registered under is rc.AccountName: the
 // Account that actually backs rc.Account, even when --account /
 // GPLAY_ACCOUNT picked something other than the global active. The
 // pre-fix code used rc.Resolved.ConfigAccount, which silently
@@ -103,8 +103,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Resolve the authenticated client once for the whole batch (probes
-	// reuse it). Skipped entirely under --no-verify — hc stays nil and is
-	// never dereferenced — so a purely offline registration never touches
+	// reuse it). Skipped entirely under --no-verify: hc stays nil and is
+	// never dereferenced, so a purely offline registration never touches
 	// the keyring or the network.
 	var hc *http.Client
 	if !in.NoVerify {
@@ -140,7 +140,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Persist the successful registrations. A Save failure here would lose
-	// packages that already probed clean, so it aborts with the raw error —
+	// packages that already probed clean, so it aborts with the raw error,
 	// but only after reporting the per-package outcomes, so the operator/
 	// agent still sees which packages probed clean (already-computed
 	// information that helps them retry a narrower set) rather than a bare
@@ -163,7 +163,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 // addOne runs the per-package pipeline: client-side format validation,
 // then (unless NoVerify) the edits.insert+delete access probe, then the
 // in-memory registry write. Order matters: format check first (no HTTP),
-// API probe second, registry write last — so a failure at any step
+// API probe second, registry write last, so a failure at any step
 // leaves g untouched for this package and the registry never carries a
 // package the credential cannot reach. g is mutated in place on success;
 // the caller saves once for the whole batch.
@@ -200,12 +200,12 @@ func resolveAccount(rc *kernel.RunContext) (string, *config.Global, error) {
 		//      under; that path is unsupported for `apps add` because the
 		//      registry is per-Account.
 		// An empty name means the resolver can only reach an inline or
-		// no-source layer, so EnsureAccount here is keystore-free — it never
+		// no-source layer, so EnsureAccount here is keystore-free: it never
 		// probes for a stored Account.
 		if err := rc.EnsureAccount(); err != nil {
 			// A present-but-invalid inline credential (--service-account /
 			// GPLAY_SERVICE_ACCOUNT) is a hard error (exit 10, the real cause)
-			// instead of the misdirecting "run gplay auth login" below — never
+			// instead of the misdirecting "run gplay auth login" below: never
 			// register the package under a fallback Account (ADR-0020).
 			return "", nil, err
 		}
@@ -219,7 +219,7 @@ func resolveAccount(rc *kernel.RunContext) (string, *config.Global, error) {
 	// Load the global config BEFORE the probe so a missing-Account registry
 	// inconsistency is caught client-side. Otherwise the probe burns an HTTP
 	// round-trip against Google only to fail post-flight on registry.Add
-	// with ErrUnknownAccount — and the resulting "registry: unknown account"
+	// with ErrUnknownAccount, and the resulting "registry: unknown account"
 	// message looks like CLI misuse when really it's a `gplay auth login`
 	// workflow gap (the keystore has the credential but the global config
 	// doesn't list the Account).
@@ -237,7 +237,7 @@ func resolveAccount(rc *kernel.RunContext) (string, *config.Global, error) {
 }
 
 // dedup removes duplicate package arguments, preserving first-seen order.
-// `apps add a b a` probes and registers `a` once — the second mention is
+// `apps add a b a` probes and registers `a` once: the second mention is
 // not a distinct unit of work and must not produce a second ✓/✗ line or a
 // redundant probe.
 func dedup(in []string) []string {
@@ -272,7 +272,7 @@ func successLine(pkg, account string, noVerify bool) string {
 	return fmt.Sprintf("✓ %s %q under Account %q\n", verb, pkg, account)
 }
 
-// printAdded writes the single-package success line — byte-for-byte the
+// printAdded writes the single-package success line: byte-for-byte the
 // pre-variadic stderr output.
 func printAdded(rc *kernel.RunContext, pkg, account string, noVerify bool) {
 	_, _ = fmt.Fprint(rc.Stderr, successLine(pkg, account, noVerify))
@@ -281,7 +281,7 @@ func printAdded(rc *kernel.RunContext, pkg, account string, noVerify bool) {
 // reportBatch prints one line per package to stderr for a multi-package
 // run: a ✓ for each registration and a ✗ (with the error and its exit
 // code) for each failure, followed by a one-line tally. stderr is the
-// only report channel — `apps add` has no --output (its result is a
+// only report channel: `apps add` has no --output (its result is a
 // side effect on the local registry, not an API body), so this is what an
 // operator or agent reads to see which packages landed.
 func reportBatch(rc *kernel.RunContext, results []pkgResult, account string, noVerify bool) {
@@ -340,7 +340,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Register one or more Android package names (e.g. com.example.myapp) under
 the active Account in gplay's local registry. By default ` + "`apps add`" + `
 validates access to each package by opening and immediately discarding a
-Google Play Edit on it — a cheap probe that catches typos and missing
+Google Play Edit on it: a cheap probe that catches typos and missing
 per-app permission grants at registration time rather than weeks later in
 CI.
 

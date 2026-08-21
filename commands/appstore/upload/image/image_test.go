@@ -130,7 +130,7 @@ func writeImage(t *testing.T) string {
 // TestRun_requestShape asserts the command emits the resumable upload on the
 // app store axis: the upload host, the store-keyed path with the hosted app as
 // its own segment, uploadType=resumable, and no Edit. The announced type is the
-// point of difference with the sibling APK upload — see the sniff test below.
+// point of difference with the sibling APK upload: see the sniff test below.
 func TestRun_requestShape(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -174,7 +174,7 @@ func TestRun_sniffsContentTypeFromBytes(t *testing.T) {
 }
 
 // TestRun_rendersTrackingID asserts the human views lead with the imageId and
-// say where it has to be cited — as the listing's appIconId or one of its
+// say where it has to be cited, as the listing's appIconId or one of its
 // screenshotId[] entries. An id with no destination is a dead end.
 func TestRun_rendersTrackingID(t *testing.T) {
 	rt := &testRoundTripper{respBody: `{"imageId":"img-42"}`}
@@ -238,7 +238,7 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 // TestRun_storePackageFallsBackToEnv asserts the app store axis reads the
 // ADR-0043 cascade: an omitted --store-package takes $GPLAY_APP_STORE_PACKAGE,
 // so a CI job exports it once for the whole namespace. The project pin never
-// feeds this axis — it pins a package, never a store.
+// feeds this axis: it pins a package, never a store.
 func TestRun_storePackageFallsBackToEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
 	rt := &testRoundTripper{}
@@ -255,7 +255,7 @@ func TestRun_storePackageFallsBackToEnv(t *testing.T) {
 
 // TestRun_dryRun_noHTTPNoFileRead asserts --dry-run resolves the target,
 // performs no HTTP call at all (not even the token exchange) and never opens
-// the file — the path deliberately does not exist, so a CI job can rehearse an
+// the file: the path deliberately does not exist, so a CI job can rehearse an
 // upload before its build step has produced the asset.
 func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 	rt := &testRoundTripper{}
@@ -303,7 +303,7 @@ func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 }
 
 // TestRun_missingStorePackage_exit2 asserts the app store package name is
-// required and its absence is CLI misuse — it identifies the caller and has no
+// required and its absence is CLI misuse: it identifies the caller and has no
 // project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")

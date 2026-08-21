@@ -1,5 +1,5 @@
 // Package imageslist implements `gplay metadata images list`: a read-only
-// summary of the Store images live on Google Play for a package — one row per
+// summary of the Store images live on Google Play for a package: one row per
 // non-empty slot (a (locale, imageType) pair), showing the image count and
 // each image's content sha256. It reads ONLY from Play (never the local
 // tree): resolve --package, open a read-only Edit, enumerate the app's
@@ -9,7 +9,7 @@
 //
 // The API exposes no "list every image" endpoint, so list iterates the 9
 // types × the app's locales (the locales are those carrying a Listing). The
-// API also carries no order field — display order is list order (ADR-0013),
+// API also carries no order field: display order is list order (ADR-0013),
 // so the per-image sha256 are reported in the order images.list returns them.
 package imageslist
 
@@ -65,7 +65,7 @@ type packageNotFoundError struct {
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
@@ -75,7 +75,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -104,7 +104,7 @@ type Slot struct {
 
 // Payload satisfies output.Renderable. Slots are in (locale, canonical type)
 // order for deterministic output; only non-empty slots are carried (an empty
-// slot has nothing to report — same stance as `pull`, which writes nothing
+// slot has nothing to report: same stance as `pull`, which writes nothing
 // for it).
 type Payload struct {
 	Package string
@@ -215,7 +215,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	// [experimental] --type narrows the read to a single AppImageType.
@@ -226,7 +226,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ty, ok := images.ParseType(in.Type)
 		if !ok {
 			return nil, &validationError{msg: fmt.Sprintf(
-				"metadata images list: %q is not a valid image type — one of: %s",
+				"metadata images list: %q is not a valid image type: one of: %s",
 				in.Type, joinTypes(images.Types()))}
 		}
 		types = []images.Type{ty}
@@ -314,10 +314,10 @@ type (one of: icon, featureGraphic, tvBanner, promoGraphic,
 phoneScreenshots, sevenInchScreenshots, tenInchScreenshots, tvScreenshots,
 wearScreenshots) across every locale, instead of walking all nine. An
 unknown value is refused client-side (exit 20) before any API call.
---output json keeps its exact shape — --type only narrows which slots
+--output json keeps its exact shape: --type only narrows which slots
 appear.
 
-(--output json carries each slot's images verbatim — the edits.images.list
+(--output json carries each slot's images verbatim: the edits.images.list
 objects, id/url/sha1/sha256; --output markdown renders a Markdown table.)`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,

@@ -1,7 +1,7 @@
 // Package devicetiers performs the hand-rolled HTTP calls for an app's Device
 // Tier Configs (the applications.deviceTierConfigs resource; ADR-0007 raw HTTP).
 // Like internal/play/datasafety these calls are app-scoped and OUTSIDE the Edit
-// model — a direct POST/GET on /applications/{packageName}/deviceTierConfigs,
+// model: a direct POST/GET on /applications/{packageName}/deviceTierConfigs,
 // not an edit transaction. The resource is immutable: the API exposes only
 // create/get/list (no update/patch/delete), and deviceTierConfigId is
 // server-assigned, so a create can never overwrite an existing config.
@@ -29,7 +29,7 @@ const (
 	opList   = "deviceTierConfigs.list"
 )
 
-// Config is the parsed DeviceTierConfig — just the fields the human views need.
+// Config is the parsed DeviceTierConfig: just the fields the human views need.
 // The deviceGroups / deviceTiers / userCountrySets are kept as raw messages so
 // the table view can count them without re-modelling Google's nested schema
 // (the full body round-trips verbatim via the raw return).

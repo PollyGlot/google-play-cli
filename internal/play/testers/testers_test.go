@@ -19,7 +19,7 @@ import (
 
 // rt is a minimal RoundTripper that returns a canned response for the
 // testers.get GET (and the testers.update PUT) and records the request
-// line — plus the request body, for write ops — for assertion.
+// line (plus the request body, for write ops) for assertion.
 type rt struct {
 	t      *testing.T
 	status int
@@ -123,8 +123,8 @@ func TestUpdate_putsFullReplacement_andParsesResponse(t *testing.T) {
 }
 
 // TestUpdate_clear_putsEmptyArray asserts that Update with a nil group
-// list sends an explicit empty array ("googleGroups":[]) — the --clear
-// semantics — NOT a null, so the API clears the audience rather than
+// list sends an explicit empty array ("googleGroups":[]): the --clear
+// semantics, NOT a null, so the API clears the audience rather than
 // rejecting a malformed body.
 func TestUpdate_clear_putsEmptyArray(t *testing.T) {
 	transport := &rt{t: t, body: `{"googleGroups":[]}`}

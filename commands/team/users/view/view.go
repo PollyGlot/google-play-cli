@@ -1,5 +1,5 @@
 // Package view implements `gplay team users view <email>`: a read-only, deep
-// view of ONE member of the Developer account, addressed by email — the
+// view of ONE member of the Developer account, addressed by email: the
 // `team users` analogue of `apps view` / `tracks view`. The human views show a
 // scalar header (email, accessState, an admin marker, account-wide permissions)
 // then the member's Grants one row each; --output json is the matched User
@@ -7,7 +7,7 @@
 //
 // The Play Developer API has no users.get and no standalone grants endpoint (a
 // Grant is a field of the User), so reading one member means listing users.list
-// to completion and filtering by email — the same cost as `team grants list --user`.
+// to completion and filtering by email: the same cost as `team grants list --user`.
 // A member that does not exist is a not-found (exit 30) even though the
 // underlying users.list returns HTTP 200: addressing a missing resource mirrors
 // `tracks view`/`apps view`. The developer-id resolves through the ADR-0015
@@ -49,7 +49,7 @@ type Input struct {
 type memberNotFoundError struct{ email string }
 
 func (e *memberNotFoundError) Error() string {
-	return fmt.Sprintf("member %q is not on the Developer account — run `gplay team users list` to see its members", e.email)
+	return fmt.Sprintf("member %q is not on the Developer account: run `gplay team users list` to see its members", e.email)
 }
 func (e *memberNotFoundError) ExitCode() int { return 30 }
 
@@ -63,7 +63,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to read users on developer account %s — grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
+	return fmt.Sprintf("service account is not authorized to read users on developer account %s: grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -76,7 +76,7 @@ type developerNotFoundError struct {
 }
 
 func (e *developerNotFoundError) Error() string {
-	return fmt.Sprintf("developer account %s not found, or this credential is not a member of it — verify the developerId in your Play Console URL: %v", e.developerID, e.cause)
+	return fmt.Sprintf("developer account %s not found, or this credential is not a member of it: verify the developerId in your Play Console URL: %v", e.developerID, e.cause)
 }
 func (e *developerNotFoundError) Unwrap() error { return e.cause }
 
@@ -104,7 +104,7 @@ var grantColumns = output.NewColumnSet(
 // Payload satisfies output.Renderable. Raw carries the matched User's verbatim
 // bytes for the ADR-0003 JSON pass-through; the typed fields drive the
 // human-shaped table and markdown views. None of the typed fields are
-// json-tagged — the JSON path is the raw pass-through, never the struct.
+// json-tagged: the JSON path is the raw pass-through, never the struct.
 type Payload struct {
 	Email       string           `json:"-"`
 	AccessState string           `json:"-"`
@@ -132,7 +132,7 @@ func adminCell(admin bool) string {
 }
 
 // renderTable writes the scalar header as `FIELD<TAB>VALUE` lines (like
-// `apps view`), then — when the member has any Grants — the shared grants table
+// `apps view`), then (when the member has any Grants) the shared grants table
 // beneath. A grant-less member shows GRANTS\t0 and no sub-table.
 func renderTable(w io.Writer, p Payload) error {
 	rows := [][2]string{
@@ -170,7 +170,7 @@ func renderJSON(w io.Writer, p Payload) error {
 }
 
 // renderMarkdown renders the member as a record: a level-2 heading (the email)
-// then a `- **Field**: value` list (docs/DESIGN.md §7), and — when present — the
+// then a `- **Field**: value` list (docs/DESIGN.md §7), and (when present) the
 // grants as a GitHub-Flavored Markdown table, so a pasted report stands alone.
 func renderMarkdown(w io.Writer, p Payload) error {
 	if _, err := fmt.Fprintf(w, "## %s\n\n- **Access state**: %s\n- **Admin**: %s\n- **Permissions**: %s\n- **Grants**: %d\n",
@@ -197,7 +197,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
-		return nil, exit.Usagef("no member — pass an email: gplay team users view <email>")
+		return nil, exit.Usagef("no member: pass an email: gplay team users view <email>")
 	}
 
 	developerID, err := teamcmd.DeveloperID(rc, in.DeveloperID)
@@ -242,7 +242,7 @@ accessState, account-wide permissions (account-wide admins are marked in the
 ADMIN field), and their per-app Grants one row each.
 
 The Play Developer API has no users.get (a member's Grants are a field of the
-User), so this lists the account and filters client-side — the same cost as
+User), so this lists the account and filters client-side: the same cost as
 ` + "`gplay team grants list --user`" + `. A member that is not on the account fails with
 exit 30 (run ` + "`gplay team users list`" + ` to see who is).
 

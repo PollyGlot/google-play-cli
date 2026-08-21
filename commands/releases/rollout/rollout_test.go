@@ -89,7 +89,7 @@ func jsonResp(status int, body string) *http.Response {
 }
 
 // signedSAJSON returns a minimal but well-formed service-account JSON with
-// a real RSA key — enough for token.Source to mint a signed JWT.
+// a real RSA key: enough for token.Source to mint a signed JWT.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -262,7 +262,7 @@ func TestRunComplete_happyPath(t *testing.T) {
 
 // TestRun_productionWriteWithoutConfirm_returnsExit3 asserts the production
 // confirm gate at the CLI: complete on production without --confirm refuses
-// with exit 3 (safety flag required, docs/DESIGN.md §9 — NOT the generic
+// with exit 3 (safety flag required, docs/DESIGN.md §9, NOT the generic
 // usage exit 2, #408) before any HTTP.
 func TestRun_productionWriteWithoutConfirm_returnsExit3(t *testing.T) {
 	rt := &stateRT{t: t}
@@ -404,7 +404,7 @@ func assertExit(t *testing.T, err error, want int) {
 }
 
 // confirmStderr runs fn with a stderr buffer wired onto rc and returns what
-// landed there — the shared setup for the ✓-confirmation tests below.
+// landed there: the shared setup for the ✓-confirmation tests below.
 func confirmStderr(t *testing.T, rt http.RoundTripper, fn func(rc *kernel.RunContext) error) string {
 	t.Helper()
 	rc := newRC(t, rt)
@@ -441,7 +441,7 @@ func TestRunRollout_emitsConfirmationWithUserFractionPercent(t *testing.T) {
 }
 
 // TestRunHalt_emitsConfirmation asserts halt prints a ✓ line naming the track
-// and the halted status (no userFraction — only inProgress shows it).
+// and the halted status (no userFraction: only inProgress shows it).
 func TestRunHalt_emitsConfirmation(t *testing.T) {
 	rt := &stateRT{
 		t:                  t,

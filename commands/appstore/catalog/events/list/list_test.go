@@ -199,7 +199,7 @@ func TestRun_nextPageTokenNoted(t *testing.T) {
 }
 
 // TestRun_timeFlagValidation asserts every bad time input is CLI misuse (exit 2)
-// caught before any HTTP call — the fail-fast contract for CI.
+// caught before any HTTP call: the fail-fast contract for CI.
 func TestRun_timeFlagValidation(t *testing.T) {
 	cases := []struct {
 		name       string

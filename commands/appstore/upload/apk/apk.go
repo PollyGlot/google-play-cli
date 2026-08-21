@@ -2,7 +2,7 @@
 // [--package <pkg>] <file.apk>`: stream an APK for a hosted app to
 // `appstoreappsreview.uploadApk` and print the tracking id Google assigns it.
 //
-// The id — not the transfer — is the product of the call. `gplay appstore
+// The id (not the transfer) is the product of the call. `gplay appstore
 // update` cites it in `activeApks.activeApkSets[].baseApkId` and
 // `.splitApkId[]`, so an operator uploads a binary ONCE and refers to it by id
 // afterwards instead of re-sending gigabytes on every metadata change. Nothing
@@ -16,9 +16,9 @@
 //
 // MarkMutating at registration so GPLAY_READONLY refuses it (exit 4); --dry-run
 // previews the resolved target without any HTTP call AND without opening the
-// file. Edit-free — the call is not under `/edits/`. No confirmation gate
+// file. Edit-free: the call is not under `/edits/`. No confirmation gate
 // (ADR-0043): a gate is for the irreversible *and* externally visible, and an
-// upload is neither — it mints an id and changes nothing a user can see.
+// upload is neither: it mints an id and changes nothing a user can see.
 package apk
 
 import (
@@ -38,7 +38,7 @@ import (
 // citeHint is the one thing a caller must know after the upload succeeds: the
 // id is worthless unless it reaches `appstore update`. Spelled once, shared by
 // the human views and the stderr confirmation, so the three never drift.
-const citeHint = "cite this apkId in `gplay appstore update` as activeApks.activeApkSets[].baseApkId (or .splitApkId[]) — the APK is distributed by that call, not by this one"
+const citeHint = "cite this apkId in `gplay appstore update` as activeApks.activeApkSets[].baseApkId (or .splitApkId[]): the APK is distributed by that call, not by this one"
 
 // Input is the request-shaped struct cobra builds from the flags plus the
 // positional file path.
@@ -71,7 +71,7 @@ func (p Payload) Renderers() output.Renderers {
 }
 
 // rows is the identifying set shared by the human views, in a fixed order with
-// APK_ID first — it is the only value the caller has to carry forward.
+// APK_ID first: it is the only value the caller has to carry forward.
 func (p Payload) rows() [][2]string {
 	return [][2]string{
 		{"APK_ID", p.APKID},
@@ -82,7 +82,7 @@ func (p Payload) rows() [][2]string {
 }
 
 // renderTable writes `FIELD<TAB>VALUE` lines (like `apps view` / `orders
-// view`), then the cite hint — the id alone does not tell an operator where it
+// view`), then the cite hint: the id alone does not tell an operator where it
 // is meant to go. A dry-run leads with the rehearsed action instead.
 func (p Payload) renderTable(w io.Writer) error {
 	if p.DryRun {
@@ -124,7 +124,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 }
 
 // dryRunView is the gplay-shaped --dry-run JSON: the resolved target plus the
-// machine-readable `requires` array (ADR-0017 §4) — empty, because an upload
+// machine-readable `requires` array (ADR-0017 §4): empty, because an upload
 // needs no safety flag beyond a writable environment.
 type dryRunView struct {
 	DryRun              bool     `json:"dryRun"`
@@ -138,7 +138,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, AppStorePackageName: p.StorePackage, PackageName: p.Package, File: p.Path, Requires: []string{}})
 	}
-	// ADR-0003: the API response is passed through verbatim — it is where the
+	// ADR-0003: the API response is passed through verbatim: it is where the
 	// tracking id comes from in the first place. There is no empty-body
 	// fallback here, unlike the acknowledgement-only verbs in this namespace:
 	// an upload whose response carried no id never reaches this point, the
@@ -148,8 +148,8 @@ func (p Payload) renderJSON(w io.Writer) error {
 }
 
 // Run is the business function the kernel invokes. It resolves the two
-// addressing values and the local path, then — unless --dry-run short-circuits
-// before any network and before the file is even opened — streams the APK.
+// addressing values and the local path, then, unless --dry-run short-circuits
+// before any network and before the file is even opened: streams the APK.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	path := strings.TrimSpace(in.Path)
 	if path == "" {
@@ -187,7 +187,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr; stdout stays
 	// data-only. The line names the id AND its destination, because an id with
 	// nowhere to go is a silent dead end.
-	rc.Confirmf("uploaded APK %s for hosted app %s in app store %s — apkId %s; %s", path, pkg, storePackage, apkID, citeHint)
+	rc.Confirmf("uploaded APK %s for hosted app %s in app store %s: apkId %s; %s", path, pkg, storePackage, apkID, citeHint)
 	return Payload{StorePackage: storePackage, Package: pkg, Path: path, APKID: apkID, Raw: raw}, nil
 }
 
@@ -206,12 +206,12 @@ tracking id (apkId) Google assigns it.
 The id is the point of the call. Nothing is distributed here: the uploaded APK
 sits inert until a later ` + "`gplay appstore update`" + ` names its id in
 activeApks.activeApkSets[].baseApkId (the base APK) or .splitApkId[] (the
-splits). Upload the binary once, then cite the id — re-sending gigabytes on
+splits). Upload the binary once, then cite the id: re-sending gigabytes on
 every metadata change is never necessary.
 
 Two identifiers address the call, and mixing them up is the common mistake:
 
-  --store-package  the app store's OWN package name (the caller — the
+  --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
                    falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
   --package        the hosted app's package name (the subject), defaulting to
@@ -224,7 +224,7 @@ restarting. The command is exempt from the 60s control-plane timeout; pass the
 global --timeout to bound it explicitly.
 
 The hosted app record must already exist: run ` + "`gplay appstore create`" + ` first.
-The call is Edit-free — it opens no Edit and joins none.
+The call is Edit-free: it opens no Edit and joins none.
 
 No --confirm is required: an upload is inert (it produces an id and changes
 nothing a user can see), so it fails the ADR-0043 gate criterion of being

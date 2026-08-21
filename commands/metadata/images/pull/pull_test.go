@@ -181,7 +181,7 @@ func TestRun_writesLiveSlotsToDisk(t *testing.T) {
 }
 
 // TestRun_pullIsCodecRoundTrippable asserts the on-disk result reads back via
-// the codec to exactly the downloaded byte sequences — the structural basis of
+// the codec to exactly the downloaded byte sequences: the structural basis of
 // the pull → apply no-op (ADR-0013).
 func TestRun_pullIsCodecRoundTrippable(t *testing.T) {
 	listingsResp, slots, blobs := fixture()

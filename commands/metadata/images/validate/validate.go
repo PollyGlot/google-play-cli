@@ -1,13 +1,13 @@
 // Package imagesvalidate implements `gplay metadata images validate`: an
 // OFFLINE lint of the on-disk Store-image tree. Like `metadata validate`
-// (text), it never authenticates and never makes an HTTP call — it reads the
+// (text), it never authenticates and never makes an HTTP call: it reads the
 // image tree off disk via internal/metadata/imagetree and runs the pure
 // internal/metadata/imagevalidate engine, so it is safe in a pre-commit hook
 // or a CI gate with no credentials present.
 //
 // This is the offline half of the image sync model (ADR-0013 §4): the online
 // `metadata images apply --dry-run` diffs disk against Play, while this
-// command checks the rules that need no network — exact dimensions, screenshot
+// command checks the rules that need no network: exact dimensions, screenshot
 // side range + aspect ratio, format (png/jpeg), per-image byte size, and
 // per-slot count. A non-empty result is exit 20 (client-side validation). It
 // is the DEFAULT gate but never the ultimate authority: `images apply` runs it
@@ -47,7 +47,7 @@ type dirError struct {
 }
 
 func (e *dirError) Error() string {
-	return fmt.Sprintf("cannot read metadata tree at %s: %v — pass --dir <path> to point at your metadata directory", e.dir, e.cause)
+	return fmt.Sprintf("cannot read metadata tree at %s: %v: pass --dir <path> to point at your metadata directory", e.dir, e.cause)
 }
 func (e *dirError) ExitCode() int { return 20 }
 func (e *dirError) Unwrap() error { return e.cause }
@@ -167,7 +167,7 @@ exact dimensions (icon 512×512, feature graphic 1024×500, TV banner
 format (PNG/JPEG only, read from the bytes), per-image byte size, and
 per-slot count (≤8).
 
-This command is OFFLINE — no credentials, no network — so it is safe in a
+This command is OFFLINE (no credentials, no network) so it is safe in a
 pre-commit hook or a CI gate. Diffing the tree against what is live on Play
 is the job of ` + "`gplay metadata images apply --dry-run`" + `.
 

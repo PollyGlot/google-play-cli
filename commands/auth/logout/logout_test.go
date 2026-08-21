@@ -51,7 +51,7 @@ func TestRun_pureBusiness(t *testing.T) {
 
 // TestRun_withoutConfirm_refusesExit3 asserts the destructive-op gate: logout
 // without --confirm refuses with exit 3 (safety flag required,
-// docs/DESIGN.md §9 — NOT the generic usage exit 2, #408), names the flag for
+// docs/DESIGN.md §9, NOT the generic usage exit 2, #408), names the flag for
 // the --output json envelope's requires[], and removes nothing.
 func TestRun_withoutConfirm_refusesExit3(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))

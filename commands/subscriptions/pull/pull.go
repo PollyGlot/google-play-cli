@@ -1,6 +1,6 @@
 // Package pull implements `gplay subscriptions pull`: read the complete live
 // subscription catalog (monetization.subscriptions.list, followed to
-// completion) and write it as the on-disk Monetization catalog — one
+// completion) and write it as the on-disk Monetization catalog: one
 // <productId>.json per subscription under --dir, stale catalog files removed,
 // so pull-then-apply is a no-op (ADR-0041). Edit-free, package axis. The
 // files are the API resources verbatim; --output json passes the merged
@@ -66,7 +66,7 @@ func (p Payload) renderTable(w io.Writer) error {
 }
 
 func (p Payload) renderMarkdown(w io.Writer) error {
-	if _, err := fmt.Fprintf(w, "## subscriptions pull — %s\n\n", p.Package); err != nil {
+	if _, err := fmt.Fprintf(w, "## subscriptions pull: %s\n\n", p.Package); err != nil {
 		return err
 	}
 	rows := make([][]string, 0, len(p.Written)+len(p.Removed))
@@ -100,11 +100,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	// Mirror semantics make pull destructive locally: an unexpectedly-empty
 	// live listing (mis-set --package, scope loss) would erase a populated
-	// catalog directory. Refuse instead — the apply-side empty-vs-live guard,
+	// catalog directory. Refuse instead: the apply-side empty-vs-live guard,
 	// mirrored (ADR-0041).
 	if len(items) == 0 {
 		if existing, readErr := catalog.Read(dir); readErr == nil && len(existing) > 0 {
-			return nil, exit.Usagef("live subscription catalog of %q is empty while %q holds %d catalog file(s) — refusing to erase the local catalog; verify --package, or delete the files yourself if the empty live catalog is intended", pkg, dir, len(existing))
+			return nil, exit.Usagef("live subscription catalog of %q is empty while %q holds %d catalog file(s): refusing to erase the local catalog; verify --package, or delete the files yourself if the empty live catalog is intended", pkg, dir, len(existing))
 		}
 	}
 	// Offers are a separate sub-resource (no embedding in the Subscription
@@ -132,7 +132,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	// Merge the pages back into one ListSubscriptionsResponse envelope so the
 	// json view stays an API-shaped pass-through (the fully-consumed
-	// nextPageToken is the only field dropped) — the team users list precedent.
+	// nextPageToken is the only field dropped): the team users list precedent.
 	merged, err := json.Marshal(struct {
 		Subscriptions []json.RawMessage `json:"subscriptions"`
 	}{Subscriptions: rawSubs})

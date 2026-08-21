@@ -87,7 +87,7 @@ func TestInit_isIdempotent_onSecondCall(t *testing.T) {
 	if err := config.Init(context.Background(), config.OSFS{}, repo, home, "com.example.app"); err != nil {
 		t.Fatalf("Init first: %v", err)
 	}
-	// Append a user line to .gitignore — Init must not blow it away on rerun.
+	// Append a user line to .gitignore: Init must not blow it away on rerun.
 	giPath := filepath.Join(repo, ".gplay", ".gitignore")
 	if err := appendLine(giPath, "# my custom rule\n*.swp\n"); err != nil {
 		t.Fatal(err)

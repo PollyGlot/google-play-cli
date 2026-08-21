@@ -1,5 +1,5 @@
 // Package convert implements `gplay subscriptions prices convert`: derive
-// per-region prices from one base price via monetization.convertRegionPrices —
+// per-region prices from one base price via monetization.convertRegionPrices:
 // the pricing helper of the Monetization catalog (ADR-0041 §9), for filling a
 // base plan's regionalConfigs in bulk before an apply. A computation, not a
 // write: it never touches catalog state, so it is not marked mutating. `convert`
@@ -68,7 +68,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	for _, r := range p.Rows {
 		rows = append(rows, []string{r.Region, r.Amount, r.Currency})
 	}
-	if _, err := fmt.Fprintf(w, "## subscriptions prices convert — %s\n\n", p.Package); err != nil {
+	if _, err := fmt.Fprintf(w, "## subscriptions prices convert: %s\n\n", p.Package); err != nil {
 		return err
 	}
 	return output.MarkdownTable(w, []string{"REGION", "PRICE", "CURRENCY"}, rows)
@@ -80,11 +80,11 @@ func ParseMoney(amount, currency string) (subscriptions.Money, error) {
 	amount = strings.TrimSpace(amount)
 	currency = strings.ToUpper(strings.TrimSpace(currency))
 	if len(currency) != 3 {
-		return subscriptions.Money{}, exit.Usagef("invalid --currency %q — pass an ISO-4217 code like USD or EUR", currency)
+		return subscriptions.Money{}, exit.Usagef("invalid --currency %q: pass an ISO-4217 code like USD or EUR", currency)
 	}
 	units, frac, _ := strings.Cut(amount, ".")
 	if units == "" || strings.Trim(units, "0123456789") != "" || strings.Trim(frac, "0123456789") != "" || len(frac) > 9 {
-		return subscriptions.Money{}, exit.Usagef("invalid --price %q — pass a non-negative decimal amount like 4.99", amount)
+		return subscriptions.Money{}, exit.Usagef("invalid --price %q: pass a non-negative decimal amount like 4.99", amount)
 	}
 	var nanos int32
 	if frac != "" {
@@ -157,7 +157,7 @@ and Google's country-specific pricing patterns (monetization.convertRegionPrices
 A computation, not a write: use it to fill a base plan's regionalConfigs in the
 catalog files in bulk, then rehearse with "gplay subscriptions apply --dry-run".
 
---output json is the ConvertRegionPricesResponse verbatim — the regional Money
+--output json is the ConvertRegionPricesResponse verbatim: the regional Money
 objects can be pasted into a catalog file's regionalConfigs.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,

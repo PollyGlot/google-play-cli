@@ -19,7 +19,7 @@ import (
 // pre-registry config files round-trip unchanged.
 //
 // DeveloperID is the Play Console Developer account this credential
-// administers (ADR-0015) — the org `gplay team` is keyed by. It rides on the
+// administers (ADR-0015): the org `gplay team` is keyed by. It rides on the
 // Account (not the committed project pin) because the org follows the
 // credential, not the repo, and the API offers no way to discover it; like
 // Packages it is omitempty so pre-team config files round-trip unchanged.
@@ -37,7 +37,7 @@ type Global struct {
 
 // unknownAccountError is the type behind ErrUnknownAccount. Carrying
 // ExitCode() on the value lets exit.For dispatch the "unknown account"
-// case to exit code 2 (CLI misuse — the user named something we don't
+// case to exit code 2 (CLI misuse: the user named something we don't
 // know about) without a sentinel-specific branch in cmd/gplay/main.go.
 type unknownAccountError struct{}
 
@@ -69,7 +69,7 @@ func LoadGlobalOrEmpty(_ context.Context, fsys FS, path string) (*Global, error)
 
 // Save writes the global config to path with mode 0600, creating the parent
 // directory if needed. ctx is threaded for future cancellation; fsys is the
-// FS seam — pass OSFS{} in production.
+// FS seam: pass OSFS{} in production.
 //
 // The write is atomic when the underlying FS supports it: the data is
 // written to a sibling `<path>.tmp` first, then renamed onto `path`.
@@ -110,7 +110,7 @@ func (g *Global) AddAccount(name string) {
 }
 
 // RemoveAccount deletes an account by name. If the removed account was the
-// active one, the registry is left with no active account — callers decide
+// active one, the registry is left with no active account: callers decide
 // whether to choose a new active explicitly. Returns ErrUnknownAccount if
 // name is not in the registry.
 func (g *Global) RemoveAccount(name string) error {
@@ -210,7 +210,7 @@ type Resolved struct {
 
 // projectShared mirrors the on-disk shape of <repo>/.gplay/config.json.
 // Account is json.RawMessage (not a pointer) so we can detect any presence
-// of the field — including `"account": null`, which a *json.RawMessage
+// of the field: including `"account": null`, which a *json.RawMessage
 // would silently unmarshal to nil and let through. Committed configs must
 // never carry the field at all (see ADR-0004).
 type projectShared struct {
@@ -239,7 +239,7 @@ func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 	}
 	r := &Resolved{GlobalPath: opts.GlobalPath}
 
-	// Global layer — accounts list + active flag.
+	// Global layer: accounts list + active flag.
 	g, err := LoadGlobalOrEmpty(ctx, fsys, opts.GlobalPath)
 	if err != nil {
 		return nil, err
@@ -277,7 +277,7 @@ func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 			if pl.Account != "" {
 				r.ConfigAccount = pl.Account
 			}
-			// Project-local developer-id overrides the active Account's — the
+			// Project-local developer-id overrides the active Account's: the
 			// multi-tenant/agency case (ADR-0015): one credential invited into
 			// several orgs, the active org pinned per-repo out of version control.
 			if pl.DeveloperID != "" {
@@ -320,7 +320,7 @@ func readProjectShared(fsys FS, path string) (*projectShared, error) {
 	if len(ps.Account) > 0 {
 		return nil, fmt.Errorf("config: %s: field \"account\" is forbidden in committed config (use .gplay/config.local.json or GPLAY_ACCOUNT)", path)
 	}
-	// A developer-id is credential/org state, not shared repo state — same
+	// A developer-id is credential/org state, not shared repo state: same
 	// rule and reason as the account field (ADR-0015).
 	if len(ps.DeveloperID) > 0 {
 		return nil, fmt.Errorf("config: %s: field \"developerId\" is forbidden in committed config (set it via `gplay auth login --developer-id`, .gplay/config.local.json, or GPLAY_DEVELOPER_ID)", path)

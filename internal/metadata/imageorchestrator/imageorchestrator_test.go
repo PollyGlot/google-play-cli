@@ -1,7 +1,7 @@
 // Package imageorchestrator_test exercises the Edit-lifecycle guarantees of
 // `images apply`: the atomic single-Edit commit, auto-discard on a per-slot
 // failure (0 published), and the no-op discard (no empty commit). It drives
-// orchestrator.Apply directly with a fake transport — no kernel/auth needed.
+// orchestrator.Apply directly with a fake transport: no kernel/auth needed.
 package imageorchestrator_test
 
 import (
@@ -87,7 +87,7 @@ func resp(status int, body string) *http.Response {
 }
 
 // TestApply_perSlotFailure_discardsEdit asserts a failed upload aborts the
-// whole apply: the Edit is discarded (auto-rollback), never committed — 0 slots
+// whole apply: the Edit is discarded (auto-rollback), never committed: 0 slots
 // published (atomic).
 func TestApply_perSlotFailure_discardsEdit(t *testing.T) {
 	rt := &orchRT{t: t, editID: "e", failUpload: true}

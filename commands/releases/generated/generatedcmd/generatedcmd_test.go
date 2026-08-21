@@ -9,7 +9,7 @@ import (
 
 // TestBuildRows_flattensEveryArtifact asserts the grouped-by-signing-key envelope
 // flattens to one row per downloadable artifact, with the right type, the natural
-// secondary id, the downloadId, and a short cert hash — including the unprotected
+// secondary id, the downloadId, and a short cert hash: including the unprotected
 // split/standalone lists (they carry downloadIds too).
 func TestBuildRows_flattensEveryArtifact(t *testing.T) {
 	lr := generatedapks.ListResponse{

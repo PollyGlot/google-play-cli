@@ -158,9 +158,9 @@ func TestRun_humanSummary(t *testing.T) {
 		"iarc-9988",
 		"tok-delivery-123",
 		"en-US",
-		"fr-FR  Exemplaire — Court",
+		"fr-FR  Exemplaire: Court",
 		"android.permission.CAMERA (maxSdkVersion 28)",
-		"sdk 21..34 (target 33) — abis: arm64-v8a",
+		"sdk 21..34 (target 33); abis: arm64-v8a",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("table %q missing %q", got, want)
@@ -184,7 +184,7 @@ func TestRun_markdownRecord(t *testing.T) {
 		t.Fatalf("Markdown: %v", err)
 	}
 	got := out.String()
-	for _, want := range []string{"## Catalog app view — com.example.app", "- **Delivery token**: tok-delivery-123", "**Permissions**"} {
+	for _, want := range []string{"## Catalog app view: com.example.app", "- **Delivery token**: tok-delivery-123", "**Permissions**"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("markdown %q missing %q", got, want)
 		}
@@ -212,7 +212,7 @@ func TestRun_freeApp_rendersFree(t *testing.T) {
 }
 
 // TestRun_storePackageFromEnv asserts the app store package name resolves from
-// $GPLAY_APP_STORE_PACKAGE when --store-package is omitted — the CI path.
+// $GPLAY_APP_STORE_PACKAGE when --store-package is omitted: the CI path.
 func TestRun_storePackageFromEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.fromenv")
 	rt := &catalogRT{}

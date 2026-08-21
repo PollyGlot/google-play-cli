@@ -4,7 +4,7 @@
 // without --confirm, exiting 3 with a message naming the flag; CI=true never
 // auto-confirms; MarkMutating so GPLAY_READONLY refuses it (exit 4); --dry-run
 // previews the target with no HTTP and lists the gate in the `requires` array.
-// --revoke (the API `revoke` query parameter) defaults false — refund the money
+// --revoke (the API `revoke` query parameter) defaults false: refund the money
 // but keep the entitlement; revoking access is the larger hammer, opt-in. There
 // is deliberately no bulk/fan-out refund verb (ADR-0031). Refunding requires the
 // service account to hold CAN_MANAGE_ORDERS (never part of a Role bundle); a 403
@@ -138,7 +138,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	orderID := strings.TrimSpace(in.OrderID)
 	if orderID == "" {
-		return nil, orderscmd.Usagef("no order — pass an order ID: gplay orders refund <orderId> --confirm")
+		return nil, orderscmd.Usagef("no order: pass an order ID: gplay orders refund <orderId> --confirm")
 	}
 
 	// refund is unconditionally destructive (money-moving, irreversible), so the
@@ -183,20 +183,20 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "refund <orderId>",
 		Short: "Refund a Google Play order (money-moving, irreversible)",
-		Long: `Refund a single Google Play order by its order ID via orders.refund — a
+		Long: `Refund a single Google Play order by its order ID via orders.refund: a
 money-moving, irreversible write. By default the money is returned but the
 buyer keeps access to what they bought; pass --revoke to additionally terminate
 the entitlement (for a subscription, all future payments stop too).
 
 This is destructive, so it refuses without --confirm (exit 3, naming the flag);
 CI=true never auto-confirms. Use --dry-run to preview the target with no HTTP
-call — under --output json the preview lists the gate in a "requires" array.
-GPLAY_READONLY refuses it (exit 4). There is no bulk refund — refund one order
+call: under --output json the preview lists the gate in a "requires" array.
+GPLAY_READONLY refuses it (exit 4). There is no bulk refund: refund one order
 at a time.
 
 Refunding requires the service account to hold the CAN_MANAGE_ORDERS permission
 (never part of a Role bundle); a 403 names it. Google does not allow refunding
-orders older than 3 years — that surfaces as a specific refusal, not a generic
+orders older than 3 years: that surfaces as a specific refusal, not a generic
 error.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
@@ -211,7 +211,7 @@ error.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().BoolVar(&in.Revoke, "revoke", false, "also revoke the buyer's entitlement (default: refund money, keep access)")
-	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the refund (required — this moves money and is irreversible)")
+	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the refund (required: this moves money and is irreversible)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "preview the target without any HTTP call (reports the --confirm requirement)")
 	return cmd
 }

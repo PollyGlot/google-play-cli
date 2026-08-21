@@ -2,13 +2,13 @@
 // orders endpoints. These are Edit-free, application-scoped reads on the package
 // axis (applications/{packageName}/orders/...), the admin-side commerce
 // diagnostic: a human or agent holds an order ID from a complaint or a payout
-// report and looks it up — no device token, unlike runtime purchase-token
+// report and looks it up: no device token, unlike runtime purchase-token
 // verification (CONTEXT.md "Order", ADR-0031). Raw HTTP (ADR-0007), never the
 // google-go-sdk.
 //
 // This package ships the full orders surface (PRD #245): orders.get (a single
 // order, #282), orders.batchget (2–1000 orders in one call, #283), and the
-// money-moving orders.refund (#284) — all on the same package axis.
+// money-moving orders.refund (#284): all on the same package axis.
 package orders
 
 import (
@@ -52,8 +52,8 @@ type LineItem struct {
 }
 
 // Order mirrors the subset of the Order schema the human summary reads (order
-// id, state, total, creation time, line items). The complete resource — buyer
-// address, tax, order history, points, sales channel, … — is always available
+// id, state, total, creation time, line items). The complete resource (buyer
+// address, tax, order history, points, sales channel, …) is always available
 // verbatim via --output json (ADR-0003), so this stays intentionally small.
 type Order struct {
 	OrderID    string     `json:"orderId,omitempty"`
@@ -93,7 +93,7 @@ func Get(ctx context.Context, hc *http.Client, pkg, orderID string) (Order, json
 	return o, raw, nil
 }
 
-// BatchGet reads several orders in one call via orders.batchget — the order IDs
+// BatchGet reads several orders in one call via orders.batchget: the order IDs
 // ride the repeated `orderIds` query parameter (the API caps the list at
 // 1–1000 and requires distinct IDs; if any ID is unknown or belongs to another
 // package the whole request fails). It returns the parsed envelope and the
@@ -122,7 +122,7 @@ func BatchGet(ctx context.Context, hc *http.Client, pkg string, orderIDs []strin
 
 // Refund refunds a single order via orders.refund (POST, no body). When revoke
 // is true the API additionally terminates the buyer's access (the `revoke`
-// query parameter); the default — money back, entitlement kept — is the safe
+// query parameter); the default (money back, entitlement kept) is the safe
 // one (ADR-0031). The call is irreversible and money-moving, so the command
 // gates it behind --confirm before reaching here. Refunding requires the
 // service account to hold CAN_MANAGE_ORDERS (never part of a Role bundle); the

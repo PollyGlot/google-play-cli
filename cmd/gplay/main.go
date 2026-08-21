@@ -137,7 +137,7 @@ func main() {
 
 	if err := newRootCmd(boot).Execute(); err != nil {
 		// Subcommands set SilenceErrors:true on their cobra Command so the
-		// stack-trace-style "Error: ..." cobra would emit is suppressed —
+		// stack-trace-style "Error: ..." cobra would emit is suppressed,
 		// but we still owe the user a one-line message before exiting,
 		// otherwise the only signal is the exit code (which CI sees, but
 		// a human running gplay in a terminal does not).
@@ -150,7 +150,7 @@ func newRootCmd(boot kernel.Boot) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "gplay",
 		Short: "Google Play Developer CLI",
-		Long: `gplay — fast, lightweight CLI for the Google Play Developer API.
+		Long: `gplay: fast, lightweight CLI for the Google Play Developer API.
 
 Reads service-account credentials, mints OAuth2 tokens, and drives the
 publishing surface (releases, tracks, reviews, metadata, compliance,
@@ -160,7 +160,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		// clean `gplay: ...` line (SilenceErrors). Args:ArbitraryArgs routes
 		// the unknown-command case through GroupRunE rather than cobra's
 		// legacyArgs, which would emit a plain error (exit 1) and a second
-		// "Error: ..." line — the inconsistency this harmonisation removes.
+		// "Error: ..." line: the inconsistency this harmonisation removes.
 		Args:          cobra.ArbitraryArgs,
 		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
@@ -168,7 +168,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 
 	// Flag-parse failures (unknown flag, bad value) reach us as plain cobra
-	// errors, which exit.For would map to the generic exit 1 — but
+	// errors, which exit.For would map to the generic exit 1, but
 	// docs/DESIGN.md §9 classes them as CLI misuse (exit 2), the same bucket
 	// as the unknown-subcommand case GroupRunE already covers. Wrapping the
 	// error in exit.Usagef (a *exit.UsageError, ExitCode()=2) at the root fixes
@@ -180,7 +180,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	})
 
 	// Persistent credential-resolution flags (docs/DESIGN.md §1). Every
-	// subcommand inherits these via the cobra parent chain — login reads
+	// subcommand inherits these via the cobra parent chain: login reads
 	// the same --service-account everyone else does, so the contract stays
 	// consistent across the binary.
 	var (
@@ -227,7 +227,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	auth.AddCommand(doctor.NewCommand(boot))
 	root.AddCommand(auth)
 
-	// `gplay init` at the top level — pins a package to the current repo.
+	// `gplay init` at the top level: pins a package to the current repo.
 	// Also wired as `gplay apps init` below so both forms are discoverable.
 	root.AddCommand(initcmd.NewCommand(initcmd.Options{}))
 
@@ -265,7 +265,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	releases.AddCommand(kernel.MarkMutating(rollout.NewCompleteCommand(boot)))
 	releases.AddCommand(releaseslist.NewCommand(boot))
 
-	// `gplay releases mappings` — ProGuard/R8 deobfuscation mappings, the
+	// `gplay releases mappings`: ProGuard/R8 deobfuscation mappings, the
 	// publisher-Edit side of vitals symbolication (CONTEXT.md / ADR-0027 /
 	// #250). It lives under releases (not vitals) because a Mapping is an
 	// androidpublisher Edit upload, not a read from the Reporting service.
@@ -280,7 +280,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	mappings.AddCommand(kernel.MarkMutating(releasesmappings.NewCommand(boot)))
 	releases.AddCommand(mappings)
 
-	// `gplay releases sharing` — Internal App Sharing (internalappsharingartifacts).
+	// `gplay releases sharing`: Internal App Sharing (internalappsharingartifacts).
 	// A grouping noun under releases, mirroring `releases mappings`: a non-track
 	// upload that bypasses the Edit lifecycle entirely and mints a private,
 	// shareable install link (CONTEXT.md / ADR-0030 / PRD #243). The single
@@ -294,11 +294,11 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	sharing.AddCommand(kernel.MarkMutating(sharingupload.NewCommand(boot)))
 	// [experimental] (ADR-0010/ADR-0042): shipped in the #243 long-tail batch and
-	// barely exercised — the shape of what it returns for a link is the part most
+	// barely exercised: the shape of what it returns for a link is the part most
 	// likely to move.
 	releases.AddCommand(kernel.Experimental(sharing))
 
-	// `gplay releases expansion-files` — legacy OBB expansion files
+	// `gplay releases expansion-files`: legacy OBB expansion files
 	// (edits.expansionfiles). A grouping noun under releases, mirroring
 	// `releases mappings`: an Edit artifact keyed by apkVersionCode (CONTEXT.md /
 	// ADR-0030). upload (media) and set (PUT) mutate inside an Edit; view is a
@@ -315,11 +315,11 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	expansionFiles.AddCommand(kernel.MarkMutating(expansionset.NewCommand(boot)))
 	expansionFiles.AddCommand(expansionview.NewCommand(boot))
 	// [experimental] (ADR-0010/ADR-0042): a legacy surface superseded by Play
-	// Asset Delivery, shipped for coverage rather than demand — freezing flags
+	// Asset Delivery, shipped for coverage rather than demand: freezing flags
 	// nobody has used yet buys nothing.
 	releases.AddCommand(kernel.Experimental(expansionFiles))
 
-	// `gplay releases generated` — the APKs Play generates and signs from an
+	// `gplay releases generated`: the APKs Play generates and signs from an
 	// uploaded AAB (generatedapks). A grouping noun under releases, mirroring
 	// `releases sharing`: an application-scoped read that bypasses the Edit
 	// lifecycle entirely (CONTEXT.md "Generated APK" / ADR-0034 / PRD #299). The
@@ -355,7 +355,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	tracks.AddCommand(tracksavailability.NewCommand(boot))
 	root.AddCommand(tracks)
 
-	// `gplay testers` — read and declare the Google Groups authorized to
+	// `gplay testers`: read and declare the Google Groups authorized to
 	// test a (custom closed) track. A top-level namespace parallel to
 	// `tracks`, mirroring the sibling API resources edits.tracks /
 	// edits.testers. See PRD #117 / docs/DESIGN.md §10.
@@ -370,9 +370,9 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	testers.AddCommand(kernel.MarkMutating(testersset.NewCommand(boot)))
 	root.AddCommand(testers)
 
-	// `gplay device-tiers` — Device Tier Configs (applications.deviceTierConfigs),
+	// `gplay device-tiers`: Device Tier Configs (applications.deviceTierConfigs),
 	// device-targeting for tiered content delivery. A new top-level namespace,
-	// app-scoped and OUTSIDE the Edit lifecycle (no editId) — not under `tracks`
+	// app-scoped and OUTSIDE the Edit lifecycle (no editId), not under `tracks`
 	// (an Edit surface) nor `apps` (the local registry). The resource is
 	// immutable (create/get/list only), so `create` is the only mutating leaf.
 	// See ADR-0030 / PRD #243 / CONTEXT.md (Device tier config).
@@ -387,14 +387,14 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	deviceTiers.AddCommand(devicetiersview.NewCommand(boot))
 	deviceTiers.AddCommand(devicetierslist.NewCommand(boot))
 	// [experimental] (ADR-0010/ADR-0042): #243 long-tail, and the config resource
-	// is immutable server-side — if the create surface needs a different shape,
+	// is immutable server-side, if the create surface needs a different shape,
 	// there is no in-place fix, only a new flag contract.
 	root.AddCommand(kernel.Experimental(deviceTiers))
 
-	// `gplay recovery` — App Recovery (apprecovery): targeted incident-response
+	// `gplay recovery`: App Recovery (apprecovery): targeted incident-response
 	// remediation that pushes users impacted by a bad release back to a safe app
 	// version. A new top-level namespace, app-scoped and OUTSIDE the Edit
-	// lifecycle (own appRecoveryId, draft→active→canceled) — the inverse of why
+	// lifecycle (own appRecoveryId, draft→active→canceled): the inverse of why
 	// `releases mappings` lives under releases. The draft/read leaves are here;
 	// the production-impacting lifecycle leaves (deploy/cancel/add-targeting)
 	// require --confirm. See ADR-0030 / PRD #243 / CONTEXT.md (Recovery).
@@ -408,7 +408,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	recoveryGroup.AddCommand(kernel.MarkMutating(recoverycreate.NewCommand(boot)))
 	recoveryGroup.AddCommand(recoverylist.NewCommand(boot))
 	// The production-impacting lifecycle leaves (deploy/cancel/add-targeting)
-	// each require --confirm (exit 3 if missing) — new domain verbs admitted
+	// each require --confirm (exit 3 if missing): new domain verbs admitted
 	// under ADR-0019 §2 / recorded in ADR-0030.
 	recoveryGroup.AddCommand(kernel.MarkMutating(recoverydeploy.NewCommand(boot)))
 	recoveryGroup.AddCommand(kernel.MarkMutating(recoverycancel.NewCommand(boot)))
@@ -418,10 +418,10 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// have never been driven through a real incident.
 	root.AddCommand(kernel.Experimental(recoveryGroup))
 
-	// `gplay team` — manage the Developer account's members (Users) and their
+	// `gplay team`: manage the Developer account's members (Users) and their
 	// per-app access (Grants). The first gplay surface keyed by the Developer
 	// account rather than a package (ADR-0015). `team`, `users`, and `grants`
-	// are grouping nouns (kernel.GroupRunE — bare prints help, an unknown
+	// are grouping nouns (kernel.GroupRunE: bare prints help, an unknown
 	// subcommand is exit-2 misuse); the named `team` (not `users`/`access`)
 	// avoids colliding with gplay's Account. See PRD #147 / ADR-0015/0016/0017
 	// / CONTEXT.md.
@@ -462,9 +462,9 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 
 	root.AddCommand(team)
 
-	// `gplay customapps` — managed Google Play private app creation
+	// `gplay customapps`: managed Google Play private app creation
 	// (playcustomapp.accounts.customApps.create). Like `team` it is keyed by the
-	// Developer account, not a package (ADR-0015) — the app does not yet exist to
+	// Developer account, not a package (ADR-0015): the app does not yet exist to
 	// be keyed by package. The whole upstream surface is one method (no read, no
 	// delete), so `create` is the only leaf; it is the destructive/irreversible
 	// tier (--confirm, exit 3 if missing) and MarkMutating for GPLAY_READONLY.
@@ -478,20 +478,20 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	}
 	customapps.AddCommand(kernel.MarkMutating(customappscreate.NewCommand(boot)))
 	// [experimental] (ADR-0010/ADR-0042): one irreversible create against an
-	// organisation-scoped API with no read to verify the result — the surface
+	// organisation-scoped API with no read to verify the result: the surface
 	// least able to prove it got the shape right.
 	root.AddCommand(kernel.Experimental(customapps))
 
-	// `gplay appstore` — the surface for the operator of an ALTERNATIVE APP
+	// `gplay appstore`: the surface for the operator of an ALTERNATIVE APP
 	// STORE, not the app-developer persona the rest of gplay serves. Addressing
 	// rides the app store package name (--store-package / the
 	// GPLAY_APP_STORE_PACKAGE env var), a distinct axis from the Android package
 	// of the repo's own app, so there is no project-pin cascade. `appstore` and
-	// `catalog` are grouping nouns (kernel.GroupRunE — bare prints help, an
+	// `catalog` are grouping nouns (kernel.GroupRunE: bare prints help, an
 	// unknown subcommand is exit-2 misuse). The namespace carries the two
 	// sibling surfaces of that persona: everything under `catalog` is read-only
 	// (the Catalog Export for app stores, PRD #396) and `create` (#378, PRD
-	// #377) opens the hosted app review path — the mandatory first call for any
+	// #377) opens the hosted app review path: the mandatory first call for any
 	// hosted app, MarkMutating so GPLAY_READONLY refuses it (exit 4). All of it
 	// is Edit-free. See CONTEXT.md ("Catalog app view", "Hosted app").
 	appstore := &cobra.Command{
@@ -512,7 +512,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	appstoreCatalog.AddCommand(appstorecatalogview.NewCommand(boot))
 	// `events` is a grouping noun under `catalog`: the update-event feed is its
 	// own resource (a time-ranged list of changes), not a mode of `catalog view`
-	// (a new noun, never a flag — ADR-0019).
+	// (a new noun, never a flag: ADR-0019).
 	appstoreCatalogEvents := &cobra.Command{
 		Use:           "events",
 		Short:         "Read the catalog update-event feed (incremental catalog sync)",
@@ -526,7 +526,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// `upload` is a grouping noun over the three media endpoints (#379). Each
 	// leaf hands Google a file and gets back a tracking id; nothing is
 	// distributed until `appstore update` cites those ids, so the uploads are
-	// inert writes — MarkMutating (they do create server-side artifacts) but no
+	// inert writes: MarkMutating (they do create server-side artifacts) but no
 	// confirmation gate, per the ADR-0043 criterion (irreversible AND externally
 	// visible gates; irreversible-but-inert does not).
 	appstoreUpload := &cobra.Command{
@@ -540,12 +540,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	appstoreUpload.AddCommand(kernel.MarkMutating(appstoreuploadimage.NewCommand(boot)))
 	appstoreUpload.AddCommand(kernel.MarkMutating(appstoreuploadpolicy.NewCommand(boot)))
 	appstore.AddCommand(appstoreUpload)
-	// `publish-status` (#380) flips the app in or out of the store — an external
+	// `publish-status` (#380) flips the app in or out of the store: an external
 	// effect, but a reversible one (the opposite call puts it back), so it takes
 	// the ordinary write safeguards and no gate.
 	appstore.AddCommand(kernel.MarkMutating(appstorepublishstatus.NewCommand(boot)))
 	// `update` (#381) is the one command in the namespace that submits to
-	// Google's review, immediately and irrevocably — it carries the --confirm
+	// Google's review, immediately and irrevocably: it carries the --confirm
 	// gate (exit 3). ADR-0043 §2 placed the gate here; it names the flag `--yes`,
 	// amended to `--confirm` for consistency with every other gate in the CLI.
 	appstore.AddCommand(kernel.MarkMutating(appstoreupdate.NewCommand(boot)))
@@ -554,11 +554,11 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// has not yet been exercised against a real enrolled app store.
 	root.AddCommand(kernel.Experimental(appstore))
 
-	// `gplay edits` — the EXPLICIT Edit lifecycle (begin/commit/discard/status,
+	// `gplay edits`: the EXPLICIT Edit lifecycle (begin/commit/discard/status,
 	// docs/DESIGN.md §4 / CONTEXT.md "Edit"). Most write commands run their own
 	// implicit Edit (open → mutate → commit) per invocation; `edits begin` opens
 	// one and pins its ID to .gplay/edit-<package>.json so subsequent writes
-	// batch into it instead of opening their own — committed or discarded
+	// batch into it instead of opening their own: committed or discarded
 	// explicitly by the user. begin/commit/discard mutate Play state (insert /
 	// commit / delete), so they are MarkMutating (GPLAY_READONLY refuses them,
 	// exit 4); status is a local-pin read and stays unmarked. See #48.
@@ -575,13 +575,13 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	editsGroup.AddCommand(editsstatus.NewCommand(boot))
 	root.AddCommand(editsGroup)
 
-	// `gplay games` — Play Games Services configuration (gamesConfiguration): a
+	// `gplay games`: Play Games Services configuration (gamesConfiguration): a
 	// game's achievement and leaderboard configurations. A DISTINCT Google
-	// service (its own host, the shared androidpublisher scope — so no WithScope)
+	// service (its own host, the shared androidpublisher scope, so no WithScope)
 	// addressed by the numeric Play Games application ID, its own ID space rather
 	// than the Android package (ADR-0033). `games`, `achievements`, and
 	// `leaderboards` are grouping nouns (kernel.GroupRunE). Writes affect the
-	// editable draft (there is no publish method — publishing to players is
+	// editable draft (there is no publish method: publishing to players is
 	// Console-only); list/view are reads, create/update are routine writes, and
 	// delete is the destructive tier (--confirm, exit 3 if missing). See PRD #241
 	// / ADR-0033 / CONTEXT.md (Play Games Services Publishing API).
@@ -624,15 +624,15 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// different command shape once someone runs a real game config through it.
 	root.AddCommand(kernel.Experimental(games))
 
-	// `gplay orders` — look up Google Play orders by order ID (orders.get /
+	// `gplay orders`: look up Google Play orders by order ID (orders.get /
 	// orders.batchget) and refund them (orders.refund). The admin-side commerce
 	// surface: orders ride the package/app axis like releases/metadata
-	// (applications/{packageName}/orders/...), NOT the developer-account axis —
+	// (applications/{packageName}/orders/...), NOT the developer-account axis:
 	// a human or agent holds an order ID from a complaint or payout report (no
 	// device token), distinct from runtime purchase-token verification, which
 	// gplay does not wrap (ADR-0031 / CONTEXT.md "Order"). `view` is a pure read
-	// (single #282 + batch #283) — not marked mutating, not gated by
-	// GPLAY_READONLY. `refund` (#284) is the money-moving, irreversible write —
+	// (single #282 + batch #283), not marked mutating, not gated by
+	// GPLAY_READONLY. `refund` (#284) is the money-moving, irreversible write:
 	// MarkMutating so GPLAY_READONLY refuses it (exit 4), and it requires
 	// --confirm at the command layer (exit 3 if missing).
 	ordersGroup := &cobra.Command{
@@ -648,15 +648,15 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// shape of `view` is still unproven against real support workflows.
 	root.AddCommand(kernel.Experimental(ordersGroup))
 
-	// `gplay subscriptions` — the declarative Monetization catalog, subscription
+	// `gplay subscriptions`: the declarative Monetization catalog, subscription
 	// side (PRD #51, walking skeleton #367 / ADR-0041). Package axis, Edit-free
 	// (applications/{packageName}/subscriptions/..., like device-tiers and
-	// orders). `pull` mirrors the live catalog into <productId>.json files —
+	// orders). `pull` mirrors the live catalog into <productId>.json files:
 	// it writes only locally, so it is not marked mutating. `apply` reconciles
-	// the live catalog to the files (create/patch/delete) — MarkMutating so
+	// the live catalog to the files (create/patch/delete): MarkMutating so
 	// GPLAY_READONLY refuses it (exit 4); a plan containing a delete
 	// additionally requires --confirm at the command layer (exit 3 if missing).
-	// Subscriber price migration is deliberately NOT reachable from apply — it
+	// Subscriber price migration is deliberately NOT reachable from apply: it
 	// arrives as its own gated command (slice #370).
 	subscriptionsGroup := &cobra.Command{
 		Use:           "subscriptions",
@@ -668,7 +668,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	subscriptionsGroup.AddCommand(subscriptionspull.NewCommand(boot))
 	subscriptionsGroup.AddCommand(kernel.MarkMutating(subscriptionsapply.NewCommand(boot)))
 	// `prices` is a grouping noun; `convert` (monetization.convertRegionPrices)
-	// is a pure computation — derives regional prices, writes nothing — so it
+	// is a pure computation (derives regional prices, writes nothing), so it
 	// is not marked mutating. Domain verb admitted under ADR-0019 §2
 	// (ADR-0041 §9).
 	subscriptionsPrices := &cobra.Command{
@@ -679,23 +679,23 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	subscriptionsPrices.AddCommand(subscriptionspricesconvert.NewCommand(boot))
-	// `migrate` (basePlans.migratePrices) reprices EXISTING subscribers — the
+	// `migrate` (basePlans.migratePrices) reprices EXISTING subscribers: the
 	// sole imperative escape hatch of the catalog (ADR-0041 §4): money-moving,
 	// --confirm-gated (exit 3), MarkMutating, never reachable from apply.
 	subscriptionsPrices.AddCommand(kernel.MarkMutating(subscriptionspricesmigrate.NewCommand(boot)))
 	subscriptionsGroup.AddCommand(subscriptionsPrices)
 	// [experimental] (ADR-0010/ADR-0042): the whole declarative catalog shipped in
 	// v0.18.0, days before the 1.0 cut, and it is the most opinionated surface in
-	// the CLI — a file schema, a reconciliation model, and the v2-vs-legacy
+	// the CLI: a file schema, a reconciliation model, and the v2-vs-legacy
 	// decision are all contract. It graduates once a real catalog has round-tripped
 	// through pull → apply.
 	root.AddCommand(kernel.Experimental(subscriptionsGroup))
 
-	// `gplay iap` — the one-time-product side of the Monetization catalog
+	// `gplay iap`: the one-time-product side of the Monetization catalog
 	// (slices #371–#372 / ADR-0041 §8). Same declarative pull/apply pair and
 	// the same axis as `subscriptions`; pull unions the v2 model with the
 	// read-only legacy inappproducts (never written in place), apply writes
-	// v2 only — MarkMutating so GPLAY_READONLY refuses it (exit 4), deletes
+	// v2 only: MarkMutating so GPLAY_READONLY refuses it (exit 4), deletes
 	// gated by --confirm at the command layer (exit 3 if missing).
 	iapGroup := &cobra.Command{
 		Use:           "iap",
@@ -708,7 +708,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	iapGroup.AddCommand(kernel.MarkMutating(iapapply.NewCommand(boot)))
 	// [experimental] (ADR-0010/ADR-0042): same v0.18.0 batch and same file-schema
 	// exposure as `subscriptions`, plus the one-way legacy→v2 `--migrate`
-	// promotion — they graduate together.
+	// promotion: they graduate together.
 	root.AddCommand(kernel.Experimental(iapGroup))
 
 	reviews := &cobra.Command{
@@ -722,17 +722,17 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	reviews.AddCommand(kernel.MarkMutating(reviewsreply.NewCommand(boot)))
 	reviews.AddCommand(reviewsview.NewCommand(boot))
 	// `reviews history` reads the monthly CSV reports from the developer's
-	// Reporting bucket over the GCS API — a third Google service, so its leaf
+	// Reporting bucket over the GCS API: a third Google service, so its leaf
 	// mints a least-privilege devstorage.read_only token via WithScope (ADR-0037).
 	// [experimental] (ADR-0010/ADR-0042): the only leaf of a frozen namespace that
-	// is not frozen — it reads UTF-16 CSVs out of a GCS bucket whose layout Google
+	// is not frozen: it reads UTF-16 CSVs out of a GCS bucket whose layout Google
 	// owns and can change without an API version, so promising its shape would be
 	// promising something gplay does not control.
 	reviews.AddCommand(kernel.Experimental(
 		kernel.WithScope(reviewshistory.NewCommand(boot), token.StorageReadOnlyScope)))
 	root.AddCommand(reviews)
 
-	// `gplay vitals` — read-only post-launch quality signals (crashes/ANR and
+	// `gplay vitals`: read-only post-launch quality signals (crashes/ANR and
 	// the other metric sets) from the Play Developer Reporting API. A DISTINCT
 	// Google service: every leaf is wrapped with kernel.WithScope so it mints a
 	// least-privilege playdeveloperreporting-scoped token, never androidpublisher
@@ -746,19 +746,19 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceErrors: true,
 	}
 	vitals.AddCommand(kernel.WithScope(vitalsquery.NewCommand(boot), token.ReportingScope))
-	// Opinionated metric-set presets (vitals crashes, vitals anr, …) — built
+	// Opinionated metric-set presets (vitals crashes, vitals anr, …): built
 	// from a data list so the family stays consistent; each requests the
 	// least-privilege reporting scope like every other vitals leaf.
 	for _, spec := range vitalscmd.Presets {
 		vitals.AddCommand(kernel.WithScope(vitalscmd.NewPresetCommand(boot, spec), token.ReportingScope))
 	}
-	// `vitals errors` — counts / issues / reports. The group's leaves carry the
+	// `vitals errors`: counts / issues / reports. The group's leaves carry the
 	// reporting scope themselves (see errorscmd.NewCommand), so it is added bare.
 	vitals.AddCommand(vitalserrors.NewCommand(boot))
 	vitals.AddCommand(kernel.WithScope(vitalsanomalies.NewCommand(boot), token.ReportingScope))
 	root.AddCommand(vitals)
 
-	// `gplay metadata` — Store front Listings (per-locale text), the
+	// `gplay metadata`: Store front Listings (per-locale text), the
 	// fastlane-supply text side. See PRD #50 / ADR-0011.
 	metadata := &cobra.Command{
 		Use:           "metadata",
@@ -772,7 +772,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	metadata.AddCommand(metadatavalidate.NewCommand(boot))
 	metadata.AddCommand(kernel.MarkMutating(metadataapply.NewCommand(boot)))
 
-	// `gplay metadata images` — Store images (per-locale icon / feature
+	// `gplay metadata images`: Store images (per-locale icon / feature
 	// graphic / screenshots), the fastlane-supply image side. See PRD #112 /
 	// ADR-0013.
 	metadataImages := &cobra.Command{
@@ -789,9 +789,9 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	metadata.AddCommand(metadataImages)
 	root.AddCommand(metadata)
 
-	// `gplay compliance` — regulatory declarations that gate publication
+	// `gplay compliance`: regulatory declarations that gate publication
 	// (Data Safety today; content rating and other "App content" surfaces in
-	// future scope). App-keyed, write-heavy, outside the Edits model — a
+	// future scope). App-keyed, write-heavy, outside the Edits model: a
 	// distinct family from the store-presence namespaces. See PRD #114 /
 	// ADR-0014.
 	compliance := &cobra.Command{
@@ -813,7 +813,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	compliance.AddCommand(datasafety)
 	root.AddCommand(compliance)
 
-	// `gplay schema` — OFFLINE, no-auth, `[experimental]` introspection of the
+	// `gplay schema`: OFFLINE, no-auth, `[experimental]` introspection of the
 	// Android Publisher API surface from an embedded Schema index (ADR-0022).
 	// A top-level reference/diagnostic meta-command (ADR-0019), not keyed by a
 	// package or the Developer account. See PRD #199. [experimental]
@@ -821,12 +821,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// gplay invented, not one Google owns, and it is the likeliest to change.
 	root.AddCommand(kernel.Experimental(schemacmd.NewCommand(boot)))
 
-	// `gplay exit-codes` / `gplay help exit-codes` — the semantic exit-code
+	// `gplay exit-codes` / `gplay help exit-codes`: the semantic exit-code
 	// taxonomy (docs/DESIGN.md §9), built from internal/exit so it cannot
 	// drift from the codes the binary actually returns.
 	root.AddCommand(helpexitcodes.NewCommand())
 
-	// `gplay install-skills` — install the companion agent skills via
+	// `gplay install-skills`: install the companion agent skills via
 	// `npx skills add` (ADR-0028 / #266). A flat category-3 meta-command; the
 	// one gplay command that needs Node/npx (a dev-workstation convenience, off
 	// the CI/runtime path, so the "no Node" pillar holds). Surfaced in root
@@ -845,20 +845,20 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 
 	// Third and last door into CLI misuse: a wrong number of POSITIONAL
 	// arguments. cobra runs a command's Args validator inside execute() and
-	// hands its error straight back — it never passes the FlagErrorFunc above,
+	// hands its error straight back: it never passes the FlagErrorFunc above,
 	// so it reached exit.For untyped and fell back to the generic exit 1 while
 	// the other two doors returned the documented exit 2 (#426). One walk over
 	// the assembled tree re-types every Args rejection as usage, so the whole
-	// binary — including leaves added later — agrees on docs/DESIGN.md §9. It is
+	// binary (including leaves added later) agrees on docs/DESIGN.md §9. It is
 	// the LAST statement on purpose: it wraps what is registered when it runs.
 	//
 	// cobra materialises its default `help` and `completion` commands lazily
-	// inside Execute — after this function returns — which would leave their
+	// inside Execute (after this function returns), which would leave their
 	// own Args validators outside the walk (`gplay completion bash extra`
 	// stuck on exit 1). Materialise them first; both calls are no-ops when the
 	// command already exists, so Execute's own late init stays harmless. The
 	// hidden `__complete` plumbing command has no pre-Execute hook and stays
-	// outside the walk — shell-integration plumbing, not command surface.
+	// outside the walk: shell-integration plumbing, not command surface.
 	root.InitDefaultHelpCmd()
 	root.InitDefaultCompletionCmd()
 	return kernel.WrapArgErrors(root)
@@ -879,7 +879,7 @@ func resolveVersion(ldVersion, ldCommit, ldDate string, info *debug.BuildInfo, i
 		return ldVersion, ldCommit, ldDate
 	}
 	v, c, d := ldVersion, ldCommit, ldDate
-	// "(devel)" is what BuildInfo reports for unversioned local builds — not useful.
+	// "(devel)" is what BuildInfo reports for unversioned local builds, not useful.
 	if info.Main.Version != "" && info.Main.Version != "(devel)" {
 		v = info.Main.Version
 	}
@@ -902,7 +902,7 @@ func resolveVersion(ldVersion, ldCommit, ldDate string, info *debug.BuildInfo, i
 //
 //   - Linux:        $XDG_CONFIG_HOME/gplay (or ~/.config/gplay)
 //   - macOS, Win:   ~/.gplay (deliberately NOT os.UserConfigDir's
-//     ~/Library/Application Support or %AppData% — gplay sits next to
+//     ~/Library/Application Support or %AppData%: gplay sits next to
 //     other dotfile-style dev tooling)
 func defaultConfigDir() (string, error) {
 	if runtime.GOOS == "linux" {

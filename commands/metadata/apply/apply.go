@@ -1,5 +1,5 @@
 // Package apply implements `gplay metadata apply`: reconcile the local
-// Metadata tree with the Listings live on Google Play. It is thin glue —
+// Metadata tree with the Listings live on Google Play. It is thin glue:
 // resolve --package and --dir, read the tree off disk (internal/metadata/
 // tree), and hand it to internal/metadata/orchestrator, which owns the Edit
 // lifecycle, the diff, the --confirm gate, and the --prune deletegroup. The
@@ -14,7 +14,7 @@
 //     (offline); the offline role is held by `metadata validate`.
 //   - --confirm performs the real publish (one Edit, one commit, atomic).
 //     --output json is the per-locale listings.patch response bodies.
-//     Without --confirm a real apply refuses (exit 3 — safety flag
+//     Without --confirm a real apply refuses (exit 3: safety flag
 //     required) and points at --dry-run; CI=true never auto-confirms.
 package apply
 
@@ -61,7 +61,7 @@ func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
 
 // dirError signals an unreadable --dir (missing tree). It maps to exit 20
-// (client-side validation) — the same family as a malformed tree.
+// (client-side validation): the same family as a malformed tree.
 type dirError struct {
 	dir   string
 	cause error
@@ -82,7 +82,7 @@ type packageNotFoundError struct {
 }
 
 func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found — run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
+	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
@@ -92,7 +92,7 @@ type forbiddenError struct {
 }
 
 func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q — in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
+	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
@@ -255,7 +255,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	dir := in.Dir
 	if dir == "" {
@@ -268,7 +268,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Both dry-run (online preview) and real apply need an authenticated
-	// client — unlike `metadata validate`, apply always talks to Play.
+	// client: unlike `metadata validate`, apply always talks to Play.
 	httpClient, err := rc.AuthedClient()
 	if err != nil {
 		return nil, err
@@ -325,12 +325,12 @@ present on disk; a locale live on Play but absent locally is left intact
 and reported. Use --prune to also delete online-only locales (it refuses
 to remove the app's defaultLanguage). Note: a locale is "present on disk"
 only if its directory holds at least one recognized field file
-(title.txt, …) — a directory with only a README or unrecognized files is
+(title.txt, …): a directory with only a README or unrecognized files is
 NOT seen as managed and, under --prune, would be deleted online. Preview
 with --dry-run first.
 
 --dry-run reads the live Listings and prints the per-locale delta without
-committing (it is ONLINE — it diffs disk against Play). --output json is
+committing (it is ONLINE: it diffs disk against Play). --output json is
 the gplay diff schema {package, changes[], summary}, so a CI gate is one
 jq line: jq -e '.summary.create + .summary.update > 0'.
 

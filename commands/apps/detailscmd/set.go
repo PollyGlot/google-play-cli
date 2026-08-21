@@ -37,7 +37,7 @@ type SetInput struct {
 }
 
 // anyFieldSet reports whether at least one field flag was passed. A bare
-// `set` with none is the no-flag footgun — refused before any work.
+// `set` with none is the no-flag footgun: refused before any work.
 func anyFieldSet(in SetInput) bool {
 	return in.DefaultLanguageSet || in.ContactEmailSet || in.ContactPhoneSet || in.ContactWebsiteSet
 }
@@ -144,7 +144,7 @@ func renderSetTable(w io.Writer, p SetPayload) error {
 
 // renderSetJSON emits the raw details.patch body verbatim (ADR-0003
 // pass-through) for an applied write. A --dry-run makes no API call, so
-// there is no body to pass through — but --output json is the DEFAULT in
+// there is no body to pass through, but --output json is the DEFAULT in
 // pipes/CI (docs/DESIGN.md), exactly where a dry-run is most likely to
 // run, so it must still produce parseable output rather than erroring.
 // We emit a gplay-shaped preview object, clearly tagged `dryRun` and
@@ -182,15 +182,15 @@ func renderSetMarkdown(w io.Writer, p SetPayload) error {
 }
 
 // RunSet is the business function the kernel invokes for the write. It
-// enforces the no-flag guard, resolves the package, and — unless
-// --dry-run short-circuits before any network — opens an implicit Edit,
+// enforces the no-flag guard, resolves the package, and, unless
+// --dry-run short-circuits before any network: opens an implicit Edit,
 // PATCHes the App details field-by-field, and commits. There is no
 // --confirm: contact info is low-stakes and reversible (same reasoning as
 // `testers set`). There is no offline format validation: the API arbitrates
 // email/URL/phone shape, and its error surfaces verbatim.
 func RunSet(rc *kernel.RunContext, in SetInput) (output.Renderable, error) {
 	// No-flag guard: a bare `set` with no field flag must never reach the
-	// API — it would emit an empty patch. This is the footgun stop, not
+	// API: it would emit an empty patch. This is the footgun stop, not
 	// validation. Run it first, before package resolution, so the misuse
 	// is reported regardless of pin state.
 	if !anyFieldSet(in) {
@@ -202,7 +202,7 @@ func RunSet(rc *kernel.RunContext, in SetInput) (output.Renderable, error) {
 		pkg = strings.TrimSpace(rc.Resolved.Pin)
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package — pass --package <pkg> or run gplay init in your repo"}
+		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	patch := buildPatch(in)

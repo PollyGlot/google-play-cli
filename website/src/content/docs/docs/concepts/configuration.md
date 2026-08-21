@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: gplay's cascading configuration — global config, committed project pins, gitignored local overrides, environment variables, and CLI flags.
+description: "gplay's cascading configuration: global config, committed project pins, gitignored local overrides, environment variables, and CLI flags."
 sidebar:
   order: 2
 ---
@@ -9,9 +9,9 @@ gplay reads the same `config.json` schema at several levels. Later layers
 win:
 
 ```txt
-$XDG_CONFIG_HOME/gplay/config.json    global, machine-local — Accounts live here
-<repo>/.gplay/config.json             project, committed — the package pin
-<repo>/.gplay/config.local.json       project, gitignored — per-developer overrides
+$XDG_CONFIG_HOME/gplay/config.json    global, machine-local: Accounts live here
+<repo>/.gplay/config.json             project, committed: the package pin
+<repo>/.gplay/config.local.json       project, gitignored: per-developer overrides
 GPLAY_* env vars                      e.g. GPLAY_ACCOUNT, GPLAY_SERVICE_ACCOUNT
 CLI flags                             e.g. --account, --package, --service-account
 ```
@@ -32,7 +32,7 @@ targets that package by default, so `--package` becomes optional. An
 explicit `--package` always overrides the pin.
 
 The walk-up refuses to traverse into `$HOME` or any of its ancestors, so a
-stray `~/.gplay/config.json` can never masquerade as a project pin — and
+stray `~/.gplay/config.json` can never masquerade as a project pin, and
 `gplay init` refuses to run when the current directory *is* `$HOME`.
 
 ## What goes in `.gplay/`
@@ -57,7 +57,7 @@ naming the offending file. Put it in `config.local.json`, the
 
 | Variable | Purpose |
 | --- | --- |
-| `GPLAY_SERVICE_ACCOUNT` | Service-account credential — a file path or inline JSON. The right choice in CI. |
+| `GPLAY_SERVICE_ACCOUNT` | Service-account credential: a file path or inline JSON. The right choice in CI. |
 | `GPLAY_ACCOUNT` | Name of a stored Account to use. |
 | `GPLAY_READONLY` | When truthy (`1`/`true`/`yes`/`on`), refuse every command that mutates Google Play state (exit `4`) before any network call. Read commands and `--dry-run` still run. See [gplay for AI agents](/docs/agents/agent-guide/). |
 | `GPLAY_INSTALL_NO_VERIFY` | Read by the install script only: bypass the SHA-256 checksum verification (air-gapped / mirrored installs). Prints a warning. See [installation](/docs/getting-started/installation/). |

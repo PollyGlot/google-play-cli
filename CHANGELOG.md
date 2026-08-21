@@ -5,6 +5,13 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1](https://github.com/PollyGlot/google-play-cli/compare/v1.2.0...v1.2.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* drop the em dash from help text, error messages, and the site copy ([#444](https://github.com/PollyGlot/google-play-cli/issues/444)) ([7e0efcf](https://github.com/PollyGlot/google-play-cli/commit/7e0efcfd29215470475f19627c78fbc5470e4c83))
+
 ## [1.2.0](https://github.com/PollyGlot/google-play-cli/compare/v1.1.0...v1.2.0) (2026-08-18)
 
 

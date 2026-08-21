@@ -1,6 +1,6 @@
 ---
 title: Team management
-description: Manage Play Console users and per-app permission grants with gplay — friendly permission aliases, frozen role bundles, and an explicit gate for admin access.
+description: "Manage Play Console users and per-app permission grants with gplay: friendly permission aliases, frozen role bundles, and an explicit gate for admin access."
 sidebar:
   order: 6
 ---
@@ -9,7 +9,7 @@ sidebar:
 organisation): its members (*users*) and their per-app access (*grants*).
 It's the one gplay surface keyed by the organisation rather than a package.
 
-## Users — account-wide membership
+## Users: account-wide membership
 
 ```sh
 gplay team users list
@@ -18,7 +18,7 @@ gplay team users set dev@example.com --permissions reply-reviews
 gplay team users remove dev@example.com
 ```
 
-## Grants — per-app access
+## Grants: per-app access
 
 ```sh
 gplay team grants list --package com.example.myapp
@@ -37,18 +37,18 @@ Google expresses permissions as `CAN_*` enums in two near-parallel families
 (account-wide `_GLOBAL` and per-app). gplay layers two friendlier forms on
 top:
 
-- **Aliases** — scope-independent names like `release-production` or
+- **Aliases**: scope-independent names like `release-production` or
   `reply-reviews`, resolved to the right enum family for the command's
   scope. Raw `CAN_*` enums are always accepted too, so nothing is ever
   un-grantable.
-- **Role bundles** — frozen presets: `viewer`, `reviewer`,
+- **Role bundles**: frozen presets, `viewer`, `reviewer`,
   `tester-manager`, `release-manager`, `admin`. *Frozen* means a bundle's
-  membership only changes by an explicit, versioned gplay release — never
+  membership only changes by an explicit, versioned gplay release, never
   silently when Google adds enums. Money-related capabilities (financial
   data, orders) are deliberately excluded from every bundle and must be
   granted as explicit permissions.
 
-The whole vocabulary is introspectable offline — no credentials needed:
+The whole vocabulary is introspectable offline, with no credentials needed:
 
 ```sh
 gplay team permissions                 # aliases + bundles, account scope
@@ -66,5 +66,5 @@ safety flags the live write needs.
 
 ## Related
 
-- [Exit codes](/docs/concepts/exit-codes/) — exit `3`, the resolvable refusal
+- [Exit codes](/docs/concepts/exit-codes/): exit `3`, the resolvable refusal
 - [`gplay team` reference](/docs/reference/team/)

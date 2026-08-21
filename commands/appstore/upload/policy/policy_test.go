@@ -160,8 +160,8 @@ func TestRun_requestShape(t *testing.T) {
 
 // TestRun_initiateCarriesFileType asserts what makes this upload unlike its two
 // siblings: the method takes a request body, and `fileType` is required. The
-// caller never chooses it — the enum's only other member is the UNSPECIFIED
-// zero value — so the JSON must travel whether or not a flag was passed, with
+// caller never chooses it: the enum's only other member is the UNSPECIFIED
+// zero value, so the JSON must travel whether or not a flag was passed, with
 // the initiate's own Content-Type distinct from the media type above.
 func TestRun_initiateCarriesFileType(t *testing.T) {
 	rt := &testRoundTripper{}
@@ -185,7 +185,7 @@ func TestRun_initiateCarriesFileType(t *testing.T) {
 }
 
 // TestRun_rendersTrackingID asserts the human views lead with the fileId and
-// say where it has to be cited — inside the policy response's documentResponse.
+// say where it has to be cited: inside the policy response's documentResponse.
 // An id with no destination is a dead end. The views also echo the fileType the
 // caller never chose, so nothing travelled on the wire unseen.
 func TestRun_rendersTrackingID(t *testing.T) {
@@ -250,7 +250,7 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 // TestRun_storePackageFallsBackToEnv asserts the app store axis reads the
 // ADR-0043 cascade: an omitted --store-package takes $GPLAY_APP_STORE_PACKAGE,
 // so a CI job exports it once for the whole namespace. The project pin never
-// feeds this axis — it pins a package, never a store.
+// feeds this axis: it pins a package, never a store.
 func TestRun_storePackageFallsBackToEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
 	rt := &testRoundTripper{}
@@ -267,7 +267,7 @@ func TestRun_storePackageFallsBackToEnv(t *testing.T) {
 
 // TestRun_dryRun_noHTTPNoFileRead asserts --dry-run resolves the target,
 // performs no HTTP call at all (not even the token exchange) and never opens
-// the file — the path deliberately does not exist, so a job can rehearse an
+// the file: the path deliberately does not exist, so a job can rehearse an
 // upload while the document is still being assembled. The rehearsal also names
 // the fileType, since the real call would send it unasked.
 func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
@@ -312,7 +312,7 @@ func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 		t.Errorf("dry-run json = %+v", got)
 	}
 	if got.FileType != appstore.DeclarationFileTypeDocument {
-		t.Errorf("dry-run json fileType = %q, want %q — the body field the caller never sets", got.FileType, appstore.DeclarationFileTypeDocument)
+		t.Errorf("dry-run json fileType = %q, want %q: the body field the caller never sets", got.FileType, appstore.DeclarationFileTypeDocument)
 	}
 	if got.Requires == nil || len(*got.Requires) != 0 {
 		t.Errorf("dry-run json %q must carry an empty requires array, got %v", out.String(), got.Requires)
@@ -320,7 +320,7 @@ func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 }
 
 // TestRun_missingStorePackage_exit2 asserts the app store package name is
-// required and its absence is CLI misuse — it identifies the caller and has no
+// required and its absence is CLI misuse: it identifies the caller and has no
 // project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")

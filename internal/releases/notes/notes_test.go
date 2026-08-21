@@ -86,7 +86,7 @@ func TestLoad_dirMode_perLocaleFiles_emitsAllLocales(t *testing.T) {
 
 // TestLoad_dirMode_defaultTxt_emittedAsDefaultLanguage asserts that a
 // lone `default.txt` in the directory is shipped as the DefaultLanguage
-// entry — the simplest "all locales fall back to the same text" case.
+// entry: the simplest "all locales fall back to the same text" case.
 func TestLoad_dirMode_defaultTxt_emittedAsDefaultLanguage(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "default.txt", "Fallback notes")
@@ -306,7 +306,7 @@ func TestLoad_dirMode_defaultTxtExceedsCap_returnsExit2(t *testing.T) {
 }
 
 // TestLoad_dirMode_atCapBoundary_loadsSuccessfully asserts that a file
-// exactly at MaxNoteFileSize loads cleanly — the cap is inclusive, so
+// exactly at MaxNoteFileSize loads cleanly: the cap is inclusive, so
 // `> cap` fails but `== cap` succeeds.
 func TestLoad_dirMode_atCapBoundary_loadsSuccessfully(t *testing.T) {
 	dir := t.TempDir()

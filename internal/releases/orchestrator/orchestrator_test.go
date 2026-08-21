@@ -1,6 +1,6 @@
 // Package orchestrator_test exercises the upload orchestration end-to-end
 // through a RoundTripper-mocked Google Play Developer API. Each test
-// drives one behavior — the tracer bullet here is the canonical
+// drives one behavior: the tracer bullet here is the canonical
 // four-call sequence on a non-production track.
 package orchestrator_test
 
@@ -132,7 +132,7 @@ func jsonResp(status int, body string) *http.Response {
 }
 
 // writeFakeAAB creates a non-empty file in t.TempDir() with a .aab
-// extension. The mock RoundTripper does not validate the bytes — it just
+// extension. The mock RoundTripper does not validate the bytes: it just
 // needs os.Open to succeed.
 func writeFakeAAB(t *testing.T) string {
 	t.Helper()
@@ -479,7 +479,7 @@ func TestUpload_commitFail_keepOnFailure_carriesEditID(t *testing.T) {
 
 // TestUpload_insertEdit_403_returnsExit11Error asserts that a 403 from
 // edits.insert (SA not invited on the app) surfaces as an error
-// carrying ExitCode()=11 — the canonical authorization-failure code
+// carrying ExitCode()=11: the canonical authorization-failure code
 // per docs/DESIGN.md §9.
 func TestUpload_insertEdit_403_returnsExit11Error(t *testing.T) {
 	aab := writeFakeAAB(t)
@@ -510,7 +510,7 @@ func TestUpload_insertEdit_403_returnsExit11Error(t *testing.T) {
 
 // TestUpload_insertEdit_409_returnsExit60Error asserts that a 409 from
 // edits.insert (a stale Edit is still open on the package) surfaces as
-// an error carrying ExitCode()=60 — the state-conflict code.
+// an error carrying ExitCode()=60: the state-conflict code.
 func TestUpload_insertEdit_409_returnsExit60Error(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt := &playRT{
@@ -541,7 +541,7 @@ func TestUpload_insertEdit_409_returnsExit60Error(t *testing.T) {
 // TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet asserts
 // the optimization from finding #8: when --release-notes-dir contains
 // only explicit per-locale .txt files (no default.txt fallback), the
-// orchestrator skips the edits.details.get round-trip — DefaultLanguage
+// orchestrator skips the edits.details.get round-trip: DefaultLanguage
 // is not needed by notes.Load in that case.
 func TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet(t *testing.T) {
 	aab := writeFakeAAB(t)
@@ -651,7 +651,7 @@ func TestUpload_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 		t:           t,
 		editID:      "should-not-open",
 		versionCode: 0,
-		// Any HTTP call here would fail the test — a refused confirm
+		// Any HTTP call here would fail the test: a refused confirm
 		// must short-circuit before insert.
 		insertHandler: func(req *http.Request) (*http.Response, error) {
 			t.Errorf("insert was called despite missing --confirm: %s", req.URL.Path)
@@ -745,7 +745,7 @@ func TestUpload_dryRun_makesNoHTTPCalls(t *testing.T) {
 }
 
 // TestUpload_dryRun_productionSafeDefault asserts that dry-run also
-// applies the ADR-0002 safe-default — production with no status flag
+// applies the ADR-0002 safe-default: production with no status flag
 // previews as draft.
 func TestUpload_dryRun_productionSafeDefault(t *testing.T) {
 	aab := writeFakeAAB(t)
@@ -767,7 +767,7 @@ func TestUpload_dryRun_productionSafeDefault(t *testing.T) {
 }
 
 // writeFakeMapping creates a non-empty mapping.txt in t.TempDir(). The
-// mock RoundTripper does not validate the bytes — bundles/mappings just
+// mock RoundTripper does not validate the bytes: bundles/mappings just
 // need os.Open to succeed.
 func writeFakeMapping(t *testing.T) string {
 	t.Helper()
@@ -781,7 +781,7 @@ func writeFakeMapping(t *testing.T) string {
 // TestUpload_withMapping_uploadsMappingInSameEdit asserts that supplying
 // a MappingPath uploads the ProGuard mapping inside the SAME edit, keyed
 // by the versionCode bundles.upload returned, between the bundle upload
-// and the track update — one edit, one commit (#250).
+// and the track update: one edit, one commit (#250).
 func TestUpload_withMapping_uploadsMappingInSameEdit(t *testing.T) {
 	aab := writeFakeAAB(t)
 	mapping := writeFakeMapping(t)
@@ -884,7 +884,7 @@ func exitCode(err error) int {
 
 // TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP asserts that a
 // dry-run `releases upload --mapping <dir>` rejects a non-regular mapping
-// path as exit 20 — parity with the live path (PR #264 review).
+// path as exit 20: parity with the live path (PR #264 review).
 func TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP(t *testing.T) {
 	aab := writeFakeAAB(t)
 	dir := t.TempDir()
@@ -910,7 +910,7 @@ func TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP(t *testing.T) {
 
 // TestUpload_dryRun_aabIsDirectory_exit20_noHTTP asserts that a dry-run
 // `releases upload` rejects a non-regular AAB path (a directory) as exit
-// 20 — parity with the live path (bundles.Upload), which cannot stream a
+// 20: parity with the live path (bundles.Upload), which cannot stream a
 // directory. os.Stat succeeds on a directory, so without a regular-file
 // guard dry-run would green-light what the live upload rejects as a
 // transport error (exit 50).

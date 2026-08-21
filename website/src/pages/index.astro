@@ -8,7 +8,7 @@ import surface from '../data/cli-surface.json';
 import releaseManifest from '../../../.release-please-manifest.json';
 
 // Current CLI version, from the release-please manifest (single source of
-// truth for the released version — no network call at build time).
+// truth for the released version, no network call at build time).
 const version = releaseManifest['.'];
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -18,9 +18,9 @@ const canonical = `${site}${base}/`;
 const GITHUB = 'https://github.com/PollyGlot/google-play-cli';
 const SKILLS_REPO = 'https://github.com/PollyGlot/google-play-cli-skills';
 
-const title = 'gplay — Google Play Developer CLI for CI and AI agents';
+const title = 'gplay: the Google Play Developer CLI for CI and AI agents';
 const description =
-  'gplay is a fast, single-binary CLI for the Google Play Developer API. Upload releases, run staged rollouts, sync store listings, reply to reviews, and manage your Play Console team — from your terminal, CI pipeline, or AI agent. Open source, MIT.';
+  'gplay is a fast, single-binary CLI for the Google Play Developer API. Upload releases, run staged rollouts, sync store listings, reply to reviews, and manage your Play Console team, from your terminal, CI pipeline, or AI agent. Open source, MIT.';
 
 // Command namespaces, taken from the generated CLI surface (gplay --help).
 const namespaces = surface.namespaces.filter((n) => n.name !== 'init');
@@ -35,7 +35,7 @@ const stats = [
 const features = [
   {
     title: 'One static binary',
-    body: 'Written in Go. No Ruby, no Node, no Python in your CI image — one file, fast cold start, trivial caching.',
+    body: 'Written in Go. No Ruby, no Node, no Python in your CI image: one file, fast cold start, trivial caching.',
   },
   {
     title: 'CI-first output',
@@ -66,11 +66,11 @@ const faq = [
   },
   {
     q: 'How is gplay different from Fastlane supply?',
-    a: 'No Ruby runtime — gplay is one static binary, so CI images stay small and cold starts stay fast. Output is machine-stable (raw API JSON in pipes), exit codes are semantic so scripts know what is retryable, and production uploads default to draft releases instead of publishing to 100% of users. An existing fastlane metadata tree drops in unchanged.',
+    a: 'No Ruby runtime: gplay is one static binary, so CI images stay small and cold starts stay fast. Output is machine-stable (raw API JSON in pipes), exit codes are semantic so scripts know what is retryable, and production uploads default to draft releases instead of publishing to 100% of users. An existing fastlane metadata tree drops in unchanged.',
   },
   {
     q: 'Does gplay work in CI?',
-    a: 'Yes — that is its home turf. Credentials inject via the GPLAY_SERVICE_ACCOUNT environment variable (file path or inline JSON), CI=true switches output to JSON automatically, no command ever prompts interactively, and exit codes 40/50 mark exactly the failures worth retrying.',
+    a: 'Yes, that is its home turf. Credentials inject via the GPLAY_SERVICE_ACCOUNT environment variable (file path or inline JSON), CI=true switches output to JSON automatically, no command ever prompts interactively, and exit codes 40/50 mark exactly the failures worth retrying.',
   },
   {
     q: 'Can AI agents drive gplay?',
@@ -78,7 +78,7 @@ const faq = [
   },
   {
     q: 'Is gplay free?',
-    a: 'Yes — open source under the MIT license. The source, issue tracker, and architecture decision records are public on GitHub.',
+    a: 'Yes, open source under the MIT license. The source, issue tracker, and architecture decision records are public on GitHub.',
   },
   {
     q: 'Is gplay affiliated with Google?',
@@ -120,7 +120,7 @@ const jsonLd = [
 ];
 
 // Real `releases upload` table output shape (commands/releases/upload/upload.go
-// renderTable) with format-faithful demo values — not a captured real app.
+// renderTable) with format-faithful demo values, not a captured real app.
 const demoUploadOutput = `versionCode:  421
 track:        internal
 status:       completed
@@ -295,8 +295,8 @@ const demoSession = [
             </h1>
             <p class="mt-5 max-w-prose text-lg leading-relaxed text-fg-muted">
               gplay is a fast, single-binary CLI for the Google Play Developer API. Releases,
-              staged rollouts, store listings, reviews, compliance, and team management — built
-              for CI pipelines and AI agents, designed to replace Fastlane on Android pipelines.
+              staged rollouts, store listings, reviews, compliance, and team management. Built
+              for CI pipelines and AI agents, to replace Fastlane on Android pipelines.
             </p>
             <div class="mt-8 flex flex-wrap items-center gap-3">
               <a
@@ -391,7 +391,7 @@ const demoSession = [
         <div class="mx-auto max-w-5xl px-5 py-16">
           <h2 class="m-0 text-3xl font-bold text-fg">The command surface</h2>
           <p class="mt-3 max-w-prose text-fg-muted">
-            {surface.commands} commands across {namespaces.length} namespaces — every page of the
+            {surface.commands} commands across {namespaces.length} namespaces. Every page of the
             <a href={`${base}/docs/reference/`} class="text-accent underline underline-offset-4"
               >CLI reference</a
             > is generated from the binary's own <code class="font-mono text-fg-body">--help</code>,
@@ -419,10 +419,10 @@ const demoSession = [
         <div class="mt-8 grid gap-10 md:grid-cols-2">
           <div class="text-fg-muted">
             <p class="mt-0 leading-relaxed">
-              gplay treats autonomous callers as first-class users. JSON output mirrors the Google
+              Nothing in gplay assumes a human at the keyboard. JSON output mirrors the Google
               Play API schemas verbatim. A refused write names the exact safety flag it needs
               (exit code 3) instead of dead-ending. <code class="font-mono text-fg-body">--dry-run</code>
-              previews any mutation without HTTP — and on team writes it returns a
+              previews any mutation without HTTP, and on team writes it returns a
               <code class="font-mono text-fg-body">requires</code> array announcing the gates ahead.
             </p>
             <p class="leading-relaxed">
@@ -449,8 +449,8 @@ const demoSession = [
               </code>
             </div>
             <p class="mt-3 text-sm leading-relaxed text-fg-muted">
-              Nine skills — one per namespace plus a conventions foundation — each documenting the
-              safe command sequence for its workflow, for Claude Code and compatible tools.
+              Seventeen skills, one per workflow plus a conventions foundation, each documenting
+              the safe command sequence it covers, for Claude Code and compatible tools.
               <a href={`${base}/docs/agents/skills/`} class="text-accent underline underline-offset-4"
                 >Browse the roster</a
               >.
@@ -530,7 +530,7 @@ const demoSession = [
           Developer API and is not endorsed by,
           affiliated with, or sponsored by Google LLC. "Google Play" is a trademark of Google LLC.
         </p>
-        <p class="mt-2 text-xs text-fg-subtle">© 2026 Pavlo Trinko and contributors.</p>
+        <p class="mt-2 text-xs text-fg-subtle">© 2026 Pavlo Trinko.</p>
       </div>
     </footer>
 

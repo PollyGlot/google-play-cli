@@ -4,7 +4,7 @@
 // it can check WITHOUT touching Play: unknown locales, character-limit
 // overflows, and required fields that are empty or missing.
 //
-// It has no I/O, no auth, and no HTTP — every input arrives as arguments,
+// It has no I/O, no auth, and no HTTP: every input arrives as arguments,
 // every output is a deterministic []Problem. The command layer
 // (commands/metadata/validate) maps a non-empty result to exit 20
 // (client-side validation, docs/DESIGN.md §9).
@@ -14,8 +14,8 @@
 // untouched (ADR-0011 §1), and inside a present locale a *missing* field
 // file means "leave the online value alone" (ADR-0011 §2). `validate` is
 // deliberately STRICTER: it is a pre-publication lint that treats every
-// locale present in the tree as one that must be a COMPLETE Listing —
-// title and fullDescription present and non-empty — because Play rejects
+// locale present in the tree as one that must be a COMPLETE Listing:
+// title and fullDescription present and non-empty, because Play rejects
 // a Listing missing either (ADR-0011 §2: "title/fullDescription are
 // required non-empty by Play, so an empty file for those is a validation
 // error, not a clear"). So a locale dir that omits title.txt is fine for
@@ -23,7 +23,7 @@
 // validation error here: shipping that locale to Play would fail. This
 // is the intended reading of the issue's AC "title/full_description vide
 // ou manquant → exit 20", and it means a tree that `apply` would accept
-// can still fail `validate` — `validate` answers "is each locale in this
+// can still fail `validate`: `validate` answers "is each locale in this
 // tree publishable on its own?", not "will apply's PATCH succeed?".
 package validate
 
