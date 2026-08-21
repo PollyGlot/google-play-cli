@@ -1,11 +1,4 @@
 {
   "version": 1,
-  "skills": {
-    "wayfinder": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/wayfinder/SKILL.md",
-      "computedHash": "8f610a50e8e8044571d918088160a9657e23f1268080728bf92009db48f6c22f"
-    }
-  }
+  "skills": {}
 }
