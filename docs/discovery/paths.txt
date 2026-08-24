@@ -8,6 +8,8 @@ androidpublisher.apprecovery.cancel	POST	androidpublisher/v3/applications/{packa
 androidpublisher.apprecovery.create	POST	androidpublisher/v3/applications/{packageName}/appRecoveries
 androidpublisher.apprecovery.deploy	POST	androidpublisher/v3/applications/{packageName}/appRecoveries/{appRecoveryId}:deploy
 androidpublisher.apprecovery.list	GET	androidpublisher/v3/applications/{packageName}/appRecoveries
+androidpublisher.appsigning.enrollApp	POST	androidpublisher/v3/applications/{name}/appSigning:enrollApp
+androidpublisher.appsigning.rotateAppSigningKey	POST	androidpublisher/v3/applications/{name}/appSigning:rotateAppSigningKey
 androidpublisher.appstoreappsreview.createappstorehostedapp	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps:create
 androidpublisher.appstoreappsreview.updateappstorehostedapp	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps:update
 androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus	POST	androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}:updateAppStoreHostedAppPublishStatus
