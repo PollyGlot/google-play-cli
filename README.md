@@ -13,12 +13,18 @@
 
 # gplay
 
-Shipping an Android app from CI usually means shipping Fastlane `supply`
-with it: a Ruby runtime in your image, output meant for humans, and generic
-exit codes that turn retry logic into guesswork. `gplay` replaces it with one
-static binary, nothing to install alongside it, JSON that matches the Google
-Play Developer API verbatim, exit codes you can branch on, and a `production`
-track that ships a draft release unless you say otherwise.
+Publish to Google Play from a CI pipeline or a coding agent (Claude Code,
+Codex, Cursor), without Fastlane. Shipping `supply` means shipping a Ruby
+runtime in your image, output meant for humans, and generic exit codes that
+turn retry logic into guesswork. `gplay` replaces it with one static binary,
+nothing to install alongside it, and exit codes you can branch on.
+
+Two properties do the heavy lifting for a non-human caller. `--output json`
+returns the Google Play Developer API response verbatim: an agent that knows
+Google's API already knows gplay's output, field for field, including the
+zero values a typed re-marshal would drop. And every command declares its
+contract: unmarked means frozen under the Public contract, `[experimental]`
+means free to evolve. `--help` tells you which, per command.
 
 **Two ways to drive it:** the raw CLI (flags, scripts, CI) or
 [agent skills](#agent-skills) that run it from natural-language prompts.
