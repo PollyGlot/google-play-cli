@@ -1,5 +1,5 @@
 {
-  "revision": "20260813",
+  "revision": "20260820",
   "methods": {
     "androidpublisher.applications.dataSafety": {
       "httpMethod": "POST",
@@ -208,6 +208,38 @@
         }
       ],
       "response": "ListAppRecoveriesResponse"
+    },
+    "androidpublisher.appsigning.enrollApp": {
+      "httpMethod": "POST",
+      "path": "applications/{name}/appSigning:enrollApp",
+      "description": "Enrolls an app in Play App Signing using a self-hosted Google Cloud KMS key. Warning: Do not use this method for standard Play App Signing enrollment. * Standard enrollment with Google-generated or Google-managed keys cannot be done via API. * This advanced API is strictly for enterprise organizations with mandatory compliance, regulatory, or policy requirements to retain key custody in an external Google Cloud KMS instance. * Prerequisites: Requires an active, properly configured Google Cloud KMS key with appropriate IAM permissions granted to Google Play before calling this method. See Help Center: https://support.google.com/googleplay/android-developer/answer/9842756",
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. Either package name or app ID of the app enrolling in Play Signing."
+        }
+      ],
+      "request": "EnrollAppRequest",
+      "response": "EnrollAppResponse"
+    },
+    "androidpublisher.appsigning.rotateAppSigningKey": {
+      "httpMethod": "POST",
+      "path": "applications/{name}/appSigning:rotateAppSigningKey",
+      "description": "Rotates an app's signing key to a new self-hosted Google Cloud KMS key. Warning: This method only applies to apps enrolled with self-hosted Cloud KMS keys. For apps using standard Google-managed Play App Signing, key rotation requests must be initiated through the Google Play Console UI. See Help Center: https://support.google.com/googleplay/android-developer/answer/9842756",
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. Either package name or app ID of the app rotating the signing key."
+        }
+      ],
+      "request": "RotateAppSigningKeyRequest",
+      "response": "RotateAppSigningKeyResponse"
     },
     "androidpublisher.appstoreappsreview.createappstorehostedapp": {
       "httpMethod": "POST",
@@ -6251,6 +6283,45 @@
         }
       }
     },
+    "CertificateHashes": {
+      "description": "Hash digests of a certificate.",
+      "properties": {
+        "certificateHashMd5": {
+          "type": "string",
+          "description": "Hex-encoded MD5 hash of the certificate. example: `43:51:43:A1:B5:FC:8B:B7:0A:3A:A9:B1:0F:66:73:A8`"
+        },
+        "certificateHashSha1": {
+          "type": "string",
+          "description": "Hex-encoded SHA1 hash of the certificate. example: `86:61:97:1A:D5:EF:E5:74:1E:A7:5B:84:7C:68:37:65:CD:94:16:DE`"
+        },
+        "certificateHashSha256": {
+          "type": "string",
+          "description": "Hex-encoded SHA256 hash of the certificate. example: `94:49:C7:F3:A9:3C:F0:C5:5A:67:5D:DF:1C:83:73:2D:87:D5:62:55:E7:0B:15:0D:9E:6F:3C:F8:63:BB:7F:C1`"
+        }
+      }
+    },
+    "CloudKmsKey": {
+      "description": "Reference to a private key hosted in developer-managed Google Cloud KMS.",
+      "properties": {
+        "cryptoKeyVersionResource": {
+          "type": "string",
+          "description": "Required. Resource identifier of the private key hosted in Google Cloud KMS. The Google Play service account must be granted Decrypt and Sign permissions on this resource. Format: projects//locations//keyRings//cryptoKeys//cryptoKeyVersions/"
+        }
+      }
+    },
+    "CloudKmsKeyAndCert": {
+      "description": "Cloud KMS key and the certificate associated with the key.",
+      "properties": {
+        "cloudKmsKey": {
+          "$ref": "CloudKmsKey",
+          "description": "Required. Cloud KMS key."
+        },
+        "pemCertificate": {
+          "type": "string",
+          "description": "Required. Certificate associated with the key. The bytes must contain the certificate in PEM format."
+        }
+      }
+    },
     "CoarseLocation": {
       "description": "Coarse Geographic location details for where the consumption happened.",
       "properties": {
@@ -7086,6 +7157,54 @@
           "$ref": "DeviceTier",
           "repeated": true,
           "description": "Device tiers belonging to the set."
+        }
+      }
+    },
+    "EnrollAppRequest": {
+      "description": "Request to enroll an app into Play App Signing using a self-hosted Cloud KMS key.",
+      "properties": {
+        "enrollExistingApp": {
+          "$ref": "EnrollExistingApp",
+          "description": "Enrolls an existing app into Play signing using an external Cloud KMS key."
+        },
+        "enrollNewApp": {
+          "$ref": "EnrollNewApp",
+          "description": "Changes the signing key of a new app to an external Cloud KMS key. The app must not have published to Open testing or Production tracks."
+        },
+        "pemUploadCertificate": {
+          "type": "string",
+          "description": "The certificate associated with the upload key, in PEM format."
+        }
+      }
+    },
+    "EnrollAppResponse": {
+      "description": "Response to enroll an app into Play signing.",
+      "properties": {
+        "signingCertificate": {
+          "$ref": "CertificateHashes",
+          "description": "The signing certificate hashes for the app. Always set."
+        },
+        "uploadCertificate": {
+          "$ref": "CertificateHashes",
+          "description": "The upload certificate hashes for the app. Set iff pem_upload_certificate was set in the request."
+        }
+      }
+    },
+    "EnrollExistingApp": {
+      "description": "Enroll an existing app into Play signing.",
+      "properties": {
+        "cloudKmsKey": {
+          "$ref": "CloudKmsKey",
+          "description": "Required. Self-hosted key. Once enrolled, this key will be used to sign your app."
+        }
+      }
+    },
+    "EnrollNewApp": {
+      "description": "Enroll a new app into Play signing.",
+      "properties": {
+        "cloudKmsKeyAndCert": {
+          "$ref": "CloudKmsKeyAndCert",
+          "description": "Required. Self-hosted key. Once enrolled, this key will be used to sign your app."
         }
       }
     },
@@ -11561,6 +11680,49 @@
     },
     "RevokeSubscriptionPurchaseResponse": {
       "description": "Response for the purchases.subscriptionsv2.revoke API."
+    },
+    "RotateAppSigningKeyRequest": {
+      "description": "Request to rotate an app's signing key.",
+      "properties": {
+        "keyRotationReason": {
+          "type": "string",
+          "enum": [
+            "KEY_ROTATION_REASON_UNSPECIFIED",
+            "COMPROMISED_KEY",
+            "USE_STRONGER_KEY",
+            "USE_SAME_KEY_FOR_MULTIPLE_APPS",
+            "ROUTINE_KEY_UPGRADE",
+            "OTHER"
+          ],
+          "description": "Required. Reason for rotating the app key."
+        },
+        "rotatedCloudKmsKey": {
+          "$ref": "RotatedCloudKmsKey",
+          "description": "Required. Self-hosted Cloud KMS key."
+        }
+      }
+    },
+    "RotateAppSigningKeyResponse": {
+      "description": "Response to rotate an app's signing key.",
+      "properties": {
+        "rotatedKeyCertificate": {
+          "$ref": "CertificateHashes",
+          "description": "The rotated key certificate hashes for the app. Always set."
+        }
+      }
+    },
+    "RotatedCloudKmsKey": {
+      "description": "Message representing rotated Cloud KMS key. Consists of the Cloud KMS key and its associated proof of rotation.",
+      "properties": {
+        "cloudKmsKeyAndCert": {
+          "$ref": "CloudKmsKeyAndCert",
+          "description": "Required. Cloud KMS key and the certificate associated with the key."
+        },
+        "signingCertificateLineage": {
+          "type": "string",
+          "description": "Required. Proof-of-rotation. See [creating signing certificate lineages](https://developer.android.com/studio/command-line/apksigner#rotate_signing_keys_2)."
+        }
+      }
     },
     "SafetyLabelsUpdateRequest": {
       "description": "Request to update Safety Labels of an app.",
