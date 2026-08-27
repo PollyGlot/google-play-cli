@@ -163,6 +163,15 @@ func TestRepeatedFlags_everyRegisteredFlagRejects(t *testing.T) {
 	samples := map[string]string{
 		"string": "x", "bool": "true", "int": "1", "int64": "1",
 		"float64": "0.5", "duration": "1s",
+		"stringSlice": "x", "stringArray": "x", "int64Slice": "1",
+		"stringToString": "k=v", "stringToInt": "k=1", "stringToInt64": "k=1",
+	}
+	// Flag types whose second occurrence is normal use, not misuse. pflag
+	// publishes an interface for its slice values and none for its map values,
+	// so the map kinds are matched by name here exactly as the kernel matches
+	// them, and an unknown type still lands in the samples check above.
+	repeatableTypes := map[string]bool{
+		"stringToString": true, "stringToInt": true, "stringToInt64": true,
 	}
 	checked, repeatable := 0, 0
 	seen := map[*pflag.Flag]bool{}
@@ -173,14 +182,25 @@ func TestRepeatedFlags_everyRegisteredFlagRejects(t *testing.T) {
 				return
 			}
 			seen[f] = true
-			if _, isSlice := f.Value.(pflag.SliceValue); isSlice {
-				repeatable++
-				return
-			}
 			sample, ok := samples[f.Value.Type()]
 			if !ok {
 				t.Errorf("%s --%s: no sample for flag type %q; add one so the repeated-flag guard covers it",
 					c.CommandPath(), f.Name, f.Value.Type())
+				return
+			}
+			_, isSlice := f.Value.(pflag.SliceValue)
+			if isSlice || repeatableTypes[f.Value.Type()] {
+				// The exemption is asserted, not assumed: a repeatable flag
+				// that started rejecting its second value would be a silent
+				// regression on `--locale a --locale b`.
+				repeatable++
+				if err := f.Value.Set(sample); err != nil {
+					t.Errorf("%s --%s: first Set(%q) = %v, want nil", c.CommandPath(), f.Name, sample, err)
+					return
+				}
+				if err := f.Value.Set(sample); err != nil {
+					t.Errorf("%s --%s: second Set(%q) on a repeatable flag = %v, want nil", c.CommandPath(), f.Name, sample, err)
+				}
 				return
 			}
 			checked++
