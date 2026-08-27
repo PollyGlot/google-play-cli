@@ -26,6 +26,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/locale"
+	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
 // LocaleNoFieldsError is returned by Read when a directory NAMED like a
@@ -107,6 +108,15 @@ func Read(dir string) (listing.Tree, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Containment root, resolved once for the whole walk (PRD #459 / slice
+	// #461). Every locale and file name below comes off the disk and can be a
+	// symlink out of the tree: without this, an `en-US/title.txt` pointed at
+	// `~/.ssh/id_rsa` would be read into the Listing and published to a public
+	// store listing by `metadata apply`, under the operator's own credentials.
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return nil, err
+	}
 	tr := make(listing.Tree)
 	for _, e := range entries {
 		// Only first-level sub-directories are locales. A stray file at
@@ -115,7 +125,7 @@ func Read(dir string) (listing.Tree, error) {
 			continue
 		}
 		loc := e.Name()
-		l, unrecognized, err := readLocale(filepath.Join(dir, loc), loc)
+		l, unrecognized, err := readLocale(root, filepath.Join(dir, loc), loc)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +158,10 @@ func Read(dir string) (listing.Tree, error) {
 // second return is the list of unrecognized (non-directory) file names
 // found, so Read can distinguish a locale-shaped dir whose field files are
 // all mis-named (a typo worth erroring on) from an empty or README-only one.
-func readLocale(path, locale string) (listing.Listing, []string, error) {
+func readLocale(root, path, locale string) (listing.Listing, []string, error) {
+	if _, err := pathguard.Contain(root, path); err != nil {
+		return listing.Listing{}, nil, err
+	}
 	entries, err := osReadDir(path)
 	if err != nil {
 		return listing.Listing{}, nil, err
@@ -170,7 +183,13 @@ func readLocale(path, locale string) (listing.Listing, []string, error) {
 			unrecognized = append(unrecognized, e.Name())
 			continue
 		}
-		b, err := osReadFile(filepath.Join(path, e.Name()))
+		// Contain BEFORE the read: a field file symlinked out of the tree must
+		// never be opened, not merely dropped after the fact.
+		field, err := pathguard.Contain(root, filepath.Join(path, e.Name()))
+		if err != nil {
+			return listing.Listing{}, unrecognized, err
+		}
+		b, err := osReadFile(field)
 		if err != nil {
 			return listing.Listing{}, unrecognized, err
 		}
@@ -227,11 +246,38 @@ func stripOneTrailingNewline(s string) string {
 // or fields no longer on disk) is a higher-layer, opt-in concern
 // (`metadata apply --prune`), never a side effect of writing the tree.
 func Write(dir string, tr listing.Tree) error {
+	// The locale keys of tr come from the Play API on the pull path: a string
+	// gplay did not author, joined straight into a filesystem path. Establish
+	// the containment root up front and check every derived path against it,
+	// so neither a hostile locale nor a pre-placed symlink can make a write
+	// land outside dir (PRD #459 / slice #461).
+	//
+	// An empty Tree writes nothing and must therefore create nothing: the
+	// early return keeps `pull` on an app with no listings from leaving an
+	// empty directory behind.
+	if len(tr) == 0 {
+		return nil
+	}
+	if err := osMkdirAll(dir, dirPerm); err != nil {
+		return err
+	}
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return err
+	}
 	// Iterate locales in sorted order for deterministic mkdir/write
 	// sequencing (helps reproducible runs and test assertions).
 	for _, locale := range tr.Locales() {
 		l := tr[locale]
+		// A locale is one path component and nothing else: reject "..", a
+		// separator, or an absolute path before it is ever joined.
+		if err := pathguard.Segment("locale", locale); err != nil {
+			return err
+		}
 		localeDir := filepath.Join(dir, locale)
+		if _, err := pathguard.Contain(root, localeDir); err != nil {
+			return err
+		}
 		if err := osMkdirAll(localeDir, dirPerm); err != nil {
 			return err
 		}
@@ -256,7 +302,14 @@ func Write(dir string, tr listing.Tree) error {
 				// field.
 				b = []byte(v + "\n")
 			}
-			if err := osWriteFile(filepath.Join(localeDir, spec.File), b, filePerm); err != nil {
+			// ContainWrite, not Contain: osWriteFile follows a symlinked leaf,
+			// so a `title.txt` pre-placed as a link would have its target
+			// overwritten with store text on `metadata pull`.
+			field, err := pathguard.ContainWrite(root, filepath.Join(localeDir, spec.File))
+			if err != nil {
+				return err
+			}
+			if err := osWriteFile(field, b, filePerm); err != nil {
 				return err
 			}
 		}

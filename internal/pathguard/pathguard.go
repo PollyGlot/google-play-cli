@@ -84,6 +84,49 @@ func Contain(root, path string) (string, error) {
 	return abs, nil
 }
 
+// ContainWrite is Contain for a path that is about to be WRITTEN, and adds the
+// one check a read does not need: the leaf must not itself be a symlink.
+//
+// Contain alone is not enough on a write. It resolves the path and proves the
+// TARGET is inside root, which is exactly right for a read, but os.WriteFile
+// follows the link: a `1.png` or `title.txt` pre-placed in the repo as a
+// symlink turns `pull` into "overwrite the operator's file with store content".
+// A link pointing outside root is already refused by Contain; a link pointing
+// back inside root would pass it, and still write to a file the caller did not
+// name. Refusing to write through any symlink covers both, and it is the
+// symmetric counterpart of the containment applied on the read side.
+//
+// A path that does not exist yet is the normal case and passes.
+func ContainWrite(root, path string) (string, error) {
+	abs, err := Contain(root, path)
+	if err != nil {
+		return "", err
+	}
+	fi, err := os.Lstat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return abs, nil
+		}
+		return "", err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return "", exit.Usagef(
+			"refusing to write %q: it is a symlink, and writing would go through it to %q. Replace the link with a regular file.",
+			path, linkTarget(abs))
+	}
+	return abs, nil
+}
+
+// linkTarget reads a symlink for the error message only; an unreadable link
+// still gets a usable message rather than swallowing the refusal.
+func linkTarget(path string) string {
+	target, err := os.Readlink(path)
+	if err != nil {
+		return "its target"
+	}
+	return target
+}
+
 // resolveExisting is EvalSymlinks extended to paths whose leaf does not exist
 // yet, by resolving the deepest ancestor that does and re-appending the rest.
 func resolveExisting(abs string) (string, error) {

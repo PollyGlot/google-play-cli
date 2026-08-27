@@ -141,7 +141,7 @@ func writeSingular(root, imgDir string, ty images.Type, data []byte) error {
 		return err
 	}
 	name := string(ty) + "." + ext
-	if err := os.WriteFile(filepath.Join(imgDir, name), data, filePerm); err != nil {
+	if err := writeContained(root, filepath.Join(imgDir, name), data); err != nil {
 		return err
 	}
 	// Idempotency: drop a sibling <type>.<otherext> left by a previous write
@@ -175,7 +175,7 @@ func writeGallery(root, galleryDir string, ty images.Type, seq [][]byte) error {
 		// 1-based, no zero-padding: Play caps galleries at 8 so a single
 		// digit always sorts correctly (ADR-0013).
 		name := fmt.Sprintf("%d.%s", i+1, ext)
-		if err := os.WriteFile(filepath.Join(galleryDir, name), data, filePerm); err != nil {
+		if err := writeContained(root, filepath.Join(galleryDir, name), data); err != nil {
 			return err
 		}
 		written[name] = true
@@ -299,6 +299,18 @@ func readLocale(root, imgDir string) (map[images.Type][][]byte, error) {
 		slots[ty] = [][]byte{data}
 	}
 	return slots, nil
+}
+
+// writeContained is os.WriteFile with the containment check in front of it,
+// the write-side mirror of readContained: containing the directory is not
+// enough, because os.WriteFile follows a symlinked LEAF and an image file
+// pre-placed as a link would have its target overwritten by `images pull`.
+func writeContained(root, p string, data []byte) error {
+	target, err := pathguard.ContainWrite(root, p)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(target, data, filePerm)
 }
 
 // readContained is os.ReadFile with the containment check in front of it, so

@@ -113,6 +113,71 @@ func TestWriteRefusesTraversingLocale(t *testing.T) {
 	}
 }
 
+// Containment covers the DIRECTORY, but the leaf file is written with
+// os.WriteFile, which follows a symlink. A pre-placed icon.png pointing at a
+// file outside the tree would be overwritten by `metadata images pull`.
+func TestWriteRefusesSymlinkedSingularFile(t *testing.T) {
+	victim, original := plantVictim(t)
+
+	dir := t.TempDir()
+	imgDir := filepath.Join(dir, "en-US", "images")
+	if err := os.MkdirAll(imgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(imgDir, "icon.png")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	tr := imagetree.Tree{"en-US": {images.Icon: [][]byte{onePNG}}}
+	if err := imagetree.Write(dir, tr); err == nil {
+		t.Fatal("Write wrote through a symlinked singular image file")
+	}
+	assertIntact(t, victim, original)
+}
+
+// Same trap, one level down: a gallery slot's 1.png.
+func TestWriteRefusesSymlinkedGalleryFile(t *testing.T) {
+	victim, original := plantVictim(t)
+
+	dir := t.TempDir()
+	galleryDir := filepath.Join(dir, "en-US", "images", string(images.PhoneScreenshots))
+	if err := os.MkdirAll(galleryDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(galleryDir, "1.png")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: [][]byte{onePNG}}}
+	if err := imagetree.Write(dir, tr); err == nil {
+		t.Fatal("Write wrote through a symlinked gallery image file")
+	}
+	assertIntact(t, victim, original)
+}
+
+// plantVictim creates a file OUTSIDE any image tree, the target a hostile
+// symlink would aim at, and returns its path and expected contents.
+func plantVictim(t *testing.T) (path, body string) {
+	t.Helper()
+	path = filepath.Join(t.TempDir(), "id_rsa")
+	body = "PRIVATE-KEY"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path, body
+}
+
+func assertIntact(t *testing.T, path, want string) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("the file outside the tree was overwritten: %q", got)
+	}
+}
+
 func TestWriteAcceptsOrdinaryLocales(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "out")
 	tr := imagetree.Tree{"en-US": {images.Icon: [][]byte{onePNG}}}
