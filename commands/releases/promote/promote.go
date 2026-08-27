@@ -281,7 +281,7 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the source release with this versionCode (disambiguator)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the source release with this name (disambiguator)")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "override carry-over with this text (applied to the app's default language)")
-	cmd.Flags().StringVar(&in.ReleaseNotesDir, "release-notes-dir", "", "override carry-over with per-locale files (<locale>.txt, optional default.txt)")
+	cmd.Flags().StringVar(&in.ReleaseNotesDir, "release-notes-dir", "", "override carry-over with per-locale files (<locale>.txt in BCP 47, e.g. en-US.txt; optional default.txt)")
 	cmd.Flags().BoolVar(&in.Draft, "draft", false, "force the release status to draft on the destination")
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")

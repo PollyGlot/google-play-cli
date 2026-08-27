@@ -322,6 +322,11 @@ func validatePromoteOpts(opts PromoteOpts) error {
 			}
 		}
 	}
+	// Same pre-Edit locale gate as the upload path: a malformed `<locale>.txt`
+	// name is knowable offline, so it must not cost an edits.insert (#452).
+	if err := notes.ValidateDirLocales(opts.ReleaseNotesDir); err != nil {
+		return err
+	}
 	return nil
 }
 
