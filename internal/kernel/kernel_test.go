@@ -206,8 +206,17 @@ func TestNew_wiresIOFromBoot(t *testing.T) {
 	if rc.Stdout != boot.Stdout {
 		t.Errorf("Stdout not wired from Boot")
 	}
-	if rc.Stderr != boot.Stderr {
-		t.Errorf("Stderr not wired from Boot")
+	// Stderr is wired from Boot but NOT pointer-identical: the kernel wraps it
+	// in the credential-redaction filter (PRD #459), so the property to assert
+	// is that writes reach Boot.Stderr, not that it is the same object.
+	if rc.Stderr == nil {
+		t.Fatalf("Stderr not wired from Boot")
+	}
+	if _, err := io.WriteString(rc.Stderr, "wired\n"); err != nil {
+		t.Fatalf("write to rc.Stderr: %v", err)
+	}
+	if got := boot.Stderr.(*bytes.Buffer).String(); !strings.Contains(got, "wired") {
+		t.Errorf("rc.Stderr does not forward to Boot.Stderr, got %q", got)
 	}
 	if rc.ConfigPath != boot.ConfigPath {
 		t.Errorf("ConfigPath mismatch")

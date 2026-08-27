@@ -111,6 +111,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
 // Build-time variables injected by GoReleaser via -ldflags.
@@ -121,27 +122,41 @@ var (
 )
 
 func main() {
+	// One redacting writer for the whole process (PRD #459 / slice #460): every
+	// byte gplay writes to stderr passes through it, so credential material
+	// cannot leak into a CI log a human or agent then pastes elsewhere. Stdout
+	// is deliberately NOT wrapped: it mirrors API responses verbatim (ADR-0003),
+	// and the API never returns gplay's own credentials.
+	stderr := redact.Writer(os.Stderr)
+
 	configDir, err := defaultConfigDir()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gplay: %v\n", err)
+		fmt.Fprintf(stderr, "gplay: %v\n", err)
 		os.Exit(1)
 	}
 	boot := kernel.Boot{
 		Stdout:       os.Stdout,
-		Stderr:       os.Stderr,
+		Stderr:       stderr,
 		Stdin:        os.Stdin,
 		ConfigPath:   filepath.Join(configDir, "config.json"),
 		KeystoreRoot: filepath.Join(configDir, "accounts"),
 		Keyring:      keystore.DefaultKeyring(),
 	}
 
-	if err := newRootCmd(boot).Execute(); err != nil {
+	root := newRootCmd(boot)
+	// boot.Stderr alone is not enough: RunCobra re-reads the writer from cobra
+	// (cmd.ErrOrStderr()), and several commands re-wire boot.Stderr the same way
+	// before a sub-run. SetErr on the root makes the redacting writer the one
+	// cobra hands down the whole command tree, including leaves added later.
+	root.SetErr(stderr)
+
+	if err := root.Execute(); err != nil {
 		// Subcommands set SilenceErrors:true on their cobra Command so the
 		// stack-trace-style "Error: ..." cobra would emit is suppressed,
 		// but we still owe the user a one-line message before exiting,
 		// otherwise the only signal is the exit code (which CI sees, but
 		// a human running gplay in a terminal does not).
-		fmt.Fprintln(os.Stderr, "gplay:", err)
+		fmt.Fprintln(stderr, "gplay:", err)
 		os.Exit(exit.For(err))
 	}
 }
