@@ -98,3 +98,77 @@ func TestWriteCreatesMissingGplayDir(t *testing.T) {
 		t.Errorf("the pin was not written: %v", err)
 	}
 }
+
+// The atomic write stages through `<pin>.tmp`, and that sibling is a path the
+// repo can pre-place: the `edit-*.json` glob `gplay init` gitignores does NOT
+// cover the `.tmp` suffix, so a symlink named `edit-<pkg>.json.tmp` is
+// committable. Without a guard on the staging path, WriteFile follows it and
+// overwrites whatever it points at, with the operator's own rights.
+func TestWriteRefusesSymlinkedTmpPath(t *testing.T) {
+	repo := t.TempDir()
+	gplayDir := filepath.Join(repo, ".gplay")
+	if err := os.MkdirAll(gplayDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(t.TempDir(), "id_rsa")
+	const victimContent = "PRIVATE-VICTIM-CONTENT"
+	if err := os.WriteFile(victim, []byte(victimContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	const pkg = "com.example.app"
+	tmp := filepath.Join(gplayDir, editpin.FileName(pkg)+".tmp")
+	if err := os.Symlink(victim, tmp); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-1")
+	if err == nil {
+		t.Error("Write accepted a symlinked .tmp staging path")
+	} else {
+		var ue *exit.UsageError
+		if !errors.As(err, &ue) {
+			t.Errorf("want a usage error (exit 2), got %T: %v", err, err)
+		}
+	}
+
+	got, readErr := os.ReadFile(victim)
+	if readErr != nil {
+		t.Fatalf("the victim file is gone: %v", readErr)
+	}
+	if string(got) != victimContent {
+		t.Errorf("the victim file was overwritten through the .tmp symlink:\n%s", got)
+	}
+}
+
+// A .tmp symlink pointing back INSIDE the .gplay dir passes containment (its
+// target is in the root) yet still writes to a file Write did not name. The
+// leaf-symlink refusal is what covers it.
+func TestWriteRefusesTmpSymlinkPointingInsideTheRoot(t *testing.T) {
+	gplayDir := filepath.Join(t.TempDir(), ".gplay")
+	if err := os.MkdirAll(gplayDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(gplayDir, "config.json")
+	const keep = `{"package":"com.example.app"}`
+	if err := os.WriteFile(inside, []byte(keep), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	const pkg = "com.example.app"
+	tmp := filepath.Join(gplayDir, editpin.FileName(pkg)+".tmp")
+	if err := os.Symlink(inside, tmp); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-1"); err == nil {
+		t.Error("Write accepted a .tmp symlink aimed inside the root")
+	}
+	got, err := os.ReadFile(inside)
+	if err != nil {
+		t.Fatalf("the project config is gone: %v", err)
+	}
+	if string(got) != keep {
+		t.Errorf("the project config was clobbered through the .tmp symlink:\n%s", got)
+	}
+}

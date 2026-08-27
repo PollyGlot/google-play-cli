@@ -51,24 +51,33 @@ func Path(gplayDir, pkg string) string {
 // resulting path must resolve inside gplayDir (so a symlinked pin file cannot
 // redirect the write elsewhere).
 //
+// It returns the resolved root alongside the path so a caller that derives a
+// SIBLING path (Write's `.tmp` staging file) can contain that one too against
+// the same root, without paying a second resolution. An empty root means
+// gplayDir does not exist yet and nothing could be resolved.
+//
 // gplayDir is resolved per call rather than cached: the pin operations are
 // one-shot (a single read, write, or remove per invocation), so there is no
 // walk for a cached root to protect.
-func pinPath(gplayDir, pkg string) (string, error) {
+func pinPath(gplayDir, pkg string) (path, root string, err error) {
 	if err := pathguard.Segment("package", pkg); err != nil {
-		return "", err
+		return "", "", err
 	}
-	root, err := pathguard.Root(gplayDir)
+	root, err = pathguard.Root(gplayDir)
 	if err != nil {
 		// gplayDir does not exist yet: the caller (Write) creates it. Fall back
 		// to the lexical join, which the Segment check above has already made
 		// safe: with no separator in pkg there is no traversal to perform.
 		if errors.Is(err, fs.ErrNotExist) {
-			return Path(gplayDir, pkg), nil
+			return Path(gplayDir, pkg), "", nil
 		}
-		return "", err
+		return "", "", err
 	}
-	return pathguard.Contain(root, filepath.Join(root, FileName(pkg)))
+	path, err = pathguard.Contain(root, filepath.Join(root, FileName(pkg)))
+	if err != nil {
+		return "", "", err
+	}
+	return path, root, nil
 }
 
 // Lookup reads the pin for pkg from gplayDir. It returns ok=false (with a nil
@@ -77,7 +86,7 @@ func pinPath(gplayDir, pkg string) (string, error) {
 // missing its editId, is an error: a broken pin must surface, not silently fall
 // back to opening a fresh (conflicting) Edit while the real one stays open.
 func Lookup(fsys config.FS, gplayDir, pkg string) (Pin, bool, error) {
-	path, err := pinPath(gplayDir, pkg)
+	path, _, err := pinPath(gplayDir, pkg)
 	if err != nil {
 		return Pin{}, false, err
 	}
@@ -119,6 +128,11 @@ func Lookup(fsys config.FS, gplayDir, pkg string) (Pin, bool, error) {
 // recovery via `gplay edits begin` (it Lookups before it could overwrite). A
 // plain truncate-then-write WriteFile only cleans up on a returned error; a
 // killed process never reaches that cleanup.
+//
+// The staging path is contained exactly like the pin itself. It has to be: the
+// `edit-*.json` glob `gplay init` gitignores does NOT cover the `.tmp` suffix,
+// so `edit-<pkg>.json.tmp` is a name a repo can commit as a symlink, and
+// WriteFile would follow it (PRD #459 / slice #461).
 func Write(fsys config.FS, gplayDir, pkg, editID string) error {
 	// Validate BEFORE MkdirAll: a bad package name must not get as far as
 	// creating a directory.
@@ -132,11 +146,19 @@ func Write(fsys config.FS, gplayDir, pkg, editID string) error {
 	if err != nil {
 		return err
 	}
-	path, err := pinPath(gplayDir, pkg)
+	path, root, err := pinPath(gplayDir, pkg)
 	if err != nil {
 		return err
 	}
 	tmp := path + ".tmp"
+	if root != "" {
+		// ContainWrite, not Contain: the staging file is WRITTEN through, so a
+		// link aimed back inside .gplay/ (at config.json, say) must be refused
+		// too, and only the leaf-symlink check catches that one.
+		if tmp, err = pathguard.ContainWrite(root, tmp); err != nil {
+			return err
+		}
+	}
 	if err := fsys.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
 		// Best-effort remove the tmp fragment; never touch the live pin, which
 		// a failed fresh write must not disturb.
@@ -154,7 +176,7 @@ func Write(fsys config.FS, gplayDir, pkg, editID string) error {
 // local side of `gplay edits commit`/`discard` is idempotent (and `discard`
 // can clear the pin even when the Edit has already expired server-side).
 func Clear(fsys config.FS, gplayDir, pkg string) error {
-	path, err := pinPath(gplayDir, pkg)
+	path, _, err := pinPath(gplayDir, pkg)
 	if err != nil {
 		return err
 	}
