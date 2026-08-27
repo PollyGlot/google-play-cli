@@ -1,4 +1,4 @@
-.PHONY: help build test lint verb-gate dash-gate format install-hooks tidy clean release-snapshot discovery-update schema-index-update stats
+.PHONY: help build test lint verb-gate dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update stats
 
 # Project metadata
 BINARY := gplay
@@ -23,6 +23,9 @@ verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
 
 dash-gate: ## Fail if an em dash reappears in Go source (help text and errors reach users)
 	@bash scripts/dash-gate.sh
+
+install-test: ## Exercise install.sh offline (fail-closed sha256 gate)
+	@bash scripts/install-test.sh
 
 format: ## Run gofmt + goimports on the whole tree
 	gofmt -w .
