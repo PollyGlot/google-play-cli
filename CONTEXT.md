@@ -115,6 +115,9 @@ A way of shaping a command's output for a specific reader: `table` for humans on
 ### Renderer
 A function that turns a command's data payload into bytes for a given Format. Each command supplies its own three Renderers (one per Format), and a shared dispatcher in `internal/output` picks the right one based on the resolved Format. The dispatcher owns the "unsupported format" error path so each command stops re-implementing it.
 
+### Diagnostic code
+A stable SCREAMING_SNAKE token naming *which* failure occurred (`EDIT_ALREADY_EXISTS`, `RATE_LIMIT_EXCEEDED`, `SAFETY_FLAG_REQUIRED`), carried in the `code` field of the `--output json` error envelope alongside a `retryable` bit. Distinct from an **exit code**, which names the coarse bucket a failure fell into and is shared by several diagnostic codes: exit `60` covers an already-open Edit, a rate limit and an ambiguous target alike. Distinct too from an upstream **reason** (Google's `error.errors[].reason`), which travels verbatim in `reasons[]` but is a vocabulary gplay neither owns nor freezes. Classification is derived from the exit code an error already carries, refined for an upstream failure by the HTTP status and the reasons; the vocabulary is append-only Public contract, printed by `gplay help exit-codes` and `gplay schema --codes`. See [ADR-0044](./docs/adr/0044-structured-diagnostic-codes.md) and [DESIGN §9.1](./docs/DESIGN.md).
+
 ### Release
 Cutting a new published version of the **gplay CLI** itself — the versioned binaries, archives, checksums, signature and GitHub Release, tagged `vX.Y.Z`. Concerns the CLI distribution only: the installer needs no redeploy (`install.sh` resolves the latest release itself). Distinct from **Deploy** (the gplay.sh site), though a published Release also triggers a Deploy to refresh the generated CLI reference.
 
