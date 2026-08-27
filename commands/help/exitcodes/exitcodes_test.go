@@ -38,6 +38,12 @@ func TestExitCodesHelp_surfacesTheDiagnosticCatalog(t *testing.T) {
 			t.Errorf("exit-codes help should mention %q", want)
 		}
 	}
+	// Embeds the shared renderer verbatim rather than a local copy of the
+	// column layout: this is what keeps the help topic and `schema --codes`
+	// from drifting apart.
+	if !strings.Contains(long, exit.CodeTableString()) {
+		t.Errorf("exit-codes help does not embed exit.CodeTableString verbatim\n%s", long)
+	}
 }
 
 // TestCatalog_hasCode3 pins the taxonomy: code 3 is present with the

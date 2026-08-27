@@ -58,6 +58,20 @@ func TestCodesPayload_humanViewsNameEveryCode(t *testing.T) {
 	}
 }
 
+// TestCodesPayload_tableIsTheSharedRenderer pins the other half of the
+// no-drift guarantee: `schema --codes` prints byte-for-byte what
+// `gplay help exit-codes` embeds, because both call exit.WriteCodeTable.
+func TestCodesPayload_tableIsTheSharedRenderer(t *testing.T) {
+	var buf bytes.Buffer
+	r := CodesPayload{}.Renderers()
+	if err := r.Table(&buf); err != nil {
+		t.Fatalf("render table: %v", err)
+	}
+	if buf.String() != exit.CodeTableString() {
+		t.Errorf("table view diverged from the shared renderer:\ngot:\n%s\nwant:\n%s", buf.String(), exit.CodeTableString())
+	}
+}
+
 // TestRun_codesShortCircuits asserts --codes answers with the catalog and
 // ignores the API-index query, so a stray positional cannot silently turn the
 // introspection call back into a schema search.

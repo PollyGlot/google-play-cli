@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -42,17 +41,10 @@ func (CodesPayload) renderJSON(w io.Writer) error {
 	return output.WriteJSON(w, codesJSONView{Codes: exit.CodeCatalog()})
 }
 
+// renderTable delegates to exit.WriteCodeTable, the same renderer
+// `gplay help exit-codes` prints, so the two surfaces cannot drift apart.
 func (CodesPayload) renderTable(w io.Writer) error {
-	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "CODE\tEXIT\tRETRYABLE\tMEANING"); err != nil {
-		return err
-	}
-	for _, d := range exit.CodeCatalog() {
-		if _, err := fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n", d.Code, d.ExitCode, yesNo(d.Retryable), d.Meaning); err != nil {
-			return err
-		}
-	}
-	return tw.Flush()
+	return exit.WriteCodeTable(w)
 }
 
 func (CodesPayload) renderMarkdown(w io.Writer) error {
@@ -60,15 +52,8 @@ func (CodesPayload) renderMarkdown(w io.Writer) error {
 	b.WriteString("| Code | Exit | Retryable | Meaning |\n")
 	b.WriteString("| --- | --- | --- | --- |\n")
 	for _, d := range exit.CodeCatalog() {
-		fmt.Fprintf(&b, "| `%s` | %d | %s | %s |\n", d.Code, d.ExitCode, yesNo(d.Retryable), d.Meaning)
+		fmt.Fprintf(&b, "| `%s` | %d | %s | %s |\n", d.Code, d.ExitCode, exit.RetryableLabel(d.Retryable), d.Meaning)
 	}
 	_, err := io.WriteString(w, b.String())
 	return err
-}
-
-func yesNo(b bool) string {
-	if b {
-		return "yes"
-	}
-	return "no"
 }
