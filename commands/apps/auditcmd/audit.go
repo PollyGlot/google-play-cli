@@ -331,22 +331,96 @@ func dedupe(in []string) []string {
 	return out
 }
 
-// Emit turns a finished sweep into what the kernel needs: a Renderable on the
-// clean path, and (nil, exit-70) on the findings path, having rendered the
-// report to stdout itself.
+// retryableExitCodes are the docs/DESIGN.md §9 codes an automated caller can
+// usefully retry unchanged: 40 (API 5xx) and 50 (network). Everything else is
+// permanent for the current credential and inputs. Same rule and same reasons
+// as the `apps add` batch (60 deliberately excluded: only "sometimes"
+// retryable, and surfacing it stops a blind loop).
+var retryableExitCodes = map[int]struct{}{40: {}, 50: {}}
+
+// sweepFailedError is the error a sweep returns when at least one app could
+// not be read. Findings are a *result*; an unread app is a hole in the sweep,
+// so it takes precedence: the report is complete for what ran, but "clean" is
+// not something this run is entitled to claim.
 //
-// The asymmetry is the kernel's contract, not a quirk here: kernel.Run only
-// renders on the success path, so a command that must exit non-zero WITH data
-// on stdout renders it before returning the error (the `auth doctor` pattern).
+// The code follows the non-retryable-wins rule: the first permanent failure
+// (403, 404, ...) wins over any transient one, so a caller that sees 40/50
+// knows a plain retry is worth it, and anything else means inspect and fix.
+type sweepFailedError struct {
+	errs      []SweepError
+	audited   int
+	findings  int
+	firstCode int
+}
+
+func newSweepFailedError(r Report) *sweepFailedError {
+	e := &sweepFailedError{errs: r.Errors, audited: r.Summary.AppsAudited, findings: r.Summary.Findings}
+	firstRetryable := 0
+	for _, se := range r.Errors {
+		if _, ok := retryableExitCodes[se.ExitCode]; ok {
+			if firstRetryable == 0 {
+				firstRetryable = se.ExitCode
+			}
+			continue
+		}
+		if se.ExitCode != 0 {
+			e.firstCode = se.ExitCode
+			return e
+		}
+	}
+	if firstRetryable != 0 {
+		e.firstCode = firstRetryable
+	}
+	return e
+}
+
+// ExitCode reports the winning per-app failure code. The defensive fallback is
+// 1, never 0 and never 70: a sweep with holes must not be readable as a clean
+// bill, whatever the API handed back.
+func (e *sweepFailedError) ExitCode() int {
+	if e.firstCode != 0 {
+		return e.firstCode
+	}
+	return 1
+}
+
+func (e *sweepFailedError) Error() string {
+	failed := make([]string, 0, len(e.errs))
+	for _, se := range e.errs {
+		failed = append(failed, se.Package)
+	}
+	return fmt.Sprintf("apps audit: %d app(s) could not be read (%s): %d app(s) audited, %d finding(s); the report covers only what ran",
+		len(failed), strings.Join(failed, ", "), e.audited, e.findings)
+}
+
+// Emit turns a finished sweep into what the kernel needs: a Renderable on the
+// clean path, and (nil, err) with the report already rendered to stdout when
+// the run must exit non-zero.
+//
+// Three outcomes, in precedence order:
+//
+//  1. any app could not be read -> the ordinary API code (DESIGN §9). An
+//     unread app is a hole, not a result: a sweep where every app 403s would
+//     otherwise report zero findings and exit 0, i.e. hand back a clean bill
+//     for an account it never looked at.
+//  2. findings, every app read -> exit 70, a gate rather than an error.
+//  3. neither -> exit 0.
+//
+// Rendering before returning is the kernel's contract, not a quirk here:
+// kernel.Run only renders on the success path, so a command that must exit
+// non-zero WITH data on stdout renders it itself (the `auth doctor` pattern).
 // Split out of RunE so the exit-code decision is testable without driving
 // cobra and a keystore.
 func Emit(rc *kernel.RunContext, report Report) (output.Renderable, error) {
 	payload := Payload{Report: report}
-	if report.Summary.Findings == 0 {
+	if len(report.Errors) == 0 && report.Summary.Findings == 0 {
 		return payload, nil
 	}
 	if err := output.Render(rc.Stdout, rc.Format, payload.Renderers()); err != nil {
 		return nil, err
+	}
+	if len(report.Errors) > 0 {
+		return nil, newSweepFailedError(report)
 	}
 	return nil, exit.Findingsf("apps audit: %d finding(s) across %d app(s); see the report on stdout",
 		report.Summary.Findings, report.Summary.AppsAudited)
@@ -384,8 +458,10 @@ names the apps and checks that actually ran, so a partial sweep is never read
 as a clean bill; an app the sweep could not read is listed under errors and
 does not abort the run.
 
-Exit 0 when clean, 70 when the report carries findings (a gate, not an error),
-and the usual taxonomy when the sweep itself could not run.`,
+Exit 0 when every app was read and nothing was found, 70 when the report
+carries findings (a gate, not an error), and the ordinary API/network code
+whenever an app could not be read at all: a sweep with holes never reports
+clean.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

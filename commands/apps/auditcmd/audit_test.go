@@ -412,6 +412,88 @@ func TestExitCodes(t *testing.T) {
 		}
 	})
 
+	// The regression this pins: a sweep where nothing could be read used to
+	// return zero findings and exit 0, handing back a clean bill for an
+	// account it never actually looked at.
+	t.Run("every app failed exits with the API code, not 0", func(t *testing.T) {
+		rt := &auditRT{t: t, apps: map[string]appFixture{
+			"com.example.a": {status: http.StatusForbidden},
+			"com.example.b": {status: http.StatusForbidden},
+		}}
+		rc, stdout := newRC(t, rt)
+		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if report.Summary.AppsAudited != 0 || report.Summary.Findings != 0 {
+			t.Fatalf("summary = %+v, want 0 audited / 0 findings", report.Summary)
+		}
+		renderable, err := auditcmd.Emit(rc, report)
+		if err == nil {
+			t.Fatal("Emit = nil error after a sweep that read nothing: that is a clean bill for an unlooked-at account")
+		}
+		if code := exit.For(err); code != 11 {
+			t.Errorf("exit = %d, want 11 (the 403 both apps returned)", code)
+		}
+		if renderable != nil {
+			t.Error("Emit returned a Renderable AND an error; the report must be written here instead")
+		}
+		if !strings.Contains(stdout.String(), "com.example.a") {
+			t.Errorf("the report naming the unread apps was not written to stdout: %q", stdout.String())
+		}
+	})
+
+	// Errors outrank findings: a hole in the sweep is not a result.
+	t.Run("errors win over findings", func(t *testing.T) {
+		rt := &auditRT{t: t, apps: map[string]appFixture{
+			"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
+			"com.example.b": {status: http.StatusNotFound},
+		}}
+		rc, _ := newRC(t, rt)
+		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if report.Summary.Findings == 0 {
+			t.Fatal("fixture produced no finding; the case is not exercising the precedence")
+		}
+		if _, err := auditcmd.Emit(rc, report); exit.For(err) != 30 {
+			t.Errorf("exit = %d, want 30 (the unread app's 404), not 70", exit.For(err))
+		}
+	})
+
+	// Non-retryable-wins, the `apps add` batch rule: a permanent failure must
+	// not be masked by a transient one, or a caller loops on a 403 forever.
+	t.Run("a permanent failure outranks a transient one", func(t *testing.T) {
+		rt := &auditRT{t: t, apps: map[string]appFixture{
+			"com.example.a": {status: http.StatusServiceUnavailable},
+			"com.example.b": {status: http.StatusForbidden},
+		}}
+		rc, _ := newRC(t, rt)
+		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if _, err := auditcmd.Emit(rc, report); exit.For(err) != 11 {
+			t.Errorf("exit = %d, want 11: the permanent 403 wins over the retryable 5xx", exit.For(err))
+		}
+	})
+
+	// The mirror image: when every failure is transient, the caller is told so.
+	t.Run("all-transient failures keep a retryable code", func(t *testing.T) {
+		rt := &auditRT{t: t, apps: map[string]appFixture{
+			"com.example.a": {status: http.StatusServiceUnavailable},
+		}}
+		rc, _ := newRC(t, rt)
+		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a"}})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if _, err := auditcmd.Emit(rc, report); exit.For(err) != 40 {
+			t.Errorf("exit = %d, want 40 (API 5xx, retry-safe)", exit.For(err))
+		}
+	})
+
 	t.Run("a sweep that cannot discover fails with the API code", func(t *testing.T) {
 		rt := &auditRT{t: t, searchBody: `{"apps":[]}`, apps: map[string]appFixture{}}
 		rc, _ := newRC(t, rt)
