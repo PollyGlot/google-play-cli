@@ -861,7 +861,15 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// outside the walk: shell-integration plumbing, not command surface.
 	root.InitDefaultHelpCmd()
 	root.InitDefaultCompletionCmd()
-	return kernel.WrapArgErrors(root)
+
+	// Fourth door: the SAME single-value flag passed twice. pflag's default is
+	// last-wins and silent, which for an agent-assembled argv means a mis-ship
+	// nobody sees (PRD #446). RejectRepeatedFlags re-types it as a parse error,
+	// which the FlagErrorFunc above already maps to exit 2, so the four misuse
+	// doors finally agree. Like WrapArgErrors it walks the assembled tree, so it
+	// belongs here at the end, and genuine repeatable flags (pflag.SliceValue)
+	// are left alone.
+	return kernel.WrapArgErrors(kernel.RejectRepeatedFlags(root))
 }
 
 // resolveVersion picks the best (version, commit, date) triple to print.
