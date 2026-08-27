@@ -256,7 +256,12 @@ func Read(dir string) (Tree, error) {
 // images/ dir yields an empty map (the locale has only text, or nothing). Only
 // non-empty slots are returned.
 func readLocale(root, imgDir string) (map[images.Type][][]byte, error) {
-	if _, err := pathguard.Contain(root, imgDir); err != nil {
+	// The read side uses ContainUserPath throughout: every name below was found
+	// by walking the operator's own tree, so `en-US/images` symlinked at a
+	// shared asset directory is a layout they can opt into
+	// (GPLAY_ALLOW_EXTERNAL_SYMLINKS). The write side above stays strict: its
+	// locales come from the API.
+	if _, err := pathguard.ContainUserPath(root, imgDir); err != nil {
 		return nil, err
 	}
 	entries, err := os.ReadDir(imgDir)
@@ -316,7 +321,7 @@ func writeContained(root, p string, data []byte) error {
 // readContained is os.ReadFile with the containment check in front of it, so
 // no image file is opened before it has been proved to live inside root.
 func readContained(root, p string) ([]byte, error) {
-	if _, err := pathguard.Contain(root, p); err != nil {
+	if _, err := pathguard.ContainUserPath(root, p); err != nil {
 		return nil, err
 	}
 	return os.ReadFile(p)
@@ -325,7 +330,7 @@ func readContained(root, p string) ([]byte, error) {
 // readGallery reads a gallery directory's recognized image files in
 // filename-sorted (display) order, returning their bytes.
 func readGallery(root, galleryDir string) ([][]byte, error) {
-	if _, err := pathguard.Contain(root, galleryDir); err != nil {
+	if _, err := pathguard.ContainUserPath(root, galleryDir); err != nil {
 		return nil, err
 	}
 	entries, err := os.ReadDir(galleryDir)

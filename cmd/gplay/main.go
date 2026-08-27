@@ -111,6 +111,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
@@ -128,6 +129,11 @@ func main() {
 	// is deliberately NOT wrapped: it mirrors API responses verbatim (ADR-0003),
 	// and the API never returns gplay's own credentials.
 	stderr := redact.Writer(os.Stderr)
+
+	// pathguard reports a path that left the tree under
+	// GPLAY_ALLOW_EXTERNAL_SYMLINKS; point it at the same redacted stderr so
+	// the NOTE lands with every other log line and never on stdout (ADR-0003).
+	pathguard.SetNoteWriter(stderr)
 
 	configDir, err := defaultConfigDir()
 	if err != nil {

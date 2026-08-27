@@ -524,6 +524,46 @@ model's flag choices:
 Under `--output json` the refusal is emitted as the standard error envelope
 (exit code 4) on stdout (§7 / ADR-0023).
 
+### Path containment (`GPLAY_ALLOW_EXTERNAL_SYMLINKS`)
+
+gplay walks directory trees a repo owns (a metadata or images tree, a
+release-notes directory, `.gplay/`), and a name in one of them can lie: a
+`fr-FR.txt` symlinked at `~/.ssh/id_rsa` would be published to a public store
+listing under the operator's own credentials. Every path built from one of
+those trees is therefore **contained**: it is resolved through its symlinks and
+must land at or under the resolved root, or the command is **refused with exit
+2** naming the offending path. Both sides are resolved, so a checkout reached
+through a symlink keeps working.
+
+Two classes of path, and only one of them can be opened up:
+
+- **Paths the operator arranged** are the names gplay found by reading their
+  own directory (a locale directory, a `title.txt`, a note file).
+- **Paths derived from API data** are the ones built from a string the Play API
+  returned or from a package name (`<dir>/<locale>/`,
+  `.gplay/edit-<package>.json`). These are contained **unconditionally**: no
+  environment variable relaxes them, because that is the input the operator
+  never got to audit.
+
+`GPLAY_ALLOW_EXTERNAL_SYMLINKS` is the opt-in escape hatch for the first class,
+for the monorepo layouts that legitimately share files between trees
+(`metadata/en-US/images` symlinked at `shared/assets/en-US`, a `title.txt`
+pointing at a shared translation):
+
+- **Unset (the default), containment is closed.** The refusal message names the
+  variable, so the operator of such a layout reads what to set rather than only
+  what broke.
+- **Truthy** (`1`/`true`/`yes`/`on`, the spelling `GPLAY_READONLY` uses), a path
+  that leaves the tree **through a symlink** is followed, and a `NOTE:` line on
+  **stderr** names the path and what it resolved to (stdout stays untouched,
+  ADR-0003). One line per escaping path, not per read.
+- It follows a link **out** of the tree; it does not allow a `..` component
+  climbing **above** the root, and it does not touch the API-derived class. It
+  is a door, not an off switch.
+- Reads are what it covers in practice: `metadata`/`images` **pull** writes into
+  `<dir>/<locale>/` built from the API's locale, so a pull into a symlinked
+  locale directory stays refused whatever the environment says.
+
 ---
 
 ## 9. Exit codes

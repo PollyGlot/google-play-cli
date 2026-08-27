@@ -159,7 +159,11 @@ func Read(dir string) (listing.Tree, error) {
 // found, so Read can distinguish a locale-shaped dir whose field files are
 // all mis-named (a typo worth erroring on) from an empty or README-only one.
 func readLocale(root, path, locale string) (listing.Listing, []string, error) {
-	if _, err := pathguard.Contain(root, path); err != nil {
+	// ContainUserPath, not Contain: `path` is a directory the operator put in
+	// their own tree, so a monorepo that symlinks a locale at a shared one is
+	// theirs to opt into (GPLAY_ALLOW_EXTERNAL_SYMLINKS). The write path below
+	// keeps the strict form: its names come from the API.
+	if _, err := pathguard.ContainUserPath(root, path); err != nil {
 		return listing.Listing{}, nil, err
 	}
 	entries, err := osReadDir(path)
@@ -185,7 +189,7 @@ func readLocale(root, path, locale string) (listing.Listing, []string, error) {
 		}
 		// Contain BEFORE the read: a field file symlinked out of the tree must
 		// never be opened, not merely dropped after the fact.
-		field, err := pathguard.Contain(root, filepath.Join(path, e.Name()))
+		field, err := pathguard.ContainUserPath(root, filepath.Join(path, e.Name()))
 		if err != nil {
 			return listing.Listing{}, unrecognized, err
 		}

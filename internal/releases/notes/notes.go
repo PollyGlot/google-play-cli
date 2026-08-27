@@ -165,7 +165,10 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 // Containment comes FIRST, before the stat: an escaping path must never be
 // touched at all, so a refusal leaks nothing about whether the target exists.
 func readCapped(root, p string) ([]byte, error) {
-	if _, err := pathguard.Contain(root, p); err != nil {
+	// ContainUserPath: the notes directory and its files are the operator's
+	// own, so a `fr.txt` symlinked at a shared translation is a layout they can
+	// opt into (GPLAY_ALLOW_EXTERNAL_SYMLINKS), refused until they do.
+	if _, err := pathguard.ContainUserPath(root, p); err != nil {
 		return nil, err
 	}
 	info, err := osStat(p)
