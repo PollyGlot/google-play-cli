@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
 	apkcmd "github.com/PollyGlot/google-play-cli/commands/appstore/upload/apk"
+	"github.com/PollyGlot/google-play-cli/internal/artifacttest"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -111,14 +111,13 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// writeAPK drops a stand-in artifact at a temp path and returns it.
-func writeAPK(t *testing.T, content string) string {
+// writeAPK drops a real (if minimal) APK container at a temp path. The
+// artifact preflight (PRD #448) reads the container and its manifest before
+// the upload, so a placeholder byte string would be refused offline and never
+// reach the RoundTripper.
+func writeAPK(t *testing.T, pkg string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "app.apk")
-	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
-		t.Fatalf("write %s: %v", p, err)
-	}
-	return p
+	return artifacttest.APK(t, t.TempDir(), "app.apk", pkg)
 }
 
 // TestRun_requestShape asserts the command emits the resumable upload on the
@@ -128,7 +127,7 @@ func TestRun_requestShape(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
 
-	r, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Package: "com.example.app", Path: writeAPK(t, "PK\x03\x04 pretend apk")})
+	r, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Package: "com.example.app", Path: writeAPK(t, "com.example.app")})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -144,7 +143,9 @@ func TestRun_requestShape(t *testing.T) {
 	if rt.initCT != "application/octet-stream" {
 		t.Errorf("X-Upload-Content-Type = %q, want application/octet-stream", rt.initCT)
 	}
-	if !strings.Contains(string(rt.putBody), "pretend apk") {
+	// The PUT carries the artifact verbatim: its first bytes are the zip local
+	// file header every APK starts with.
+	if !strings.HasPrefix(string(rt.putBody), "PK\x03\x04") {
 		t.Errorf("chunk PUT did not carry the file bytes: %q", rt.putBody)
 	}
 	if r == nil {
@@ -158,7 +159,7 @@ func TestRun_rendersTrackingID(t *testing.T) {
 	rt := &testRoundTripper{respBody: `{"apkId":"apk-42"}`}
 	rc := newRC(t, rt)
 
-	r, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Package: "com.example.app", Path: writeAPK(t, "bytes")})
+	r, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Package: "com.example.app", Path: writeAPK(t, "com.example.app")})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -185,7 +186,7 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	rt := &testRoundTripper{respBody: body}
 	rc := newRC(t, rt)
 
-	r, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Package: "com.example.app", Path: writeAPK(t, "bytes")})
+	r, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Package: "com.example.app", Path: writeAPK(t, "com.example.app")})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -205,7 +206,7 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	rc := newRC(t, rt)
 	rc.Resolved = &config.Resolved{Pin: "com.pinned.app"}
 
-	if _, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Path: writeAPK(t, "bytes")}); err != nil {
+	if _, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Path: writeAPK(t, "com.pinned.app")}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if !strings.Contains(rt.initURL, "/apps/com.pinned.app/") {
@@ -270,7 +271,7 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
 
-	_, err := apkcmd.Run(rc, apkcmd.Input{Package: "com.example.app", Path: writeAPK(t, "bytes")})
+	_, err := apkcmd.Run(rc, apkcmd.Input{Package: "com.example.app", Path: writeAPK(t, "com.example.app")})
 	assertExit(t, err, 2)
 	if !strings.Contains(err.Error(), "store-package") {
 		t.Errorf("error %q should name the --store-package flag", err)
@@ -299,7 +300,7 @@ func TestRun_403_namesEnrollment(t *testing.T) {
 	rt := &testRoundTripper{failWith: http.StatusForbidden}
 	rc := newRC(t, rt)
 
-	_, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Package: "com.example.app", Path: writeAPK(t, "bytes")})
+	_, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.example.store", Package: "com.example.app", Path: writeAPK(t, "com.example.app")})
 	assertExit(t, err, 11)
 	if !strings.Contains(err.Error(), "com.example.store") {
 		t.Errorf("refusal %q should name the app store package name", err)
@@ -312,7 +313,7 @@ func TestRun_404_namesStorePackage(t *testing.T) {
 	rt := &testRoundTripper{failWith: http.StatusNotFound}
 	rc := newRC(t, rt)
 
-	_, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.unknown.store", Package: "com.example.app", Path: writeAPK(t, "bytes")})
+	_, err := apkcmd.Run(rc, apkcmd.Input{StorePackage: "com.unknown.store", Package: "com.example.app", Path: writeAPK(t, "com.example.app")})
 	assertExit(t, err, 30)
 	if !strings.Contains(err.Error(), "store-package") {
 		t.Errorf("refusal %q should point at the --store-package flag", err)

@@ -26,6 +26,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
+	"github.com/PollyGlot/google-play-cli/internal/artifacttest"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -164,11 +165,11 @@ func signedSAJSON(t *testing.T) []byte {
 // os.Open to succeed.
 func writeFakeAAB(t *testing.T) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "app.aab")
-	if err := os.WriteFile(p, []byte("fake-aab-content"), 0644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	return p
+	// A real (if minimal) AAB container declaring the package these suites
+	// upload to: the artifact preflight (PRD #448) reads the container and
+	// the manifest before any request is issued, so a placeholder byte string
+	// would be refused offline and never reach the RoundTripper.
+	return artifacttest.AAB(t, t.TempDir(), "app.aab", "com.example.app")
 }
 
 // newRC builds a RunContext with the injected RoundTripper installed as
@@ -540,11 +541,7 @@ func TestRun_withMapping_uploadsMappingInSameEditAndConfirms(t *testing.T) {
 // validate the bytes: apks.Upload just needs os.Open to succeed.
 func writeFakeAPK(t *testing.T) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "app.apk")
-	if err := os.WriteFile(p, []byte("fake-apk-content"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	return p
+	return artifacttest.APK(t, t.TempDir(), "app.apk", "com.example.app")
 }
 
 // TestRun_apkExtension_ridesApksUploadEndpoint asserts a .apk artifact is
@@ -592,11 +589,9 @@ func TestRun_apkExtension_ridesApksUploadEndpoint(t *testing.T) {
 // --format apk routes a file whose extension is NOT .apk through the APK
 // endpoint: the override wins over extension auto-detect (ADR-0030 parity).
 func TestRun_formatApkOverride_forcesApkPathForNonApkFilename(t *testing.T) {
-	// A file with a .bin extension the auto-detect could not classify.
-	p := filepath.Join(t.TempDir(), "build.bin")
-	if err := os.WriteFile(p, []byte("fake-apk-content"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	// A file with a .bin extension the auto-detect could not classify, but a
+	// real APK container underneath so the preflight agrees with --format.
+	p := artifacttest.APK(t, t.TempDir(), "build.bin", "com.example.app")
 	rt := &uploadRT{
 		t:                  t,
 		editID:             "edit-fmt",
@@ -631,10 +626,7 @@ func TestRun_formatApkOverride_forcesApkPathForNonApkFilename(t *testing.T) {
 // with an unrecognized extension and no --format is a usage error (exit 2)
 // before any HTTP: mirroring the `releases sharing upload` message.
 func TestRun_unknownExtension_noFormat_exit2_noHTTP(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "build.bin")
-	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	p := artifacttest.WriteFile(t, t.TempDir(), "build.bin", []byte("x"))
 	rt := &uploadRT{t: t}
 	rc, _ := newRC(t, rt)
 

@@ -28,6 +28,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/artifact"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -45,6 +46,7 @@ type Input struct {
 	ArtifactPath  string
 	Confirm       bool
 	DryRun        bool
+	SkipPreflight bool
 }
 
 // usageError is CLI misuse (exit 2): a missing required flag or artifact path.
@@ -52,25 +54,6 @@ type usageError struct{ msg string }
 
 func (e *usageError) Error() string { return e.msg }
 func (e *usageError) ExitCode() int { return 2 }
-
-// localFileError is a client-side artifact-validation failure (exit 20),
-// matching the *customapps.LocalIOError the live uploader returns, so the same
-// exit code applies whether the artifact is rejected here (offline pre-check /
-// --dry-run) or inside Create.
-type localFileError struct {
-	path  string
-	msg   string
-	cause error
-}
-
-func (e *localFileError) Error() string {
-	if e.cause != nil {
-		return fmt.Sprintf("%s: %v", e.path, e.cause)
-	}
-	return fmt.Sprintf("%s: %s", e.path, e.msg)
-}
-func (e *localFileError) Unwrap() error { return e.cause }
-func (e *localFileError) ExitCode() int { return 20 }
 
 // notEnrolledError wraps a 403 on customApps.create (the account is not enrolled
 // in managed Google Play, or the service account lacks CAN_CREATE_MANAGED_PLAY_APPS)
@@ -92,19 +75,6 @@ func classifyError(account string, err error) error {
 		return &notEnrolledError{account: account, cause: err}
 	}
 	return err
-}
-
-// validateArtifact rejects a missing / non-regular artifact offline (exit 20)
-// so --dry-run and the live pre-check fail the same way without any HTTP call.
-func validateArtifact(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return &localFileError{path: path, cause: err}
-	}
-	if !info.Mode().IsRegular() {
-		return &localFileError{path: path, msg: "not a regular file"}
-	}
-	return nil
 }
 
 // organizations maps the repeatable --organization values (organization IDs)
@@ -213,7 +183,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	if err := validateArtifact(in.ArtifactPath); err != nil {
+	// Artifact preflight (PRD #448): a custom app is created FROM the
+	// artifact, so Google assigns the package name and there is nothing local
+	// to compare it against; the check here is the container one only, and it
+	// catches the real mistake on this surface: a path that is not an Android
+	// package at all. It also covers the missing / non-regular path, which is
+	// why validateArtifact is gone.
+	if err := artifact.Verify(rc.Stderr, in.ArtifactPath, artifact.Expect{
+		Kinds: []artifact.Kind{artifact.KindBundle, artifact.KindAPK},
+	}, artifact.Options{Skip: in.SkipPreflight, Report: in.DryRun}); err != nil {
 		return nil, err
 	}
 
@@ -277,7 +255,9 @@ Restrict the app to specific organizations with a repeatable --organization
 Creating a custom app is IRREVERSIBLE: the API exposes no delete (and no
 read), so the app permanently occupies the account. It therefore requires
 --confirm (missing → exit 3); CI=true never auto-confirms. Rehearse first with
---dry-run (validates inputs and the artifact with zero HTTP). The account must
+--dry-run (validates inputs and the artifact with zero HTTP; the artifact is
+checked locally to really be an AAB or an APK, --skip-preflight bypasses that).
+The account must
 be enrolled in managed Google Play and the service account must hold the
 account-level CAN_CREATE_MANAGED_PLAY_APPS capability; a 403 names both.
 
@@ -300,5 +280,6 @@ output-only packageName). GPLAY_READONLY refuses the live write (exit 4).`,
 	cmd.Flags().StringArrayVar(&in.Organizations, "organization", nil, "restrict to this organization id (repeatable; omit to default to the account's organization)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the irreversible app creation")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and the artifact without any HTTP call (reports the --confirm requirement)")
+	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (that the file is an AAB or an APK) and upload it as-is")
 	return cmd
 }

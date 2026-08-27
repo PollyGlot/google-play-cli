@@ -21,6 +21,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	// Aliased: this package already has a local `artifact` type for the
+	// classified local file.
+	preflight "github.com/PollyGlot/google-play-cli/internal/artifact"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/sharing"
@@ -28,10 +31,11 @@ import (
 
 // Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
-	Package      string
-	ArtifactPath string
-	Format       string // "" | "apk" | "bundle": overrides extension auto-detect
-	DryRun       bool
+	Package       string
+	ArtifactPath  string
+	Format        string // "" | "apk" | "bundle": overrides extension auto-detect
+	DryRun        bool
+	SkipPreflight bool
 }
 
 // usageError is a CLI-misuse error with ExitCode()=2.
@@ -197,6 +201,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Artifact preflight (PRD #448): refuse a container that is not the kind
+	// --format resolved to, or a build belonging to another app, before the
+	// first byte leaves the machine. Silent on success.
+	if err := preflight.Verify(rc.Stderr, in.ArtifactPath, preflight.Expect{
+		Kinds:   []preflight.Kind{preflight.Kind(art.kind)},
+		Package: pkg,
+	}, preflight.Options{Skip: in.SkipPreflight, Report: in.DryRun}); err != nil {
+		return nil, err
+	}
+
 	if in.DryRun {
 		// Full rehearsal minus the upload: package + artifact validated, zero HTTP.
 		return Payload{Package: pkg, Kind: art.kind, Bytes: art.size, DryRun: true}, nil
@@ -242,7 +256,10 @@ This bypasses tracks and the Edit lifecycle entirely: a QA/preview gesture,
 not a release.
 
 APK vs AAB is auto-detected by file extension (.apk / .aab); pass
---format apk|bundle to override when the extension is ambiguous.
+--format apk|bundle to override when the extension is ambiguous. Before any
+byte is uploaded the artifact is checked locally: the container must really
+be that format, and its declared package name must match --package. Pass
+--skip-preflight to upload the file as-is.
 
 --output json passes the InternalAppSharingArtifact through verbatim
 (downloadUrl, certificateFingerprint, sha256). --dry-run validates the package
@@ -263,5 +280,6 @@ still refuses it (exit 4).`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Format, "format", "", "artifact type: apk or bundle (overrides extension auto-detect)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate the package and artifact without any HTTP call")
+	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")
 	return cmd
 }

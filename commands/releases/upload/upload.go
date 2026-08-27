@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
+	"github.com/PollyGlot/google-play-cli/internal/artifact"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -37,6 +38,7 @@ type Input struct {
 	KeepEditOnFailure bool
 	Confirm           bool
 	DryRun            bool
+	SkipPreflight     bool
 }
 
 // usageError is a CLI-misuse error with ExitCode()=2.
@@ -69,6 +71,17 @@ func resolveFormat(path, formatOverride string) (string, error) {
 	default:
 		return "", &usageError{msg: "--format must be apk or bundle"}
 	}
+}
+
+// preflightKind translates the resolved orchestrator format into the
+// container the preflight must find. The two vocabularies already agree on
+// the strings; the mapping is explicit so a future format value cannot
+// silently become an unchecked upload.
+func preflightKind(format string) artifact.Kind {
+	if format == orchestrator.FormatAPK {
+		return artifact.KindAPK
+	}
+	return artifact.KindBundle
 }
 
 // Payload satisfies output.Renderable for the resulting upload Result.
@@ -208,6 +221,19 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Artifact preflight (PRD #448): the artifact's container and declared
+	// package are checked against what this invocation promised BEFORE any
+	// Edit is opened and before the first upload byte leaves the machine, so
+	// a wrong path fails in milliseconds instead of after minutes of
+	// resumable transfer, and app A's release can never receive app B's
+	// build. Silent on success; --skip-preflight is the parser-gap escape.
+	if err := artifact.Verify(rc.Stderr, in.AABPath, artifact.Expect{
+		Kinds:   []artifact.Kind{preflightKind(format)},
+		Package: pkg,
+	}, artifact.Options{Skip: in.SkipPreflight, Report: in.DryRun}); err != nil {
+		return nil, err
+	}
+
 	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the
 	// network, and the orchestrator's dry-run path never reuses a pinned Edit,
 	// so a corrupt pin must not fail a preview. The pin is only resolved on the
@@ -302,6 +328,13 @@ AAB vs APK is auto-detected by file extension (.aab / .apk); pass
 of the pipeline (track assignment, release notes, --mapping, draft-by-
 default on production, --dry-run, --confirm) is identical for both.
 
+Before any byte is uploaded, the artifact is checked locally: its container
+must really be the format this call promised, and the package name its
+manifest declares must match the package being released. A mismatch fails
+offline in milliseconds, naming what was expected and what was found, so no
+Edit is opened and no upload session is reserved for a doomed artifact. Pass
+--skip-preflight to upload the file as-is.
+
 Pass --mapping <mapping.txt> to upload the artifact's ProGuard/R8
 deobfuscation file in the same Edit, so Play vitals can symbolicate
 obfuscated crash stacks. To attach a mapping to an already-published
@@ -344,5 +377,6 @@ of the APK passes through verbatim.`,
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
+	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")
 	return cmd
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
+	"github.com/PollyGlot/google-play-cli/internal/artifact"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
@@ -43,10 +44,11 @@ const citeHint = "cite this apkId in `gplay appstore update` as activeApks.activ
 // Input is the request-shaped struct cobra builds from the flags plus the
 // positional file path.
 type Input struct {
-	StorePackage string
-	Package      string
-	Path         string
-	DryRun       bool
+	StorePackage  string
+	Package       string
+	Path          string
+	SkipPreflight bool
+	DryRun        bool
 }
 
 // Payload renders the uploaded APK's tracking id (or, on --dry-run, the upload
@@ -179,6 +181,18 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Artifact preflight (PRD #448): the file must really be an APK, and the
+	// package its manifest declares must be the hosted app this call names.
+	// Deliberately after the --dry-run branch above, which answers "what would
+	// this command address?" for an artifact the build step may not have
+	// produced yet. Silent on success.
+	if err := artifact.Verify(rc.Stderr, path, artifact.Expect{
+		Kinds:   []artifact.Kind{artifact.KindAPK},
+		Package: pkg,
+	}, artifact.Options{Skip: in.SkipPreflight}); err != nil {
+		return nil, err
+	}
+
 	apkID, raw, err := appstore.UploadAPK(rc.Ctx, httpClient, storePackage, pkg, path)
 	if err != nil {
 		return nil, appstorecmd.ClassifyHostedApp(storePackage, pkg, err)
@@ -249,5 +263,6 @@ failure (exit 20); a 403 names the app store enrollment the call requires.`,
 	appstorecmd.RegisterStorePackageFlag(cmd, &in.StorePackage)
 	cmd.Flags().StringVar(&in.Package, "package", "", "package name of the hosted app (overrides .gplay/config.json pin)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "preview the resolved target without any HTTP call or file read")
+	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (that the file is an APK declaring this package) and upload it as-is")
 	return cmd
 }

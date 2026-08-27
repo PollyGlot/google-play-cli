@@ -9,11 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/expansionfilescmd"
+	"github.com/PollyGlot/google-play-cli/internal/artifact"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -28,16 +28,8 @@ type Input struct {
 	OBBPath           string
 	KeepEditOnFailure bool
 	DryRun            bool
+	SkipPreflight     bool
 }
-
-type localIOError struct {
-	path  string
-	cause error
-}
-
-func (e *localIOError) Error() string { return fmt.Sprintf("%s: %v", e.path, e.cause) }
-func (e *localIOError) Unwrap() error { return e.cause }
-func (e *localIOError) ExitCode() int { return 20 }
 
 // Payload renders the upload (live) or rehearsal (--dry-run).
 type Payload struct {
@@ -88,16 +80,19 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// Artifact preflight (PRD #448): an .obb is neither an AAB nor an APK, so
+	// the check here is the container one only (there is no package name to
+	// read out of an expansion file). It catches the real mistake on this
+	// surface: passing the app's build where its asset sidecar belongs. It
+	// also covers the missing / non-regular path, which is why the dry-run
+	// branch below no longer stats the file itself.
+	if err := artifact.Verify(rc.Stderr, in.OBBPath, artifact.Expect{
+		Kinds: []artifact.Kind{artifact.KindUnknown},
+	}, artifact.Options{Skip: in.SkipPreflight, Report: in.DryRun}); err != nil {
+		return nil, err
+	}
+
 	if in.DryRun {
-		// Validate the local file offline (regular-file check) so a bad path
-		// fails at exit 20 without any HTTP, then preview.
-		info, statErr := os.Stat(in.OBBPath)
-		if statErr != nil {
-			return nil, &localIOError{path: in.OBBPath, cause: statErr}
-		}
-		if !info.Mode().IsRegular() {
-			return nil, &localIOError{path: in.OBBPath, cause: fmt.Errorf("not a regular file")}
-		}
 		return Payload{VersionCode: in.VersionCode, Type: ft, DryRun: true}, nil
 	}
 
@@ -142,7 +137,11 @@ LEGACY: expansion files are the pre-AAB mechanism for >150 MB out-of-APK
 assets: most apps use Play Asset Delivery instead. Only APK-based apps use OBB.
 
 --type is main or patch (the two expansion files per APK). --dry-run validates
-the local file and inputs without any HTTP call. GPLAY_READONLY refuses it.`,
+the local file and inputs without any HTTP call. GPLAY_READONLY refuses it.
+
+Before any byte is uploaded the file is checked locally: passing an AAB or an
+APK where an expansion file belongs fails offline. Pass --skip-preflight to
+upload it as-is.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -159,5 +158,6 @@ the local file and inputs without any HTTP call. GPLAY_READONLY refuses it.`,
 	cmd.Flags().StringVar(&in.Type, "type", "main", "expansion file type: main or patch")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and the local file without any HTTP call")
+	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (that the file is an expansion file, not an AAB or APK) and upload it as-is")
 	return cmd
 }
