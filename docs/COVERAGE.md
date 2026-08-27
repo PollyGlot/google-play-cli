@@ -38,17 +38,19 @@ update this table whenever a slice ships or the snapshot is bumped.**
 
 ## Headline
 
-By method count, of the **~164 admin methods** across the four APIs (175 in
+By method count, of the **~166 admin methods** across the four APIs (177 in
 the tables below, minus the 11 runtime `purchases.*` methods excluded by
 nature):
 
-- **~117 shipped (~71%)** — essentially the entire *publish / first-release /
+- **~119 shipped (~72%)** — essentially the entire *publish / first-release /
   team / observability* half plus the admin commerce-reads and games config
   (incl. `edits.apks.upload` via `releases upload`, ADR-0036,
   `generatedapks`, PRD #299 / ADR-0034, `customapps`, PRD #242 / ADR-0032,
   **orders #245 in full** — `orders view` single + batch (`orders.get`/
   `orders.batchget`) and the gated `orders refund` (`orders.refund`), ADR-0031,
-  and **games #241** — achievements + leaderboards CRUD, ADR-0033).
+  and **games #241** — achievements + leaderboards CRUD, ADR-0033,
+  and **appsigning #476 in full** — `signing enroll`/`rotate`, the enterprise
+  self-hosted Cloud KMS key-custody surface).
 - **Monetization is started** — the declarative catalog
   ([ADR-0041](adr/0041-declarative-monetization-catalog.md)) shipped all
   three subscription nesting levels: the subscription top level (slice #367),
@@ -75,7 +77,7 @@ nature):
 
 ---
 
-## `androidpublisher` v3 — 143 methods
+## `androidpublisher` v3 — 145 methods
 
 | Surface (resource) | Methods | State | gplay namespace / issue |
 |---|---|---|---|
@@ -93,6 +95,7 @@ nature):
 | `applications.deviceTierConfigs` | 3 | ✅ | `device-tiers` |
 | `applications.tracks.releases.list` | 1 | ✅ | `releases list` |
 | `apprecovery` | 5 | ✅ | `recovery` |
+| `appsigning` | 2 | ✅ | `signing` — Play App Signing with a **self-hosted Google Cloud KMS key**, [PRD #476](https://github.com/PollyGlot/google-play-cli/issues/476) **shipped in full**, surfaced 2026-08-25 by Discovery PR #472: `enrollApp` → `signing enroll` (slice [#477](https://github.com/PollyGlot/google-play-cli/issues/477)), `rotateAppSigningKey` → `signing rotate` (slice [#478](https://github.com/PollyGlot/google-play-cli/issues/478)). Both `--confirm`-gated ([ADR-0043](adr/0043-appstore-hosted-app-env-cascade-and-gate-placement.md) criterion: irreversible + external effect). Enterprise-only by nature: standard, Google-managed enrollment is not exposed by any API, and rotating a Google-managed key goes through the Play Console UI. The API exposes no read of app-signing state, so there is no `view` leaf |
 | `appstoreappsreview` | 6 | ✅ | `appstore` — hosted app review for alternative stores (DMA); [PRD #377](https://github.com/PollyGlot/google-play-cli/issues/377) **shipped in full**, surfaced 2026-07-20 by Discovery PR #374. `createappstorehostedapp` → `appstore create` (slice [#378](https://github.com/PollyGlot/google-play-cli/issues/378)), the namespace root and its `--store-package` axis, mandatory precondition for every other method here; `uploadapk`/`uploadimage`/`uploadappstoreapppolicydeclarationfile` → `appstore upload apk|image|policy` (slice [#379](https://github.com/PollyGlot/google-play-cli/issues/379)), resumable transfers returning the tracking ids; `updateappstorehostedapppublishstatus` → `appstore publish-status published\|unpublished` (slice [#380](https://github.com/PollyGlot/google-play-cli/issues/380)); `updateappstorehostedapp` → `appstore update --file` (slice [#381](https://github.com/PollyGlot/google-play-cli/issues/381)), the declarative submission that cites those ids and sends the app to review, `--confirm`-gated ([ADR-0043](adr/0043-appstore-hosted-app-env-cascade-and-gate-placement.md)) |
 | `appstorecatalog` | 2 | ✅ | `appstore catalog` — Play's Catalog Export for app stores, [PRD #396](https://github.com/PollyGlot/google-play-cli/issues/396) **shipped in full**: `recentappviews.get` → `appstore catalog view <play-package>` (slice [#397](https://github.com/PollyGlot/google-play-cli/issues/397)), `recentupdateevents.list` → `appstore catalog events list --start-time/--end-time` (slice [#398](https://github.com/PollyGlot/google-play-cli/issues/398)). Read-only, Edit-free, addressed by the app store package name; surfaced 2026-07-27 by Discovery PR #395 |
 | `internalappsharingartifacts` | 2 | ✅ | `releases sharing` |

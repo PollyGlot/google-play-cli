@@ -583,6 +583,12 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"recovery", "cancel"}, true},
 		{[]string{"recovery", "add-targeting"}, true},
 
+		// signing: both leaves swap the live signing key of a real app; a
+		// dropped MarkMutating would let a key rotation run under
+		// GPLAY_READONLY=1 instead of exit 4.
+		{[]string{"signing", "enroll"}, true},
+		{[]string{"signing", "rotate"}, true},
+
 		// team
 		{[]string{"team", "permissions"}, false},
 		{[]string{"team", "users", "list"}, false},
@@ -829,6 +835,11 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"recovery", "cancel"}, true},
 		{[]string{"recovery", "add-targeting"}, true},
 		{[]string{"customapps", "create"}, true},
+
+		// signing: an enterprise-only surface (self-hosted Cloud KMS key
+		// custody) whose flag shape has never met a real KMS key.
+		{[]string{"signing", "enroll"}, true},
+		{[]string{"signing", "rotate"}, true},
 
 		// appstore: a brand-new namespace for a persona gplay has never served,
 		// on an addressing axis (the app store package name) never exercised

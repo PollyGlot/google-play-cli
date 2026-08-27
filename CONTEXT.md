@@ -312,3 +312,10 @@ One entry of the Catalog Export's incremental-sync feed (`RecentUpdateEvent`, li
 It is the *delta* channel of the Catalog Export, whose *snapshot* channel is the Catalog app view: an app store polls the update events for a range, then re-reads only the apps they name.
 
 _Avoid_: "change", "diff" or "notification" as the noun — the canonical term is **update event**; and do not confuse it with a Real-time Developer Notification (a Pub/Sub message about a *purchase*, which gplay does not ingest).
+
+### Self-hosted signing key
+An app signing private key the developer keeps in **their own Google Cloud KMS instance** rather than letting Google generate and hold it, referenced everywhere by its `cryptoKeyVersionResource` (`projects/*/locations/*/keyRings/*/cryptoKeys/*/cryptoKeyVersions/*`) and paired with its PEM certificate. Backed by the `appsigning` resource of the [Android Publisher API](#android-publisher-api), outside the [Edit](#edit) model: `appsigning.enrollApp` puts an app on such a key, `appsigning.rotateAppSigningKey` swaps it for a new one. gplay surfaces both under the top-level `signing` namespace (`signing enroll` / `signing rotate`), each `--confirm`-gated because the live signing key of a real app changes and cannot be put back.
+
+The surface is **enterprise-only by construction**: standard Play App Signing (a Google-generated or Google-managed key) cannot be enrolled through any API, and rotating a Google-managed key goes through the Play Console UI. The API exposes no read of app-signing state, so `signing` has no `view` leaf; the only thing a call reports back is the resulting **certificate hashes** (MD5/SHA1/SHA256).
+
+_Avoid_: calling it an "upload key" — the upload certificate (`--upload-cert`) is the key CI signs *submissions* with, a different key from the one Play signs *deliveries* with; and do not say gplay "generates" a lineage: the proof-of-rotation file is produced by `apksigner`, gplay only carries its bytes.
