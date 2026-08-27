@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -14,136 +15,261 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// recorder captures the npx invocation the command would run, so tests assert
-// the exact recipe without a real npx or network (ADR-0028: mock exec/LookPath).
-type recorder struct {
-	ran     bool
-	npxPath string
-	args    []string
+// fixtureRepo builds a real, local git repository holding a skills pack and
+// returns its path and the commit the pin should point at. Everything stays on
+// disk: the command's only network-shaped dependency is `git fetch`, and a
+// local path exercises the same code path without leaving the machine.
+func fixtureRepo(t *testing.T, files map[string]string) (repoDir, commit string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not on PATH: %v", err)
+	}
+	repoDir = t.TempDir()
+	for rel, content := range files {
+		path := filepath.Join(repoDir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git := func(args ...string) {
+		t.Helper()
+		c := exec.Command("git", args...)
+		c.Dir = repoDir
+		c.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=gplay", "GIT_AUTHOR_EMAIL=gplay@example.test",
+			"GIT_COMMITTER_NAME=gplay", "GIT_COMMITTER_EMAIL=gplay@example.test",
+			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+		)
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	git("init", "--quiet", "--initial-branch", "main")
+	// Fetching an explicit object name (rather than a ref) is what the installer
+	// does; a local upload-pack refuses it unless this is set. Public forges
+	// allow it by default.
+	git("config", "uploadpack.allowAnySHA1InWant", "true")
+	git("add", "-A")
+	git("commit", "--quiet", "-m", "fixture pack")
+
+	c := exec.Command("git", "rev-parse", "HEAD")
+	c.Dir = repoDir
+	out, err := c.Output()
+	if err != nil {
+		t.Fatalf("rev-parse: %v", err)
+	}
+	return repoDir, strings.TrimSpace(string(out))
 }
 
-func (r *recorder) run(_ context.Context, npxPath string, args []string, _ io.Reader, _, _ io.Writer) error {
-	r.ran = true
-	r.npxPath = npxPath
-	r.args = args
-	return nil
+// packFiles is the fixture pack: two skills, one of them multi-file, plus a
+// repo file outside skills/ that must never be installed.
+var packFiles = map[string]string{
+	"README.md":                       "not a skill",
+	"skills/gplay-setup/SKILL.md":     "setup skill body\n",
+	"skills/gplay-tracks/SKILL.md":    "tracks skill body\n",
+	"skills/gplay-tracks/extra.md":    "tracks reference\n",
+	"skills/gplay-tracks/nested/a.md": "nested\n",
 }
 
-// fakeLookPath builds a LookPath that resolves npx to path (or returns err).
-func fakeLookPath(path string, err error) func(string) (string, error) {
-	return func(string) (string, error) { return path, err }
+func fixturePin(t *testing.T, skills ...string) (installskills.Pin, string) {
+	t.Helper()
+	repo, commit := fixtureRepo(t, packFiles)
+	if len(skills) == 0 {
+		skills = []string{"gplay-setup", "gplay-tracks"}
+	}
+	sort.Strings(skills)
+	return installskills.Pin{
+		Repo:   "PollyGlot/google-play-cli-skills",
+		URL:    repo,
+		Commit: commit,
+		Subdir: "skills",
+		Skills: skills,
+	}, repo
 }
 
-// exec drives the command end-to-end through cobra with the given passthrough
-// args, returning whatever it wrote to stdout / stderr and the run error.
+// execCmd drives the command end-to-end through cobra, returning what it wrote
+// to stdout / stderr and the run error.
 func execCmd(t *testing.T, opts installskills.Options, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	cmd := installskills.NewCommand(opts)
 	var out, errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	// Pass a non-nil slice even with no passthrough args: cobra falls back to
-	// os.Args[1:] when c.args is nil, which would leak `go test` flags into the
-	// command (and, with DisableFlagParsing, into the npx argv we assert on).
+	// Pass a non-nil slice even with no args: cobra falls back to os.Args[1:]
+	// when c.args is nil, which would leak `go test` flags into the command.
 	cmd.SetArgs(append([]string{}, args...))
-	err = cmd.Execute()
+	err = cmd.ExecuteContext(context.Background())
 	return out.String(), errBuf.String(), err
 }
 
-// wantRecipe is the opinionated, non-interactive npx argv from ADR-0028 §2.
-var wantRecipe = []string{
-	"--yes", "skills", "add", "PollyGlot/google-play-cli-skills",
-	"--global", "--agent", "*", "--yes",
-}
-
-func TestInstallSkills_runsRecipe(t *testing.T) {
-	rec := &recorder{}
-	opts := installskills.Options{LookPath: fakeLookPath("/usr/bin/npx", nil), Run: rec.run}
-
-	_, _, err := execCmd(t, opts)
+func read(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("read %s: %v", path, err)
 	}
-	if !rec.ran {
-		t.Fatal("expected npx to be invoked")
-	}
-	if rec.npxPath != "/usr/bin/npx" {
-		t.Errorf("npxPath = %q, want the resolved npx path", rec.npxPath)
-	}
-	if strings.Join(rec.args, " ") != strings.Join(wantRecipe, " ") {
-		t.Errorf("argv = %v\nwant   %v", rec.args, wantRecipe)
-	}
+	return string(b)
 }
 
-func TestInstallSkills_passthrough(t *testing.T) {
-	rec := &recorder{}
-	opts := installskills.Options{LookPath: fakeLookPath("/usr/bin/npx", nil), Run: rec.run}
+func TestInstallSkills_installsPinnedPack(t *testing.T) {
+	pin, _ := fixturePin(t)
+	target := t.TempDir()
 
-	// Overrides documented in ADR-0028 §2 must reach `npx skills add` verbatim,
-	// appended after the recipe.
-	_, _, err := execCmd(t, opts, "--agent", "claude", "--project")
+	// Prior state: an unrelated skill that must survive, and a stale copy of a
+	// pack skill carrying a file the new version does not have.
+	mustWrite(t, filepath.Join(target, "my-own-skill", "SKILL.md"), "mine\n")
+	mustWrite(t, filepath.Join(target, "gplay-tracks", "SKILL.md"), "stale\n")
+	mustWrite(t, filepath.Join(target, "gplay-tracks", "leftover.md"), "stale leftover\n")
+
+	stdout, stderr, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("unexpected error: %v\nstderr: %s", err, stderr)
 	}
-	want := append(append([]string{}, wantRecipe...), "--agent", "claude", "--project")
-	if strings.Join(rec.args, " ") != strings.Join(want, " ") {
-		t.Errorf("argv = %v\nwant   %v", rec.args, want)
+
+	if got := read(t, filepath.Join(target, "gplay-setup", "SKILL.md")); got != "setup skill body\n" {
+		t.Errorf("gplay-setup/SKILL.md = %q", got)
+	}
+	if got := read(t, filepath.Join(target, "gplay-tracks", "nested", "a.md")); got != "nested\n" {
+		t.Errorf("nested file = %q", got)
+	}
+	// The stale copy is replaced wholesale, not merged over.
+	if got := read(t, filepath.Join(target, "gplay-tracks", "SKILL.md")); got != "tracks skill body\n" {
+		t.Errorf("stale skill was not replaced: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(target, "gplay-tracks", "leftover.md")); !os.IsNotExist(err) {
+		t.Error("a file from the previous version of the skill survived the replacement")
+	}
+	// Unrelated skills are preserved.
+	if got := read(t, filepath.Join(target, "my-own-skill", "SKILL.md")); got != "mine\n" {
+		t.Errorf("unrelated skill was disturbed: %q", got)
+	}
+	// Only skills/ is installed, never the rest of the repository.
+	if _, err := os.Stat(filepath.Join(target, "README.md")); !os.IsNotExist(err) {
+		t.Error("a non-skill repository file was installed")
+	}
+	// No staging or backup scaffolding is left behind.
+	for _, e := range dirNames(t, target) {
+		if strings.HasPrefix(e, ".gplay-") {
+			t.Errorf("temporary directory %q left in the target", e)
+		}
+	}
+	for _, want := range []string{filepath.Join(target, "gplay-setup"), filepath.Join(target, "gplay-tracks")} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing installed path %q\ngot:\n%s", want, stdout)
+		}
+	}
+	if !strings.Contains(stderr, "installed 2 skills") {
+		t.Errorf("stderr missing the summary\ngot:\n%s", stderr)
 	}
 }
 
-func TestInstallSkills_npxAbsent(t *testing.T) {
-	rec := &recorder{}
-	opts := installskills.Options{
-		// What a real exec.LookPath returns when npx is not on PATH: an
-		// *exec.Error wrapping exec.ErrNotFound.
-		LookPath: fakeLookPath("", &exec.Error{Name: "npx", Err: exec.ErrNotFound}),
-		Run:      rec.run,
-	}
+func TestInstallSkills_wrongCommitLeavesTargetUntouched(t *testing.T) {
+	pin, _ := fixturePin(t)
+	// A syntactically valid commit that the fixture does not contain: the fetch
+	// must fail rather than fall back to a branch tip.
+	pin.Commit = "0123456789abcdef0123456789abcdef01234567"
+	target := t.TempDir()
+	mustWrite(t, filepath.Join(target, "gplay-setup", "SKILL.md"), "previous\n")
 
-	_, stderr, err := execCmd(t, opts)
+	_, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target)
 	if err == nil {
-		t.Fatal("expected an error when npx is absent")
+		t.Fatal("expected an error when the pinned commit is absent from the remote")
 	}
 	if got := exit.For(err); got != 1 {
-		t.Errorf("exit code = %d, want 1 (generic fallback, ADR-0028 §4)", got)
+		t.Errorf("exit code = %d, want 1", got)
 	}
-	if rec.ran {
-		t.Error("npx must not be invoked when it is absent")
+	if got := read(t, filepath.Join(target, "gplay-setup", "SKILL.md")); got != "previous\n" {
+		t.Errorf("previous skills must survive a failed install, got %q", got)
 	}
-	// The stderr message must be actionable: name Node, print the manual recipe,
-	// and point at the browse URL (ADR-0028 §4).
-	for _, want := range []string{
-		"Node",
-		"npx skills add PollyGlot/google-play-cli-skills --global --agent '*' --yes",
-		"https://github.com/PollyGlot/google-play-cli-skills",
-	} {
+}
+
+func TestInstallSkills_packMismatchInstallsNothing(t *testing.T) {
+	// The pin expects a skill the pinned checkout does not carry: the pack is
+	// incomplete, so nothing at all is installed.
+	pin, _ := fixturePin(t, "gplay-setup", "gplay-tracks", "gplay-vitals")
+	target := t.TempDir()
+	mustWrite(t, filepath.Join(target, "gplay-setup", "SKILL.md"), "previous\n")
+
+	_, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target)
+	if err == nil {
+		t.Fatal("expected an error when the checkout does not match the expected pack")
+	}
+	if !strings.Contains(err.Error(), "gplay-vitals") {
+		t.Errorf("error should name the missing skill, got: %v", err)
+	}
+	if got := read(t, filepath.Join(target, "gplay-setup", "SKILL.md")); got != "previous\n" {
+		t.Errorf("previous skills must survive, got %q", got)
+	}
+}
+
+func TestInstallSkills_unexpectedSkillInCheckoutIsRefused(t *testing.T) {
+	// The mirror case: the checkout carries a skill the reviewed pin does not
+	// list. Installing the rest and ignoring the intruder would silently accept
+	// a tampered pack, so the whole install is refused.
+	pin, _ := fixturePin(t, "gplay-setup")
+	target := t.TempDir()
+
+	_, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target)
+	if err == nil {
+		t.Fatal("expected an error when the checkout carries an unlisted skill")
+	}
+	if !strings.Contains(err.Error(), "gplay-tracks") {
+		t.Errorf("error should name the unexpected skill, got: %v", err)
+	}
+	if names := dirNames(t, target); len(names) != 0 {
+		t.Errorf("nothing must be installed, found %v", names)
+	}
+}
+
+func TestInstallSkills_gitAbsent(t *testing.T) {
+	pin, _ := fixturePin(t)
+	ran := false
+	opts := installskills.Options{
+		Pin: &pin,
+		// What a real exec.LookPath returns when git is not on PATH.
+		LookPath: func(string) (string, error) {
+			return "", &exec.Error{Name: "git", Err: exec.ErrNotFound}
+		},
+		Run: func(context.Context, string, []string, string) (string, error) {
+			ran = true
+			return "", nil
+		},
+	}
+
+	_, stderr, err := execCmd(t, opts, "--dir", t.TempDir())
+	if err == nil {
+		t.Fatal("expected an error when git is absent")
+	}
+	if got := exit.For(err); got != 1 {
+		t.Errorf("exit code = %d, want 1", got)
+	}
+	if ran {
+		t.Error("git must not be invoked when it is absent")
+	}
+	for _, want := range []string{"git", "Install git", pin.Commit} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr missing %q\ngot:\n%s", want, stderr)
 		}
 	}
 }
 
-func TestInstallSkills_npxLookupError(t *testing.T) {
-	rec := &recorder{}
-	// A non-"not found" lookup failure (e.g. npx present but not executable).
-	// The "install Node.js" recipe would be misleading here, so it must be
-	// suppressed and the real cause surfaced instead.
+func TestInstallSkills_gitLookupError(t *testing.T) {
+	pin, _ := fixturePin(t)
+	// A non-"not found" lookup failure (git present but not executable): the
+	// "install git" recipe would mislead, so the real cause is surfaced instead.
 	opts := installskills.Options{
-		LookPath: fakeLookPath("", errors.New("permission denied")),
-		Run:      rec.run,
+		Pin:      &pin,
+		LookPath: func(string) (string, error) { return "", errors.New("permission denied") },
 	}
 
-	_, stderr, err := execCmd(t, opts)
+	_, stderr, err := execCmd(t, opts, "--dir", t.TempDir())
 	if err == nil {
 		t.Fatal("expected an error on a lookup failure")
 	}
-	if got := exit.For(err); got != 1 {
-		t.Errorf("exit code = %d, want 1", got)
-	}
-	if rec.ran {
-		t.Error("npx must not be invoked on a lookup failure")
-	}
-	if strings.Contains(stderr, "requires Node.js") {
+	if strings.Contains(stderr, "Install git") {
 		t.Errorf("must not print the 'not found' recipe for a non-ErrNotFound failure\ngot:\n%s", stderr)
 	}
 	if !strings.Contains(err.Error(), "permission denied") {
@@ -151,45 +277,67 @@ func TestInstallSkills_npxLookupError(t *testing.T) {
 	}
 }
 
-// exitErr mimics *exec.ExitError: it carries the child process's exit code via
-// an ExitCode() method (os.ProcessState promotes one). exit.Coder has the same
-// shape, so a naive %w-wrap of the real npx error would leak the child's code
-// as gplay's: the regression this test pins.
+// exitErr mimics *exec.ExitError: it carries the child's exit code via an
+// ExitCode() method, the same shape as exit.Coder. A naive %w-wrap of a git
+// failure would leak the child's code as gplay's: the regression this pins.
 type exitErr struct{ code int }
 
-func (e exitErr) Error() string { return fmt.Sprintf("exit status %d", e.code) }
+func (e exitErr) Error() string { return "exit status 7" }
 func (e exitErr) ExitCode() int { return e.code }
 
-func TestInstallSkills_npxFailure(t *testing.T) {
-	// A non-1 child exit code (7) makes the leak observable: ADR-0028 §4 says a
-	// failed npx run surfaces as gplay exit 1 (opaque), never the child's code.
-	failing := func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) error {
-		return exitErr{code: 7}
+func TestInstallSkills_gitFailureIsOpaqueExitOne(t *testing.T) {
+	pin, _ := fixturePin(t)
+	opts := installskills.Options{
+		Pin:      &pin,
+		LookPath: func(string) (string, error) { return "/usr/bin/git", nil },
+		Run: func(context.Context, string, []string, string) (string, error) {
+			return "fatal: could not read from remote repository", exitErr{code: 7}
+		},
 	}
-	opts := installskills.Options{LookPath: fakeLookPath("/usr/bin/npx", nil), Run: failing}
 
-	_, _, err := execCmd(t, opts)
+	_, _, err := execCmd(t, opts, "--dir", t.TempDir())
 	if err == nil {
-		t.Fatal("expected an error when npx fails")
+		t.Fatal("expected an error when git fails")
 	}
 	if got := exit.For(err); got != 1 {
-		t.Errorf("exit code = %d, want 1 (npx failures are opaque, ADR-0028 §4)", got)
+		t.Errorf("exit code = %d, want 1 (git failures are opaque)", got)
+	}
+	if !strings.Contains(err.Error(), "could not read from remote") {
+		t.Errorf("error should carry git's own output, got: %v", err)
 	}
 }
 
-func TestInstallSkills_helpDoesNotRunNpx(t *testing.T) {
-	rec := &recorder{}
-	opts := installskills.Options{LookPath: fakeLookPath("/usr/bin/npx", nil), Run: rec.run}
+func TestInstallSkills_rejectsPositionalArgs(t *testing.T) {
+	pin, _ := fixturePin(t)
+	// The npx passthrough is gone: a stray argument is misuse, not something to
+	// forward to a third-party installer.
+	_, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--agent", "claude")
+	if err == nil {
+		t.Fatal("expected an error for an unknown flag")
+	}
+}
+
+func TestInstallSkills_helpDoesNotRunGit(t *testing.T) {
+	pin, _ := fixturePin(t)
+	ran := false
+	opts := installskills.Options{
+		Pin:      &pin,
+		LookPath: func(string) (string, error) { return "/usr/bin/git", nil },
+		Run: func(context.Context, string, []string, string) (string, error) {
+			ran = true
+			return "", nil
+		},
+	}
 
 	stdout, _, err := execCmd(t, opts, "--help")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if rec.ran {
-		t.Error("--help must not shell out to npx")
+	if ran {
+		t.Error("--help must not shell out to git")
 	}
-	if !strings.Contains(stdout, "Node") {
-		t.Errorf("help text should state the Node/npx requirement\ngot:\n%s", stdout)
+	if !strings.Contains(stdout, "git") {
+		t.Errorf("help text should state the git requirement\ngot:\n%s", stdout)
 	}
 }
 
@@ -198,10 +346,56 @@ func TestInstallSkills_metadata(t *testing.T) {
 	if cmd.Use != "install-skills" {
 		t.Errorf("cmd.Use = %q, want install-skills", cmd.Use)
 	}
-	// --help must state the Node/npx dependency (ADR-0028 §3 acceptance).
-	for _, want := range []string{"Node", "npx"} {
+	// --help documents the two facts the command's safety rests on: the pin and
+	// the single runtime requirement.
+	for _, want := range []string{"git", "pinned", "rolled back", "verified"} {
 		if !strings.Contains(cmd.Long, want) {
-			t.Errorf("Long should mention %q\n%s", want, cmd.Long)
+			t.Errorf("--help should mention %q\n%s", want, cmd.Long)
 		}
 	}
+}
+
+// TestNoPackageManagerExecution guards the acceptance criterion directly: the
+// command must not shell out to npx/npm, nor run a script from the skills repo.
+// A source-level check is the honest way to state "this no longer happens".
+func TestNoPackageManagerExecution(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		body := read(t, name)
+		for _, banned := range []string{"npx", "npm", "yarn", "pnpm"} {
+			if strings.Contains(body, banned) {
+				t.Errorf("%s still references %q", name, banned)
+			}
+		}
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func dirNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
 }

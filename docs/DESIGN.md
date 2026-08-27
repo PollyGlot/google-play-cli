@@ -77,7 +77,9 @@ never `--output`, which controls structured-data format
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
 grammar, keeping their own names: `version`, `exit-codes`, `install-skills`
-([ADR-0028](./adr/0028-install-skills-command.md)), `auth doctor`,
+([ADR-0028](./adr/0028-install-skills-command.md), installer mechanism
+superseded by [ADR-0045](./adr/0045-install-skills-pinned-git-install.md)),
+`auth doctor`,
 `team permissions` (offline catalog), `init`.
 
 ---

@@ -1,0 +1,25 @@
+{
+  "repo": "PollyGlot/google-play-cli-skills",
+  "url": "https://github.com/PollyGlot/google-play-cli-skills.git",
+  "commit": "adc7988abf6c4a30c8add1ea188440628519960f",
+  "subdir": "skills",
+  "skills": [
+    "gplay-apps",
+    "gplay-appstore",
+    "gplay-cli-usage",
+    "gplay-compliance",
+    "gplay-customapps",
+    "gplay-device-tiers",
+    "gplay-games",
+    "gplay-metadata-sync",
+    "gplay-monetization",
+    "gplay-orders",
+    "gplay-recovery",
+    "gplay-release-flow",
+    "gplay-reviews",
+    "gplay-setup",
+    "gplay-team",
+    "gplay-tracks",
+    "gplay-vitals"
+  ]
+}
