@@ -95,6 +95,37 @@ func TestPromote_invalidNotesLocale_failsBeforeAnyHTTP(t *testing.T) {
 	}
 }
 
+// TestUpload_missingNotesDir_failsBeforeAnyHTTP closes the other half of the
+// #452 promise. A directory that does not exist is as knowable offline as a
+// malformed file name inside it, but the gate used to swallow the read error
+// and pass, so a typo in the PATH still travelled into WithEdit and only failed
+// after edits.insert: an Edit burnt for a mistake the filesystem could have
+// reported for free.
+func TestUpload_missingNotesDir_failsBeforeAnyHTTP(t *testing.T) {
+	rt := &countingRT{t: t}
+	missing := filepath.Join(t.TempDir(), "relase-notes") // the typo a human makes
+
+	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: rt}, orchestrator.Opts{
+		Package:         "com.example.app",
+		Track:           "internal",
+		AABPath:         writeFakeAAB(t),
+		ReleaseNotesDir: missing,
+	})
+	if err == nil {
+		t.Fatal("Upload: got nil, want a rejection of the unreadable --release-notes-dir")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) || coder.ExitCode() != 2 {
+		t.Errorf("err = %v (%T), want ExitCode() 2 (CLI misuse)", err, err)
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Errorf("error = %q, want it to name the directory %q", err, missing)
+	}
+	if rt.calls != 0 {
+		t.Errorf("%d HTTP request(s) issued, want 0", rt.calls)
+	}
+}
+
 // TestUpload_validNotesLocales_passTheGate is the negative control: script and
 // region variants, the numeric UN M.49 region, and the `default.txt` marker all
 // go through untouched, so the gate cannot be "green because it rejects

@@ -32,9 +32,13 @@ import (
 // fixed in one pass rather than three round-trips.
 //
 // It is pure filesystem I/O and MUST be called before the Edit is opened. An
-// empty dir (the "no --release-notes-dir" case) is a no-op, and an unreadable
-// dir is left alone: Load surfaces that error with its own wording, and
-// duplicating it here would only change which message a user sees.
+// empty dir (the "no --release-notes-dir" case) is a no-op. An UNREADABLE dir
+// is a rejection here, not a pass: a misspelt `--release-notes-dir` is knowable
+// offline like a misspelt locale, and swallowing the read error only deferred
+// it to Load, which runs INSIDE WithEdit, i.e. after edits.insert and after the
+// artifact upload. That deferral is the exact failure mode #452 exists to
+// remove, and it costs an Edit; Load keeps its own check for a caller that
+// bypasses this gate.
 //
 // `default.txt` is exempt: it is the fallback marker, not a locale, and the
 // locale it resolves to comes from edits.details.get (the API's own value).
@@ -44,7 +48,7 @@ func ValidateDirLocales(dir string) error {
 	}
 	entries, err := osReadDir(dir)
 	if err != nil {
-		return nil
+		return &ValidationError{Message: "cannot read the release-notes directory: " + err.Error()}
 	}
 	var bad []string
 	for _, e := range entries {

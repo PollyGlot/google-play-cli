@@ -114,8 +114,25 @@ func TestValidateDirLocales_emptyDirIsNoop(t *testing.T) {
 	if err := notes.ValidateDirLocales(""); err != nil {
 		t.Errorf("ValidateDirLocales(\"\") = %v, want nil", err)
 	}
-	if err := notes.ValidateDirLocales(filepath.Join(t.TempDir(), "does-not-exist")); err != nil {
-		t.Errorf("ValidateDirLocales on a missing dir = %v, want nil (Load owns that error)", err)
+}
+
+// TestValidateDirLocales_missingDirIsRejectedHere is the timing half of the
+// gate. A misspelt `--release-notes-dir` is knowable offline exactly like a
+// misspelt locale file, so it must fail HERE, in validateOpts; swallowing the
+// read error deferred it to notes.Load, which runs inside WithEdit, so the typo
+// only surfaced after edits.insert had burnt an Edit.
+func TestValidateDirLocales_missingDirIsRejectedHere(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	err := notes.ValidateDirLocales(missing)
+	if err == nil {
+		t.Fatal("ValidateDirLocales on a missing dir = nil, want a rejection before the Edit")
+	}
+	var coder interface{ ExitCode() int }
+	if !errors.As(err, &coder) || coder.ExitCode() != 2 {
+		t.Errorf("err = %v (%T), want ExitCode() 2 (CLI misuse)", err, err)
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Errorf("err = %q, want it to name the directory %q", err, missing)
 	}
 }
 
