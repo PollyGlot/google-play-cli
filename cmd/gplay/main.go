@@ -11,6 +11,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/accessiblecmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
+	"github.com/PollyGlot/google-play-cli/commands/apps/auditcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/detailscmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
@@ -245,6 +246,10 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	apps.AddCommand(viewcmd.NewCommand(boot))
 	apps.AddCommand(detailscmd.NewCommand(boot))
 	apps.AddCommand(removecmd.NewCommand(boot))
+	// #449: a read-only consistency sweep. Experimental, not MarkMutating: it
+	// only ever reads (the throwaway Edit it opens is always discarded), so a
+	// GPLAY_READONLY environment must still be able to audit itself.
+	apps.AddCommand(kernel.Experimental(auditcmd.NewCommand(boot)))
 	root.AddCommand(apps)
 
 	releases := &cobra.Command{

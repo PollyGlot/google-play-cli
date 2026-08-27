@@ -57,6 +57,13 @@ Deliberately **distinct from the local registry** (`apps list`, `apps add`), whi
 
 _Avoid_: treating it as an authoritative mirror of the registry, or building access-audit/drift logic on the gap between the two (structural false positives, ADR-0039); adding a `--source registry|server` flag to `apps list` (ADR-0019 wants a new noun, not a mode flag).
 
+### Finding
+One consistency observation about one app, produced by `apps audit` ([PRD #449](https://github.com/PollyGlot/google-play-cli/issues/449)): `{package, check, severity, message, evidence}`. It names drift the operator may want to act on (a lingering draft release, a locale set narrower than its peers', a shipped release with no release notes, a production track that has never shipped), never a failure of the audit itself, which is reported separately as a sweep error. Severity is `warning` (probably a mistake) or `info` (a difference worth naming that may well be deliberate).
+
+A **check** is the named evaluator that emits Findings; its **check ID** (`lingering-drafts`, `locale-drift`, `empty-release-notes`, `no-production-release`) is **frozen vocabulary** : a CI filter is written against these strings, so an ID is retired, never renamed. Findings present make the command exit `70` ([DESIGN §9](docs/DESIGN.md)): a gate, not an error.
+
+_Avoid_: calling a Finding an "error" (nothing failed), and building a check on the [Accessible App](#accessible-app) / registry gap : the audit uses `apps.search` for *discovery* only, and drift logic on that gap is the structural false positive ADR-0039 rules out.
+
 ### Store image
 A binary store asset attached to a Listing, keyed by **locale and image type** (`edits.images`): the singular slots `icon`, `featureGraphic`, `tvBanner`, `promoGraphic`, and the gallery slots `phoneScreenshots`, `sevenInchScreenshots`, `tenInchScreenshots`, `tvScreenshots`, `wearScreenshots`. Part of the Store front (per-locale), so it lives under `metadata`, in a `metadata images` sub-namespace distinct from the text Listing commands — the two share the metadata tree and the Additive sync stance but reconcile differently (text upserts by field name; images diff by content, see Image slot).
 

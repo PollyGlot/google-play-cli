@@ -542,6 +542,7 @@ Under `--output json` the refusal is emitted as the standard error envelope
 | `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
 | `50` | Network (timeout, DNS, refused) | **Yes** |
 | `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
+| `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
 
@@ -570,6 +571,17 @@ the exit-3 harmonisation above, the fix *restores* this documented table rather
 than changing the frozen contract (ADR-0010), which is why it shipped as a
 `fix`. Never hand-roll an argument-count check in a command — declare the cobra
 validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
+
+**Exit 70 is not an error.** A check command that sweeps and reports (today only
+`gplay apps audit`, PRD #449) exits `70` when its report carries at least one
+finding: every call succeeded, the document on stdout is complete, and the
+non-zero status exists purely so CI can gate on "clean" without parsing JSON. It
+is a distinct code precisely so an automated caller can tell *found drift* (`70`)
+from *could not look* (`10`/`11`/`30`/`40`/`50`); collapsing it into `1` would
+make a healthy audit and a broken one indistinguishable. Build it with
+`exit.Findingsf(…)`, and never for a call that actually failed: a per-app API
+failure during a sweep is reported inside the document and drives the ordinary
+API code.
 
 ---
 
