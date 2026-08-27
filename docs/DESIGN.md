@@ -577,17 +577,40 @@ keep the last value silently, so `--to alpha --to production` promotes to
 production with nothing said about the dropped value: for an argv assembled from
 a prompt that is a silent mis-ship. `kernel.RejectRepeatedFlags` turns the second
 occurrence into a parse error (exit `2`) naming the flag and both values, before
-auth and before any HTTP. Genuinely repeatable flags are recognised structurally
-(`pflag.SliceValue`, what `StringSliceVar` / `StringArrayVar` produce), never by
-a name list — so declare a repeatable flag as a slice flag and it keeps working
-for free ([#446](https://github.com/PollyGlot/google-play-cli/issues/446)).
+auth and before any HTTP. Genuinely repeatable flags are recognised by their
+value type, never by a flag-name list: `pflag.SliceValue` (what `StringSliceVar`
+/ `StringArrayVar` produce) plus pflag's map values, which accumulate the same
+way but publish no interface to say so and are matched on `Type()`. Declare a
+repeatable flag as a slice or map flag and it keeps working for free
+([#446](https://github.com/PollyGlot/google-play-cli/issues/446)).
 
-**A truncated listing always says so.** gplay follows `nextPageToken` to
-exhaustion everywhere, so the only way a listing is a prefix of the truth is an
-explicit `--limit`. When that happens the command emits a `warning:` line on
-stderr naming the flag to raise (`rc.WarnTruncated`); stdout stays a verbatim
-API mirror either way (ADR-0003), so a JSON consumer sees byte-identical data
-with and without the warning.
+**A listing cut by `--limit` always says so.** gplay has two listing shapes, and
+the guarantee is not the same in both.
+
+*Auto-paginated listings* (`reviews list`, `vitals errors issues`, `vitals
+errors reports`, `vitals anomalies`, `team users list`, the
+`iap`/`subscriptions` catalogs) follow `nextPageToken` to exhaustion, so the
+only way their output is a prefix of the truth is an explicit `--limit`. When
+that happens the command emits a `warning:` line on stderr naming the flag to
+raise (`rc.WarnTruncated`); stdout stays a verbatim API mirror either way
+(ADR-0003), so a JSON consumer sees byte-identical data with and without the
+warning.
+
+*Cursor listings* expose the API's own paging (`--page-token`, plus
+`--page-size` or `--max-results`) and return exactly ONE page, with
+`nextPageToken` passed through verbatim in the body: a machine caller loses
+nothing, but the table and markdown views carry no token column, so a human
+reading them cannot tell a full listing from a first page. `apps accessible
+list` and `appstore catalog events list` close that gap with a `NOTE:` on stderr
+carrying the next `--page-token`; `device-tiers list`, `games achievements list`
+and `games leaderboards list` do not, and their human views stay silent about
+the next page. That note is deliberately NOT `rc.WarnTruncated`: the remediation
+is a cursor to pass back, not a cap to raise, and the standard truncation line
+cannot carry the token.
+
+Prefer the auto-paginated shape for a new listing. Reach for a cursor listing
+when the collection is unbounded or the API charges per page, and then emit the
+`NOTE:` so the human views say where the rest is.
 
 ---
 

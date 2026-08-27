@@ -104,6 +104,15 @@ func paginateGET(ctx context.Context, hc *http.Client, op, pkg, baseURL string, 
 			// drops rows we are holding: a single page of 15 under --limit 10
 			// is a truncation even though no token remains. Both are computed
 			// BEFORE the slice, because slicing destroys the second signal.
+			//
+			// `next != ""` is taken at its word: the Reporting API documents
+			// the token as omitted once there are no subsequent pages, so a
+			// present token IS the server saying more exists, and it is the
+			// only signal available short of spending another request to find
+			// out. If a server ever handed back a token for an empty final
+			// page, the cost is one over-cautious `warning:` on stderr, never
+			// wrong data on stdout: the opposite mistake (staying silent while
+			// results were hidden) is the one PRD #446 exists to prevent.
 			truncated = next != "" || len(items) > limit
 			items = items[:limit]
 			break

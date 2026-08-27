@@ -458,10 +458,14 @@ func (rc *RunContext) Warnf(format string, args ...any) {
 }
 
 // WarnTruncated emits the standard truncation advisory for a listing that was
-// cut by an explicit --limit while more results remained. gplay follows
-// nextPageToken to exhaustion everywhere, so this is the ONLY way a gplay
-// listing can be a prefix of the truth: leaving it silent is what lets an agent
+// cut by an explicit --limit while more results remained. An auto-paginated
+// listing follows nextPageToken to exhaustion, so --limit is the only way ITS
+// output can be a prefix of the truth: leaving it silent is what lets an agent
 // conclude "there are only 50 error issues" from a `--limit 50` (PRD #446).
+//
+// It is not the note for a CURSOR listing (`--page-token`, one page per call):
+// there the remediation is a token to pass back, not a cap to raise, and those
+// commands write their own `NOTE:` carrying it (docs/DESIGN.md §9).
 //
 // n is what was returned; flag is the flag to raise (normally "limit"), named
 // explicitly so the remediation is one step away.
