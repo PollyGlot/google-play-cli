@@ -33,8 +33,10 @@ const (
 )
 
 // HelpCenterURL is Google's reference for the Cloud KMS prerequisites (an
-// active key plus the IAM grants to Google Play). Named once here so the two
-// commands' help text cannot drift apart.
+// active key plus the IAM grants to Google Play). Both `signing enroll` and
+// `signing rotate` interpolate it into their Long help rather than repeating
+// the literal, so the two help texts cannot drift apart; the command tests
+// still assert the expanded literal, which pins the value itself.
 const HelpCenterURL = "https://support.google.com/googleplay/android-developer/answer/9842756"
 
 // --- request body types (mirror the API schemas verbatim) ---

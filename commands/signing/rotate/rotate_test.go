@@ -288,7 +288,10 @@ func TestRun_tablePrintsRotatedKeyHashes(t *testing.T) {
 }
 
 // TestNewCommand_helpNamesTheKmsOnlyBoundary asserts --help states the trap:
-// rotation via API applies only to self-hosted Cloud KMS keys.
+// rotation via API applies only to self-hosted Cloud KMS keys. The Help Center
+// URL is spelled out here on purpose rather than read from
+// appsigning.HelpCenterURL: the literal is what pins the constant's value, so a
+// silent edit of the constant fails this test instead of shipping.
 func TestNewCommand_helpNamesTheKmsOnlyBoundary(t *testing.T) {
 	cmd := rotatecmd.NewCommand(kernel.Boot{})
 	for _, want := range []string{

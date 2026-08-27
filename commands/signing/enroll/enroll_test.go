@@ -306,7 +306,10 @@ func TestRun_noUploadCertificate_omitsTheRow(t *testing.T) {
 }
 
 // TestNewCommand_helpNamesTheApiOnlyBoundary asserts --help states the trap: the
-// standard, Google-managed enrollment is not reachable through any API.
+// standard, Google-managed enrollment is not reachable through any API. The Help
+// Center URL is spelled out here on purpose rather than read from
+// appsigning.HelpCenterURL: the literal is what pins the constant's value, so a
+// silent edit of the constant fails this test instead of shipping.
 func TestNewCommand_helpNamesTheApiOnlyBoundary(t *testing.T) {
 	long := enrollcmd.NewCommand(kernel.Boot{}).Long
 	for _, want := range []string{

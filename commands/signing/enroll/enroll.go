@@ -112,7 +112,7 @@ instance.
 
 Prerequisite: an active Cloud KMS key whose IAM policy grants Google Play the
 Decrypt and Sign permissions. See
-https://support.google.com/googleplay/android-developer/answer/9842756
+` + appsigning.HelpCenterURL + `
 
 Two shapes, one per kind of app:
 

@@ -104,7 +104,7 @@ WARNING: this applies ONLY to apps enrolled with a self-hosted Cloud KMS key
 (see ` + "`gplay signing enroll`" + `). For an app on standard, Google-managed Play App
 Signing, a key rotation request must be initiated through the Google Play
 Console UI. See
-https://support.google.com/googleplay/android-developer/answer/9842756
+` + appsigning.HelpCenterURL + `
 
 The proof-of-rotation lineage is produced by apksigner, not by gplay:
 
