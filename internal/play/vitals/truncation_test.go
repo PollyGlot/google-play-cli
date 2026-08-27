@@ -35,6 +35,29 @@ func TestSearchErrorIssues_truncationSignal(t *testing.T) {
 			want:  true,
 		},
 		{
+			// A server that hands back MORE than the cap in one page, with no
+			// token left: the slice below drops rows we were already holding,
+			// so this is a truncation even though nothing remains upstream.
+			// Keying the signal on the token alone missed exactly this.
+			name: "single-page-overshoots-the-limit",
+			pages: []string{
+				`{"errorIssues":[{"type":"CRASH"},{"type":"CRASH"},{"type":"ANR"},{"type":"ANR"},{"type":"NON_FATAL"}]}`,
+			},
+			limit: 3,
+			want:  true,
+		},
+		{
+			// Same overshoot, one page deep into a stream: the drop happens on
+			// the second page and there is still a token behind it.
+			name: "later-page-overshoots-the-limit",
+			pages: []string{
+				`{"errorIssues":[{"type":"CRASH"}],"nextPageToken":"P2"}`,
+				`{"errorIssues":[{"type":"ANR"},{"type":"ANR"},{"type":"ANR"}]}`,
+			},
+			limit: 2,
+			want:  true,
+		},
+		{
 			name: "limit-reached-exactly-on-last-page",
 			pages: []string{
 				`{"errorIssues":[{"type":"CRASH"},{"type":"CRASH"}],"nextPageToken":"P2"}`,

@@ -97,10 +97,15 @@ func paginateGET(ctx context.Context, hc *http.Client, op, pkg, baseURL string, 
 		}
 		items = append(items, pageItems...)
 		if limit > 0 && len(items) >= limit {
+			// Truncated means "the cap hid something that existed", and there
+			// are two ways for that to happen. Either the server still has
+			// pages (next != "") and the cap is why we stop asking, or this
+			// page already OVERSHOT the cap (len > limit) and the slice below
+			// drops rows we are holding: a single page of 15 under --limit 10
+			// is a truncation even though no token remains. Both are computed
+			// BEFORE the slice, because slicing destroys the second signal.
+			truncated = next != "" || len(items) > limit
 			items = items[:limit]
-			// The token is the whole signal: the server had more to give and
-			// the cap is why we are not asking for it.
-			truncated = next != ""
 			break
 		}
 		if next == "" {
