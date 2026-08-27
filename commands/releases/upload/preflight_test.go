@@ -188,9 +188,11 @@ func TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads(t *testing.
 	}
 }
 
-// TestRun_skipPreflight_stillRefusesAMissingArtifact asserts the escape hatch
-// lifts the container check and nothing else: --skip-preflight on a path that
-// does not exist must not turn a doomed invocation into a silent success.
+// TestRun_skipPreflight_stillRefusesAMissingArtifact pins that the escape
+// hatch is not a way around the local-file check. This surface has its own
+// stat in the orchestrator's dry-run, so it never lost the refusal the way
+// `customapps create` and `releases expansion-files upload` did; the test is
+// here so the three surfaces answer alike whichever check gets there first.
 func TestRun_skipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
 	rt := &uploadRT{t: t}
 	rc, _ := newRC(t, rt)

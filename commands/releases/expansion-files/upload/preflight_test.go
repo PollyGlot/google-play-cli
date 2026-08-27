@@ -83,8 +83,12 @@ func TestRun_preflight_overTheMemberCapDegradesInsteadOfPassingAsAnOBB(t *testin
 	}); err != nil {
 		t.Fatalf("Run: %v, want an unclassified container to degrade rather than be refused", err)
 	}
-	if !strings.Contains(stderr.String(), "not classified") {
-		t.Errorf("stderr %q should say the container went unclassified rather than pass silently", stderr.String())
+	// The outcome cannot change here (refusing would be the false refusal
+	// this fix removes), so what the fix buys is honesty: the note has to say
+	// the container went unchecked, not merely that it was not classified
+	// while the expectation quietly counted as met.
+	if !strings.Contains(stderr.String(), "unchecked") {
+		t.Errorf("stderr %q should say the container check did not happen, not let it pass as satisfied", stderr.String())
 	}
 }
 
