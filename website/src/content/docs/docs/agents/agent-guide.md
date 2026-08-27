@@ -107,5 +107,5 @@ including the full generated command reference, in one fetch.
 
 If your agent framework supports skills (Claude Code and compatible tools),
 the [companion skills](/docs/agents/skills/) package these
-conventions per workflow. Install with
-`npx skills add PollyGlot/google-play-cli-skills`.
+conventions per workflow. Install with `gplay install-skills`, which fetches
+them with `git` from a commit pinned inside the binary.

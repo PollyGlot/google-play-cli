@@ -1,6 +1,6 @@
 ---
 title: Agent skills
-description: "Pre-built agent skills for gplay: one per command namespace, installable with npx skills add, for Claude Code and compatible AI coding tools."
+description: "Pre-built agent skills for gplay: one per command namespace, installed with gplay install-skills, for Claude Code and compatible AI coding tools."
 sidebar:
   order: 2
 ---
@@ -13,11 +13,18 @@ runs, and the safety rails it enforces. They live in a companion repository:
 ## Install
 
 ```sh
-npx skills add PollyGlot/google-play-cli-skills
+gplay install-skills
 ```
 
-Works with Claude Code and other agent frameworks that read the `skills`
-format.
+The skills are fetched with `git` from a commit pinned inside the gplay
+binary, so two runs of the same version install the same reviewed files.
+Nothing else is executed: no Node, no package runner, no script from the
+skills repository. `git` is the only requirement.
+
+They land in `~/.claude/skills`, user-wide, which Claude Code and the agent
+frameworks following that layout read. Use `--dir` to install elsewhere. Only
+the skills listed below are replaced; anything else in that directory is left
+alone, and a failed install is rolled back.
 
 ## The roster
 

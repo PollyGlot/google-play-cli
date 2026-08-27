@@ -166,7 +166,8 @@ categorical on purpose so it doesn't drift version-to-version.
 — a companion repo of `SKILL.md` files that Claude Code and similar agents
 load to drive `gplay` autonomously. Release flows, review triage, metadata
 sync, compliance, team management — all agent-orchestrable today. Install with
-`npx skills add PollyGlot/google-play-cli-skills`.
+`gplay install-skills`, which fetches them with `git` from a commit pinned
+inside the binary.
 
 The long-term goal: be the canonical way to drive Google Play from
 anything that isn't a browser.
