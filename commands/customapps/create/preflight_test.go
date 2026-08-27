@@ -6,6 +6,7 @@ package create_test
 // only, and it accepts either an AAB or an APK.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -56,5 +57,26 @@ func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 	}
 	if len(rt.calls) == 0 {
 		t.Error("--skip-preflight must let the upload proceed")
+	}
+}
+
+// TestRun_dryRunSkipPreflight_stillRefusesAMissingArtifact asserts
+// --skip-preflight lifts the container check and nothing else. This surface
+// validated the artifact path unconditionally before the preflight existed
+// (exit 20, no HTTP), and a rehearsal that answers exit 0 with a payload
+// preview for a file that was never built is worse than no rehearsal.
+func TestRun_dryRunSkipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
+	rt := &customRT{t: t}
+	rc, _ := newRC(t, rt)
+
+	in := validInput(filepath.Join(t.TempDir(), "never-built.aab"))
+	in.DryRun = true
+	in.SkipPreflight = true
+	_, err := createcmd.Run(rc, in)
+	if got := exitOf(t, err); got != 20 {
+		t.Fatalf("exit = %d, want 20; err=%v", got, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("a missing artifact must make no network call; calls=%v", rt.calls)
 	}
 }

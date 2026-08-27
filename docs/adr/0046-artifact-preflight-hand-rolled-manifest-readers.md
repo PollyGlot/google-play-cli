@@ -60,10 +60,21 @@ extension`, `not a regular file`) exit 20 too, so this keeps one code for
 "gplay refused your artifact locally" rather than splitting it in two. Exit 2
 stays what an automated caller needs it to mean: you typed the command wrong.
 
-**A parser gap never becomes a false refusal.** When the container is
-recognized but its manifest is not, the package check is skipped, a `NOTE:` is
-written to stderr, and the upload proceeds. `--skip-preflight` bypasses
-everything, restoring the pre-preflight behaviour byte for byte.
+**A parser gap never becomes a false refusal.** Whenever gplay cannot answer,
+it says so and steps aside instead of concluding. A recognized container whose
+manifest will not parse skips the package check; a container past the member
+cap is `indeterminate`, a state of its own, and skips the container check too.
+Both write a `NOTE:` to stderr and let the upload proceed. The distinction is
+load-bearing in both directions: an asset-rich AAB is over the cap and calling
+it `unknown` would refuse a legitimate bundle, while on the expansion-file
+surface `unknown` is the expectation, so the same conflation would silently
+vouch for a file nothing checked.
+
+`--skip-preflight` lifts the container and package checks. It does not lift the
+local-file check ("missing", "not a regular file"): those surfaces refused
+those paths at exit 20 before this ADR, and an escape hatch that turned a
+rehearsal on a never-built artifact into a success would be a regression, not a
+restoration.
 
 ## Consequences
 

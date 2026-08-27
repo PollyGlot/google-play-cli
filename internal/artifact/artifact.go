@@ -45,6 +45,14 @@ const (
 	// screenshot). It is a legitimate expectation on the surfaces that
 	// upload something which is not an Android package.
 	KindUnknown Kind = "unknown"
+	// KindIndeterminate is "gplay declined to classify this container", not a
+	// finding about the file. It is what the member cap yields on an archive
+	// too large to walk, and it must never be confused with KindUnknown: an
+	// asset-rich AAB is over the cap and is still an AAB, so calling it
+	// "neither an AAB nor an APK" would refuse a legitimate release. Preflight
+	// skips the container check on it and degrades with a note, the same way
+	// an unreadable manifest skips the package check.
+	KindIndeterminate Kind = "indeterminate"
 )
 
 // Describe renders a Kind the way a human error message wants to read it.
@@ -54,6 +62,8 @@ func (k Kind) Describe() string {
 		return "an Android App Bundle (AAB)"
 	case KindAPK:
 		return "an APK"
+	case KindIndeterminate:
+		return "a container gplay could not classify"
 	default:
 		return "neither an AAB nor an APK"
 	}
@@ -157,6 +167,12 @@ func Preflight(path string, want Expect) (Info, error) {
 	if err != nil {
 		return info, err
 	}
+	// An unclassified container degrades exactly like an unreadable manifest:
+	// gplay not knowing what the file is says nothing about the file, so it
+	// can never be grounds for a refusal. The reason travels in info.Note.
+	if info.Kind == KindIndeterminate {
+		return info, nil
+	}
 	if len(want.Kinds) > 0 && !slices.Contains(want.Kinds, info.Kind) {
 		return info, &Error{
 			Path:   path,
@@ -177,9 +193,12 @@ func Preflight(path string, want Expect) (Info, error) {
 
 // Options tunes one Verify call to the invocation's flags.
 type Options struct {
-	// Skip is the --skip-preflight escape hatch: Verify becomes a no-op, so a
-	// parser gap on an unusual but legitimate artifact can never block a
-	// release. It restores exactly the pre-preflight behaviour.
+	// Skip is the --skip-preflight escape hatch: the container and package
+	// checks are dropped, so a parser gap on an unusual but legitimate
+	// artifact can never block a release. It restores exactly the
+	// pre-preflight behaviour, which means the local-file check stays: a
+	// missing or non-regular path was already exit 20 before the preflight
+	// existed and must not become a silent success.
 	Skip bool
 	// Report is the --dry-run rehearsal: name what the artifact turned out to
 	// be even when it matches, since a preview that stays silent tells the
@@ -197,7 +216,9 @@ type Options struct {
 // the error, never in the note.
 func Verify(stderr io.Writer, path string, want Expect, opts Options) error {
 	if opts.Skip {
-		return nil
+		// --skip-preflight lifts the container check, not the file check the
+		// surfaces ran before this package existed.
+		return statArtifact(path)
 	}
 	info, err := Preflight(path, want)
 	if info.Note != "" {
@@ -225,15 +246,12 @@ func note(w io.Writer, line string) {
 
 // Inspect reads path and reports what it is. A missing, unreadable or
 // non-regular file is an *IOError; anything that opens successfully yields
-// an Info, never an error: a file gplay cannot classify is KindUnknown, not
-// a failure.
+// an Info, never an error. A file that is readable but carries no marker is
+// KindUnknown (a fact about the file); one gplay stopped short of walking is
+// KindIndeterminate (a fact about gplay). Neither is a failure.
 func Inspect(path string) (Info, error) {
-	st, err := os.Stat(path)
-	if err != nil {
-		return Info{}, &IOError{Path: path, Msg: "cannot read artifact", Err: err}
-	}
-	if !st.Mode().IsRegular() {
-		return Info{}, &IOError{Path: path, Msg: "not a regular file"}
+	if err := statArtifact(path); err != nil {
+		return Info{}, err
 	}
 
 	zr, err := zip.OpenReader(path)
@@ -250,16 +268,36 @@ func Inspect(path string) (Info, error) {
 	return inspectZip(&zr.Reader), nil
 }
 
+// statArtifact is the local-file check every upload surface owes its caller,
+// preflight or not: the path must exist and be a regular file. Split out
+// because --skip-preflight drops the classification but keeps this.
+func statArtifact(path string) error {
+	st, err := os.Stat(path)
+	if err != nil {
+		return &IOError{Path: path, Msg: "cannot read artifact", Err: err}
+	}
+	if !st.Mode().IsRegular() {
+		return &IOError{Path: path, Msg: "not a regular file"}
+	}
+	return nil
+}
+
 // inspectZip is the classification proper, split out so tests can drive it
 // from an in-memory zip without touching the filesystem.
 func inspectZip(zr *zip.Reader) Info {
-	// Bounding the member count first is what keeps a crafted archive with
-	// millions of tiny entries from turning the preflight into the slow path
-	// it exists to avoid.
-	if len(zr.File) > maxZipEntries {
+	// Bounding the member count keeps a crafted archive with millions of tiny
+	// entries from turning the classification into the slow path the
+	// preflight exists to avoid. It bounds this walk only: zip.OpenReader has
+	// already read the whole central directory by the time we get here.
+	//
+	// Over the cap the answer is KindIndeterminate, never KindUnknown. An
+	// asset-rich AAB really does carry tens of thousands of members, and
+	// answering "neither an AAB nor an APK" would turn gplay's own budget
+	// into a refusal of a perfectly good bundle.
+	if len(zr.File) > MaxZipEntries {
 		return Info{
-			Kind: KindUnknown,
-			Note: fmt.Sprintf("artifact has %d zip members, over the %d-member preflight cap: container not classified", len(zr.File), maxZipEntries),
+			Kind: KindIndeterminate,
+			Note: fmt.Sprintf("artifact has %d zip members, over the %d-member preflight cap: container not classified, upload proceeding unchecked", len(zr.File), MaxZipEntries),
 		}
 	}
 
@@ -329,9 +367,11 @@ const (
 // artifact must not be able to zip-bomb the check that exists to make
 // uploads fail fast.
 const (
-	// maxZipEntries caps the member count. A real AAB or APK is in the
-	// thousands of entries at most.
-	maxZipEntries = 1 << 16
+	// MaxZipEntries caps the member count the classifier will walk. Exported
+	// so the preflight suites build their over-cap fixtures from the real
+	// number instead of restating it. Above it, Inspect yields
+	// KindIndeterminate: gplay stops looking, it does not conclude.
+	MaxZipEntries = 1 << 16
 	// maxManifestBytes caps a single decompressed member. A real
 	// AndroidManifest.xml is tens of kilobytes.
 	maxManifestBytes = 4 << 20

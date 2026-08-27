@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -66,6 +67,46 @@ func APK(t *testing.T, dir, name, pkg string) string {
 		"AndroidManifest.xml": BinaryXMLManifest(pkg, false),
 		"classes.dex":         []byte("not a real dex"),
 	})
+}
+
+// FillerMembers returns n empty, uniquely named zip members. Fixtures use it
+// to build a container past gplay's preflight member cap: an asset-rich
+// bundle genuinely reaches that scale, so what happens above the cap is a
+// behaviour real users see, not a hypothetical.
+func FillerMembers(n int) map[string][]byte {
+	m := make(map[string][]byte, n)
+	for i := range n {
+		m["res/raw/filler"+strconv.Itoa(i)] = nil
+	}
+	return m
+}
+
+// AABWith / APKWith build the same containers as AAB / APK with extra members
+// merged in (the caller's members lose to the format markers on a clash).
+func AABWith(t *testing.T, dir, name, pkg string, extra map[string][]byte) string {
+	t.Helper()
+	return Zip(t, dir, name, merge(extra, map[string][]byte{
+		"BundleConfig.pb":                   {},
+		"base/manifest/AndroidManifest.xml": ProtoManifest(pkg),
+	}))
+}
+
+func APKWith(t *testing.T, dir, name, pkg string, extra map[string][]byte) string {
+	t.Helper()
+	return Zip(t, dir, name, merge(extra, map[string][]byte{
+		"AndroidManifest.xml": BinaryXMLManifest(pkg, false),
+	}))
+}
+
+func merge(base, over map[string][]byte) map[string][]byte {
+	out := make(map[string][]byte, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v
+	}
+	return out
 }
 
 // ProtoManifest encodes the aapt2 protobuf XmlNode an AAB carries:
@@ -174,8 +215,8 @@ func stringPool(strs []string, utf16Pool bool) []byte {
 			writeU16(&data, 0) // NUL terminator
 			continue
 		}
-		data.WriteByte(byte(len([]rune(s)))) // character count
-		data.WriteByte(byte(len(s)))         // byte count
+		writeLen8(&data, len([]rune(s))) // character count
+		writeLen8(&data, len(s))         // byte count
 		data.WriteString(s)
 		data.WriteByte(0)
 	}
@@ -204,6 +245,18 @@ func stringPool(strs []string, utf16Pool bool) []byte {
 	}
 	out.Write(data.Bytes())
 	return out.Bytes()
+}
+
+// writeLen8 writes aapt's length prefix for a UTF-8 pool entry: one byte up
+// to 127, otherwise two with the high bit of the first set. A package name
+// over 127 bytes is legal (Android caps the label at 255) and it is the only
+// thing that exercises the reader's continuation branch, so the fixtures have
+// to encode it the way aapt does rather than truncating to one byte.
+func writeLen8(b *bytes.Buffer, n int) {
+	if n > 0x7F {
+		b.WriteByte(byte(0x80 | n>>8))
+	}
+	b.WriteByte(byte(n))
 }
 
 // utf16Units returns the UTF-16 code units of s (BMP-only in these fixtures).

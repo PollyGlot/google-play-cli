@@ -7,10 +7,12 @@ package upload_test
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
+	"github.com/PollyGlot/google-play-cli/internal/artifact"
 	"github.com/PollyGlot/google-play-cli/internal/artifacttest"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
@@ -156,5 +158,54 @@ func TestRun_preflight_unreadableManifestDegradesRatherThanRefuses(t *testing.T)
 	}
 	if !strings.Contains(stderr.String(), "preflight") {
 		t.Errorf("stderr %q does not report the degraded parse", stderr.String())
+	}
+}
+
+// TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads is the
+// regression that matters most on this surface: a real AAB can carry more zip
+// members than the classifier walks, and gplay declining to walk it is a
+// statement about gplay, not about the artifact. When the cap answered
+// "unknown", this upload died at exit 20 on "found neither an AAB nor an
+// APK", which is the false refusal ADR-0046 rules out.
+func TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads(t *testing.T) {
+	p := artifacttest.AABWith(t, t.TempDir(), "app.aab", "com.example.app",
+		artifacttest.FillerMembers(artifact.MaxZipEntries+1))
+	rt := &uploadRT{
+		t:                  t,
+		editID:             "edit-huge",
+		versionCode:        9,
+		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"9","status":"completed","versionCodes":["9"]}]}`,
+	}
+	rc, _ := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: p}); err != nil {
+		t.Fatalf("Run: %v, want an over-cap bundle to upload rather than be refused", err)
+	}
+	if !strings.Contains(stderr.String(), "not classified") {
+		t.Errorf("stderr %q should say the container went unclassified", stderr.String())
+	}
+}
+
+// TestRun_skipPreflight_stillRefusesAMissingArtifact asserts the escape hatch
+// lifts the container check and nothing else: --skip-preflight on a path that
+// does not exist must not turn a doomed invocation into a silent success.
+func TestRun_skipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
+	rt := &uploadRT{t: t}
+	rc, _ := newRC(t, rt)
+
+	_, err := upload.Run(rc, upload.Input{
+		Package:       "com.example.app",
+		Track:         "internal",
+		AABPath:       filepath.Join(t.TempDir(), "never-built.aab"),
+		SkipPreflight: true,
+		DryRun:        true,
+	})
+	if got := exit.For(err); got != 20 {
+		t.Fatalf("exit = %d, want 20; err=%v", got, err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("a missing artifact must make no network call; calls=%v", rt.calls)
 	}
 }

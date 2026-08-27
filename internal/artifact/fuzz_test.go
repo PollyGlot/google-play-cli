@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"encoding/binary"
 	"strings"
 	"testing"
 )
@@ -46,6 +47,7 @@ func FuzzParseBinaryXMLPackage(f *testing.F) {
 func FuzzParseProtoManifestPackage(f *testing.F) {
 	f.Add(buildFuzzSeedProto("com.example.app"))
 	f.Add(buildFuzzSeedProto(""))
+	f.Add(buildFuzzSeedProto(strings.Repeat("a.", 200) + "z"))
 	f.Add([]byte{})
 	f.Add([]byte{0x0a})                   // field 1, length-delimited, truncated
 	f.Add([]byte{0x0a, 0xff, 0xff, 0xff}) // absurd declared length
@@ -67,6 +69,27 @@ func FuzzParseProtoManifestPackage(f *testing.F) {
 	})
 }
 
+// TestFuzzSeeds_parseBackToTheirPackage asserts the two well-formed seeds are
+// in fact well-formed. A seed that no longer parses is a corpus that fuzzes
+// the rejection path only, and it fails silently: the fuzz body accepts any
+// error. The long name is the one that matters, since it is the only input in
+// the corpus wide enough to reach readLen8's two-byte continuation branch.
+func TestFuzzSeeds_parseBackToTheirPackage(t *testing.T) {
+	longPkg := strings.Repeat("a.", 200) + "z"
+	if len(longPkg) <= 0x7F {
+		t.Fatalf("seed package is %d bytes, need more than 127", len(longPkg))
+	}
+	for _, pkg := range []string{"com.example.app", longPkg} {
+		got, err := parseBinaryXMLPackage(buildFuzzSeedBinaryXML(pkg))
+		if err != nil || got != pkg {
+			t.Errorf("parseBinaryXMLPackage(seed %d bytes) = %q, %v; want %q, nil", len(pkg), got, err, pkg)
+		}
+		if got, err := parseProtoManifestPackage(buildFuzzSeedProto(pkg)); err != nil || got != pkg {
+			t.Errorf("parseProtoManifestPackage(seed %d bytes) = %q, %v; want %q, nil", len(pkg), got, err, pkg)
+		}
+	}
+}
+
 // The seed builders duplicate a few bytes of artifacttest on purpose: this is
 // an in-package test file, and importing artifacttest (which imports testing
 // helpers keyed to *testing.T) from a fuzz seed would be the wrong direction.
@@ -78,8 +101,10 @@ func buildFuzzSeedProto(pkg string) []byte {
 }
 
 func protoField(num int, payload []byte) []byte {
-	out := []byte{byte(num<<3 | 2)}
-	out = append(out, byte(len(payload)))
+	out := binary.AppendUvarint(nil, uint64(num)<<3|2)
+	// A varint length, not a byte: a payload over 127 bytes (the long package
+	// seed) would otherwise be encoded as garbage and seed nothing.
+	out = binary.AppendUvarint(out, uint64(len(payload)))
 	return append(out, payload...)
 }
 
@@ -90,7 +115,12 @@ func buildFuzzSeedBinaryXML(pkg string) []byte {
 	offsets := make([]uint32, len(strs))
 	for i, s := range strs {
 		offsets[i] = uint32(len(data))
-		data = append(data, byte(len(s)), byte(len(s)))
+		// aapt's length prefix, one byte up to 127 and two above: the long
+		// seed exists precisely to drive readLen8's continuation branch, so
+		// writing a truncated byte would make it seed a malformed document
+		// and cover nothing.
+		data = appendLen8(data, len([]rune(s)))
+		data = appendLen8(data, len(s))
 		data = append(data, s...)
 		data = append(data, 0)
 	}
@@ -138,6 +168,13 @@ func buildFuzzSeedBinaryXML(pkg string) []byte {
 	out = append(out, le32(uint32(8+len(pool)+len(elem)))...)
 	out = append(out, pool...)
 	return append(out, elem...)
+}
+
+func appendLen8(dst []byte, n int) []byte {
+	if n > 0x7F {
+		dst = append(dst, byte(0x80|n>>8))
+	}
+	return append(dst, byte(n))
 }
 
 func le16(v int) []byte { return []byte{byte(v), byte(v >> 8)} }

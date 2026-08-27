@@ -1,12 +1,10 @@
 package artifact_test
 
 import (
-	"archive/zip"
-	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -218,31 +216,93 @@ func TestInspect_refusesAZipBombManifest(t *testing.T) {
 	}
 }
 
-func TestInspect_refusesTooManyZipMembers(t *testing.T) {
-	// Built in memory: writing 65k files to disk would make this suite slow
-	// for no extra coverage.
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	for i := range (1 << 16) + 1 {
-		w, err := zw.Create("m" + strconv.Itoa(i))
-		if err != nil {
-			t.Fatalf("create member %d: %v", i, err)
-		}
-		_, _ = w.Write(nil)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-	path := artifacttest.WriteFile(t, t.TempDir(), "many.apk", buf.Bytes())
+// TestPreflight_overTheMemberCapIsIndeterminateNotUnknown pins the
+// distinction the member cap got wrong: an artifact gplay declined to walk is
+// unclassified, not "neither an AAB nor an APK". An asset-rich AAB genuinely
+// carries more members than the cap, and refusing it would make gplay's own
+// budget the reason a good release fails (ADR-0046: a parser gap never
+// becomes a false refusal).
+func TestPreflight_overTheMemberCapIsIndeterminateNotUnknown(t *testing.T) {
+	dir := t.TempDir()
+	filler := artifacttest.FillerMembers(artifact.MaxZipEntries + 1)
+	aab := artifacttest.AABWith(t, dir, "huge.aab", "com.example.app", filler)
+	apk := artifacttest.APKWith(t, dir, "huge.apk", "com.example.app", filler)
 
-	info, err := artifact.Inspect(path)
+	for _, tc := range []struct {
+		name string
+		path string
+		// want is the expectation the surface that uploads this file states.
+		want artifact.Expect
+	}{
+		// `releases upload --format bundle` on an asset-rich AAB.
+		{"bundle expectation", aab, artifact.Expect{Kinds: []artifact.Kind{artifact.KindBundle}, Package: "com.example.app"}},
+		// `releases expansion-files upload` on an over-cap archive: the
+		// unknown expectation must be skipped too, not silently satisfied.
+		{"unknown expectation", apk, artifact.Expect{Kinds: []artifact.Kind{artifact.KindUnknown}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info, err := artifact.Preflight(tc.path, tc.want)
+			if err != nil {
+				t.Fatalf("Preflight: %v, want an over-cap artifact to degrade rather than be refused", err)
+			}
+			if info.Kind != artifact.KindIndeterminate {
+				t.Errorf("Kind = %q, want %q", info.Kind, artifact.KindIndeterminate)
+			}
+			if !strings.Contains(info.Note, "member") {
+				t.Errorf("Note = %q, want it to name the member cap", info.Note)
+			}
+		})
+	}
+}
+
+// TestVerify_skipKeepsTheLocalFileCheck asserts --skip-preflight lifts the
+// container check and nothing else: a missing or non-regular path was exit 20
+// on these surfaces before the preflight existed and stays exit 20.
+func TestVerify_skipKeepsTheLocalFileCheck(t *testing.T) {
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{"missing", filepath.Join(dir, "never-built.aab")},
+		{"not a regular file", dir},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := artifact.Verify(io.Discard, tc.path, artifact.Expect{Kinds: []artifact.Kind{artifact.KindBundle}}, artifact.Options{Skip: true})
+			var ioErr *artifact.IOError
+			if !errors.As(err, &ioErr) {
+				t.Fatalf("Verify error = %v, want *artifact.IOError", err)
+			}
+			if exit.For(err) != 20 {
+				t.Errorf("exit code = %d, want 20", exit.For(err))
+			}
+		})
+	}
+
+	// The classification itself is still skipped: a file that is not an
+	// Android package at all uploads as-is.
+	notAnArtifact := artifacttest.WriteFile(t, dir, "notes.aab", []byte("not an artifact at all"))
+	if err := artifact.Verify(io.Discard, notAnArtifact, artifact.Expect{Kinds: []artifact.Kind{artifact.KindBundle}}, artifact.Options{Skip: true}); err != nil {
+		t.Errorf("Verify with Skip refused an unclassifiable file: %v", err)
+	}
+}
+
+// TestInspect_readsAPackageNameOverTheOneByteLengthPrefix covers aapt's
+// two-byte length prefix, the encoding every UTF-8 pool string longer than
+// 127 bytes uses. Package names that long are legal, and the reader's
+// continuation branch had no fixture reaching it.
+func TestInspect_readsAPackageNameOverTheOneByteLengthPrefix(t *testing.T) {
+	long := strings.Repeat("com.example.averylongsegment.", 12) + "app"
+	if len(long) <= 0x7F {
+		t.Fatalf("fixture package is %d bytes, need more than 127 to exercise the two-byte prefix", len(long))
+	}
+	path := artifacttest.APK(t, t.TempDir(), "long.apk", long)
+
+	got, err := artifact.Inspect(path)
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
-	if info.Kind != artifact.KindUnknown {
-		t.Errorf("Kind = %q, want unknown", info.Kind)
-	}
-	if !strings.Contains(info.Note, "member") {
-		t.Errorf("Note = %q, want it to name the member cap", info.Note)
+	if got.Package != long {
+		t.Errorf("Package = %q, want %q", got.Package, long)
 	}
 }
