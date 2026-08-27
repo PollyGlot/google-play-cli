@@ -159,6 +159,10 @@ func Bytes(b []byte) []byte {
 // (progress output, a prompt) that the user needs to see NOW, and would need a
 // Close nobody would remember to call. In practice every gplay stderr write is
 // one whole message: fmt.Fprintf/Fprintln with the full string.
+//
+// That invariant only holds because nothing STREAMS through this writer. The
+// one thing that would (a child process's stderr, which os/exec delivers in
+// 32 KiB blocks that cut messages anywhere) is kept out by Unwrap.
 type writer struct{ w io.Writer }
 
 // Write masks p and forwards it. It reports len(p) as written, not the masked
@@ -183,4 +187,23 @@ func Writer(w io.Writer) io.Writer {
 		return w
 	}
 	return writer{w: w}
+}
+
+// Unwrap returns the writer w wraps, or w itself when it is not one of ours.
+//
+// It exists for ONE caller shape: handing a stream to a child process. The
+// filter guards what gplay writes; a child (`gplay install-skills` shelling out
+// to npx) writes its own bytes, over a stream os/exec must be able to recognise
+// as an *os.File. Wrapped, it cannot: exec fabricates a pipe plus a copier
+// goroutine, and the child then sees a non-TTY stderr beside a TTY stdout
+// (colours and progress gone, output interleaved out of order), Run blocks
+// until every descendant closes the pipe, and the bytes arrive in 32 KiB blocks
+// that break the whole-message assumption Write documents anyway. Unwrapping is
+// no loss of coverage: gplay hands the child no credential, in argv or
+// environment, so its output is not a leak channel this filter ever covered.
+func Unwrap(w io.Writer) io.Writer {
+	if rw, ok := w.(writer); ok {
+		return rw.w
+	}
+	return w
 }

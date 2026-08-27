@@ -268,6 +268,21 @@ func TestWriterIsIdempotent(t *testing.T) {
 	}
 }
 
+// Unwrap is the escape hatch for handing a stream to a child process: it must
+// return the exact writer that was wrapped, and leave anything else alone.
+func TestUnwrapReturnsTheWrappedWriter(t *testing.T) {
+	var buf bytes.Buffer
+	if got := Unwrap(Writer(&buf)); got != io.Writer(&buf) {
+		t.Errorf("Unwrap(Writer(&buf)) = %T, want the original *bytes.Buffer", got)
+	}
+	if got := Unwrap(&buf); got != io.Writer(&buf) {
+		t.Errorf("Unwrap on an unwrapped writer = %T, want it back unchanged", got)
+	}
+	if got := Unwrap(io.Discard); got != io.Discard {
+		t.Errorf("Unwrap(io.Discard) = %v, want io.Discard", got)
+	}
+}
+
 func TestWriterNilIsDiscard(t *testing.T) {
 	if got := Writer(nil); got != io.Discard {
 		t.Errorf("Writer(nil) = %v, want io.Discard", got)

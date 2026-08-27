@@ -19,6 +19,8 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
+
+	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
 // skillsRepo is the companion-skills source the recipe installs from.
@@ -75,6 +77,19 @@ func defaultRun(ctx context.Context, npxPath string, args []string, stdin io.Rea
 	c.Stderr = stderr
 	return c.Run()
 }
+
+// childStream is what a stream must go through before it is wired to the child
+// process: the redacting stderr filter cmd/gplay puts on the root makes
+// ErrOrStderr() a wrapper rather than the *os.File os/exec needs to pass the fd
+// through. Unwrapped, the child inherits gplay's real terminal (TTY detection,
+// live progress, ordered interleaving); wrapped, exec would substitute a pipe.
+// See redact.Unwrap for why that costs no coverage: the child gets none of
+// gplay's credentials, in argv or environment.
+//
+// It is deliberately applied to stdout too. Stdout is never wrapped today, so
+// this is a no-op there, but it keeps the rule "the child gets real files" from
+// depending on that.
+func childStream(w io.Writer) io.Writer { return redact.Unwrap(w) }
 
 // errNpxMissing is the concise one-liner main turns into `gplay: ...`; the rich,
 // actionable recipe is printed to stderr first (see run). exit.For maps it to 1
@@ -153,7 +168,7 @@ func run(cmd *cobra.Command, opts Options, passthrough []string) error {
 		return errNpxMissing
 	}
 	args := append(recipeArgs(), passthrough...)
-	if err := opts.Run(cmd.Context(), npxPath, args, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+	if err := opts.Run(cmd.Context(), npxPath, args, cmd.InOrStdin(), childStream(cmd.OutOrStdout()), childStream(cmd.ErrOrStderr())); err != nil {
 		// npx/skills failures are opaque; npx already wrote its own diagnostics to
 		// the wired stderr. Surface a generic exit 1 (ADR-0028 §4).
 		//
