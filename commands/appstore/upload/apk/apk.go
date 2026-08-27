@@ -173,23 +173,24 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return Payload{StorePackage: storePackage, Package: pkg, Path: path, DryRun: true}, nil
 	}
 
+	// Artifact preflight (PRD #448): the file must really be an APK, and the
+	// package its manifest declares must be the hosted app this call names.
+	// Before authentication and before the resumable session is reserved,
+	// which on a 10 GiB APK is the whole point. Deliberately after the
+	// --dry-run branch above: a rehearsal must still answer for an artifact
+	// the build step has not produced yet. Silent on success.
+	if err := artifact.Verify(rc.Stderr, path, artifact.Expect{
+		Kinds:   []artifact.Kind{artifact.KindAPK},
+		Package: pkg,
+	}, artifact.Options{Skip: in.SkipPreflight}); err != nil {
+		return nil, err
+	}
+
 	// UploadClient, not AuthedClient: the API accepts APKs up to 10 GiB, which
 	// the 60s control-plane default would kill mid-transfer. It honors an
 	// explicit --timeout.
 	httpClient, err := rc.UploadClient()
 	if err != nil {
-		return nil, err
-	}
-
-	// Artifact preflight (PRD #448): the file must really be an APK, and the
-	// package its manifest declares must be the hosted app this call names.
-	// Deliberately after the --dry-run branch above, which answers "what would
-	// this command address?" for an artifact the build step may not have
-	// produced yet. Silent on success.
-	if err := artifact.Verify(rc.Stderr, path, artifact.Expect{
-		Kinds:   []artifact.Kind{artifact.KindAPK},
-		Package: pkg,
-	}, artifact.Options{Skip: in.SkipPreflight}); err != nil {
 		return nil, err
 	}
 

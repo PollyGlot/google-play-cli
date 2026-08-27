@@ -255,11 +255,11 @@ Restrict the app to specific organizations with a repeatable --organization
 Creating a custom app is IRREVERSIBLE: the API exposes no delete (and no
 read), so the app permanently occupies the account. It therefore requires
 --confirm (missing → exit 3); CI=true never auto-confirms. Rehearse first with
---dry-run (validates inputs and the artifact with zero HTTP; the artifact is
-checked locally to really be an AAB or an APK, --skip-preflight bypasses that).
-The account must
-be enrolled in managed Google Play and the service account must hold the
-account-level CAN_CREATE_MANAGED_PLAY_APPS capability; a 403 names both.
+--dry-run (validates inputs and the artifact with zero HTTP). Before any byte
+is uploaded the file is checked locally to really be an AAB or an APK; pass
+--skip-preflight to upload it as-is. The account must be enrolled in managed
+Google Play and the service account must hold the account-level
+CAN_CREATE_MANAGED_PLAY_APPS capability; a 403 names both.
 
 --output json passes the created CustomApp through verbatim (including the
 output-only packageName). GPLAY_READONLY refuses the live write (exit 4).`,

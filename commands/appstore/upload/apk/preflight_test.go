@@ -23,12 +23,8 @@ func TestRun_preflight_refusesANonAPKContainer(t *testing.T) {
 	if got := exit.For(err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
-	// The /token exchange may have happened (auth precedes the upload), but no
-	// upload session must have been reserved.
-	for _, c := range rt.calls {
-		if strings.Contains(c, "apks:upload") {
-			t.Errorf("a refused artifact reserved an upload session; calls=%v", rt.calls)
-		}
+	if len(rt.calls) != 0 {
+		t.Errorf("a refused artifact must make no network call, not even /token; calls=%v", rt.calls)
 	}
 	if !strings.Contains(err.Error(), "expected an APK") {
 		t.Errorf("refusal %q does not name what was expected", err)
