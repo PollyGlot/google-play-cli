@@ -42,7 +42,7 @@ func TestSearchErrorIssues_issuesGET(t *testing.T) {
 		gotMethod = r.Method
 		return jsonResp(200, `{"errorIssues":[{"type":"CRASH","cause":"NullPointerException","location":"MainActivity.onCreate","errorReportCount":"42","distinctUsers":"30","lastErrorReportTime":"2026-06-15T10:00:00Z","issueUri":"https://play/x"}]}`), nil
 	})}
-	raw, err := vitals.SearchErrorIssues(context.Background(), hc, "com.example.app", vitals.SearchOptions{
+	raw, _, err := vitals.SearchErrorIssues(context.Background(), hc, "com.example.app", vitals.SearchOptions{
 		Start: time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC),
 		End:   time.Date(2026, 6, 16, 0, 0, 0, 0, time.UTC),
 	})
@@ -80,7 +80,7 @@ func TestSearchErrorIssues_encodesFilterOrderByPageSize(t *testing.T) {
 		gotURL = r.URL.String()
 		return jsonResp(200, `{"errorIssues":[]}`), nil
 	})}
-	_, err := vitals.SearchErrorIssues(context.Background(), hc, "com.example.app", vitals.SearchOptions{
+	_, _, err := vitals.SearchErrorIssues(context.Background(), hc, "com.example.app", vitals.SearchOptions{
 		Filter:  "errorIssueType = CRASH",
 		OrderBy: "errorReportCount desc",
 		Limit:   25,
@@ -102,7 +102,7 @@ func TestSearchErrorReports_reportsGETAndParse(t *testing.T) {
 		}
 		return jsonResp(200, `{"errorReports":[{"type":"CRASH","eventTime":"2026-06-15T09:00:00Z","reportText":"java.lang.NullPointerException\n\tat a.b.c(Unknown Source)","appVersion":{"versionCode":"123"},"osVersion":{"apiLevel":"31"},"deviceModel":{"marketingName":"Pixel 7"}}]}`), nil
 	})}
-	raw, err := vitals.SearchErrorReports(context.Background(), hc, "com.example.app", vitals.SearchOptions{})
+	raw, _, err := vitals.SearchErrorReports(context.Background(), hc, "com.example.app", vitals.SearchOptions{})
 	if err != nil {
 		t.Fatalf("SearchErrorReports: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestSearchErrors_nonOKIsAPIError(t *testing.T) {
 	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResp(403, `{"error":{"message":"no"}}`), nil
 	})}
-	_, err := vitals.SearchErrorIssues(context.Background(), hc, "com.example.app", vitals.SearchOptions{})
+	_, _, err := vitals.SearchErrorIssues(context.Background(), hc, "com.example.app", vitals.SearchOptions{})
 	var apiErr *api.Error
 	if err == nil || !asAPIErr(err, &apiErr) || apiErr.StatusCode != 403 {
 		t.Fatalf("want *api.Error 403, got %v", err)

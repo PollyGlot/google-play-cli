@@ -187,7 +187,7 @@ func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error)
 	if err != nil {
 		return nil, err
 	}
-	raw, err := vitals.SearchErrorIssues(rc.Ctx, hc, pkg, vitals.SearchOptions{
+	raw, truncated, err := vitals.SearchErrorIssues(rc.Ctx, hc, pkg, vitals.SearchOptions{
 		Filter: in.Filter, Start: start, End: end, Limit: in.Limit, OrderBy: in.OrderBy,
 	})
 	if err != nil {
@@ -198,6 +198,9 @@ func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error)
 		return nil, err
 	}
 	warnResult(rc, "issues", len(issues))
+	if truncated {
+		rc.WarnTruncated(len(issues), "issues", "limit")
+	}
 	return issuesPayload{Raw: raw, Issues: issues}, nil
 }
 
@@ -232,7 +235,7 @@ Read-only; --output json mirrors the API response verbatim.`,
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "AIP-160 filter, e.g. \"errorIssueType = CRASH\" or \"versionCode = 123\"")
 	cmd.Flags().StringVar(&in.OrderBy, "order-by", "", "sort order, e.g. \"errorReportCount desc\"")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max issues to return (0 = all, no cap)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max issues to return (0 = all, no cap); a capped list warns on stderr")
 	return cmd
 }
 
@@ -279,7 +282,7 @@ func runReports(rc *kernel.RunContext, in reportsInput) (output.Renderable, erro
 	if err != nil {
 		return nil, err
 	}
-	raw, err := vitals.SearchErrorReports(rc.Ctx, hc, pkg, vitals.SearchOptions{
+	raw, truncated, err := vitals.SearchErrorReports(rc.Ctx, hc, pkg, vitals.SearchOptions{
 		Filter: in.Filter, Start: start, End: end, Limit: in.Limit,
 	})
 	if err != nil {
@@ -290,6 +293,9 @@ func runReports(rc *kernel.RunContext, in reportsInput) (output.Renderable, erro
 		return nil, err
 	}
 	warnResult(rc, "reports", len(reports))
+	if truncated {
+		rc.WarnTruncated(len(reports), "reports", "limit")
+	}
 	return reportsPayload{Raw: raw, Reports: reports}, nil
 }
 
@@ -324,7 +330,7 @@ Read-only; --output json mirrors the API response verbatim.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "AIP-160 filter, e.g. \"versionCode = 123\"")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max reports to return (0 = all, no cap)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max reports to return (0 = all, no cap); a capped list warns on stderr")
 	return cmd
 }
 

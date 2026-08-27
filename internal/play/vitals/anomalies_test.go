@@ -34,7 +34,7 @@ func TestListAnomalies_getAndParse(t *testing.T) {
 			"timelineSpec":{"startTime":{"year":2026,"month":6,"day":10},"endTime":{"year":2026,"month":6,"day":12}}
 		}]}`), nil
 	})}
-	raw, err := vitals.ListAnomalies(context.Background(), hc, "com.example.app", vitals.AnomalyListOptions{
+	raw, _, err := vitals.ListAnomalies(context.Background(), hc, "com.example.app", vitals.AnomalyListOptions{
 		Filter: vitals.ActiveBetween(time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 16, 0, 0, 0, 0, time.UTC)),
 		Limit:  50,
 	})
@@ -77,7 +77,7 @@ func TestListAnomalies_nonOKIsAPIError(t *testing.T) {
 	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResp(403, `{"error":{"message":"no"}}`), nil
 	})}
-	_, err := vitals.ListAnomalies(context.Background(), hc, "com.example.app", vitals.AnomalyListOptions{})
+	_, _, err := vitals.ListAnomalies(context.Background(), hc, "com.example.app", vitals.AnomalyListOptions{})
 	var apiErr *api.Error
 	if err == nil || !asAPIErr(err, &apiErr) || apiErr.StatusCode != 403 {
 		t.Fatalf("want *api.Error 403, got %v", err)

@@ -181,13 +181,21 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 	// --limit caps the final count, applied after pagination and filtering.
-	if in.Limit > 0 && len(kept) > in.Limit {
+	// Here the whole set was already fetched (reviews.List exhausts the token),
+	// so "truncated" means the CAP dropped rows we were holding: say so on
+	// stderr rather than let the shortened list read as the whole match
+	// (PRD #446). stdout is untouched.
+	truncated := in.Limit > 0 && len(kept) > in.Limit
+	if truncated {
 		kept = kept[:in.Limit]
 	}
 
 	// Always warn: an empty result inside the 7-day window must not read as
 	// "this app has no reviews".
 	warn(rc)
+	if truncated {
+		rc.WarnTruncated(len(kept), "reviews", "limit")
+	}
 
 	return Payload{Reviews: kept, Columns: cols}, nil
 }
@@ -234,7 +242,7 @@ Markdown table.)`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Stars, "stars", "", "client-side star filter: 1, 1-2, or 1,3,5 (each rating 1..5)")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "cap the result count after filtering (0 = no cap)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "cap the result count after filtering (0 = no cap); a capped list warns on stderr")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: "+strings.Join(columns.DefaultKeys(), ",")+")")
 	return cmd
 }

@@ -37,7 +37,11 @@ func ActiveBetween(start, end time.Time) string {
 // opts.Limit (0 = all), and returns the rebuilt {anomalies:[...]} envelope
 // (items verbatim) for the JSON pass-through. The API default page is only 10,
 // so a single page would silently under-report.
-func ListAnomalies(ctx context.Context, hc *http.Client, pkg string, opts AnomalyListOptions) (json.RawMessage, error) {
+//
+// The second return value reports that opts.Limit cut the list short while the
+// server still had pages: the command layer turns it into a stderr warning
+// (PRD #446).
+func ListAnomalies(ctx context.Context, hc *http.Client, pkg string, opts AnomalyListOptions) (json.RawMessage, bool, error) {
 	base := url.Values{}
 	if opts.Filter != "" {
 		base.Set("filter", opts.Filter)

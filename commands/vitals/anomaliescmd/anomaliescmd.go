@@ -73,7 +73,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := vitals.ListAnomalies(rc.Ctx, hc, pkg, vitals.AnomalyListOptions{Filter: filter, Limit: in.Limit})
+	raw, truncated, err := vitals.ListAnomalies(rc.Ctx, hc, pkg, vitals.AnomalyListOptions{Filter: filter, Limit: in.Limit})
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +82,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	warn(rc, len(anoms))
+	if truncated {
+		rc.WarnTruncated(len(anoms), "anomalies", "limit")
+	}
 	return Payload{Raw: raw, Anomalies: anoms}, nil
 }
 
@@ -135,6 +138,6 @@ the metric set, anomalous metric and value, period, and dimensions.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 90d")
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "raw AIP-160 filter (overrides --since), e.g. an activeBetween(...) with UNBOUNDED")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max anomalies to return (0 = all, no cap)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max anomalies to return (0 = all, no cap); a capped list warns on stderr")
 	return cmd
 }
