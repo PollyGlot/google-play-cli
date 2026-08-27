@@ -330,15 +330,26 @@ narrows which slots appear.
 ### Formats
 
 A command's output Format is one of `table`, `json`, or `markdown`. The
-default Format is `auto` — resolved by the dispatcher in `internal/output`:
+dispatcher in `internal/output` layers three sources, the most explicit
+winning:
 
-- `CI=true` (non-empty) → `json`
-- stdout is not a TTY → `json`
-- otherwise → `table`
+1. `--output table|json|markdown`: always wins.
+2. `$GPLAY_DEFAULT_OUTPUT`: a personal default, same value set as the
+   flag. An unset or empty value means "not set"; any other unknown
+   value is CLI misuse and fails with exit `2` naming the env var and
+   the three valid formats.
+3. `auto`, the TTY-aware detection:
+   - `CI=true` (non-empty) → `json`
+   - stdout is not a TTY → `json`
+   - otherwise → `table`
 
-Explicit `--output table|json|markdown` always wins. `--output table` in
-a piped context (e.g. behind `tee`) is the escape hatch when the
-auto-detect is wrong. See [ADR-0005](./adr/0005-tty-aware-output.md).
+`GPLAY_DEFAULT_OUTPUT` outranks the auto-detection, `CI` included: it is
+a value the user typed, while CI and TTY state are guesses about intent,
+so `GPLAY_DEFAULT_OUTPUT=table` still means `table` inside CI.
+
+`--output table` in a piped context (e.g. behind `tee`) is the escape
+hatch when the auto-detect is wrong. See
+[ADR-0005](./adr/0005-tty-aware-output.md).
 
 ### Commands without `--output`
 
