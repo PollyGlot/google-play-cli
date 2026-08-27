@@ -25,40 +25,111 @@ import (
 // asterisks sized to the input: the length of a secret is itself a hint.
 const Mask = "[REDACTED]"
 
-// The patterns are ordered from most to least specific, and each is applied to
-// the whole buffer in turn.
+// secretKey is the key-name shape the two generic rules below key off. The
+// free prefix is what makes `client_secret`, `access_token` and `my_password`
+// all match without listing them one by one; the alternation stays a closed
+// list of words that only ever name a credential. Bare `key` is deliberately
+// NOT in it: `private_key` has its own rule, and "cache key" or "sort key"
+// would otherwise blank real diagnostics.
+const secretKey = `[a-z0-9_-]*(?:token|secret|password|passwd|pwd|api[_-]?key)`
+
+// fieldKey is secretKey minus the bare word `token`, for the one rule that
+// cannot afford it: an UNQUOTED `key: value`. Go's error convention is
+// `pkg: message`, and `token` is one of gplay's packages; worse, the oauth2
+// library we do not control renders "cannot fetch token: 401 Unauthorized".
+// Masking there would blank the status code, the single most useful thing in an
+// auth failure. A compound (`access_token:`) or a `secret`/`password` key never
+// reads as a package prefix, so those stay in.
+const fieldKey = `(?:[a-z0-9_-]*(?:secret|password|passwd|pwd|api[_-]?key)|[a-z0-9_-]+[_-]token)`
+
+// rule is a pattern plus its replacement template. The template is what keeps
+// the surrounding diagnostic readable: masking is not silencing, so a rule
+// normally captures the key (or the auth scheme) and replaces only the value.
+type rule struct {
+	re   *regexp.Regexp
+	repl string
+}
+
+// The rules are ordered from most to least specific, and each is applied to the
+// whole buffer in turn.
 //
 // Deliberately NOT anchored to a line: a PEM block spans many lines, and error
 // wrapping often folds one onto a single line. `(?s)` lets `.` cross newlines
 // so both shapes are caught.
-var patterns = []*regexp.Regexp{
+var patterns = []rule{
 	// A PEM block, whatever its label (PRIVATE KEY, RSA PRIVATE KEY, ...), with
 	// the body masked but the delimiters kept: "a PEM block was here" is the
 	// diagnostic the user needs, its bytes are not. Non-greedy so two blocks in
 	// one buffer do not collapse into one match. \\n covers the escaped form the
 	// key carries inside service-account JSON.
-	regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----(?:.|\\n)*?-----END [A-Z ]*PRIVATE KEY-----`),
+	{
+		re:   regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----(?:.|\\n)*?-----END [A-Z ]*PRIVATE KEY-----`),
+		repl: Mask,
+	},
 	// The secret fields of a service-account JSON, matched as JSON so a dumped
 	// credential file is masked field by field rather than wholesale. Value is
 	// matched with escapes honoured (\" does not end the string), because a PEM
-	// body embedded in JSON is full of \n and may contain quotes.
-	regexp.MustCompile(`(?i)"(private_key|private_key_id|refresh_token|client_secret)"\s*:\s*"(?:[^"\\]|\\.)*"`),
+	// body embedded in JSON is full of \n and may contain quotes. Keep the field
+	// name so the error still says WHICH field was bad.
+	{
+		re:   regexp.MustCompile(`(?i)"(private_key|private_key_id)"\s*:\s*"(?:[^"\\]|\\.)*"`),
+		repl: `"${1}": "` + Mask + `"`,
+	},
 	// An Authorization header, in the two shapes a Go dump produces
 	// ("Authorization: Bearer x" and `"Authorization":["Bearer x"]`). The scheme
 	// is kept so the line still says what kind of credential it was.
-	regexp.MustCompile(`(?i)(authorization"?\s*:\s*\[?"?\s*)(bearer|basic|token)(\s+)[A-Za-z0-9\-._~+/=]+`),
+	{
+		re:   regexp.MustCompile(`(?i)(authorization"?\s*:\s*\[?"?\s*)(bearer|basic|token)(\s+)[A-Za-z0-9\-._~+/=]+`),
+		repl: `${1}${2}${3}` + Mask,
+	},
 	// A JWT, the shape both a service-account assertion and an OAuth2 ID token
 	// take: three base64url segments separated by dots, the first two being JSON
 	// objects so they always start with "ey". The length floor keeps ordinary
 	// dotted identifiers (a package name, a version) from matching.
-	regexp.MustCompile(`ey[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`),
+	{
+		re:   regexp.MustCompile(`ey[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`),
+		repl: Mask,
+	},
 	// A Google OAuth2 access token, which has no dots and so is invisible to the
 	// JWT pattern: the "ya29." family, plus the refresh-token prefixes.
-	regexp.MustCompile(`\b(?:ya29|1//|ATZAV)[A-Za-z0-9\-._~+/]{10,}={0,2}`),
-	// The generic "token"/"secret"/"password" JSON field or key=value, last
-	// because it is the broadest. Only non-empty values are masked, so an
+	{
+		re:   regexp.MustCompile(`\b(?:ya29|1//|ATZAV)[A-Za-z0-9\-._~+/]{10,}={0,2}`),
+		repl: Mask,
+	},
+	// A credential carried by an auth scheme with no "Authorization" in front:
+	// a proxy diagnostic, a curl-style line, a library error quoting only the
+	// header VALUE. The 16-character floor is what keeps prose out ("Basic
+	// authentication is not supported": the longest word that can follow a
+	// scheme name here is 14 characters), and a real token or base64 blob is
+	// always longer.
+	{
+		re:   regexp.MustCompile(`(?i)\b(bearer|basic)(\s+)[A-Za-z0-9\-._~+/]{16,}={0,2}`),
+		repl: `${1}${2}` + Mask,
+	},
+	// The generic credential field with a QUOTED value: JSON (`"token":"x"`) and
+	// the `key="x"` form alike. Only non-empty values are masked, so an
 	// empty-string field still reads as empty (a useful diagnostic).
-	regexp.MustCompile(`(?i)("(?:access_token|id_token|refresh_token|api_key|password|secret)"\s*:\s*")(?:[^"\\]|\\.)+"`),
+	{
+		re:   regexp.MustCompile(`(?i)("?` + secretKey + `"?\s*[:=]\s*")(?:[^"\\]|\\.)+"`),
+		repl: `${1}` + Mask + `"`,
+	},
+	// The same field with an UNQUOTED value in `key=value` form: a query string,
+	// an env dump, a flag echoed back in an error. Nothing narrates with `=`, so
+	// this one takes the full key list.
+	{
+		re:   regexp.MustCompile(`(?i)(` + secretKey + `"?\s*=\s*)[^\s"'` + "`" + `,;)\]}]+`),
+		repl: `${1}` + Mask,
+	},
+	// And in `key: value` form (`password: hunter2`), on the narrower fieldKey:
+	// see its comment for why bare `token:` is excluded. Last because it is the
+	// broadest. The value stops at whitespace or at a delimiter that cannot be
+	// part of a credential, so the rest of the line survives. It never re-matches
+	// what the quoted rule produced: that leaves a `"` in value position, which
+	// this character class excludes.
+	{
+		re:   regexp.MustCompile(`(?i)(` + fieldKey + `"?\s*:\s*)[^\s"'` + "`" + `,;)\]}]+`),
+		repl: `${1}` + Mask,
+	},
 }
 
 // String returns s with every credential shape masked.
@@ -66,19 +137,8 @@ func String(s string) string {
 	if s == "" {
 		return s
 	}
-	for i, re := range patterns {
-		switch i {
-		case 1:
-			// Keep the field name so the error still says WHICH field was bad.
-			s = re.ReplaceAllString(s, `"$1": "`+Mask+`"`)
-		case 2:
-			// Keep the "Authorization: Bearer " prefix, mask only the credential.
-			s = re.ReplaceAllString(s, `${1}${2}${3}`+Mask)
-		case 5:
-			s = re.ReplaceAllString(s, `${1}`+Mask+`"`)
-		default:
-			s = re.ReplaceAllString(s, Mask)
-		}
+	for _, r := range patterns {
+		s = r.re.ReplaceAllString(s, r.repl)
 	}
 	return s
 }

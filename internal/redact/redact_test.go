@@ -83,6 +83,75 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 			wantPresent: []string{"expires_in", Mask},
 		},
 		{
+			name:        "bare token JSON field",
+			in:          `oauth2: unexpected response: {"token":"LEAKEDSECRETBODY456"}`,
+			wantAbsent:  []string{"LEAKEDSECRETBODY456"},
+			wantPresent: []string{"unexpected response", Mask},
+		},
+		{
+			name:        "key=value form",
+			in:          "exec: npx --client_secret=LEAKEDSECRETBODY456 failed",
+			wantAbsent:  []string{"LEAKEDSECRETBODY456"},
+			wantPresent: []string{"client_secret=" + Mask, "npx"},
+		},
+		{
+			name:        "unquoted key: value form",
+			in:          "config rejected: password: LEAKEDSECRETBODY",
+			wantAbsent:  []string{"LEAKEDSECRETBODY"},
+			wantPresent: []string{"config rejected", Mask},
+		},
+		{
+			name: "bare Basic credential without an Authorization prefix",
+			in:   "proxy refused: Basic bGVha2VkOkxFQUtFRFNFQ1JFVEJPRFk=",
+			// Base64 hides the canary word, so assert on the encoded blob itself.
+			wantAbsent:  []string{"bGVha2VkOkxFQUtFRFNFQ1JFVEJPRFk="},
+			wantPresent: []string{"Basic " + Mask, "proxy refused"},
+		},
+		{
+			name:        "an English word after a scheme name is not a credential",
+			in:          "gplay: Basic authentication is not supported; use a service account",
+			wantAbsent:  []string{Mask},
+			wantPresent: []string{"Basic authentication", "service account"},
+		},
+		{
+			name: "a flag name without a value is not masked",
+			in:   "gplay: unknown flag: --token",
+			// Nothing follows the key, so there is no value to blank.
+			wantAbsent:  []string{Mask},
+			wantPresent: []string{"unknown flag: --token"},
+		},
+		{
+			name: "a Go error prefixed `token:` keeps its diagnostic",
+			// Go's `pkg: message` convention collides with the credential-field
+			// shape. This exact line is what internal/auth/token renders, and the
+			// status code is the whole point of it.
+			in:          "gplay: token: oauth2 exchange failed (401): invalid_grant",
+			wantAbsent:  []string{Mask},
+			wantPresent: []string{"oauth2 exchange failed (401)", "invalid_grant"},
+		},
+		{
+			name: "the oauth2 library's own fetch failure keeps its status",
+			in:   "oauth2: cannot fetch token: 401 Unauthorized",
+			// The library is not ours to rename; blanking the 401 would be a
+			// worse bug than the leak this rule is looking for.
+			wantAbsent:  []string{Mask},
+			wantPresent: []string{"401 Unauthorized"},
+		},
+		{
+			name: "token_uri is a URL, not a credential",
+			// It sits in every service-account JSON, right next to the private
+			// key, and it is the first thing to check in a misconfiguration.
+			in:          `{"token_uri":"https://oauth2.googleapis.com/token","client_email":"ci@example.iam.gserviceaccount.com"}`,
+			wantAbsent:  []string{Mask},
+			wantPresent: []string{"https://oauth2.googleapis.com/token", "ci@example.iam.gserviceaccount.com"},
+		},
+		{
+			name:        "a compound token field IS masked in the colon form",
+			in:          "response: access_token: LEAKEDSECRETBODY456",
+			wantAbsent:  []string{"LEAKEDSECRETBODY456"},
+			wantPresent: []string{"access_token: " + Mask},
+		},
+		{
 			name:        "two PEM blocks do not collapse into one match",
 			in:          "-----BEGIN PRIVATE KEY-----\nAAA\n-----END PRIVATE KEY-----between-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----",
 			wantAbsent:  []string{"AAA", "BBB"},
@@ -115,6 +184,32 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 				if !strings.Contains(got, want) {
 					t.Errorf("output lost %q:\n%s", want, got)
 				}
+			}
+		})
+	}
+}
+
+// The four shapes a review proved were promised by the generic pattern's
+// comment ("JSON field or key=value") but not actually covered. Each secret is
+// a distinctive literal, so a leak is unmistakable.
+func TestStringMasksGenericKeyValueShapes(t *testing.T) {
+	tests := []struct {
+		in     string
+		secret string
+	}{
+		{"password: hunter2", "hunter2"},
+		{"Basic dXNlcjpwYXNzd29yZA==", "dXNlcjpwYXNzd29yZA=="},
+		{`{"token":"abc123def456"}`, "abc123def456"},
+		{"client_secret=abc123def456", "abc123def456"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			got := String(tc.in)
+			if strings.Contains(got, tc.secret) {
+				t.Errorf("String(%q) = %q, still carries %q", tc.in, got, tc.secret)
+			}
+			if !strings.Contains(got, Mask) {
+				t.Errorf("String(%q) = %q, nothing was masked", tc.in, got)
 			}
 		})
 	}
