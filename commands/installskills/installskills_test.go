@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -221,6 +222,183 @@ func TestInstallSkills_unexpectedSkillInCheckoutIsRefused(t *testing.T) {
 	}
 	if names := dirNames(t, target); len(names) != 0 {
 		t.Errorf("nothing must be installed, found %v", names)
+	}
+}
+
+// gitIn runs git in dir with the ambient repository-location variables removed,
+// so an assertion about the victim repository below cannot be fooled by the very
+// GIT_DIR the test sets.
+func gitIn(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	c := exec.Command("git", args...)
+	c.Dir = dir
+	env := make([]string, 0, len(os.Environ()))
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "GIT_") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	c.Env = env
+	out, err := c.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// victimRepo is an ordinary user repository, the one an inherited GIT_DIR would
+// point install-skills at.
+func victimRepo(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not on PATH: %v", err)
+	}
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "tracked.txt"), "the user's work\n")
+	gitIn(t, dir, "init", "--quiet", "--initial-branch", "main")
+	gitIn(t, dir, "-c", "user.name=gplay", "-c", "user.email=gplay@example.test", "add", "-A")
+	gitIn(t, dir, "-c", "user.name=gplay", "-c", "user.email=gplay@example.test", "commit", "--quiet", "-m", "work")
+	return dir
+}
+
+// TestInstallSkills_inheritedGitDirDoesNotTouchThatRepo pins the worst failure
+// this command can have: git's own environment says *which* repository it acts
+// on, and c.Dir does not override it. git exports GIT_DIR to every hook it runs,
+// so `gplay install-skills` from a hook or a wrapper used to run `git init`,
+// `remote add origin` and `checkout --detach` against the user's repository,
+// detaching their HEAD and deleting their tracked files.
+func TestInstallSkills_inheritedGitDirDoesNotTouchThatRepo(t *testing.T) {
+	pin, _ := fixturePin(t)
+	victim := victimRepo(t)
+	target := t.TempDir()
+	head := gitIn(t, victim, "rev-parse", "HEAD")
+
+	// Set *after* the fixtures are built: these would otherwise redirect the
+	// fixture's own git commands too.
+	t.Setenv("GIT_DIR", filepath.Join(victim, ".git"))
+	t.Setenv("GIT_WORK_TREE", victim)
+
+	_, stderr, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstderr: %s", err, stderr)
+	}
+	if got := read(t, filepath.Join(target, "gplay-setup", "SKILL.md")); got != "setup skill body\n" {
+		t.Errorf("skills were not installed into --dir: %q", got)
+	}
+
+	if got := gitIn(t, victim, "symbolic-ref", "HEAD"); got != "refs/heads/main" {
+		t.Errorf("the user's HEAD was moved: %q", got)
+	}
+	if got := gitIn(t, victim, "rev-parse", "HEAD"); got != head {
+		t.Errorf("the user's HEAD commit changed: %q, want %q", got, head)
+	}
+	if got := gitIn(t, victim, "remote"); got != "" {
+		t.Errorf("a remote was added to the user's repository: %q", got)
+	}
+	if got := read(t, filepath.Join(victim, "tracked.txt")); got != "the user's work\n" {
+		t.Errorf("the user's tracked file was disturbed: %q", got)
+	}
+	if got := gitIn(t, victim, "status", "--porcelain"); got != "" {
+		t.Errorf("the user's working tree is dirty after an install: %q", got)
+	}
+}
+
+// TestInstallSkills_runsNoConfiguredHook is the executable half of ADR-0045's
+// "nothing else is executed": hooks and init templates are configuration, so
+// they run code during `init` and `checkout` without the pack containing a
+// single script. The user's other configuration (proxies, CA bundles) is kept
+// on purpose, so this is neutralised with `-c`, not by discarding the config.
+func TestInstallSkills_runsNoConfiguredHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hook fixture is a POSIX shell script")
+	}
+	pin, _ := fixturePin(t)
+	target, home := t.TempDir(), t.TempDir()
+
+	hookMarker := filepath.Join(home, "hooks-path-hook-ran")
+	templateMarker := filepath.Join(home, "template-hook-ran")
+	writeHook(t, filepath.Join(home, "hooks", "post-checkout"), hookMarker)
+	writeHook(t, filepath.Join(home, "template", "hooks", "post-checkout"), templateMarker)
+	mustWrite(t, filepath.Join(home, "gitconfig"), "[core]\n\thooksPath = "+filepath.Join(home, "hooks")+
+		"\n[init]\n\ttemplateDir = "+filepath.Join(home, "template")+"\n")
+
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, "gitconfig"))
+	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+
+	if _, stderr, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target); err != nil {
+		t.Fatalf("unexpected error: %v\nstderr: %s", err, stderr)
+	}
+	for _, marker := range []string{hookMarker, templateMarker} {
+		if _, err := os.Stat(marker); err == nil {
+			t.Errorf("a configured hook was executed (%s)", filepath.Base(marker))
+		}
+	}
+}
+
+// TestInstallSkills_environmentConfigCannotReEnableHooks closes the other door:
+// GIT_CONFIG_COUNT is `-c` in environment form, so an inherited pair could put
+// core.hooksPath back.
+func TestInstallSkills_environmentConfigCannotReEnableHooks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hook fixture is a POSIX shell script")
+	}
+	pin, _ := fixturePin(t)
+	target, home := t.TempDir(), t.TempDir()
+	marker := filepath.Join(home, "env-hook-ran")
+	writeHook(t, filepath.Join(home, "hooks", "post-checkout"), marker)
+
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
+	t.Setenv("GIT_CONFIG_VALUE_0", filepath.Join(home, "hooks"))
+
+	if _, stderr, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target); err != nil {
+		t.Fatalf("unexpected error: %v\nstderr: %s", err, stderr)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("a hook configured through the environment was executed")
+	}
+}
+
+func writeHook(t *testing.T, path, marker string) {
+	t.Helper()
+	mustWrite(t, path, "#!/bin/sh\necho ran > "+marker+"\n")
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestInstallSkills_adoptsLeftoversOfAnInterruptedRun covers the run that never
+// reached its deferred cleanup (Ctrl-C, a reaped CI job): its scaffolding stays
+// in the target, possibly holding a skill that is nowhere else. The next run
+// repairs that, and it does so *before* the fetch, so it works even when the
+// install that follows fails.
+func TestInstallSkills_adoptsLeftoversOfAnInterruptedRun(t *testing.T) {
+	pin, _ := fixturePin(t)
+	pin.Commit = "0123456789abcdef0123456789abcdef01234567" // absent: this run will fail
+	target := t.TempDir()
+
+	orphanBackup := filepath.Join(target, ".gplay-backup-1234")
+	mustWrite(t, filepath.Join(orphanBackup, "gplay-setup", "SKILL.md"), "rescued setup\n")
+	mustWrite(t, filepath.Join(orphanBackup, "gplay-tracks", "SKILL.md"), "stale tracks\n")
+	mustWrite(t, filepath.Join(target, ".gplay-stage-5678", "gplay-setup", "SKILL.md"), "half staged\n")
+	// gplay-tracks is installed, so the backup's copy of it is the older one.
+	mustWrite(t, filepath.Join(target, "gplay-tracks", "SKILL.md"), "installed tracks\n")
+
+	if _, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target); err == nil {
+		t.Fatal("expected the install itself to fail")
+	}
+
+	if got := read(t, filepath.Join(target, "gplay-setup", "SKILL.md")); got != "rescued setup\n" {
+		t.Errorf("the skill parked in the leftover backup was not restored: %q", got)
+	}
+	if got := read(t, filepath.Join(target, "gplay-tracks", "SKILL.md")); got != "installed tracks\n" {
+		t.Errorf("an installed skill was overwritten from a leftover backup: %q", got)
+	}
+	for _, e := range dirNames(t, target) {
+		if strings.HasPrefix(e, ".gplay-") {
+			t.Errorf("leftover directory %q was not swept", e)
+		}
 	}
 }
 

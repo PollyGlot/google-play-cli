@@ -41,6 +41,34 @@ which whoever controls the remote can rewrite. Asking for an object name makes
 the server produce that exact object or fail. `git rev-parse HEAD` is then
 compared to the pin, so the checkout is re-read rather than assumed.
 
+### 1b. git is told *which* repository, and made to run no hook
+
+Handing git a working directory is not enough to keep it there. Its environment
+outranks the process's directory: with `GIT_DIR` (or `GIT_WORK_TREE`,
+`GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`, …) inherited, `git init`,
+`remote add origin` and `checkout --detach` land on *that* repository instead of
+the disposable one, detaching the user's HEAD, adding a remote and wiping their
+tracked files, while the command reports success. This is not an exotic
+environment: git exports `GIT_DIR` to every hook it runs, so a `gplay
+install-skills` invoked from a hook, an alias or a wrapper would hit it. Those
+variables are stripped from git's environment, along with the environment's
+config-injection channel (`GIT_CONFIG_COUNT` and its numbered key/value pairs,
+`GIT_CONFIG_PARAMETERS`), which is `-c` by another name.
+
+"No script is executed" also has to survive *configuration*, not just the pack:
+`core.hooksPath` and `init.templateDir` make git run code during `init` and
+`checkout` without the repository containing anything. Both are neutralised by
+command-line override, which beats every config file: `-c core.hooksPath=<a path
+that cannot hold a hook>`, `-c core.fsmonitor=false`, and `git init --template=`.
+
+The user's configuration *files* are deliberately still read. Discarding them
+(`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`) would also discard the
+proxy, the custom CA bundle and the `insteadOf` mirror that are the only way out
+of a locked-down network, breaking the command for exactly the environments it
+has to work in. Nothing is conceded by keeping them: whichever host ends up
+serving the fetch, the checkout is refused unless `rev-parse HEAD` is the pinned
+commit, and no other tree hashes to it.
+
 ### 2. The pin lives in the binary, and only the commit anchors integrity
 
 `commands/installskills/skills-pin.json` is `go:embed`ed and carries the repo
@@ -82,6 +110,21 @@ until the last possible moment:
 
 Symlinks and other irregular files in the pack are refused rather than followed:
 a symlink resolves against the *user's* filesystem at install time.
+
+Two things do not rest on `defer`, because a Ctrl-C, a reaped CI job or an OOM
+kill never reaches it (gplay installs no signal handler):
+
+- **Each run repairs the previous one.** Before fetching anything, a run sweeps
+  the target for the `.gplay-stage-*` / `.gplay-backup-*` scaffolding of an
+  interrupted run: any skill parked in a leftover backup and *not* currently
+  installed is moved back into place, then the leftovers are removed. Otherwise
+  they accumulate in `~/.claude/skills` forever, possibly holding the only copy
+  of a skill. The sweep runs before the fetch on purpose, so it repairs the
+  directory even when the install that follows fails, and its own failures are
+  warnings: a leftover directory must not be able to block an install.
+- **An incomplete rollback keeps its backup.** When the rollback cannot restore
+  something, the backup directory is the last copy of the user's previous
+  skills, so it is not deleted, and the error names its path.
 
 ### 4. One target directory, `--dir` to move it; no passthrough
 
@@ -129,6 +172,11 @@ dead end.
   program on the user's machine to install static Markdown.
 - **Pin a tag instead of a commit.** Rejected: a tag is a mutable pointer; the
   remote can move it after review.
+- **Run git with no configuration at all** (`GIT_CONFIG_GLOBAL=/dev/null`,
+  `GIT_CONFIG_NOSYSTEM=1`). Rejected in favour of the targeted `-c` overrides of
+  §1b: it neutralises the same hooks *and* the proxy and CA settings a corporate
+  network needs, and the pinned-commit check already makes URL rewriting
+  harmless.
 - **Embed the skills in the binary with `go:embed`.** Tempting (zero runtime
   dependency, nothing to verify) and the natural next step, but it couples every
   skill edit to a gplay release build and inflates the binary with content most

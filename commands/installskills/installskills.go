@@ -67,9 +67,65 @@ func defaultRun(ctx context.Context, name string, args []string, dir string) (st
 	c.Dir = dir
 	// Keep git non-interactive: a credential or SSH prompt on an agent's or a
 	// CI's stdin would hang forever instead of failing.
-	c.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=")
+	c.Env = append(gitSafeEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=")
 	out, err := c.CombinedOutput()
 	return string(out), err
+}
+
+// gitLocationVars are the inherited variables that move git's idea of *which*
+// repository it is operating on. Setting c.Dir is not enough: with GIT_DIR (or
+// GIT_WORK_TREE) in the environment, `git init`, `remote add origin` and
+// `checkout --detach` all land on the caller's repository instead of our
+// disposable directory, silently rewriting their HEAD, refs and remotes. That
+// environment is ordinary, not exotic: git sets GIT_DIR for every hook it runs,
+// so `gplay install-skills` from a pre-commit hook or a git alias would hit it.
+//
+// The environment's *config injection* channel (GIT_CONFIG_COUNT and its
+// numbered key/value pairs, GIT_CONFIG_PARAMETERS) goes for the same reason at
+// one remove: it is `-c` by another name, so an inherited pair could re-enable
+// what hardenedGit disables. The config *files* are left alone on purpose, so a
+// corporate proxy or CA bundle keeps working (see hardenedGit).
+var gitLocationVars = map[string]bool{
+	"GIT_DIR":                          true,
+	"GIT_WORK_TREE":                    true,
+	"GIT_COMMON_DIR":                   true,
+	"GIT_INDEX_FILE":                   true,
+	"GIT_OBJECT_DIRECTORY":             true,
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
+	"GIT_NAMESPACE":                    true,
+	"GIT_CEILING_DIRECTORIES":          true,
+	"GIT_TEMPLATE_DIR":                 true,
+	"GIT_CONFIG":                       true,
+	"GIT_CONFIG_COUNT":                 true,
+	"GIT_CONFIG_PARAMETERS":            true,
+}
+
+// gitConfigVarPrefixes cover the numbered GIT_CONFIG_KEY_<n> /
+// GIT_CONFIG_VALUE_<n> pairs, which are the environment form of `-c`.
+var gitConfigVarPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
+
+// gitSafeEnv returns env without the variables that would redirect git away
+// from the directory we hand it. Everything else is passed through: PATH, proxy
+// and TLS settings, and the user's own git configuration all still apply.
+func gitSafeEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if gitLocationVars[name] || hasAnyPrefix(name, gitConfigVarPrefixes) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // errGitMissing is the concise one-liner main turns into `gplay: ...`; the
@@ -104,7 +160,8 @@ The skills are fetched with git from ` + pinNote + `
 The commit is baked into this binary, never resolved from a branch or a tag, so
 two runs of the same gplay version always install the same reviewed files. A new
 pack ships through a normal reviewed gplay release. Nothing else is executed:
-no Node, no package runner, no script from the skills repository.
+no Node, no package runner, no script from the skills repository, and no git
+hook (git runs with hooks and init templates disabled).
 
 Skills are installed user-wide into ~/` + defaultSkillsDir + `, or into the
 directory given by --dir. Only the skills of the pack are replaced; anything
@@ -138,6 +195,16 @@ func run(cmd *cobra.Command, opts Options, dir string) error {
 		return err
 	}
 
+	// Repair before installing: a run killed mid-flight (Ctrl-C, a reaped CI
+	// job, an OOM) never reaches its deferred cleanup, so it can leave staging
+	// and backup directories behind, and a skill parked in a backup instead of
+	// installed. Nothing else would ever pick those up, so every run sweeps them
+	// first. Failures here are reported, not fatal: a leftover directory must
+	// not be able to block an install.
+	for _, e := range sweepOrphans(target) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", e)
+	}
+
 	// The checkout is disposable and lives in the OS temp dir; only the staging
 	// area has to sit next to the target (see stage below).
 	work, err := os.MkdirTemp("", "gplay-skills-")
@@ -161,16 +228,27 @@ func run(cmd *cobra.Command, opts Options, dir string) error {
 	// move below is a rename within one filesystem: a cross-device rename would
 	// fall back to a copy, which is exactly the non-atomic step this design is
 	// trying to avoid.
-	stage, err := os.MkdirTemp(target, ".gplay-stage-")
+	stage, err := os.MkdirTemp(target, stagePrefix)
 	if err != nil {
 		return fmt.Errorf("create staging directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(stage) }()
-	backup, err := os.MkdirTemp(target, ".gplay-backup-")
+	backup, err := os.MkdirTemp(target, backupPrefix)
 	if err != nil {
 		return fmt.Errorf("create backup directory: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(backup) }()
+	sw := &swap{target: target, backup: backup}
+	// While the swap is in flight the backup holds the *only* copy of the user's
+	// previous skills, so it is deleted on the way out only if the rollback did
+	// not have to give up on one of them. When it did, the directory stays and
+	// the error names it: destroying it here would destroy the last copy of what
+	// the user had (its path is in the error either way, see rolledBack).
+	defer func() {
+		if sw.incomplete {
+			return
+		}
+		_ = os.RemoveAll(backup)
+	}()
 
 	// Copy and verify everything before touching the target: a pack that cannot
 	// be staged intact never displaces the installed one.
@@ -184,7 +262,6 @@ func run(cmd *cobra.Command, opts Options, dir string) error {
 		}
 	}
 
-	sw := &swap{target: target, backup: backup}
 	for _, name := range pin.Skills {
 		if err := sw.install(name, filepath.Join(stage, name)); err != nil {
 			return rolledBack(sw, err)
@@ -210,7 +287,8 @@ func run(cmd *cobra.Command, opts Options, dir string) error {
 
 // rolledBack undoes a failed install and folds any rollback trouble into the
 // reported error: a user whose previous skills could not be restored must hear
-// about it in the same breath as the failure that caused it.
+// about it in the same breath as the failure that caused it, and be told where
+// the surviving copy is, since that directory is then the only one left.
 func rolledBack(sw *swap, cause error) error {
 	errs := sw.rollback()
 	if len(errs) == 0 {
@@ -220,7 +298,8 @@ func rolledBack(sw *swap, cause error) error {
 	for _, e := range errs {
 		msgs = append(msgs, e.Error())
 	}
-	return fmt.Errorf("%w (rollback incomplete: %s)", cause, strings.Join(msgs, "; "))
+	return fmt.Errorf("%w (rollback incomplete: %s; your previous skills are kept in %s)",
+		cause, strings.Join(msgs, "; "), sw.backup)
 }
 
 func resolvePin(opts Options) (Pin, error) {

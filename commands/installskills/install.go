@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // copyTree copies src into dst, creating dst. Only directories and regular
@@ -157,6 +158,10 @@ type swap struct {
 	// done records, in order, the skills already swapped in, so a failure
 	// halfway through can be walked back in reverse.
 	done []swapped
+	// incomplete is set when rollback could not put everything back, which makes
+	// the backup directory the last copy of the user's previous skills: the
+	// caller must then keep it rather than clean it up.
+	incomplete bool
 }
 
 type swapped struct {
@@ -207,5 +212,90 @@ func (s *swap) rollback() []error {
 		}
 	}
 	s.done = nil
+	s.incomplete = len(errs) > 0
+	return errs
+}
+
+// stagePrefix and backupPrefix name the scaffolding directories created inside
+// the target. They are a namespace as much as a prefix: a run sweeps anything
+// carrying them, so nothing else may use them.
+const (
+	stagePrefix  = ".gplay-stage-"
+	backupPrefix = ".gplay-backup-"
+)
+
+// sweepOrphans repairs the target directory before an install, undoing what a
+// run that was killed mid-flight left behind. Deferred cleanup does not survive
+// a SIGINT or a SIGKILL, and gplay installs no signal handler, so the scaffolding
+// of an interrupted run would otherwise sit in ~/.claude/skills forever, with a
+// skill possibly parked in a backup and absent from the target.
+//
+// A leftover backup is adopted rather than deleted: any skill it holds that is
+// *not* currently installed is moved back into place first, since that backup is
+// the only copy left. A skill that is installed is left alone, because the
+// installed copy is by definition the more recent one. Leftover staging
+// directories carry no user data and are simply removed.
+//
+// Errors are returned rather than raised: a leftover directory that cannot be
+// cleaned up must not be able to block the install it precedes. Two concurrent
+// runs against the same target are not supported, here or anywhere else in this
+// command.
+func sweepOrphans(target string) []error {
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil // nothing installed yet, nothing to repair
+		}
+		return []error{fmt.Errorf("scan %s for leftovers: %w", target, err)}
+	}
+	var errs []error
+	for _, e := range entries {
+		name := e.Name()
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(target, name)
+		switch {
+		case strings.HasPrefix(name, backupPrefix):
+			errs = append(errs, adoptBackup(path, target)...)
+		case strings.HasPrefix(name, stagePrefix):
+			if err := os.RemoveAll(path); err != nil {
+				errs = append(errs, fmt.Errorf("remove leftover staging directory %s: %w", path, err))
+			}
+		}
+	}
+	return errs
+}
+
+// adoptBackup restores from an interrupted run's backup every skill the target
+// is currently missing, then removes the backup.
+func adoptBackup(dir, target string) []error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []error{fmt.Errorf("read leftover backup %s: %w", dir, err)}
+	}
+	var errs []error
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dst := filepath.Join(target, e.Name())
+		if _, err := os.Lstat(dst); err == nil {
+			continue // already installed: the backup copy is the older one
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("inspect %s: %w", dst, err))
+			continue
+		}
+		if err := os.Rename(filepath.Join(dir, e.Name()), dst); err != nil {
+			errs = append(errs, fmt.Errorf("restore %s from leftover backup: %w", e.Name(), err))
+		}
+	}
+	if len(errs) > 0 {
+		// Something is still in there: keep it rather than delete the only copy.
+		return errs
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		errs = append(errs, fmt.Errorf("remove leftover backup %s: %w", dir, err))
+	}
 	return errs
 }
