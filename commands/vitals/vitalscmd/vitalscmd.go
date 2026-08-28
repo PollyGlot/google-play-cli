@@ -105,7 +105,9 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 		period = DefaultPeriod
 	}
 	period = strings.ToUpper(period)
-	if err := validateOne("period", period, vitals.SupportedPeriods(idx)); err != nil {
+	// Periods are per set: the memory sets are DAILY-only, so naming the set in
+	// the rejection is what makes the error actionable (#440).
+	if err := validateAll("period", []string{period}, vitals.SupportedPeriods(idx, p.Set), p.Set.Name); err != nil {
 		return nil, err
 	}
 
@@ -154,17 +156,6 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 	warnFreshness(rc, p.Set, tl)
 
 	return Payload{Raw: raw, Timeline: tl, Dimensions: dimensions, Metrics: metrics}, nil
-}
-
-// validateOne rejects a single value not present in allowed: the "never
-// invented" guard for --period.
-func validateOne(kind, value string, allowed []string) error {
-	for _, a := range allowed {
-		if a == value {
-			return nil
-		}
-	}
-	return exit.Usagef("unknown %s %q (valid: %s)", kind, value, strings.Join(allowed, ", "))
 }
 
 // validateAll rejects any value not present in allowed, naming the metric set.

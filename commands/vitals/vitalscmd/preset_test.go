@@ -157,17 +157,32 @@ func TestPresets_referenceRealMetricSets(t *testing.T) {
 	}
 }
 
+// presetExempt lists the metric sets deliberately left without an opinionated
+// preset: the memory percentile sets are niche and have no single headline
+// metric worth a friendlier flag surface, so `gplay vitals query <set>` is the
+// only form (#440, decided at triage). Anything else must have a preset.
+var presetExempt = map[string]bool{
+	"anonrssandswapmemoryusage": true,
+	"bitmapmemoryusage":         true,
+}
+
 // TestPresets_coverEveryMetricSet asserts every queryable metric set has an
-// opinionated preset (#260 completes the set: all seven). A new metric set added
-// to the registry without a preset fails here.
+// opinionated preset (#260 completes the rate sets), bar the documented
+// exemptions. A new metric set added to the registry without a preset and
+// without an exemption fails here.
 func TestPresets_coverEveryMetricSet(t *testing.T) {
 	covered := map[string]bool{}
 	for _, spec := range Presets {
 		covered[spec.Set] = true
 	}
 	for _, ms := range vitals.MetricSets() {
-		if !covered[ms.Name] {
+		if !covered[ms.Name] && !presetExempt[ms.Name] {
 			t.Errorf("metric set %q has no preset command", ms.Name)
+		}
+	}
+	for name := range presetExempt {
+		if covered[name] {
+			t.Errorf("metric set %q is exempt yet has a preset: drop the exemption", name)
 		}
 	}
 }

@@ -112,11 +112,12 @@ nature):
 | `purchases.products` / `productsv2` | 4 | ⚫️ | runtime — token verification ([ADR-0026](adr/0026-maximal-admin-api-coverage.md)) |
 | `purchases.subscriptions` / `subscriptionsv2` | 7 | ⚫️ | runtime — token verification (ADR-0026); v1 `get`/`refund`/`revoke` removed by Google in the 2026-07-20 Discovery refresh (PR #374) |
 
-## `playdeveloperreporting` v1beta1 — 21 methods
+## `playdeveloperreporting` v1beta1 — 25 methods
 
 | Surface | Methods | State | gplay / issue |
 |---|---|---|---|
 | `vitals.*` (crashrate, anrrate, errors, slowstart, slowrendering, wakeups, wakelocks, lmk) | 18 | ✅ | `vitals` ([#49](https://github.com/PollyGlot/google-play-cli/issues/49)) |
+| `vitals.anonrssandswapmemoryusage` / `vitals.bitmapmemoryusage` | 4 | ✅ | `vitals query anonrssandswapmemoryusage` / `vitals query bitmapmemoryusage` ([#440](https://github.com/PollyGlot/google-play-cli/issues/440)) — memory percentile sets, no opinionated preset (niche); DAILY-only, an unsupported `--period` is rejected offline from the snapshot prose |
 | `anomalies.list` | 1 | ✅ | `vitals anomalies` |
 | `apps.search` | 1 | ✅ | `apps accessible list` ([#347](https://github.com/PollyGlot/google-play-cli/issues/347), [ADR-0039](adr/0039-accessible-apps-vs-local-registry.md)) — server-authoritative discovery, a resource distinct from the local registry (the two sets do not coincide), never a `--source` flag on `apps list`; reuses the existing reporting scope ([ADR-0027](adr/0027-vitals-second-service-scope-readonly.md) §2) |
 | `apps.fetchReleaseFilterOptions` | 1 | 🔴 | [#348](https://github.com/PollyGlot/google-play-cli/issues/348) (parked — minor helper, fold into `vitals` if release-keyed filters are needed) |
