@@ -56,11 +56,12 @@ Deciding rules:
 
 **2. Domain verbs** — each names a real gesture no generic verb captures:
 `upload`, `promote`, `rollout`, `halt`, `resume`, `complete`, `reply`, `pull`,
-`apply`, `validate`, `download`, `login`/`logout`, and the App Recovery trio
-`deploy`, `cancel`, `add-targeting`. Admission test: it must state a domain gesture
-`set`/`create`/`view` could not say honestly. The `releases` rollout state
-machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these act on a
-release's rollout *state*, not on a "rollout" resource, so they are not nested.
+`apply`, `validate`, `download`, `enroll`, `rotate`, `login`/`logout`, and the
+App Recovery trio `deploy`, `cancel`, `add-targeting`. Admission test: it must
+state a domain gesture `set`/`create`/`view` could not say honestly. The
+`releases` rollout state machine (`rollout`/`halt`/`resume`/`complete`) lives
+flat here — these act on a release's rollout *state*, not on a "rollout"
+resource, so they are not nested.
 The recovery trio was admitted under this test and recorded in
 [ADR-0030](./adr/0030-android-publisher-long-tail-surfaces.md): `deploy`
 (activate a draft, ≠ `create`/`set`), `cancel` (terminate to status CANCELED,
@@ -74,6 +75,18 @@ cannot state — and mirrors the API method `.download`. It is gplay's only bina
 download-to-file verb; its destination flag is `--dest` (`--dest -` for stdout),
 never `--output`, which controls structured-data format
 ([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
+`enroll` and `rotate` (`gplay signing`) were admitted on the same test with
+[PRD #476](https://github.com/PollyGlot/google-play-cli/issues/476): they act on
+an app's *signing key custody*, a state no resource verb can state honestly.
+`enroll` moves an app onto a key the developer hosts in their own Cloud KMS
+(a one-way transition of the app itself, so not `create`, which makes an object
+exist, nor `add`, which enrolls into a collection gplay can also `remove` from),
+and `rotate` swaps that live key for a successor carrying an apksigner
+proof-of-rotation lineage (an ordered succession, not `set`, which would imply a
+field you can overwrite back). Both mirror the API methods
+`appsigning.enrollApp` and `appsigning.rotateAppSigningKey`. `rotate` is
+unrelated to the release `rollout` state machine above: different noun,
+different resource.
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
 grammar, keeping their own names: `version`, `exit-codes`, `install-skills`
