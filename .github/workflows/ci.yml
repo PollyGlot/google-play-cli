@@ -159,7 +159,12 @@ jobs:
         run: bash scripts/dash-gate.sh
 
       - name: shellcheck install.sh
-        run: shellcheck install.sh
+        run: shellcheck install.sh scripts/install-test.sh
+
+      # Offline: a stub curl serves a fixture release, so this asserts the
+      # fail-closed sha256 gate without touching the network.
+      - name: Install script fail-closed checksum gate
+        run: bash scripts/install-test.sh
 
       - name: Verify required files exist
         run: |
