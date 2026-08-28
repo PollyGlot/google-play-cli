@@ -538,6 +538,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"apps", "add"}, false},
 		{[]string{"apps", "list"}, false},
 		{[]string{"apps", "accessible", "list"}, false}, // #347: Reporting apps.search, read-only
+		{[]string{"apps", "audit"}, false},              // #449: read-only sweep, never commits its Edits
 		{[]string{"apps", "view"}, false},
 		{[]string{"apps", "details", "view"}, false},
 		{[]string{"apps", "details", "set"}, true},
@@ -793,6 +794,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"apps", "add"}, false},
 		{[]string{"apps", "list"}, false},
 		{[]string{"apps", "accessible", "list"}, false},
+		{[]string{"apps", "audit"}, true}, // #449: the report shape and check set may still move
 		{[]string{"apps", "view"}, false},
 		{[]string{"apps", "details", "view"}, false},
 		{[]string{"apps", "details", "set"}, false},

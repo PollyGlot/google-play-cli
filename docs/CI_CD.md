@@ -173,6 +173,8 @@ table is in [`DESIGN.md`](DESIGN.md#9-exit-codes); the short version:
   error
 - `2` → CLI usage bug in your workflow
 - `4` → denied by `GPLAY_READONLY`; **not** retryable, and not fixable by a flag
+- `70` → a check command (`apps audit`) ran fine and **found** drift; the report
+  on stdout is complete, act on what it names
 
 > An exit 30 or 60 carrying the `editAlreadyExists` reason is the orphaned-Edit
 > case — a stale Edit left open by a hard-killed run. Don't blind-retry it; see
