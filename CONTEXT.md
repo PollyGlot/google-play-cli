@@ -57,6 +57,13 @@ Deliberately **distinct from the local registry** (`apps list`, `apps add`), whi
 
 _Avoid_: treating it as an authoritative mirror of the registry, or building access-audit/drift logic on the gap between the two (structural false positives, ADR-0039); adding a `--source registry|server` flag to `apps list` (ADR-0019 wants a new noun, not a mode flag).
 
+### Finding
+One consistency observation about one app, produced by `apps audit` ([PRD #449](https://github.com/PollyGlot/google-play-cli/issues/449)): `{package, check, severity, message, evidence}`. It names drift the operator may want to act on (a lingering draft release, a locale set narrower than its peers', a shipped release with no release notes, a production track that has never shipped), never a failure of the audit itself, which is reported separately as a sweep error. Severity is `warning` (probably a mistake) or `info` (a difference worth naming that may well be deliberate).
+
+A **check** is the named evaluator that emits Findings; its **check ID** (`lingering-drafts`, `locale-drift`, `empty-release-notes`, `no-production-release`) is **frozen vocabulary** : a CI filter is written against these strings, so an ID is retired, never renamed. Findings present make the command exit `70` ([DESIGN §9](docs/DESIGN.md)): a gate, not an error.
+
+_Avoid_: calling a Finding an "error" (nothing failed), and building a check on the [Accessible App](#accessible-app) / registry gap : the audit uses `apps.search` for *discovery* only, and drift logic on that gap is the structural false positive ADR-0039 rules out.
+
 ### Store image
 A binary store asset attached to a Listing, keyed by **locale and image type** (`edits.images`): the singular slots `icon`, `featureGraphic`, `tvBanner`, `promoGraphic`, and the gallery slots `phoneScreenshots`, `sevenInchScreenshots`, `tenInchScreenshots`, `tvScreenshots`, `wearScreenshots`. Part of the Store front (per-locale), so it lives under `metadata`, in a `metadata images` sub-namespace distinct from the text Listing commands — the two share the metadata tree and the Additive sync stance but reconcile differently (text upserts by field name; images diff by content, see Image slot).
 
@@ -315,3 +322,10 @@ One entry of the Catalog Export's incremental-sync feed (`RecentUpdateEvent`, li
 It is the *delta* channel of the Catalog Export, whose *snapshot* channel is the Catalog app view: an app store polls the update events for a range, then re-reads only the apps they name.
 
 _Avoid_: "change", "diff" or "notification" as the noun — the canonical term is **update event**; and do not confuse it with a Real-time Developer Notification (a Pub/Sub message about a *purchase*, which gplay does not ingest).
+
+### Self-hosted signing key
+An app signing private key the developer keeps in **their own Google Cloud KMS instance** rather than letting Google generate and hold it, referenced everywhere by its `cryptoKeyVersionResource` (`projects/*/locations/*/keyRings/*/cryptoKeys/*/cryptoKeyVersions/*`) and paired with its PEM certificate. Backed by the `appsigning` resource of the [Android Publisher API](#android-publisher-api), outside the [Edit](#edit) model: `appsigning.enrollApp` puts an app on such a key, `appsigning.rotateAppSigningKey` swaps it for a new one. gplay surfaces both under the top-level `signing` namespace (`signing enroll` / `signing rotate`), each `--confirm`-gated because the live signing key of a real app changes and cannot be put back.
+
+The surface is **enterprise-only by construction**: standard Play App Signing (a Google-generated or Google-managed key) cannot be enrolled through any API, and rotating a Google-managed key goes through the Play Console UI. The API exposes no read of app-signing state, so `signing` has no `view` leaf; the only thing a call reports back is the resulting **certificate hashes** (MD5/SHA1/SHA256).
+
+_Avoid_: calling it an "upload key" — the upload certificate (`--upload-cert`) is the key CI signs *submissions* with, a different key from the one Play signs *deliveries* with; and do not say gplay "generates" a lineage: the proof-of-rotation file is produced by `apksigner`, gplay only carries its bytes.

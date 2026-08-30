@@ -73,6 +73,11 @@ const (
 	CodeEditExpired Code = "EDIT_EXPIRED"
 	// CodeRateLimitExceeded is a 429 or a quota/rate reason: back off and retry.
 	CodeRateLimitExceeded Code = "RATE_LIMIT_EXCEEDED"
+
+	// CodeFindingsPresent is exit 70: a read-only check command ran to
+	// completion and its report carries findings. Not a failure; fix what the
+	// report on stdout names (docs/DESIGN.md §9).
+	CodeFindingsPresent Code = "FINDINGS_PRESENT"
 )
 
 // CodeDoc is one row of the diagnostic-code catalog, surfaced by
@@ -114,6 +119,7 @@ var codeCatalog = []CodeDoc{
 	{CodeEditAlreadyExists, 60, false, "An Edit is already open on this package; commit or delete it first"},
 	{CodeEditExpired, 60, false, "The pinned Edit expired; begin a new Edit and replay the mutation"},
 	{CodeRateLimitExceeded, 60, true, "Rate or quota limit exceeded; back off and retry"},
+	{CodeFindingsPresent, 70, false, "A read-only check command completed and reported findings; not a failure"},
 }
 
 // CodeCatalog returns the documented diagnostic-code vocabulary in catalog
@@ -264,6 +270,8 @@ func codeForExit(exitCode int) Code {
 		return CodeNetworkError
 	case 60:
 		return CodeStateConflict
+	case FindingsCode:
+		return CodeFindingsPresent
 	default:
 		return CodeGenericError
 	}
