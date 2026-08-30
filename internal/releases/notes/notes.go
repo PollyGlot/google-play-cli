@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
 // MaxNoteFileSize caps the size of any single release-notes file read
@@ -103,6 +105,16 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Containment root, resolved once for the whole walk (PRD #459 / slice
+	// #461). The entries below come from the directory itself, but an entry can
+	// be a symlink pointing anywhere: without this, a `fr.txt` symlinked to
+	// ~/.ssh/id_rsa would be read and shipped into a public store listing.
+	// Resolved after the ReadDir above so a missing directory still reports the
+	// familiar not-found error rather than a containment failure.
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return nil, err
+	}
 	var out []LocaleNote
 	hasDefault := false
 	for _, e := range entries {
@@ -118,7 +130,7 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 			hasDefault = true
 			continue
 		}
-		text, err := readCapped(filepath.Join(dir, name))
+		text, err := readCapped(root, filepath.Join(dir, name))
 		if err != nil {
 			return nil, err
 		}
@@ -133,7 +145,7 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 			}
 		}
 		if !covers(out, defaultLang) {
-			text, err := readCapped(filepath.Join(dir, defaultLocaleFile+".txt"))
+			text, err := readCapped(root, filepath.Join(dir, defaultLocaleFile+".txt"))
 			if err != nil {
 				return nil, err
 			}
@@ -143,13 +155,22 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 	return out, nil
 }
 
-// readCapped stat-checks p against MaxNoteFileSize before reading the
-// file into memory, then verifies the post-read size as a belt-and-
-// suspenders defence against TOCTOU growth. Files larger than the cap
-// produce a *ValidationError naming the file and the limit: Google
-// Play's per-locale notes are capped at 500 characters anyway, so 1 MiB
-// is generous.
-func readCapped(p string) ([]byte, error) {
+// readCapped checks p stays inside root, stat-checks it against
+// MaxNoteFileSize before reading the file into memory, then verifies the
+// post-read size as a belt-and-suspenders defence against TOCTOU growth.
+// Files larger than the cap produce a *ValidationError naming the file and
+// the limit: Google Play's per-locale notes are capped at 500 characters
+// anyway, so 1 MiB is generous.
+//
+// Containment comes FIRST, before the stat: an escaping path must never be
+// touched at all, so a refusal leaks nothing about whether the target exists.
+func readCapped(root, p string) ([]byte, error) {
+	// ContainUserPath: the notes directory and its files are the operator's
+	// own, so a `fr.txt` symlinked at a shared translation is a layout they can
+	// opt into (GPLAY_ALLOW_EXTERNAL_SYMLINKS), refused until they do.
+	if _, err := pathguard.ContainUserPath(root, p); err != nil {
+		return nil, err
+	}
 	info, err := osStat(p)
 	if err != nil {
 		return nil, err

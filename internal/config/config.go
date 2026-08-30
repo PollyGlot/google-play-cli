@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"path/filepath"
 
+	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 	"github.com/PollyGlot/google-play-cli/internal/walkup"
 )
 
@@ -79,8 +80,15 @@ func LoadGlobalOrEmpty(_ context.Context, fsys FS, path string) (*Global, error)
 // gplay invocation with "unexpected end of input". A best-effort
 // Remove of the .tmp file runs on the failure path so a hung
 // invocation does not strand stale fragments.
+//
+// The staging path is guarded, not just joined: `<path>.tmp` is a name nothing
+// owns, so it can be pre-placed as a symlink and a plain WriteFile would follow
+// it, turning "save the account registry" into "overwrite that file", with the
+// operator's rights and 0600 on a file they did not name. Same shape as the
+// edit pin's `.tmp` (PRD #459 / slice #461).
 func (g *Global) Save(_ context.Context, fsys FS, path string) error {
-	if err := fsys.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := fsys.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(g, "", "  ")
@@ -88,6 +96,14 @@ func (g *Global) Save(_ context.Context, fsys FS, path string) error {
 		return err
 	}
 	tmp := path + ".tmp"
+	// A root that will not resolve means the directory is not on the real
+	// filesystem (the MemFS seam the config tests run on): there is nothing to
+	// contain against, and the lexical path is what fsys will use anyway.
+	if root, rootErr := pathguard.Root(dir); rootErr == nil {
+		if tmp, err = pathguard.ContainWrite(root, tmp); err != nil {
+			return err
+		}
+	}
 	if err := fsys.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
