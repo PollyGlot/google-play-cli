@@ -16,7 +16,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -25,6 +24,7 @@ import (
 	"golang.org/x/oauth2"
 
 	createcmd "github.com/PollyGlot/google-play-cli/commands/customapps/create"
+	"github.com/PollyGlot/google-play-cli/internal/artifacttest"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -135,13 +135,13 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stdout
 }
 
+// writeArtifact drops a real (if minimal) AAB container at a temp path. The
+// artifact preflight (PRD #448) classifies the container before any request
+// is issued, so a placeholder byte string would be refused offline and never
+// reach the RoundTripper.
 func writeArtifact(t *testing.T, name string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(p, []byte("PK fake artifact"), 0o644); err != nil {
-		t.Fatalf("write artifact: %v", err)
-	}
-	return p
+	return artifacttest.AAB(t, t.TempDir(), name, "com.example.app")
 }
 
 func exitOf(t *testing.T, err error) int {
@@ -275,8 +275,13 @@ func TestRun_dryRun_noNetwork_requiresArray(t *testing.T) {
 	if len(rt.calls) != 0 {
 		t.Errorf("dry-run must make no network call; calls=%v", rt.calls)
 	}
-	if stderr.Len() != 0 {
+	// A dry-run reports the artifact preflight on stderr (PRD #448), but it
+	// must never claim a mutation happened.
+	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run must not write a ✓ line: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "preflight") {
+		t.Errorf("dry-run should report the artifact preflight: %q", stderr.String())
 	}
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {

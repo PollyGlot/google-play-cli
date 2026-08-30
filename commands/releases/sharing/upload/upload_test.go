@@ -15,8 +15,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +22,7 @@ import (
 	"golang.org/x/oauth2"
 
 	uploadcmd "github.com/PollyGlot/google-play-cli/commands/releases/sharing/upload"
+	"github.com/PollyGlot/google-play-cli/internal/artifacttest"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -104,13 +103,18 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stdout
 }
 
+// writeArtifact drops a real (if minimal) container at a temp path, matching
+// what the extension (or, for an ambiguous name, --format bundle) promises.
+// The artifact preflight (PRD #448) classifies the container and reads its
+// manifest before any request, so a placeholder byte string would now be
+// refused offline and never reach the RoundTripper.
 func writeArtifact(t *testing.T, name string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(p, []byte("PK fake artifact"), 0o644); err != nil {
-		t.Fatalf("write artifact: %v", err)
+	dir := t.TempDir()
+	if strings.HasSuffix(name, ".apk") {
+		return artifacttest.APK(t, dir, name, "com.example.app")
 	}
-	return p
+	return artifacttest.AAB(t, dir, name, "com.example.app")
 }
 
 func exitOf(t *testing.T, err error) int {
