@@ -23,6 +23,29 @@ func TestExitCodesHelp_surfacesCode3(t *testing.T) {
 	}
 }
 
+// TestExitCodesHelp_surfacesTheDiagnosticCatalog is the CLI-introspection half
+// of slice #454: every diagnostic code must be readable from `gplay help
+// exit-codes`, so a skill author never opens the source to learn the vocabulary.
+func TestExitCodesHelp_surfacesTheDiagnosticCatalog(t *testing.T) {
+	long := exitcodes.NewCommand().Long
+	for _, d := range exit.CodeCatalog() {
+		if !strings.Contains(long, string(d.Code)) {
+			t.Errorf("exit-codes help omits diagnostic code %q", d.Code)
+		}
+	}
+	for _, want := range []string{"RETRYABLE", "gplay schema --codes"} {
+		if !strings.Contains(long, want) {
+			t.Errorf("exit-codes help should mention %q", want)
+		}
+	}
+	// Embeds the shared renderer verbatim rather than a local copy of the
+	// column layout: this is what keeps the help topic and `schema --codes`
+	// from drifting apart.
+	if !strings.Contains(long, exit.CodeTableString()) {
+		t.Errorf("exit-codes help does not embed exit.CodeTableString verbatim\n%s", long)
+	}
+}
+
 // TestCatalog_hasCode3 pins the taxonomy: code 3 is present with the
 // deterministic-retry qualifier.
 func TestCatalog_hasCode3(t *testing.T) {

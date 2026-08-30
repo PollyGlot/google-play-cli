@@ -12,6 +12,9 @@
 // method inline-expands its request/response schema one hop (nested $refs are
 // shown by name). --list prints the compact method catalog; --method filters by
 // HTTP verb. A zero-match query prints a note on stderr and exits 0.
+//
+// --codes reuses this same offline introspection surface for a second catalog:
+// gplay's own diagnostic codes (ADR-0044); see codes.go.
 package schema
 
 import (
@@ -32,6 +35,7 @@ type Input struct {
 	Query  string // free-text query, matched across id / path / schema name
 	Method string // --method: filter the method projection by HTTP verb
 	List   bool   // --list: print the compact catalog of all methods
+	Codes  bool   // --codes: print gplay's diagnostic-code catalog instead of the API index
 }
 
 // result is the matched slice of the index: the methods, and the schemas
@@ -392,6 +396,12 @@ func (p Payload) renderJSON(w io.Writer) error {
 // query writes a note to stderr and still returns a (empty) Renderable so the
 // command exits 0: "found nothing" is not a failure.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	// --codes answers a different question than the rest of the command (what
+	// can fail, not what can be called), so it short-circuits before the index
+	// is even loaded and ignores the query projections.
+	if in.Codes {
+		return CodesPayload{}, nil
+	}
 	idx, err := schemaindex.Embedded()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded schema index: %w", err)
@@ -450,6 +460,9 @@ rendered directly.
   --list             print the compact catalog (id · http · path) of all methods
   --method GET|POST|PATCH|PUT|DELETE
                      filter the method surface by HTTP verb (combinable)
+  --codes            print gplay's diagnostic-code catalog (the stable "code"
+                     values the JSON error envelope carries) instead of the
+                     API index; ignores the query and the other flags
 
 A query that matches nothing prints a note on stderr and exits 0.`,
 		Args:          cobra.MaximumNArgs(1),
@@ -467,5 +480,6 @@ A query that matches nothing prints a note on stderr and exits 0.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().BoolVar(&in.List, "list", false, "print the compact catalog of all methods")
 	cmd.Flags().StringVar(&in.Method, "method", "", "filter methods by HTTP verb (GET, POST, PATCH, PUT, DELETE)")
+	cmd.Flags().BoolVar(&in.Codes, "codes", false, "print gplay's diagnostic-code catalog instead of the API index")
 	return cmd
 }

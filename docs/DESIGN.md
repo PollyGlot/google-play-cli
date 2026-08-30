@@ -15,6 +15,7 @@ For deeper rationale on the load-bearing choices, see:
 - [ADR-0023 — JSON error envelope on failure](./adr/0023-json-error-envelope.md)
 - [ADR-0024 — `GPLAY_READONLY` environment policy](./adr/0024-readonly-environment-policy.md)
 - [ADR-0042 — 1.0 GA and the stability-label mechanism](./adr/0042-one-zero-ga-and-stability-label-mechanism.md)
+- [ADR-0044 — Structured diagnostic codes](./adr/0044-structured-diagnostic-codes.md)
 
 ---
 
@@ -431,24 +432,35 @@ branch on the failure without scraping stderr:
 ```json
 {
   "error": {
+    "code": "EDIT_ALREADY_EXISTS",
     "exitCode": 60,
-    "message": "edits.commit on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
-    "reasons": ["editAlreadyExists"],
-    "requires": ["confirm"]
+    "retryable": false,
+    "operation": "edits.insert",
+    "package": "com.example.app",
+    "message": "edits.insert on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
+    "reasons": ["editAlreadyExists"]
   }
 }
 ```
 
-- `exitCode` / `message` are always present; `exitCode` mirrors the process
-  exit code (§9).
-- `reasons` carries the upstream `error.errors[].reason` values when an API
-  envelope was parsed; omitted otherwise.
+- `code` / `exitCode` / `retryable` / `message` are always present.
+- `code` is the stable SCREAMING_SNAKE diagnostic code (§9.1) — the field to
+  branch on, because it discriminates failures that share an exit code.
+- `exitCode` mirrors the process exit code (§9).
+- `retryable` says whether replaying the same command unchanged can plausibly
+  succeed, so retry logic needs no per-cause table. Emitted even when `false`.
+- `operation` / `package` name the API call that failed; omitted on a local
+  failure, which is itself the signal that no call was made.
+- `reasons` carries the upstream `error.errors[].reason` values verbatim when an
+  API envelope was parsed; omitted otherwise.
 - `requires` names the missing safety flag on an exit-3 refusal (extends the
   ADR-0017 dry-run `requires` to failure time); omitted otherwise.
 
 Under `table` / `markdown` a failure leaves stdout empty (error → stderr only).
 Exit codes and stderr are unchanged by the envelope. The envelope shape is part
-of the public contract (ADR-0010); see [ADR-0023](./adr/0023-json-error-envelope.md).
+of the public contract (ADR-0010); see
+[ADR-0023](./adr/0023-json-error-envelope.md) and
+[ADR-0044](./adr/0044-structured-diagnostic-codes.md).
 
 ---
 
@@ -606,6 +618,50 @@ make a healthy audit and a broken one indistinguishable. Build it with
 `exit.Findingsf(…)`, and never for a call that actually failed: a per-app API
 failure during a sweep is reported inside the document and drives the ordinary
 API code.
+
+### 9.1 Diagnostic codes
+
+An exit code says which *bucket* a failure fell into; a **diagnostic code** says
+which failure it was. Under `--output json` every failure carries one in the
+error envelope's `code` field, so an agent branches on `EDIT_ALREADY_EXISTS`
+rather than regexing the message for the word "already".
+
+| Code | Exit | Retryable | Meaning |
+|---|---|---|---|
+| `GENERIC_ERROR` | 1 | No | Unclassified failure (no typed exit code) |
+| `USAGE_ERROR` | 2 | No | CLI misuse |
+| `SAFETY_FLAG_REQUIRED` | 3 | No | Re-run with the flag named in `requires` |
+| `POLICY_READONLY` | 4 | No | Refused by the read-only environment policy |
+| `AUTH_FAILED` | 10 | No | Authentication failed |
+| `PERMISSION_DENIED` | 11 | No | Authorization failed (403) |
+| `VALIDATION_FAILED` | 20 | No | Client-side validation rejected the input |
+| `INVALID_ARGUMENT` | 30 | No | The API rejected the request as malformed (400) |
+| `NOT_FOUND` | 30 | No | No such package, track, Edit or resource (404) |
+| `API_ERROR` | 30 | No | Other API 4xx rejection |
+| `UPSTREAM_UNAVAILABLE` | 40 | **Yes** | The API is temporarily unhealthy (5xx) |
+| `NETWORK_ERROR` | 50 | **Yes** | Transport failure with no HTTP response |
+| `STATE_CONFLICT` | 60 | No | Remote state conflicts with the request (409) |
+| `EDIT_ALREADY_EXISTS` | 60 | No | An Edit is already open on this package |
+| `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; begin a new Edit |
+| `RATE_LIMIT_EXCEEDED` | 60 | **Yes** | Rate or quota limit exceeded; back off |
+| `FINDINGS_PRESENT` | 70 | No | A check command completed and reported findings; not a failure |
+
+Classification is **total**: it is derived from the exit code an error already
+carries, refined for an upstream failure by the HTTP status and Google's own
+`error.errors[].reason`. A new typed error therefore inherits a code the day it
+is written, with no dispatcher to remember to extend. An error that knows a
+narrower code declares it by implementing `exit.Diagnoser`.
+
+The Exit column is the *canonical* bucket, not a promise of equality: a handful
+of wrapped errors keep a narrower exit code (a `400`+`editAlreadyExists` exits
+`30`), and the envelope's own `exitCode` is always authoritative for a given
+failure.
+
+Codes are **append-only frozen contract** (ADR-0010/0042): a new failure mode
+earns a new code, an existing one is never renamed or repurposed. The catalog is
+introspectable without reading source, from `gplay help exit-codes` (human) and
+`gplay schema --codes --output json` (machine). See
+[ADR-0044](./adr/0044-structured-diagnostic-codes.md).
 
 ---
 
