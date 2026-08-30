@@ -196,6 +196,49 @@ func TestRun_limitZeroMeansNoCap(t *testing.T) {
 	}
 }
 
+// TestRun_limitTruncation_warnsOnStderr covers the reviews half of PRD #446 /
+// #451. Here the whole set is already in hand (reviews.List exhausts the token
+// before filtering), so "truncated" means the --limit dropped rows we were
+// holding: silence there would let a capped list read as the whole match.
+//
+// Stdout is untouched by the warning (ADR-0003): the payload still carries
+// exactly the capped rows and nothing about the warning.
+func TestRun_limitTruncation_warnsOnStderr(t *testing.T) {
+	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
+	rc, stdout, stderr := newRC(t, rt)
+
+	r, err := Run(rc, Input{Package: "com.example.app", Limit: 2})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := ids(r.(Payload)); len(got) != 2 {
+		t.Fatalf("--limit 2 should yield 2 reviews, got %v", got)
+	}
+	got := stderr.String()
+	for _, want := range []string{"warning:", "truncated", "--limit"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stderr = %q, want it to contain %q", got, want)
+		}
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty (Run returns a payload; the kernel renders it)", stdout.String())
+	}
+}
+
+// TestRun_limitNotReached_doesNotWarn is the other half: a --limit larger than
+// the result set is not a truncation, and warning there would be noise.
+func TestRun_limitNotReached_doesNotWarn(t *testing.T) {
+	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
+	rc, _, stderr := newRC(t, rt)
+
+	if _, err := Run(rc, Input{Package: "com.example.app", Limit: 10}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(stderr.String(), "truncated") {
+		t.Errorf("stderr = %q, want no truncation warning (--limit 10 over 4 reviews)", stderr.String())
+	}
+}
+
 func TestRun_negativeLimit_exit2(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
 	rc, _, _ := newRC(t, rt)

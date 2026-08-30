@@ -341,6 +341,13 @@ func validateOpts(opts Opts) error {
 			}
 		}
 	}
+	// Locale names in a release-notes dir are FILE NAMES, so they are knowable
+	// offline: check them here, where validateOpts already runs before the
+	// artifact upload and before edits.insert. Deferring to notes.Load (inside
+	// WithEdit) meant an `en_US.txt` typo burnt an Edit before failing (#452).
+	if err := notes.ValidateDirLocales(opts.ReleaseNotesDir); err != nil {
+		return err
+	}
 	return nil
 }
 

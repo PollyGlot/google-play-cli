@@ -60,10 +60,18 @@ func tokenLoopError(op, pkg, what string) error {
 // nextPageToken until exhausted or until `limit` items have accumulated (0 =
 // all), and returns a rebuilt {itemsKey: [...]} envelope. base carries the
 // stable query params (filter, interval, orderBy); pageSize bounds each request.
-func paginateGET(ctx context.Context, hc *http.Client, op, pkg, baseURL string, base url.Values, itemsKey string, pageSize, limit int) (json.RawMessage, error) {
+//
+// The second return value is the TRUNCATION signal: true when the loop stopped
+// on `limit` while the server still handed back a nextPageToken, i.e. the
+// envelope is a prefix of the truth rather than the whole of it. It is a return
+// value, not a stderr write, because this layer is HTTP-only: the command layer
+// owns the user-facing note (PRD #446). Hitting the limit exactly on the last
+// page (no token left) is exhaustive, so it reports false.
+func paginateGET(ctx context.Context, hc *http.Client, op, pkg, baseURL string, base url.Values, itemsKey string, pageSize, limit int) (json.RawMessage, bool, error) {
 	items := make([]json.RawMessage, 0)
 	seen := map[string]struct{}{}
 	token := ""
+	truncated := false
 	for {
 		q := url.Values{}
 		for k, vs := range base {
@@ -81,14 +89,31 @@ func paginateGET(ctx context.Context, hc *http.Client, op, pkg, baseURL string, 
 		}
 		raw, err := getRaw(ctx, hc, op, pkg, u)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		pageItems, next, derr := decodePage(raw, itemsKey)
 		if derr != nil {
-			return nil, &api.Error{Operation: op, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
+			return nil, false, &api.Error{Operation: op, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
 		}
 		items = append(items, pageItems...)
 		if limit > 0 && len(items) >= limit {
+			// Truncated means "the cap hid something that existed", and there
+			// are two ways for that to happen. Either the server still has
+			// pages (next != "") and the cap is why we stop asking, or this
+			// page already OVERSHOT the cap (len > limit) and the slice below
+			// drops rows we are holding: a single page of 15 under --limit 10
+			// is a truncation even though no token remains. Both are computed
+			// BEFORE the slice, because slicing destroys the second signal.
+			//
+			// `next != ""` is taken at its word: the Reporting API documents
+			// the token as omitted once there are no subsequent pages, so a
+			// present token IS the server saying more exists, and it is the
+			// only signal available short of spending another request to find
+			// out. If a server ever handed back a token for an empty final
+			// page, the cost is one over-cautious `warning:` on stderr, never
+			// wrong data on stdout: the opposite mistake (staying silent while
+			// results were hidden) is the one PRD #446 exists to prevent.
+			truncated = next != "" || len(items) > limit
 			items = items[:limit]
 			break
 		}
@@ -96,12 +121,16 @@ func paginateGET(ctx context.Context, hc *http.Client, op, pkg, baseURL string, 
 			break
 		}
 		if _, dup := seen[next]; dup {
-			return nil, tokenLoopError(op, pkg, itemsKey+" search")
+			return nil, false, tokenLoopError(op, pkg, itemsKey+" search")
 		}
 		seen[next] = struct{}{}
 		token = next
 	}
-	return rebuildEnvelope(itemsKey, items)
+	envelope, err := rebuildEnvelope(itemsKey, items)
+	if err != nil {
+		return nil, false, err
+	}
+	return envelope, truncated, nil
 }
 
 // pageStep is the pageSize to request next: the resource default when no total

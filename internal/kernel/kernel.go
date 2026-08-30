@@ -438,6 +438,40 @@ func (rc *RunContext) Confirmf(format string, args ...any) {
 	_, _ = fmt.Fprintf(rc.Stderr, "✓ "+format+"\n", args...)
 }
 
+// Warnf emits a single non-fatal advisory line on stderr, prefixed with
+// `warning: ` and terminated by a newline (DESIGN §8: stdout carries data,
+// stderr carries logs). It is the Confirmf-shaped funnel for the things a
+// caller must KNOW but that do not change the exit code or the payload:
+// notably a listing cut short by --limit (PRD #446). Routing them all through
+// one method is what lets a future --quiet suppress them in one place.
+//
+// It never touches stdout, so an `--output json` consumer keeps a byte-identical
+// payload whether or not a warning fired (ADR-0003). Like Confirmf the write is
+// best-effort and a nil Stderr is a no-op rather than a panic.
+func (rc *RunContext) Warnf(format string, args ...any) {
+	if rc.Stderr == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(rc.Stderr, "warning: "+format+"\n", args...)
+}
+
+// WarnTruncated emits the standard truncation advisory for a listing that was
+// cut by an explicit --limit while more results remained. An auto-paginated
+// listing follows nextPageToken to exhaustion, so --limit is the only way ITS
+// output can be a prefix of the truth: leaving it silent is what lets an agent
+// conclude "there are only 50 error issues" from a `--limit 50` (PRD #446).
+//
+// It is not the note for a CURSOR listing (`--page-token`, one page per call):
+// there the remediation is a token to pass back, not a cap to raise, and those
+// commands write their own `NOTE:` carrying it (docs/DESIGN.md §9).
+//
+// n is what was returned; flag is the flag to raise (normally "limit"), named
+// explicitly so the remediation is one step away.
+func (rc *RunContext) WarnTruncated(n int, what, flag string) {
+	rc.Warnf("results truncated to %d %s by --%s: more were available; raise --%s or drop it to get everything",
+		n, what, flag, flag)
+}
+
 // ConfirmMutation emits the post-mutation confirmation line on stderr. In the
 // default IMPLICIT Edit mode it is the committed ✓ (DESIGN §8: ✓ means the
 // change was committed). When explicitEditID is non-empty the mutation was

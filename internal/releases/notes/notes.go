@@ -105,6 +105,14 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Belt to the orchestrator's braces: the callers gate on
+	// ValidateDirLocales before opening an Edit, and repeating it here means a
+	// library caller (or a new call site that forgets) still cannot ship an
+	// `en_US.txt` to tracks.update. It is a re-listing of an already-read
+	// directory, which costs nothing next to the HTTP it prevents.
+	if err := ValidateDirLocales(dir); err != nil {
+		return nil, err
+	}
 	// Containment root, resolved once for the whole walk (PRD #459 / slice
 	// #461). The entries below come from the directory itself, but an entry can
 	// be a symlink pointing anywhere: without this, a `fr.txt` symlinked to

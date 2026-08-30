@@ -78,7 +78,7 @@ func TestSearchErrorIssues_paginatesToLimit(t *testing.T) {
 		`{"errorIssues":[{"type":"ANR"},{"type":"ANR"}],"nextPageToken":"P3"}`,
 		`{"errorIssues":[{"type":"NON_FATAL"}]}`,
 	}}
-	raw, err := vitals.SearchErrorIssues(context.Background(), &http.Client{Transport: rt}, "com.example.app", vitals.SearchOptions{Limit: 3})
+	raw, _, err := vitals.SearchErrorIssues(context.Background(), &http.Client{Transport: rt}, "com.example.app", vitals.SearchOptions{Limit: 3})
 	if err != nil {
 		t.Fatalf("SearchErrorIssues: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestListAnomalies_followsTokenToExhaustion(t *testing.T) {
 		`{"anomalies":[{"metricSet":"apps/x/crashRateMetricSet"}],"nextPageToken":"P2"}`,
 		`{"anomalies":[{"metricSet":"apps/x/anrRateMetricSet"}]}`,
 	}}
-	raw, err := vitals.ListAnomalies(context.Background(), &http.Client{Transport: rt}, "com.example.app", vitals.AnomalyListOptions{})
+	raw, _, err := vitals.ListAnomalies(context.Background(), &http.Client{Transport: rt}, "com.example.app", vitals.AnomalyListOptions{})
 	if err != nil {
 		t.Fatalf("ListAnomalies: %v", err)
 	}
