@@ -73,8 +73,9 @@ curl -fsSL https://gplay.sh/install | sh
 ```
 
 The install script verifies the archive's SHA-256 against the release
-`checksums.txt` and **fails closed**: a missing, incomplete, or mismatched
-checksum aborts the install. Set `GPLAY_INSTALL_NO_VERIFY=1` to bypass (prints
+`checksums.txt` and **fails closed**: a missing, ambiguous, or mismatched
+checksum aborts the install before anything is written, and so does a host with
+no sha256 tool. Set `GPLAY_INSTALL_NO_VERIFY=1` to bypass (prints
 a warning, greppable in CI). To add cosign and provenance checks on top, see
 [Verify a release](#verify-a-release).
 

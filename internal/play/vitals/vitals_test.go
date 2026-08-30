@@ -118,13 +118,59 @@ func TestSupportedMetricsAndDimensions(t *testing.T) {
 		t.Errorf("supported dimensions %v missing expected entries", dims)
 	}
 
-	periods := vitals.SupportedPeriods(idx)
+	periods := vitals.SupportedPeriods(idx, set)
 	if !contains(periods, "DAILY") || !contains(periods, "HOURLY") {
 		t.Errorf("supported periods %v missing DAILY/HOURLY", periods)
 	}
 	// The UNSPECIFIED sentinel is never a user-selectable value.
 	if contains(periods, "AGGREGATION_PERIOD_UNSPECIFIED") {
 		t.Errorf("periods %v leaked the UNSPECIFIED sentinel", periods)
+	}
+}
+
+// TestSupportedPeriods_memorySetsAreDailyOnly reads the per-set aggregation
+// periods from the snapshot: the memory sets document DAILY alone, so HOURLY
+// must not be offered for them (#440).
+func TestSupportedPeriods_memorySetsAreDailyOnly(t *testing.T) {
+	idx, err := schemaindex.Embedded()
+	if err != nil {
+		t.Fatalf("Embedded: %v", err)
+	}
+	for _, name := range []string{"anonrssandswapmemoryusage", "bitmapmemoryusage"} {
+		set, ok := vitals.MetricSetByName(name)
+		if !ok {
+			t.Fatalf("metric set %q not registered", name)
+		}
+		periods := vitals.SupportedPeriods(idx, set)
+		if len(periods) != 1 || periods[0] != "DAILY" {
+			t.Errorf("%s: supported periods = %v, want [DAILY]", name, periods)
+		}
+	}
+}
+
+// TestSupportedMetrics_memorySets proves the memory sets expose their
+// percentile catalog, read verbatim from the embedded index (#440).
+func TestSupportedMetrics_memorySets(t *testing.T) {
+	idx, err := schemaindex.Embedded()
+	if err != nil {
+		t.Fatalf("Embedded: %v", err)
+	}
+	cases := map[string]string{
+		"anonrssandswapmemoryusage": "anonRssAndSwapMemoryUsageP99",
+		"bitmapmemoryusage":         "bitmapMemoryUsageP99",
+	}
+	for name, want := range cases {
+		set, ok := vitals.MetricSetByName(name)
+		if !ok {
+			t.Fatalf("metric set %q not registered", name)
+		}
+		metrics := vitals.SupportedMetrics(idx, set)
+		if !contains(metrics, want) || !contains(metrics, "distinctUsers") {
+			t.Errorf("%s: supported metrics %v missing %s/distinctUsers", name, metrics, want)
+		}
+		if !contains(vitals.SupportedDimensions(idx, set), "deviceRamBucket") {
+			t.Errorf("%s: supported dimensions missing deviceRamBucket", name)
+		}
 	}
 }
 

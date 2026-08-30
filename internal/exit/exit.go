@@ -17,6 +17,7 @@
 //	40: API 5xx
 //	50: network failure
 //	60: state conflict (open edit, rate-limited, ambiguous target)
+//	70: findings present (a read-only check command reported drift; not an error)
 package exit
 
 import "errors"

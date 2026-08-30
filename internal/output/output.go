@@ -32,6 +32,12 @@ const (
 	FormatMarkdown Format = "markdown"
 )
 
+// EnvDefaultOutput names the env var that carries a personal default
+// Format. It sits between the flag and the auto-detection: a user who
+// always wants JSON exports it once instead of typing --output json on
+// every command.
+const EnvDefaultOutput = "GPLAY_DEFAULT_OUTPUT"
+
 // IsTerminalFn reports whether w is connected to a terminal. The default
 // implementation type-asserts w to *os.File and calls term.IsTerminal on
 // its fd; non-file writers are treated as non-TTY so JSON wins under any
@@ -114,7 +120,7 @@ func WriteJSON(w io.Writer, v any) error {
 // consistent across commands and can evolve in one place.
 func RegisterFlag(cmd *cobra.Command, dest *string) {
 	cmd.Flags().StringVar(dest, "output", "",
-		"output format: table, json, or markdown (default: auto, meaning table on TTY and json in pipes/CI)")
+		"output format: table, json, or markdown (default: $GPLAY_DEFAULT_OUTPUT, else auto, meaning table on TTY and json in pipes/CI)")
 }
 
 // MarkdownTable writes a standard GitHub-Flavored Markdown table: one
@@ -159,13 +165,27 @@ func joinCells(cells []string) string {
 	return strings.Join(escaped, " | ")
 }
 
-// Resolve returns the concrete Format to use for w. When requested is
-// FormatAuto: CI env non-empty → JSON, non-TTY → JSON, else → table. An
-// unknown explicit Format returns an error mentioning the three valid
-// values.
+// Resolve returns the concrete Format to use for w, layering three
+// sources, the most explicit winning: an explicit `requested` Format
+// (the --output flag), then $GPLAY_DEFAULT_OUTPUT, then the
+// auto-detection (CI env non-empty → JSON, non-TTY → JSON, else
+// table). The env var outranks the auto-detection on purpose: it is a
+// value the user typed, while CI and TTY state are guesses about
+// intent, so `GPLAY_DEFAULT_OUTPUT=table` still means table inside CI.
+// An unknown Format, from either the flag or the env var, returns a
+// usage error mentioning the three valid values.
 func Resolve(requested Format, w io.Writer) (Format, error) {
 	switch requested {
 	case FormatAuto:
+		if env := os.Getenv(EnvDefaultOutput); env != "" {
+			f := Format(env)
+			switch f {
+			case FormatTable, FormatJSON, FormatMarkdown:
+				return f, nil
+			default:
+				return "", exit.Usagef("unsupported %s %q (want table, json, or markdown)", EnvDefaultOutput, env)
+			}
+		}
 		if os.Getenv("CI") != "" {
 			return FormatJSON, nil
 		}

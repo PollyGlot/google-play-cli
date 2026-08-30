@@ -63,6 +63,7 @@ As of 1.0:
 - `gplay games`
 - `gplay recovery`, `gplay device-tiers`, `gplay customapps`
 - `gplay appstore`, the alternative-app-store surface
+- `gplay signing`, the self-hosted Cloud KMS key-custody surface
 - `gplay releases sharing`, `gplay releases expansion-files`, `gplay releases generated`
 - `gplay reviews history`
 
