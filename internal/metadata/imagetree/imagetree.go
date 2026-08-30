@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
@@ -80,7 +81,32 @@ var recognizedExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true}
 // additive stance of the text codec (removing an online-gone slot is apply's
 // job, not pull's).
 func Write(dir string, tr Tree) error {
+	// The locale keys of tr come from the Play API on the pull path: a string
+	// gplay did not author, joined straight into a filesystem path. Establish
+	// the containment root up front (creating dir, since pull writes into a
+	// tree that may not exist yet) and check every derived path against it,
+	// so a hostile or merely malformed locale cannot write outside dir
+	// (PRD #459 / slice #461).
+	//
+	// An empty Tree writes nothing and must therefore create nothing: returning
+	// early keeps `pull` on an app with no images from leaving an empty
+	// directory behind, which is what it did before containment was added.
+	if len(tr) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(dir, dirPerm); err != nil {
+		return err
+	}
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return err
+	}
 	for _, locale := range sortedLocales(tr) {
+		// A locale is one path component and nothing else: reject "..", a
+		// separator, or an absolute path before it is ever joined.
+		if err := pathguard.Segment("locale", locale); err != nil {
+			return err
+		}
 		slots := tr[locale]
 		imgDir := filepath.Join(dir, locale, imagesSubdir)
 		for _, ty := range images.Types() {
@@ -89,13 +115,13 @@ func Write(dir string, tr Tree) error {
 				continue
 			}
 			if ty.Gallery() {
-				if err := writeGallery(filepath.Join(imgDir, string(ty)), ty, seq); err != nil {
+				if err := writeGallery(root, filepath.Join(imgDir, string(ty)), ty, seq); err != nil {
 					return err
 				}
 				continue
 			}
 			// Singular: write the first (only) blob as <type>.<ext>.
-			if err := writeSingular(imgDir, ty, seq[0]); err != nil {
+			if err := writeSingular(root, imgDir, ty, seq[0]); err != nil {
 				return err
 			}
 		}
@@ -103,16 +129,19 @@ func Write(dir string, tr Tree) error {
 	return nil
 }
 
-func writeSingular(imgDir string, ty images.Type, data []byte) error {
+func writeSingular(root, imgDir string, ty images.Type, data []byte) error {
 	ext := Ext(data)
 	if ext == "" {
 		return fmt.Errorf("imagetree: %s: image bytes are neither PNG nor JPEG", ty)
+	}
+	if _, err := pathguard.Contain(root, imgDir); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(imgDir, dirPerm); err != nil {
 		return err
 	}
 	name := string(ty) + "." + ext
-	if err := os.WriteFile(filepath.Join(imgDir, name), data, filePerm); err != nil {
+	if err := writeContained(root, filepath.Join(imgDir, name), data); err != nil {
 		return err
 	}
 	// Idempotency: drop a sibling <type>.<otherext> left by a previous write
@@ -130,7 +159,10 @@ func writeSingular(imgDir string, ty images.Type, data []byte) error {
 	return nil
 }
 
-func writeGallery(galleryDir string, ty images.Type, seq [][]byte) error {
+func writeGallery(root, galleryDir string, ty images.Type, seq [][]byte) error {
+	if _, err := pathguard.Contain(root, galleryDir); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(galleryDir, dirPerm); err != nil {
 		return err
 	}
@@ -143,7 +175,7 @@ func writeGallery(galleryDir string, ty images.Type, seq [][]byte) error {
 		// 1-based, no zero-padding: Play caps galleries at 8 so a single
 		// digit always sorts correctly (ADR-0013).
 		name := fmt.Sprintf("%d.%s", i+1, ext)
-		if err := os.WriteFile(filepath.Join(galleryDir, name), data, filePerm); err != nil {
+		if err := writeContained(root, filepath.Join(galleryDir, name), data); err != nil {
 			return err
 		}
 		written[name] = true
@@ -153,12 +185,12 @@ func writeGallery(galleryDir string, ty images.Type, seq [][]byte) error {
 	// stale N+1.<ext> is not read back as a phantom screenshot and re-uploaded
 	// by apply. Only recognized image files are removed: a hand-added note
 	// stays put (this is not a destructive RemoveAll of the slot directory).
-	return pruneStaleGallery(galleryDir, written)
+	return pruneStaleGallery(root, galleryDir, written)
 }
 
 // pruneStaleGallery removes the recognized image files in galleryDir that are
 // not in keep (the set just written), leaving any unrecognized file untouched.
-func pruneStaleGallery(galleryDir string, keep map[string]bool) error {
+func pruneStaleGallery(root, galleryDir string, keep map[string]bool) error {
 	entries, err := os.ReadDir(galleryDir)
 	if err != nil {
 		return err
@@ -168,7 +200,13 @@ func pruneStaleGallery(galleryDir string, keep map[string]bool) error {
 			continue
 		}
 		if _, ext := splitExt(e.Name()); recognizedExts[ext] {
-			if err := os.Remove(filepath.Join(galleryDir, e.Name())); err != nil && !os.IsNotExist(err) {
+			// This branch DELETES, so containment matters most here: a symlink
+			// named 2.png must not turn a prune into a remove outside the tree.
+			victim, err := pathguard.Contain(root, filepath.Join(galleryDir, e.Name()))
+			if err != nil {
+				return err
+			}
+			if err := os.Remove(victim); err != nil && !os.IsNotExist(err) {
 				return err
 			}
 		}
@@ -189,12 +227,21 @@ func Read(dir string) (Tree, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Containment root, resolved once for the whole walk (PRD #459 / slice
+	// #461). Every locale, gallery and file name below comes off the disk, and
+	// any of them can be a symlink out of the tree: without this, an
+	// `en-US/images/icon.png` symlinked at a private file would be uploaded to
+	// a public store listing under the operator's own credentials.
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return nil, err
+	}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		locale := e.Name()
-		slots, err := readLocale(filepath.Join(dir, locale, imagesSubdir))
+		slots, err := readLocale(root, filepath.Join(dir, locale, imagesSubdir))
 		if err != nil {
 			return nil, err
 		}
@@ -208,7 +255,15 @@ func Read(dir string) (Tree, error) {
 // readLocale reads one locale's images/ directory into a slot map. A missing
 // images/ dir yields an empty map (the locale has only text, or nothing). Only
 // non-empty slots are returned.
-func readLocale(imgDir string) (map[images.Type][][]byte, error) {
+func readLocale(root, imgDir string) (map[images.Type][][]byte, error) {
+	// The read side uses ContainUserPath throughout: every name below was found
+	// by walking the operator's own tree, so `en-US/images` symlinked at a
+	// shared asset directory is a layout they can opt into
+	// (GPLAY_ALLOW_EXTERNAL_SYMLINKS). The write side above stays strict: its
+	// locales come from the API.
+	if _, err := pathguard.ContainUserPath(root, imgDir); err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(imgDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -223,7 +278,7 @@ func readLocale(imgDir string) (map[images.Type][][]byte, error) {
 			if !ok || !ty.Gallery() {
 				continue // stray dir, or a singular type named as a dir: ignore
 			}
-			seq, err := readGallery(filepath.Join(imgDir, e.Name()))
+			seq, err := readGallery(root, filepath.Join(imgDir, e.Name()))
 			if err != nil {
 				return nil, err
 			}
@@ -242,7 +297,7 @@ func readLocale(imgDir string) (map[images.Type][][]byte, error) {
 		if !ok || ty.Gallery() {
 			continue // unknown stem, or a gallery type as a flat file: ignore
 		}
-		data, err := os.ReadFile(filepath.Join(imgDir, e.Name()))
+		data, err := readContained(root, filepath.Join(imgDir, e.Name()))
 		if err != nil {
 			return nil, err
 		}
@@ -251,9 +306,33 @@ func readLocale(imgDir string) (map[images.Type][][]byte, error) {
 	return slots, nil
 }
 
+// writeContained is os.WriteFile with the containment check in front of it,
+// the write-side mirror of readContained: containing the directory is not
+// enough, because os.WriteFile follows a symlinked LEAF and an image file
+// pre-placed as a link would have its target overwritten by `images pull`.
+func writeContained(root, p string, data []byte) error {
+	target, err := pathguard.ContainWrite(root, p)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(target, data, filePerm)
+}
+
+// readContained is os.ReadFile with the containment check in front of it, so
+// no image file is opened before it has been proved to live inside root.
+func readContained(root, p string) ([]byte, error) {
+	if _, err := pathguard.ContainUserPath(root, p); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(p)
+}
+
 // readGallery reads a gallery directory's recognized image files in
 // filename-sorted (display) order, returning their bytes.
-func readGallery(galleryDir string) ([][]byte, error) {
+func readGallery(root, galleryDir string) ([][]byte, error) {
+	if _, err := pathguard.ContainUserPath(root, galleryDir); err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(galleryDir)
 	if err != nil {
 		return nil, err
@@ -270,7 +349,7 @@ func readGallery(galleryDir string) ([][]byte, error) {
 	sort.Strings(names) // filename sort == display order (ADR-0013)
 	seq := make([][]byte, 0, len(names))
 	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(galleryDir, name))
+		data, err := readContained(root, filepath.Join(galleryDir, name))
 		if err != nil {
 			return nil, err
 		}

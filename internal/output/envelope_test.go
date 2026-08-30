@@ -3,6 +3,7 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -49,6 +50,52 @@ func TestWriteErrorEnvelope_apiError_carriesExitCodeAndReasons(t *testing.T) {
 	}
 	if env.Error.Message == "" {
 		t.Errorf("message should carry the human error string")
+	}
+	if env.Error.Code != string(exit.CodeEditAlreadyExists) {
+		t.Errorf("code = %q, want %q", env.Error.Code, exit.CodeEditAlreadyExists)
+	}
+	if env.Error.Retryable {
+		t.Error("an already-open Edit is not fixed by replaying the same command")
+	}
+	if env.Error.Operation != "edits.commit" || env.Error.Package != "com.example.app" {
+		t.Errorf("operation/package = %q/%q, want edits.commit/com.example.app",
+			env.Error.Operation, env.Error.Package)
+	}
+}
+
+// TestWriteErrorEnvelope_retryableIsAlwaysEmitted guards the one field where an
+// omission and a false would be indistinguishable to a consumer: `retryable`
+// must appear in the JSON even when it is false.
+func TestWriteErrorEnvelope_retryableIsAlwaysEmitted(t *testing.T) {
+	var buf bytes.Buffer
+	if werr := output.WriteErrorEnvelope(&buf, exit.Usagef("missing --to")); werr != nil {
+		t.Fatalf("WriteErrorEnvelope: %v", werr)
+	}
+	raw := buf.String()
+	if !strings.Contains(raw, `"retryable"`) {
+		t.Errorf("envelope omits retryable:\n%s", raw)
+	}
+	if !strings.Contains(raw, `"code"`) {
+		t.Errorf("envelope omits code:\n%s", raw)
+	}
+	// A local failure made no API call, so neither field should be serialized.
+	if strings.Contains(raw, `"operation"`) || strings.Contains(raw, `"package"`) {
+		t.Errorf("a local failure must not claim an operation or package:\n%s", raw)
+	}
+}
+
+func TestWriteErrorEnvelope_retryableUpstreamFailure(t *testing.T) {
+	err := &api.Error{Operation: "edits.commit", Package: "com.example.app", StatusCode: 503, Message: "backend error"}
+	var buf bytes.Buffer
+	if werr := output.WriteErrorEnvelope(&buf, err); werr != nil {
+		t.Fatalf("WriteErrorEnvelope: %v", werr)
+	}
+	env := decodeEnvelope(t, &buf)
+	if env.Error.Code != string(exit.CodeUpstreamUnavailable) {
+		t.Errorf("code = %q, want %q", env.Error.Code, exit.CodeUpstreamUnavailable)
+	}
+	if !env.Error.Retryable {
+		t.Error("a 5xx must be marked retryable so a wrapper needs no cause table")
 	}
 }
 

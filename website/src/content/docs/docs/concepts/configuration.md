@@ -60,9 +60,45 @@ naming the offending file. Put it in `config.local.json`, the
 | `GPLAY_SERVICE_ACCOUNT` | Service-account credential: a file path or inline JSON. The right choice in CI. |
 | `GPLAY_ACCOUNT` | Name of a stored Account to use. |
 | `GPLAY_READONLY` | When truthy (`1`/`true`/`yes`/`on`), refuse every command that mutates Google Play state (exit `4`) before any network call. Read commands and `--dry-run` still run. See [gplay for AI agents](/docs/agents/agent-guide/). |
+| `GPLAY_ALLOW_EXTERNAL_SYMLINKS` | When truthy (`1`/`true`/`yes`/`on`), let a file gplay reads from your metadata, images or release-notes tree be a symlink pointing **outside** that tree, and print a `NOTE:` on stderr naming each path that does. Off by default: such a path is refused (exit `2`). See [shared trees in a monorepo](#shared-trees-in-a-monorepo). |
 | `GPLAY_INSTALL_NO_VERIFY` | Read by the install script only: bypass the SHA-256 checksum verification (air-gapped / mirrored installs). Prints a warning. See [installation](/docs/getting-started/installation/). |
 | `CI` | When `true`, output defaults to JSON. See [output formats](/docs/concepts/output-formats/). |
 | `NO_COLOR` | Disable colour in output. |
+
+## Shared trees in a monorepo
+
+gplay reads your metadata, images and release-notes directories by walking
+them, and a file name in such a tree can point anywhere. A `fr-FR.txt`
+symlinked at `~/.ssh/id_rsa` would be uploaded to a public store listing under
+your own credentials, so gplay refuses (exit `2`) any file whose target lands
+outside the directory it was found in. A tree reached through a symlink is
+fine: it is leaving the tree that is refused, not links as such.
+
+Monorepos sometimes do leave the tree on purpose:
+
+```txt
+metadata/en-US/images -> ../../shared/assets/en-US
+metadata/en-US/title.txt -> ../../shared/i18n/en-US/title.txt
+```
+
+Set `GPLAY_ALLOW_EXTERNAL_SYMLINKS=1` to allow it. gplay then follows the link
+and prints one `NOTE:` line on stderr per path that actually left the tree, so
+the fact still shows up in your CI log:
+
+```sh
+GPLAY_ALLOW_EXTERNAL_SYMLINKS=1 gplay metadata apply --package com.example.app
+# on stderr:
+# NOTE: "/repo/metadata/en-US/title.txt" resolves to "/repo/shared/i18n/en-US/title.txt", outside "/repo/metadata"; followed because GPLAY_ALLOW_EXTERNAL_SYMLINKS is set.
+```
+
+What it does **not** do:
+
+- It follows a link **out** of the tree; it does not allow a `..` component
+  climbing **above** the root.
+- It never applies to a path gplay builds from data the API returned (a locale,
+  a package name). `metadata pull` and `images pull` write into
+  `<dir>/<locale>/`, so a pull into a symlinked locale directory stays refused
+  whatever the variable is set to.
 
 ## Related
 

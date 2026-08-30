@@ -206,8 +206,17 @@ func TestNew_wiresIOFromBoot(t *testing.T) {
 	if rc.Stdout != boot.Stdout {
 		t.Errorf("Stdout not wired from Boot")
 	}
-	if rc.Stderr != boot.Stderr {
-		t.Errorf("Stderr not wired from Boot")
+	// Stderr is wired from Boot but NOT pointer-identical: the kernel wraps it
+	// in the credential-redaction filter (PRD #459), so the property to assert
+	// is that writes reach Boot.Stderr, not that it is the same object.
+	if rc.Stderr == nil {
+		t.Fatalf("Stderr not wired from Boot")
+	}
+	if _, err := io.WriteString(rc.Stderr, "wired\n"); err != nil {
+		t.Fatalf("write to rc.Stderr: %v", err)
+	}
+	if got := boot.Stderr.(*bytes.Buffer).String(); !strings.Contains(got, "wired") {
+		t.Errorf("rc.Stderr does not forward to Boot.Stderr, got %q", got)
 	}
 	if rc.ConfigPath != boot.ConfigPath {
 		t.Errorf("ConfigPath mismatch")
@@ -694,10 +703,14 @@ func TestRunCobra_readonly_unmarkedReadCommandRuns(t *testing.T) {
 
 type envelopeShape struct {
 	Error struct {
-		ExitCode int      `json:"exitCode"`
-		Message  string   `json:"message"`
-		Reasons  []string `json:"reasons"`
-		Requires []string `json:"requires"`
+		Code      string   `json:"code"`
+		ExitCode  int      `json:"exitCode"`
+		Retryable bool     `json:"retryable"`
+		Operation string   `json:"operation"`
+		Package   string   `json:"package"`
+		Message   string   `json:"message"`
+		Reasons   []string `json:"reasons"`
+		Requires  []string `json:"requires"`
 	} `json:"error"`
 }
 
@@ -739,6 +752,40 @@ func TestRun_jsonFailure_apiError_writesEnvelopeWithReasons(t *testing.T) {
 	}
 	if len(env.Error.Reasons) != 1 || env.Error.Reasons[0] != "editAlreadyExists" {
 		t.Errorf("envelope reasons = %v, want [editAlreadyExists]", env.Error.Reasons)
+	}
+	if env.Error.Code != string(exit.CodeEditAlreadyExists) {
+		t.Errorf("envelope code = %q, want %q (PRD #447)", env.Error.Code, exit.CodeEditAlreadyExists)
+	}
+	if env.Error.Retryable {
+		t.Error("envelope marks an already-open Edit retryable; it is not")
+	}
+	if env.Error.Operation != "edits.commit" || env.Error.Package != "com.example.app" {
+		t.Errorf("envelope operation/package = %q/%q, want edits.commit/com.example.app",
+			env.Error.Operation, env.Error.Package)
+	}
+}
+
+// TestRun_jsonFailure_stderrCarriesNoEnvelope pins the channel split of
+// ADR-0003/ADR-0023 under the enriched envelope: the machine payload goes to
+// stdout, and stderr stays the human channel the kernel never writes JSON to.
+func TestRun_jsonFailure_stderrCarriesNoEnvelope(t *testing.T) {
+	boot := newBoot(t)
+	var stdout, stderr bytes.Buffer
+	boot.Stdout = &stdout
+	boot.Stderr = &stderr
+	apiErr := &api.Error{Operation: "edits.insert", Package: "com.example.app", StatusCode: 429, Message: "too many requests"}
+	err := kernel.Run(boot, kernel.Inputs{Format: output.FormatJSON}, func(rc *kernel.RunContext) (output.Renderable, error) {
+		return nil, apiErr
+	})
+	if err == nil {
+		t.Fatal("expected the failure to surface")
+	}
+	env := decodeOneEnvelope(t, stdout.String())
+	if env.Error.Code != string(exit.CodeRateLimitExceeded) || !env.Error.Retryable {
+		t.Errorf("envelope = %+v, want RATE_LIMIT_EXCEEDED and retryable", env.Error)
+	}
+	if strings.Contains(stderr.String(), `"code"`) {
+		t.Errorf("stderr must stay the human channel; got %q", stderr.String())
 	}
 }
 
