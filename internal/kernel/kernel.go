@@ -42,6 +42,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/editpin"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/redact"
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
@@ -360,10 +361,7 @@ func NewForTest(ctx context.Context, boot Boot, in Inputs) *RunContext {
 	if stdout == nil {
 		stdout = io.Discard
 	}
-	stderr := boot.Stderr
-	if stderr == nil {
-		stderr = io.Discard
-	}
+	stderr := redact.Writer(boot.Stderr)
 	return &RunContext{
 		Ctx:          ctx,
 		Stdout:       stdout,
@@ -546,10 +544,12 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 	if stdout == nil {
 		stdout = io.Discard
 	}
-	stderr := boot.Stderr
-	if stderr == nil {
-		stderr = io.Discard
-	}
+	// Redaction is wired in main for the real binary, but rc.Stderr is also
+	// reached by tests and by any caller assembling a Boot by hand: wrapping
+	// here makes the guarantee a property of the RunContext rather than of one
+	// call site remembering to wrap. redact.Writer is idempotent, so the two
+	// wrappings do not stack. It also absorbs the nil case (→ io.Discard).
+	stderr := redact.Writer(boot.Stderr)
 
 	format, err := output.Resolve(in.Format, stdout)
 	if err != nil {
