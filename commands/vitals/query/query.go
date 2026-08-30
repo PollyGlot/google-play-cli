@@ -67,10 +67,12 @@ anr, …) wrap.
   gplay vitals query crashrate --metrics crashRate,distinctUsers --dimensions versionCode
   gplay vitals query anrrate --period HOURLY --since 24h
 
---metrics and --dimensions are validated OFFLINE against the embedded API
-schema; unknown values are rejected with the valid set listed (names are never
-invented: they come from the snapshot). With no --metrics the set's primary
-metric is used. Default window: --since 28d, --period DAILY (HOURLY opt-in).
+--metrics, --dimensions and --period are validated OFFLINE against the embedded
+API schema; unknown values are rejected with the valid set listed (names are
+never invented: they come from the snapshot). With no --metrics the set's
+primary metric is used. Default window: --since 28d, --period DAILY (HOURLY
+opt-in). Supported periods are per metric set: the memory sets
+(anonrssandswapmemoryusage, bitmapmemoryusage) accept DAILY only.
 
 This is a READ-ONLY surface on a distinct Google service (Play Developer
 Reporting), requested with the least-privilege playdeveloperreporting scope.
@@ -92,7 +94,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringSliceVar(&in.Metrics, "metrics", nil, "metrics to aggregate (default: the set's primary metric); validated against the schema")
 	cmd.Flags().StringSliceVar(&in.Dimensions, "dimensions", nil, "dimensions to slice by (e.g. versionCode,countryCode); validated against the schema")
-	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")
+	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE (per metric set; memory sets are DAILY-only)")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	return cmd
 }

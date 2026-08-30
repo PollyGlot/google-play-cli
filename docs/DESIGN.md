@@ -56,11 +56,12 @@ Deciding rules:
 
 **2. Domain verbs** — each names a real gesture no generic verb captures:
 `upload`, `promote`, `rollout`, `halt`, `resume`, `complete`, `reply`, `pull`,
-`apply`, `validate`, `download`, `login`/`logout`, and the App Recovery trio
-`deploy`, `cancel`, `add-targeting`. Admission test: it must state a domain gesture
-`set`/`create`/`view` could not say honestly. The `releases` rollout state
-machine (`rollout`/`halt`/`resume`/`complete`) lives flat here — these act on a
-release's rollout *state*, not on a "rollout" resource, so they are not nested.
+`apply`, `validate`, `download`, `enroll`, `rotate`, `login`/`logout`, and the
+App Recovery trio `deploy`, `cancel`, `add-targeting`. Admission test: it must
+state a domain gesture `set`/`create`/`view` could not say honestly. The
+`releases` rollout state machine (`rollout`/`halt`/`resume`/`complete`) lives
+flat here — these act on a release's rollout *state*, not on a "rollout"
+resource, so they are not nested.
 The recovery trio was admitted under this test and recorded in
 [ADR-0030](./adr/0030-android-publisher-long-tail-surfaces.md): `deploy`
 (activate a draft, ≠ `create`/`set`), `cancel` (terminate to status CANCELED,
@@ -74,6 +75,18 @@ cannot state — and mirrors the API method `.download`. It is gplay's only bina
 download-to-file verb; its destination flag is `--dest` (`--dest -` for stdout),
 never `--output`, which controls structured-data format
 ([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
+`enroll` and `rotate` (`gplay signing`) were admitted on the same test with
+[PRD #476](https://github.com/PollyGlot/google-play-cli/issues/476): they act on
+an app's *signing key custody*, a state no resource verb can state honestly.
+`enroll` moves an app onto a key the developer hosts in their own Cloud KMS
+(a one-way transition of the app itself, so not `create`, which makes an object
+exist, nor `add`, which enrolls into a collection gplay can also `remove` from),
+and `rotate` swaps that live key for a successor carrying an apksigner
+proof-of-rotation lineage (an ordered succession, not `set`, which would imply a
+field you can overwrite back). Both mirror the API methods
+`appsigning.enrollApp` and `appsigning.rotateAppSigningKey`. `rotate` is
+unrelated to the release `rollout` state machine above: different noun,
+different resource.
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
 grammar, keeping their own names: `version`, `exit-codes`, `install-skills`
@@ -330,15 +343,26 @@ narrows which slots appear.
 ### Formats
 
 A command's output Format is one of `table`, `json`, or `markdown`. The
-default Format is `auto` — resolved by the dispatcher in `internal/output`:
+dispatcher in `internal/output` layers three sources, the most explicit
+winning:
 
-- `CI=true` (non-empty) → `json`
-- stdout is not a TTY → `json`
-- otherwise → `table`
+1. `--output table|json|markdown`: always wins.
+2. `$GPLAY_DEFAULT_OUTPUT`: a personal default, same value set as the
+   flag. An unset or empty value means "not set"; any other unknown
+   value is CLI misuse and fails with exit `2` naming the env var and
+   the three valid formats.
+3. `auto`, the TTY-aware detection:
+   - `CI=true` (non-empty) → `json`
+   - stdout is not a TTY → `json`
+   - otherwise → `table`
 
-Explicit `--output table|json|markdown` always wins. `--output table` in
-a piped context (e.g. behind `tee`) is the escape hatch when the
-auto-detect is wrong. See [ADR-0005](./adr/0005-tty-aware-output.md).
+`GPLAY_DEFAULT_OUTPUT` outranks the auto-detection, `CI` included: it is
+a value the user typed, while CI and TTY state are guesses about intent,
+so `GPLAY_DEFAULT_OUTPUT=table` still means `table` inside CI.
+
+`--output table` in a piped context (e.g. behind `tee`) is the escape
+hatch when the auto-detect is wrong. See
+[ADR-0005](./adr/0005-tty-aware-output.md).
 
 ### Commands without `--output`
 
@@ -582,6 +606,7 @@ pointing at a shared translation):
 | `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
 | `50` | Network (timeout, DNS, refused) | **Yes** |
 | `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
+| `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
 
@@ -610,6 +635,17 @@ the exit-3 harmonisation above, the fix *restores* this documented table rather
 than changing the frozen contract (ADR-0010), which is why it shipped as a
 `fix`. Never hand-roll an argument-count check in a command — declare the cobra
 validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
+
+**Exit 70 is not an error.** A check command that sweeps and reports (today only
+`gplay apps audit`, PRD #449) exits `70` when its report carries at least one
+finding: every call succeeded, the document on stdout is complete, and the
+non-zero status exists purely so CI can gate on "clean" without parsing JSON. It
+is a distinct code precisely so an automated caller can tell *found drift* (`70`)
+from *could not look* (`10`/`11`/`30`/`40`/`50`); collapsing it into `1` would
+make a healthy audit and a broken one indistinguishable. Build it with
+`exit.Findingsf(…)`, and never for a call that actually failed: a per-app API
+failure during a sweep is reported inside the document and drives the ordinary
+API code.
 
 ---
 

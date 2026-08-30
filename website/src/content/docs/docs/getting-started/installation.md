@@ -23,8 +23,9 @@ curl -fsSL https://gplay.sh/install | sh
 ```
 
 The script **verifies the downloaded archive's SHA-256 against the release
-`checksums.txt` and fails closed**: a missing checksum file, no entry for
-your platform, or a mismatch all abort the install. For air-gapped or
+`checksums.txt` and fails closed**: a missing checksum file, no entry (or an
+ambiguous one) for your platform, a mismatch, or no sha256 tool on the host all
+abort the install before anything is written. For air-gapped or
 mirrored installs where the checksum file is unreachable, set
 `GPLAY_INSTALL_NO_VERIFY=1` to bypass (it prints a warning and stays greppable
 in your CI config).
