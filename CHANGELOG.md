@@ -5,6 +5,16 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/PollyGlot/google-play-cli/compare/v1.2.1...v1.3.0) (2026-08-28)
+
+
+### Features
+
+* **apps:** add `apps audit`, a read-only consistency sweep ([#488](https://github.com/PollyGlot/google-play-cli/issues/488)) ([f14fd0f](https://github.com/PollyGlot/google-play-cli/commit/f14fd0ff0bf89d7dbcfbdb255b7cab81c2cdd61b))
+* **output:** honour GPLAY_DEFAULT_OUTPUT under the TTY-aware defaults ([#482](https://github.com/PollyGlot/google-play-cli/issues/482)) ([4447d1e](https://github.com/PollyGlot/google-play-cli/commit/4447d1e173134088bfce9a00bffdc747f4dcd2ef))
+* **signing:** Play App Signing enrollment and KMS key rotation ([#484](https://github.com/PollyGlot/google-play-cli/issues/484)) ([6ed1956](https://github.com/PollyGlot/google-play-cli/commit/6ed1956ce235ff4ed85a1c33509ad966e509369c))
+* **vitals:** query the anon RSS/swap and bitmap memory metric sets ([#483](https://github.com/PollyGlot/google-play-cli/issues/483)) ([100d331](https://github.com/PollyGlot/google-play-cli/commit/100d3315c10731b6482a94042ccdb3983aa913aa))
+
 ## [1.2.1](https://github.com/PollyGlot/google-play-cli/compare/v1.2.0...v1.2.1) (2026-08-19)
 
 
