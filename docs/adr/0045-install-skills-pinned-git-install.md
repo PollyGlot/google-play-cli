@@ -132,12 +132,18 @@ Skills land in `~/.claude/skills`, the standard agent-skills layout, user-wide
 for the reason ADR-0028 §2 gave (skills drive the binary, so they are useful in
 every project). `--dir` retargets it for an agent that reads elsewhere.
 
-The npx passthrough is gone with the npx. `install-skills` now takes no
-positional arguments, and `--agent` / `--project` no longer exist: they were
-flags of a third-party CLI that gplay merely forwarded to. This is a breaking
-change to a leaf classified as frozen Public ([ADR-0042](0042-one-zero-ga-and-stability-label-mechanism.md)),
-and it ships as one: a stability label is not a promise to keep executing an
-unreviewed third-party program.
+The npx passthrough is gone with the npx: `install-skills` now takes no
+positional arguments, and there is no third-party CLI left to forward flags to.
+But the leaf is classified frozen Public ([ADR-0042](0042-one-zero-ga-and-stability-label-mechanism.md)),
+so the documented flags of the old recipe (`--agent`, `--project`, `--global`,
+`--yes`) do not disappear: they are kept as hidden, deprecated no-ops. A script
+built on the ADR-0028 recipe still exits 0 and still ends with the pack
+installed; each ignored flag earns a deprecation warning on stderr (stdout
+stays data-only, ADR-0003), and the `--help` prose states the deprecation. The
+change ships as a `feat`, not a breaking one: the contract that survives is
+"the command installs the skills and exits 0", not the third-party program that
+used to do it. Stray positional arguments were never documented and are
+rejected.
 
 ### 5. Failures stay opaque, exit 1
 

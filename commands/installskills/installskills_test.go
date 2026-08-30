@@ -487,11 +487,48 @@ func TestInstallSkills_gitFailureIsOpaqueExitOne(t *testing.T) {
 
 func TestInstallSkills_rejectsPositionalArgs(t *testing.T) {
 	pin, _ := fixturePin(t)
-	// The npx passthrough is gone: a stray argument is misuse, not something to
-	// forward to a third-party installer.
-	_, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--agent", "claude")
+	// The npx passthrough is gone: a stray positional argument is misuse, not
+	// something to forward to a third-party installer.
+	_, _, err := execCmd(t, installskills.Options{Pin: &pin}, "something")
 	if err == nil {
-		t.Fatal("expected an error for an unknown flag")
+		t.Fatal("expected an error for a positional argument")
+	}
+}
+
+// TestInstallSkills_legacyFlagsAreDeprecatedNoOps proves the frozen Public
+// contract survives the installer swap (ADR-0045 §4): every documented flag of
+// the old npx recipe is still accepted, changes nothing, warns on stderr, and
+// the run exits 0 with stdout carrying only data (ADR-0003).
+func TestInstallSkills_legacyFlagsAreDeprecatedNoOps(t *testing.T) {
+	pin, _ := fixturePin(t)
+	target := t.TempDir()
+
+	stdout, stderr, err := execCmd(t, installskills.Options{Pin: &pin},
+		"--dir", target, "--agent", "claude", "--project", "--global", "--yes")
+	if err != nil {
+		t.Fatalf("legacy flags must be no-ops, got error: %v\nstderr: %s", err, stderr)
+	}
+	for _, flag := range []string{"--agent", "--project", "--global", "--yes"} {
+		want := "warning: " + flag + " is deprecated and ignored"
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr missing %q\ngot:\n%s", want, stderr)
+		}
+	}
+	// The install itself ran normally: the flags were ignored, not honored.
+	if got := read(t, filepath.Join(target, "gplay-setup", "SKILL.md")); got != "setup skill body\n" {
+		t.Errorf("install did not run under legacy flags: %q", got)
+	}
+	// stdout stays data-only: installed paths, no warning leaked into it.
+	if strings.Contains(stdout, "deprecated") {
+		t.Errorf("deprecation warning leaked to stdout:\n%s", stdout)
+	}
+	// The legacy flags stay out of the advertised interface.
+	help, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--help")
+	if err != nil {
+		t.Fatalf("--help: %v", err)
+	}
+	if strings.Contains(help, "--agent string") {
+		t.Errorf("hidden legacy flag advertised in --help:\n%s", help)
 	}
 }
 

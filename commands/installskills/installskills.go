@@ -139,6 +139,19 @@ var errGitMissing = errors.New("git not found on PATH")
 // project, not just the current one (ADR-0028 §2).
 var defaultSkillsDir = filepath.Join(".claude", "skills")
 
+// legacyFlags are the package-runner-era passthrough flags the ADR-0028 installer
+// documented (`--agent`, `--project`, plus the recipe's own `--global` and
+// `--yes`). The pinned-git installer has no third-party CLI to forward them to,
+// but `install-skills` is a frozen Public leaf (ADR-0042), so a script built on
+// the old recipe must keep exiting 0: each is accepted as a no-op with a
+// deprecation warning on stderr (ADR-0045 §4), not rejected.
+var legacyFlags = []struct{ name, kind string }{
+	{"agent", "string"},
+	{"project", "bool"},
+	{"global", "bool"},
+	{"yes", "bool"},
+}
+
 // NewCommand returns the cobra command for `gplay install-skills`.
 func NewCommand(opts Options) *cobra.Command {
 	opts = opts.withDefaults()
@@ -169,15 +182,39 @@ else already in that directory is left untouched. Every installed file is
 verified against the pinned checkout, and if any part of the install fails the
 whole pack is rolled back to its previous state.
 
-Requires git on PATH; nothing else.`,
+Requires git on PATH; nothing else.
+
+The passthrough flags of the former installer (--agent, --project, --global,
+--yes) are deprecated: they are accepted for compatibility, ignored, and warned
+about on stderr. The pack is always installed whole, for every agent reading
+the target directory.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The warning goes to stderr before the install runs: stdout stays
+			// data-only (ADR-0003), and the user hears about the ignored flag
+			// even when the install then fails for an unrelated reason.
+			for _, f := range legacyFlags {
+				if cmd.Flags().Changed(f.name) {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+						"warning: --%s is deprecated and ignored: install-skills no longer forwards to the skills package runner (ADR-0045)\n", f.name)
+				}
+			}
 			return run(cmd, opts, dir)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "target agent-skills directory (default ~/"+defaultSkillsDir+")")
+	for _, f := range legacyFlags {
+		if f.kind == "string" {
+			cmd.Flags().String(f.name, "", "")
+		} else {
+			cmd.Flags().Bool(f.name, false, "")
+		}
+		// Hidden, not advertised: the flags exist only so the old recipe keeps
+		// exiting 0. The help text above documents the deprecation in prose.
+		_ = cmd.Flags().MarkHidden(f.name)
+	}
 	return cmd
 }
 
