@@ -11,6 +11,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/accessiblecmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
+	"github.com/PollyGlot/google-play-cli/commands/apps/auditcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/detailscmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/initcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
@@ -84,6 +85,8 @@ import (
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
 	reviewsview "github.com/PollyGlot/google-play-cli/commands/reviews/view"
 	schemacmd "github.com/PollyGlot/google-play-cli/commands/schema"
+	signingenroll "github.com/PollyGlot/google-play-cli/commands/signing/enroll"
+	signingrotate "github.com/PollyGlot/google-play-cli/commands/signing/rotate"
 	subscriptionsapply "github.com/PollyGlot/google-play-cli/commands/subscriptions/apply"
 	subscriptionspricesconvert "github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/convert"
 	subscriptionspricesmigrate "github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/migrate"
@@ -245,6 +248,10 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	apps.AddCommand(viewcmd.NewCommand(boot))
 	apps.AddCommand(detailscmd.NewCommand(boot))
 	apps.AddCommand(removecmd.NewCommand(boot))
+	// #449: a read-only consistency sweep. Experimental, not MarkMutating: it
+	// only ever reads (the throwaway Edit it opens is always discarded), so a
+	// GPLAY_READONLY environment must still be able to audit itself.
+	apps.AddCommand(kernel.Experimental(auditcmd.NewCommand(boot)))
 	root.AddCommand(apps)
 
 	releases := &cobra.Command{
@@ -417,6 +424,28 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// #243 batch, with three new domain verbs (deploy/cancel/add-targeting) that
 	// have never been driven through a real incident.
 	root.AddCommand(kernel.Experimental(recoveryGroup))
+
+	// `gplay signing`: Play App Signing with a self-hosted Google Cloud KMS key
+	// (appsigning). A top-level namespace rather than a leaf under `apps`: it
+	// addresses the app-signing resource, app-scoped and OUTSIDE the Edit
+	// lifecycle (POST custom verbs on /applications/{name}/appSigning). Both
+	// leaves are enterprise-only: standard, Google-managed enrollment cannot be
+	// done via API at all, and rotating a Google-managed key goes through the
+	// Play Console. Each swaps the live signing key of a real app, so each
+	// requires --confirm (exit 3 if missing) per ADR-0043's criterion. See
+	// PRD #476 / ADR-0026 / CONTEXT.md.
+	signingGroup := &cobra.Command{
+		Use:           "signing",
+		Short:         "Manage Play App Signing with a self-hosted Cloud KMS key (enterprise key custody)",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	signingGroup.AddCommand(kernel.MarkMutating(signingenroll.NewCommand(boot)))
+	signingGroup.AddCommand(kernel.MarkMutating(signingrotate.NewCommand(boot)))
+	// [experimental] (ADR-0010/ADR-0042): a low-traffic enterprise surface whose
+	// flag shape has never been exercised against a real Cloud KMS key.
+	root.AddCommand(kernel.Experimental(signingGroup))
 
 	// `gplay team`: manage the Developer account's members (Users) and their
 	// per-app access (Grants). The first gplay surface keyed by the Developer

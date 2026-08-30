@@ -48,8 +48,9 @@ func (s MetricSet) QueryMethodID() string {
 	return "playdeveloperreporting.vitals." + s.Name + ".query"
 }
 
-// metricSets is the declared set of queryable metric sets: the seven read-only
-// signals the Play Developer Reporting API exposes (#49). It is explicit (like
+// metricSets is the declared set of queryable metric sets: the read-only
+// signals the Play Developer Reporting API exposes (#49, memory sets #440). It
+// is explicit (like
 // discovery.Services) and gated against the embedded index by an integrity test
 // so a typo or a snapshot drift fails offline.
 var metricSets = []MetricSet{
@@ -60,6 +61,8 @@ var metricSets = []MetricSet{
 	{Name: "excessivewakeuprate", Resource: "excessiveWakeupRateMetricSet"},
 	{Name: "lmkrate", Resource: "lmkRateMetricSet"},
 	{Name: "stuckbackgroundwakelockrate", Resource: "stuckBackgroundWakelockRateMetricSet"},
+	{Name: "anonrssandswapmemoryusage", Resource: "anonRssAndSwapMemoryUsageMetricSet"},
+	{Name: "bitmapmemoryusage", Resource: "bitmapMemoryUsageMetricSet"},
 }
 
 // MetricSets returns the declared metric sets in registry order.
@@ -240,18 +243,32 @@ func SupportedDimensions(idx schemaindex.Index, set MetricSet) []string {
 	return parseCatalog(s.Properties["dimensions"].Description, "Supported dimensions:")
 }
 
-// SupportedPeriods returns the user-selectable aggregation periods (DAILY,
-// HOURLY, FULL_RANGE) read from the TimelineSpec schema's `aggregationPeriod`
-// enum in idx, dropping the *_UNSPECIFIED sentinel. The TimelineSpec is
-// resolved through a metric set's request schema, so the enum is read from the
-// snapshot, not hand-listed.
-func SupportedPeriods(idx schemaindex.Index) []string {
-	if len(metricSets) == 0 {
-		return nil
-	}
-	reqSchema, ok := requestSchema(idx, metricSets[0])
+// periodEntry matches one `* DAILY:` bullet leader of the "Supported
+// aggregation periods" prose. Unlike metrics and dimensions, Google writes the
+// period names bare (no backticks), in SCREAMING_SNAKE_CASE.
+var periodEntry = regexp.MustCompile(`\*\s+([A-Z][A-Z0-9_]*):`)
+
+// SupportedPeriods returns the aggregation periods a metric set accepts (a
+// subset of DAILY, HOURLY, FULL_RANGE), read verbatim from the "Supported
+// aggregation periods" prose of its request schema's `timelineSpec` property.
+// The set matters: the memory sets are DAILY-only where crashrate also accepts
+// HOURLY, so an unsupported --period is rejected offline instead of coming back
+// as a server 400 (#440). When the prose is missing, the TimelineSpec enum is
+// the fallback, so the validation never invents a period either way.
+func SupportedPeriods(idx schemaindex.Index, set MetricSet) []string {
+	reqSchema, ok := requestSchema(idx, set)
 	if !ok {
 		return nil
+	}
+	desc := reqSchema.Properties["timelineSpec"].Description
+	if i := strings.Index(desc, "Supported aggregation periods:"); i >= 0 {
+		var out []string
+		for _, m := range periodEntry.FindAllStringSubmatch(desc[i:], -1) {
+			out = append(out, m[1])
+		}
+		if len(out) > 0 {
+			return out
+		}
 	}
 	tlName := reqSchema.Properties["timelineSpec"].Ref
 	tl, ok := idx.Schemas[tlName]

@@ -173,6 +173,8 @@ table is in [`DESIGN.md`](DESIGN.md#9-exit-codes); the short version:
   error
 - `2` → CLI usage bug in your workflow
 - `4` → denied by `GPLAY_READONLY`; **not** retryable, and not fixable by a flag
+- `70` → a check command (`apps audit`) ran fine and **found** drift; the report
+  on stdout is complete, act on what it names
 
 > An exit 30 or 60 carrying the `editAlreadyExists` reason is the orphaned-Edit
 > case — a stale Edit left open by a hard-killed run. Don't blind-retry it; see
@@ -353,6 +355,7 @@ third-party action is SHA-pinned (see
 | `ci.yml` — **Fuzz smoke** | PR + push to `main` | bounded fuzzing of the untrusted-input parsers. Not required. |
 | `codeql.yml` | PR + push to `main` + weekly | CodeQL `security-and-quality` static analysis of our own Go. Not required (yet). |
 | `govulncheck.yml` | weekly + `go.mod`/`go.sum` push | dependency-vulnerability scan. |
+| `release-rehearsal.yml` | PR touching release machinery | non-publishing GoReleaser dry run. Not required. |
 
 ### Path-based job gating
 
@@ -404,6 +407,27 @@ changed path, never by trust, so there's no loss of safety.
 When adding a path that the build consumes, add it to the filter in the same PR.
 A green "Build, lint, test" that finished in seconds means the job *skipped*, not
 that it passed — check the job's step list before reading it as a signal.
+
+### Release rehearsal
+
+A release config is otherwise only exercised once a tag exists, i.e. mid-release,
+when a mistake costs a half-published version. `release-rehearsal.yml` runs the
+same GoReleaser config in dry run on the PR that changes it: `goreleaser check`
+(advisory) then `release --snapshot --clean --skip=publish,sign,sbom,announce`,
+the same flags as `make release-snapshot`. Nothing is published: `--snapshot`
+plus the skip list, `permissions: contents: read`, and no secret reaches the job
+(the tap token is a placeholder string, present only so the Homebrew template
+renders).
+
+It triggers on `.goreleaser.yaml`, the release workflows, `install.sh` and
+`Makefile`, so ordinary code PRs don't pay it, and it is **not** a required
+check for exactly that reason: a check that never runs on most PRs would block
+merge if required.
+
+`goreleaser check` is `continue-on-error` because it also exits non-zero on
+deprecations, and `brews:` is deprecated in favour of `homebrew_casks:`.
+Migrating changes how users install gplay, so it is a product decision rather
+than something CI should force; the snapshot build is the blocking gate.
 
 ### CodeQL
 

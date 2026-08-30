@@ -89,12 +89,28 @@ else
   if ! curl -fsSL "$checksums_url" -o "$tmp/checksums.txt"; then
     die "could not fetch checksums.txt for $VERSION — refusing to install unverified. Set GPLAY_INSTALL_NO_VERIFY=1 to bypass (air-gapped/mirrored installs only)."
   fi
-  expected="$(grep " $archive$" "$tmp/checksums.txt" | awk '{print $1}' || true)"
-  if [ -z "$expected" ]; then
-    die "no checksum entry for $archive in checksums.txt — refusing to install unverified. Set GPLAY_INSTALL_NO_VERIFY=1 to bypass (air-gapped/mirrored installs only)."
+  # Exact field match on the archive name, not a regex over the line: the name
+  # contains dots, and a loose pattern would let an attacker-supplied
+  # checksums.txt satisfy the lookup with an entry for a different artifact.
+  # goreleaser writes "<sha256>  <name>"; a leading "*" marks binary mode.
+  expected="$(awk -v a="$archive" '$2 == a || $2 == "*" a { print $1 }' "$tmp/checksums.txt")"
+  entries="$(printf '%s\n' "$expected" | grep -c . || true)"
+  if [ "$entries" != "1" ]; then
+    die "expected exactly one checksum entry for $archive in checksums.txt, found $entries — refusing to install unverified. Set GPLAY_INSTALL_NO_VERIFY=1 to bypass (air-gapped/mirrored installs only)."
   fi
-  actual="$(shasum -a 256 "$tmp/$archive" 2>/dev/null | awk '{print $1}' \
-            || sha256sum "$tmp/$archive" | awk '{print $1}')"
+
+  # Resolve the digest tool up front. Piping `shasum | awk` would swallow a
+  # missing shasum (the pipeline exits on awk's status), leaving an empty digest
+  # that surfaces as a bogus "mismatch" instead of the real cause.
+  if command -v shasum >/dev/null 2>&1; then
+    actual="$(shasum -a 256 "$tmp/$archive")"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$tmp/$archive")"
+  else
+    die "no sha256 tool found (need shasum or sha256sum) — refusing to install unverified. Set GPLAY_INSTALL_NO_VERIFY=1 to bypass (air-gapped/mirrored installs only)."
+  fi
+  actual="$(printf '%s' "$actual" | awk '{print $1}' | tr 'A-F' 'a-f')"
+  expected="$(printf '%s' "$expected" | tr 'A-F' 'a-f')"
   [ "$expected" = "$actual" ] || die "checksum mismatch (expected $expected, got $actual)"
   log "checksum OK"
 fi
