@@ -233,6 +233,56 @@ func TestRun_unknownPeriod_isUsageError(t *testing.T) {
 	}
 }
 
+// TestRun_memorySets_hourlyRejectedOffline proves the DAILY-only memory sets
+// reject --period HOURLY/FULL_RANGE before any request leaves, so the user gets
+// a usage error naming the set instead of a server 400 (#440).
+func TestRun_memorySets_hourlyRejectedOffline(t *testing.T) {
+	for _, name := range []string{"anonrssandswapmemoryusage", "bitmapmemoryusage"} {
+		for _, period := range []string{"HOURLY", "FULL_RANGE"} {
+			t.Run(name+"/"+period, func(t *testing.T) {
+				rt := &queryRT{t: t, respBody: `{"rows":[]}`}
+				rc, _, _ := newRC(t, rt)
+				_, err := Run(rc, Input{MetricSet: name, Package: "com.example.app", Period: period})
+				if code := exitCode(t, err); code != 2 {
+					t.Errorf("exit = %d, want 2 (usage)", code)
+				}
+				if !strings.Contains(err.Error(), name) {
+					t.Errorf("error %q does not name the metric set", err)
+				}
+				if rt.queryURL != "" {
+					t.Errorf("rejection must be offline, but a request went to %q", rt.queryURL)
+				}
+			})
+		}
+	}
+}
+
+// TestRun_memorySets_dailyQueriesTheirPercentiles is the happy path of both
+// memory sets: the DAILY default is accepted and the percentile metric reaches
+// the request body.
+func TestRun_memorySets_dailyQueriesTheirPercentiles(t *testing.T) {
+	cases := map[string]string{
+		"anonrssandswapmemoryusage": "anonRssAndSwapMemoryUsageP95",
+		"bitmapmemoryusage":         "bitmapMemoryUsageP95",
+	}
+	for name, metric := range cases {
+		t.Run(name, func(t *testing.T) {
+			rt := &queryRT{t: t, respBody: `{"rows":[]}`}
+			rc, _, _ := newRC(t, rt)
+			in := Input{MetricSet: name, Package: "com.example.app", Metrics: []string{metric}, Dimensions: []string{"deviceRamBucket"}}
+			if _, err := Run(rc, in); err != nil {
+				t.Fatalf("Run(%s): %v", name, err)
+			}
+			if !strings.Contains(rt.queryBody, metric) {
+				t.Errorf("request body %q missing metric %s", rt.queryBody, metric)
+			}
+			if !strings.Contains(rt.queryBody, "DAILY") {
+				t.Errorf("request body %q missing the DAILY aggregation period", rt.queryBody)
+			}
+		})
+	}
+}
+
 func exitCode(t *testing.T, err error) int {
 	t.Helper()
 	if err == nil {

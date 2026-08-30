@@ -25,5 +25,6 @@ func Catalog() []Doc {
 		{40, "API 5xx (upstream temporarily unhealthy)", "yes"},
 		{50, "Network (timeout, DNS, refused)", "yes"},
 		{60, "State conflict (open edit, rate-limited, ambiguous target, ...)", "sometimes"},
+		{70, "Findings present (a read-only check command completed and reported drift; NOT an error)", "no"},
 	}
 }

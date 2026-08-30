@@ -1,0 +1,96 @@
+name: Release rehearsal
+
+# Non-publishing dry run of the release pipeline.
+#
+# Why: a broken GoReleaser config or release workflow is only discovered when a
+# tag already exists, i.e. mid-release, with a half-published version to clean
+# up (this would have shortened the v0.17.0 release-trigger debugging, #463).
+# This job rehearses the same config on the PR that changes it.
+#
+# Scope: path-triggered on release machinery only (GoReleaser config, release
+# workflows, install script, Makefile), so ordinary code PRs do not pay the
+# ~2 min cost. It is deliberately NOT a required check: it guards the release
+# path, not the binary's behaviour, and it never runs on most PRs (a
+# permanently-skipped required check blocks merge).
+#
+# Non-publishing by construction, three independent locks:
+#   1. `--snapshot`   : GoReleaser refuses to publish and fakes the version.
+#   2. `--skip=publish,sign,sbom,announce` : no GitHub release, no tap commit,
+#      no cosign/OIDC, no syft download.
+#   3. `permissions: contents: read` and no secret is passed to the job.
+#
+# To verify the gate really bites, break `.goreleaser.yaml` on a scratch branch
+# (e.g. rename `builds[0].main` to a path that does not exist): `goreleaser
+# check` or the snapshot build fails the job.
+
+on:
+  pull_request:
+    paths:
+      - '.goreleaser.yaml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/release-please.yml'
+      - '.github/workflows/release-rehearsal.yml'
+      - 'install.sh'
+      - 'Makefile'
+  workflow_dispatch:
+
+concurrency:
+  group: release-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rehearse:
+    name: GoReleaser dry run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # GoReleaser reads the full git history for the changelog
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.25'
+          cache: true
+
+      # Static validation of .goreleaser.yaml: unknown keys, bad templates,
+      # deprecated fields. Advisory only (`continue-on-error`), because `check`
+      # exits non-zero on *deprecations* too and `brews:` is currently
+      # deprecated in favour of `homebrew_casks:` — migrating that changes how
+      # users install gplay, so it is its own decision, not a CI side effect.
+      # The blocking gate is the snapshot build below; read this step's log when
+      # it is orange.
+      - name: GoReleaser check
+        continue-on-error: true
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: check
+
+      # Full cross-platform build + archive, publishing stages skipped. This is
+      # what `make release-snapshot` runs locally, same flags.
+      - name: GoReleaser snapshot build
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --snapshot --clean --skip=publish,sign,sbom,announce
+        env:
+          # The Homebrew tap block templates this variable. Nothing is pushed
+          # (publish is skipped); the placeholder just keeps template rendering
+          # from failing on an undefined .Env lookup.
+          HOMEBREW_TAP_GITHUB_TOKEN: rehearsal-not-a-token
+
+      - name: Summarise artifacts
+        run: |
+          set -euo pipefail
+          {
+            echo '### Release rehearsal artifacts'
+            echo '```'
+            ls -1 dist/*.tar.gz dist/*.zip dist/checksums.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

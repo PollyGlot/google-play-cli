@@ -2,16 +2,19 @@ package output_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
 func TestResolve_AutoNonTTY_ReturnsJSON(t *testing.T) {
 	t.Setenv("CI", "")
+	t.Setenv(output.EnvDefaultOutput, "")
 	outputtest.ForceTerminal(t, false)
 
 	got, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
@@ -25,6 +28,7 @@ func TestResolve_AutoNonTTY_ReturnsJSON(t *testing.T) {
 
 func TestResolve_AutoTTY_ReturnsTable(t *testing.T) {
 	t.Setenv("CI", "")
+	t.Setenv(output.EnvDefaultOutput, "")
 	outputtest.ForceTerminal(t, true)
 
 	got, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
@@ -38,6 +42,7 @@ func TestResolve_AutoTTY_ReturnsTable(t *testing.T) {
 
 func TestResolve_AutoCIEnv_OverridesTTYToJSON(t *testing.T) {
 	t.Setenv("CI", "true")
+	t.Setenv(output.EnvDefaultOutput, "")
 	outputtest.ForceTerminal(t, true)
 
 	got, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
@@ -51,6 +56,7 @@ func TestResolve_AutoCIEnv_OverridesTTYToJSON(t *testing.T) {
 
 func TestResolve_ExplicitTable_WinsOverNonTTY(t *testing.T) {
 	t.Setenv("CI", "")
+	t.Setenv(output.EnvDefaultOutput, "")
 	outputtest.ForceTerminal(t, false)
 
 	got, err := output.Resolve(output.FormatTable, &bytes.Buffer{})
@@ -64,6 +70,7 @@ func TestResolve_ExplicitTable_WinsOverNonTTY(t *testing.T) {
 
 func TestRender_PicksMatchingRenderer(t *testing.T) {
 	t.Setenv("CI", "")
+	t.Setenv(output.EnvDefaultOutput, "")
 	outputtest.ForceTerminal(t, true)
 
 	var stdout bytes.Buffer
@@ -160,6 +167,74 @@ func TestMarkdownTable_RowWidthMismatch_ReturnsError(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err.Error(), want)
 		}
+	}
+}
+
+// The next four tests pin the precedence contract of #465:
+// --output flag > $GPLAY_DEFAULT_OUTPUT > TTY/CI auto-detection.
+
+func TestResolve_DefaultOutputEnv_WinsOverTTYDefault(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv(output.EnvDefaultOutput, "json")
+	outputtest.ForceTerminal(t, true)
+
+	got, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != output.FormatJSON {
+		t.Errorf("got %q, want %q (env default must beat the TTY default)", got, output.FormatJSON)
+	}
+}
+
+// CI and TTY state are guesses about intent; the env var is a value the
+// user typed, so it outranks them both.
+func TestResolve_DefaultOutputEnv_WinsOverCIEnv(t *testing.T) {
+	t.Setenv("CI", "true")
+	t.Setenv(output.EnvDefaultOutput, "table")
+	outputtest.ForceTerminal(t, false)
+
+	got, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != output.FormatTable {
+		t.Errorf("got %q, want %q (env default must beat CI auto-detection)", got, output.FormatTable)
+	}
+}
+
+func TestResolve_ExplicitFlag_WinsOverDefaultOutputEnv(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv(output.EnvDefaultOutput, "json")
+	outputtest.ForceTerminal(t, true)
+
+	got, err := output.Resolve(output.FormatMarkdown, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != output.FormatMarkdown {
+		t.Errorf("got %q, want %q (--output must beat the env default)", got, output.FormatMarkdown)
+	}
+}
+
+func TestResolve_DefaultOutputEnv_UnknownValue_IsUsageError(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv(output.EnvDefaultOutput, "yaml")
+	outputtest.ForceTerminal(t, true)
+
+	_, err := output.Resolve(output.FormatAuto, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("Resolve: expected an error for an unknown env value, got nil")
+	}
+	msg := err.Error()
+	for _, want := range []string{"unsupported", output.EnvDefaultOutput, "yaml", "table", "json", "markdown"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q missing %q", msg, want)
+		}
+	}
+	var ue *exit.UsageError
+	if !errors.As(err, &ue) {
+		t.Errorf("error %T is not a *exit.UsageError: a bad env value is CLI misuse (exit 2)", err)
 	}
 }
 
