@@ -876,11 +876,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// drift from the codes the binary actually returns.
 	root.AddCommand(helpexitcodes.NewCommand())
 
-	// `gplay install-skills`: install the companion agent skills via
-	// `npx skills add` (ADR-0028 / #266). A flat category-3 meta-command; the
-	// one gplay command that needs Node/npx (a dev-workstation convenience, off
-	// the CI/runtime path, so the "no Node" pillar holds). Surfaced in root
-	// --help so an agent told to "install gplay" can discover it.
+	// `gplay install-skills`: install the companion agent skills from the git
+	// commit pinned in this binary (ADR-0045, superseding the package-runner
+	// installer of ADR-0028 / #266). A flat category-3 meta-command; `git` is
+	// its only runtime requirement, so the "no Node" pillar holds without a
+	// carve-out. Surfaced in root --help so an agent told to "install gplay"
+	// can discover it.
 	root.AddCommand(installskills.NewCommand(installskills.Options{}))
 
 	root.AddCommand(&cobra.Command{

@@ -144,5 +144,5 @@ esac
 # -- Post-install tip: companion agent skills --------------------------------
 # The reliable channel for the "install gplay" -> agent flow (ADR-0028 §5):
 # an agent that just ran this script sees the skills exist instead of stopping
-# at the bare binary. Needs Node/npx, the one place gplay does.
-log "tip: add the companion agent skills with 'gplay install-skills' (needs Node/npx)"
+# at the bare binary. Needs git, and nothing else (ADR-0045).
+log "tip: add the companion agent skills with 'gplay install-skills' (needs git)"

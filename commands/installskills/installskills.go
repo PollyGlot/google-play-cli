@@ -1,61 +1,49 @@
 // Package installskills implements `gplay install-skills`: a flat, category-3
-// meta-command (DESIGN §0) that installs the companion agent skills by shelling
-// out to `npx skills add` (ADR-0028). It exists so an agent told to "install
-// gplay" can discover and pull the skills without reading the README first.
+// meta-command (DESIGN §0) that installs the companion agent skills. It exists
+// so an agent told to "install gplay" can discover and pull the skills without
+// reading the README first (ADR-0028).
 //
-// This is the ONE gplay command that needs Node/npx. That does not breach the
-// "no Node" pillar: the pillar is scoped to the CI/runtime path (driving the
-// Play API needs zero runtime deps), and `install-skills` is a dev-workstation
-// setup convenience that never runs in CI. Node was already required to install
-// skills via `npx skills add` regardless: this wraps that one dependency, it
-// adds none (ADR-0028 §3). The `--help` text states the requirement plainly.
+// The installer runs no third-party package runner and no repository script:
+// it asks `git` for one reviewed, pinned commit, copies the skill directories
+// out of that checkout, verifies every installed file against it, and rolls the
+// whole pack back if anything fails (ADR-0045, superseding the Node-based
+// installer of ADR-0028 §2). `git` is the only runtime requirement, so the
+// "no Node" pillar now holds for this command too.
+//
+// A test in this package greps these sources for package-runner names, so the
+// "nothing else is executed" promise cannot quietly regress: keep them out.
 package installskills
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
-
-	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
-// skillsRepo is the companion-skills source the recipe installs from.
-const skillsRepo = "PollyGlot/google-play-cli-skills"
+// RunFunc executes name with args in dir and returns its combined output.
+// The whole process boundary is behind this one function so tests drive a
+// fixture repo (or an injected failure) instead of the network.
+type RunFunc func(ctx context.Context, name string, args []string, dir string) (string, error)
 
-// skillsBrowseURL is where an agent without Node can read the skills by hand.
-const skillsBrowseURL = "https://github.com/" + skillsRepo
-
-// recipeArgs is the opinionated, non-interactive npx argv a bare
-// `gplay install-skills` runs (ADR-0028 §2). It is returned fresh each call so
-// appending passthrough args never aliases a shared backing array.
-//
-//		npx --yes skills add PollyGlot/google-play-cli-skills --global --agent '*' --yes
-//
-//	  - --global    skills drive the binary, useful in every project, not just CWD
-//	  - --agent '*' all detected agents: gplay is agent-agnostic (CLAUDE.md + AGENTS.md)
-//	  - --yes (x2)  non-interactive, required by DESIGN's no-prompts rule
-func recipeArgs() []string {
-	return []string{
-		"--yes", "skills", "add", skillsRepo,
-		"--global", "--agent", "*", "--yes",
-	}
-}
-
-// RunFunc executes the resolved npx with argv, wiring the command's streams.
-type RunFunc func(ctx context.Context, npxPath string, args []string, stdin io.Reader, stdout, stderr io.Writer) error
-
-// Options injects the two process-boundary dependencies so tests run without a
-// real npx or network (ADR-0028 acceptance: mock exec/LookPath).
-// Production wiring leaves both nil and the defaults shell out for real.
+// Options injects the process-boundary dependencies. Production wiring leaves
+// them nil and the defaults do the real thing.
 type Options struct {
 	// LookPath resolves an executable on PATH. Defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
-	// Run executes npx. Defaults to a real exec.CommandContext run.
+	// Run executes git. Defaults to a real exec.CommandContext run.
 	Run RunFunc
+	// Pin overrides the embedded supply-chain pin. Tests point it at a local
+	// fixture repository; nothing in production sets it.
+	Pin *Pin
+	// HomeDir resolves the user's home directory, used to build the default
+	// target. Defaults to os.UserHomeDir.
+	HomeDir func() (string, error)
 }
 
 func (o Options) withDefaults() Options {
@@ -65,119 +53,331 @@ func (o Options) withDefaults() Options {
 	if o.Run == nil {
 		o.Run = defaultRun
 	}
+	if o.HomeDir == nil {
+		o.HomeDir = os.UserHomeDir
+	}
 	return o
 }
 
-// defaultRun runs npx for real, streaming the child's stdio through gplay's so
-// the user sees the skills CLI's progress and prompts-free output live.
-func defaultRun(ctx context.Context, npxPath string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	c := exec.CommandContext(ctx, npxPath, args...)
-	c.Stdin = stdin
-	c.Stdout = stdout
-	c.Stderr = stderr
-	return c.Run()
+// defaultRun runs git for real. Output is captured rather than streamed: git's
+// progress chatter is noise, and the captured text is what makes a failure
+// message actionable.
+func defaultRun(ctx context.Context, name string, args []string, dir string) (string, error) {
+	c := exec.CommandContext(ctx, name, args...) // #nosec G204 -- name is a PATH-resolved git, args are built from the validated pin
+	c.Dir = dir
+	// Keep git non-interactive: a credential or SSH prompt on an agent's or a
+	// CI's stdin would hang forever instead of failing.
+	c.Env = append(gitSafeEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=")
+	out, err := c.CombinedOutput()
+	return string(out), err
 }
 
-// childStream is what a stream must go through before it is wired to the child
-// process: the redacting stderr filter cmd/gplay puts on the root makes
-// ErrOrStderr() a wrapper rather than the *os.File os/exec needs to pass the fd
-// through. Unwrapped, the child inherits gplay's real terminal (TTY detection,
-// live progress, ordered interleaving); wrapped, exec would substitute a pipe.
-// See redact.Unwrap for why that costs no coverage: the child gets none of
-// gplay's credentials, in argv or environment.
+// gitLocationVars are the inherited variables that move git's idea of *which*
+// repository it is operating on. Setting c.Dir is not enough: with GIT_DIR (or
+// GIT_WORK_TREE) in the environment, `git init`, `remote add origin` and
+// `checkout --detach` all land on the caller's repository instead of our
+// disposable directory, silently rewriting their HEAD, refs and remotes. That
+// environment is ordinary, not exotic: git sets GIT_DIR for every hook it runs,
+// so `gplay install-skills` from a pre-commit hook or a git alias would hit it.
 //
-// It is deliberately applied to stdout too. Stdout is never wrapped today, so
-// this is a no-op there, but it keeps the rule "the child gets real files" from
-// depending on that.
-func childStream(w io.Writer) io.Writer { return redact.Unwrap(w) }
-
-// errNpxMissing is the concise one-liner main turns into `gplay: ...`; the rich,
-// actionable recipe is printed to stderr first (see run). exit.For maps it to 1
-// (generic fallback: no Play-API code fits a missing local dep, ADR-0028 §4).
-var errNpxMissing = errors.New("npx (Node.js) not found on PATH")
-
-// NewCommand returns the cobra command for `gplay install-skills`.
-func NewCommand(opts Options) *cobra.Command {
-	opts = opts.withDefaults()
-	return &cobra.Command{
-		Use:   "install-skills",
-		Short: "Install the gplay companion agent skills (requires Node/npx)",
-		Long: `Install the companion agent skills that drive gplay from natural-language
-prompts, by shelling out to the skills CLI:
-
-    npx skills add ` + skillsRepo + ` --global --agent '*' --yes
-
-Skills are installed --global (they drive the binary, useful in every project)
-and for every detected agent. Extra arguments pass through to ` + "`npx skills add`" + `
-for overrides, e.g.:
-
-    gplay install-skills --agent claude     # one agent only
-    gplay install-skills --project          # this repo only, not --global
-
-Requires Node.js / npx on PATH: this is the one gplay command that does. It is
-a dev-workstation convenience and never runs on the CI/runtime path, so the
-"no Node" promise for driving the Play API still holds (ADR-0028).`,
-		// Everything after `install-skills` passes through verbatim to
-		// `npx skills add`. DisableFlagParsing stops cobra from claiming flags
-		// like --agent/--project as its own; -h/--help is honored by hand below
-		// (cobra does not auto-handle it once flag parsing is off).
-		DisableFlagParsing: true,
-		Args:               cobra.ArbitraryArgs,
-		SilenceUsage:       true,
-		SilenceErrors:      true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if wantsHelp(args) {
-				return cmd.Help()
-			}
-			return run(cmd, opts, args)
-		},
-	}
+// The environment's *config injection* channel (GIT_CONFIG_COUNT and its
+// numbered key/value pairs, GIT_CONFIG_PARAMETERS) goes for the same reason at
+// one remove: it is `-c` by another name, so an inherited pair could re-enable
+// what hardenedGit disables. The config *files* are left alone on purpose, so a
+// corporate proxy or CA bundle keeps working (see hardenedGit).
+var gitLocationVars = map[string]bool{
+	"GIT_DIR":                          true,
+	"GIT_WORK_TREE":                    true,
+	"GIT_COMMON_DIR":                   true,
+	"GIT_INDEX_FILE":                   true,
+	"GIT_OBJECT_DIRECTORY":             true,
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
+	"GIT_NAMESPACE":                    true,
+	"GIT_CEILING_DIRECTORIES":          true,
+	"GIT_TEMPLATE_DIR":                 true,
+	"GIT_CONFIG":                       true,
+	"GIT_CONFIG_COUNT":                 true,
+	"GIT_CONFIG_PARAMETERS":            true,
 }
 
-// wantsHelp reports whether the passthrough args ask for help. With flag parsing
-// off, -h/--help reach us as plain args; we intercept them so the help text
-// (which states the Node/npx requirement) stays reachable.
-func wantsHelp(args []string) bool {
-	for _, a := range args {
-		if a == "-h" || a == "--help" {
+// gitConfigVarPrefixes cover the numbered GIT_CONFIG_KEY_<n> /
+// GIT_CONFIG_VALUE_<n> pairs, which are the environment form of `-c`.
+var gitConfigVarPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
+
+// gitSafeEnv returns env without the variables that would redirect git away
+// from the directory we hand it. Everything else is passed through: PATH, proxy
+// and TLS settings, and the user's own git configuration all still apply.
+func gitSafeEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if gitLocationVars[name] || hasAnyPrefix(name, gitConfigVarPrefixes) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
 			return true
 		}
 	}
 	return false
 }
 
-func run(cmd *cobra.Command, opts Options, passthrough []string) error {
-	npxPath, err := opts.LookPath("npx")
-	if err != nil {
-		// Only a true "not found" means the dependency is absent. Any other
-		// lookup failure (e.g. npx present but not executable) is a different
-		// problem: the "install Node.js" recipe would mislead, so surface the
-		// real cause instead (still a generic exit 1, no Coder in the chain).
-		if !errors.Is(err, exec.ErrNotFound) {
-			return fmt.Errorf("resolve npx on PATH: %v", err)
+// errGitMissing is the concise one-liner main turns into `gplay: ...`; the
+// actionable recipe is printed to stderr first (see run). exit.For maps it to 1
+// (generic fallback: no Play-API code fits a missing local dependency).
+var errGitMissing = errors.New("git not found on PATH")
+
+// defaultSkillsDir is the standard agent-skills directory, relative to $HOME.
+// Both Claude Code and the agents that follow its layout read it, and it is
+// user-wide on purpose: skills drive the binary, so they are useful in every
+// project, not just the current one (ADR-0028 §2).
+var defaultSkillsDir = filepath.Join(".claude", "skills")
+
+// legacyFlags are the package-runner-era passthrough flags the ADR-0028 installer
+// documented (`--agent`, `--project`, plus the recipe's own `--global` and
+// `--yes`). The pinned-git installer has no third-party CLI to forward them to,
+// but `install-skills` is a frozen Public leaf (ADR-0042), so a script built on
+// the old recipe must keep exiting 0: each is accepted as a no-op with a
+// deprecation warning on stderr (ADR-0045 §4), not rejected.
+var legacyFlags = []struct{ name, kind string }{
+	{"agent", "string"},
+	{"project", "bool"},
+	{"global", "bool"},
+	{"yes", "bool"},
+}
+
+// NewCommand returns the cobra command for `gplay install-skills`.
+func NewCommand(opts Options) *cobra.Command {
+	opts = opts.withDefaults()
+	var dir string
+
+	pinNote := "the commit pinned in this binary"
+	if p, err := embeddedPin(); err == nil {
+		pinNote = fmt.Sprintf("%s@%s", p.Repo, p.Commit)
+	}
+
+	cmd := &cobra.Command{
+		Use:   "install-skills",
+		Short: "Install the gplay companion agent skills (requires git)",
+		Long: `Install the companion agent skills that drive gplay from natural-language
+prompts.
+
+The skills are fetched with git from ` + pinNote + `
+
+The commit is baked into this binary, never resolved from a branch or a tag, so
+two runs of the same gplay version always install the same reviewed files. A new
+pack ships through a normal reviewed gplay release. Nothing else is executed:
+no Node, no package runner, no script from the skills repository, and no git
+hook (git runs with hooks and init templates disabled).
+
+Skills are installed user-wide into ~/` + defaultSkillsDir + `, or into the
+directory given by --dir. Only the skills of the pack are replaced; anything
+else already in that directory is left untouched. Every installed file is
+verified against the pinned checkout, and if any part of the install fails the
+whole pack is rolled back to its previous state.
+
+Requires git on PATH; nothing else.
+
+The passthrough flags of the former installer (--agent, --project, --global,
+--yes) are deprecated: they are accepted for compatibility, ignored, and warned
+about on stderr. The pack is always installed whole, for every agent reading
+the target directory.`,
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The warning goes to stderr before the install runs: stdout stays
+			// data-only (ADR-0003), and the user hears about the ignored flag
+			// even when the install then fails for an unrelated reason.
+			for _, f := range legacyFlags {
+				if cmd.Flags().Changed(f.name) {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+						"warning: --%s is deprecated and ignored: install-skills no longer forwards to the skills package runner (ADR-0045)\n", f.name)
+				}
+			}
+			return run(cmd, opts, dir)
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", "", "target agent-skills directory (default ~/"+defaultSkillsDir+")")
+	for _, f := range legacyFlags {
+		if f.kind == "string" {
+			cmd.Flags().String(f.name, "", "")
+		} else {
+			cmd.Flags().Bool(f.name, false, "")
 		}
-		// npx absent: print the manual recipe so an agent leaves with what to do,
-		// then exit 1 (ADR-0028 §4). The stderr write is best-effort: the exit
-		// code is the load-bearing signal.
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-			"npx requires Node.js, which was not found.\n"+
-				"Install Node.js, then run:\n"+
-				"    npx skills add %s --global --agent '*' --yes\n"+
-				"Or browse the skills: %s\n",
-			skillsRepo, skillsBrowseURL)
-		return errNpxMissing
+		// Hidden, not advertised: the flags exist only so the old recipe keeps
+		// exiting 0. The help text above documents the deprecation in prose.
+		_ = cmd.Flags().MarkHidden(f.name)
 	}
-	args := append(recipeArgs(), passthrough...)
-	if err := opts.Run(cmd.Context(), npxPath, args, cmd.InOrStdin(), childStream(cmd.OutOrStdout()), childStream(cmd.ErrOrStderr())); err != nil {
-		// npx/skills failures are opaque; npx already wrote its own diagnostics to
-		// the wired stderr. Surface a generic exit 1 (ADR-0028 §4).
-		//
-		// %v, not %w, is deliberate: a real failure is an *exec.ExitError, which
-		// promotes ExitCode() from os.ProcessState and so satisfies exit.Coder.
-		// Wrapping with %w would let exit.For find it and leak the child's exit
-		// code (e.g. 7) as gplay's. Breaking the chain keeps the message but maps
-		// to the documented generic 1.
-		return fmt.Errorf("npx skills add failed: %v", err)
+	return cmd
+}
+
+func run(cmd *cobra.Command, opts Options, dir string) error {
+	pin, err := resolvePin(opts)
+	if err != nil {
+		return err
 	}
+	gitPath, err := lookGit(cmd, opts, pin)
+	if err != nil {
+		return err
+	}
+	target, err := resolveTarget(opts, dir)
+	if err != nil {
+		return err
+	}
+
+	// Repair before installing: a run killed mid-flight (Ctrl-C, a reaped CI
+	// job, an OOM) never reaches its deferred cleanup, so it can leave staging
+	// and backup directories behind, and a skill parked in a backup instead of
+	// installed. Nothing else would ever pick those up, so every run sweeps them
+	// first. Failures here are reported, not fatal: a leftover directory must
+	// not be able to block an install.
+	for _, e := range sweepOrphans(target) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", e)
+	}
+
+	// The checkout is disposable and lives in the OS temp dir; only the staging
+	// area has to sit next to the target (see stage below).
+	work, err := os.MkdirTemp("", "gplay-skills-")
+	if err != nil {
+		return fmt.Errorf("create work directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(work) }()
+
+	root, err := fetchPinned(cmd.Context(), opts.Run, gitPath, pin, work)
+	if err != nil {
+		return err
+	}
+	if err := verifyPack(root, pin); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", target, err)
+	}
+	// Staging and backup directories are created *inside* the target so every
+	// move below is a rename within one filesystem: a cross-device rename would
+	// fall back to a copy, which is exactly the non-atomic step this design is
+	// trying to avoid.
+	stage, err := os.MkdirTemp(target, stagePrefix)
+	if err != nil {
+		return fmt.Errorf("create staging directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(stage) }()
+	backup, err := os.MkdirTemp(target, backupPrefix)
+	if err != nil {
+		return fmt.Errorf("create backup directory: %w", err)
+	}
+	sw := &swap{target: target, backup: backup}
+	// While the swap is in flight the backup holds the *only* copy of the user's
+	// previous skills, so it is deleted on the way out only if the rollback did
+	// not have to give up on one of them. When it did, the directory stays and
+	// the error names it: destroying it here would destroy the last copy of what
+	// the user had (its path is in the error either way, see rolledBack).
+	defer func() {
+		if sw.incomplete {
+			return
+		}
+		_ = os.RemoveAll(backup)
+	}()
+
+	// Copy and verify everything before touching the target: a pack that cannot
+	// be staged intact never displaces the installed one.
+	for _, name := range pin.Skills {
+		src, staged := filepath.Join(root, name), filepath.Join(stage, name)
+		if err := copyTree(src, staged); err != nil {
+			return fmt.Errorf("stage skill %s: %w", name, err)
+		}
+		if err := verifyTree(src, staged); err != nil {
+			return fmt.Errorf("stage skill %s: %w", name, err)
+		}
+	}
+
+	for _, name := range pin.Skills {
+		if err := sw.install(name, filepath.Join(stage, name)); err != nil {
+			return rolledBack(sw, err)
+		}
+	}
+	// Post-install verification, on the real installed paths: the staged copy
+	// being right does not prove the swap put it where it belongs.
+	for _, name := range pin.Skills {
+		if err := verifyTree(filepath.Join(root, name), filepath.Join(target, name)); err != nil {
+			return rolledBack(sw, fmt.Errorf("verify installed skill %s: %w", name, err))
+		}
+	}
+
+	// The files are on disk: a broken stdout (a closed pipe) does not undo the
+	// install, so reporting it is best-effort and the exit code stays 0.
+	for _, name := range pin.Skills {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), filepath.Join(target, name))
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "installed %d skills from %s@%s into %s\n",
+		len(pin.Skills), pin.Repo, pin.Commit[:12], target)
 	return nil
+}
+
+// rolledBack undoes a failed install and folds any rollback trouble into the
+// reported error: a user whose previous skills could not be restored must hear
+// about it in the same breath as the failure that caused it, and be told where
+// the surviving copy is, since that directory is then the only one left.
+func rolledBack(sw *swap, cause error) error {
+	errs := sw.rollback()
+	if len(errs) == 0 {
+		return fmt.Errorf("%w (previous skills left untouched)", cause)
+	}
+	msgs := make([]string, 0, len(errs))
+	for _, e := range errs {
+		msgs = append(msgs, e.Error())
+	}
+	return fmt.Errorf("%w (rollback incomplete: %s; your previous skills are kept in %s)",
+		cause, strings.Join(msgs, "; "), sw.backup)
+}
+
+func resolvePin(opts Options) (Pin, error) {
+	if opts.Pin != nil {
+		if err := opts.Pin.validate(); err != nil {
+			return Pin{}, fmt.Errorf("skills pin: %w", err)
+		}
+		return *opts.Pin, nil
+	}
+	return embeddedPin()
+}
+
+func resolveTarget(opts Options, dir string) (string, error) {
+	if dir != "" {
+		return filepath.Clean(dir), nil
+	}
+	home, err := opts.HomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory (pass --dir): %w", err)
+	}
+	return filepath.Join(home, defaultSkillsDir), nil
+}
+
+func lookGit(cmd *cobra.Command, opts Options, pin Pin) (string, error) {
+	gitPath, err := opts.LookPath("git")
+	if err == nil {
+		return gitPath, nil
+	}
+	// Only a true "not found" means the dependency is absent. Any other lookup
+	// failure (git present but not executable, say) would be misdescribed by the
+	// "install git" recipe, so surface the real cause instead.
+	if !errors.Is(err, exec.ErrNotFound) {
+		return "", fmt.Errorf("resolve git on PATH: %v", err)
+	}
+	// Leave the agent with what to do, not a dead end. Best-effort write: the
+	// exit code is the load-bearing signal.
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+		"git was not found on PATH, and install-skills needs it to fetch the pinned skills.\n"+
+			"Install git, then run:\n"+
+			"    gplay install-skills\n"+
+			"Or browse the skills: https://github.com/%s/tree/%s\n",
+		pin.Repo, pin.Commit)
+	return "", errGitMissing
 }
