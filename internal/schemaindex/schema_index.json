@@ -1,5 +1,5 @@
 {
-  "revision": "20260820",
+  "revision": "20260826",
   "methods": {
     "androidpublisher.applications.dataSafety": {
       "httpMethod": "POST",
@@ -10780,7 +10780,7 @@
       }
     },
     "PolicyResponse": {
-      "description": "An individual response to a policy question about an app.",
+      "description": "An individual response (answer) to a policy question about an app.",
       "properties": {
         "booleanResponse": {
           "$ref": "PolicyBooleanResponse",
