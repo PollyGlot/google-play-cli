@@ -13,3 +13,10 @@ updates:
       - dependencies
     commit-message:
       prefix: chore
+    groups:
+      # github/codeql-action ships init, autobuild and analyze from one repo and
+      # refuses to run when they disagree ("configuration error"). Ungrouped,
+      # Dependabot opens one PR per sub-action and every one of them is red.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
