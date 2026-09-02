@@ -5,6 +5,17 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0](https://github.com/PollyGlot/google-play-cli/compare/v1.3.0...v1.4.0) (2026-08-31)
+
+
+### Features
+
+* agent-grade input/output hardening — repeated flags, truncation warnings, BCP-47 locales ([#489](https://github.com/PollyGlot/google-play-cli/issues/489)) ([c952b68](https://github.com/PollyGlot/google-play-cli/commit/c952b680e691cf1c97c4ee15b2a816326094d0c0))
+* **diagnostics:** stable machine-readable diagnostic codes in the error envelope ([#487](https://github.com/PollyGlot/google-play-cli/issues/487)) ([93c9d45](https://github.com/PollyGlot/google-play-cli/commit/93c9d45eb4a792ab111667f2d0b322cca5c8cc91))
+* **install-skills:** install from a pinned git commit, verified and reversible ([#485](https://github.com/PollyGlot/google-play-cli/issues/485)) ([118a574](https://github.com/PollyGlot/google-play-cli/commit/118a57487caab4319a85ef3f695a8f1f94a7a4f1))
+* **releases:** local AAB/APK preflight before any upload byte ([#490](https://github.com/PollyGlot/google-play-cli/issues/490)) ([284e2a9](https://github.com/PollyGlot/google-play-cli/commit/284e2a929228fe0c3bebe7f24b5633d57c8c437b))
+* **security:** credential redaction and path containment at the boundaries ([#486](https://github.com/PollyGlot/google-play-cli/issues/486)) ([118ccfb](https://github.com/PollyGlot/google-play-cli/commit/118ccfba75f29ea089b2939a2566dad38fc54ab2))
+
 ## [1.3.0](https://github.com/PollyGlot/google-play-cli/compare/v1.2.1...v1.3.0) (2026-08-28)
 
 
