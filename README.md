@@ -128,6 +128,7 @@ per shipped namespace, plus a `gplay-cli-usage` foundation.
 | `gplay-device-tiers` | Device tier configs for tiered delivery |
 | `gplay-customapps` | Managed Google Play private apps |
 | `gplay-appstore` | Alternative app store catalog and update feed |
+| `gplay-signing` | Play App Signing with a self-hosted Cloud KMS key (enroll, rotate) |
 
 ## Quick start
 
