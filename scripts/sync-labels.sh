@@ -47,6 +47,15 @@ LABELS=(
   "wontfix|ffffff|Decision: out of scope"
   "duplicate|cccccc|Closed in favor of another issue/PR"
 
+  # Discovery bot — machine-readable state of the rolling refresh PR.
+  # discovery:schema/surface are set by .github/workflows/discovery-watch.yml;
+  # verdict-merge / needs-decision are set by the triage routine (#506) and read
+  # back by CI to decide whether to merge or to page the maintainer.
+  "discovery:schema|a371f7|Discovery refresh: schema details changed, no method surface change"
+  "discovery:surface|a371f7|Discovery refresh: methods added or removed (ADR-0026 grilling)"
+  "discovery:verdict-merge|0e8a16|Discovery triage cleared the refresh PR for merge"
+  "discovery:needs-decision|b60205|Discovery triage needs a product decision from the maintainer"
+
   # Lifecycle
   "breaking-change|b60205|Backwards-incompatible behavior change"
   "dependencies|0366d6|Updates to Go modules or GitHub Actions"
