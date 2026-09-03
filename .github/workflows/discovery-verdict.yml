@@ -1,0 +1,120 @@
+name: Discovery Verdict
+
+# The merge half of the Discovery triage loop (PRD #501, slice #506).
+#
+# discovery-watch.yml classifies the weekly refresh, auto-merges revision-only,
+# and hands a schema/surface refresh to a Claude routine (see that workflow's
+# header for the one-time setup: routine, secret, kill switch, manual test).
+# The routine has no merge rights: it finishes by setting exactly one label, and
+# that label is the handoff this workflow listens for.
+#
+#   discovery:verdict-merge  — the routine cleared the refresh. Re-check the
+#                              blast radius, wait for green CI, squash-merge.
+#   discovery:needs-decision — a product decision is owed. Do nothing but leave
+#                              a job summary, so that "the maintainer is on the
+#                              hook" and "the bot died" never look the same.
+#
+# This lives in its own file rather than as a job in discovery-watch.yml: the
+# trigger is unrelated (a label on a PR, not a Monday), the permissions are
+# narrower, and folding it in would put an event guard on every step of the
+# watch job for no gain. What the two DO share is the blast-radius check, which
+# is a script both call (.github/scripts/discovery-blast-radius.sh) so the two
+# merge buttons cannot drift apart.
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  verdict:
+    name: Act on the triage verdict
+    # Only ever the rolling refresh branch: a discovery:* label pasted on any
+    # other PR must not hand it a merge button.
+    if: >-
+      github.event.pull_request.head.ref == 'chore/discovery-refresh' &&
+      (github.event.label.name == 'discovery:verdict-merge' ||
+       github.event.label.name == 'discovery:needs-decision')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        if: github.event.label.name == 'discovery:verdict-merge'
+        with:
+          app-id: ${{ secrets.GPLAY_APP_ID }}
+          private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # main, never the PR under test: the guard script decides whether that PR
+      # may be merged, so running the PR's own copy of it would let the thing
+      # being checked rewrite its own check.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event.label.name == 'discovery:verdict-merge'
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Guard the merge blast radius
+        if: github.event.label.name == 'discovery:verdict-merge'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Same allow-list as the revision-only auto-merge, plus COVERAGE.md:
+          # step 5 of docs/agents/discovery-triage.md has the routine commit the
+          # newly surfaced methods there, on this very branch. Nothing else may
+          # ride along, whatever the verdict comment claims.
+          if ! .github/scripts/discovery-blast-radius.sh "$PR" 'docs/COVERAGE\.md$'; then
+            gh pr edit "$PR" --remove-label discovery:verdict-merge --add-label discovery:needs-decision
+            gh pr comment "$PR" --body "The blast-radius guard refused this verdict: the diff reaches beyond \`docs/discovery/\`, \`internal/schemaindex/schema_index.json\` and \`docs/COVERAGE.md\`. Relabelled \`discovery:needs-decision\`."
+            exit 1
+          fi
+
+      - name: Wait for CI and squash-merge
+        id: merge
+        if: github.event.label.name == 'discovery:verdict-merge'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # --required, not the full check list: this job is itself a check run
+          # on the PR's head sha, so watching every check would make it wait for
+          # itself forever. The required contexts are the merge criteria anyway.
+          for _ in $(seq 1 30); do
+            if gh pr checks "$PR" --required >/dev/null 2>&1; then break; fi
+            sleep 20
+          done
+          gh pr checks "$PR" --required --watch --fail-fast --interval 30
+          # --squash because the repo is squash-only; --admin because a bot
+          # cannot approve its own PR and the review requirement would otherwise
+          # deadlock the merge.
+          gh pr merge "$PR" --squash --admin --delete-branch
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+
+      - name: Job summary
+        if: always()
+        env:
+          LABEL: ${{ github.event.label.name }}
+          PR: ${{ github.event.pull_request.number }}
+          MERGED: ${{ steps.merge.outputs.merged }}
+        run: |
+          {
+            echo "## Discovery Verdict"
+            echo
+            echo "- Refresh PR: #$PR"
+            echo "- Verdict label: \`$LABEL\`"
+            if [ "$LABEL" = "discovery:needs-decision" ]; then
+              echo "- Outcome: **nothing merged, on purpose**. The triage routine could not close the loop alone; read its verdict comment on the PR and decide."
+            elif [ "${MERGED:-}" = "true" ]; then
+              echo "- Outcome: **squash-merged** (blast radius verified, required checks green)."
+            else
+              echo "- Outcome: **not merged** — the guard refused, CI went red, or the merge itself failed. Needs a human."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

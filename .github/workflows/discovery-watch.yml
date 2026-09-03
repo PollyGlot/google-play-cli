@@ -12,10 +12,54 @@ name: Discovery Watch
 # paths.txt tracks method existence only (id + verb + path), so it cannot tell
 # schema from revision-only on its own — the classifier diffs everything minus
 # the revision line to decide that (see the "Detect changes" step).
+#
+# ---------------------------------------------------------------------------
+# Setup of the Discovery triage routine (PRD #501, slice #506)
+# ---------------------------------------------------------------------------
+# A schema/surface refresh is handed to a Claude routine that reads the diff
+# against the code the CLI actually ships and answers with a label. Nothing in
+# this repository creates that routine: it lives in the Claude app and has to be
+# set up by hand, once. The four steps, in order:
+#
+# 1. Create the routine in the Claude app (Automations), triggered by webhook,
+#    running on the subscription (no API key). Its prompt is the versioned brief
+#    docs/agents/discovery-triage.md: paste its contents, or point at
+#    https://github.com/PollyGlot/google-play-cli/blob/main/docs/agents/discovery-triage.md
+#    and tell the routine to read it first. The brief takes exactly one input,
+#    the PR number, and this workflow POSTs it as JSON:
+#      {"pr": 498, "kind": "schema", "url": "https://github.com/.../pull/498",
+#       "repository": "PollyGlot/google-play-cli"}
+#    "kind" is "schema" or "surface"; a revision-only refresh never calls it.
+# 2. Store the routine's webhook URL as the repository secret
+#    DISCOVERY_TRIAGE_WEBHOOK_URL. Absent, the call is skipped and the job
+#    summary says so: the labelling still happens, only the bot stays asleep.
+# 3. Set the repository variable DISCOVERY_TRIAGE_ENABLED to "true". This is the
+#    kill switch: anything else (including absent) means no webhook call, with
+#    the reason spelled out in the job summary. It is deliberately a variable and
+#    not a secret, so that turning the bot off is visible in the repo settings.
+# 4. Before relying on any of this, run the routine by hand on an already-merged
+#    refresh PR (#498, a schema refresh) with its "run now" button, in read-only
+#    mode, and check that it posts the four-basket verdict as a single comment
+#    and picks a verdict label. Only then flip DISCOVERY_TRIAGE_ENABLED on.
+#
+# The four discovery:* labels already exist in the repository:
+#   discovery:schema / discovery:surface  — set by this workflow (the input)
+#   discovery:verdict-merge               — set by the routine, merges the PR
+#                                           (see discovery-verdict.yml)
+#   discovery:needs-decision              — set by the routine, notifies the
+#                                           maintainer and merges nothing
+#
+# To replay the routine on an existing refresh PR without regenerating the
+# snapshots, dispatch this workflow with the "pr" input.
 on:
   schedule:
     - cron: '0 6 * * 1' # Mondays 06:00 UTC
   workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Refresh PR to hand back to the triage routine (skips the snapshot regeneration entirely)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -48,11 +92,16 @@ jobs:
           go-version: '1.25'
           cache: true
 
+      # The "pr" dispatch input means "wake the routine on that PR again", not
+      # "look at Google": everything that produces a diff is skipped, and the job
+      # walks straight to the webhook call.
       - name: Regenerate snapshots and schema index
+        if: inputs.pr == ''
         run: make discovery-update schema-index-update
 
       - name: Detect changes
         id: diff
+        if: inputs.pr == ''
         run: |
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -94,7 +143,7 @@ jobs:
 
       - name: Open or refresh the rolling PR
         id: pr
-        if: steps.diff.outputs.changed == 'true'
+        if: inputs.pr == '' && steps.diff.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           KIND: ${{ steps.diff.outputs.kind }}
@@ -150,7 +199,7 @@ jobs:
       # machine-readable label: a downstream bot then finds the PR and its kind
       # without parsing the title, which is prose and free to change.
       - name: Label a schema or surface refresh
-        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only'
+        if: inputs.pr == '' && steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
@@ -177,20 +226,15 @@ jobs:
           PR: ${{ steps.pr.outputs.pr }}
         run: |
           set -euo pipefail
-          # Auto-merge is only ever allowed to land generated files: the snapshot
-          # directory and the schema index derived from it. Anything else in the
-          # PR means the rolling branch picked up work that was never classified
-          # — refuse and hand it back to a human.
-          stray=$(gh pr diff "$PR" --name-only \
-            | grep -vE '^(docs/discovery/|internal/schemaindex/schema_index\.json$)' \
-            || true)
-          if [ -n "$stray" ]; then
-            echo "::error::Refusing to auto-merge: the diff touches files outside the Discovery snapshot."
-            echo "$stray"
+          # Auto-merge is only ever allowed to land generated files. Anything
+          # else in the PR means the rolling branch picked up work that was never
+          # classified: refuse and hand it back to a human. The check itself is
+          # shared with the verdict-merge path (discovery-verdict.yml), so the
+          # two merge buttons can never drift apart.
+          if ! .github/scripts/discovery-blast-radius.sh "$PR"; then
             gh pr edit "$PR" --add-label discovery:needs-decision
             exit 1
           fi
-          echo "Blast radius clean — only snapshot files are in the diff."
 
       - name: Wait for CI and squash-merge
         id: merge
@@ -214,19 +258,110 @@ jobs:
           gh pr merge "$PR" --squash --admin --delete-branch
           echo "merged=true" >> "$GITHUB_OUTPUT"
 
+      # The webhook call takes the same three facts whether it was reached
+      # through a fresh classification or through the "pr" dispatch input, so
+      # both paths converge here rather than duplicating the curl.
+      - name: Resolve the triage target
+        id: target
+        if: inputs.pr != '' || (steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only')
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          INPUT_PR: ${{ inputs.pr }}
+          PR: ${{ steps.pr.outputs.pr }}
+          KIND: ${{ steps.diff.outputs.kind }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_PR" ]; then
+            pr="$INPUT_PR"
+            # On a replay there is no classifier to ask, so the kind comes back
+            # from the label this workflow stamped on the PR in the first place.
+            kind=$(gh pr view "$pr" --json labels \
+              --jq 'first(.labels[].name | select(. == "discovery:schema" or . == "discovery:surface")) // ""' \
+              | sed 's/^discovery://')
+            if [ -z "$kind" ]; then
+              echo "::error::PR #$pr carries neither discovery:schema nor discovery:surface — nothing to triage."
+              exit 1
+            fi
+          else
+            pr="$PR"
+            kind="$KIND"
+          fi
+          {
+            echo "pr=$pr"
+            echo "kind=$kind"
+            echo "url=$(gh pr view "$pr" --json url --jq .url)"
+          } >> "$GITHUB_OUTPUT"
+
+      # Two switches stand between a labelled PR and the routine, and neither is
+      # allowed to fail the job silently: an absent secret means the routine was
+      # never set up, an off kill switch means someone turned the bot off on
+      # purpose. Both leave the PR labelled and open, which is exactly the
+      # pre-bot behaviour, and both say so in the job summary.
+      - name: Call the Discovery triage routine
+        id: routine
+        if: steps.target.outputs.pr != ''
+        env:
+          ENABLED: ${{ vars.DISCOVERY_TRIAGE_ENABLED }}
+          WEBHOOK_URL: ${{ secrets.DISCOVERY_TRIAGE_WEBHOOK_URL }}
+          PR: ${{ steps.target.outputs.pr }}
+          KIND: ${{ steps.target.outputs.kind }}
+          URL: ${{ steps.target.outputs.url }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "${ENABLED:-}" != "true" ]; then
+            echo "called=false" >> "$GITHUB_OUTPUT"
+            echo "reason=the DISCOVERY_TRIAGE_ENABLED repository variable is not \`true\` (kill switch off)" >> "$GITHUB_OUTPUT"
+            echo "Kill switch off: not calling the triage routine."
+            exit 0
+          fi
+          if [ -z "${WEBHOOK_URL:-}" ]; then
+            echo "called=false" >> "$GITHUB_OUTPUT"
+            echo "reason=the DISCOVERY_TRIAGE_WEBHOOK_URL secret is not set (the routine has not been created yet)" >> "$GITHUB_OUTPUT"
+            echo "No webhook secret: not calling the triage routine."
+            exit 0
+          fi
+          payload=$(jq -n \
+            --argjson pr "$PR" --arg kind "$KIND" --arg url "$URL" --arg repo "$REPO" \
+            '{pr: $pr, kind: $kind, url: $url, repository: $repo}')
+          # One attempt, no --retry: curl retries 5xx too, and firing the routine
+          # three times over a flaky endpoint is worse than a red job. A failed
+          # call leaves the PR labelled, and the "pr" dispatch input exists
+          # precisely to replay it. The URL is a secret, so only the status code
+          # is ever echoed.
+          code=$(curl -sS --max-time 30 \
+            -o /tmp/routine-response.txt -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -d "$payload" "$WEBHOOK_URL")
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::The triage routine webhook answered HTTP $code."
+            head -c 500 /tmp/routine-response.txt || true
+            exit 1
+          fi
+          echo "called=true" >> "$GITHUB_OUTPUT"
+          echo "Triage routine called for PR #$PR ($KIND), HTTP $code."
+
       # Runs even when nothing changed, and even when a step above failed: a
       # silent Monday must be distinguishable from a dead workflow.
       - name: Job summary
         if: always()
         env:
+          INPUT_PR: ${{ inputs.pr }}
           CHANGED: ${{ steps.diff.outputs.changed }}
           KIND: ${{ steps.diff.outputs.kind }}
           PR: ${{ steps.pr.outputs.pr }}
           MERGED: ${{ steps.merge.outputs.merged }}
+          TARGET_PR: ${{ steps.target.outputs.pr }}
+          TARGET_KIND: ${{ steps.target.outputs.kind }}
+          CALLED: ${{ steps.routine.outputs.called }}
+          REASON: ${{ steps.routine.outputs.reason }}
         run: |
           {
             echo "## Discovery Watch"
-            if [ "${CHANGED:-false}" != "true" ]; then
+            if [ -n "${INPUT_PR:-}" ]; then
+              echo
+              echo "Manual replay: no snapshot was regenerated, PR #$INPUT_PR was handed back to the triage routine as-is."
+            elif [ "${CHANGED:-false}" != "true" ]; then
               echo
               echo "No upstream change: Google's Discovery documents still match the offline snapshots. Nothing to review, no PR touched."
             else
@@ -245,5 +380,22 @@ jobs:
                   echo "- Outcome: labelled \`discovery:$KIND\` and left open for triage."
                   ;;
               esac
+            fi
+            # Whether the routine was woken up is the one fact that decides
+            # whether a human still has to look at the PR, so it gets its own
+            # line, including (especially) when the answer is "no, because".
+            if [ -n "${TARGET_PR:-}" ]; then
+              echo
+              echo "### Triage routine"
+              echo
+              if [ "${CALLED:-}" = "true" ]; then
+                echo "Called for PR #$TARGET_PR (\`$TARGET_KIND\`). Expect a verdict comment and a \`discovery:verdict-merge\` or \`discovery:needs-decision\` label on the PR."
+              elif [ -n "${REASON:-}" ]; then
+                echo "**Not called** for PR #$TARGET_PR (\`$TARGET_KIND\`): $REASON."
+                echo
+                echo "The PR stays labelled and open; triage it by hand, then re-dispatch this workflow with the \`pr\` input once the routine is set up (see the workflow header)."
+              else
+                echo "**Not called** for PR #$TARGET_PR: the webhook step did not complete (it errored, or the job was cancelled). Triage the PR by hand."
+              fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
