@@ -93,6 +93,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Open or refresh the rolling PR
+        id: pr
         if: steps.diff.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -142,3 +143,107 @@ jobs:
           else
             gh pr create --title "$TITLE" --body-file /tmp/pr-body.md --base main --head "$BRANCH"
           fi
+          echo "pr=$(gh pr view "$BRANCH" --json number --jq .number)" >> "$GITHUB_OUTPUT"
+
+      # A schema/surface refresh needs a human (or the triage routine of #501)
+      # to read the diff, so the only thing CI does is stamp the PR with a
+      # machine-readable label: a downstream bot then finds the PR and its kind
+      # without parsing the title, which is prose and free to change.
+      - name: Label a schema or surface refresh
+        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ steps.pr.outputs.pr }}
+          KIND: ${{ steps.diff.outputs.kind }}
+        run: |
+          set -euo pipefail
+          # Both labels are removed first: the branch is rolling, so last week's
+          # verdict must not survive into this week's classification.
+          gh pr edit "$PR" \
+            --remove-label discovery:schema --remove-label discovery:surface \
+            --add-label "discovery:$KIND"
+
+      # revision-only means the classifier found nothing beyond the date stamp,
+      # so there is nothing for a human to read — the PR merges itself. Two
+      # things stand between the classification and the merge button:
+      #   1. the guard below, which re-derives the blast radius from the PR's
+      #      own file list rather than trusting the classifier's diff (the two
+      #      are computed at different times against a force-pushed branch);
+      #   2. green CI, waited for rather than assumed.
+      - name: Guard the merge blast radius
+        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          # Auto-merge is only ever allowed to land generated files: the snapshot
+          # directory and the schema index derived from it. Anything else in the
+          # PR means the rolling branch picked up work that was never classified
+          # — refuse and hand it back to a human.
+          stray=$(gh pr diff "$PR" --name-only \
+            | grep -vE '^(docs/discovery/|internal/schemaindex/schema_index\.json$)' \
+            || true)
+          if [ -n "$stray" ]; then
+            echo "::error::Refusing to auto-merge: the diff touches files outside the Discovery snapshot."
+            echo "$stray"
+            gh pr edit "$PR" --add-label discovery:needs-decision
+            exit 1
+          fi
+          echo "Blast radius clean — only snapshot files are in the diff."
+
+      - name: Wait for CI and squash-merge
+        id: merge
+        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          # The force-push above may not have registered any check run yet, and
+          # `gh pr checks --watch` exits non-zero on "no checks reported" rather
+          # than waiting — so poll until at least one check exists.
+          for _ in $(seq 1 30); do
+            if gh pr checks "$PR" >/dev/null 2>&1; then break; fi
+            sleep 20
+          done
+          gh pr checks "$PR" --watch --fail-fast --interval 30
+          # --squash because the repo is squash-only; --admin because a bot
+          # cannot approve its own PR and the review requirement would otherwise
+          # deadlock the merge.
+          gh pr merge "$PR" --squash --admin --delete-branch
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+
+      # Runs even when nothing changed, and even when a step above failed: a
+      # silent Monday must be distinguishable from a dead workflow.
+      - name: Job summary
+        if: always()
+        env:
+          CHANGED: ${{ steps.diff.outputs.changed }}
+          KIND: ${{ steps.diff.outputs.kind }}
+          PR: ${{ steps.pr.outputs.pr }}
+          MERGED: ${{ steps.merge.outputs.merged }}
+        run: |
+          {
+            echo "## Discovery Watch"
+            if [ "${CHANGED:-false}" != "true" ]; then
+              echo
+              echo "No upstream change: Google's Discovery documents still match the offline snapshots. Nothing to review, no PR touched."
+            else
+              echo
+              echo "- Classification: \`$KIND\`"
+              echo "- Rolling PR: #$PR"
+              case "$KIND" in
+                revision-only)
+                  if [ "${MERGED:-}" = "true" ]; then
+                    echo "- Outcome: **auto-merged** (revision stamp only, blast radius verified, CI green)."
+                  else
+                    echo "- Outcome: **not merged** — the guard refused, or CI went red. Needs a human."
+                  fi
+                  ;;
+                *)
+                  echo "- Outcome: labelled \`discovery:$KIND\` and left open for triage."
+                  ;;
+              esac
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

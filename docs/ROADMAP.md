@@ -158,6 +158,27 @@ mutations ([#238](https://github.com/PollyGlot/google-play-cli/issues/238) +
 Edit ouvert est épinglé dans `.gplay/edit-<package>.json` et réutilisé par les
 commandes d'écriture suivantes.
 
+## Thème actif — Triage Discovery autonome
+
+Chaque lundi, `discovery-watch` régénère les snapshots et ouvre la PR roulante
+`chore/discovery-refresh`, classée `revision-only`, `schema` ou `surface`.
+Depuis juin 2026 : 12 PR de refresh, dont 6 `revision-only`, soit un lundi sur
+deux qui coûte de l'attention pour un bump de date. Le PRD
+[#501](https://github.com/PollyGlot/google-play-cli/issues/501) automatise la
+boucle et ne remonte au mainteneur que les **décisions produit** :
+l'intelligence vit dans une routine Claude (webhook, pas de clé API), les
+privilèges restent dans GitHub Actions.
+
+| Ordre | # | Area | Sujet | Prio | Note |
+|---|---|---|---|---|---|
+| prêt | [#501](https://github.com/PollyGlot/google-play-cli/issues/501) | platform | PRD Triage Discovery autonome — auto-merge des refresh inertes, verdict agent sur le reste | medium | 6 slices [#502](https://github.com/PollyGlot/google-play-cli/issues/502)–[#507](https://github.com/PollyGlot/google-play-cli/issues/507) |
+| prêt | [#502](https://github.com/PollyGlot/google-play-cli/issues/502) | platform | Registre des méthodes API appelées par gplay, ancré au schema index | medium | Prefactor : une méthode supprimée ou dépréciée devient une CI rouge, sans modèle dans la boucle |
+| ✅ | [#503](https://github.com/PollyGlot/google-play-cli/issues/503) | platform | CI : `discovery-watch` auto-merge les refresh `revision-only` et étiquette le reste | medium | Garde-fou sur le blast radius (snapshots + schema index only), labels `discovery:*` dans `scripts/sync-labels.sh`, résumé de job à chaque run |
+| prêt | [#505](https://github.com/PollyGlot/google-play-cli/issues/505) | platform | Docs : brief de triage Discovery pour le bot | medium | Bloqué par #502 |
+| prêt | [#506](https://github.com/PollyGlot/google-play-cli/issues/506) | platform | Ops : routine Claude déclenchée par webhook, verdict sur les PR `schema`/`surface` | medium | Bloqué par #503, #505 ; pose `discovery:verdict-merge` ou `discovery:needs-decision` |
+| prêt | [#504](https://github.com/PollyGlot/google-play-cli/issues/504) | platform | CI : miroir des changements de contrat vers storedeck au moment de la release | medium | Découplé du temps Discovery (storedeck consomme le contrat `gplay`, pas l'API Google) |
+| prêt | [#507](https://github.com/PollyGlot/google-play-cli/issues/507) | platform | Ops : la routine ouvre des PR **draft** sur les slices `ready-for-agent` | low | Bloqué par #506 ; jamais de merge côté routine |
+
 ## Parking (post-MVP)
 
 Idées trackées pour visibilité, **pas** planifiées. Voir
