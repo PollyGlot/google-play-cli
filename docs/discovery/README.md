@@ -68,3 +68,11 @@ refresh that **removes** or **deprecates** a method gplay depends on turns
 before anyone reads the diff. Ship a command that calls a new method, add its
 line to the registry: the ✅ rows of [COVERAGE.md](../COVERAGE.md) are
 cross-checked against it.
+
+## Triaging a refresh PR
+
+[docs/agents/discovery-triage.md](../agents/discovery-triage.md) is the brief the
+Discovery triage routine runs on a `discovery:schema` or `discovery:surface`
+refresh PR (PRD [#501](https://github.com/PollyGlot/google-play-cli/issues/501)):
+registry test first, four-basket verdict, COVERAGE.md tracking, then one label.
+Read it before triaging a refresh by hand too.
