@@ -57,3 +57,14 @@ produces a minimal, reviewable diff.
 Freshness is **not** a per-PR gate — upstream drift is normal and must never
 block an unrelated PR. A human runs `make discovery-update` on demand. See
 [#52](https://github.com/PollyGlot/google-play-cli/issues/52).
+
+## What breaks when a method disappears
+
+`internal/apiregistry` declares every API method a shipped `gplay` command
+calls, mapped to that command. Its offline test anchors each entry to the three
+artefacts above (the embedded Schema index, `paths.txt`, the snapshots), so a
+refresh that **removes** or **deprecates** a method gplay depends on turns
+`go test ./...` red, naming both the method id and the command that breaks,
+before anyone reads the diff. Ship a command that calls a new method, add its
+line to the registry: the ✅ rows of [COVERAGE.md](../COVERAGE.md) are
+cross-checked against it.
