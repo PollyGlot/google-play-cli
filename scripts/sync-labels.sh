@@ -47,6 +47,10 @@ LABELS=(
   "wontfix|ffffff|Decision: out of scope"
   "duplicate|cccccc|Closed in favor of another issue/PR"
 
+  # Downstream — consumed by the release-time mirror workflow
+  # (.github/workflows/storedeck-mirror.yml, PRD #501)
+  "affects:storedeck|8250df|Changes the gplay contract storedeck consumes — mirrored to storedeck on release"
+
   # Lifecycle
   "breaking-change|b60205|Backwards-incompatible behavior change"
   "dependencies|0366d6|Updates to Go modules or GitHub Actions"
