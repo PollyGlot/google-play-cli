@@ -30,9 +30,11 @@ name: Discovery Watch
 #      {"pr": 498, "kind": "schema", "url": "https://github.com/.../pull/498",
 #       "repository": "PollyGlot/google-play-cli"}
 #    "kind" is "schema" or "surface"; a revision-only refresh never calls it.
-# 2. Store the routine's webhook URL as the repository secret
-#    DISCOVERY_TRIAGE_WEBHOOK_URL. Absent, the call is skipped and the job
-#    summary says so: the labelling still happens, only the bot stays asleep.
+# 2. Store the routine's "call via API" URL as the repository secret
+#    DISCOVERY_TRIAGE_WEBHOOK_URL and the Bearer token generated next to it on
+#    the routine page as DISCOVERY_TRIAGE_API_TOKEN. URL absent, the call is
+#    skipped and the job summary says so: the labelling still happens, only the
+#    bot stays asleep.
 # 3. Set the repository variable DISCOVERY_TRIAGE_ENABLED to "true". This is the
 #    kill switch: anything else (including absent) means no webhook call, with
 #    the reason spelled out in the job summary. It is deliberately a variable and
@@ -303,6 +305,9 @@ jobs:
         env:
           ENABLED: ${{ vars.DISCOVERY_TRIAGE_ENABLED }}
           WEBHOOK_URL: ${{ secrets.DISCOVERY_TRIAGE_WEBHOOK_URL }}
+          # The routine's "call via API" URL is authenticated with a Bearer token
+          # generated on the routine page; without it the endpoint answers 401.
+          API_TOKEN: ${{ secrets.DISCOVERY_TRIAGE_API_TOKEN }}
           PR: ${{ steps.target.outputs.pr }}
           KIND: ${{ steps.target.outputs.kind }}
           URL: ${{ steps.target.outputs.url }}
@@ -329,9 +334,13 @@ jobs:
           # call leaves the PR labelled, and the "pr" dispatch input exists
           # precisely to replay it. The URL is a secret, so only the status code
           # is ever echoed.
+          auth=()
+          if [ -n "${API_TOKEN:-}" ]; then
+            auth=(-H "Authorization: Bearer $API_TOKEN")
+          fi
           code=$(curl -sS --max-time 30 \
             -o /tmp/routine-response.txt -w '%{http_code}' \
-            -X POST -H 'Content-Type: application/json' \
+            -X POST -H 'Content-Type: application/json' "${auth[@]}" \
             -d "$payload" "$WEBHOOK_URL")
           if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
             echo "::error::The triage routine webhook answered HTTP $code."
