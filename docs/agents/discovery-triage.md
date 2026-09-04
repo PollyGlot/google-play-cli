@@ -89,8 +89,10 @@ break users:
   shipped command calls **disappeared**;
 - `TestRegisteredMethodsAreNotDeprecated` — a method a shipped command calls is
   now **deprecated**;
-- `TestCoverageShippedRowsAreRegistered` — a ✅ row of COVERAGE.md has no
-  registry entry.
+- `TestCoverageDocMatchesSources` (in `internal/coveragedoc`) — the committed
+  `docs/COVERAGE.md` no longer matches a re-render from `paths.txt` + the
+  registry, i.e. the refresh moved the method universe and the generated file
+  was not regenerated (step 5 fixes it).
 
 Rules:
 
@@ -150,16 +152,19 @@ already decided. Red means a shipped command breaks (fix). Green means gplay
 never called it, so it is noted, with the COVERAGE.md row that must lose its
 line.
 
-## 5. Track new methods in COVERAGE.md
+## 5. Regenerate COVERAGE.md
 
-Newly appeared, in-scope methods enter [COVERAGE.md](../COVERAGE.md) as 🔴
-(*Untracked — in scope per ADR-0026 but no command*) in the same run, with one
-commit on the refresh PR's branch:
+[COVERAGE.md](../COVERAGE.md) is **generated**, not edited: one row per method of
+`paths.txt`, marked ✅ called / ⚫️ excluded / 🔴 uncovered from
+`internal/apiregistry`. A refresh that adds or removes methods therefore makes
+it stale, and `TestCoverageDocMatchesSources` red. You do not write rows: you
+run the target and commit its output.
 
 ```bash
-# on the PR's head branch, COVERAGE.md and nothing else
+make coverage-update
+git diff --stat            # docs/COVERAGE.md and nothing else
 git add docs/COVERAGE.md
-git commit -m "docs(coverage): track <service>.<resource> surfaced by the refresh"
+git commit -m "docs(coverage): regenerate after the <service> refresh"
 git push origin HEAD:"$HEAD_REF"
 ```
 
@@ -167,13 +172,18 @@ Constraints:
 
 - **COVERAGE.md only.** `git status --porcelain` must show that single file
   before you commit. Anything else in the working tree is a mistake you undo,
-  not a change you ship.
+  not a change you ship. In particular, never hand-edit a row: the freshness
+  test compares the file byte for byte against a re-render.
 - Commit type is `docs`, never `feat`/`fix`: release-please reads the type
   blind to paths, and this commit must not bump the CLI version.
-- Keep the headline counts of COVERAGE.md consistent with the rows you add, and
-  re-run `go test ./internal/apiregistry/` after the edit
-  (`TestCoverageShippedRowsAreRegistered` parses the table; a malformed row
-  fails it).
+- New in-scope methods land as 🔴 by construction (nothing calls them yet), so
+  the count in your verdict is the number of new 🔴 rows in the diff.
+- A method the ADR-0026 test judged **runtime** (step 4) does not stay 🔴: it
+  belongs in `internal/apiregistry/exclusions.go` with a one-line reason. That
+  is a code change, which you may not push (step 0): report it as a fix item
+  instead.
+- Re-run `go test ./internal/coveragedoc/ ./internal/apiregistry/` after the
+  regeneration; both must be green.
 - The rolling branch is force-pushed weekly. If your push is rejected because
   the branch moved, do not force-push: re-read the PR and start the run over.
 
@@ -243,7 +253,7 @@ verbatim failing lines). <One sentence on what that proves.>
 
 ### To fix
 - `androidpublisher.appsigning.enrollApp` — in scope under ADR-0026, no command
-  covers it (`docs/COVERAGE.md:98`, no hit in `internal/play/`). → PRD #476.
+  covers it (🔴 in `docs/COVERAGE.md`, no hit in `internal/play/`). → PRD #476.
 
 ### To consider
 - <item> — `internal/play/vitals/vitals.go:120`. <Why it is not a fix.>
@@ -257,7 +267,7 @@ verbatim failing lines). <One sentence on what that proves.>
   change in the Discovery doc, zero behavioural surface.
 
 **Tickets opened:** #<n> (or: none, the fix basket is empty).
-**COVERAGE.md:** <commit sha> tracks <n> method(s) as 🔴 (or: unchanged).
+**COVERAGE.md:** <commit sha> regenerated, <n> new 🔴 row(s) (or: unchanged).
 **Verdict:** `discovery:verdict-merge` (or `discovery:needs-decision`, because …).
 ````
 
@@ -281,7 +291,7 @@ gh pr edit "$PR" --repo PollyGlot/google-play-cli \
 
 | Label                      | When                                                                                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `discovery:verdict-merge`  | Registry test green, no fix item threatens a shipped command, tickets (if any) filed, COVERAGE.md updated. The snapshot refresh itself is safe: the PR touches only `docs/discovery/**`, `internal/schemaindex/schema_index.json` and your COVERAGE.md commit. |
+| `discovery:verdict-merge`  | Registry test green, no fix item threatens a shipped command, tickets (if any) filed, COVERAGE.md regenerated. The snapshot refresh itself is safe: the PR touches only `docs/discovery/**`, `internal/schemaindex/schema_index.json` and your COVERAGE.md commit. |
 | `discovery:needs-decision` | Registry test red; **or** the diff exceeds 2 tickets' worth of work; **or** a scope call under ADR-0026 you cannot make alone; **or** the PR touches a file outside the snapshot set; **or** you could not complete a step and said so. |
 
 Set one, remove the other. The label is the handoff: `discovery:verdict-merge`

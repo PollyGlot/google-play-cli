@@ -15,7 +15,9 @@
 //
 // It is declarative on purpose: no call site imports it, nothing here is
 // compiled into a request. Adding a command that calls a new method means
-// adding one line here, and the COVERAGE cross-check below fails until you do.
+// adding one line here; docs/COVERAGE.md is then rendered from this file plus
+// the exclusion list (`make coverage-update`, slice #514), so an unregistered
+// method shows up there as an uncovered gap.
 //
 // Scope: Google Discovery-documented APIs only. `gplay reviews history` also
 // reads the Cloud Storage JSON API (`storage.objects.list`/`get`), which has no
@@ -67,7 +69,7 @@ var entries = []Entry{
 	// --- androidpublisher: Edit-scoped resources ------------------------
 	{MethodID: "androidpublisher.edits.apks.upload", Commands: []string{"releases upload"}, Note: "an .apk payload rides releases upload (ADR-0036)"},
 	{MethodID: "androidpublisher.edits.bundles.upload", Commands: []string{"releases upload"}, Note: "the .aab path, resumable upload host"},
-	{MethodID: "androidpublisher.edits.countryavailability.get", Commands: []string{"tracks availability"}},
+	{MethodID: "androidpublisher.edits.countryavailability.get", Commands: []string{"tracks availability view"}},
 	{MethodID: "androidpublisher.edits.deobfuscationfiles.upload", Commands: []string{"releases mappings upload"}},
 	{MethodID: "androidpublisher.edits.details.get", Commands: []string{"apps details view", "apps view", "apps audit"}},
 	{MethodID: "androidpublisher.edits.details.patch", Commands: []string{"apps details set"}},
@@ -200,15 +202,4 @@ var entries = []Entry{
 	{MethodID: "gamesConfiguration.leaderboardConfigurations.insert", Commands: []string{"games leaderboards create"}},
 	{MethodID: "gamesConfiguration.leaderboardConfigurations.list", Commands: []string{"games leaderboards list"}},
 	{MethodID: "gamesConfiguration.leaderboardConfigurations.update", Commands: []string{"games leaderboards update"}},
-}
-
-// CoverageExceptions lists the ✅ rows of docs/COVERAGE.md whose surface the CLI
-// covers WITHOUT calling that surface's own methods. Without this the COVERAGE
-// cross-check would demand a registry entry for a method gplay does not call,
-// and the registry would start lying about the CLI's real dependencies.
-//
-// Keyed by the surface as spelled in COVERAGE.md's first column.
-var CoverageExceptions = map[string]string{
-	"applications.tracks.releases.list": "`releases list` reads the same releases through " +
-		"androidpublisher.edits.tracks.get inside a read-only Edit; the Edit-free list method is not called",
 }
