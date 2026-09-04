@@ -21,8 +21,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -31,6 +31,18 @@ const (
 	opImagesUpload    = "images.upload"
 	opImagesDelete    = "images.delete"
 	opImagesDeleteAll = "images.deleteall"
+)
+
+// Registry entries this package calls. Resolving them at init makes an
+// unregistered or vanished method a startup panic caught by CI rather than a
+// runtime surprise; verb and URL then come from the Discovery snapshot instead
+// of literals kept here (#513). list and deleteall share one template (the
+// slot itself); delete adds {imageId}; upload lives on the /upload host.
+var (
+	methodList      = apiregistry.MustResolve("androidpublisher.edits.images.list")
+	methodUpload    = apiregistry.MustResolve("androidpublisher.edits.images.upload")
+	methodDelete    = apiregistry.MustResolve("androidpublisher.edits.images.delete")
+	methodDeleteAll = apiregistry.MustResolve("androidpublisher.edits.images.deleteall")
 )
 
 // Type is one of the nine AppImageType values edits.images exposes. The
@@ -138,15 +150,15 @@ type Image struct {
 	Sha256 string `json:"sha256"`
 }
 
-// slotURL builds the edits.images slot URL for (language, imageType) on the
-// data-plane host. List (GET) and DeleteAll (DELETE) share it; Delete appends
-// the image id.
-func slotURL(pkg, editID, language string, imageType Type) string {
-	return api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/listings/" + url.PathEscape(language) +
-		"/" + url.PathEscape(string(imageType))
+// slotParams is the path-parameter set every edits.images method shares: the
+// slot is (package, edit, locale, image type). Delete adds imageId on top.
+func slotParams(pkg, editID, language string, imageType Type) map[string]string {
+	return map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"language":    language,
+		"imageType":   string(imageType),
+	}
 }
 
 // List fetches one slot's images at edits.images.list (GET on the slot URL).
@@ -155,7 +167,11 @@ func slotURL(pkg, editID, language string, imageType Type) string {
 // the --output json pass-through (ADR-0003). An absent slot returns an empty
 // slice, no error (missing == empty, ADR-0013).
 func List(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type) ([]Image, json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, slotURL(pkg, editID, language, imageType), nil)
+	u, err := methodList.URL(slotParams(pkg, editID, language, imageType))
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opImagesList, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodList.Verb, u, nil)
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opImagesList, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -190,13 +206,12 @@ func List(ctx context.Context, hc *http.Client, pkg, editID, language string, im
 // position parameter); ordering is the caller's job (upload in name order
 // after a DeleteAll: ADR-0013).
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, data []byte) (*Image, error) {
-	u := api.UploadBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/listings/" + url.PathEscape(language) +
-		"/" + url.PathEscape(string(imageType)) +
-		"?uploadType=media"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(data))
+	u, err := methodUpload.UploadURL(slotParams(pkg, editID, language, imageType))
+	if err != nil {
+		return nil, &api.Error{Operation: opImagesUpload, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	u += "?uploadType=media"
+	req, err := http.NewRequestWithContext(ctx, methodUpload.Verb, u, bytes.NewReader(data))
 	if err != nil {
 		return nil, &api.Error{Operation: opImagesUpload, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -231,8 +246,13 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 // the slot URL + "/{imageId}"). Used by `apply --prune` to drop a live image
 // whose content is in no local file. A 2xx/204 with no body is expected.
 func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, imageID string) error {
-	u := slotURL(pkg, editID, language, imageType) + "/" + url.PathEscape(imageID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	params := slotParams(pkg, editID, language, imageType)
+	params["imageId"] = imageID
+	u, err := methodDelete.URL(params)
+	if err != nil {
+		return &api.Error{Operation: opImagesDelete, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodDelete.Verb, u, nil)
 	if err != nil {
 		return &api.Error{Operation: opImagesDelete, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -255,7 +275,11 @@ func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 // destructive primitive behind a full-slot clear. The {"deleted":[...]} body
 // is not parsed; a non-2xx surfaces as an *api.Error.
 func DeleteAll(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, slotURL(pkg, editID, language, imageType), nil)
+	u, err := methodDeleteAll.URL(slotParams(pkg, editID, language, imageType))
+	if err != nil {
+		return &api.Error{Operation: opImagesDeleteAll, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodDeleteAll.Verb, u, nil)
 	if err != nil {
 		return &api.Error{Operation: opImagesDeleteAll, Package: pkg, Message: err.Error(), Cause: err}
 	}

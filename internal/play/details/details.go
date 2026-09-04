@@ -20,8 +20,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
@@ -31,6 +31,16 @@ const (
 	opDetailsGet   = "details.get"
 	opDetailsPatch = "details.patch"
 	opListingsGet  = "listings.get"
+)
+
+// Registry entries this package calls. Resolving them at init makes an
+// unregistered or vanished method a startup panic caught by CI rather than a
+// runtime surprise; verb and URL then come from the Discovery snapshot instead
+// of literals kept here (#513).
+var (
+	methodDetailsGet   = apiregistry.MustResolve("androidpublisher.edits.details.get")
+	methodDetailsPatch = apiregistry.MustResolve("androidpublisher.edits.details.patch")
+	methodListingsGet  = apiregistry.MustResolve("androidpublisher.edits.listings.get")
 )
 
 // Details surfaces the fields `gplay apps view` displays: the minimum
@@ -91,11 +101,11 @@ func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, 
 		raw json.RawMessage
 	)
 	if err := edits.WithReadOnlyEdit(ctx, hc, pkg, func(editID string) error {
-		u := api.AndroidPubBase +
-			"/applications/" + url.PathEscape(pkg) +
-			"/edits/" + url.PathEscape(editID) +
-			"/details"
-		body, status, err := getJSON(ctx, hc, opDetailsGet, pkg, u)
+		u, err := methodDetailsGet.URL(map[string]string{"packageName": pkg, "editId": editID})
+		if err != nil {
+			return &api.Error{Operation: opDetailsGet, Package: pkg, Message: err.Error(), Cause: err}
+		}
+		body, status, err := getJSON(ctx, hc, methodDetailsGet.Verb, opDetailsGet, pkg, u)
 		if err != nil {
 			return err
 		}
@@ -223,12 +233,12 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDe
 		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
 	}
 
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/details"
+	u, err := methodDetailsPatch.URL(map[string]string{"packageName": pkg, "editId": editID})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, methodDetailsPatch.Verb, u, bytes.NewReader(payload))
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -292,11 +302,11 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDe
 // defaultLanguage, contactEmail, err). The raw body is what feeds the
 // `"details"` slot of the apps view envelope.
 func fetchDetails(ctx context.Context, hc *http.Client, pkg, editID string) (json.RawMessage, string, string, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/details"
-	raw, status, err := getJSON(ctx, hc, opDetailsGet, pkg, u)
+	u, err := methodDetailsGet.URL(map[string]string{"packageName": pkg, "editId": editID})
+	if err != nil {
+		return nil, "", "", &api.Error{Operation: opDetailsGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	raw, status, err := getJSON(ctx, hc, methodDetailsGet.Verb, opDetailsGet, pkg, u)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -334,11 +344,11 @@ func fetchDetails(ctx context.Context, hc *http.Client, pkg, editID string) (jso
 // today; the rest of the listing is preserved in the raw envelope for
 // --output json consumers who want richer detail.
 func fetchListing(ctx context.Context, hc *http.Client, pkg, editID, language string) (json.RawMessage, string, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/listings/" + url.PathEscape(language)
-	raw, status, err := getJSON(ctx, hc, opListingsGet, pkg, u)
+	u, err := methodListingsGet.URL(map[string]string{"packageName": pkg, "editId": editID, "language": language})
+	if err != nil {
+		return nil, "", &api.Error{Operation: opListingsGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	raw, status, err := getJSON(ctx, hc, methodListingsGet.Verb, opListingsGet, pkg, u)
 	if err != nil {
 		return nil, "", err
 	}
@@ -387,8 +397,8 @@ func fetchIcon(ctx context.Context, hc *http.Client, pkg, editID, language strin
 // decode-failure *api.Error with the real status (200 in practice, but
 // 204 or 206 are valid 2xx the server might emit) rather than hardcoding
 // it: keeping parity with GetDefaultLanguage's behavior.
-func getJSON(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawMessage, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
+func getJSON(ctx context.Context, hc *http.Client, verb, op, pkg, u string) (json.RawMessage, int, error) {
+	req, err := http.NewRequestWithContext(ctx, verb, u, http.NoBody)
 	if err != nil {
 		return nil, 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -445,11 +455,11 @@ func getJSON(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawM
 // edits.details.get. Errors are wrapped in *api.Error so the gplay
 // exit-code taxonomy is honored end-to-end.
 func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string) (string, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/details"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
+	u, err := methodDetailsGet.URL(map[string]string{"packageName": pkg, "editId": editID})
+	if err != nil {
+		return "", &api.Error{Operation: "edits.details.get", Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodDetailsGet.Verb, u, http.NoBody)
 	if err != nil {
 		return "", &api.Error{Operation: "edits.details.get", Package: pkg, Message: err.Error(), Cause: err}
 	}

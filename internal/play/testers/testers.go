@@ -12,14 +12,23 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 const (
 	opTestersGet    = "testers.get"
 	opTestersUpdate = "testers.update"
+)
+
+// Registry entries this package calls. Resolving them at init makes an
+// unregistered or vanished method a startup panic caught by CI rather than a
+// runtime surprise; verb and URL then come from the Discovery snapshot instead
+// of literals kept here (#513).
+var (
+	methodGet    = apiregistry.MustResolve("androidpublisher.edits.testers.get")
+	methodUpdate = apiregistry.MustResolve("androidpublisher.edits.testers.update")
 )
 
 // Testers is the API-shaped edits.testers resource. googleGroups is the
@@ -36,12 +45,16 @@ type Testers struct {
 // diagnostics. Like the tracks reads, it runs inside an Edit the caller has
 // already opened.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Testers, json.RawMessage, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/testers/" + url.PathEscape(track)
+	u, err := methodGet.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"track":       track,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTestersGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opTestersGet, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -92,12 +105,16 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, gro
 		return nil, nil, &api.Error{Operation: opTestersUpdate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
 	}
 
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/testers/" + url.PathEscape(track)
+	u, err := methodUpdate.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"track":       track,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTestersUpdate, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, methodUpdate.Verb, u, bytes.NewReader(payload))
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opTestersUpdate, Package: pkg, Message: err.Error(), Cause: err}
 	}

@@ -17,10 +17,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -28,6 +28,17 @@ const (
 	opUpload = "expansionfiles.upload"
 	opUpdate = "expansionfiles.update"
 	opGet    = "expansionfiles.get"
+)
+
+// Registry entries this package calls. Resolving them at init makes an
+// unregistered or vanished method a startup panic caught by CI rather than a
+// runtime surprise; verb and URL then come from the Discovery snapshot instead
+// of literals kept here (#513). upload shares the same path shape but on the
+// /upload host, hence UploadURL.
+var (
+	methodUpload = apiregistry.MustResolve("androidpublisher.edits.expansionfiles.upload")
+	methodUpdate = apiregistry.MustResolve("androidpublisher.edits.expansionfiles.update")
+	methodGet    = apiregistry.MustResolve("androidpublisher.edits.expansionfiles.get")
 )
 
 // Expansion file types: the expansionFileType path segment. The Discovery
@@ -63,12 +74,15 @@ func (e *LocalIOError) Error() string { return fmt.Sprintf("%s: %s: %v", opUploa
 func (e *LocalIOError) Unwrap() error { return e.Cause }
 func (e *LocalIOError) ExitCode() int { return 20 }
 
-func fileURL(host, pkg, editID string, versionCode int, fileType string) string {
-	return host +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/apks/" + strconv.Itoa(versionCode) +
-		"/expansionFiles/" + url.PathEscape(fileType)
+// fileParams is the path-parameter set the three expansionfiles methods share:
+// the file is keyed by (package, edit, APK versionCode, expansion file type).
+func fileParams(pkg, editID string, versionCode int, fileType string) map[string]string {
+	return map[string]string{
+		"packageName":       pkg,
+		"editId":            editID,
+		"apkVersionCode":    strconv.Itoa(versionCode),
+		"expansionFileType": fileType,
+	}
 }
 
 // Upload streams the .obb at path to expansionfiles.upload, keyed by the APK
@@ -81,7 +95,11 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 	}
 	defer func() { _ = f.Close() }()
 
-	u := fileURL(api.UploadBase, pkg, editID, versionCode, fileType) + "?uploadType=resumable"
+	u, err := methodUpload.UploadURL(fileParams(pkg, editID, versionCode, fileType))
+	if err != nil {
+		return nil, &api.Error{Operation: opUpload, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	u += "?uploadType=resumable"
 
 	// *os.File is an io.ReaderAt, giving the resumable helper random access so
 	// it can re-send from a server-acknowledged offset after a transient
@@ -104,7 +122,11 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 	if err != nil {
 		return nil, &api.Error{Operation: opUpdate, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, fileURL(api.AndroidPubBase, pkg, editID, versionCode, fileType), bytes.NewReader(body))
+	u, err := methodUpdate.URL(fileParams(pkg, editID, versionCode, fileType))
+	if err != nil {
+		return nil, &api.Error{Operation: opUpdate, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodUpdate.Verb, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, &api.Error{Operation: opUpdate, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -114,7 +136,11 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 
 // Get reads the expansion file configuration (fileSize XOR referencesVersion).
 func Get(ctx context.Context, hc *http.Client, pkg, editID string, versionCode int, fileType string) (ExpansionFile, json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL(api.AndroidPubBase, pkg, editID, versionCode, fileType), nil)
+	u, err := methodGet.URL(fileParams(pkg, editID, versionCode, fileType))
+	if err != nil {
+		return ExpansionFile{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
 	if err != nil {
 		return ExpansionFile{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
 	}

@@ -13,11 +13,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+)
+
+// Registry entries this package calls. Resolving them at init makes an
+// unregistered or vanished method a startup panic caught by CI (the registry
+// tests resolve every entry) rather than a runtime surprise; verb and URL then
+// come from the Discovery snapshot instead of literals kept here (#513).
+var (
+	methodInsert = apiregistry.MustResolve("androidpublisher.edits.insert")
+	methodDelete = apiregistry.MustResolve("androidpublisher.edits.delete")
+	methodCommit = apiregistry.MustResolve("androidpublisher.edits.commit")
 )
 
 // DanglingEditError wraps the upstream failure that caused an Edit to be
@@ -288,8 +298,11 @@ func isEditAlreadyExists(err error) bool {
 }
 
 func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error) {
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/edits"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, http.NoBody)
+	u, err := methodInsert.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return "", &api.Error{Operation: "edits.insert", Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodInsert.Verb, u, http.NoBody)
 	if err != nil {
 		return "", &api.Error{Operation: "edits.insert", Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -338,8 +351,11 @@ func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error
 // telemetry but the caller (WithEdit) treats them as non-fatal so the
 // real upstream error is not masked.
 func deleteEdit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/edits/" + url.PathEscape(editID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, http.NoBody)
+	u, err := methodDelete.URL(map[string]string{"packageName": pkg, "editId": editID})
+	if err != nil {
+		return &api.Error{Operation: "edits.delete", Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodDelete.Verb, u, http.NoBody)
 	if err != nil {
 		return &api.Error{Operation: "edits.delete", Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -363,8 +379,11 @@ func deleteEdit(ctx context.Context, hc *http.Client, pkg, editID string) error 
 }
 
 func commitEdit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/edits/" + url.PathEscape(editID) + ":commit"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, http.NoBody)
+	u, err := methodCommit.URL(map[string]string{"packageName": pkg, "editId": editID})
+	if err != nil {
+		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodCommit.Verb, u, http.NoBody)
 	if err != nil {
 		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
 	}
