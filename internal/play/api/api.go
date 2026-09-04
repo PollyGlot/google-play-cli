@@ -1,43 +1,14 @@
 // Package api owns the shared low-level concerns of every internal/play/*
-// module: the canonical androidpublisher base URLs, the per-response
-// body-size caps, and the HTTP status → gplay exit-code mapping plus the
-// API error-envelope parser.
+// module: the per-response body-size caps, and the HTTP status → gplay
+// exit-code mapping plus the API error-envelope parser.
+//
+// It used to own the base URLs of each Google service too. Those are gone
+// since #520: a request's verb and URL are derived from the Discovery
+// snapshots by internal/apiregistry, so no base URL is written by hand any
+// more (an archgate test in that package fails on the ones that come back).
 package api
 
 const (
-	// AndroidPubBase is the data-plane base URL for the Google Play
-	// Developer API v3 (edits, tracks, listings, details, ...).
-	AndroidPubBase = "https://androidpublisher.googleapis.com/androidpublisher/v3"
-
-	// UploadBase is the media-upload base URL for the same service.
-	// Used by bundles.upload (and, later, deobfuscationfiles).
-	UploadBase = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3"
-
-	// ReportingBase is the data-plane base URL for the Play Developer Reporting
-	// API v1beta1: a DISTINCT Google service (its own host and OAuth scope)
-	// carrying the read-only post-launch quality surface (crashes/ANR vitals,
-	// anomalies, error reports; #49). Resource paths hang off this base, e.g.
-	// `/apps/{package}/crashRateMetricSet:query`.
-	ReportingBase = "https://playdeveloperreporting.googleapis.com/v1beta1"
-
-	// CustomAppUploadBase is the media-upload base URL for the Play Custom App
-	// Publishing API (playcustomapp): a DISTINCT Google service (its own host,
-	// the androidpublisher OAuth scope) whose entire current surface is one
-	// account-axis method, accounts.customApps.create (ADR-0032). That method is
-	// a multipart media upload, so only the /upload base is needed; resource
-	// paths hang off it, e.g. `/accounts/{account}/customApps`.
-	CustomAppUploadBase = "https://playcustomapp.googleapis.com/upload/playcustomapp/v1"
-
-	// GamesConfigBase is the data-plane base URL for the Play Games Services
-	// Publishing API (gamesConfiguration): a DISTINCT Google service (its own
-	// host, the androidpublisher OAuth scope) carrying the admin surface for a
-	// game's achievement and leaderboard configurations (#241, ADR-0033).
-	// Addressed by the Play Games application ID (its own ID space, not the
-	// Android package). Resource paths hang off this base, e.g.
-	// `/applications/{applicationId}/achievements` (list/insert) or
-	// `/achievements/{achievementId}` (get/update/delete).
-	GamesConfigBase = "https://gamesconfiguration.googleapis.com/games/v1configuration"
-
 	// MaxAPIErrorBodyRead caps how many bytes of a non-2xx androidpublisher
 	// response body we hold in memory while parsing the error envelope.
 	// Error payloads are tiny ({"error":{"code":...,"message":"..."}});

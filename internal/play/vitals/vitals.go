@@ -5,7 +5,8 @@
 // user-supplied metrics/dimensions/periods against the embedded Schema index.
 //
 // Unlike internal/play/reviews this is a DIFFERENT Google service: a distinct
-// host (api.ReportingBase) and OAuth scope (token.ReportingScope). Everything
+// host and OAuth scope (token.ReportingScope), both resolved from the
+// registry and the Discovery snapshots, never hand-written. Everything
 // here is read-only: the API only reads metrics.
 //
 // Metrics, dimensions and aggregation periods are NEVER invented: the catalog

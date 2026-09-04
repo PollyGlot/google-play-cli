@@ -61,7 +61,7 @@ func TestQuery_issuesPOST(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	wantURL := api.ReportingBase + "/apps/com.example.app/crashRateMetricSet:query"
+	wantURL := "https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query"
 	if gotURL != wantURL {
 		t.Errorf("URL = %q, want %q", gotURL, wantURL)
 	}
