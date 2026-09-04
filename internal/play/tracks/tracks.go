@@ -60,7 +60,7 @@ type Track struct {
 
 // TrackConfig is the edits.tracks.create request body. The API supports
 // exactly one type (CLOSED_TESTING), so gplay hardcodes it; formFactor is
-// DEFAULT (phone) for now (WEAR/AUTOMOTIVE deferred to BACKLOG).
+// DEFAULT (phone) for now (WEAR/AUTOMOTIVE deferred, issue #528).
 type TrackConfig struct {
 	Track      string `json:"track"`
 	Type       string `json:"type"`

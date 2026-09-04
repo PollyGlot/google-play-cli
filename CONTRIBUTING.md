@@ -8,9 +8,10 @@ fast and contributions are very welcome.
 1. **Read [CLAUDE.md](CLAUDE.md) first.** It lists the docs to read in order
    and the conventions used across every command. Most "should I do X or Y?"
    questions have an answer in `docs/DESIGN.md` or the ADRs.
-2. **Cross-check [docs/BACKLOG.md](docs/BACKLOG.md).** If the feature you
-   want to add is in there, surface that in an issue *first* rather than
-   silently expanding scope. Backlog items are deferred on purpose.
+2. **Search the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking).** If the feature
+   you want to add is already tracked there, comment on it *first* rather
+   than silently expanding scope. Parked items are deferred on purpose, and
+   the issue carries the reason.
 3. **Open an issue for anything non-trivial.** A short discussion saves
    time when the design touches a CLI convention. Typos and pure refactors
    can go straight to PR.
@@ -106,7 +107,7 @@ None of those bump the version or land in the CLI `CHANGELOG.md`. Reserve
   `docs/DESIGN.md` in the same PR.
 - **New canonical term** (a new domain noun) → add to `CONTEXT.md`.
 - **Irreversible / surprising decision** → add an ADR under `docs/adr/`.
-- **Feature you decided to defer** → add to `docs/BACKLOG.md` with rationale.
+- **Feature you decided to defer** → file a `type:parking` issue with the rationale.
 - **New command that mutates Google Play state** → wrap it with
   `kernel.MarkMutating(...)` at its registration site, so the `GPLAY_READONLY`
   policy refuses it (exit 4, ADR-0024). The mutating-registry guard test in
@@ -139,7 +140,7 @@ The reviewer checks:
 1. The change matches the docs (or updates them).
 2. Tests cover the new behavior (RoundTripper-mocked, see CLAUDE.md).
 3. `--help` text and output for new flags follow `docs/DESIGN.md`.
-4. No accidental scope creep from the backlog.
+4. No accidental scope creep beyond the issue the PR closes.
 
 ## GitHub Actions are SHA-pinned
 

@@ -15,8 +15,8 @@ Utiliser le CLI `gh` pour toute opération.
 ## Taxonomie d'issue locale (lire avant tout)
 
 Quatre types d'issue cohabitent. Ils se distinguent par un label `type:*`
-et une convention de titre. Voir [docs/ROADMAP.md](../ROADMAP.md) pour la
-vue d'ensemble du projet.
+et une convention de titre. Le tracker **est** la roadmap : il n'y a pas de
+fichier de roadmap à tenir en parallèle.
 
 | Type        | Label          | Convention de titre                                   |
 | ----------- | -------------- | ----------------------------------------------------- |
@@ -43,8 +43,10 @@ Créer une issue GitHub. Appliquer les labels appropriés :
 
 ## Maintenir la roadmap
 
-Quand un PRD ou une slice est créée/fermée, mettre à jour
-[docs/ROADMAP.md](../ROADMAP.md) (diagramme Mermaid + tables).
+Rien à maintenir hors du tracker : l'état du projet se lit avec `gh issue
+list` (`type:prd`, `type:slice`, `type:parking`, `ready-for-agent`). Quand un
+PRD est décomposé, tenir sa checklist « Implementation issues » à jour dans le
+body du PRD, et fermer les issues livrées.
 
 ## Quand un skill dit "fetch the relevant ticket"
 
