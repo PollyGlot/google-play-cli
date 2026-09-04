@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -23,6 +24,16 @@ const (
 	opReviewsList  = "reviews.list"
 	opReviewsReply = "reviews.reply"
 	opReviewsGet   = "reviews.get"
+)
+
+// Registry entries for the three methods this package calls. Resolving at init
+// turns an unregistered or vanished method into a CI panic rather than a
+// runtime surprise; verb and URL template then come from the Discovery
+// snapshot instead of literals kept here (#513, batch 3).
+var (
+	mReviewsList  = apiregistry.MustResolve("androidpublisher.reviews.list")
+	mReviewsReply = apiregistry.MustResolve("androidpublisher.reviews.reply")
+	mReviewsGet   = apiregistry.MustResolve("androidpublisher.reviews.get")
 )
 
 // Timestamp mirrors the API's google.protobuf.Timestamp-shaped value:
@@ -190,11 +201,12 @@ func Reply(ctx context.Context, hc *http.Client, pkg, reviewID, text string) (js
 		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
 	}
 
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/reviews/" + url.PathEscape(reviewID) + ":reply"
+	u, err := mReviewsReply.URL(map[string]string{"packageName": pkg, "reviewId": reviewID})
+	if err != nil {
+		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, mReviewsReply.Verb, u, bytes.NewReader(payload))
 	if err != nil {
 		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -236,11 +248,12 @@ func Reply(ctx context.Context, hc *http.Client, pkg, reviewID, text string) (js
 // a 404 here means an unknown OR expired reviewId (a valid review that has
 // fallen out of the API's 7-day window).
 func Get(ctx context.Context, hc *http.Client, pkg, reviewID string) (Review, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/reviews/" + url.PathEscape(reviewID)
+	u, err := mReviewsGet.URL(map[string]string{"packageName": pkg, "reviewId": reviewID})
+	if err != nil {
+		return Review{}, &api.Error{Operation: opReviewsGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, mReviewsGet.Verb, u, nil)
 	if err != nil {
 		return Review{}, &api.Error{Operation: opReviewsGet, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -321,12 +334,17 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Review, error) {
 // nextPageToken ("" for the first call). It returns the page's reviews and
 // the nextPageToken to continue with ("" when the page is the last).
 func listPage(ctx context.Context, hc *http.Client, pkg, pageToken string) ([]Review, string, error) {
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/reviews"
+	// The token query stays hand-built: the resolver answers with the path
+	// only (#516).
+	u, err := mReviewsList.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return nil, "", &api.Error{Operation: opReviewsList, Package: pkg, Message: err.Error(), Cause: err}
+	}
 	if pageToken != "" {
 		u += "?token=" + url.QueryEscape(pageToken)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, mReviewsList.Verb, u, nil)
 	if err != nil {
 		return nil, "", &api.Error{Operation: opReviewsList, Package: pkg, Message: err.Error(), Cause: err}
 	}

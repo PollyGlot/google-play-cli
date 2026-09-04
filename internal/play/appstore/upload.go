@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -54,7 +54,7 @@ func (e *LocalIOError) ExitCode() int { return 20 }
 // `activeApks.activeApkSets[].baseApkId` / `.splitApkId[]`, so an operator
 // uploads once and cites the id thereafter rather than re-sending the binary.
 func UploadAPK(ctx context.Context, hc *http.Client, storePackage, pkg, path string) (string, json.RawMessage, error) {
-	raw, err := uploadMedia(ctx, hc, opUploadAPK, storePackage, pkg, "apks", path, "application/octet-stream", nil)
+	raw, err := uploadMedia(ctx, hc, mUploadAPK, opUploadAPK, storePackage, pkg, path, "application/octet-stream", nil)
 	if err != nil {
 		return "", nil, err
 	}
@@ -70,7 +70,7 @@ func UploadAPK(ctx context.Context, hc *http.Client, storePackage, pkg, path str
 // announcing application/octet-stream on an image-only endpoint invites a
 // server-side rejection after the whole transfer.
 func UploadImage(ctx context.Context, hc *http.Client, storePackage, pkg, path string) (string, json.RawMessage, error) {
-	raw, err := uploadMedia(ctx, hc, opUploadImage, storePackage, pkg, "images", path, "", nil)
+	raw, err := uploadMedia(ctx, hc, mUploadImage, opUploadImage, storePackage, pkg, path, "", nil)
 	if err != nil {
 		return "", nil, err
 	}
@@ -92,7 +92,7 @@ func UploadPolicyDeclarationFile(ctx context.Context, hc *http.Client, storePack
 	if err != nil {
 		return "", nil, &api.Error{Operation: opUploadPolicy, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
 	}
-	raw, err := uploadMedia(ctx, hc, opUploadPolicy, storePackage, pkg, "policyDeclarationFiles", path, "", initiate)
+	raw, err := uploadMedia(ctx, hc, mUploadPolicy, opUploadPolicy, storePackage, pkg, path, "", initiate)
 	if err != nil {
 		return "", nil, err
 	}
@@ -100,12 +100,15 @@ func UploadPolicyDeclarationFile(ctx context.Context, hc *http.Client, storePack
 }
 
 // uploadMedia is the shared recipe behind the three verbs: guard the local
-// file, then hand it to the resumable helper (PRD #355) addressed at
-// appstore/{store}/apps/{pkg}/{collection}:upload.
+// file, then hand it to the resumable helper (PRD #355) addressed at the
+// method's own media-upload endpoint.
 //
-// contentType empty means "sniff it from the file". initiate non-nil means the
-// method takes a request body, which opens the session.
-func uploadMedia(ctx context.Context, hc *http.Client, op, storePackage, pkg, collection, path, contentType string, initiate []byte) (json.RawMessage, error) {
+// m carries the resolved endpoint, op the *api.Error tag: the two differ on
+// purpose, since the tag is the REST reference spelling shown to the operator
+// while m.ID is the registry key. contentType empty means "sniff it from the
+// file". initiate non-nil means the method takes a request body, which opens
+// the session.
+func uploadMedia(ctx context.Context, hc *http.Client, m apiregistry.Method, op, storePackage, pkg, path, contentType string, initiate []byte) (json.RawMessage, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, &LocalIOError{Op: op, Path: path, Cause: err}
@@ -132,10 +135,16 @@ func uploadMedia(ctx context.Context, hc *http.Client, op, storePackage, pkg, co
 		}
 	}
 
-	u := api.UploadBase +
-		"/appstore/" + url.PathEscape(storePackage) +
-		"/apps/" + url.PathEscape(pkg) +
-		"/" + collection + ":upload?uploadType=resumable"
+	// The resumable query string stays hand-built: the resolver answers with
+	// the endpoint only (#516).
+	u, err := m.UploadURL(map[string]string{
+		"appStorePackageName": storePackage,
+		"packageName":         pkg,
+	})
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	u += "?uploadType=resumable"
 
 	// *os.File is an io.ReaderAt, giving the resumable helper random access so
 	// it can re-send from a server-acknowledged offset after a transient

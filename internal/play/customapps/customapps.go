@@ -21,13 +21,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 const op = "customApps.create"
+
+// method is the registry entry this package calls. Resolving at init turns an
+// unregistered or vanished method into a CI panic rather than a runtime
+// surprise; the verb and the media-upload endpoint (a different host,
+// playcustomapp.googleapis.com) then come from the Discovery snapshot instead
+// of literals kept here (#513, batch 3).
+var method = apiregistry.MustResolve("playcustomapp.accounts.customApps.create")
 
 // Organization is an org the custom app is restricted to. JSON tags mirror the
 // API verbatim for the ADR-0003 pass-through.
@@ -109,7 +116,13 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 		return CustomApp{}, nil, &LocalIOError{Path: artifactPath, Cause: fmt.Errorf("not a regular file")}
 	}
 
-	u := api.CustomAppUploadBase + "/accounts/" + url.PathEscape(account) + "/customApps?uploadType=resumable"
+	// The resumable query string stays hand-built: the resolver answers with
+	// the endpoint only (#516).
+	u, err := method.UploadURL(map[string]string{"account": account})
+	if err != nil {
+		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, Message: err.Error(), Cause: err}
+	}
+	u += "?uploadType=resumable"
 
 	// *os.File is an io.ReaderAt, giving the resumable helper random access to
 	// re-send from a server-acknowledged offset after a transient failure

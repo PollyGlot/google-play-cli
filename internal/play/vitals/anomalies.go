@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -16,6 +17,12 @@ const (
 	opListAnomalies  = "playdeveloperreporting.anomalies.list"
 	pageMaxAnomalies = 100
 )
+
+// mListAnomalies is the registry entry behind ListAnomalies. Resolving at init
+// turns an unregistered or vanished method into a CI panic rather than a
+// runtime surprise; verb, host (playdeveloperreporting.googleapis.com) and URL
+// template then come from the Discovery snapshot (#513, batch 3).
+var mListAnomalies = apiregistry.MustResolve("playdeveloperreporting.anomalies.list")
 
 // AnomalyListOptions bounds an anomalies.list call: an AIP-160 Filter (the
 // window is expressed as an `activeBetween(...)` filter: see ActiveBetween) and
@@ -46,8 +53,13 @@ func ListAnomalies(ctx context.Context, hc *http.Client, pkg string, opts Anomal
 	if opts.Filter != "" {
 		base.Set("filter", opts.Filter)
 	}
-	baseURL := api.ReportingBase + "/apps/" + url.PathEscape(pkg) + "/anomalies"
-	return paginateGET(ctx, hc, opListAnomalies, pkg, baseURL, base, "anomalies", pageMaxAnomalies, opts.Limit)
+	// Discovery names the path parameter after the collection, hence appsId
+	// for what gplay calls the package.
+	baseURL, err := mListAnomalies.URL(map[string]string{"appsId": pkg})
+	if err != nil {
+		return nil, false, &api.Error{Operation: opListAnomalies, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	return paginateGET(ctx, hc, mListAnomalies.Verb, opListAnomalies, pkg, baseURL, base, "anomalies", pageMaxAnomalies, opts.Limit)
 }
 
 // Anomaly is the render-ready subset of a Play-detected metric anomaly: which

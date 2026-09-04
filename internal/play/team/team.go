@@ -26,7 +26,24 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+)
+
+// Registry entries for the seven methods of this surface. Resolving at init
+// turns an unregistered or vanished method into a CI panic rather than a
+// runtime surprise; verb and URL template then come from the Discovery
+// snapshot instead of literals kept here (#513, batch 3). Discovery names the
+// path parameters after the collections, hence developersId / usersId /
+// grantsId for what gplay calls the developer id, the email and the package.
+var (
+	mUsersList    = apiregistry.MustResolve("androidpublisher.users.list")
+	mUsersCreate  = apiregistry.MustResolve("androidpublisher.users.create")
+	mUsersPatch   = apiregistry.MustResolve("androidpublisher.users.patch")
+	mUsersDelete  = apiregistry.MustResolve("androidpublisher.users.delete")
+	mGrantsCreate = apiregistry.MustResolve("androidpublisher.grants.create")
+	mGrantsPatch  = apiregistry.MustResolve("androidpublisher.grants.patch")
+	mGrantsDelete = apiregistry.MustResolve("androidpublisher.grants.delete")
 )
 
 // Operation names for *api.Error tagging, matching the REST reference so log
@@ -67,24 +84,24 @@ type Grant struct {
 	AppLevelPermissions []string `json:"appLevelPermissions,omitempty"`
 }
 
-// usersBase is the collection URL: developers/{developerId}/users.
-func usersBase(developerID string) string {
-	return api.AndroidPubBase + "/developers/" + url.PathEscape(developerID) + "/users"
+// accountURL fills the account-scoped template of m (users.list,
+// users.create). The three helpers below differ only in how many path
+// parameters the method declares, which is exactly the distinction the old
+// hand-built base/URL pairs encoded.
+func accountURL(m apiregistry.Method, developerID string) (string, error) {
+	return m.URL(map[string]string{"developersId": developerID})
 }
 
-// userURL is the single-resource URL: developers/{developerId}/users/{email}.
-func userURL(developerID, email string) string {
-	return usersBase(developerID) + "/" + url.PathEscape(email)
+// memberURL fills a member-scoped template: users.patch / users.delete, and
+// the grants collection, which Discovery keys by the same two parameters.
+func memberURL(m apiregistry.Method, developerID, email string) (string, error) {
+	return m.URL(map[string]string{"developersId": developerID, "usersId": email})
 }
 
-// grantsBase is a User's grants collection: .../users/{email}/grants.
-func grantsBase(developerID, email string) string {
-	return userURL(developerID, email) + "/grants"
-}
-
-// grantURL is a single Grant: .../users/{email}/grants/{packageName}.
-func grantURL(developerID, email, pkg string) string {
-	return grantsBase(developerID, email) + "/" + url.PathEscape(pkg)
+// grantURL fills a single-Grant template (grants.patch / grants.delete),
+// whose last segment is the package name.
+func grantURL(m apiregistry.Method, developerID, email, pkg string) (string, error) {
+	return m.URL(map[string]string{"developersId": developerID, "usersId": email, "grantsId": pkg})
 }
 
 // listPage is one users.list response page. Users is kept as raw messages so
@@ -137,7 +154,12 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 	// seen guards against a server that repeats a pageToken forever.
 	seen := map[string]struct{}{}
 	for {
-		u := usersBase(developerID)
+		// The pagination query stays hand-built: the resolver answers with
+		// the path only (#516).
+		u, err := accountURL(mUsersList, developerID)
+		if err != nil {
+			return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: err.Error(), Cause: err}
+		}
 		q := url.Values{}
 		q.Set("pageSize", strconv.Itoa(listPageSize))
 		if token != "" {
@@ -145,7 +167,7 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 		}
 		u += "?" + q.Encode()
 
-		page, err := getJSON(ctx, hc, opUsersList, developerID, u)
+		page, err := getJSON(ctx, hc, mUsersList.Verb, opUsersList, developerID, u)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -223,7 +245,11 @@ type grantWriteBody struct {
 // CreateUser invites a member with account-wide permissions (users.create).
 // Returns the raw response body for the ADR-0003 pass-through.
 func CreateUser(ctx context.Context, hc *http.Client, developerID, email string, perms []string) (json.RawMessage, error) {
-	return sendJSON(ctx, hc, http.MethodPost, opUsersCreate, developerID, usersBase(developerID), userWriteBody{Email: email, DeveloperAccountPermissions: nonNil(perms)})
+	u, err := accountURL(mUsersCreate, developerID)
+	if err != nil {
+		return nil, &api.Error{Operation: opUsersCreate, Package: developerID, Message: err.Error(), Cause: err}
+	}
+	return sendJSON(ctx, hc, mUsersCreate.Verb, opUsersCreate, developerID, u, userWriteBody{Email: email, DeveloperAccountPermissions: nonNil(perms)})
 }
 
 // SetUserPermissions replaces a member's account-wide permissions declaratively
@@ -231,27 +257,43 @@ func CreateUser(ctx context.Context, hc *http.Client, developerID, email string,
 // an explicit array (nil normalised to []) so an empty set clears the
 // permissions rather than omitting the field.
 func SetUserPermissions(ctx context.Context, hc *http.Client, developerID, email string, perms []string) (json.RawMessage, error) {
-	u := userURL(developerID, email) + "?updateMask=developerAccountPermissions"
-	return sendJSON(ctx, hc, http.MethodPatch, opUsersPatch, developerID, u, userWriteBody{DeveloperAccountPermissions: nonNil(perms)})
+	u, err := memberURL(mUsersPatch, developerID, email)
+	if err != nil {
+		return nil, &api.Error{Operation: opUsersPatch, Package: developerID, Message: err.Error(), Cause: err}
+	}
+	u += "?updateMask=developerAccountPermissions"
+	return sendJSON(ctx, hc, mUsersPatch.Verb, opUsersPatch, developerID, u, userWriteBody{DeveloperAccountPermissions: nonNil(perms)})
 }
 
 // DeleteUser off-boards a member (users.delete), targeted by email path. A
 // 2xx (often an empty body) yields nil, nil.
 func DeleteUser(ctx context.Context, hc *http.Client, developerID, email string) (json.RawMessage, error) {
-	return sendJSON(ctx, hc, http.MethodDelete, opUsersDelete, developerID, userURL(developerID, email), nil)
+	u, err := memberURL(mUsersDelete, developerID, email)
+	if err != nil {
+		return nil, &api.Error{Operation: opUsersDelete, Package: developerID, Message: err.Error(), Cause: err}
+	}
+	return sendJSON(ctx, hc, mUsersDelete.Verb, opUsersDelete, developerID, u, nil)
 }
 
 // CreateGrant grants a member per-app access (grants.create). perms is the
 // resolved appLevelPermissions for the package.
 func CreateGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string, perms []string) (json.RawMessage, error) {
-	return sendJSON(ctx, hc, http.MethodPost, opGrantsCreate, developerID, grantsBase(developerID, email), grantWriteBody{PackageName: pkg, AppLevelPermissions: nonNil(perms)})
+	u, err := memberURL(mGrantsCreate, developerID, email)
+	if err != nil {
+		return nil, &api.Error{Operation: opGrantsCreate, Package: developerID, Message: err.Error(), Cause: err}
+	}
+	return sendJSON(ctx, hc, mGrantsCreate.Verb, opGrantsCreate, developerID, u, grantWriteBody{PackageName: pkg, AppLevelPermissions: nonNil(perms)})
 }
 
 // PatchGrant replaces an existing grant's app-level permissions declaratively
 // (grants.patch with updateMask=appLevelPermissions).
 func PatchGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string, perms []string) (json.RawMessage, error) {
-	u := grantURL(developerID, email, pkg) + "?updateMask=appLevelPermissions"
-	return sendJSON(ctx, hc, http.MethodPatch, opGrantsPatch, developerID, u, grantWriteBody{AppLevelPermissions: nonNil(perms)})
+	u, err := grantURL(mGrantsPatch, developerID, email, pkg)
+	if err != nil {
+		return nil, &api.Error{Operation: opGrantsPatch, Package: developerID, Message: err.Error(), Cause: err}
+	}
+	u += "?updateMask=appLevelPermissions"
+	return sendJSON(ctx, hc, mGrantsPatch.Verb, opGrantsPatch, developerID, u, grantWriteBody{AppLevelPermissions: nonNil(perms)})
 }
 
 // nonNil normalises a nil slice to an empty one so a declarative write emits an
@@ -266,19 +308,25 @@ func nonNil(s []string) []string {
 // DeleteGrant revokes a member's per-app access (grants.delete), targeted by
 // email+package path, leaving the member in the account.
 func DeleteGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string) (json.RawMessage, error) {
-	return sendJSON(ctx, hc, http.MethodDelete, opGrantsDelete, developerID, grantURL(developerID, email, pkg), nil)
+	u, err := grantURL(mGrantsDelete, developerID, email, pkg)
+	if err != nil {
+		return nil, &api.Error{Operation: opGrantsDelete, Package: developerID, Message: err.Error(), Cause: err}
+	}
+	return sendJSON(ctx, hc, mGrantsDelete.Verb, opGrantsDelete, developerID, u, nil)
 }
 
-// getJSON performs a GET and returns the raw 2xx body, or an *api.Error.
-func getJSON(ctx context.Context, hc *http.Client, op, developerID, u string) (json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+// getJSON performs a read and returns the raw 2xx body, or an *api.Error. The
+// verb is passed in rather than hard-coded so it comes from the resolved
+// method, like the URL (#513).
+func getJSON(ctx context.Context, hc *http.Client, verb, op, developerID, u string) (json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, verb, u, nil)
 	if err != nil {
 		return nil, &api.Error{Operation: op, Package: developerID, Message: err.Error(), Cause: err}
 	}
 	return doRequest(hc, op, developerID, req)
 }
 
-// sendJSON performs a write (POST/PATCH/DELETE). When body is non-nil it is
+// sendJSON performs a write with the resolved method's verb. When body is non-nil it is
 // JSON-marshalled and Content-Type is set. Returns the raw 2xx body (possibly
 // empty) or an *api.Error.
 func sendJSON(ctx context.Context, hc *http.Client, method, op, developerID, u string, body any) (json.RawMessage, error) {

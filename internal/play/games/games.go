@@ -2,9 +2,10 @@
 // Services configuration: the achievementConfigurations and
 // leaderboardConfigurations resources of the gamesConfiguration service
 // (ADR-0007 raw HTTP, ADR-0033). It is a DISTINCT Google service from the
-// Android Publisher API: its own host (api.GamesConfigBase) reached with the
-// shared androidpublisher OAuth scope, addressed by the Play Games application
-// ID (its own numeric ID space, not the Android package).
+// Android Publisher API: its own host (gamesconfiguration.googleapis.com,
+// resolved from the registry) reached with the shared androidpublisher OAuth
+// scope, addressed by the Play Games application ID (its own numeric ID space,
+// not the Android package).
 //
 // Each resource exposes the same five methods (list/get/insert/update/delete).
 // Writes affect the editable draft; the published detail is read-only and
@@ -24,7 +25,27 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+)
+
+// Registry entries for the ten gamesConfiguration methods this package calls.
+// Resolving at init turns an unregistered or vanished method into a CI panic
+// rather than a runtime surprise; verb, host (gamesconfiguration.googleapis.com,
+// not androidpublisher) and URL template then come from the Discovery snapshot
+// instead of literals kept here (#513, batch 3).
+var (
+	mAchList   = apiregistry.MustResolve("gamesConfiguration.achievementConfigurations.list")
+	mAchGet    = apiregistry.MustResolve("gamesConfiguration.achievementConfigurations.get")
+	mAchInsert = apiregistry.MustResolve("gamesConfiguration.achievementConfigurations.insert")
+	mAchUpdate = apiregistry.MustResolve("gamesConfiguration.achievementConfigurations.update")
+	mAchDelete = apiregistry.MustResolve("gamesConfiguration.achievementConfigurations.delete")
+
+	mLbList   = apiregistry.MustResolve("gamesConfiguration.leaderboardConfigurations.list")
+	mLbGet    = apiregistry.MustResolve("gamesConfiguration.leaderboardConfigurations.get")
+	mLbInsert = apiregistry.MustResolve("gamesConfiguration.leaderboardConfigurations.insert")
+	mLbUpdate = apiregistry.MustResolve("gamesConfiguration.leaderboardConfigurations.update")
+	mLbDelete = apiregistry.MustResolve("gamesConfiguration.leaderboardConfigurations.delete")
 )
 
 // LocalizedString is one locale's value within a LocalizedStringBundle. JSON
@@ -57,30 +78,10 @@ func (b *LocalizedStringBundle) First() string {
 	return ""
 }
 
-// achievementsAppBase / achievementBase build the two URL shapes the
-// achievementConfigurations methods use: list/insert hang off the application
-// ID, get/update/delete off the achievement ID.
-func achievementsAppBase(appID string) string {
-	return api.GamesConfigBase + "/applications/" + url.PathEscape(appID) + "/achievements"
-}
-
-func achievementBase(achievementID string) string {
-	return api.GamesConfigBase + "/achievements/" + url.PathEscape(achievementID)
-}
-
-// leaderboardsAppBase / leaderboardBase mirror the achievement helpers for the
-// leaderboardConfigurations resource.
-func leaderboardsAppBase(appID string) string {
-	return api.GamesConfigBase + "/applications/" + url.PathEscape(appID) + "/leaderboards"
-}
-
-func leaderboardBase(leaderboardID string) string {
-	return api.GamesConfigBase + "/leaderboards/" + url.PathEscape(leaderboardID)
-}
-
-// listQuery appends the shared paging parameters (maxResults/pageToken) the two
-// list methods accept; maxResults<=0 omits the param (API default).
-func listQuery(base string, maxResults int, pageToken string) string {
+// listQuery encodes the shared paging parameters (maxResults/pageToken) the two
+// list methods accept; maxResults<=0 omits the param (API default). It stays
+// hand-built: the resolver answers with the path only (#516).
+func listQuery(maxResults int, pageToken string) string {
 	q := url.Values{}
 	if maxResults > 0 {
 		q.Set("maxResults", strconv.Itoa(maxResults))
@@ -88,20 +89,26 @@ func listQuery(base string, maxResults int, pageToken string) string {
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)
 	}
-	if enc := q.Encode(); enc != "" {
-		return base + "?" + enc
-	}
-	return base
+	return q.Encode()
 }
 
 // newJSONReq builds a request with a JSON body (POST/PUT writes) or no body
-// (GET/DELETE), wrapping a construction failure as *api.Error.
-func newJSONReq(ctx context.Context, op, ref, method, u string, body []byte) (*http.Request, error) {
+// (GET/DELETE), wrapping a construction failure as *api.Error. Verb and URL
+// both come from m, so a call site cannot pair one method's verb with
+// another's path (#516). query is the already-encoded suffix ("" for none).
+func newJSONReq(ctx context.Context, m apiregistry.Method, op, ref string, params map[string]string, query string, body []byte) (*http.Request, error) {
+	u, err := m.URL(params)
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: ref, Message: err.Error(), Cause: err}
+	}
+	if query != "" {
+		u += "?" + query
+	}
 	var r io.Reader
 	if body != nil {
 		r = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, r)
+	req, err := http.NewRequestWithContext(ctx, m.Verb, u, r)
 	if err != nil {
 		return nil, &api.Error{Operation: op, Package: ref, Message: err.Error(), Cause: err}
 	}

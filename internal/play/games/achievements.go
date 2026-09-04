@@ -69,7 +69,7 @@ type AchievementListResponse struct {
 // ListAchievements returns the achievement configurations for an application.
 // maxResults<=0 omits the paging cap; pageToken follows a previous page.
 func ListAchievements(ctx context.Context, hc *http.Client, appID string, maxResults int, pageToken string) (AchievementListResponse, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, opAchList, appID, http.MethodGet, listQuery(achievementsAppBase(appID), maxResults, pageToken), nil)
+	req, err := newJSONReq(ctx, mAchList, opAchList, appID, map[string]string{"applicationId": appID}, listQuery(maxResults, pageToken), nil)
 	if err != nil {
 		return AchievementListResponse{}, nil, err
 	}
@@ -86,7 +86,7 @@ func ListAchievements(ctx context.Context, hc *http.Client, appID string, maxRes
 
 // GetAchievement reads a single achievement configuration by its ID.
 func GetAchievement(ctx context.Context, hc *http.Client, achievementID string) (AchievementConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, opAchGet, achievementID, http.MethodGet, achievementBase(achievementID), nil)
+	req, err := newJSONReq(ctx, mAchGet, opAchGet, achievementID, map[string]string{"achievementId": achievementID}, "", nil)
 	if err != nil {
 		return AchievementConfiguration{}, nil, err
 	}
@@ -97,7 +97,7 @@ func GetAchievement(ctx context.Context, hc *http.Client, achievementID string) 
 // from the JSON body (an AchievementConfiguration), returning the created
 // resource plus the verbatim response.
 func CreateAchievement(ctx context.Context, hc *http.Client, appID string, body []byte) (AchievementConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, opAchInsert, appID, http.MethodPost, achievementsAppBase(appID), body)
+	req, err := newJSONReq(ctx, mAchInsert, opAchInsert, appID, map[string]string{"applicationId": appID}, "", body)
 	if err != nil {
 		return AchievementConfiguration{}, nil, err
 	}
@@ -107,7 +107,7 @@ func CreateAchievement(ctx context.Context, hc *http.Client, appID string, body 
 // UpdateAchievement replaces the achievement configuration's metadata (PUT)
 // from the JSON body, returning the updated resource plus the verbatim response.
 func UpdateAchievement(ctx context.Context, hc *http.Client, achievementID string, body []byte) (AchievementConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, opAchUpdate, achievementID, http.MethodPut, achievementBase(achievementID), body)
+	req, err := newJSONReq(ctx, mAchUpdate, opAchUpdate, achievementID, map[string]string{"achievementId": achievementID}, "", body)
 	if err != nil {
 		return AchievementConfiguration{}, nil, err
 	}
@@ -117,7 +117,7 @@ func UpdateAchievement(ctx context.Context, hc *http.Client, achievementID strin
 // DeleteAchievement deletes the achievement configuration with the given ID.
 // The API returns no useful body, so only an error is reported.
 func DeleteAchievement(ctx context.Context, hc *http.Client, achievementID string) error {
-	req, err := newJSONReq(ctx, opAchDelete, achievementID, http.MethodDelete, achievementBase(achievementID), nil)
+	req, err := newJSONReq(ctx, mAchDelete, opAchDelete, achievementID, map[string]string{"achievementId": achievementID}, "", nil)
 	if err != nil {
 		return err
 	}

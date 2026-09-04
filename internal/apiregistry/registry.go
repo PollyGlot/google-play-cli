@@ -21,9 +21,14 @@
 // (resolve.go), so call sites stop hand-writing paths and the registry becomes
 // complete by construction rather than by good faith.
 //
-// Scope: Google Discovery-documented APIs only. `gplay reviews history` also
-// reads the Cloud Storage JSON API (`storage.objects.list`/`get`), which has no
-// snapshot under docs/discovery/ and therefore nothing to anchor to.
+// Scope: Google Discovery-documented APIs only, and `internal/play/gcs` is the
+// single exception to the "no hand-written path outside this package" rule.
+// `gplay reviews history` reads the Cloud Storage JSON API
+// (`storage.objects.list`/`get`), which has no snapshot under docs/discovery/:
+// there is nothing to anchor an entry to and nothing for Resolve to derive a
+// URL from, so that package keeps building its own paths and is deliberately
+// left out of the migration batches (#517, #518, #519). Every other package
+// under internal/play/ resolves through here.
 package apiregistry
 
 // Entry is one API method the CLI calls, with the leaf commands that call it.
