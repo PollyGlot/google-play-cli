@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/url"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
@@ -114,8 +113,11 @@ func UpdateHostedApp(ctx context.Context, hc *http.Client, storePackage, pkg str
 		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
 	}
 
-	u := api.AndroidPubBase + "/appstore/" + url.PathEscape(storePackage) + "/apps:update"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(out))
+	u, err := mUpdateHostedApp.URL(map[string]string{"appStorePackageName": storePackage})
+	if err != nil {
+		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mUpdateHostedApp.Verb, u, bytes.NewReader(out))
 	if err != nil {
 		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -141,11 +143,14 @@ func UpdatePublishStatus(ctx context.Context, hc *http.Client, storePackage, pkg
 		return nil, &api.Error{Operation: opUpdatePublishState, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
 	}
 
-	u := api.AndroidPubBase +
-		"/appstore/" + url.PathEscape(storePackage) +
-		"/apps/" + url.PathEscape(pkg) +
-		":updateAppStoreHostedAppPublishStatus"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	u, err := mUpdatePublishState.URL(map[string]string{
+		"appStorePackageName": storePackage,
+		"packageName":         pkg,
+	})
+	if err != nil {
+		return nil, &api.Error{Operation: opUpdatePublishState, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mUpdatePublishState.Verb, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, &api.Error{Operation: opUpdatePublishState, Package: pkg, Message: err.Error(), Cause: err}
 	}

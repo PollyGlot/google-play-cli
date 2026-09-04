@@ -59,7 +59,7 @@ type LeaderboardListResponse struct {
 
 // ListLeaderboards returns the leaderboard configurations for an application.
 func ListLeaderboards(ctx context.Context, hc *http.Client, appID string, maxResults int, pageToken string) (LeaderboardListResponse, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, opLbList, appID, http.MethodGet, listQuery(leaderboardsAppBase(appID), maxResults, pageToken), nil)
+	req, err := newJSONReq(ctx, mLbList, opLbList, appID, map[string]string{"applicationId": appID}, listQuery(maxResults, pageToken), nil)
 	if err != nil {
 		return LeaderboardListResponse{}, nil, err
 	}
@@ -76,7 +76,7 @@ func ListLeaderboards(ctx context.Context, hc *http.Client, appID string, maxRes
 
 // GetLeaderboard reads a single leaderboard configuration by its ID.
 func GetLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string) (LeaderboardConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, opLbGet, leaderboardID, http.MethodGet, leaderboardBase(leaderboardID), nil)
+	req, err := newJSONReq(ctx, mLbGet, opLbGet, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, "", nil)
 	if err != nil {
 		return LeaderboardConfiguration{}, nil, err
 	}
@@ -86,7 +86,7 @@ func GetLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string) 
 // CreateLeaderboard inserts a new leaderboard configuration in an application
 // from the JSON body (a LeaderboardConfiguration).
 func CreateLeaderboard(ctx context.Context, hc *http.Client, appID string, body []byte) (LeaderboardConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, opLbInsert, appID, http.MethodPost, leaderboardsAppBase(appID), body)
+	req, err := newJSONReq(ctx, mLbInsert, opLbInsert, appID, map[string]string{"applicationId": appID}, "", body)
 	if err != nil {
 		return LeaderboardConfiguration{}, nil, err
 	}
@@ -96,7 +96,7 @@ func CreateLeaderboard(ctx context.Context, hc *http.Client, appID string, body 
 // UpdateLeaderboard replaces the leaderboard configuration's metadata (PUT)
 // from the JSON body.
 func UpdateLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string, body []byte) (LeaderboardConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, opLbUpdate, leaderboardID, http.MethodPut, leaderboardBase(leaderboardID), body)
+	req, err := newJSONReq(ctx, mLbUpdate, opLbUpdate, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, "", body)
 	if err != nil {
 		return LeaderboardConfiguration{}, nil, err
 	}
@@ -105,7 +105,7 @@ func UpdateLeaderboard(ctx context.Context, hc *http.Client, leaderboardID strin
 
 // DeleteLeaderboard deletes the leaderboard configuration with the given ID.
 func DeleteLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string) error {
-	req, err := newJSONReq(ctx, opLbDelete, leaderboardID, http.MethodDelete, leaderboardBase(leaderboardID), nil)
+	req, err := newJSONReq(ctx, mLbDelete, opLbDelete, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, "", nil)
 	if err != nil {
 		return err
 	}

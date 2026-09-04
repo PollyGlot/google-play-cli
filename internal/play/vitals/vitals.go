@@ -24,10 +24,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
@@ -43,7 +43,10 @@ type MetricSet struct {
 }
 
 // QueryMethodID is the native RPC id of the set's `:query` method, the key it
-// is found under in the Schema index.
+// is found under in the Schema index AND in internal/apiregistry: since #513
+// this id is also what queryPage resolves the request URL and verb from, so
+// the metric-set registry and the API registry meet on a single string rather
+// than on two parallel spellings of the same path.
 func (s MetricSet) QueryMethodID() string {
 	return "playdeveloperreporting.vitals." + s.Name + ".query"
 }
@@ -151,9 +154,20 @@ func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body
 // queryPage issues a single `:query` POST and returns the verbatim 2xx page
 // body or an *api.Error.
 func queryPage(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body []byte) (json.RawMessage, error) {
-	u := api.ReportingBase + "/apps/" + url.PathEscape(pkg) + "/" + set.Resource + ":query"
+	// Resolved per call rather than at init: the set is a value the caller
+	// supplies (ErrorCountsMetricSet lives outside metricSets), so the id is
+	// only known here. Resolve memoises the index and the registry index, so
+	// this is two map lookups.
+	m, err := apiregistry.Resolve(set.QueryMethodID())
+	if err != nil {
+		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	u, err := m.URL(map[string]string{"appsId": pkg})
+	if err != nil {
+		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, m.Verb, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
 	}

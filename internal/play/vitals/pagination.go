@@ -67,7 +67,10 @@ func tokenLoopError(op, pkg, what string) error {
 // value, not a stderr write, because this layer is HTTP-only: the command layer
 // owns the user-facing note (PRD #446). Hitting the limit exactly on the last
 // page (no token left) is exhaustive, so it reports false.
-func paginateGET(ctx context.Context, hc *http.Client, op, pkg, baseURL string, base url.Values, itemsKey string, pageSize, limit int) (json.RawMessage, bool, error) {
+// verb comes from the resolved registry method rather than being hard-coded,
+// so a snapshot change moving one of these reads off GET cannot go unnoticed
+// (#513).
+func paginateGET(ctx context.Context, hc *http.Client, verb, op, pkg, baseURL string, base url.Values, itemsKey string, pageSize, limit int) (json.RawMessage, bool, error) {
 	items := make([]json.RawMessage, 0)
 	seen := map[string]struct{}{}
 	token := ""
@@ -87,7 +90,7 @@ func paginateGET(ctx context.Context, hc *http.Client, op, pkg, baseURL string, 
 		if enc := q.Encode(); enc != "" {
 			u += "?" + enc
 		}
-		raw, err := getRaw(ctx, hc, op, pkg, u)
+		raw, err := getRaw(ctx, hc, verb, op, pkg, u)
 		if err != nil {
 			return nil, false, err
 		}
@@ -150,9 +153,10 @@ func pageStep(pageSize, limit, have int) int {
 	return pageSize
 }
 
-// getRaw issues a single GET and returns the verbatim 2xx body or an *api.Error.
-func getRaw(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+// getRaw issues a single read and returns the verbatim 2xx body or an
+// *api.Error. The verb is the resolved method's, not a literal.
+func getRaw(ctx context.Context, hc *http.Client, verb, op, pkg, u string) (json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, verb, u, nil)
 	if err != nil {
 		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}

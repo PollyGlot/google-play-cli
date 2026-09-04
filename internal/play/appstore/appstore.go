@@ -25,13 +25,26 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 // opCreateHostedApp tags *api.Error with the REST reference method id.
 const opCreateHostedApp = "appstoreappsreview.createAppStoreHostedApp"
+
+// Registry entries for the appstoreappsreview methods this package calls.
+// Resolving at init turns an unregistered or vanished method into a CI panic
+// rather than a runtime surprise, and the verb plus the URL template then come
+// from the Discovery snapshot instead of literals kept here (#513, batch 3).
+var (
+	mCreateHostedApp    = apiregistry.MustResolve("androidpublisher.appstoreappsreview.createappstorehostedapp")
+	mUpdateHostedApp    = apiregistry.MustResolve("androidpublisher.appstoreappsreview.updateappstorehostedapp")
+	mUpdatePublishState = apiregistry.MustResolve("androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus")
+	mUploadAPK          = apiregistry.MustResolve("androidpublisher.appstoreappsreview.uploadapk")
+	mUploadImage        = apiregistry.MustResolve("androidpublisher.appstoreappsreview.uploadimage")
+	mUploadPolicy       = apiregistry.MustResolve("androidpublisher.appstoreappsreview.uploadappstoreapppolicydeclarationfile")
+)
 
 // CreateHostedAppRequest mirrors the CreateAppStoreHostedAppRequest schema: the
 // package name of the app the store hosts. The app store itself is the path
@@ -60,8 +73,11 @@ func CreateHostedApp(ctx context.Context, hc *http.Client, storePackage, pkg str
 		return nil, &api.Error{Operation: opCreateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
 	}
 
-	u := api.AndroidPubBase + "/appstore/" + url.PathEscape(storePackage) + "/apps:create"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	u, err := mCreateHostedApp.URL(map[string]string{"appStorePackageName": storePackage})
+	if err != nil {
+		return nil, &api.Error{Operation: opCreateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mCreateHostedApp.Verb, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, &api.Error{Operation: opCreateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
 	}

@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -28,6 +29,15 @@ import (
 const (
 	opRecentAppViewGet       = "appstorecatalog.recentappviews.get"
 	opRecentUpdateEventsList = "appstorecatalog.recentupdateevents.list"
+)
+
+// Registry entries for the two methods this package calls. Resolving at init
+// turns an unregistered or vanished method into a CI panic rather than a
+// runtime surprise; verb and URL template then come from the Discovery
+// snapshot instead of literals kept here (#513, batch 3).
+var (
+	mRecentAppViewGet       = apiregistry.MustResolve("androidpublisher.appstorecatalog.recentappviews.get")
+	mRecentUpdateEventsList = apiregistry.MustResolve("androidpublisher.appstorecatalog.recentupdateevents.list")
 )
 
 // Update type values of a RecentUpdateEvent, per the Discovery snapshot.
@@ -152,9 +162,14 @@ type RecentAppView struct {
 // envelope and the verbatim body for the ADR-0003 --output json pass-through.
 // No Edit: the GET hangs off /appstorecatalog/, outside the Edit model.
 func GetRecentAppView(ctx context.Context, hc *http.Client, storePkg, playPkg string) (RecentAppView, json.RawMessage, error) {
-	u := api.AndroidPubBase + "/appstorecatalog/" + url.PathEscape(storePkg) +
-		"/recentAppViews/" + url.PathEscape(playPkg)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	u, err := mRecentAppViewGet.URL(map[string]string{
+		"appStorePackageName": storePkg,
+		"playAppPackageName":  playPkg,
+	})
+	if err != nil {
+		return RecentAppView{}, nil, &api.Error{Operation: opRecentAppViewGet, Package: playPkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mRecentAppViewGet.Verb, u, nil)
 	if err != nil {
 		return RecentAppView{}, nil, &api.Error{Operation: opRecentAppViewGet, Package: playPkg, Message: err.Error(), Cause: err}
 	}
@@ -205,10 +220,15 @@ func ListRecentUpdateEvents(ctx context.Context, hc *http.Client, storePkg, star
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)
 	}
-	u := api.AndroidPubBase + "/appstorecatalog/" + url.PathEscape(storePkg) +
-		"/recentUpdateEvents?" + q.Encode()
+	// The query string stays hand-built: the resolver answers with the path
+	// only (#516).
+	u, err := mRecentUpdateEventsList.URL(map[string]string{"appStorePackageName": storePkg})
+	if err != nil {
+		return ListRecentUpdateEventsResponse{}, nil, &api.Error{Operation: opRecentUpdateEventsList, Message: err.Error(), Cause: err}
+	}
+	u += "?" + q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, mRecentUpdateEventsList.Verb, u, nil)
 	if err != nil {
 		return ListRecentUpdateEventsResponse{}, nil, &api.Error{Operation: opRecentUpdateEventsList, Message: err.Error(), Cause: err}
 	}

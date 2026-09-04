@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -44,13 +45,19 @@ const (
 	pageMaxReports = 100
 )
 
+// Registry entries behind the two `:search` reads (#513, batch 3).
+var (
+	mSearchIssues  = apiregistry.MustResolve("playdeveloperreporting.vitals.errors.issues.search")
+	mSearchReports = apiregistry.MustResolve("playdeveloperreporting.vitals.errors.reports.search")
+)
+
 // SearchErrorIssues issues errors.issues.search (GET) for pkg, following
 // nextPageToken to opts.Limit (0 = all), and returns the rebuilt
 // {errorIssues:[...]} envelope (items verbatim) for the JSON pass-through. The
 // second return value reports that opts.Limit cut the list short while the
 // server still had pages (PRD #446).
 func SearchErrorIssues(ctx context.Context, hc *http.Client, pkg string, opts SearchOptions) (json.RawMessage, bool, error) {
-	return searchErrors(ctx, hc, opSearchIssues, "errorIssues", pageMaxIssues, pkg, opts)
+	return searchErrors(ctx, hc, mSearchIssues, opSearchIssues, "errorIssues", pageMaxIssues, pkg, opts)
 }
 
 // SearchErrorReports issues errors.reports.search (GET) for pkg, following
@@ -58,12 +65,14 @@ func SearchErrorIssues(ctx context.Context, hc *http.Client, pkg string, opts Se
 // envelope (individual reports / stack traces), plus the same truncation signal
 // as SearchErrorIssues.
 func SearchErrorReports(ctx context.Context, hc *http.Client, pkg string, opts SearchOptions) (json.RawMessage, bool, error) {
-	return searchErrors(ctx, hc, opSearchReports, "errorReports", pageMaxReports, pkg, opts)
+	return searchErrors(ctx, hc, mSearchReports, opSearchReports, "errorReports", pageMaxReports, pkg, opts)
 }
 
-// searchErrors is the shared, auto-paginating GET `:search` for the errors
-// sub-resources.
-func searchErrors(ctx context.Context, hc *http.Client, op, itemsKey string, pageSize int, pkg string, opts SearchOptions) (json.RawMessage, bool, error) {
+// searchErrors is the shared, auto-paginating `:search` for the errors
+// sub-resources. m carries the endpoint and verb, itemsKey only the envelope
+// key of the response: the two used to be the same string because the path
+// segment was hand-built from it, which is exactly the coupling #513 removes.
+func searchErrors(ctx context.Context, hc *http.Client, m apiregistry.Method, op, itemsKey string, pageSize int, pkg string, opts SearchOptions) (json.RawMessage, bool, error) {
 	base := url.Values{}
 	if opts.Filter != "" {
 		base.Set("filter", opts.Filter)
@@ -77,8 +86,11 @@ func searchErrors(ctx context.Context, hc *http.Client, op, itemsKey string, pag
 	if !opts.End.IsZero() {
 		setIntervalDate(base, "interval.endTime", opts.End)
 	}
-	baseURL := api.ReportingBase + "/apps/" + url.PathEscape(pkg) + "/" + itemsKey + ":search"
-	return paginateGET(ctx, hc, op, pkg, baseURL, base, itemsKey, pageSize, opts.Limit)
+	baseURL, err := m.URL(map[string]string{"appsId": pkg})
+	if err != nil {
+		return nil, false, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	return paginateGET(ctx, hc, m.Verb, op, pkg, baseURL, base, itemsKey, pageSize, opts.Limit)
 }
 
 // setIntervalDate writes the date-only google.type.DateTime query params for an
