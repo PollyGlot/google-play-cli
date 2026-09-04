@@ -340,7 +340,8 @@ jobs:
           fi
           code=$(curl -sS --max-time 30 \
             -o /tmp/routine-response.txt -w '%{http_code}' \
-            -X POST -H 'Content-Type: application/json' "${auth[@]}" \
+            -X POST -H 'Content-Type: application/json' \
+            -H 'anthropic-version: 2023-06-01' "${auth[@]}" \
             -d "$payload" "$WEBHOOK_URL")
           if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
             echo "::error::The triage routine webhook answered HTTP $code."
