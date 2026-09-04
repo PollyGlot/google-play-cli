@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before filing: please check [`docs/BACKLOG.md`](../docs/BACKLOG.md).
-        Many features are explicitly deferred — your request may already be tracked there, in which case a 👍 on the existing item is the right signal.
+        Before filing: please search the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking).
+        Many features are explicitly deferred — your request may already be tracked there, in which case a 👍 on the existing issue is the right signal.
   - type: textarea
     id: problem
     attributes:
@@ -36,10 +36,10 @@ body:
     id: scope
     attributes:
       label: Scope
-      description: Is this in the MVP scope or backlog territory?
+      description: Does this extend a shipped namespace, or open a new surface?
       options:
-        - MVP-aligned (auth, apps, releases, tracks, reviews)
-        - Backlog item (vitals, IAP, subs, metadata, images, ...)
+        - Extends a shipped command or namespace
+        - New surface (a namespace gplay does not cover yet)
         - Not sure
     validations:
       required: true

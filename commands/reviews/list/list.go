@@ -219,8 +219,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `List the user reviews the Google Play API exposes for --package.
 
 The API only returns reviews from the LAST 7 DAYS; a WARN line to that
-effect is always printed to stderr (long-history retrieval via GCS CSV
-reports is on the backlog). Results are auto-paginated until exhausted.
+effect is always printed to stderr; for longer history use 'reviews history',
+which reads the GCS CSV reports. Results are auto-paginated until exhausted.
 
 --stars filters client-side and accepts a single rating (1), an inclusive
 range (1-2), or a set (1,3,5); each rating must be 1..5. --limit N caps the

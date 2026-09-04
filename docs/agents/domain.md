@@ -10,10 +10,12 @@ domaine de ce repo en explorant le code.
   dans le code, les commentaires, les titres d'issue, les noms de test.
 - **`docs/DESIGN.md`** — conventions cross-command (auth precedence,
   exit codes, output formats, edit lifecycle).
-- **`docs/BACKLOG.md`** — surfaces explicitement out-of-scope. Vérifier
+- **Les issues `type:parking`** (`gh issue list --label type:parking`) —
+  surfaces explicitement reportées, chacune avec son rationnel. Vérifier
   avant de suggérer "on devrait aussi ajouter X".
 - **`docs/adr/`** — ADRs touchant l'area du travail en cours.
-- **`docs/ROADMAP.md`** — état actuel des PRDs et slices.
+- **Le tracker GitHub** — état actuel des PRDs et slices (`gh issue list
+  --label type:prd`) ; il n'y a pas de fichier de roadmap.
 
 Si l'un de ces fichiers n'existe pas, procéder silencieusement. Ne pas
 signaler leur absence en préambule.
@@ -26,9 +28,7 @@ signaler leur absence en préambule.
 ├── CLAUDE.md
 ├── docs/
 │   ├── DESIGN.md
-│   ├── BACKLOG.md
 │   ├── CI_CD.md
-│   ├── ROADMAP.md
 │   ├── adr/
 │   └── agents/
 └── (cmd|commands|internal)/

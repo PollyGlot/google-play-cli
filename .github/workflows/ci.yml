@@ -179,7 +179,6 @@ jobs:
             README.md \
             SUPPORT.md \
             docs/DESIGN.md \
-            docs/BACKLOG.md \
             docs/CI_CD.md \
             docs/adr/0001-credential-storage.md \
             docs/adr/0002-safe-production-defaults.md \

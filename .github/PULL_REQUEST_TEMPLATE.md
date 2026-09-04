@@ -36,4 +36,4 @@ If there's no obvious way to test (refactor, docs), say so.
 - [ ] Behavior change is reflected in `--help` text and (if cross-command) in [`docs/DESIGN.md`](../blob/main/docs/DESIGN.md).
 - [ ] New canonical term → added to [`CONTEXT.md`](../blob/main/CONTEXT.md).
 - [ ] Irreversible / surprising decision → ADR added under [`docs/adr/`](../blob/main/docs/adr/).
-- [ ] Deferred work → noted in [`docs/BACKLOG.md`](../blob/main/docs/BACKLOG.md).
+- [ ] Deferred work → filed as a `type:parking` issue with its rationale.
