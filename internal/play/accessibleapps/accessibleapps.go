@@ -12,8 +12,9 @@
 // reconciliation.
 //
 // Like internal/play/vitals this is the Play Developer Reporting service: a
-// distinct host (api.ReportingBase) and OAuth scope (token.ReportingScope,
-// wired via kernel.WithScope on the command). Read-only.
+// distinct host (resolved from the Discovery snapshot, not the androidpublisher
+// one) and a distinct OAuth scope (token.ReportingScope, wired via
+// kernel.WithScope on the command). Read-only.
 package accessibleapps
 
 import (
@@ -24,12 +25,21 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 // opSearch is the native RPC id, used as the Operation on any *api.Error so
 // the shared classifier maps 403 → exit 11, 5xx → exit 40, etc.
 const opSearch = "playdeveloperreporting.apps.search"
+
+// mSearch is the registry entry this package calls. Resolving it at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL then come from the Discovery snapshot instead of a literal
+// maintained here (#513). The template carries no path parameter: apps.search
+// is account-scoped, the reporting host's own root.
+var mSearch = apiregistry.MustResolve("playdeveloperreporting.apps.search")
 
 // App is one entry of a SearchAccessibleApps response
 // (GooglePlayDeveloperReportingV1beta1App). Fields are decoded verbatim
@@ -60,7 +70,10 @@ type SearchResponse struct {
 // response's NextPageToken to fetch the next page. pageSize <= 0 lets the
 // server apply its default (50; max 1000).
 func Search(ctx context.Context, hc *http.Client, pageSize int, pageToken string) (SearchResponse, json.RawMessage, error) {
-	u := api.ReportingBase + "/apps:search"
+	u, err := mSearch.URL(nil)
+	if err != nil {
+		return SearchResponse{}, nil, &api.Error{Operation: opSearch, Message: err.Error(), Cause: err}
+	}
 	q := url.Values{}
 	if pageSize > 0 {
 		q.Set("pageSize", strconv.Itoa(pageSize))
@@ -72,7 +85,7 @@ func Search(ctx context.Context, hc *http.Client, pageSize int, pageToken string
 		u += "?" + enc
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, mSearch.Verb, u, nil)
 	if err != nil {
 		return SearchResponse{}, nil, &api.Error{Operation: opSearch, Message: err.Error(), Cause: err}
 	}

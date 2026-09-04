@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -27,6 +28,25 @@ const (
 	opOffersDeactivate   = "monetization.subscriptions.basePlans.offers.deactivate"
 	opBasePlanActivate   = "monetization.subscriptions.basePlans.activate"
 	opBasePlanDeactivate = "monetization.subscriptions.basePlans.deactivate"
+)
+
+// m* are the registry entries this package calls. Resolving them at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL template then come from the Discovery snapshot instead of
+// literals maintained here (#513). The custom verbs (`:activate`,
+// `:deactivate`, `:migratePrices`) are part of the snapshot's flatPath, so they
+// ride the template too rather than being concatenated here.
+var (
+	mOffersList         = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.list")
+	mOffersCreate       = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.create")
+	mOffersPatch        = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.patch")
+	mOffersDelete       = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.delete")
+	mOffersActivate     = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.activate")
+	mOffersDeactivate   = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.deactivate")
+	mBasePlanActivate   = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.activate")
+	mBasePlanDeactivate = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.deactivate")
+	mMigratePrices      = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.migratePrices")
 )
 
 // OfferItem is one live offer: its full composite identity plus the verbatim
@@ -61,8 +81,13 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 		if token != "" {
 			q.Set("pageToken", token)
 		}
-		u := base(pkg) + "/-/basePlans/-/offers?" + q.Encode()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		// The wildcard walk rides the same template as a scoped list: `-` is a
+		// legal path segment, so escaping leaves it untouched.
+		u, err := mOffersList.URL(map[string]string{"packageName": pkg, "productId": "-", "basePlanId": "-"})
+		if err != nil {
+			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: err.Error(), Cause: err}
+		}
+		req, err := http.NewRequestWithContext(ctx, mOffersList.Verb, u+"?"+q.Encode(), nil)
 		if err != nil {
 			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: err.Error(), Cause: err}
 		}
@@ -109,8 +134,11 @@ func CreateOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanI
 	q := url.Values{}
 	q.Set("offerId", offerID)
 	q.Set("regionsVersion.version", regionsVersion)
-	u := offersBase(pkg, productID, basePlanID) + "?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	u, err := mOffersCreate.URL(offerScope(pkg, productID, basePlanID))
+	if err != nil {
+		return nil, &api.Error{Operation: opOffersCreate, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mOffersCreate.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
 	if err != nil {
 		return nil, &api.Error{Operation: opOffersCreate, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -124,8 +152,11 @@ func PatchOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
 	q.Set("regionsVersion.version", regionsVersion)
-	u := offersBase(pkg, productID, basePlanID) + "/" + url.PathEscape(offerID) + "?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u, strings.NewReader(string(body)))
+	u, err := mOffersPatch.URL(offerScope(pkg, productID, basePlanID, offerID))
+	if err != nil {
+		return nil, &api.Error{Operation: opOffersPatch, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mOffersPatch.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
 	if err != nil {
 		return nil, &api.Error{Operation: opOffersPatch, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -137,8 +168,11 @@ func PatchOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID
 // and the operator passed --confirm; the API refuses to delete an active offer,
 // so the gate covers intent while the server covers damage (ADR-0041 §3).
 func DeleteOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID string) error {
-	u := offersBase(pkg, productID, basePlanID) + "/" + url.PathEscape(offerID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	u, err := mOffersDelete.URL(offerScope(pkg, productID, basePlanID, offerID))
+	if err != nil {
+		return &api.Error{Operation: opOffersDelete, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mOffersDelete.Verb, u, nil)
 	if err != nil {
 		return &api.Error{Operation: opOffersDelete, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -150,22 +184,28 @@ func DeleteOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanI
 // reconciliation arm of the declarative state: field in the catalog files. The
 // body is an empty object; the identity rides the path.
 func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, activate bool) (json.RawMessage, error) {
-	verb, op := ":deactivate", opBasePlanDeactivate
+	m, op := mBasePlanDeactivate, opBasePlanDeactivate
 	if activate {
-		verb, op = ":activate", opBasePlanActivate
+		m, op = mBasePlanActivate, opBasePlanActivate
 	}
-	u := base(pkg) + "/" + url.PathEscape(productID) + "/basePlans/" + url.PathEscape(basePlanID) + verb
-	return postEmpty(ctx, hc, op, pkg, u)
+	u, err := m.URL(offerScope(pkg, productID, basePlanID))
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	return postEmpty(ctx, hc, m, op, pkg, u)
 }
 
 // SetOfferState activates (true) or deactivates (false) an offer.
 func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID string, activate bool) (json.RawMessage, error) {
-	verb, op := ":deactivate", opOffersDeactivate
+	m, op := mOffersDeactivate, opOffersDeactivate
 	if activate {
-		verb, op = ":activate", opOffersActivate
+		m, op = mOffersActivate, opOffersActivate
 	}
-	u := offersBase(pkg, productID, basePlanID) + "/" + url.PathEscape(offerID) + verb
-	return postEmpty(ctx, hc, op, pkg, u)
+	u, err := m.URL(offerScope(pkg, productID, basePlanID, offerID))
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	return postEmpty(ctx, hc, m, op, pkg, u)
 }
 
 // opMigratePrices tags *api.Error for the subscriber price migration.
@@ -208,8 +248,11 @@ func MigrateBasePlanPrices(ctx context.Context, hc *http.Client, pkg, productID,
 	if err != nil {
 		return nil, &api.Error{Operation: opMigratePrices, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
 	}
-	u := base(pkg) + "/" + url.PathEscape(productID) + "/basePlans/" + url.PathEscape(basePlanID) + ":migratePrices"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	u, err := mMigratePrices.URL(offerScope(pkg, productID, basePlanID))
+	if err != nil {
+		return nil, &api.Error{Operation: opMigratePrices, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mMigratePrices.Verb, u, strings.NewReader(string(body)))
 	if err != nil {
 		return nil, &api.Error{Operation: opMigratePrices, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -217,14 +260,20 @@ func MigrateBasePlanPrices(ctx context.Context, hc *http.Client, pkg, productID,
 	return do(hc, opMigratePrices, pkg, req)
 }
 
-// offersBase is the offers collection URL under one base plan.
-func offersBase(pkg, productID, basePlanID string) string {
-	return base(pkg) + "/" + url.PathEscape(productID) + "/basePlans/" + url.PathEscape(basePlanID) + "/offers"
+// offerScope builds the path parameters shared by every base-plan and offer
+// template: the offer id is optional because the base-plan verbs stop one level
+// higher, and the resolver rejects a key its template does not declare.
+func offerScope(pkg, productID, basePlanID string, offerID ...string) map[string]string {
+	p := map[string]string{"packageName": pkg, "productId": productID, "basePlanId": basePlanID}
+	if len(offerID) == 1 {
+		p["offerId"] = offerID[0]
+	}
+	return p
 }
 
 // postEmpty POSTs an empty JSON object to a custom-verb URL.
-func postEmpty(ctx context.Context, hc *http.Client, op, pkg, u string) (json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader("{}"))
+func postEmpty(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, u string) (json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, m.Verb, u, strings.NewReader("{}"))
 	if err != nil {
 		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}

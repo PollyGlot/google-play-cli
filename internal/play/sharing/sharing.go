@@ -15,9 +15,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -25,6 +25,17 @@ import (
 const (
 	opUploadAPK    = "internalappsharingartifacts.uploadapk"
 	opUploadBundle = "internalappsharingartifacts.uploadbundle"
+)
+
+// m* are the registry entries this package calls. Resolving them at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL template then come from the Discovery snapshot instead of
+// literals maintained here (#513). Both artifacts go to the media
+// endpoint (UploadURL), a genuinely different host path than the data plane.
+var (
+	mUploadAPK    = apiregistry.MustResolve("androidpublisher.internalappsharingartifacts.uploadapk")
+	mUploadBundle = apiregistry.MustResolve("androidpublisher.internalappsharingartifacts.uploadbundle")
 )
 
 // Artifact is the parsed InternalAppSharingArtifact: the shareable install
@@ -63,17 +74,18 @@ func (e *LocalIOError) ExitCode() int { return 20 }
 // and returns the parsed Artifact plus the verbatim response body (for the
 // ADR-0003 --output json pass-through).
 func UploadAPK(ctx context.Context, hc *http.Client, pkg, path string) (Artifact, json.RawMessage, error) {
-	return upload(ctx, hc, opUploadAPK, "apk", pkg, path)
+	return upload(ctx, hc, mUploadAPK, opUploadAPK, pkg, path)
 }
 
 // UploadBundle streams the AAB at path to internalappsharingartifacts.uploadbundle.
 func UploadBundle(ctx context.Context, hc *http.Client, pkg, path string) (Artifact, json.RawMessage, error) {
-	return upload(ctx, hc, opUploadBundle, "bundle", pkg, path)
+	return upload(ctx, hc, mUploadBundle, opUploadBundle, pkg, path)
 }
 
-// upload is the shared media-upload body for both endpoints. artifactKind is
-// the trailing path segment ("apk"|"bundle"); op tags any *api.Error.
-func upload(ctx context.Context, hc *http.Client, op, artifactKind, pkg, path string) (Artifact, json.RawMessage, error) {
+// upload is the shared media-upload body for both endpoints. m carries the
+// verb and the media-upload URL (the two methods differ only by that URL); op
+// tags any *api.Error.
+func upload(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, path string) (Artifact, json.RawMessage, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return Artifact{}, nil, &LocalIOError{Op: op, Path: path, Cause: err}
@@ -93,10 +105,11 @@ func upload(ctx context.Context, hc *http.Client, op, artifactKind, pkg, path st
 		return Artifact{}, nil, &LocalIOError{Op: op, Path: path, Cause: fmt.Errorf("not a regular file")}
 	}
 
-	u := api.UploadBase +
-		"/applications/internalappsharing/" + url.PathEscape(pkg) +
-		"/artifacts/" + artifactKind + "?uploadType=media"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, f)
+	u, err := m.UploadURL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, m.Verb, u+"?uploadType=media", f)
 	if err != nil {
 		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}

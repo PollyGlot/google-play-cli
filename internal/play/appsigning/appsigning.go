@@ -20,9 +20,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"sort"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -30,6 +30,19 @@ import (
 const (
 	opEnroll = "appsigning.enrollApp"
 	opRotate = "appsigning.rotateAppSigningKey"
+)
+
+// m* are the registry entries this package calls. Resolving them at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL template then come from the Discovery snapshot instead of
+// literals maintained here (#513). Both templates end in a colon
+// verb (`appSigning:enrollApp`, `appSigning:rotateAppSigningKey`) taken from
+// the snapshot's flatPath, and their sole path parameter is `name`, not
+// `packageName`.
+var (
+	mEnroll = apiregistry.MustResolve("androidpublisher.appsigning.enrollApp")
+	mRotate = apiregistry.MustResolve("androidpublisher.appsigning.rotateAppSigningKey")
 )
 
 // HelpCenterURL is Google's reference for the Cloud KMS prerequisites (an
@@ -159,10 +172,6 @@ type RotateOpts struct {
 	Reason         string
 }
 
-func appSigningURL(name, verb string) string {
-	return api.AndroidPubBase + "/applications/" + url.PathEscape(name) + "/appSigning:" + verb
-}
-
 // Enroll enrolls an app into Play App Signing with a self-hosted Cloud KMS key
 // (appsigning.enrollApp). It returns the parsed response plus the verbatim body
 // for the ADR-0003 --output json pass-through. Irreversible and externally
@@ -180,7 +189,7 @@ func Enroll(ctx context.Context, hc *http.Client, name string, opts EnrollOpts) 
 		req.EnrollExistingApp = &enrollExistingApp{CloudKmsKey: key}
 	}
 	var out EnrollResponse
-	raw, err := post(ctx, hc, opEnroll, name, appSigningURL(name, "enrollApp"), req, &out)
+	raw, err := post(ctx, hc, mEnroll, opEnroll, name, req, &out)
 	if err != nil {
 		return EnrollResponse{}, nil, err
 	}
@@ -202,7 +211,7 @@ func Rotate(ctx context.Context, hc *http.Client, name string, opts RotateOpts) 
 		KeyRotationReason: opts.Reason,
 	}
 	var out RotateResponse
-	raw, err := post(ctx, hc, opRotate, name, appSigningURL(name, "rotateAppSigningKey"), req, &out)
+	raw, err := post(ctx, hc, mRotate, opRotate, name, req, &out)
 	if err != nil {
 		return RotateResponse{}, nil, err
 	}
@@ -212,12 +221,16 @@ func Rotate(ctx context.Context, hc *http.Client, name string, opts RotateOpts) 
 // post marshals body, POSTs it, and decodes the 2xx response into out while
 // returning the verbatim bytes. A non-2xx surfaces as *api.Error so the
 // exit-code taxonomy maps transparently.
-func post(ctx context.Context, hc *http.Client, op, name, u string, body any, out any) (json.RawMessage, error) {
+func post(ctx context.Context, hc *http.Client, m apiregistry.Method, op, name string, body any, out any) (json.RawMessage, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, &api.Error{Operation: op, Package: name, Message: "marshal request: " + err.Error(), Cause: err}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(b))
+	u, err := m.URL(map[string]string{"name": name})
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: name, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, m.Verb, u, bytes.NewReader(b))
 	if err != nil {
 		return nil, &api.Error{Operation: op, Package: name, Message: err.Error(), Cause: err}
 	}

@@ -18,15 +18,25 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 const (
 	opCreate = "apprecovery.create"
 	opList   = "apprecovery.list"
+)
+
+// m* are the registry entries this package calls. Resolving them at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL template then come from the Discovery snapshot instead of
+// literals maintained here (#513).
+var (
+	mCreate = apiregistry.MustResolve("androidpublisher.apprecovery.create")
+	mList   = apiregistry.MustResolve("androidpublisher.apprecovery.list")
 )
 
 // Action is the parsed AppRecoveryAction: the fields the human views need. The
@@ -113,10 +123,6 @@ func BuildTargeting(all bool, regionCodes []string, sdkLevels []int64) *Targetin
 	return t
 }
 
-func base(pkg string) string {
-	return api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/appRecoveries"
-}
-
 // Create posts a draft recovery action and returns the parsed Action plus the
 // verbatim AppRecoveryAction response.
 func Create(ctx context.Context, hc *http.Client, pkg string, opts CreateOpts) (Action, json.RawMessage, error) {
@@ -134,7 +140,11 @@ func Create(ctx context.Context, hc *http.Client, pkg string, opts CreateOpts) (
 	if err != nil {
 		return Action{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base(pkg), bytes.NewReader(body))
+	u, err := mCreate.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return Action{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mCreate.Verb, u, bytes.NewReader(body))
 	if err != nil {
 		return Action{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -153,8 +163,11 @@ func Create(ctx context.Context, hc *http.Client, pkg string, opts CreateOpts) (
 // List reads the recovery actions for a versionCode (required by the API). It
 // returns the parsed actions and the verbatim ListAppRecoveriesResponse.
 func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (ListResponse, json.RawMessage, error) {
-	u := base(pkg) + "?versionCode=" + strconv.FormatInt(versionCode, 10)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	u, err := mList.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mList.Verb, u+"?versionCode="+strconv.FormatInt(versionCode, 10), nil)
 	if err != nil {
 		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
 	}
