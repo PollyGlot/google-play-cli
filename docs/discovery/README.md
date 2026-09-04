@@ -66,8 +66,11 @@ artefacts above (the embedded Schema index, `paths.txt`, the snapshots), so a
 refresh that **removes** or **deprecates** a method gplay depends on turns
 `go test ./...` red, naming both the method id and the command that breaks,
 before anyone reads the diff. Ship a command that calls a new method, add its
-line to the registry: the ✅ rows of [COVERAGE.md](../COVERAGE.md) are
-cross-checked against it.
+line to the registry, then run `make coverage-update`:
+[COVERAGE.md](../COVERAGE.md) is **generated** from `paths.txt` plus the
+registry and its exclusion list (`internal/apiregistry/exclusions.go`), one row
+per method, and an offline test fails when the committed file is stale or
+hand-edited.
 
 ## The registry also resolves the request
 
@@ -84,5 +87,5 @@ method to the snapshot's `flatPath` rather than by a reviewer's eye.
 [docs/agents/discovery-triage.md](../agents/discovery-triage.md) is the brief the
 Discovery triage routine runs on a `discovery:schema` or `discovery:surface`
 refresh PR (PRD [#501](https://github.com/PollyGlot/google-play-cli/issues/501)):
-registry test first, four-basket verdict, COVERAGE.md tracking, then one label.
+registry test first, four-basket verdict, COVERAGE.md regeneration, then one label.
 Read it before triaging a refresh by hand too.

@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"testing"
 
@@ -97,42 +95,6 @@ func TestRegisteredMethodsAreNotDeprecated(t *testing.T) {
 	}
 }
 
-// TestCoverageShippedRowsAreRegistered keeps docs/COVERAGE.md honest: a surface
-// marked ✅ claims a shipped command covers it, so at least one registered
-// method must belong to that surface. Flipping a row to ✅ without wiring the
-// registry now fails here, and so does a surface the CLI stopped calling.
-func TestCoverageShippedRowsAreRegistered(t *testing.T) {
-	registered := make([]string, 0, len(apiregistry.Entries()))
-	for _, e := range apiregistry.Entries() {
-		registered = append(registered, e.MethodID)
-	}
-	sort.Strings(registered)
-
-	rows := shippedCoverageSurfaces(t)
-	if len(rows) < 20 {
-		t.Fatalf("only %d shipped rows parsed out of docs/COVERAGE.md: the table shape changed, fix this parser", len(rows))
-	}
-	for _, r := range rows {
-		if reason, ok := apiregistry.CoverageExceptions[r.surface]; ok {
-			t.Logf("COVERAGE row %q: documented exception (%s)", r.surface, reason)
-			continue
-		}
-		prefix := r.service + "." + r.surface
-		found := false
-		for _, id := range registered {
-			if id == prefix || strings.HasPrefix(id, prefix+".") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("docs/COVERAGE.md marks %q shipped (✅) but no registry entry starts with %q: "+
-				"register the methods the command calls, or record why in apiregistry.CoverageExceptions",
-				r.surface, prefix)
-		}
-	}
-}
-
 // --- helpers ---------------------------------------------------------------
 
 // methodIDsFromPaths reads the committed existence index. Each line is
@@ -207,66 +169,4 @@ func deprecatedMethodIDs(t *testing.T) map[string]bool {
 		walk(doc)
 	}
 	return out
-}
-
-// coverageRow is one ✅ line of a COVERAGE.md table: the surface as spelled in
-// the first column, plus the service its table belongs to.
-type coverageRow struct {
-	service string
-	surface string
-}
-
-// coverageServices maps a COVERAGE.md table heading to the service prefix its
-// method ids carry.
-var coverageServices = map[string]string{
-	"androidpublisher":       "androidpublisher",
-	"playdeveloperreporting": "playdeveloperreporting",
-	"playcustomapp":          "playcustomapp",
-	"gamesConfiguration":     "gamesConfiguration",
-}
-
-var (
-	headingRe = regexp.MustCompile("^## `([A-Za-z0-9]+)` ")
-	// The first backticked token of the first column is the surface; the rest
-	// of the cell is prose (issue links, per-method detail) and partial rows
-	// list methods that are NOT shipped, so only the first token is a claim.
-	surfaceRe = regexp.MustCompile("^`([A-Za-z0-9_.*]+)`")
-)
-
-// shippedCoverageSurfaces parses the ✅ rows of docs/COVERAGE.md. Rows marked
-// 🟡/🔵/🔴/⚫️ are claims about work NOT shipped and are ignored; a partially
-// shipped row ("13 ✅") still carries a ✅ and is held to the same at-least-one
-// standard.
-func shippedCoverageSurfaces(t *testing.T) []coverageRow {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(repoDocs, "COVERAGE.md"))
-	if err != nil {
-		t.Fatalf("read COVERAGE.md: %v", err)
-	}
-
-	var rows []coverageRow
-	service := ""
-	for _, line := range strings.Split(string(raw), "\n") {
-		if m := headingRe.FindStringSubmatch(line); m != nil {
-			service = coverageServices[m[1]]
-			continue
-		}
-		if service == "" || !strings.HasPrefix(line, "|") {
-			continue
-		}
-		cells := strings.Split(strings.Trim(line, "|"), "|")
-		if len(cells) < 3 {
-			continue
-		}
-		state := strings.TrimSpace(cells[2])
-		if !strings.Contains(state, "✅") {
-			continue
-		}
-		m := surfaceRe.FindStringSubmatch(strings.TrimSpace(cells[0]))
-		if m == nil {
-			continue
-		}
-		rows = append(rows, coverageRow{service: service, surface: strings.TrimSuffix(m[1], ".*")})
-	}
-	return rows
 }

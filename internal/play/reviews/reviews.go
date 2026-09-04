@@ -1,8 +1,8 @@
 // Package reviews reads the user reviews of a Google Play app via the
 // reviews.list endpoint. Unlike tracks/releases it does NOT run inside an
 // Edit: reviews are a direct read on the application. The API exposes only
-// the last 7 days (docs/DESIGN.md §5); historical retrieval (GCS CSV) is in
-// docs/BACKLOG.md. List owns auto-pagination; the client-side `--stars`
+// the last 7 days (docs/DESIGN.md §5); historical retrieval (GCS CSV) lives
+// in `reviews history` (ADR-0037). List owns auto-pagination; the `--stars`
 // filter and the 7-day stderr warning are command-layer concerns.
 package reviews
 

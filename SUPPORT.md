@@ -10,15 +10,14 @@ channel so questions and bugs don't get crossed.
 | "How do I…?" / general usage question | [Discussions → Q&A](https://github.com/PollyGlot/google-play-cli/discussions/categories/q-a) |
 | Idea, feature proposal, design feedback | [Discussions → Ideas](https://github.com/PollyGlot/google-play-cli/discussions/categories/ideas) |
 | Something that worked yesterday is broken today | [Open an issue](https://github.com/PollyGlot/google-play-cli/issues/new?template=bug_report.yml) |
-| Concrete missing feature | [Open an issue](https://github.com/PollyGlot/google-play-cli/issues/new?template=feature_request.yml) (check [`docs/BACKLOG.md`](docs/BACKLOG.md) first) |
+| Concrete missing feature | [Open an issue](https://github.com/PollyGlot/google-play-cli/issues/new?template=feature_request.yml) (search the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking) first) |
 | Security vulnerability | **Do NOT open a public issue.** [Private advisory](https://github.com/PollyGlot/google-play-cli/security/advisories/new) |
 
 ## Before opening an issue
 
-- **Read [`docs/BACKLOG.md`](docs/BACKLOG.md).** Many features (vitals, IAP,
-  subscriptions, store listings images, ...) are intentionally out of MVP
-  scope. A reaction on the existing entry is the right signal — please don't
-  re-file it.
+- **Search the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking).** Some features are
+  deferred on purpose, each with its rationale on the issue. A reaction on
+  the existing issue is the right signal, please don't re-file it.
 - **Run `gplay auth doctor --package <your.package>`.** The most common
   "it doesn't work" cause is a service account that wasn't invited on the
   app in Play Console. The doctor catches this and tells you what's

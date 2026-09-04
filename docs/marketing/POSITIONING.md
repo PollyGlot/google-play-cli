@@ -147,14 +147,14 @@ categorical on purpose so it doesn't drift version-to-version.
 - Monetization (subscriptions v2, IAP, RevenueCat sync) — post-v1,
   [#51](https://github.com/PollyGlot/google-play-cli/issues/51)
 - Reviews history beyond 7 days (CSV reports) — [#94](https://github.com/PollyGlot/google-play-cli/issues/94)
-- See [ROADMAP.md](../ROADMAP.md) and [BACKLOG.md](../BACKLOG.md).
+- See the [issue tracker](https://github.com/PollyGlot/google-play-cli/issues) (`type:prd` / `type:slice`).
 
 ## What's deliberately *not* coming soon
 
 (So we don't over-promise.)
 - APK legacy upload (existing apps only) — AAB-first by design
 - OBB / expansion files, App Recovery, internal app sharing
-- Anything in [BACKLOG.md](../BACKLOG.md) marked out-of-scope, by design
+- Anything filed as a [parking issue](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking), by design
 
 ---
 

@@ -11,7 +11,7 @@ body:
         **Before filing:**
         - Search [existing issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue).
         - Run `gplay auth doctor --package <your.package>` — the most common "it doesn't work" cause is a service account that wasn't granted access to the app in Play Console.
-        - Cross-check [`docs/BACKLOG.md`](../blob/main/docs/BACKLOG.md) — many features are intentionally out of MVP scope.
+        - Search the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking) — many features are deferred on purpose, with the rationale on the issue.
 
   - type: input
     id: version
