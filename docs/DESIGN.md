@@ -290,7 +290,8 @@ required.
   is no cap.
 - `--stars` (e.g. `1`, `1-2`, `1,3,5`) is a **client-side** filter — the API
   has no server-side rating filter.
-- Long-history retrieval (CSV reports in the GCS bucket) is in `BACKLOG.md`.
+- Long-history retrieval (CSV reports in the GCS bucket) ships as `reviews
+  history --month` (ADR-0037).
 
 ---
 
@@ -304,7 +305,10 @@ The Google Play Developer API has no `apps.list`, so `gplay apps list` reads a
 - `gplay apps view --package X` still hits the live API (via `edits.details`
   etc.) — only enumeration is local
 
-Backlog: real discovery via Cloud Resource Manager + IAM (see `BACKLOG.md`).
+Discovery of the apps a service account can reach ships as `apps accessible
+list` (`apps.search` on the Reporting API, ADR-0039); it complements the local
+registry rather than replacing it. The heavier Cloud Resource Manager + IAM
+route stays out of scope.
 
 ### App icon on `apps view` (`[experimental]`, ADR-0038)
 
@@ -762,7 +766,7 @@ track**, **Tester**) for the domain terms.
   (`CLOSED_TESTING`), so there is **no `--type` flag** — every created
   track is closed. Open/internal track creation has no API path.
 - The new track's form factor is `DEFAULT` (phone). `WEAR` / `AUTOMOTIVE`
-  closed tracks are deferred (`BACKLOG.md`) behind a future
+  closed tracks are deferred (issue #528) behind a future
   `--form-factor` flag — additive, non-breaking when it lands.
 - Creating a track that **already exists** surfaces the API error (exit
   30); gplay does not fake idempotency. "Ensure exists" would be an

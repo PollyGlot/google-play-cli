@@ -1,8 +1,8 @@
 # API Coverage Matrix
 
 **Single source of truth for how much of the Play admin API surface `gplay` covers.**
-The [BACKLOG](BACKLOG.md) organises *not-yet-shipped* surfaces by theme and the
-[ROADMAP](ROADMAP.md) orders the active work; this file is the orthogonal view —
+Planned and deferred work lives in the GitHub issue tracker (`type:prd`,
+`type:slice`, `type:parking`); this file is the orthogonal view —
 **every method of every in-scope API, mapped to shipped / planned / excluded** —
 so coverage can be verified at a glance and nothing stays a blind spot.
 
@@ -32,7 +32,7 @@ update this table whenever a slice ships or the snapshot is bumped.**
 |---|---|
 | ✅ | **Shipped** — a `gplay` command covers it |
 | 🟡 | **Ready** — grilled + decomposed into `ready-for-agent` slices (P0) |
-| 🔵 | **Planned** — on the backlog/roadmap, not yet decomposed |
+| 🔵 | **Planned** — tracked by an open issue, not yet decomposed |
 | 🔴 | **Untracked** — in scope per ADR-0026 but no command and (until 2026-06-22) no issue |
 | ⚫️ | **Excluded by nature** — runtime API, structurally unusable from a terminal |
 

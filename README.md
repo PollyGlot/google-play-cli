@@ -39,7 +39,7 @@ means free to evolve. `--help` tells you which, per command.
 > **`--help` is the source of truth**: the label is on the command itself.
 > See [Stability and the Public contract](https://gplay.sh/docs/concepts/stability/),
 > [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/), and
-> [docs/BACKLOG.md](docs/BACKLOG.md) for what's out of scope.
+> the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking) for what's out of scope.
 
 ## Why
 
@@ -182,7 +182,6 @@ and agents start from the same page.
   Account, Project, ...). Use them verbatim.
 - [**docs/DESIGN.md**](docs/DESIGN.md): CLI conventions across commands
   (auth precedence, exit codes, output format, verbosity, edit lifecycle).
-- [**docs/BACKLOG.md**](docs/BACKLOG.md): explicitly out-of-scope features.
 - [**docs/CI_CD.md**](docs/CI_CD.md): how to wire `gplay` into a CI
   pipeline (GitHub Actions example).
 - [**docs/adr/**](docs/adr/): Architecture Decision Records.

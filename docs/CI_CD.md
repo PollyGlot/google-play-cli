@@ -269,8 +269,8 @@ must explicitly promote with `--complete` or `--staged <fraction>`. This is
 deliberate; see [ADR-0002](adr/0002-safe-production-defaults.md). On every
 other track the behavior matches Fastlane (`completed` at 100%).
 
-Fully detailed migration table: backlog item, to be added once the MVP is
-stable and real migrators give feedback on the pitfalls.
+Fully detailed migration table: parked (issue #526), to be added once real
+migrators give feedback on the pitfalls.
 
 ## 7. Troubleshooting: orphaned Edits (`editAlreadyExists`)
 
