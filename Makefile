@@ -1,4 +1,4 @@
-.PHONY: help build test lint verb-gate dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update stats
+.PHONY: help build test lint verb-gate dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats
 
 # Project metadata
 BINARY := gplay
@@ -44,6 +44,9 @@ discovery-update: ## Regenerate offline Discovery snapshots under docs/discovery
 
 schema-index-update: ## Derive the embedded Schema index from the committed Discovery snapshot (offline)
 	go run ./internal/discovery/cmd/schema-index-update
+
+coverage-update: ## Render docs/COVERAGE.md from the Discovery index and the API method registry (offline)
+	go run ./internal/discovery/cmd/coverage-update
 
 release-snapshot: ## Local GoReleaser snapshot (no publish) — sanity-check the config
 	goreleaser release --snapshot --clean --skip=publish,sign,sbom
