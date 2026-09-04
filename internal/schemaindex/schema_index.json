@@ -1,5 +1,21 @@
 {
   "revision": "20260826",
+  "services": {
+    "androidpublisher": {
+      "rootUrl": "https://androidpublisher.googleapis.com/",
+      "basePath": "androidpublisher/v3/"
+    },
+    "gamesConfiguration": {
+      "rootUrl": "https://gamesconfiguration.googleapis.com/"
+    },
+    "playcustomapp": {
+      "rootUrl": "https://playcustomapp.googleapis.com/",
+      "basePath": "playcustomapp/v1/"
+    },
+    "playdeveloperreporting": {
+      "rootUrl": "https://playdeveloperreporting.googleapis.com/"
+    }
+  },
   "methods": {
     "androidpublisher.applications.dataSafety": {
       "httpMethod": "POST",
@@ -317,7 +333,8 @@
         }
       ],
       "request": "UploadApkRequest",
-      "response": "UploadApkResponse"
+      "response": "UploadApkResponse",
+      "uploadPath": "upload/androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/apks:upload"
     },
     "androidpublisher.appstoreappsreview.uploadappstoreapppolicydeclarationfile": {
       "httpMethod": "POST",
@@ -340,7 +357,8 @@
         }
       ],
       "request": "UploadAppStoreAppPolicyDeclarationFileRequest",
-      "response": "UploadAppStoreAppPolicyDeclarationFileResponse"
+      "response": "UploadAppStoreAppPolicyDeclarationFileResponse",
+      "uploadPath": "upload/androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/policyDeclarationFiles:upload"
     },
     "androidpublisher.appstoreappsreview.uploadimage": {
       "httpMethod": "POST",
@@ -363,7 +381,8 @@
         }
       ],
       "request": "UploadImageRequest",
-      "response": "UploadImageResponse"
+      "response": "UploadImageResponse",
+      "uploadPath": "upload/androidpublisher/v3/appstore/{appStorePackageName}/apps/{packageName}/images:upload"
     },
     "androidpublisher.appstorecatalog.recentappviews.get": {
       "httpMethod": "GET",
@@ -491,7 +510,8 @@
           "description": "Package name of the app."
         }
       ],
-      "response": "Apk"
+      "response": "Apk",
+      "uploadPath": "upload/androidpublisher/v3/applications/{packageName}/edits/{editId}/apks"
     },
     "androidpublisher.edits.bundles.list": {
       "httpMethod": "GET",
@@ -547,7 +567,8 @@
           "description": "Package name of the app."
         }
       ],
-      "response": "Bundle"
+      "response": "Bundle",
+      "uploadPath": "upload/androidpublisher/v3/applications/{packageName}/edits/{editId}/bundles"
     },
     "androidpublisher.edits.commit": {
       "httpMethod": "POST",
@@ -677,7 +698,8 @@
           "description": "Unique identifier for the Android app."
         }
       ],
-      "response": "DeobfuscationFilesUploadResponse"
+      "response": "DeobfuscationFilesUploadResponse",
+      "uploadPath": "upload/androidpublisher/v3/applications/{packageName}/edits/{editId}/apks/{apkVersionCode}/deobfuscationFiles/{deobfuscationFileType}"
     },
     "androidpublisher.edits.details.get": {
       "httpMethod": "GET",
@@ -911,7 +933,8 @@
           "description": "Package name of the app."
         }
       ],
-      "response": "ExpansionFilesUploadResponse"
+      "response": "ExpansionFilesUploadResponse",
+      "uploadPath": "upload/androidpublisher/v3/applications/{packageName}/edits/{editId}/apks/{apkVersionCode}/expansionFiles/{expansionFileType}"
     },
     "androidpublisher.edits.get": {
       "httpMethod": "GET",
@@ -1138,7 +1161,8 @@
           "description": "Package name of the app."
         }
       ],
-      "response": "ImagesUploadResponse"
+      "response": "ImagesUploadResponse",
+      "uploadPath": "upload/androidpublisher/v3/applications/{packageName}/edits/{editId}/listings/{language}/{imageType}"
     },
     "androidpublisher.edits.insert": {
       "httpMethod": "POST",
@@ -1976,7 +2000,8 @@
           "description": "Package name of the app."
         }
       ],
-      "response": "InternalAppSharingArtifact"
+      "response": "InternalAppSharingArtifact",
+      "uploadPath": "upload/androidpublisher/v3/applications/internalappsharing/{packageName}/artifacts/apk"
     },
     "androidpublisher.internalappsharingartifacts.uploadbundle": {
       "httpMethod": "POST",
@@ -1991,7 +2016,8 @@
           "description": "Package name of the app."
         }
       ],
-      "response": "InternalAppSharingArtifact"
+      "response": "InternalAppSharingArtifact",
+      "uploadPath": "upload/androidpublisher/v3/applications/internalappsharing/{packageName}/artifacts/bundle"
     },
     "androidpublisher.monetization.convertRegionPrices": {
       "httpMethod": "POST",
@@ -4170,7 +4196,8 @@
         }
       ],
       "request": "CustomApp",
-      "response": "CustomApp"
+      "response": "CustomApp",
+      "uploadPath": "upload/playcustomapp/v1/accounts/{account}/customApps"
     },
     "playdeveloperreporting.anomalies.list": {
       "httpMethod": "GET",

@@ -13,9 +13,11 @@
 // deterministic evidence the Discovery triage bot cites before any model is
 // involved (PRD #501).
 //
-// It is declarative on purpose: no call site imports it, nothing here is
-// compiled into a request. Adding a command that calls a new method means
-// adding one line here, and the COVERAGE cross-check below fails until you do.
+// The list itself stays declarative: adding a command that calls a new method
+// means adding one line here, and the COVERAGE cross-check below fails until
+// you do. Since #516 the package ALSO resolves a registered id to the verb and
+// URL of the request (resolve.go), so call sites stop hand-writing paths and
+// the registry becomes complete by construction rather than by good faith.
 //
 // Scope: Google Discovery-documented APIs only. `gplay reviews history` also
 // reads the Cloud Storage JSON API (`storage.objects.list`/`get`), which has no

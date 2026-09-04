@@ -69,6 +69,16 @@ before anyone reads the diff. Ship a command that calls a new method, add its
 line to the registry: the ✅ rows of [COVERAGE.md](../COVERAGE.md) are
 cross-checked against it.
 
+## The registry also resolves the request
+
+`apiregistry.Resolve(id)` turns a registered method id into the HTTP verb and
+the absolute URL template gplay must send, read from the embedded Schema index
+(hence from these snapshots), with `Method.URL(params)` filling the `{param}`
+placeholders and refusing a missing one. Upload methods carry their own
+`/upload/...` template. Call sites therefore stop hand-writing paths, and a
+refresh that changes a path is caught by a test that compares every registered
+method to the snapshot's `flatPath` rather than by a reviewer's eye.
+
 ## Triaging a refresh PR
 
 [docs/agents/discovery-triage.md](../agents/discovery-triage.md) is the brief the

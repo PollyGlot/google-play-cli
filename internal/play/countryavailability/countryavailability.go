@@ -12,12 +12,19 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 const opCountryAvailabilityGet = "countryavailability.get"
+
+// method is the registry entry this package calls. Resolving it at init makes
+// an unregistered or vanished method a startup panic in CI (the registry tests
+// resolve every entry), never a runtime surprise for a user; the verb and the
+// URL template then come from the Discovery snapshot instead of a literal
+// maintained here (#513).
+var method = apiregistry.MustResolve("androidpublisher.edits.countryavailability.get")
 
 // TargetedCountry is one element of the countries[] array: a CLDR
 // two-letter country code. json tag mirrors the API verbatim (ADR-0003
@@ -47,12 +54,16 @@ type TrackCountryAvailability struct {
 // gplay exit-code taxonomy maps transparently (403 → 11, 404 → 30,
 // 5xx → 40, network → 50).
 func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*TrackCountryAvailability, json.RawMessage, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/countryAvailability/" + url.PathEscape(track)
+	u, err := method.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"track":       track,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opCountryAvailabilityGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, method.Verb, u, nil)
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opCountryAvailabilityGet, Package: pkg, Message: err.Error(), Cause: err}
 	}
