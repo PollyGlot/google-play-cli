@@ -13,9 +13,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -23,6 +23,18 @@ import (
 const (
 	opList     = "generatedapks.list"
 	opDownload = "generatedapks.download"
+)
+
+// m* are the registry entries this package calls. Resolving them at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL template then come from the Discovery snapshot instead of
+// literals maintained here (#513). The `:download` custom verb
+// is part of the snapshot's flatPath, so it rides the template; only the
+// `alt=media` query stays hand-built.
+var (
+	mList     = apiregistry.MustResolve("androidpublisher.generatedapks.list")
+	mDownload = apiregistry.MustResolve("androidpublisher.generatedapks.download")
 )
 
 // ListResponse mirrors GeneratedApksListResponse: every generated APK grouped
@@ -87,9 +99,14 @@ type RecoveryApk struct {
 // the verbatim body for the ADR-0003 --output json pass-through. No Edit: the
 // GET is application-scoped (not under /edits/).
 func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (ListResponse, json.RawMessage, error) {
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) +
-		"/generatedApks/" + strconv.FormatInt(versionCode, 10)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	u, err := mList.URL(map[string]string{
+		"packageName": pkg,
+		"versionCode": strconv.FormatInt(versionCode, 10),
+	})
+	if err != nil {
+		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mList.Verb, u, nil)
 	if err != nil {
 		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -112,10 +129,15 @@ func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (
 // bytes written. No Edit (the endpoint is application-scoped). A non-2xx body is
 // still small JSON, parsed for the error envelope.
 func Download(ctx context.Context, hc *http.Client, pkg string, versionCode int64, downloadID string, w io.Writer) (int64, error) {
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) +
-		"/generatedApks/" + strconv.FormatInt(versionCode, 10) +
-		"/downloads/" + url.PathEscape(downloadID) + ":download?alt=media"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	u, err := mDownload.URL(map[string]string{
+		"packageName": pkg,
+		"versionCode": strconv.FormatInt(versionCode, 10),
+		"downloadId":  downloadID,
+	})
+	if err != nil {
+		return 0, &api.Error{Operation: opDownload, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mDownload.Verb, u+"?alt=media", nil)
 	if err != nil {
 		return 0, &api.Error{Operation: opDownload, Package: pkg, Message: err.Error(), Cause: err}
 	}

@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -31,6 +32,19 @@ const (
 	opPatch   = "monetization.subscriptions.patch"
 	opDelete  = "monetization.subscriptions.delete"
 	opConvert = "monetization.convertRegionPrices"
+)
+
+// m* are the registry entries this package calls. Resolving them at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL template then come from the Discovery snapshot instead of
+// literals maintained here (#513).
+var (
+	mList    = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.list")
+	mCreate  = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.create")
+	mPatch   = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.patch")
+	mDelete  = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.delete")
+	mConvert = apiregistry.MustResolve("androidpublisher.monetization.convertRegionPrices")
 )
 
 // Money mirrors the Money schema: whole units (a decimal int64 string) plus
@@ -76,8 +90,11 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 		if token != "" {
 			q.Set("pageToken", token)
 		}
-		u := base(pkg) + "?" + q.Encode()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		u, err := mList.URL(map[string]string{"packageName": pkg})
+		if err != nil {
+			return nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
+		}
+		req, err := http.NewRequestWithContext(ctx, mList.Verb, u+"?"+q.Encode(), nil)
 		if err != nil {
 			return nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
 		}
@@ -124,8 +141,11 @@ func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion
 	q := url.Values{}
 	q.Set("productId", productID)
 	q.Set("regionsVersion.version", regionsVersion)
-	u := base(pkg) + "?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	u, err := mCreate.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mCreate.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
 	if err != nil {
 		return nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -141,8 +161,11 @@ func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion 
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
 	q.Set("regionsVersion.version", regionsVersion)
-	u := base(pkg) + "/" + url.PathEscape(productID) + "?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u, strings.NewReader(string(body)))
+	u, err := mPatch.URL(map[string]string{"packageName": pkg, "productId": productID})
+	if err != nil {
+		return nil, &api.Error{Operation: opPatch, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mPatch.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
 	if err != nil {
 		return nil, &api.Error{Operation: opPatch, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -155,8 +178,11 @@ func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion 
 // subscription that ever had a published base plan, so the gate covers intent
 // while the server covers damage (ADR-0041).
 func Delete(ctx context.Context, hc *http.Client, pkg, productID string) error {
-	u := base(pkg) + "/" + url.PathEscape(productID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	u, err := mDelete.URL(map[string]string{"packageName": pkg, "productId": productID})
+	if err != nil {
+		return &api.Error{Operation: opDelete, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mDelete.Verb, u, nil)
 	if err != nil {
 		return &api.Error{Operation: opDelete, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -176,18 +202,16 @@ func ConvertRegionPrices(ctx context.Context, hc *http.Client, pkg string, price
 	if err != nil {
 		return nil, &api.Error{Operation: opConvert, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
 	}
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/pricing:convertRegionPrices"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	u, err := mConvert.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return nil, &api.Error{Operation: opConvert, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mConvert.Verb, u, strings.NewReader(string(body)))
 	if err != nil {
 		return nil, &api.Error{Operation: opConvert, Package: pkg, Message: err.Error(), Cause: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	return do(hc, opConvert, pkg, req)
-}
-
-// base is the application-scoped subscriptions collection URL.
-func base(pkg string) string {
-	return api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/subscriptions"
 }
 
 // do runs req and maps the response to (raw body, *api.Error): a non-2xx body is

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -26,6 +27,19 @@ const (
 	opGet      = "orders.get"
 	opBatchGet = "orders.batchget"
 	opRefund   = "orders.refund"
+)
+
+// m* are the registry entries this package calls. Resolving them at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL template then come from the Discovery snapshot instead of
+// literals maintained here (#513). The two custom verbs
+// (`orders:batchGet`, `{orderId}:refund`) are part of the snapshot's flatPath,
+// so they ride the template rather than being concatenated here.
+var (
+	mGet      = apiregistry.MustResolve("androidpublisher.orders.get")
+	mBatchGet = apiregistry.MustResolve("androidpublisher.orders.batchget")
+	mRefund   = apiregistry.MustResolve("androidpublisher.orders.refund")
 )
 
 // MaxBatchOrderIDs is the API cap on orderIds per orders.batchget call (the
@@ -76,9 +90,11 @@ type BatchGetOrdersResponse struct {
 // service account to hold CAN_VIEW_FINANCIAL_DATA; a 403 surfaces as an
 // *api.Error the command classifies into an agent-resolvable refusal.
 func Get(ctx context.Context, hc *http.Client, pkg, orderID string) (Order, json.RawMessage, error) {
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) +
-		"/orders/" + url.PathEscape(orderID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	u, err := mGet.URL(map[string]string{"packageName": pkg, "orderId": orderID})
+	if err != nil {
+		return Order{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mGet.Verb, u, nil)
 	if err != nil {
 		return Order{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -104,8 +120,11 @@ func BatchGet(ctx context.Context, hc *http.Client, pkg string, orderIDs []strin
 	for _, id := range orderIDs {
 		q.Add("orderIds", id)
 	}
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/orders:batchGet?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	u, err := mBatchGet.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return BatchGetOrdersResponse{}, nil, &api.Error{Operation: opBatchGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mBatchGet.Verb, u+"?"+q.Encode(), nil)
 	if err != nil {
 		return BatchGetOrdersResponse{}, nil, &api.Error{Operation: opBatchGet, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -130,11 +149,14 @@ func BatchGet(ctx context.Context, hc *http.Client, pkg string, orderIDs []strin
 // command classifies into agent-resolvable refusals. A success body is usually
 // empty, so the verbatim bytes are returned for pass-through but may be nil.
 func Refund(ctx context.Context, hc *http.Client, pkg, orderID string, revoke bool) (json.RawMessage, error) {
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/orders/" + url.PathEscape(orderID) + ":refund"
+	u, err := mRefund.URL(map[string]string{"packageName": pkg, "orderId": orderID})
+	if err != nil {
+		return nil, &api.Error{Operation: opRefund, Package: pkg, Message: err.Error(), Cause: err}
+	}
 	if revoke {
 		u += "?revoke=true"
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
+	req, err := http.NewRequestWithContext(ctx, mRefund.Verb, u, nil)
 	if err != nil {
 		return nil, &api.Error{Operation: opRefund, Package: pkg, Message: err.Error(), Cause: err}
 	}

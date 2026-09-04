@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -32,6 +33,24 @@ const (
 	opOffersBatchUpdate = "monetization.onetimeproducts.purchaseOptions.offers.batchUpdate"
 	opOffersBatchDelete = "monetization.onetimeproducts.purchaseOptions.offers.batchDelete"
 	opLegacyList        = "inappproducts.list"
+)
+
+// m* are the registry entries this package calls. Resolving them at init turns
+// an unregistered or vanished method into a startup panic CI catches (the
+// registry tests resolve every entry), never a runtime surprise for a user;
+// verb and URL template then come from the Discovery snapshot instead of
+// literals maintained here (#513). Case in point: the snapshot paths the v2
+// patch under lowercase `onetimeproducts` while the reads use
+// `oneTimeProducts`, and taking both from the snapshot is what keeps that
+// asymmetry right.
+var (
+	mList              = apiregistry.MustResolve("androidpublisher.monetization.onetimeproducts.list")
+	mPatch             = apiregistry.MustResolve("androidpublisher.monetization.onetimeproducts.patch")
+	mDelete            = apiregistry.MustResolve("androidpublisher.monetization.onetimeproducts.delete")
+	mOffersList        = apiregistry.MustResolve("androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.list")
+	mOffersBatchUpdate = apiregistry.MustResolve("androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.batchUpdate")
+	mOffersBatchDelete = apiregistry.MustResolve("androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.batchDelete")
+	mLegacyList        = apiregistry.MustResolve("androidpublisher.inappproducts.list")
 )
 
 const listPageSize = 100
@@ -73,8 +92,11 @@ func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]It
 		if token != "" {
 			q.Set("pageToken", token)
 		}
-		u := otpBase(pkg) + "?" + q.Encode()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		u, err := mList.URL(map[string]string{"packageName": pkg})
+		if err != nil {
+			return nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
+		}
+		req, err := http.NewRequestWithContext(ctx, mList.Verb, u+"?"+q.Encode(), nil)
 		if err != nil {
 			return nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
 		}
@@ -127,8 +149,13 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 		if token != "" {
 			q.Set("pageToken", token)
 		}
-		u := otpBase(pkg) + "/-/purchaseOptions/-/offers?" + q.Encode()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		// The wildcard walk rides the same template as a scoped list: `-` is a
+		// legal path segment, so escaping leaves it untouched.
+		u, err := mOffersList.URL(map[string]string{"packageName": pkg, "productId": "-", "purchaseOptionId": "-"})
+		if err != nil {
+			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: err.Error(), Cause: err}
+		}
+		req, err := http.NewRequestWithContext(ctx, mOffersList.Verb, u+"?"+q.Encode(), nil)
 		if err != nil {
 			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: err.Error(), Cause: err}
 		}
@@ -182,8 +209,11 @@ func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, r
 	if len(updateMask) > 0 {
 		q.Set("updateMask", strings.Join(updateMask, ","))
 	}
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/onetimeproducts/" + url.PathEscape(productID) + "?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u, strings.NewReader(string(body)))
+	u, err := mPatch.URL(map[string]string{"packageName": pkg, "productId": productID})
+	if err != nil {
+		return nil, &api.Error{Operation: opPatch, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mPatch.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
 	if err != nil {
 		return nil, &api.Error{Operation: opPatch, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -194,8 +224,11 @@ func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, r
 // DeleteOneTimeProduct deletes one v2 product. Reaching here means the plan
 // carried a delete and the operator passed --confirm (ADR-0041 §3).
 func DeleteOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID string) error {
-	u := otpBase(pkg) + "/" + url.PathEscape(productID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	u, err := mDelete.URL(map[string]string{"packageName": pkg, "productId": productID})
+	if err != nil {
+		return &api.Error{Operation: opDelete, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mDelete.Verb, u, nil)
 	if err != nil {
 		return &api.Error{Operation: opDelete, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -236,8 +269,11 @@ func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 	if err != nil {
 		return &api.Error{Operation: opOffersBatchUpdate, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
 	}
-	u := offersBase(pkg, productID, purchaseOptionID) + ":batchUpdate"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	u, err := mOffersBatchUpdate.URL(map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID})
+	if err != nil {
+		return &api.Error{Operation: opOffersBatchUpdate, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mOffersBatchUpdate.Verb, u, strings.NewReader(string(body)))
 	if err != nil {
 		return &api.Error{Operation: opOffersBatchUpdate, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -265,8 +301,11 @@ func BatchDeleteOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 	if err != nil {
 		return &api.Error{Operation: opOffersBatchDelete, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
 	}
-	u := offersBase(pkg, productID, purchaseOptionID) + ":batchDelete"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	u, err := mOffersBatchDelete.URL(map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID})
+	if err != nil {
+		return &api.Error{Operation: opOffersBatchDelete, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mOffersBatchDelete.Verb, u, strings.NewReader(string(body)))
 	if err != nil {
 		return &api.Error{Operation: opOffersBatchDelete, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -285,13 +324,16 @@ func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]Lega
 	)
 	seen := map[string]struct{}{}
 	for {
-		u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/inappproducts"
+		u, err := mLegacyList.URL(map[string]string{"packageName": pkg})
+		if err != nil {
+			return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: err.Error(), Cause: err}
+		}
 		if token != "" {
 			q := url.Values{}
 			q.Set("token", token)
 			u += "?" + q.Encode()
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		req, err := http.NewRequestWithContext(ctx, mLegacyList.Verb, u, nil)
 		if err != nil {
 			return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: err.Error(), Cause: err}
 		}
@@ -330,16 +372,6 @@ func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]Lega
 		seen[next] = struct{}{}
 		token = next
 	}
-}
-
-// otpBase is the application-scoped oneTimeProducts collection URL.
-func otpBase(pkg string) string {
-	return api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/oneTimeProducts"
-}
-
-// offersBase is the offers collection URL under one purchase option.
-func offersBase(pkg, productID, purchaseOptionID string) string {
-	return otpBase(pkg) + "/" + url.PathEscape(productID) + "/purchaseOptions/" + url.PathEscape(purchaseOptionID) + "/offers"
 }
 
 // do runs req and maps the response to (raw body, *api.Error): a non-2xx body is
