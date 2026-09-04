@@ -47,6 +47,9 @@ LABELS=(
   "wontfix|ffffff|Decision: out of scope"
   "duplicate|cccccc|Closed in favor of another issue/PR"
 
+  # Downstream — consumed by the release-time mirror workflow
+  # (.github/workflows/storedeck-mirror.yml, PRD #501)
+  "affects:storedeck|8250df|Changes the gplay contract storedeck consumes — mirrored to storedeck on release"
   # Discovery bot — machine-readable state of the rolling refresh PR.
   # discovery:schema/surface are set by .github/workflows/discovery-watch.yml;
   # verdict-merge / needs-decision are set by the triage routine (#506) and read
