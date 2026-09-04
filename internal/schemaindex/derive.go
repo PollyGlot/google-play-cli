@@ -15,6 +15,7 @@ type discoveryDoc struct {
 	Name      string                       `json:"name"`
 	Version   string                       `json:"version"`
 	Revision  string                       `json:"revision"`
+	RootURL   string                       `json:"rootUrl"`
 	Resources map[string]discoveryResource `json:"resources"`
 	Schemas   map[string]discoverySchema   `json:"schemas"`
 }
@@ -33,6 +34,19 @@ type discoveryMethod struct {
 	Parameters  map[string]discoveryParam `json:"parameters"`
 	Request     *discoveryRef             `json:"request"`
 	Response    *discoveryRef             `json:"response"`
+	MediaUpload *discoveryMediaUpload     `json:"mediaUpload"`
+}
+
+// discoveryMediaUpload reads only the simple-protocol upload path. The
+// resumable protocol's path is the same one under a `/resumable` prefix and
+// gplay appends `?uploadType=resumable` itself, so keeping the simple path
+// alone avoids storing two values that must agree.
+type discoveryMediaUpload struct {
+	Protocols struct {
+		Simple struct {
+			Path string `json:"path"`
+		} `json:"simple"`
+	} `json:"protocols"`
 }
 
 type discoveryParam struct {
@@ -85,8 +99,12 @@ func Derive(normalized []byte) (Index, error) {
 
 	// The constant path prefix Google prepends to every flatPath, e.g.
 	// "androidpublisher/v3/". Stripping it yields the REST path fragment users
-	// recognise from the API reference.
-	prefix := doc.Name + "/" + doc.Version + "/"
+	// recognise from the API reference. It is stripped only when EVERY method
+	// carries it: gamesConfiguration ("games/v1configuration/") and
+	// playdeveloperreporting ("v1beta1/") do not follow the name/version
+	// convention, and a half-stripped index would make Path mean two different
+	// things inside the same document.
+	prefix := basePathOf(doc)
 
 	var walk func(rs map[string]discoveryResource)
 	walk = func(rs map[string]discoveryResource) {
@@ -99,11 +117,42 @@ func Derive(normalized []byte) (Index, error) {
 	}
 	walk(doc.Resources)
 
+	// Keyed by the service discriminator, i.e. the leading segment of every
+	// method id of the document, which equals doc.Name for all four snapshots.
+	idx.Services = map[string]Service{
+		doc.Name: {RootURL: doc.RootURL, BasePath: prefix},
+	}
+
 	for name, s := range doc.Schemas {
 		idx.Schemas[name] = deriveSchema(s)
 	}
 
 	return idx, nil
+}
+
+// basePathOf returns the name/version prefix when every flatPath of the
+// document starts with it, and "" otherwise. A document with no method yields
+// "" rather than a prefix nothing was ever stripped with.
+func basePathOf(doc discoveryDoc) string {
+	prefix := doc.Name + "/" + doc.Version + "/"
+	seen, all := false, true
+	var walk func(rs map[string]discoveryResource)
+	walk = func(rs map[string]discoveryResource) {
+		for _, r := range rs {
+			for _, m := range r.Methods {
+				seen = true
+				if !strings.HasPrefix(m.FlatPath, prefix) {
+					all = false
+				}
+			}
+			walk(r.Resources)
+		}
+	}
+	walk(doc.Resources)
+	if !seen || !all {
+		return ""
+	}
+	return prefix
 }
 
 func deriveMethod(m discoveryMethod, prefix string) Method {
@@ -117,6 +166,11 @@ func deriveMethod(m discoveryMethod, prefix string) Method {
 	}
 	if m.Response != nil {
 		out.Response = m.Response.Ref
+	}
+	if m.MediaUpload != nil {
+		// Stored root-relative like Path, so both concatenate onto the service
+		// RootURL the same way; Discovery writes it with a leading slash.
+		out.UploadPath = strings.TrimPrefix(m.MediaUpload.Protocols.Simple.Path, "/")
 	}
 	for name, p := range m.Parameters {
 		out.Parameters = append(out.Parameters, Param{
@@ -178,12 +232,16 @@ func deriveProperty(p discoveryProperty) Property {
 // in slice order; with a stable Services order the result is deterministic.
 func Merge(indexes ...Index) Index {
 	out := Index{
-		Methods: map[string]Method{},
-		Schemas: map[string]Schema{},
+		Services: map[string]Service{},
+		Methods:  map[string]Method{},
+		Schemas:  map[string]Schema{},
 	}
 	for i, idx := range indexes {
 		if i == 0 {
 			out.Revision = idx.Revision
+		}
+		for name, svc := range idx.Services {
+			out.Services[name] = svc
 		}
 		for id, m := range idx.Methods {
 			out.Methods[id] = m

@@ -49,9 +49,32 @@ func Embedded() (Index, error) {
 // Index is the whole Schema index: a Methods section and a Schemas dictionary,
 // plus the upstream Discovery revision stamp it was derived from.
 type Index struct {
-	Revision string            `json:"revision,omitempty"`
-	Methods  map[string]Method `json:"methods"`
-	Schemas  map[string]Schema `json:"schemas"`
+	Revision string             `json:"revision,omitempty"`
+	Services map[string]Service `json:"services,omitempty"`
+	Methods  map[string]Method  `json:"methods"`
+	Schemas  map[string]Schema  `json:"schemas"`
+}
+
+// Service carries the two document-level values a method id alone cannot give:
+// where the service lives and what constant prefix its paths hang off. It is
+// keyed in Index.Services by the service discriminator, i.e. the leading
+// segment of a method id (`androidpublisher`, `playdeveloperreporting`, ...).
+//
+// It exists because Method.Path is a base-relative fragment, and that base is
+// NOT uniform across Google's documents: androidpublisher flatPaths start with
+// `androidpublisher/v3/` while gamesConfiguration's start with
+// `games/v1configuration/` and playdeveloperreporting's with `v1beta1/`.
+// Recording the prefix that was actually stripped keeps the reconstruction
+// exact: RootURL + BasePath + Method.Path is the method's absolute URL
+// template, byte for byte what the hand-rolled call sites build today.
+type Service struct {
+	// RootURL is Discovery's `rootUrl`, with its trailing slash (e.g.
+	// "https://androidpublisher.googleapis.com/").
+	RootURL string `json:"rootUrl,omitempty"`
+	// BasePath is the constant prefix stripped off every flatPath of this
+	// document, trailing slash included ("androidpublisher/v3/"), or empty
+	// when the document's flatPaths carry no such prefix.
+	BasePath string `json:"basePath,omitempty"`
 }
 
 // Method is one API method entry, keyed in Index.Methods by its native RPC id.
@@ -64,6 +87,15 @@ type Method struct {
 	Parameters  []Param `json:"parameters,omitempty"`
 	Request     string  `json:"request,omitempty"`
 	Response    string  `json:"response,omitempty"`
+	// UploadPath is the media-upload path template of a method that accepts a
+	// payload (Discovery's mediaUpload simple-protocol path), relative to the
+	// service RootURL and WITHOUT a leading slash
+	// ("upload/androidpublisher/v3/applications/{packageName}/edits/{editId}/bundles").
+	// It is a second, distinct path (a different prefix, not a suffix of Path),
+	// so it cannot be derived from Path: `releases upload`, the mapping upload
+	// and the image uploads all need it verbatim. Empty for the vast majority
+	// of methods, which take no media.
+	UploadPath string `json:"uploadPath,omitempty"`
 }
 
 // Param is one method parameter. In is "path" or "query" (Discovery's
