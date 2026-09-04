@@ -21,6 +21,15 @@
 // (resolve.go), so call sites stop hand-writing paths and the registry becomes
 // complete by construction rather than by good faith.
 //
+// The completeness invariant, stated plainly: every request a shipped command
+// sends resolves through this package. Nothing else can build a URL, so a
+// method that is called is necessarily registered, and docs/COVERAGE.md, which
+// is rendered from Entries() plus Exclusions() by `make coverage-update`,
+// cannot omit a method the CLI calls. The invariant is enforced, not merely
+// asserted: archgate_test.go parses internal/play/ and commands/ and fails on
+// any hand-written API base URL or resource path, naming file and line
+// (#520).
+//
 // Scope: Google Discovery-documented APIs only, and `internal/play/gcs` is the
 // single exception to the "no hand-written path outside this package" rule.
 // `gplay reviews history` reads the Cloud Storage JSON API
