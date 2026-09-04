@@ -17,14 +17,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 const op = "deobfuscationfiles.upload"
+
+// method is the registry entry this package calls. Resolving it at init makes
+// an unregistered or vanished method a startup panic caught by CI rather than
+// a runtime surprise; verb and URL then come from the Discovery snapshot
+// instead of literals kept here (#513). The upload endpoint is a distinct host
+// path (/upload/...), hence UploadURL; the uploadType query string stays here,
+// where the resumable protocol is chosen.
+var method = apiregistry.MustResolve("androidpublisher.edits.deobfuscationfiles.upload")
 
 // Deobfuscation file types, taken verbatim from the Discovery snapshot's
 // deobfuscationFileType enum (docs/discovery/androidpublisher_v3.json) so
@@ -97,12 +105,16 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 		return nil, &LocalIOError{Path: path, Cause: fmt.Errorf("not a regular file")}
 	}
 
-	u := api.UploadBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/apks/" + strconv.Itoa(versionCode) +
-		"/deobfuscationFiles/" + url.PathEscape(fileType) +
-		"?uploadType=resumable"
+	u, err := method.UploadURL(map[string]string{
+		"packageName":           pkg,
+		"editId":                editID,
+		"apkVersionCode":        strconv.Itoa(versionCode),
+		"deobfuscationFileType": fileType,
+	})
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	u += "?uploadType=resumable"
 
 	// *os.File is an io.ReaderAt, giving the resumable helper random access so
 	// it can re-send from a server-acknowledged offset after a transient

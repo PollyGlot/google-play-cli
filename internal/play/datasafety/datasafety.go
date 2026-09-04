@@ -15,14 +15,20 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 // opDataSafety names the upstream method for *api.Error tagging, matching the
 // REST reference (applications.dataSafety) so log readers can correlate it.
 const opDataSafety = "applications.dataSafety"
+
+// method is the registry entry this package calls. Resolving it at init makes
+// an unregistered or vanished method a startup panic caught by CI rather than a
+// runtime surprise; verb and URL then come from the Discovery snapshot instead
+// of a literal kept here (#513).
+var method = apiregistry.MustResolve("androidpublisher.applications.dataSafety")
 
 // request is the POST body: a single opaque CSV blob under "safetyLabels".
 type request struct {
@@ -45,9 +51,12 @@ func Post(ctx context.Context, hc *http.Client, pkg string, csv []byte) (json.Ra
 		return nil, &api.Error{Operation: opDataSafety, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
 	}
 
-	u := api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/dataSafety"
+	u, err := method.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return nil, &api.Error{Operation: opDataSafety, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, method.Verb, u, bytes.NewReader(payload))
 	if err != nil {
 		return nil, &api.Error{Operation: opDataSafety, Package: pkg, Message: err.Error(), Cause: err}
 	}

@@ -11,8 +11,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -21,6 +21,17 @@ const (
 	opTracksList   = "tracks.list"
 	opTracksUpdate = "tracks.update"
 	opTracksCreate = "tracks.create"
+)
+
+// Registry entries this package calls. Resolving them at init makes an
+// unregistered or vanished method a startup panic caught by CI rather than a
+// runtime surprise; verb and URL then come from the Discovery snapshot instead
+// of literals kept here (#513).
+var (
+	methodGet    = apiregistry.MustResolve("androidpublisher.edits.tracks.get")
+	methodList   = apiregistry.MustResolve("androidpublisher.edits.tracks.list")
+	methodUpdate = apiregistry.MustResolve("androidpublisher.edits.tracks.update")
+	methodCreate = apiregistry.MustResolve("androidpublisher.edits.tracks.create")
 )
 
 // TrackTypeClosedTesting is the only track type edits.tracks.create
@@ -73,12 +84,16 @@ type TrackConfig struct {
 // resume verbs consume. The raw JSON body is returned alongside for
 // --output json pass-through (ADR-0003) and for diagnostics.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Track, json.RawMessage, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/tracks/" + url.PathEscape(track)
+	u, err := methodGet.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"track":       track,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opTracksGet, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -121,12 +136,15 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Trac
 // exactly what the API returns. Like Get, it runs inside an Edit the
 // caller has already opened.
 func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Track, json.RawMessage, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/tracks"
+	u, err := methodList.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksList, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, methodList.Verb, u, nil)
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opTracksList, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -191,12 +209,16 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, rel
 // and patching only the target release is the lossless way to do that;
 // round-tripping through the typed Release struct would drop the rest.
 func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, body []byte) (*Track, json.RawMessage, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/tracks/" + url.PathEscape(track)
+	u, err := methodUpdate.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"track":       track,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, methodUpdate.Verb, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -246,12 +268,15 @@ func Create(ctx context.Context, hc *http.Client, pkg, editID, name, formFactor 
 		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
 	}
 
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/tracks"
+	u, err := methodCreate.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, methodCreate.Verb, u, bytes.NewReader(payload))
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: err.Error(), Cause: err}
 	}

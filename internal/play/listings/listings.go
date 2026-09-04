@@ -13,8 +13,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -23,6 +23,17 @@ const (
 	opListingsGet    = "listings.get"
 	opListingsPatch  = "listings.patch"
 	opListingsDelete = "listings.delete"
+)
+
+// Registry entries this package calls. Resolving them at init makes an
+// unregistered or vanished method a startup panic caught by CI rather than a
+// runtime surprise; verb and URL then come from the Discovery snapshot instead
+// of literals kept here (#513).
+var (
+	methodList   = apiregistry.MustResolve("androidpublisher.edits.listings.list")
+	methodGet    = apiregistry.MustResolve("androidpublisher.edits.listings.get")
+	methodPatch  = apiregistry.MustResolve("androidpublisher.edits.listings.patch")
+	methodDelete = apiregistry.MustResolve("androidpublisher.edits.listings.delete")
 )
 
 // Listing is the API-shaped edits.listings resource: one per locale. The
@@ -43,12 +54,15 @@ type Listing struct {
 // the --output json pass-through (ADR-0003). Like the rest of the package
 // it runs inside an Edit the caller has already opened.
 func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Listing, json.RawMessage, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/listings"
+	u, err := methodList.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opListingsList, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, methodList.Verb, u, nil)
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opListingsList, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -98,12 +112,16 @@ func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Listing, 
 // (ADR-0003). A 404 here means "no Listing for this locale": the caller
 // maps it via the gplay exit-code taxonomy.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, language string) (*Listing, json.RawMessage, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/listings/" + url.PathEscape(language)
+	u, err := methodGet.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"language":    language,
+	})
+	if err != nil {
+		return nil, nil, &api.Error{Operation: opListingsGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
 	if err != nil {
 		return nil, nil, &api.Error{Operation: opListingsGet, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -154,12 +172,16 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, language string) (*L
 // wire level. Returns the raw response body (the patched Listing) for the
 // per-locale --output json pass-through (ADR-0003).
 func Patch(ctx context.Context, hc *http.Client, pkg, editID, language string, body []byte) (json.RawMessage, error) {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/listings/" + url.PathEscape(language)
+	u, err := methodPatch.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"language":    language,
+	})
+	if err != nil {
+		return nil, &api.Error{Operation: opListingsPatch, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, methodPatch.Verb, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, &api.Error{Operation: opListingsPatch, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -195,12 +217,16 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID, language string, b
 // that is what gplay calls. A 2xx/204 with no body is expected. Op
 // "listings.delete".
 func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string) error {
-	u := api.AndroidPubBase +
-		"/applications/" + url.PathEscape(pkg) +
-		"/edits/" + url.PathEscape(editID) +
-		"/listings/" + url.PathEscape(language)
+	u, err := methodDelete.URL(map[string]string{
+		"packageName": pkg,
+		"editId":      editID,
+		"language":    language,
+	})
+	if err != nil {
+		return &api.Error{Operation: opListingsDelete, Package: pkg, Message: err.Error(), Cause: err}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	req, err := http.NewRequestWithContext(ctx, methodDelete.Verb, u, nil)
 	if err != nil {
 		return &api.Error{Operation: opListingsDelete, Package: pkg, Message: err.Error(), Cause: err}
 	}

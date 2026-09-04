@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -27,6 +28,17 @@ const (
 	opCreate = "deviceTierConfigs.create"
 	opGet    = "deviceTierConfigs.get"
 	opList   = "deviceTierConfigs.list"
+)
+
+// Registry entries this package calls. Resolving them at init makes an
+// unregistered or vanished method a startup panic caught by CI rather than a
+// runtime surprise; verb and URL then come from the Discovery snapshot instead
+// of literals kept here (#513). Query strings (allowUnknownDevices, paging)
+// stay below: the resolver only answers verb and path.
+var (
+	methodCreate = apiregistry.MustResolve("androidpublisher.applications.deviceTierConfigs.create")
+	methodGet    = apiregistry.MustResolve("androidpublisher.applications.deviceTierConfigs.get")
+	methodList   = apiregistry.MustResolve("androidpublisher.applications.deviceTierConfigs.list")
 )
 
 // Config is the parsed DeviceTierConfig: just the fields the human views need.
@@ -56,19 +68,18 @@ type ListResponse struct {
 	NextPageToken     string   `json:"nextPageToken,omitempty"`
 }
 
-func base(pkg string) string {
-	return api.AndroidPubBase + "/applications/" + url.PathEscape(pkg) + "/deviceTierConfigs"
-}
-
 // Create posts a DeviceTierConfig body and returns the created config (with its
 // server-assigned deviceTierConfigId) plus the verbatim response. allowUnknownDevices
 // adds the query param only when true (the API default is the strict false).
 func Create(ctx context.Context, hc *http.Client, pkg string, body []byte, allowUnknownDevices bool) (Config, json.RawMessage, error) {
-	u := base(pkg)
+	u, err := methodCreate.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return Config{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
+	}
 	if allowUnknownDevices {
 		u += "?allowUnknownDevices=true"
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, methodCreate.Verb, u, bytes.NewReader(body))
 	if err != nil {
 		return Config{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -78,7 +89,11 @@ func Create(ctx context.Context, hc *http.Client, pkg string, body []byte, allow
 
 // Get reads a single config by its int64 id.
 func Get(ctx context.Context, hc *http.Client, pkg, id string) (Config, json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base(pkg)+"/"+url.PathEscape(id), nil)
+	u, err := methodGet.URL(map[string]string{"packageName": pkg, "deviceTierConfigId": id})
+	if err != nil {
+		return Config{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
 	if err != nil {
 		return Config{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
 	}
@@ -89,7 +104,10 @@ func Get(ctx context.Context, hc *http.Client, pkg, id string) (Config, json.Raw
 // (API default); pageToken paginates. The nextPageToken is preserved in both
 // the typed result and the verbatim raw body so a caller can follow pages.
 func List(ctx context.Context, hc *http.Client, pkg string, pageSize int, pageToken string) (ListResponse, json.RawMessage, error) {
-	u := base(pkg)
+	u, err := methodList.URL(map[string]string{"packageName": pkg})
+	if err != nil {
+		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
+	}
 	q := url.Values{}
 	if pageSize > 0 {
 		q.Set("pageSize", strconv.Itoa(pageSize))
@@ -100,7 +118,7 @@ func List(ctx context.Context, hc *http.Client, pkg string, pageSize int, pageTo
 	if enc := q.Encode(); enc != "" {
 		u += "?" + enc
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, methodList.Verb, u, nil)
 	if err != nil {
 		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
 	}
