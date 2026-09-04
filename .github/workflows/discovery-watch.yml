@@ -30,11 +30,11 @@ name: Discovery Watch
 #      {"pr": 498, "kind": "schema", "url": "https://github.com/.../pull/498",
 #       "repository": "PollyGlot/google-play-cli"}
 #    "kind" is "schema" or "surface"; a revision-only refresh never calls it.
-# 2. Store the routine's webhook URL as the repository secret
-#    DISCOVERY_TRIAGE_WEBHOOK_URL. Absent, the call is skipped and the job
-#      plus the secret DISCOVERY_TRIAGE_API_TOKEN: the Bearer token generated
-#      on the routine page next to the URL ("Call via API").
-#    summary says so: the labelling still happens, only the bot stays asleep.
+# 2. Store the routine's "call via API" URL as the repository secret
+#    DISCOVERY_TRIAGE_WEBHOOK_URL and the Bearer token generated next to it on
+#    the routine page as DISCOVERY_TRIAGE_API_TOKEN. URL absent, the call is
+#    skipped and the job summary says so: the labelling still happens, only the
+#    bot stays asleep.
 # 3. Set the repository variable DISCOVERY_TRIAGE_ENABLED to "true". This is the
 #    kill switch: anything else (including absent) means no webhook call, with
 #    the reason spelled out in the job summary. It is deliberately a variable and
