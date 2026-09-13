@@ -626,11 +626,13 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"appstore", "update"}, true},
 
 		// edits: begin/commit/discard mutate Play state (insert/commit/delete);
-		// status is a local-pin read.
+		// status is a local-pin read (--live adds a GET) and validate is a
+		// side-effect-free check (edits.validate changes nothing server-side).
 		{[]string{"edits", "begin"}, true},
 		{[]string{"edits", "commit"}, true},
 		{[]string{"edits", "discard"}, true},
 		{[]string{"edits", "status"}, false},
+		{[]string{"edits", "validate"}, false},
 
 		// games
 		{[]string{"games", "achievements", "list"}, false},
@@ -870,6 +872,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"edits", "commit"}, false},
 		{[]string{"edits", "discard"}, false},
 		{[]string{"edits", "status"}, false},
+		{[]string{"edits", "validate"}, false}, // #544: minimal flags, Public by design
 
 		// games: a second Google service on its own ID space, draft-only writes.
 		{[]string{"games", "achievements", "list"}, true},

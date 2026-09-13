@@ -25,9 +25,11 @@ import (
 // tests resolve every entry) rather than a runtime surprise; verb and URL then
 // come from the Discovery snapshot instead of literals kept here (#513).
 var (
-	methodInsert = apiregistry.MustResolve("androidpublisher.edits.insert")
-	methodDelete = apiregistry.MustResolve("androidpublisher.edits.delete")
-	methodCommit = apiregistry.MustResolve("androidpublisher.edits.commit")
+	methodInsert   = apiregistry.MustResolve("androidpublisher.edits.insert")
+	methodDelete   = apiregistry.MustResolve("androidpublisher.edits.delete")
+	methodCommit   = apiregistry.MustResolve("androidpublisher.edits.commit")
+	methodGet      = apiregistry.MustResolve("androidpublisher.edits.get")
+	methodValidate = apiregistry.MustResolve("androidpublisher.edits.validate")
 )
 
 // DanglingEditError wraps the upstream failure that caused an Edit to be
@@ -277,6 +279,68 @@ func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string) er
 // state either way.
 func DiscardExplicit(ctx context.Context, hc *http.Client, pkg, editID string) error {
 	return deleteEdit(ctx, hc, pkg, editID)
+}
+
+// AppEdit is the subset of the API's AppEdit resource the explicit lifecycle
+// reads back: the id and the expiry (Unix seconds, a string in the JSON).
+type AppEdit struct {
+	ID                string `json:"id"`
+	ExpiryTimeSeconds string `json:"expiryTimeSeconds"`
+}
+
+// ValidateExplicit validates an already-open Edit without committing it (the
+// `gplay edits validate` verb, edits.validate): Google runs the checks a commit
+// would run and rejects with its usual error envelope, surfaced as *api.Error.
+// The Edit stays open whatever the outcome. The raw 2xx body (an AppEdit) is
+// returned so the command can mirror it verbatim under --output json
+// (ADR-0003).
+func ValidateExplicit(ctx context.Context, hc *http.Client, pkg, editID string) (json.RawMessage, error) {
+	return callEdit(ctx, hc, "edits.validate", methodValidate, pkg, editID)
+}
+
+// GetExplicit reads an Edit server-side (edits.get): the `gplay edits status
+// --live` probe. An Edit that expired or was discarded by another client comes
+// back as a 404, surfaced as the raw *api.Error so the caller can tell "gone"
+// apart from any other failure via StatusCode.
+func GetExplicit(ctx context.Context, hc *http.Client, pkg, editID string) (AppEdit, json.RawMessage, error) {
+	raw, err := callEdit(ctx, hc, "edits.get", methodGet, pkg, editID)
+	if err != nil {
+		return AppEdit{}, nil, err
+	}
+	var parsed AppEdit
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return AppEdit{}, nil, &api.Error{Operation: "edits.get", Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+	}
+	return parsed, raw, nil
+}
+
+// callEdit issues a body-less request on an {packageName, editId}-addressed
+// method and returns the 2xx body, mapping a non-2xx to *api.Error exactly
+// like the insert/commit/delete helpers above.
+func callEdit(ctx context.Context, hc *http.Client, op string, m apiregistry.Method, pkg, editID string) (json.RawMessage, error) {
+	u, err := m.URL(map[string]string{"packageName": pkg, "editId": editID})
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, m.Verb, u, http.NoBody)
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
+		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
+		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
+	if err != nil {
+		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response: " + err.Error(), Cause: err}
+	}
+	return body, nil
 }
 
 // isEditAlreadyExists reports whether err carries Google Play's

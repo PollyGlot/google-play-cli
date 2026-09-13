@@ -23,13 +23,13 @@ GitHub Issues, not a judgement about whether it is worth shipping.
 
 | Service | Methods | ✅ called | ⚫️ excluded | 🔴 uncovered |
 |---|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 83 | 11 | 51 |
+| `androidpublisher` v3 | 145 | 85 | 11 | 49 |
 | `playdeveloperreporting` v1beta1 | 25 | 14 | 0 | 11 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 |
-| **Total** | **181** | **108** | **11** | **62** |
+| **Total** | **181** | **110** | **11** | **60** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are called** and **62 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **110 are called** and **60 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -71,7 +71,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are 
 | `androidpublisher.edits.expansionfiles.patch` | 🔴 | |
 | `androidpublisher.edits.expansionfiles.update` | ✅ | `gplay releases expansion-files set` |
 | `androidpublisher.edits.expansionfiles.upload` | ✅ | `gplay releases expansion-files upload` |
-| `androidpublisher.edits.get` | 🔴 | |
+| `androidpublisher.edits.get` | ✅ | `gplay edits status`; only with --live; the default status is a local read of the pin |
 | `androidpublisher.edits.images.delete` | ✅ | `gplay metadata images apply`; --prune drops one live image by id |
 | `androidpublisher.edits.images.deleteall` | ✅ | `gplay metadata images apply`; slot reconciliation clears a slot before re-upload (ADR-0013) |
 | `androidpublisher.edits.images.list` | ✅ | `gplay metadata images list`, `gplay metadata images pull`, `gplay metadata images apply` |
@@ -91,7 +91,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are 
 | `androidpublisher.edits.tracks.list` | ✅ | `gplay tracks list`, `gplay apps audit` |
 | `androidpublisher.edits.tracks.patch` | 🔴 | |
 | `androidpublisher.edits.tracks.update` | ✅ | `gplay releases upload`, `gplay releases promote`, `gplay releases rollout`, `gplay releases halt`, `gplay releases resume`, `gplay releases complete`; the single write behind every release-state change (ADR-0002) |
-| `androidpublisher.edits.validate` | 🔴 | |
+| `androidpublisher.edits.validate` | ✅ | `gplay edits validate` |
 | `androidpublisher.externaltransactions.createexternaltransaction` | 🔴 | |
 | `androidpublisher.externaltransactions.getexternaltransaction` | 🔴 | |
 | `androidpublisher.externaltransactions.refundexternaltransaction` | 🔴 | |

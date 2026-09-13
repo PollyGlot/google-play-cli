@@ -40,6 +40,7 @@ import (
 	editscommit "github.com/PollyGlot/google-play-cli/commands/edits/commit"
 	editsdiscard "github.com/PollyGlot/google-play-cli/commands/edits/discard"
 	editsstatus "github.com/PollyGlot/google-play-cli/commands/edits/status"
+	editsvalidate "github.com/PollyGlot/google-play-cli/commands/edits/validate"
 	gamesachievementscreate "github.com/PollyGlot/google-play-cli/commands/games/achievements/create"
 	gamesachievementsdelete "github.com/PollyGlot/google-play-cli/commands/games/achievements/delete"
 	gamesachievementslist "github.com/PollyGlot/google-play-cli/commands/games/achievements/list"
@@ -611,10 +612,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// batch into it instead of opening their own: committed or discarded
 	// explicitly by the user. begin/commit/discard mutate Play state (insert /
 	// commit / delete), so they are MarkMutating (GPLAY_READONLY refuses them,
-	// exit 4); status is a local-pin read and stays unmarked. See #48.
+	// exit 4); status is a local-pin read (a GET with --live) and validate runs
+	// Google's checks without changing anything server-side (edits.validate),
+	// so both stay unmarked. See #48 and #544.
 	editsGroup := &cobra.Command{
 		Use:           "edits",
-		Short:         "Manage explicit Edit transactions (begin, commit, discard, status)",
+		Short:         "Manage explicit Edit transactions (begin, validate, commit, discard, status)",
 		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -623,6 +626,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	editsGroup.AddCommand(kernel.MarkMutating(editscommit.NewCommand(boot)))
 	editsGroup.AddCommand(kernel.MarkMutating(editsdiscard.NewCommand(boot)))
 	editsGroup.AddCommand(editsstatus.NewCommand(boot))
+	editsGroup.AddCommand(editsvalidate.NewCommand(boot))
 	root.AddCommand(editsGroup)
 
 	// `gplay games`: Play Games Services configuration (gamesConfiguration): a
