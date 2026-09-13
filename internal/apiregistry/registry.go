@@ -191,17 +191,30 @@ var entries = []Entry{
 	// --- playdeveloperreporting -----------------------------------------
 	{MethodID: "playdeveloperreporting.anomalies.list", Commands: []string{"vitals anomalies"}},
 	{MethodID: "playdeveloperreporting.apps.search", Commands: []string{"apps accessible list"}, Note: "server-authoritative discovery, distinct from the local registry (ADR-0039)"},
+	// Each metric set pairs a `.query` (the timeline) with a `.get` (the
+	// descriptor: freshnessInfo, i.e. up to when the data is complete). The
+	// `.get` is reached with `--describe` on the same command (#545).
+	{MethodID: "playdeveloperreporting.vitals.anonrssandswapmemoryusage.get", Commands: []string{"vitals query anonrssandswapmemoryusage --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.anonrssandswapmemoryusage.query", Commands: []string{"vitals query anonrssandswapmemoryusage"}},
+	{MethodID: "playdeveloperreporting.vitals.anrrate.get", Commands: []string{"vitals anr --describe", "vitals query anrrate --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.anrrate.query", Commands: []string{"vitals anr", "vitals query anrrate"}},
+	{MethodID: "playdeveloperreporting.vitals.bitmapmemoryusage.get", Commands: []string{"vitals query bitmapmemoryusage --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.bitmapmemoryusage.query", Commands: []string{"vitals query bitmapmemoryusage"}},
+	{MethodID: "playdeveloperreporting.vitals.crashrate.get", Commands: []string{"vitals crashes --describe", "vitals query crashrate --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.crashrate.query", Commands: []string{"vitals crashes", "vitals query crashrate"}},
+	{MethodID: "playdeveloperreporting.vitals.errors.counts.get", Commands: []string{"vitals errors counts --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.errors.counts.query", Commands: []string{"vitals errors counts"}},
 	{MethodID: "playdeveloperreporting.vitals.errors.issues.search", Commands: []string{"vitals errors issues"}},
 	{MethodID: "playdeveloperreporting.vitals.errors.reports.search", Commands: []string{"vitals errors reports"}},
+	{MethodID: "playdeveloperreporting.vitals.excessivewakeuprate.get", Commands: []string{"vitals excessivewakeup --describe", "vitals query excessivewakeuprate --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.excessivewakeuprate.query", Commands: []string{"vitals excessivewakeup", "vitals query excessivewakeuprate"}},
+	{MethodID: "playdeveloperreporting.vitals.lmkrate.get", Commands: []string{"vitals lmk --describe", "vitals query lmkrate --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.lmkrate.query", Commands: []string{"vitals lmk", "vitals query lmkrate"}},
+	{MethodID: "playdeveloperreporting.vitals.slowrenderingrate.get", Commands: []string{"vitals slowrendering --describe", "vitals query slowrenderingrate --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.slowrenderingrate.query", Commands: []string{"vitals slowrendering", "vitals query slowrenderingrate"}},
+	{MethodID: "playdeveloperreporting.vitals.slowstartrate.get", Commands: []string{"vitals slowstart --describe", "vitals query slowstartrate --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.slowstartrate.query", Commands: []string{"vitals slowstart", "vitals query slowstartrate"}},
+	{MethodID: "playdeveloperreporting.vitals.stuckbackgroundwakelockrate.get", Commands: []string{"vitals stuckbgwakelock --describe", "vitals query stuckbackgroundwakelockrate --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.stuckbackgroundwakelockrate.query", Commands: []string{"vitals stuckbgwakelock", "vitals query stuckbackgroundwakelockrate"}},
 
 	// --- playcustomapp ---------------------------------------------------

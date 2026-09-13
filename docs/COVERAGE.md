@@ -24,12 +24,12 @@ GitHub Issues, not a judgement about whether it is worth shipping.
 | Service | Methods | ✅ called | ⚫️ excluded | 🔴 uncovered |
 |---|---:|---:|---:|---:|
 | `androidpublisher` v3 | 145 | 83 | 11 | 51 |
-| `playdeveloperreporting` v1beta1 | 25 | 14 | 0 | 11 |
+| `playdeveloperreporting` v1beta1 | 25 | 24 | 0 | 1 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 |
-| **Total** | **181** | **108** | **11** | **62** |
+| **Total** | **181** | **118** | **11** | **52** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are called** and **62 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **118 are called** and **52 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -188,27 +188,27 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are 
 | `playdeveloperreporting.anomalies.list` | ✅ | `gplay vitals anomalies` |
 | `playdeveloperreporting.apps.fetchReleaseFilterOptions` | 🔴 | |
 | `playdeveloperreporting.apps.search` | ✅ | `gplay apps accessible list`; server-authoritative discovery, distinct from the local registry (ADR-0039) |
-| `playdeveloperreporting.vitals.anonrssandswapmemoryusage.get` | 🔴 | |
+| `playdeveloperreporting.vitals.anonrssandswapmemoryusage.get` | ✅ | `gplay vitals query anonrssandswapmemoryusage --describe` |
 | `playdeveloperreporting.vitals.anonrssandswapmemoryusage.query` | ✅ | `gplay vitals query anonrssandswapmemoryusage` |
-| `playdeveloperreporting.vitals.anrrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.anrrate.get` | ✅ | `gplay vitals anr --describe`, `gplay vitals query anrrate --describe` |
 | `playdeveloperreporting.vitals.anrrate.query` | ✅ | `gplay vitals anr`, `gplay vitals query anrrate` |
-| `playdeveloperreporting.vitals.bitmapmemoryusage.get` | 🔴 | |
+| `playdeveloperreporting.vitals.bitmapmemoryusage.get` | ✅ | `gplay vitals query bitmapmemoryusage --describe` |
 | `playdeveloperreporting.vitals.bitmapmemoryusage.query` | ✅ | `gplay vitals query bitmapmemoryusage` |
-| `playdeveloperreporting.vitals.crashrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.crashrate.get` | ✅ | `gplay vitals crashes --describe`, `gplay vitals query crashrate --describe` |
 | `playdeveloperreporting.vitals.crashrate.query` | ✅ | `gplay vitals crashes`, `gplay vitals query crashrate` |
-| `playdeveloperreporting.vitals.errors.counts.get` | 🔴 | |
+| `playdeveloperreporting.vitals.errors.counts.get` | ✅ | `gplay vitals errors counts --describe` |
 | `playdeveloperreporting.vitals.errors.counts.query` | ✅ | `gplay vitals errors counts` |
 | `playdeveloperreporting.vitals.errors.issues.search` | ✅ | `gplay vitals errors issues` |
 | `playdeveloperreporting.vitals.errors.reports.search` | ✅ | `gplay vitals errors reports` |
-| `playdeveloperreporting.vitals.excessivewakeuprate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.excessivewakeuprate.get` | ✅ | `gplay vitals excessivewakeup --describe`, `gplay vitals query excessivewakeuprate --describe` |
 | `playdeveloperreporting.vitals.excessivewakeuprate.query` | ✅ | `gplay vitals excessivewakeup`, `gplay vitals query excessivewakeuprate` |
-| `playdeveloperreporting.vitals.lmkrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.lmkrate.get` | ✅ | `gplay vitals lmk --describe`, `gplay vitals query lmkrate --describe` |
 | `playdeveloperreporting.vitals.lmkrate.query` | ✅ | `gplay vitals lmk`, `gplay vitals query lmkrate` |
-| `playdeveloperreporting.vitals.slowrenderingrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.slowrenderingrate.get` | ✅ | `gplay vitals slowrendering --describe`, `gplay vitals query slowrenderingrate --describe` |
 | `playdeveloperreporting.vitals.slowrenderingrate.query` | ✅ | `gplay vitals slowrendering`, `gplay vitals query slowrenderingrate` |
-| `playdeveloperreporting.vitals.slowstartrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.slowstartrate.get` | ✅ | `gplay vitals slowstart --describe`, `gplay vitals query slowstartrate --describe` |
 | `playdeveloperreporting.vitals.slowstartrate.query` | ✅ | `gplay vitals slowstart`, `gplay vitals query slowstartrate` |
-| `playdeveloperreporting.vitals.stuckbackgroundwakelockrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.stuckbackgroundwakelockrate.get` | ✅ | `gplay vitals stuckbgwakelock --describe`, `gplay vitals query stuckbackgroundwakelockrate --describe` |
 | `playdeveloperreporting.vitals.stuckbackgroundwakelockrate.query` | ✅ | `gplay vitals stuckbgwakelock`, `gplay vitals query stuckbackgroundwakelockrate` |
 
 ## `gamesConfiguration` v1configuration (10 methods)
