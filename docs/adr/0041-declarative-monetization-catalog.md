@@ -138,6 +138,14 @@ Three realities shape the design:
 - Deleting a subscription is further guarded server-side (Google refuses
   to delete a subscription with a published base plan), so `--confirm`
   gates intent, not just damage.
+- A base plan dropped from its subscription's file is a `basePlan` delete
+  in the plan (slice #542), executed through `basePlans.delete` after the
+  parent patch: the patch alone never removes a plan its body omits. The
+  API only deletes a DRAFT plan; a published one is refused server-side
+  (400/403), and `apply` reports that refusal through the ADR-0044
+  envelope (operation `monetization.subscriptions.basePlans.delete`, with
+  the deactivate-first hint) *after* running the plan's other changes,
+  since the refusal is independent of them.
 - The `archived` subscription state is **not** reconciled: the current
   Discovery snapshot marks subscription archiving deprecated/output-only,
   so declared state is create/patch/delete only.

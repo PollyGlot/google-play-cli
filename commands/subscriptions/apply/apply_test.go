@@ -21,6 +21,7 @@ import (
 
 	applycmd "github.com/PollyGlot/google-play-cli/commands/subscriptions/apply"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
@@ -43,6 +44,14 @@ type subsRT struct {
 	bodies     map[string]string
 	offersBody string
 	liveBody   string
+	// refuse maps a "METHOD /path-suffix" to the status + error body the
+	// mock answers instead of the echo: the hook for a server-side refusal.
+	refuse map[string]scriptedRefusal
+}
+
+type scriptedRefusal struct {
+	status int
+	body   string
 }
 
 func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -60,6 +69,11 @@ func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 			r.bodies = map[string]string{}
 		}
 		r.bodies[key] = string(b)
+	}
+	for suffix, ref := range r.refuse {
+		if strings.HasPrefix(suffix, req.Method+" ") && strings.HasSuffix(key, strings.TrimPrefix(suffix, req.Method+" ")) {
+			return jsonResp(ref.status, ref.body), nil
+		}
 	}
 	if req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/subscriptions/-/basePlans/-/offers") {
 		body := r.offersBody
@@ -525,6 +539,163 @@ func TestRun_emptyLocalNonEmptyLive_refuses(t *testing.T) {
 	assertExit(t, err, 2)
 	if !strings.Contains(err.Error(), "delete them all") {
 		t.Errorf("refusal %q should explain the delete-everything risk", err.Error())
+	}
+}
+
+// liveWithDraftPlan is the live catalog of the base-plan delete tests (slice
+// #542): premium carries an ACTIVE monthly plan and a DRAFT trial plan.
+const liveWithDraftPlan = `{"subscriptions":[
+  {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"trial","state":"DRAFT"}]},
+  {"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}
+]}`
+
+// droppedTrialCatalog declares premium with monthly only (trial removed) and
+// keeps gone, so the only destructive change is the base-plan delete.
+func droppedTrialCatalog(t *testing.T) string {
+	t.Helper()
+	return writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
+	})
+}
+
+// TestRun_basePlanDelete_plannedAndGated asserts a base plan dropped from the
+// file is a delete of kind basePlan in the plan (dry-run json and table, with
+// requires: confirm), that the plan refuses with exit 3 and no write without
+// --confirm, and that with --confirm the DELETE hits the base plan URL after
+// the parent patch.
+func TestRun_basePlanDelete_plannedAndGated(t *testing.T) {
+	dir := droppedTrialCatalog(t)
+
+	rt := &subsRT{}
+	rc, _ := newRCWithLive(t, rt, liveWithDraftPlan)
+	r, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, DryRun: true})
+	if err != nil {
+		t.Fatalf("Run --dry-run: %v", err)
+	}
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("dry-run must not mutate; got %v", m)
+	}
+	var js bytes.Buffer
+	if err := r.Renderers().JSON(&js); err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	var view struct {
+		Changes []struct {
+			Op         string `json:"op"`
+			Kind       string `json:"kind"`
+			ProductID  string `json:"productId"`
+			BasePlanID string `json:"basePlanId"`
+		} `json:"changes"`
+		Summary  map[string]int `json:"summary"`
+		Requires []string       `json:"requires"`
+	}
+	if err := json.Unmarshal(js.Bytes(), &view); err != nil {
+		t.Fatalf("json %s: %v", js.String(), err)
+	}
+	var sawDelete bool
+	for _, c := range view.Changes {
+		if c.Op == "delete" && c.Kind == "basePlan" && c.ProductID == "premium" && c.BasePlanID == "trial" {
+			sawDelete = true
+		}
+	}
+	if !sawDelete || view.Summary["basePlanDelete"] != 1 || view.Summary["delete"] != 0 {
+		t.Errorf("json %s must carry one basePlan delete of premium/trial and no subscription delete", js.String())
+	}
+	if len(view.Requires) != 1 || view.Requires[0] != "confirm" {
+		t.Errorf("requires = %v, want [confirm]", view.Requires)
+	}
+	var tbl bytes.Buffer
+	if err := r.Renderers().Table(&tbl); err != nil {
+		t.Fatalf("Table: %v", err)
+	}
+	if !strings.Contains(tbl.String(), "delete base plan premium/trial") {
+		t.Errorf("table %q must list the base plan delete", tbl.String())
+	}
+
+	rt2 := &subsRT{}
+	rc2, _ := newRCWithLive(t, rt2, liveWithDraftPlan)
+	_, err = applycmd.Run(rc2, applycmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 3)
+	if !strings.Contains(err.Error(), "1 base plan(s)") {
+		t.Errorf("refusal %q must count the base plan delete", err.Error())
+	}
+	if m := rt2.mutations(); len(m) != 0 {
+		t.Errorf("refusal must not mutate; got %v", m)
+	}
+
+	rt3 := &subsRT{}
+	rc3, stderr := newRCWithLive(t, rt3, liveWithDraftPlan)
+	r3, err := applycmd.Run(rc3, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	if err != nil {
+		t.Fatalf("Run --confirm: %v", err)
+	}
+	m := rt3.mutations()
+	if len(m) != 2 || m[0] != "PATCH /androidpublisher/v3/applications/com.example.app/subscriptions/premium" || m[1] != "DELETE /androidpublisher/v3/applications/com.example.app/subscriptions/premium/basePlans/trial" {
+		t.Fatalf("mutations = %v, want the parent patch then the base plan DELETE", m)
+	}
+	if !strings.Contains(stderr.String(), "1 base plan(s) deleted") {
+		t.Errorf("stderr %q should confirm the base plan delete", stderr.String())
+	}
+	var out bytes.Buffer
+	if err := r3.Renderers().Table(&out); err != nil {
+		t.Fatalf("Table: %v", err)
+	}
+	if !strings.Contains(out.String(), "deleted base plan premium/trial") {
+		t.Errorf("table %q must report the deleted base plan", out.String())
+	}
+}
+
+// TestRun_basePlanDelete_refusedByAPI_continues asserts a 400 on the base
+// plan DELETE (a published plan) does not abort the independent subscription
+// delete, is warned on stderr, and drives the final error: exit 30 with the
+// INVALID_ARGUMENT diagnostic code on the basePlans.delete operation and the
+// deactivate-first hint (ADR-0044).
+func TestRun_basePlanDelete_refusedByAPI_continues(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+	}) // trial dropped AND gone dropped: one base-plan delete, one subscription delete
+	rt := &subsRT{refuse: map[string]scriptedRefusal{
+		"DELETE /subscriptions/premium/basePlans/trial": {400, `{"error":{"code":400,"message":"Base plan is not in draft state","errors":[{"reason":"badRequest"}]}}`},
+	}}
+	rc, stderr := newRCWithLive(t, rt, liveWithDraftPlan)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	assertExit(t, err, 30)
+	if !rt.saw("DELETE", "/basePlans/trial") || !rt.saw("DELETE", "/subscriptions/gone") {
+		t.Fatalf("calls = %v, want the refused base plan DELETE and the subscription DELETE that follows it", rt.calls)
+	}
+	d := exit.Classify(err)
+	if d.Code != exit.CodeInvalidArgument || d.Operation != "monetization.subscriptions.basePlans.delete" || d.Package != "com.example.app" {
+		t.Errorf("diagnostic = %+v, want INVALID_ARGUMENT on basePlans.delete for the package", d)
+	}
+	if len(d.Reasons) != 1 || d.Reasons[0] != "badRequest" {
+		t.Errorf("reasons = %v, want the verbatim upstream reason", d.Reasons)
+	}
+	for _, want := range []string{"premium/trial", "DRAFT", "state: INACTIVE", "rest of the plan was applied"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
+	}
+	if !strings.Contains(stderr.String(), "premium/trial") {
+		t.Errorf("stderr %q should warn about the refused base plan delete", stderr.String())
+	}
+}
+
+// TestRun_basePlanDelete_serverError_aborts asserts a 5xx on the base plan
+// DELETE is not the published-plan refusal: it aborts the run like any other
+// write (exit 40) and the subscription delete after it does not run.
+func TestRun_basePlanDelete_serverError_aborts(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+	})
+	rt := &subsRT{refuse: map[string]scriptedRefusal{
+		"DELETE /subscriptions/premium/basePlans/trial": {503, `{"error":{"code":503,"message":"backend error"}}`},
+	}}
+	rc, _ := newRCWithLive(t, rt, liveWithDraftPlan)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	assertExit(t, err, 40)
+	if rt.saw("DELETE", "/subscriptions/gone") {
+		t.Errorf("calls = %v, a 5xx must abort before the subscription delete", rt.calls)
 	}
 }
 

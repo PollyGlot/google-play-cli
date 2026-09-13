@@ -47,6 +47,8 @@ gplay edits begin                     # opens the Edit, pins it in .gplay/
 gplay metadata apply
 gplay releases upload app.aab --track internal
 gplay edits status                    # which Edit is pinned, if any
+gplay edits status --live             # ...and whether the server still has it
+gplay edits validate                  # Google's commit checks, nothing published
 gplay edits commit                    # publish everything at once
 ```
 
@@ -56,6 +58,14 @@ instead of opening their own, and they no longer commit on their own: the
 lifecycle is yours until `gplay edits commit` publishes or
 `gplay edits discard` abandons it. There is no auto-commit and no
 auto-discard in explicit mode.
+
+Before committing, `gplay edits validate` asks Google to run its commit-time
+checks on the pinned Edit without publishing: exit `0` means the commit would
+go through, a rejection carries the API's error with the usual exit code, and
+the Edit stays open either way. Edits expire after about 24 hours, so
+`gplay edits status --live` also asks the server whether the pinned Edit
+still exists and reports its expiry; if it is gone, the report says so and
+points at `gplay edits discard` to clear the stale pin.
 
 Two guard rails, both exit `60`: opening a second Edit while one is pinned is
 refused, and committing or discarding with nothing pinned is refused. A

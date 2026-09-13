@@ -3,7 +3,8 @@
 // lifecycle state ops of base plans and offers. Offers are a real sub-resource
 // with their own CRUD: unlike base plans, whose config rides the parent
 // subscription patch, so the catalog embeds them in the files while apply
-// reconciles them through these endpoints (ADR-0041 §5).
+// reconciles them through these endpoints (ADR-0041 §5). The one base-plan
+// endpoint of its own besides the state ops is basePlans.delete (slice #542).
 package subscriptions
 
 import (
@@ -28,6 +29,7 @@ const (
 	opOffersDeactivate   = "monetization.subscriptions.basePlans.offers.deactivate"
 	opBasePlanActivate   = "monetization.subscriptions.basePlans.activate"
 	opBasePlanDeactivate = "monetization.subscriptions.basePlans.deactivate"
+	opBasePlanDelete     = "monetization.subscriptions.basePlans.delete"
 )
 
 // m* are the registry entries this package calls. Resolving them at init turns
@@ -46,6 +48,7 @@ var (
 	mOffersDeactivate   = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.deactivate")
 	mBasePlanActivate   = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.activate")
 	mBasePlanDeactivate = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.deactivate")
+	mBasePlanDelete     = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.delete")
 	mMigratePrices      = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.migratePrices")
 )
 
@@ -193,6 +196,25 @@ func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, base
 		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}
 	return postEmpty(ctx, hc, m, op, pkg, u)
+}
+
+// DeleteBasePlan deletes a base plan (slice #542): the shrink arm of the
+// base-plan diff, since the parent subscription patch never removes a plan
+// its body omits. The API only deletes a DRAFT base plan: a plan that was ever
+// published (ACTIVE, or INACTIVE after activation) is refused server-side,
+// and the caller surfaces that refusal with the deactivate-first hint rather
+// than retrying.
+func DeleteBasePlan(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string) error {
+	u, err := mBasePlanDelete.URL(offerScope(pkg, productID, basePlanID))
+	if err != nil {
+		return &api.Error{Operation: opBasePlanDelete, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, mBasePlanDelete.Verb, u, nil)
+	if err != nil {
+		return &api.Error{Operation: opBasePlanDelete, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	_, err = do(hc, opBasePlanDelete, pkg, req)
+	return err
 }
 
 // SetOfferState activates (true) or deactivates (false) an offer.

@@ -88,31 +88,91 @@ type StateChange struct {
 
 // Plan is the Reconciliation plan: what apply would (or did) do. The Offer*
 // slices carry offer-level actions (their Change.ProductID holds the composite
-// productId/basePlanId/offerId display key). All slices are sorted for stable
-// output.
+// productId/basePlanId/offerId display key); BasePlanDeletes carries the
+// productId/basePlanId key. All slices are sorted for stable output.
+//
+// Base plans have deletes but no creates or patches of their own: their config
+// rides the parent subscription patch, which never removes a plan its body
+// omits, so the removal is the one base-plan action that needs its own
+// endpoint (slice #542).
 type Plan struct {
-	Creates      []Change      `json:"-"`
-	Patches      []Change      `json:"-"`
-	Deletes      []Change      `json:"-"`
-	OfferCreates []Change      `json:"-"`
-	OfferPatches []Change      `json:"-"`
-	OfferDeletes []Change      `json:"-"`
-	StateChanges []StateChange `json:"-"`
-	Unchanged    []string      `json:"-"`
+	Creates         []Change      `json:"-"`
+	Patches         []Change      `json:"-"`
+	Deletes         []Change      `json:"-"`
+	BasePlanDeletes []Change      `json:"-"`
+	OfferCreates    []Change      `json:"-"`
+	OfferPatches    []Change      `json:"-"`
+	OfferDeletes    []Change      `json:"-"`
+	StateChanges    []StateChange `json:"-"`
+	Unchanged       []string      `json:"-"`
 }
 
 // HasChanges reports whether the plan does anything at all.
 func (p Plan) HasChanges() bool {
-	return len(p.Creates)+len(p.Patches)+len(p.Deletes)+
+	return len(p.Creates)+len(p.Patches)+len(p.Deletes)+len(p.BasePlanDeletes)+
 		len(p.OfferCreates)+len(p.OfferPatches)+len(p.OfferDeletes)+
 		len(p.StateChanges) > 0
 }
 
 // HasDeletes reports whether the plan is destructive: the condition that
-// gates execution behind --confirm (ADR-0041 §3). Offer deletes count: they
-// remove catalog state just like subscription deletes. State changes do not:
-// activate/deactivate are reversible.
-func (p Plan) HasDeletes() bool { return len(p.Deletes)+len(p.OfferDeletes) > 0 }
+// gates execution behind --confirm (ADR-0041 §3). Base-plan and offer deletes
+// count: they remove catalog state just like subscription deletes. State
+// changes do not: activate/deactivate are reversible.
+func (p Plan) HasDeletes() bool {
+	return len(p.Deletes)+len(p.BasePlanDeletes)+len(p.OfferDeletes) > 0
+}
+
+// BasePlanDeletes computes the base-plan shrink set (slice #542): for every
+// product declared locally and present live, each live base plan the file no
+// longer declares becomes a delete keyed productId/basePlanId. Products the
+// plan deletes outright are skipped (the parent delete takes their plans), as
+// are products being created (nothing live to remove). Sorted for stable
+// output.
+func BasePlanDeletes(local, live map[string]json.RawMessage) ([]Change, error) {
+	var out []Change
+	for id, rawLocal := range local {
+		rawLive, ok := live[id]
+		if !ok {
+			continue
+		}
+		localIDs, err := basePlanIDs(id, "declared", rawLocal)
+		if err != nil {
+			return nil, err
+		}
+		liveIDs, err := basePlanIDs(id, "live", rawLive)
+		if err != nil {
+			return nil, err
+		}
+		for bp := range liveIDs {
+			if _, declared := localIDs[bp]; !declared {
+				out = append(out, Change{ProductID: id + "/" + bp})
+			}
+		}
+	}
+	sortChanges(out)
+	return out, nil
+}
+
+// basePlanIDs returns the set of basePlanId values of one subscription
+// resource.
+func basePlanIDs(id, side string, raw json.RawMessage) (map[string]struct{}, error) {
+	var sub struct {
+		BasePlans []struct {
+			BasePlanID string `json:"basePlanId"`
+		} `json:"basePlans"`
+	}
+	if err := json.Unmarshal(raw, &sub); err != nil {
+		return nil, fmt.Errorf("decode %s subscription %q: %w", side, id, err)
+	}
+	ids := make(map[string]struct{}, len(sub.BasePlans))
+	for _, bp := range sub.BasePlans {
+		if bp.BasePlanID == "" {
+			return nil, fmt.Errorf("%s subscription %q carries a base plan without a basePlanId: refusing a plan entry that cannot be addressed", side, id)
+		}
+		ids[bp.BasePlanID] = struct{}{}
+	}
+	return ids, nil
+}
 
 // Compute diffs the declared catalog against the live one over the managed
 // fields only: local-only products become creates, live-only products become

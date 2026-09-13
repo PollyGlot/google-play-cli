@@ -52,6 +52,16 @@ func (s MetricSet) QueryMethodID() string {
 	return "playdeveloperreporting.vitals." + s.Name + ".query"
 }
 
+// GetMethodID is the native RPC id of the set's `.get` method (the metric-set
+// descriptor: resource name + freshnessInfo), the sibling of QueryMethodID
+// under the same resource. Deriving both from Name keeps the metric-set
+// registry the single mapping table (#545): registering a set makes both its
+// query and its descriptor reachable, and the offline integrity test anchors
+// both ids to the snapshot.
+func (s MetricSet) GetMethodID() string {
+	return "playdeveloperreporting.vitals." + s.Name + ".get"
+}
+
 // metricSets is the declared set of queryable metric sets: the read-only
 // signals the Play Developer Reporting API exposes (#49, memory sets #440). It
 // is explicit (like
@@ -200,6 +210,68 @@ func queryPage(ctx context.Context, hc *http.Client, set MetricSet, pkg string, 
 		}
 	}
 	return raw, nil
+}
+
+const opDescribe = "playdeveloperreporting.vitals.get"
+
+// Describe issues the metric set's `.get` (GET) for pkg and returns the
+// verbatim descriptor body: the resource name and its freshnessInfo, the
+// latest end time available per aggregation period (#545). It answers "up to
+// when is this data complete?", which the `:query` timeline cannot: an empty
+// window is ambiguous there (no data yet, or zero). Read-only, same scope as
+// Query; the verb and URL come from the registry like every other call.
+func Describe(ctx context.Context, hc *http.Client, set MetricSet, pkg string) (json.RawMessage, error) {
+	m, err := apiregistry.Resolve(set.GetMethodID())
+	if err != nil {
+		return nil, &api.Error{Operation: opDescribe, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	u, err := m.URL(map[string]string{"appsId": pkg})
+	if err != nil {
+		return nil, &api.Error{Operation: opDescribe, Package: pkg, Message: err.Error(), Cause: err}
+	}
+	return getRaw(ctx, hc, m.Verb, opDescribe, pkg, u)
+}
+
+// Freshness is the render-ready view of one FreshnessInfo entry: the
+// aggregation period, the latest end time available for it (exclusive, as the
+// API documents it, so it can be reused verbatim as a TimelineSpec end_time),
+// and the timezone it is expressed in (the set's default: America/Los_Angeles
+// for DAILY, UTC for HOURLY).
+type Freshness struct {
+	Period        string
+	LatestEndTime string
+	TimeZone      string
+}
+
+// ParseFreshness projects a `.get` descriptor body into its Freshness entries,
+// in API order. The verbatim body is still what `--output json` emits
+// (ADR-0003); this projection feeds only the table/markdown renderers.
+func ParseFreshness(body []byte) ([]Freshness, error) {
+	var resp struct {
+		FreshnessInfo struct {
+			Freshnesses []struct {
+				AggregationPeriod string `json:"aggregationPeriod"`
+				LatestEndTime     struct {
+					apiDateTime
+					TimeZone struct {
+						ID string `json:"id"`
+					} `json:"timeZone"`
+				} `json:"latestEndTime"`
+			} `json:"freshnesses"`
+		} `json:"freshnessInfo"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decode vitals freshness: %w", err)
+	}
+	out := make([]Freshness, 0, len(resp.FreshnessInfo.Freshnesses))
+	for _, f := range resp.FreshnessInfo.Freshnesses {
+		out = append(out, Freshness{
+			Period:        f.AggregationPeriod,
+			LatestEndTime: f.LatestEndTime.format(f.AggregationPeriod == "HOURLY"),
+			TimeZone:      f.LatestEndTime.TimeZone.ID,
+		})
+	}
+	return out, nil
 }
 
 // --- validation against the embedded Schema index --------------------------

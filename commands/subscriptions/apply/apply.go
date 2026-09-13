@@ -3,8 +3,8 @@
 // live catalog: subscriptions, their base plans, their offers, and the
 // declared lifecycle state of base plans and offers: print it, and execute
 // it. Creates and patches run directly; any plan containing a delete
-// (subscription or offer) refuses without --confirm (exit 3, ADR-0017 family;
-// CI=true never auto-confirms). --dry-run prints the plan online and stops.
+// (subscription, base plan or offer) refuses without --confirm (exit 3,
+// ADR-0017 family; CI=true never auto-confirms). --dry-run prints the plan online and stops.
 // State transitions ride the dedicated activate/deactivate endpoints, never a
 // patch; they are surfaced prominently in every plan view (they move buyer
 // availability) but are not gated: they are reversible. The updateMask of
@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -30,6 +31,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/monetization/catalog"
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
@@ -38,7 +40,10 @@ import (
 // basePlans (slice #368) is declarable config riding the parent patch; its
 // output-only state subfield is reconciled via activate/deactivate instead
 // (slice #369) and its embedded offers array is a catalog-file construct the
-// API resource does not carry: both are normalized out of the comparison.
+// API resource does not carry: both are normalized out of the comparison. A
+// base plan dropped from the file still diffs here (the patch body omits it),
+// but the patch never removes it server-side: the removal is a separate
+// basePlans.delete in the plan (slice #542).
 var managedFields = []reconcile.Field{
 	{Name: "listings"},
 	{Name: "taxAndComplianceSettings"},
@@ -94,7 +99,7 @@ func (p Payload) verb(present, past string) string {
 }
 
 func (p Payload) changeCount() int {
-	return len(p.Plan.Creates) + len(p.Plan.Patches) + len(p.Plan.Deletes) +
+	return len(p.Plan.Creates) + len(p.Plan.Patches) + len(p.Plan.Deletes) + len(p.Plan.BasePlanDeletes) +
 		len(p.Plan.OfferCreates) + len(p.Plan.OfferPatches) + len(p.Plan.OfferDeletes) +
 		len(p.Plan.StateChanges)
 }
@@ -160,13 +165,18 @@ func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 			return err
 		}
 	}
+	for _, c := range p.Plan.BasePlanDeletes {
+		if err := line("%s base plan %s", p.verb("delete", "deleted"), c.ProductID); err != nil {
+			return err
+		}
+	}
 	for _, c := range p.Plan.Deletes {
 		if err := line("%s %s", p.verb("delete", "deleted"), c.ProductID); err != nil {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "summary: create=%d patch=%d delete=%d offerCreate=%d offerPatch=%d offerDelete=%d state=%d unchanged=%d\n",
-		len(p.Plan.Creates), len(p.Plan.Patches), len(p.Plan.Deletes),
+	if _, err := fmt.Fprintf(w, "summary: create=%d patch=%d delete=%d basePlanDelete=%d offerCreate=%d offerPatch=%d offerDelete=%d state=%d unchanged=%d\n",
+		len(p.Plan.Creates), len(p.Plan.Patches), len(p.Plan.Deletes), len(p.Plan.BasePlanDeletes),
 		len(p.Plan.OfferCreates), len(p.Plan.OfferPatches), len(p.Plan.OfferDeletes),
 		len(p.Plan.StateChanges), len(p.Plan.Unchanged)); err != nil {
 		return err
@@ -181,8 +191,8 @@ func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 
 // jsonChange is one plan entry of the flat --output json schema (a gplay-owned
 // shape (ADR-0003 exception) kept flat so a CI gate is one jq line). Offer
-// entries carry basePlanId/offerId; state entries use op activate/deactivate
-// with kind and from/to.
+// entries carry basePlanId/offerId, base-plan deletes carry basePlanId; state
+// entries use op activate/deactivate with kind and from/to.
 type jsonChange struct {
 	Op         string   `json:"op"`
 	Kind       string   `json:"kind,omitempty"`
@@ -200,6 +210,13 @@ type jsonView struct {
 	Changes  []jsonChange   `json:"changes"`
 	Summary  map[string]int `json:"summary"`
 	Requires []string       `json:"requires,omitempty"`
+}
+
+// splitBasePlanKey undoes the composite productId/basePlanId display key the
+// base-plan delete set is keyed under.
+func splitBasePlanKey(composite string) (productID, basePlanID string) {
+	productID, basePlanID, _ = strings.Cut(composite, "/")
+	return productID, basePlanID
 }
 
 // splitOfferKey undoes the composite productId/basePlanId/offerId display key
@@ -239,6 +256,10 @@ func (p Payload) renderJSON(w io.Writer) error {
 		pid, bid, oid := splitOfferKey(c.ProductID)
 		changes = append(changes, jsonChange{Op: "delete", Kind: "offer", ProductID: pid, BasePlanID: bid, OfferID: oid})
 	}
+	for _, c := range p.Plan.BasePlanDeletes {
+		pid, bid := splitBasePlanKey(c.ProductID)
+		changes = append(changes, jsonChange{Op: "delete", Kind: "basePlan", ProductID: pid, BasePlanID: bid})
+	}
 	for _, c := range p.Plan.Deletes {
 		changes = append(changes, jsonChange{Op: "delete", ProductID: c.ProductID})
 	}
@@ -247,14 +268,15 @@ func (p Payload) renderJSON(w io.Writer) error {
 		DryRun:  p.DryRun,
 		Changes: changes,
 		Summary: map[string]int{
-			"create":      len(p.Plan.Creates),
-			"patch":       len(p.Plan.Patches),
-			"delete":      len(p.Plan.Deletes),
-			"offerCreate": len(p.Plan.OfferCreates),
-			"offerPatch":  len(p.Plan.OfferPatches),
-			"offerDelete": len(p.Plan.OfferDeletes),
-			"state":       len(p.Plan.StateChanges),
-			"unchanged":   len(p.Plan.Unchanged),
+			"create":         len(p.Plan.Creates),
+			"patch":          len(p.Plan.Patches),
+			"delete":         len(p.Plan.Deletes),
+			"basePlanDelete": len(p.Plan.BasePlanDeletes),
+			"offerCreate":    len(p.Plan.OfferCreates),
+			"offerPatch":     len(p.Plan.OfferPatches),
+			"offerDelete":    len(p.Plan.OfferDeletes),
+			"state":          len(p.Plan.StateChanges),
+			"unchanged":      len(p.Plan.Unchanged),
 		},
 		Requires: p.Requires,
 	})
@@ -451,6 +473,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes = offerPlan.Creates, offerPlan.Patches, offerPlan.Deletes
 
+	// Base-plan shrink (slice #542): a live plan the file dropped. The engine
+	// skips deleted and created products on its own.
+	if plan.BasePlanDeletes, err = reconcile.BasePlanDeletes(local, live); err != nil {
+		return nil, err
+	}
+
 	if err := planStates(local, items, liveOffers, localOffers, &plan); err != nil {
 		return nil, err
 	}
@@ -465,7 +493,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return Payload{Package: pkg, Dir: dir, Plan: plan, DryRun: in.DryRun, Requires: requires}, nil
 	}
 	if plan.HasDeletes() && !in.Confirm {
-		return nil, exit.SafetyFlag("confirm", "this plan deletes %d subscription(s) and %d offer(s) from the live catalog of %q and deletion cannot be undone; pass --confirm to proceed (rehearse first with --dry-run)", len(plan.Deletes), len(plan.OfferDeletes), pkg)
+		return nil, exit.SafetyFlag("confirm", "this plan deletes %d subscription(s), %d base plan(s) and %d offer(s) from the live catalog of %q and deletion cannot be undone; pass --confirm to proceed (rehearse first with --dry-run)", len(plan.Deletes), len(plan.BasePlanDeletes), len(plan.OfferDeletes), pkg)
 	}
 
 	regionsVersion := strings.TrimSpace(in.RegionsVersion)
@@ -474,8 +502,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	// Execution order: grow, then move state, then shrink: parent
 	// creates/patches, offer creates/patches, activations, deactivations,
-	// offer deletes, parent deletes. Not transactional (no batch spans these
-	// verbs); a failure surfaces immediately and a re-run converges.
+	// offer deletes, base-plan deletes, parent deletes. Not transactional (no
+	// batch spans these verbs); a failure surfaces immediately and a re-run
+	// converges. The one exception is a base-plan delete the API refuses
+	// (only DRAFT plans are deletable): it is independent of every other
+	// change, so the run records it, finishes the plan, and reports it last.
 	for _, c := range plan.Creates {
 		body, err := subscriptionscmd.StripOffersFromSubscription(local[c.ProductID])
 		if err != nil {
@@ -530,17 +561,65 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, subscriptionscmd.Classify(pkg, err)
 		}
 	}
+	var refused []*basePlanDeleteError
+	for _, c := range plan.BasePlanDeletes {
+		pid, bid := splitBasePlanKey(c.ProductID)
+		err := subscriptions.DeleteBasePlan(rc.Ctx, httpClient, pkg, pid, bid)
+		if err == nil {
+			continue
+		}
+		var apiErr *api.Error
+		if !errors.As(err, &apiErr) || (apiErr.StatusCode != http.StatusBadRequest && apiErr.StatusCode != http.StatusForbidden) {
+			// Transport, 5xx, 404: not the published-plan refusal; abort like
+			// any other write so a re-run converges.
+			return nil, subscriptionscmd.Classify(pkg, err)
+		}
+		bpErr := &basePlanDeleteError{pkg: pkg, productID: pid, basePlanID: bid, cause: err}
+		rc.Warnf("%v", bpErr)
+		refused = append(refused, bpErr)
+	}
 	for _, c := range plan.Deletes {
 		if err := subscriptions.Delete(rc.Ctx, httpClient, pkg, c.ProductID); err != nil {
 			return nil, subscriptionscmd.Classify(pkg, err)
 		}
 	}
-	rc.Confirmf("subscriptions applied to %q (%d created, %d patched, %d deleted; offers: %d created, %d patched, %d deleted; %d state change(s))", pkg,
-		len(plan.Creates), len(plan.Patches), len(plan.Deletes),
+	if len(refused) > 0 {
+		// Every independent change ran; the plan still did not converge. The
+		// first refusal drives the envelope (its *api.Error keeps the exit code
+		// and the diagnostic code, ADR-0044); the count says how many more.
+		refused[0].others = len(refused) - 1
+		return nil, refused[0]
+	}
+	rc.Confirmf("subscriptions applied to %q (%d created, %d patched, %d deleted; %d base plan(s) deleted; offers: %d created, %d patched, %d deleted; %d state change(s))", pkg,
+		len(plan.Creates), len(plan.Patches), len(plan.Deletes), len(plan.BasePlanDeletes),
 		len(plan.OfferCreates), len(plan.OfferPatches), len(plan.OfferDeletes),
 		len(plan.StateChanges))
 	return Payload{Package: pkg, Dir: dir, Plan: plan}, nil
 }
+
+// basePlanDeleteError wraps the API's refusal to delete a base plan that is
+// not in DRAFT (400, or 403 on some accounts) with the resolution the user
+// actually needs: a published plan must be deactivated first (declare
+// state: INACTIVE, apply, then drop it), the API never deletes it outright.
+// It carries no ExitCode or DiagnosticCode of its own, so the wrapped
+// *api.Error stays authoritative in the envelope: exit 30 / INVALID_ARGUMENT
+// on a 400, exit 11 / PERMISSION_DENIED on a 403, operation
+// monetization.subscriptions.basePlans.delete, upstream reasons verbatim
+// (ADR-0044).
+type basePlanDeleteError struct {
+	pkg, productID, basePlanID string
+	others                     int
+	cause                      error
+}
+
+func (e *basePlanDeleteError) Error() string {
+	msg := fmt.Sprintf("cannot delete base plan %s/%s of %q: the API only deletes a DRAFT base plan; a plan that was ever published must be deactivated first (declare state: INACTIVE, apply, then remove it from the file); the rest of the plan was applied: %v", e.productID, e.basePlanID, e.pkg, e.cause)
+	if e.others > 0 {
+		msg += fmt.Sprintf(" (%d more base plan delete(s) were refused, see stderr)", e.others)
+	}
+	return msg
+}
+func (e *basePlanDeleteError) Unwrap() error { return e.cause }
 
 // NewCommand returns the cobra command for `gplay subscriptions apply`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
@@ -555,9 +634,12 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 ` + subscriptionscmd.DefaultDir + `) and the app's live subscription catalog:
 subscriptions, base plans (config + per-territory prices), offers, and the
 declared lifecycle state, then execute it. The directory is the complete
-declared catalog: a live subscription or offer with no declaration is a delete
-in the plan (mirror semantics: deliberately not the additive stance of
-metadata apply).
+declared catalog: a live subscription, base plan or offer with no declaration
+is a delete in the plan (mirror semantics: deliberately not the additive
+stance of metadata apply). The API only deletes a DRAFT base plan: a plan that
+was ever published must be deactivated first (declare state: INACTIVE and
+apply, then drop it from the file); a refused base plan delete is reported
+after the rest of the plan has run.
 
 --dry-run reads live Play and prints the plan without changing anything.
 Creates and patches run directly; a plan containing any delete refuses without
@@ -587,6 +669,6 @@ published). GPLAY_READONLY refuses the command (exit 4).`,
 	cmd.Flags().StringVar(&in.Dir, "dir", subscriptionscmd.DefaultDir, "catalog directory to reconcile from")
 	cmd.Flags().StringVar(&in.RegionsVersion, "regions-version", subscriptionscmd.DefaultRegionsVersion, "regions version pin sent with subscription writes")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the plan without committing (online)")
-	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize a destructive plan (required when the plan deletes subscriptions or offers)")
+	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize a destructive plan (required when the plan deletes subscriptions, base plans or offers)")
 	return cmd
 }
