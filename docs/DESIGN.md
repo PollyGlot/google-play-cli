@@ -279,6 +279,21 @@ propagates. Pass `--keep-edit-on-failure` to bypass cleanup when debugging.
 reuse it. No auto-discard in this mode — explicit `commit` or `discard` is
 required.
 
+Two read-only checks complete the lifecycle (#544):
+
+- `gplay edits validate` runs Google's commit-time checks on the pinned Edit
+  (`edits.validate`) without committing it. Exit `0` means the Edit would
+  commit as it stands; a rejection surfaces the API's error envelope with the
+  exit code its HTTP status maps to (§9, typically `30`). The Edit and the pin
+  stay in place either way. No pinned Edit is exit `60`, like `commit`.
+  `--output json` mirrors the API's `AppEdit` response.
+- `gplay edits status --live` adds one `edits.get` on the pinned id. The
+  report gains the server's `expiryTimeSeconds`; a `404` (the Edit expired or
+  was discarded by another client) reports `open: false` and points at
+  `gplay edits discard` to clear the stale pin, with exit `0`: the pin is never
+  cleared implicitly. Without `--live`, `status` stays a local read with no
+  auth and no network; `--live` without a pin also stays offline.
+
 ---
 
 ## 5. Reviews

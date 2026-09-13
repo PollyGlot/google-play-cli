@@ -91,13 +91,25 @@ func warnResult(rc *kernel.RunContext, kind string, n int) {
 
 type countsInput struct {
 	Package, By, Version, Since, Period string
+	Describe                            bool     // --describe: errors.counts.get (freshness) instead of :query
+	WindowFlags                         []string // query-shaping flags the user set (rejected under --describe)
 }
+
+// countsWindowFlags are the counts flags that only make sense for a `:query`.
+var countsWindowFlags = []string{"since", "period", "by", "version"}
 
 // runCounts queries the errorCount metric set, reusing the shared metric-set
 // orchestration (the errors.counts set is queryable like any rate set). Note
 // errorCount does not support every --by dimension (no countryCode), so the
 // set-aware PresetParams rejects `--by country` with the valid set for errors.
+// --describe reaches the set's `.get` through the same shared body (#545).
 func runCounts(rc *kernel.RunContext, in countsInput) (output.Renderable, error) {
+	if err := vitalscmd.RejectWindowFlags(in.Describe, in.WindowFlags); err != nil {
+		return nil, err
+	}
+	if in.Describe {
+		return vitalscmd.Describe(rc, vitals.ErrorCountSet(), in.Package)
+	}
 	idx, err := schemaindex.Embedded()
 	if err != nil {
 		return nil, err
@@ -122,13 +134,17 @@ timeline, the count side of vitals errors.
 
   gplay vitals errors counts --package com.example.app
   gplay vitals errors counts --by versionCode --version 123 --since 7d
+  gplay vitals errors counts --describe
 
 --by slices the timeline (` + vitalscmd.ByChoices() + `); --version filters to
-one versionCode. Read-only; --output json mirrors the API response verbatim.`,
+one versionCode. Read-only; --output json mirrors the API response verbatim.
+--describe fetches the metric set's descriptor instead (latest available end
+time per aggregation period); the window flags do not apply and are rejected.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			in.WindowFlags = vitalscmd.ChangedFlags(cmd, countsWindowFlags...)
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return runCounts(rc, in)
 			})
@@ -140,6 +156,7 @@ one versionCode. Read-only; --output json mirrors the API response verbatim.`,
 	cmd.Flags().StringVar(&in.Version, "version", "", "filter to a single versionCode")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")
+	cmd.Flags().BoolVar(&in.Describe, vitalscmd.DescribeFlag, false, vitalscmd.DescribeHelp)
 	return cmd
 }
 

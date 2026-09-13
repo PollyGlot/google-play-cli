@@ -108,17 +108,32 @@ func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by,
 
 // presetInput is the flag surface shared by every preset.
 type presetInput struct {
-	Package string
-	Version string // --version: filter by versionCode
-	By      string // --by: versionCode|device|country
-	Since   string
-	Period  string
+	Package  string
+	Version  string // --version: filter by versionCode
+	By       string // --by: versionCode|device|country
+	Since    string
+	Period   string
+	Describe bool // --describe: the set's `.get` (freshness) instead of `:query`
+	// WindowFlags is the ChangedFlags list of the query-shaping flags, recorded
+	// by the cobra layer so runPreset can reject them under --describe.
+	WindowFlags []string
 }
+
+// presetWindowFlags are the preset flags that only make sense for a `:query`.
+var presetWindowFlags = []string{"since", "period", "by", "version"}
 
 // runPreset resolves the friendly preset flags into Params and delegates to
 // Execute. Metrics are left empty so the set's primary metric is used: the
 // whole point of a preset is that the common case needs no metric knowledge.
+// With --describe the window flags are moot: any set explicitly is rejected and
+// the descriptor is fetched instead.
 func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (output.Renderable, error) {
+	if err := RejectWindowFlags(in.Describe, in.WindowFlags); err != nil {
+		return nil, err
+	}
+	if in.Describe {
+		return Describe(rc, set, in.Package)
+	}
 	idx, err := schemaindex.Embedded()
 	if err != nil {
 		return nil, err
@@ -155,15 +170,22 @@ over the default 28-day DAILY window.
   gplay vitals ` + spec.Use + ` --package com.example.app
   gplay vitals ` + spec.Use + ` --by versionCode --version 123
   gplay vitals ` + spec.Use + ` --since 7d --period DAILY
+  gplay vitals ` + spec.Use + ` --describe
 
 --by slices the timeline (` + ByChoices() + `); --version filters to one
 versionCode. This is a READ-ONLY surface on the Play Developer Reporting
 service. --output json mirrors the API response verbatim; a freshness note is
-printed to stderr so an empty window is not mistaken for zero.`,
+printed to stderr so an empty window is not mistaken for zero.
+
+--describe fetches the metric set's descriptor instead of a timeline: the
+latest end time for which data is available, per aggregation period, in the
+set's timezone. It answers "up to when is this data complete?"; the window
+flags (--since, --period, --by, --version) do not apply and are rejected.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			in.WindowFlags = ChangedFlags(cmd, presetWindowFlags...)
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return runPreset(rc, set, in)
 			})
@@ -175,6 +197,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension ("+ByChoices()+"; availability depends on the metric set)")
 	cmd.Flags().StringVar(&in.Since, "since", DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")
+	cmd.Flags().BoolVar(&in.Describe, DescribeFlag, false, DescribeHelp)
 	return cmd
 }
 

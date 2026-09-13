@@ -32,13 +32,27 @@ type Input struct {
 	Dimensions []string // --dimensions (empty → no slicing, one row per period)
 	Period     string   // --period DAILY|HOURLY|FULL_RANGE
 	Since      string   // --since 28d, 24h, …
+	Describe   bool     // --describe: the set's `.get` (freshness) instead of `:query`
+	// WindowFlags is the ChangedFlags list of the query-shaping flags, recorded
+	// by the cobra layer so Run can reject them under --describe.
+	WindowFlags []string
 }
 
-// Run resolves the metric set, then delegates to the shared vitals orchestration.
+// windowFlags are the flags that only make sense for a `:query`.
+var windowFlags = []string{"metrics", "dimensions", "period", "since"}
+
+// Run resolves the metric set, then delegates to the shared vitals
+// orchestration: the descriptor with --describe, the timeline otherwise.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	set, ok := vitals.MetricSetByName(in.MetricSet)
 	if !ok {
 		return nil, exit.Usagef("unknown metric set %q (valid: %s)", in.MetricSet, strings.Join(vitals.MetricSetNames(), ", "))
+	}
+	if err := vitalscmd.RejectWindowFlags(in.Describe, in.WindowFlags); err != nil {
+		return nil, err
+	}
+	if in.Describe {
+		return vitalscmd.Describe(rc, set, in.Package)
 	}
 	return vitalscmd.Execute(rc, vitalscmd.Params{
 		Set:        set,
@@ -66,6 +80,13 @@ anr, …) wrap.
   gplay vitals query crashrate --package com.example.app
   gplay vitals query crashrate --metrics crashRate,distinctUsers --dimensions versionCode
   gplay vitals query anrrate --period HOURLY --since 24h
+  gplay vitals query crashrate --describe
+
+--describe fetches the metric set's descriptor instead of a timeline: the
+latest end time for which data is available, per aggregation period, in the
+set's timezone. It answers "up to when is this data complete?"; the window
+flags (--metrics, --dimensions, --period, --since) do not apply and are
+rejected.
 
 --metrics, --dimensions and --period are validated OFFLINE against the embedded
 API schema; unknown values are rejected with the valid set listed (names are
@@ -85,6 +106,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			in.MetricSet = args[0]
+			in.WindowFlags = vitalscmd.ChangedFlags(cmd, windowFlags...)
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, in)
 			})
@@ -96,5 +118,6 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	cmd.Flags().StringSliceVar(&in.Dimensions, "dimensions", nil, "dimensions to slice by (e.g. versionCode,countryCode); validated against the schema")
 	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE (per metric set; memory sets are DAILY-only)")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
+	cmd.Flags().BoolVar(&in.Describe, vitalscmd.DescribeFlag, false, vitalscmd.DescribeHelp)
 	return cmd
 }

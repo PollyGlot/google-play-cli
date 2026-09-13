@@ -23,13 +23,13 @@ GitHub Issues, not a judgement about whether it is worth shipping.
 
 | Service | Methods | ✅ called | ⚫️ excluded | 🔴 uncovered |
 |---|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 84 | 11 | 50 |
-| `playdeveloperreporting` v1beta1 | 25 | 14 | 0 | 11 |
+| `androidpublisher` v3 | 145 | 88 | 11 | 46 |
+| `playdeveloperreporting` v1beta1 | 25 | 24 | 0 | 1 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 |
-| **Total** | **181** | **109** | **11** | **61** |
+| **Total** | **181** | **123** | **11** | **47** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **109 are called** and **61 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **123 are called** and **47 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -56,9 +56,9 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **109 are 
 | `androidpublisher.appstorecatalog.recentappviews.get` | ✅ | `gplay appstore catalog view` |
 | `androidpublisher.appstorecatalog.recentupdateevents.list` | ✅ | `gplay appstore catalog events list` |
 | `androidpublisher.edits.apks.addexternallyhosted` | 🔴 | |
-| `androidpublisher.edits.apks.list` | 🔴 | |
+| `androidpublisher.edits.apks.list` | ✅ | `gplay releases artifacts list`; the apk kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.apks.upload` | ✅ | `gplay releases upload`; an .apk payload rides releases upload (ADR-0036) |
-| `androidpublisher.edits.bundles.list` | 🔴 | |
+| `androidpublisher.edits.bundles.list` | ✅ | `gplay releases artifacts list`; the bundle kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.bundles.upload` | ✅ | `gplay releases upload`; the .aab path, resumable upload host |
 | `androidpublisher.edits.commit` | ✅ | `gplay edits commit`; also called implicitly at the end of every mutating Edit-scoped command |
 | `androidpublisher.edits.countryavailability.get` | ✅ | `gplay tracks availability view` |
@@ -71,7 +71,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **109 are 
 | `androidpublisher.edits.expansionfiles.patch` | 🔴 | |
 | `androidpublisher.edits.expansionfiles.update` | ✅ | `gplay releases expansion-files set` |
 | `androidpublisher.edits.expansionfiles.upload` | ✅ | `gplay releases expansion-files upload` |
-| `androidpublisher.edits.get` | 🔴 | |
+| `androidpublisher.edits.get` | ✅ | `gplay edits status`; only with --live; the default status is a local read of the pin |
 | `androidpublisher.edits.images.delete` | ✅ | `gplay metadata images apply`; --prune drops one live image by id |
 | `androidpublisher.edits.images.deleteall` | ✅ | `gplay metadata images apply`; slot reconciliation clears a slot before re-upload (ADR-0013) |
 | `androidpublisher.edits.images.list` | ✅ | `gplay metadata images list`, `gplay metadata images pull`, `gplay metadata images apply` |
@@ -91,7 +91,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **109 are 
 | `androidpublisher.edits.tracks.list` | ✅ | `gplay tracks list`, `gplay apps audit` |
 | `androidpublisher.edits.tracks.patch` | 🔴 | |
 | `androidpublisher.edits.tracks.update` | ✅ | `gplay releases upload`, `gplay releases promote`, `gplay releases rollout`, `gplay releases halt`, `gplay releases resume`, `gplay releases complete`; the single write behind every release-state change (ADR-0002) |
-| `androidpublisher.edits.validate` | 🔴 | |
+| `androidpublisher.edits.validate` | ✅ | `gplay edits validate` |
 | `androidpublisher.externaltransactions.createexternaltransaction` | 🔴 | |
 | `androidpublisher.externaltransactions.getexternaltransaction` | 🔴 | |
 | `androidpublisher.externaltransactions.refundexternaltransaction` | 🔴 | |
@@ -188,27 +188,27 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **109 are 
 | `playdeveloperreporting.anomalies.list` | ✅ | `gplay vitals anomalies` |
 | `playdeveloperreporting.apps.fetchReleaseFilterOptions` | 🔴 | |
 | `playdeveloperreporting.apps.search` | ✅ | `gplay apps accessible list`; server-authoritative discovery, distinct from the local registry (ADR-0039) |
-| `playdeveloperreporting.vitals.anonrssandswapmemoryusage.get` | 🔴 | |
+| `playdeveloperreporting.vitals.anonrssandswapmemoryusage.get` | ✅ | `gplay vitals query anonrssandswapmemoryusage --describe` |
 | `playdeveloperreporting.vitals.anonrssandswapmemoryusage.query` | ✅ | `gplay vitals query anonrssandswapmemoryusage` |
-| `playdeveloperreporting.vitals.anrrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.anrrate.get` | ✅ | `gplay vitals anr --describe`, `gplay vitals query anrrate --describe` |
 | `playdeveloperreporting.vitals.anrrate.query` | ✅ | `gplay vitals anr`, `gplay vitals query anrrate` |
-| `playdeveloperreporting.vitals.bitmapmemoryusage.get` | 🔴 | |
+| `playdeveloperreporting.vitals.bitmapmemoryusage.get` | ✅ | `gplay vitals query bitmapmemoryusage --describe` |
 | `playdeveloperreporting.vitals.bitmapmemoryusage.query` | ✅ | `gplay vitals query bitmapmemoryusage` |
-| `playdeveloperreporting.vitals.crashrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.crashrate.get` | ✅ | `gplay vitals crashes --describe`, `gplay vitals query crashrate --describe` |
 | `playdeveloperreporting.vitals.crashrate.query` | ✅ | `gplay vitals crashes`, `gplay vitals query crashrate` |
-| `playdeveloperreporting.vitals.errors.counts.get` | 🔴 | |
+| `playdeveloperreporting.vitals.errors.counts.get` | ✅ | `gplay vitals errors counts --describe` |
 | `playdeveloperreporting.vitals.errors.counts.query` | ✅ | `gplay vitals errors counts` |
 | `playdeveloperreporting.vitals.errors.issues.search` | ✅ | `gplay vitals errors issues` |
 | `playdeveloperreporting.vitals.errors.reports.search` | ✅ | `gplay vitals errors reports` |
-| `playdeveloperreporting.vitals.excessivewakeuprate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.excessivewakeuprate.get` | ✅ | `gplay vitals excessivewakeup --describe`, `gplay vitals query excessivewakeuprate --describe` |
 | `playdeveloperreporting.vitals.excessivewakeuprate.query` | ✅ | `gplay vitals excessivewakeup`, `gplay vitals query excessivewakeuprate` |
-| `playdeveloperreporting.vitals.lmkrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.lmkrate.get` | ✅ | `gplay vitals lmk --describe`, `gplay vitals query lmkrate --describe` |
 | `playdeveloperreporting.vitals.lmkrate.query` | ✅ | `gplay vitals lmk`, `gplay vitals query lmkrate` |
-| `playdeveloperreporting.vitals.slowrenderingrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.slowrenderingrate.get` | ✅ | `gplay vitals slowrendering --describe`, `gplay vitals query slowrenderingrate --describe` |
 | `playdeveloperreporting.vitals.slowrenderingrate.query` | ✅ | `gplay vitals slowrendering`, `gplay vitals query slowrenderingrate` |
-| `playdeveloperreporting.vitals.slowstartrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.slowstartrate.get` | ✅ | `gplay vitals slowstart --describe`, `gplay vitals query slowstartrate --describe` |
 | `playdeveloperreporting.vitals.slowstartrate.query` | ✅ | `gplay vitals slowstart`, `gplay vitals query slowstartrate` |
-| `playdeveloperreporting.vitals.stuckbackgroundwakelockrate.get` | 🔴 | |
+| `playdeveloperreporting.vitals.stuckbackgroundwakelockrate.get` | ✅ | `gplay vitals stuckbgwakelock --describe`, `gplay vitals query stuckbackgroundwakelockrate --describe` |
 | `playdeveloperreporting.vitals.stuckbackgroundwakelockrate.query` | ✅ | `gplay vitals stuckbgwakelock`, `gplay vitals query stuckbackgroundwakelockrate` |
 
 ## `gamesConfiguration` v1configuration (10 methods)

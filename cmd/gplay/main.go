@@ -40,6 +40,7 @@ import (
 	editscommit "github.com/PollyGlot/google-play-cli/commands/edits/commit"
 	editsdiscard "github.com/PollyGlot/google-play-cli/commands/edits/discard"
 	editsstatus "github.com/PollyGlot/google-play-cli/commands/edits/status"
+	editsvalidate "github.com/PollyGlot/google-play-cli/commands/edits/validate"
 	gamesachievementscreate "github.com/PollyGlot/google-play-cli/commands/games/achievements/create"
 	gamesachievementsdelete "github.com/PollyGlot/google-play-cli/commands/games/achievements/delete"
 	gamesachievementslist "github.com/PollyGlot/google-play-cli/commands/games/achievements/list"
@@ -69,6 +70,7 @@ import (
 	recoverycreate "github.com/PollyGlot/google-play-cli/commands/recovery/create"
 	recoverydeploy "github.com/PollyGlot/google-play-cli/commands/recovery/deploy"
 	recoverylist "github.com/PollyGlot/google-play-cli/commands/recovery/list"
+	artifactslist "github.com/PollyGlot/google-play-cli/commands/releases/artifacts/list"
 	expansionset "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/set"
 	expansionupload "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/upload"
 	expansionview "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/view"
@@ -366,6 +368,23 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// the variant-selection flags are the parts most likely to move once real
 	// device-targeted APK sets are pulled through it.
 	releases.AddCommand(kernel.Experimental(generated))
+
+	// `gplay releases artifacts`: the APKs and App Bundles uploaded to the app
+	// (edits.apks.list / edits.bundles.list), i.e. the version codes a promote
+	// or rollout can reference. Edit-scoped, so the leaf opens a read-only Edit
+	// it always discards, or reads inside a pinned explicit one (#543). Pure
+	// read: no MarkMutating, not gated by GPLAY_READONLY.
+	artifacts := &cobra.Command{
+		Use:           "artifacts",
+		Short:         "List the APKs and App Bundles attached to an app",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	artifacts.AddCommand(artifactslist.NewCommand(boot))
+	// [experimental] (ADR-0010/ADR-0042): the merged-kind table and --kind are
+	// new surface whose columns may still move.
+	releases.AddCommand(kernel.Experimental(artifacts))
 	root.AddCommand(releases)
 
 	tracks := &cobra.Command{
@@ -611,10 +630,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// batch into it instead of opening their own: committed or discarded
 	// explicitly by the user. begin/commit/discard mutate Play state (insert /
 	// commit / delete), so they are MarkMutating (GPLAY_READONLY refuses them,
-	// exit 4); status is a local-pin read and stays unmarked. See #48.
+	// exit 4); status is a local-pin read (a GET with --live) and validate runs
+	// Google's checks without changing anything server-side (edits.validate),
+	// so both stay unmarked. See #48 and #544.
 	editsGroup := &cobra.Command{
 		Use:           "edits",
-		Short:         "Manage explicit Edit transactions (begin, commit, discard, status)",
+		Short:         "Manage explicit Edit transactions (begin, validate, commit, discard, status)",
 		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -623,6 +644,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	editsGroup.AddCommand(kernel.MarkMutating(editscommit.NewCommand(boot)))
 	editsGroup.AddCommand(kernel.MarkMutating(editsdiscard.NewCommand(boot)))
 	editsGroup.AddCommand(editsstatus.NewCommand(boot))
+	editsGroup.AddCommand(editsvalidate.NewCommand(boot))
 	root.AddCommand(editsGroup)
 
 	// `gplay games`: Play Games Services configuration (gamesConfiguration): a
