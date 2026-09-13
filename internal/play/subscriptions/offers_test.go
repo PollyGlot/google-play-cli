@@ -3,10 +3,12 @@ package subscriptions_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
@@ -95,6 +97,38 @@ func TestDeleteOffer_addressesOffer(t *testing.T) {
 	req := rt.requests[0]
 	if req.method != http.MethodDelete || !strings.HasSuffix(req.url, "/subscriptions/premium/basePlans/monthly/offers/old") {
 		t.Errorf("request %s %s is not offers.delete", req.method, req.url)
+	}
+}
+
+// TestDeleteBasePlan_addressesBasePlan asserts DeleteBasePlan issues a DELETE
+// on the base plan URL (no custom verb, no body).
+func TestDeleteBasePlan_addressesBasePlan(t *testing.T) {
+	rt := &subsRT{responses: []scripted{{204, ``}}}
+	if err := subscriptions.DeleteBasePlan(context.Background(), client(rt), "com.example.app", "premium", "trial"); err != nil {
+		t.Fatalf("DeleteBasePlan: %v", err)
+	}
+	req := rt.requests[0]
+	if req.method != http.MethodDelete || !strings.HasSuffix(req.url, "/subscriptions/premium/basePlans/trial") {
+		t.Errorf("request %s %s is not basePlans.delete", req.method, req.url)
+	}
+}
+
+// TestDeleteBasePlan_publishedPlan_surfacesAPIError asserts the server-side
+// refusal of a non-draft plan comes back as an *api.Error tagged with the
+// method id and status, the input the apply hint and the diagnostic code
+// classifier (ADR-0044) build on.
+func TestDeleteBasePlan_publishedPlan_surfacesAPIError(t *testing.T) {
+	rt := &subsRT{responses: []scripted{{400, `{"error":{"code":400,"message":"Base plan is not in draft state","errors":[{"reason":"badRequest"}]}}`}}}
+	err := subscriptions.DeleteBasePlan(context.Background(), client(rt), "com.example.app", "premium", "monthly")
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v, want *api.Error", err)
+	}
+	if apiErr.StatusCode != 400 || apiErr.Operation != "monetization.subscriptions.basePlans.delete" {
+		t.Errorf("apiErr = %+v, want status 400 on basePlans.delete", apiErr)
+	}
+	if len(apiErr.Reasons) != 1 || apiErr.Reasons[0] != "badRequest" {
+		t.Errorf("reasons = %v, want the verbatim upstream reason", apiErr.Reasons)
 	}
 }
 

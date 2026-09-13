@@ -132,3 +132,39 @@ func TestCompute_deterministicOrder(t *testing.T) {
 		t.Errorf("Creates = %+v, want sorted [a b]", plan.Creates)
 	}
 }
+
+// TestBasePlanDeletes_removedPlansOnly asserts the base-plan shrink set names
+// exactly the live plans the file dropped, keyed productId/basePlanId and
+// sorted: a live-only product (a parent delete) and a local-only product (a
+// create) contribute nothing, and a plan still declared is never a delete.
+func TestBasePlanDeletes_removedPlansOnly(t *testing.T) {
+	local := map[string]json.RawMessage{
+		"premium": raw(`{"productId":"premium","basePlans":[{"basePlanId":"monthly"}]}`),
+		"newbie":  raw(`{"productId":"newbie","basePlans":[{"basePlanId":"weekly"}]}`),
+	}
+	live := map[string]json.RawMessage{
+		"premium": raw(`{"productId":"premium","basePlans":[{"basePlanId":"yearly","state":"DRAFT"},{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"trial","state":"DRAFT"}]}`),
+		"gone":    raw(`{"productId":"gone","basePlans":[{"basePlanId":"monthly"}]}`),
+	}
+	got, err := reconcile.BasePlanDeletes(local, live)
+	if err != nil {
+		t.Fatalf("BasePlanDeletes: %v", err)
+	}
+	if len(got) != 2 || got[0].ProductID != "premium/trial" || got[1].ProductID != "premium/yearly" {
+		t.Errorf("BasePlanDeletes = %+v, want [premium/trial premium/yearly]", got)
+	}
+	plan := reconcile.Plan{BasePlanDeletes: got}
+	if !plan.HasDeletes() || !plan.HasChanges() {
+		t.Errorf("a plan with base-plan deletes is destructive and non-empty; got HasDeletes=%v HasChanges=%v", plan.HasDeletes(), plan.HasChanges())
+	}
+}
+
+// TestBasePlanDeletes_unaddressablePlan_refuses asserts a live base plan
+// without a basePlanId is an integrity error rather than a silent skip.
+func TestBasePlanDeletes_unaddressablePlan_refuses(t *testing.T) {
+	local := map[string]json.RawMessage{"premium": raw(`{"productId":"premium"}`)}
+	live := map[string]json.RawMessage{"premium": raw(`{"productId":"premium","basePlans":[{"state":"DRAFT"}]}`)}
+	if _, err := reconcile.BasePlanDeletes(local, live); err == nil {
+		t.Fatal("want an error on a base plan without basePlanId")
+	}
+}
