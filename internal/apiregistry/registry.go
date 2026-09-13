@@ -81,6 +81,15 @@ var entries = []Entry{
 		Commands: []string{"edits discard"},
 		Note:     "also called to drop the read-only Edit opened by list/view commands",
 	},
+	{
+		MethodID: "androidpublisher.edits.get",
+		Commands: []string{"edits status"},
+		Note:     "only with --live; the default status is a local read of the pin",
+	},
+	{
+		MethodID: "androidpublisher.edits.validate",
+		Commands: []string{"edits validate"},
+	},
 
 	// --- androidpublisher: Edit-scoped resources ------------------------
 	{MethodID: "androidpublisher.edits.apks.upload", Commands: []string{"releases upload"}, Note: "an .apk payload rides releases upload (ADR-0036)"},
