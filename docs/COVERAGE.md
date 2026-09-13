@@ -23,13 +23,13 @@ GitHub Issues, not a judgement about whether it is worth shipping.
 
 | Service | Methods | ✅ called | ⚫️ excluded | 🔴 uncovered |
 |---|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 83 | 11 | 51 |
+| `androidpublisher` v3 | 145 | 87 | 11 | 47 |
 | `playdeveloperreporting` v1beta1 | 25 | 24 | 0 | 1 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 |
-| **Total** | **181** | **118** | **11** | **52** |
+| **Total** | **181** | **122** | **11** | **48** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **118 are called** and **52 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **122 are called** and **48 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -56,9 +56,9 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **118 are 
 | `androidpublisher.appstorecatalog.recentappviews.get` | ✅ | `gplay appstore catalog view` |
 | `androidpublisher.appstorecatalog.recentupdateevents.list` | ✅ | `gplay appstore catalog events list` |
 | `androidpublisher.edits.apks.addexternallyhosted` | 🔴 | |
-| `androidpublisher.edits.apks.list` | 🔴 | |
+| `androidpublisher.edits.apks.list` | ✅ | `gplay releases artifacts list`; the apk kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.apks.upload` | ✅ | `gplay releases upload`; an .apk payload rides releases upload (ADR-0036) |
-| `androidpublisher.edits.bundles.list` | 🔴 | |
+| `androidpublisher.edits.bundles.list` | ✅ | `gplay releases artifacts list`; the bundle kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.bundles.upload` | ✅ | `gplay releases upload`; the .aab path, resumable upload host |
 | `androidpublisher.edits.commit` | ✅ | `gplay edits commit`; also called implicitly at the end of every mutating Edit-scoped command |
 | `androidpublisher.edits.countryavailability.get` | ✅ | `gplay tracks availability view` |
@@ -71,7 +71,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **118 are 
 | `androidpublisher.edits.expansionfiles.patch` | 🔴 | |
 | `androidpublisher.edits.expansionfiles.update` | ✅ | `gplay releases expansion-files set` |
 | `androidpublisher.edits.expansionfiles.upload` | ✅ | `gplay releases expansion-files upload` |
-| `androidpublisher.edits.get` | 🔴 | |
+| `androidpublisher.edits.get` | ✅ | `gplay edits status`; only with --live; the default status is a local read of the pin |
 | `androidpublisher.edits.images.delete` | ✅ | `gplay metadata images apply`; --prune drops one live image by id |
 | `androidpublisher.edits.images.deleteall` | ✅ | `gplay metadata images apply`; slot reconciliation clears a slot before re-upload (ADR-0013) |
 | `androidpublisher.edits.images.list` | ✅ | `gplay metadata images list`, `gplay metadata images pull`, `gplay metadata images apply` |
@@ -91,7 +91,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **118 are 
 | `androidpublisher.edits.tracks.list` | ✅ | `gplay tracks list`, `gplay apps audit` |
 | `androidpublisher.edits.tracks.patch` | 🔴 | |
 | `androidpublisher.edits.tracks.update` | ✅ | `gplay releases upload`, `gplay releases promote`, `gplay releases rollout`, `gplay releases halt`, `gplay releases resume`, `gplay releases complete`; the single write behind every release-state change (ADR-0002) |
-| `androidpublisher.edits.validate` | 🔴 | |
+| `androidpublisher.edits.validate` | ✅ | `gplay edits validate` |
 | `androidpublisher.externaltransactions.createexternaltransaction` | 🔴 | |
 | `androidpublisher.externaltransactions.getexternaltransaction` | 🔴 | |
 | `androidpublisher.externaltransactions.refundexternaltransaction` | 🔴 | |

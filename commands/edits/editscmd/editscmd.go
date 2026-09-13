@@ -9,7 +9,9 @@ package editscmd
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -78,11 +80,21 @@ func RequireGplayDir(rc *kernel.RunContext) (string, error) {
 // action (began/committed/discarded; empty for status). --output json emits it
 // as a small gplay envelope: these are local-pin operations, not an API
 // pass-through, so there is no upstream body to mirror.
+//
+// Live and ExpiryTimeSeconds are set only by `edits status --live`: Live says
+// the server was consulted (edits.get), ExpiryTimeSeconds mirrors the API's
+// AppEdit field (Unix seconds, kept as the string the API sends). Gone marks a
+// pinned Edit the server no longer knows (404: expired or discarded by another
+// client); it is not emitted in JSON, where `open: false` with `live: true`
+// and the pinned `editId` already say it.
 type Payload struct {
-	Package string `json:"package"`
-	EditID  string `json:"editId,omitempty"`
-	Open    bool   `json:"open"`
-	Action  string `json:"action,omitempty"`
+	Package           string `json:"package"`
+	EditID            string `json:"editId,omitempty"`
+	Open              bool   `json:"open"`
+	Action            string `json:"action,omitempty"`
+	Live              bool   `json:"live,omitempty"`
+	ExpiryTimeSeconds string `json:"expiryTimeSeconds,omitempty"`
+	Gone              bool   `json:"-"`
 }
 
 func (p Payload) Renderers() output.Renderers {
@@ -100,6 +112,12 @@ func (p Payload) renderText(w io.Writer, prefix string) error {
 	switch {
 	case p.Action != "":
 		line = fmt.Sprintf("%s explicit edit %s for %s", p.Action, p.EditID, p.Package)
+	case p.Gone:
+		// The pin outlived the Edit: name the recovery verb, since every
+		// write command would otherwise fail against the vanished id.
+		line = fmt.Sprintf("pinned explicit edit %s for %s no longer exists server-side (expired or discarded elsewhere): run `gplay edits discard --package %s` to clear the pin", p.EditID, p.Package, p.Package)
+	case p.Open && p.Live:
+		line = fmt.Sprintf("open explicit edit %s for %s (live, expires %s)", p.EditID, p.Package, expiryLabel(p.ExpiryTimeSeconds))
 	case p.Open:
 		line = fmt.Sprintf("open explicit edit %s for %s", p.EditID, p.Package)
 	default:
@@ -107,4 +125,18 @@ func (p Payload) renderText(w io.Writer, prefix string) error {
 	}
 	_, err := fmt.Fprintf(w, "%s%s\n", prefix, line)
 	return err
+}
+
+// expiryLabel renders the API's expiryTimeSeconds as an RFC 3339 UTC instant
+// for the human views; an unparseable or empty value is shown verbatim rather
+// than hidden, so the line never silently drops what the server said.
+func expiryLabel(seconds string) string {
+	secs, err := strconv.ParseInt(seconds, 10, 64)
+	if err != nil || secs <= 0 {
+		if seconds == "" {
+			return "(unknown)"
+		}
+		return seconds
+	}
+	return time.Unix(secs, 0).UTC().Format(time.RFC3339)
 }

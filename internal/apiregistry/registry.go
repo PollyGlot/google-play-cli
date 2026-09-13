@@ -81,9 +81,20 @@ var entries = []Entry{
 		Commands: []string{"edits discard"},
 		Note:     "also called to drop the read-only Edit opened by list/view commands",
 	},
+	{
+		MethodID: "androidpublisher.edits.get",
+		Commands: []string{"edits status"},
+		Note:     "only with --live; the default status is a local read of the pin",
+	},
+	{
+		MethodID: "androidpublisher.edits.validate",
+		Commands: []string{"edits validate"},
+	},
 
 	// --- androidpublisher: Edit-scoped resources ------------------------
+	{MethodID: "androidpublisher.edits.apks.list", Commands: []string{"releases artifacts list"}, Note: "the apk kind; read inside a read-only Edit or the pinned explicit one"},
 	{MethodID: "androidpublisher.edits.apks.upload", Commands: []string{"releases upload"}, Note: "an .apk payload rides releases upload (ADR-0036)"},
+	{MethodID: "androidpublisher.edits.bundles.list", Commands: []string{"releases artifacts list"}, Note: "the bundle kind; read inside a read-only Edit or the pinned explicit one"},
 	{MethodID: "androidpublisher.edits.bundles.upload", Commands: []string{"releases upload"}, Note: "the .aab path, resumable upload host"},
 	{MethodID: "androidpublisher.edits.countryavailability.get", Commands: []string{"tracks availability view"}},
 	{MethodID: "androidpublisher.edits.deobfuscationfiles.upload", Commands: []string{"releases mappings upload"}},
