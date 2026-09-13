@@ -174,6 +174,7 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.list", Commands: []string{"iap pull"}},
 	{MethodID: "androidpublisher.monetization.subscriptions.basePlans.activate", Commands: []string{"subscriptions apply"}, Note: "declarative `state:` on a base plan"},
 	{MethodID: "androidpublisher.monetization.subscriptions.basePlans.deactivate", Commands: []string{"subscriptions apply"}},
+	{MethodID: "androidpublisher.monetization.subscriptions.basePlans.delete", Commands: []string{"subscriptions apply"}, Note: "--confirm-gated; the API only deletes a DRAFT base plan"},
 	{MethodID: "androidpublisher.monetization.subscriptions.basePlans.migratePrices", Commands: []string{"subscriptions prices migrate"}, Note: "--confirm-gated, reprices live subscribers"},
 	{MethodID: "androidpublisher.monetization.subscriptions.basePlans.offers.activate", Commands: []string{"subscriptions apply"}},
 	{MethodID: "androidpublisher.monetization.subscriptions.basePlans.offers.create", Commands: []string{"subscriptions apply"}},

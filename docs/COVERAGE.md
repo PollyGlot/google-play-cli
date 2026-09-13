@@ -23,13 +23,13 @@ GitHub Issues, not a judgement about whether it is worth shipping.
 
 | Service | Methods | ✅ called | ⚫️ excluded | 🔴 uncovered |
 |---|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 87 | 11 | 47 |
+| `androidpublisher` v3 | 145 | 88 | 11 | 46 |
 | `playdeveloperreporting` v1beta1 | 25 | 24 | 0 | 1 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 |
-| **Total** | **181** | **122** | **11** | **48** |
+| **Total** | **181** | **123** | **11** | **47** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **122 are called** and **48 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **123 are called** and **47 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -134,7 +134,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **122 are 
 | `androidpublisher.monetization.subscriptions.basePlans.batchMigratePrices` | 🔴 | |
 | `androidpublisher.monetization.subscriptions.basePlans.batchUpdateStates` | 🔴 | |
 | `androidpublisher.monetization.subscriptions.basePlans.deactivate` | ✅ | `gplay subscriptions apply` |
-| `androidpublisher.monetization.subscriptions.basePlans.delete` | 🔴 | |
+| `androidpublisher.monetization.subscriptions.basePlans.delete` | ✅ | `gplay subscriptions apply`; --confirm-gated; the API only deletes a DRAFT base plan |
 | `androidpublisher.monetization.subscriptions.basePlans.migratePrices` | ✅ | `gplay subscriptions prices migrate`; --confirm-gated, reprices live subscribers |
 | `androidpublisher.monetization.subscriptions.basePlans.offers.activate` | ✅ | `gplay subscriptions apply` |
 | `androidpublisher.monetization.subscriptions.basePlans.offers.batchGet` | 🔴 | |
