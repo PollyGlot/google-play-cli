@@ -23,13 +23,13 @@ GitHub Issues, not a judgement about whether it is worth shipping.
 
 | Service | Methods | ✅ called | ⚫️ excluded | 🔴 uncovered |
 |---|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 83 | 11 | 51 |
+| `androidpublisher` v3 | 145 | 85 | 11 | 49 |
 | `playdeveloperreporting` v1beta1 | 25 | 14 | 0 | 11 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 |
-| **Total** | **181** | **108** | **11** | **62** |
+| **Total** | **181** | **110** | **11** | **60** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are called** and **62 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **110 are called** and **60 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -56,9 +56,9 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are 
 | `androidpublisher.appstorecatalog.recentappviews.get` | ✅ | `gplay appstore catalog view` |
 | `androidpublisher.appstorecatalog.recentupdateevents.list` | ✅ | `gplay appstore catalog events list` |
 | `androidpublisher.edits.apks.addexternallyhosted` | 🔴 | |
-| `androidpublisher.edits.apks.list` | 🔴 | |
+| `androidpublisher.edits.apks.list` | ✅ | `gplay releases artifacts list`; the apk kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.apks.upload` | ✅ | `gplay releases upload`; an .apk payload rides releases upload (ADR-0036) |
-| `androidpublisher.edits.bundles.list` | 🔴 | |
+| `androidpublisher.edits.bundles.list` | ✅ | `gplay releases artifacts list`; the bundle kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.bundles.upload` | ✅ | `gplay releases upload`; the .aab path, resumable upload host |
 | `androidpublisher.edits.commit` | ✅ | `gplay edits commit`; also called implicitly at the end of every mutating Edit-scoped command |
 | `androidpublisher.edits.countryavailability.get` | ✅ | `gplay tracks availability view` |

@@ -559,6 +559,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"releases", "expansion-files", "view"}, false},
 		{[]string{"releases", "generated", "list"}, false},
 		{[]string{"releases", "generated", "download"}, false},
+		{[]string{"releases", "artifacts", "list"}, false},
 
 		// tracks
 		{[]string{"tracks", "list"}, false},
@@ -816,6 +817,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"releases", "expansion-files", "view"}, true},
 		{[]string{"releases", "generated", "list"}, true},
 		{[]string{"releases", "generated", "download"}, true},
+		{[]string{"releases", "artifacts", "list"}, true},
 
 		// tracks / testers: MVP surface, frozen.
 		{[]string{"tracks", "list"}, false},
