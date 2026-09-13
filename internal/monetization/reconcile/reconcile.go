@@ -71,14 +71,19 @@ type Change struct {
 // activate/deactivate endpoints rather than a patch. Kind is "basePlan" or
 // "offer"; To is the declared target ("ACTIVE" → activate, "INACTIVE" →
 // deactivate). Surfaced prominently in every plan view: a state change moves
-// buyer availability.
+// buyer availability. The one-time-product catalog (slice #541) reuses it
+// with Kind "purchaseOption"/"offer" and the purchase option in
+// PurchaseOptionID instead of BasePlanID: the two families share the plan
+// shape, only the middle level of the identity differs. To may also be
+// "CANCELLED" there (the pre-order :cancel verb, irreversible).
 type StateChange struct {
-	Kind       string `json:"kind"`
-	ProductID  string `json:"productId"`
-	BasePlanID string `json:"basePlanId"`
-	OfferID    string `json:"offerId,omitempty"`
-	From       string `json:"from"`
-	To         string `json:"to"`
+	Kind             string `json:"kind"`
+	ProductID        string `json:"productId"`
+	BasePlanID       string `json:"basePlanId,omitempty"`
+	PurchaseOptionID string `json:"purchaseOptionId,omitempty"`
+	OfferID          string `json:"offerId,omitempty"`
+	From             string `json:"from"`
+	To               string `json:"to"`
 }
 
 // Plan is the Reconciliation plan: what apply would (or did) do. The Offer*

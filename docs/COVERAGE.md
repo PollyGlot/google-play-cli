@@ -23,13 +23,13 @@ GitHub Issues, not a judgement about whether it is worth shipping.
 
 | Service | Methods | ✅ called | ⚫️ excluded | 🔴 uncovered |
 |---|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 83 | 11 | 51 |
+| `androidpublisher` v3 | 145 | 87 | 11 | 47 |
 | `playdeveloperreporting` v1beta1 | 25 | 14 | 0 | 11 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 |
-| **Total** | **181** | **108** | **11** | **62** |
+| **Total** | **181** | **112** | **11** | **58** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are called** and **62 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **112 are called** and **58 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -120,14 +120,14 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **108 are 
 | `androidpublisher.monetization.onetimeproducts.list` | ✅ | `gplay iap pull` |
 | `androidpublisher.monetization.onetimeproducts.patch` | ✅ | `gplay iap apply`; allowMissing makes patch the create: the API has no insert |
 | `androidpublisher.monetization.onetimeproducts.purchaseOptions.batchDelete` | 🔴 | |
-| `androidpublisher.monetization.onetimeproducts.purchaseOptions.batchUpdateStates` | 🔴 | |
-| `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.activate` | 🔴 | |
+| `androidpublisher.monetization.onetimeproducts.purchaseOptions.batchUpdateStates` | ✅ | `gplay iap apply`; declarative `state:` on a purchase option; the only state write path of that sub-resource |
+| `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.activate` | ✅ | `gplay iap apply`; declarative `state:` on a one-time offer |
 | `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.batchDelete` | ✅ | `gplay iap apply` |
 | `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.batchGet` | 🔴 | |
 | `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.batchUpdate` | ✅ | `gplay iap apply`; the only offer write path on one-time products |
 | `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.batchUpdateStates` | 🔴 | |
-| `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.cancel` | 🔴 | |
-| `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.deactivate` | 🔴 | |
+| `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.cancel` | ✅ | `gplay iap apply`; --confirm-gated: cancelling a pre-order offer is irreversible |
+| `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.deactivate` | ✅ | `gplay iap apply` |
 | `androidpublisher.monetization.onetimeproducts.purchaseOptions.offers.list` | ✅ | `gplay iap pull` |
 | `androidpublisher.monetization.subscriptions.archive` | 🔴 | |
 | `androidpublisher.monetization.subscriptions.basePlans.activate` | ✅ | `gplay subscriptions apply`; declarative `state:` on a base plan |
