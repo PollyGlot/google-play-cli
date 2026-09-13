@@ -92,7 +92,9 @@ var entries = []Entry{
 	},
 
 	// --- androidpublisher: Edit-scoped resources ------------------------
+	{MethodID: "androidpublisher.edits.apks.list", Commands: []string{"releases artifacts list"}, Note: "the apk kind; read inside a read-only Edit or the pinned explicit one"},
 	{MethodID: "androidpublisher.edits.apks.upload", Commands: []string{"releases upload"}, Note: "an .apk payload rides releases upload (ADR-0036)"},
+	{MethodID: "androidpublisher.edits.bundles.list", Commands: []string{"releases artifacts list"}, Note: "the bundle kind; read inside a read-only Edit or the pinned explicit one"},
 	{MethodID: "androidpublisher.edits.bundles.upload", Commands: []string{"releases upload"}, Note: "the .aab path, resumable upload host"},
 	{MethodID: "androidpublisher.edits.countryavailability.get", Commands: []string{"tracks availability view"}},
 	{MethodID: "androidpublisher.edits.deobfuscationfiles.upload", Commands: []string{"releases mappings upload"}},

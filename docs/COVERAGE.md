@@ -56,9 +56,9 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **110 are 
 | `androidpublisher.appstorecatalog.recentappviews.get` | ✅ | `gplay appstore catalog view` |
 | `androidpublisher.appstorecatalog.recentupdateevents.list` | ✅ | `gplay appstore catalog events list` |
 | `androidpublisher.edits.apks.addexternallyhosted` | 🔴 | |
-| `androidpublisher.edits.apks.list` | 🔴 | |
+| `androidpublisher.edits.apks.list` | ✅ | `gplay releases artifacts list`; the apk kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.apks.upload` | ✅ | `gplay releases upload`; an .apk payload rides releases upload (ADR-0036) |
-| `androidpublisher.edits.bundles.list` | 🔴 | |
+| `androidpublisher.edits.bundles.list` | ✅ | `gplay releases artifacts list`; the bundle kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.bundles.upload` | ✅ | `gplay releases upload`; the .aab path, resumable upload host |
 | `androidpublisher.edits.commit` | ✅ | `gplay edits commit`; also called implicitly at the end of every mutating Edit-scoped command |
 | `androidpublisher.edits.countryavailability.get` | ✅ | `gplay tracks availability view` |

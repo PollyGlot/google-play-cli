@@ -70,6 +70,7 @@ import (
 	recoverycreate "github.com/PollyGlot/google-play-cli/commands/recovery/create"
 	recoverydeploy "github.com/PollyGlot/google-play-cli/commands/recovery/deploy"
 	recoverylist "github.com/PollyGlot/google-play-cli/commands/recovery/list"
+	artifactslist "github.com/PollyGlot/google-play-cli/commands/releases/artifacts/list"
 	expansionset "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/set"
 	expansionupload "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/upload"
 	expansionview "github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/view"
@@ -367,6 +368,23 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// the variant-selection flags are the parts most likely to move once real
 	// device-targeted APK sets are pulled through it.
 	releases.AddCommand(kernel.Experimental(generated))
+
+	// `gplay releases artifacts`: the APKs and App Bundles uploaded to the app
+	// (edits.apks.list / edits.bundles.list), i.e. the version codes a promote
+	// or rollout can reference. Edit-scoped, so the leaf opens a read-only Edit
+	// it always discards, or reads inside a pinned explicit one (#543). Pure
+	// read: no MarkMutating, not gated by GPLAY_READONLY.
+	artifacts := &cobra.Command{
+		Use:           "artifacts",
+		Short:         "List the APKs and App Bundles attached to an app",
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	artifacts.AddCommand(artifactslist.NewCommand(boot))
+	// [experimental] (ADR-0010/ADR-0042): the merged-kind table and --kind are
+	// new surface whose columns may still move.
+	releases.AddCommand(kernel.Experimental(artifacts))
 	root.AddCommand(releases)
 
 	tracks := &cobra.Command{
