@@ -6,9 +6,13 @@
 // are inert: an edited, omitted or locally-created legacy file is refused with
 // a message naming the way out (the one-way --migrate promotion arrives with
 // slice #372): gplay never writes the legacy surface in place (ADR-0041 §8).
-// Any plan containing a delete refuses without --confirm (exit 3); lifecycle
-// states (purchase options, offers) are normalized out and not yet reconciled.
-// Edit-free, package axis. MarkMutating so GPLAY_READONLY refuses it (exit 4).
+// A declared lifecycle state on a purchase option or an offer (slice #541) is
+// reconciled through the dedicated state verbs, never a patch: purchase
+// options via purchaseOptions:batchUpdateStates (their only write path),
+// offers via :activate / :deactivate / :cancel. Any plan containing a delete
+// or an offer cancel (irreversible: pending pre-orders are cancelled too)
+// refuses without --confirm (exit 3). Edit-free, package axis. MarkMutating so
+// GPLAY_READONLY refuses it (exit 4).
 // --output json emits the plan (gplay-owned shape, the recorded ADR-0003
 // exception family). Ships [experimental] (ADR-0010).
 package apply
@@ -38,7 +42,10 @@ import (
 // widest updateMask a product patch can ever send (ADR-0041 §5).
 // purchaseOptions is declarable config riding the product patch (the
 // sub-resource only has batch state/delete endpoints); its output-only state
-// and the embedded offers array (a catalog-file construct) are normalized out.
+// is reconciled through batchUpdateStates by planStates instead (kept out of
+// the diff so a state change never doubles as a phantom patch, the
+// subscriptions stance), and the embedded offers array (a catalog-file
+// construct) is normalized out.
 var managedFields = []reconcile.Field{
 	{Name: "listings"},
 	{Name: "offerTags"},
@@ -48,8 +55,9 @@ var managedFields = []reconcile.Field{
 }
 
 // offerManagedFields is the offer-level projection: everything declarable on a
-// OneTimeProductOffer. Identity, output-only state and the server-stamped
-// regionsVersion are simply not listed, so they can never diff.
+// OneTimeProductOffer. Identity, the server-stamped regionsVersion and the
+// output-only state (reconciled by planStates through the state verbs) are
+// simply not listed, so they can never diff.
 var offerManagedFields = []reconcile.Field{
 	{Name: "regionalPricingAndAvailabilityConfigs"},
 	{Name: "offerTags"},
@@ -96,7 +104,48 @@ func (p Payload) verb(present, past string) string {
 
 func (p Payload) changeCount() int {
 	return len(p.Plan.Creates) + len(p.Plan.Patches) + len(p.Plan.Deletes) +
-		len(p.Plan.OfferCreates) + len(p.Plan.OfferPatches) + len(p.Plan.OfferDeletes)
+		len(p.Plan.OfferCreates) + len(p.Plan.OfferPatches) + len(p.Plan.OfferDeletes) +
+		len(p.Plan.StateChanges)
+}
+
+// stateOp names the verb a state change rides, in the plan's op vocabulary
+// (activate / deactivate / cancel): the same word in the table and the JSON.
+func stateOp(s reconcile.StateChange) string {
+	switch s.To {
+	case iap.OfferStateInactive:
+		return "deactivate"
+	case iap.OfferStateCancelled:
+		return "cancel"
+	default:
+		return "activate"
+	}
+}
+
+// statePast is the past tense of stateOp for an executed plan ("cancel"
+// doubles its consonant, so the suffix is not mechanical).
+func statePast(s reconcile.StateChange) string {
+	if s.To == iap.OfferStateCancelled {
+		return "cancelled"
+	}
+	return stateOp(s) + "d"
+}
+
+// stateTarget renders the identity a state change moves, in the composite
+// form the plan displays (productId/purchaseOptionId[/offerId]).
+func stateTarget(s reconcile.StateChange) string {
+	t := s.ProductID + "/" + s.PurchaseOptionID
+	if s.OfferID != "" {
+		t += "/" + s.OfferID
+	}
+	return t
+}
+
+// stateKindLabel is the human name of a state change's kind.
+func stateKindLabel(kind string) string {
+	if kind == "offer" {
+		return "offer"
+	}
+	return "purchase option"
 }
 
 func (p Payload) renderHuman(w io.Writer, markdown bool) error {
@@ -146,6 +195,11 @@ func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 			return err
 		}
 	}
+	for _, s := range p.Plan.StateChanges {
+		if err := line("%s %s %s (%s → %s)", p.verb(stateOp(s), statePast(s)), stateKindLabel(s.Kind), stateTarget(s), s.From, s.To); err != nil {
+			return err
+		}
+	}
 	for _, c := range p.Plan.OfferDeletes {
 		if err := line("%s offer %s", p.verb("delete", "deleted"), c.ProductID); err != nil {
 			return err
@@ -156,9 +210,9 @@ func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "summary: create=%d migrate=%d patch=%d delete=%d offerCreate=%d offerPatch=%d offerDelete=%d unchanged=%d\n",
+	if _, err := fmt.Fprintf(w, "summary: create=%d migrate=%d patch=%d delete=%d offerCreate=%d offerPatch=%d offerDelete=%d state=%d unchanged=%d\n",
 		len(p.Plan.Creates)-len(p.Migrating), len(p.Migrating), len(p.Plan.Patches), len(p.Plan.Deletes),
-		len(p.Plan.OfferCreates), len(p.Plan.OfferPatches), len(p.Plan.OfferDeletes), len(p.Plan.Unchanged)); err != nil {
+		len(p.Plan.OfferCreates), len(p.Plan.OfferPatches), len(p.Plan.OfferDeletes), len(p.Plan.StateChanges), len(p.Plan.Unchanged)); err != nil {
 		return err
 	}
 	if len(p.Requires) > 0 {
@@ -170,7 +224,9 @@ func (p Payload) renderHuman(w io.Writer, markdown bool) error {
 }
 
 // jsonChange is one plan entry of the flat --output json schema (gplay-owned,
-// ADR-0003 exception family). Offer entries carry purchaseOptionId/offerId.
+// ADR-0003 exception family). Offer entries carry purchaseOptionId/offerId;
+// state entries use op activate/deactivate/cancel with kind
+// purchaseOption/offer and the from/to states.
 type jsonChange struct {
 	Op               string   `json:"op"`
 	Kind             string   `json:"kind,omitempty"`
@@ -178,6 +234,8 @@ type jsonChange struct {
 	PurchaseOptionID string   `json:"purchaseOptionId,omitempty"`
 	OfferID          string   `json:"offerId,omitempty"`
 	Fields           []string `json:"fields,omitempty"`
+	From             string   `json:"from,omitempty"`
+	To               string   `json:"to,omitempty"`
 }
 
 type jsonView struct {
@@ -217,6 +275,9 @@ func (p Payload) renderJSON(w io.Writer) error {
 		pid, oid, off := splitOfferKey(c.ProductID)
 		changes = append(changes, jsonChange{Op: "patch", Kind: "offer", ProductID: pid, PurchaseOptionID: oid, OfferID: off, Fields: c.Fields})
 	}
+	for _, s := range p.Plan.StateChanges {
+		changes = append(changes, jsonChange{Op: stateOp(s), Kind: s.Kind, ProductID: s.ProductID, PurchaseOptionID: s.PurchaseOptionID, OfferID: s.OfferID, From: s.From, To: s.To})
+	}
 	for _, c := range p.Plan.OfferDeletes {
 		pid, oid, off := splitOfferKey(c.ProductID)
 		changes = append(changes, jsonChange{Op: "delete", Kind: "offer", ProductID: pid, PurchaseOptionID: oid, OfferID: off})
@@ -236,6 +297,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 			"offerCreate": len(p.Plan.OfferCreates),
 			"offerPatch":  len(p.Plan.OfferPatches),
 			"offerDelete": len(p.Plan.OfferDeletes),
+			"state":       len(p.Plan.StateChanges),
 			"unchanged":   len(p.Plan.Unchanged),
 		},
 		Requires: p.Requires,
@@ -298,6 +360,132 @@ func legacyEqual(local, live json.RawMessage) bool {
 	delete(l, "packageName")
 	delete(v, "packageName")
 	return reflect.DeepEqual(l, v)
+}
+
+// planStates computes the lifecycle transitions (slice #541): for every
+// purchase option and offer whose file declares a state, compare with the
+// live state (DRAFT for anything this very plan creates) and plan the
+// matching verb. A file that omits state declares nothing (missing =
+// unmanaged, the metadata stance); a declared state the verbs cannot reach is
+// a usage error naming the impossible transition. Products the plan deletes
+// are skipped: the parent delete takes their options and offers. Output is
+// sorted by target so plans are stable.
+func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMessage, liveOffers []iap.OfferItem, localOffers map[iapcmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
+	deletedProducts := map[string]bool{}
+	for _, c := range plan.Deletes {
+		deletedProducts[c.ProductID] = true
+	}
+	type optionsFrag struct {
+		PurchaseOptions []struct {
+			PurchaseOptionID string `json:"purchaseOptionId"`
+			State            string `json:"state"`
+		} `json:"purchaseOptions"`
+	}
+	liveOptionState := map[string]string{} // productId/purchaseOptionId → state
+	for productID, raw := range liveV2 {
+		var frag optionsFrag
+		if err := json.Unmarshal(raw, &frag); err != nil {
+			return fmt.Errorf("decode live one-time product %q: %w", productID, err)
+		}
+		for _, po := range frag.PurchaseOptions {
+			liveOptionState[productID+"/"+po.PurchaseOptionID] = po.State
+		}
+	}
+	productIDs := make([]string, 0, len(localV2))
+	for id := range localV2 {
+		productIDs = append(productIDs, id)
+	}
+	sort.Strings(productIDs)
+	for _, productID := range productIDs {
+		if deletedProducts[productID] {
+			continue
+		}
+		var frag optionsFrag
+		if err := json.Unmarshal(localV2[productID], &frag); err != nil {
+			return fmt.Errorf("decode declared one-time product %q: %w", productID, err)
+		}
+		for _, po := range frag.PurchaseOptions {
+			live, ok := liveOptionState[productID+"/"+po.PurchaseOptionID]
+			if !ok {
+				live = "DRAFT" // being created by this very plan
+			}
+			sc, err := stateTransition("purchaseOption", productID, po.PurchaseOptionID, "", po.State, live)
+			if err != nil {
+				return err
+			}
+			if sc != nil {
+				plan.StateChanges = append(plan.StateChanges, *sc)
+			}
+		}
+	}
+
+	liveOfferState := map[iapcmd.OfferKey]string{}
+	for _, o := range liveOffers {
+		var frag struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(o.Raw, &frag); err != nil {
+			return fmt.Errorf("decode live offer %s/%s/%s: %w", o.ProductID, o.PurchaseOptionID, o.OfferID, err)
+		}
+		liveOfferState[iapcmd.OfferKey{ProductID: o.ProductID, PurchaseOptionID: o.PurchaseOptionID, OfferID: o.OfferID}] = frag.State
+	}
+	for _, key := range iapcmd.SortedOfferKeys(localOffers) {
+		if deletedProducts[key.ProductID] {
+			continue
+		}
+		var frag struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(localOffers[key], &frag); err != nil {
+			return fmt.Errorf("decode declared offer %s: %w", key, err)
+		}
+		live, ok := liveOfferState[key]
+		if !ok {
+			live = "DRAFT" // being created by this very plan
+		}
+		sc, err := stateTransition("offer", key.ProductID, key.PurchaseOptionID, key.OfferID, frag.State, live)
+		if err != nil {
+			return err
+		}
+		if sc != nil {
+			plan.StateChanges = append(plan.StateChanges, *sc)
+		}
+	}
+	return nil
+}
+
+// stateTransition validates one declared-vs-live state pair and returns the
+// planned change (nil when nothing to do). Reachability follows the verbs:
+// ACTIVE from anything but CANCELLED (terminal on the API side), INACTIVE
+// only from ACTIVE (:deactivate, and purchaseOptions batch deactivate, both
+// refuse otherwise), CANCELLED only on an ACTIVE offer (:cancel exists for
+// pre-orders, purchase options have no such verb).
+func stateTransition(kind, productID, purchaseOptionID, offerID, declared, live string) (*reconcile.StateChange, error) {
+	if declared == "" || declared == live {
+		return nil, nil
+	}
+	sc := reconcile.StateChange{Kind: kind, ProductID: productID, PurchaseOptionID: purchaseOptionID, OfferID: offerID, From: live, To: declared}
+	label, target := stateKindLabel(kind), stateTarget(sc)
+	switch declared {
+	case iap.OfferStateActive:
+		if live == iap.OfferStateCancelled {
+			return nil, exit.Usagef("%s %s declares state ACTIVE while live is CANCELLED: a cancelled offer never comes back; fix the state: field or declare a new offer", label, target)
+		}
+	case iap.OfferStateInactive:
+		if live != iap.OfferStateActive {
+			return nil, exit.Usagef("%s %s declares state INACTIVE while live is %s: only an ACTIVE %s can be deactivated; fix the state: field or activate it first", label, target, live, label)
+		}
+	case iap.OfferStateCancelled:
+		if kind != "offer" {
+			return nil, exit.Usagef("%s %s declares state CANCELLED: only a pre-order offer can be cancelled (purchase options reach ACTIVE or INACTIVE); fix the state: field", label, target)
+		}
+		if live != iap.OfferStateActive {
+			return nil, exit.Usagef("%s %s declares state CANCELLED while live is %s: only an ACTIVE pre-order offer can be cancelled; fix the state: field", label, target, live)
+		}
+	default:
+		return nil, exit.Usagef("%s %s declares state %q while live is %s: the API can only reach ACTIVE (:activate), INACTIVE (:deactivate) or, for a pre-order offer, CANCELLED (:cancel); fix the state: field", label, target, declared, live)
+	}
+	return &sc, nil
 }
 
 // Run is the business function the kernel invokes.
@@ -391,9 +579,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes = offerPlan.Creates, offerPlan.Patches, offerPlan.Deletes
+	if err := planStates(localV2, liveV2, liveOffers, localOffers, &plan); err != nil {
+		return nil, err
+	}
+	// An offer cancel is as irreversible as a delete (the offer never comes
+	// back and its pending pre-orders are cancelled), so it rides the same
+	// --confirm gate.
+	cancels := 0
+	for _, s := range plan.StateChanges {
+		if s.To == iap.OfferStateCancelled {
+			cancels++
+		}
+	}
+	destructive := plan.HasDeletes() || cancels > 0
 
 	var requires []string
-	if plan.HasDeletes() {
+	if destructive {
 		requires = append(requires, "confirm")
 	}
 	if len(migrating) > 0 && !in.Migrate {
@@ -402,8 +603,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.DryRun || !plan.HasChanges() {
 		return Payload{Package: pkg, Dir: dir, Plan: plan, Migrating: migratingSet, DryRun: in.DryRun, Requires: requires}, nil
 	}
-	if plan.HasDeletes() && !in.Confirm {
-		return nil, exit.SafetyFlag("confirm", "this plan deletes %d one-time product(s) and %d offer(s) from the live catalog of %q and deletion cannot be undone; pass --confirm to proceed (rehearse first with --dry-run)", len(plan.Deletes), len(plan.OfferDeletes), pkg)
+	if destructive && !in.Confirm {
+		return nil, exit.SafetyFlag("confirm", "this plan deletes %d one-time product(s) and %d offer(s) and cancels %d pre-order offer(s) in the live catalog of %q, and neither can be undone; pass --confirm to proceed (rehearse first with --dry-run)", len(plan.Deletes), len(plan.OfferDeletes), cancels, pkg)
 	}
 
 	regionsVersion := strings.TrimSpace(in.RegionsVersion)
@@ -454,6 +655,58 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
+	// State moves, after the upserts so a resource this run creates can be
+	// activated in the same pass. Activations first, then deactivations, then
+	// the irreversible cancels last. Within a phase the tree order follows the
+	// direction: parents before children when growing (an offer only goes
+	// ACTIVE under an active purchase option), children first when shrinking.
+	// Purchase options are grouped per product into one batchUpdateStates
+	// call, their only write path; offers ride their unary verbs.
+	for _, phase := range []string{iap.OfferStateActive, iap.OfferStateInactive, iap.OfferStateCancelled} {
+		optionUpdates := map[string][]iap.PurchaseOptionStateUpdate{}
+		var (
+			productOrder []string
+			offers       []reconcile.StateChange
+		)
+		for _, s := range plan.StateChanges {
+			if s.To != phase {
+				continue
+			}
+			if s.Kind == "offer" {
+				offers = append(offers, s)
+				continue
+			}
+			if _, ok := optionUpdates[s.ProductID]; !ok {
+				productOrder = append(productOrder, s.ProductID)
+			}
+			optionUpdates[s.ProductID] = append(optionUpdates[s.ProductID], iap.PurchaseOptionStateUpdate{PurchaseOptionID: s.PurchaseOptionID, Activate: s.To == iap.OfferStateActive})
+		}
+		moveOptions := func() error {
+			for _, productID := range productOrder {
+				if _, err := iap.BatchUpdatePurchaseOptionStates(rc.Ctx, httpClient, pkg, productID, optionUpdates[productID]); err != nil {
+					return iapcmd.Classify(pkg, err)
+				}
+			}
+			return nil
+		}
+		moveOffers := func() error {
+			for _, s := range offers {
+				if _, err := iap.SetOfferState(rc.Ctx, httpClient, pkg, s.ProductID, s.PurchaseOptionID, s.OfferID, s.To); err != nil {
+					return iapcmd.Classify(pkg, err)
+				}
+			}
+			return nil
+		}
+		steps := []func() error{moveOffers, moveOptions}
+		if phase == iap.OfferStateActive {
+			steps = []func() error{moveOptions, moveOffers}
+		}
+		for _, step := range steps {
+			if err := step(); err != nil {
+				return nil, err
+			}
+		}
+	}
 	deletes := map[optionKey][]string{}
 	var deleteOrder []optionKey
 	for _, c := range plan.OfferDeletes {
@@ -474,9 +727,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
-	rc.Confirmf("one-time products applied to %q (%d created, %d migrated legacy→v2, %d patched, %d deleted; offers: %d created, %d patched, %d deleted)", pkg,
+	rc.Confirmf("one-time products applied to %q (%d created, %d migrated legacy→v2, %d patched, %d deleted; offers: %d created, %d patched, %d deleted; %d state change(s))", pkg,
 		len(plan.Creates)-len(migrating), len(migrating), len(plan.Patches), len(plan.Deletes),
-		len(plan.OfferCreates), len(plan.OfferPatches), len(plan.OfferDeletes))
+		len(plan.OfferCreates), len(plan.OfferPatches), len(plan.OfferDeletes), len(plan.StateChanges))
 	return Payload{Package: pkg, Dir: dir, Plan: plan, Migrating: migratingSet}, nil
 }
 
@@ -503,11 +756,20 @@ return to inappproducts), so it refuses without the flag (exit 3, naming it)
 and shows as a distinct "migrate" op in the plan. A legacy product shadowed
 by a live v2 product of the same ID is owned by the v2 file.
 
+A purchase option's or an offer's "state" field is reconciled through the
+dedicated state verbs, never a patch (omit the field to leave state
+unmanaged): a purchase option reaches ACTIVE or INACTIVE
+(purchaseOptions:batchUpdateStates), an offer reaches ACTIVE, INACTIVE (a
+discounted offer) or CANCELLED (a pre-order offer; its pending orders are
+cancelled too). State changes are listed in the plan as their own
+activate/deactivate/cancel entries and sent after creates and patches, so a
+product declared with an ACTIVE purchase option activates in the same run.
+
 --dry-run reads live Play and prints the plan without changing anything.
 Creates and patches run directly (a v2 create is a patch with allowMissing:
-the API has no insert); a plan containing any delete refuses without
---confirm (exit 3): CI=true never auto-confirms. Purchase-option and offer
-lifecycle states are not yet reconciled (normalized out of the diff).
+the API has no insert); a plan containing any delete, or any offer cancel
+(irreversible: a cancelled offer never comes back), refuses without
+--confirm (exit 3): CI=true never auto-confirms.
 
 --regions-version pins the regions version sent with writes (default
 ` + iapcmd.DefaultRegionsVersion + `). GPLAY_READONLY refuses the command
@@ -526,7 +788,7 @@ lifecycle states are not yet reconciled (normalized out of the diff).
 	cmd.Flags().StringVar(&in.Dir, "dir", iapcmd.DefaultDir, "catalog directory to reconcile from")
 	cmd.Flags().StringVar(&in.RegionsVersion, "regions-version", iapcmd.DefaultRegionsVersion, "regions version pin sent with writes")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the plan without committing (online)")
-	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize a destructive plan (required when the plan deletes products or offers)")
+	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize a destructive plan (required when the plan deletes products or offers, or cancels a pre-order offer)")
 	cmd.Flags().BoolVar(&in.Migrate, "migrate", false, "authorize one-way legacy→v2 promotions (required when a live legacy product is redeclared as v2)")
 	return cmd
 }

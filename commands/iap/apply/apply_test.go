@@ -25,8 +25,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// liveV2 serves one product with one purchase option (state ACTIVE): files
-// never declare that state, the normalizer keeps it out of every diff.
+// liveV2 serves one product with one purchase option (state ACTIVE): the
+// normalizer keeps that state out of the product diff, planStates reconciles
+// it separately when a file declares it.
 const liveV2 = `{"oneTimeProducts":[
   {"productId":"coins100","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE"}]}
 ]}`
@@ -392,6 +393,170 @@ func TestRun_dryRun_plansWithoutMutating(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("json %s missing %s", got, want)
 		}
+	}
+}
+
+// liveV2Inactive serves the same product as liveV2 with its purchase option
+// INACTIVE: the seed for activation tests.
+const liveV2Inactive = `{"oneTimeProducts":[
+  {"productId":"coins100","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"INACTIVE"}]}
+]}`
+
+// TestRun_purchaseOptionState_ridesBatchUpdateStates asserts a declared
+// state: ACTIVE on a live INACTIVE purchase option is one state change (no
+// phantom product patch) whose body hits purchaseOptions:batchUpdateStates
+// with the activate oneof, and that the unchanged offer state plans nothing.
+func TestRun_purchaseOptionState_ridesBatchUpdateStates(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+		"old_gems.json": `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`,
+	})
+	rt := &iapRT{v2Body: liveV2Inactive}
+	rc := newRC(t, rt)
+	r, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	m := rt.mutations()
+	if len(m) != 1 || !strings.HasSuffix(m[0], "/oneTimeProducts/coins100/purchaseOptions:batchUpdateStates") {
+		t.Fatalf("mutations = %v, want exactly the purchase-option batchUpdateStates call", m)
+	}
+	body := rt.bodies[m[0]]
+	want := `{"requests":[{"activatePurchaseOptionRequest":{"packageName":"com.example.app","productId":"coins100","purchaseOptionId":"buy"}}]}`
+	if body != want {
+		t.Errorf("batchUpdateStates body = %s, want %s", body, want)
+	}
+	var js bytes.Buffer
+	if err := r.Renderers().JSON(&js); err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	got := js.String()
+	for _, frag := range []string{`"op": "activate"`, `"kind": "purchaseOption"`, `"from": "INACTIVE"`, `"to": "ACTIVE"`, `"state": 1`} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("json %s missing %s", got, frag)
+		}
+	}
+	if strings.Contains(got, `"op": "patch"`) {
+		t.Errorf("json %s must not carry a phantom patch for the output-only state", got)
+	}
+}
+
+// TestRun_offerCancel_gated asserts a declared CANCELLED offer refuses
+// without --confirm (exit 3, no mutation) and calls :cancel with it.
+func TestRun_offerCancel_gated(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"CANCELLED","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+		"old_gems.json": `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`,
+	})
+	rt := &iapRT{}
+	rc := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 3)
+	if !strings.Contains(err.Error(), "--confirm") || !strings.Contains(err.Error(), "cancels 1") {
+		t.Errorf("refusal %q should name --confirm and the cancel", err.Error())
+	}
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("refusal must not mutate; got %v", m)
+	}
+
+	rt2 := &iapRT{}
+	rc2 := newRC(t, rt2)
+	r, err := applycmd.Run(rc2, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	if err != nil {
+		t.Fatalf("Run --confirm: %v", err)
+	}
+	m := rt2.mutations()
+	if len(m) != 1 || !strings.HasSuffix(m[0], "/oneTimeProducts/coins100/purchaseOptions/buy/offers/promo:cancel") {
+		t.Fatalf("mutations = %v, want exactly the offer :cancel call", m)
+	}
+	if body := rt2.bodies[m[0]]; !strings.Contains(body, `"offerId":"promo"`) {
+		t.Errorf(":cancel body %s must echo the offer identity", body)
+	}
+	var out bytes.Buffer
+	if err := r.Renderers().Table(&out); err != nil {
+		t.Fatalf("Table: %v", err)
+	}
+	if !strings.Contains(out.String(), "cancelled offer coins100/buy/promo (ACTIVE → CANCELLED)") {
+		t.Errorf("table %q should list the cancel", out.String())
+	}
+}
+
+// TestRun_stateDryRun_andOrdering asserts --dry-run lists state changes
+// without sending them, and that on a real run a product created in the same
+// pass is activated after its upsert (option before offer).
+func TestRun_stateDryRun_andOrdering(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+		"gems50.json":   `{"productId":"gems50","listings":[{"languageCode":"en-US","title":"Gems"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE","offers":[{"offerId":"launch","state":"ACTIVE"}]}]}`,
+		"old_gems.json": `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`,
+	})
+	rt := &iapRT{}
+	rc := newRC(t, rt)
+	r, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, DryRun: true})
+	if err != nil {
+		t.Fatalf("Run --dry-run: %v", err)
+	}
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("dry-run must not mutate; got %v", m)
+	}
+	var out bytes.Buffer
+	if err := r.Renderers().Table(&out); err != nil {
+		t.Fatalf("Table: %v", err)
+	}
+	for _, want := range []string{"activate purchase option gems50/buy (DRAFT → ACTIVE)", "activate offer gems50/buy/launch (DRAFT → ACTIVE)", "state=2"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("table %q missing %q", out.String(), want)
+		}
+	}
+
+	rt2 := &iapRT{}
+	rc2 := newRC(t, rt2)
+	if _, err := applycmd.Run(rc2, applycmd.Input{Package: "com.example.app", Dir: dir}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var order []string
+	for _, c := range rt2.mutations() {
+		switch {
+		case strings.Contains(c, "/onetimeproducts/gems50"):
+			order = append(order, "upsert")
+		case strings.HasSuffix(c, "/gems50/purchaseOptions/buy/offers:batchUpdate"):
+			order = append(order, "offerUpsert")
+		case strings.HasSuffix(c, "/gems50/purchaseOptions:batchUpdateStates"):
+			order = append(order, "optionActivate")
+		case strings.HasSuffix(c, "/gems50/purchaseOptions/buy/offers/launch:activate"):
+			order = append(order, "offerActivate")
+		}
+	}
+	if got := strings.Join(order, ","); got != "upsert,offerUpsert,optionActivate,offerActivate" {
+		t.Errorf("mutation order = %s, want upsert,offerUpsert,optionActivate,offerActivate (calls %v)", got, rt2.mutations())
+	}
+}
+
+// TestRun_unreachableState_isUsageError asserts a declared state the verbs
+// cannot reach (INACTIVE on a DRAFT offer, CANCELLED on a purchase option) is
+// refused before any call (exit 2).
+func TestRun_unreachableState_isUsageError(t *testing.T) {
+	for name, file := range map[string]string{
+		"inactive from draft offer":        `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]},{"offerId":"new","state":"INACTIVE"}]}]}`,
+		"cancelled purchase option":        `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"CANCELLED","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+		"unknown state on purchase option": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"INACTIVE_PUBLISHED","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeCatalog(t, map[string]string{
+				"coins100.json": file,
+				"old_gems.json": `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`,
+			})
+			rt := &iapRT{}
+			rc := newRC(t, rt)
+			_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, DryRun: true})
+			assertExit(t, err, 2)
+			if !strings.Contains(err.Error(), "state") {
+				t.Errorf("error %q should name the state: field", err.Error())
+			}
+			if m := rt.mutations(); len(m) != 0 {
+				t.Errorf("refusal must not mutate; got %v", m)
+			}
+		})
 	}
 }
 
