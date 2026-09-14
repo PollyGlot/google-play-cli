@@ -146,6 +146,12 @@ Three realities shape the design:
   envelope (operation `monetization.subscriptions.basePlans.delete`, with
   the deactivate-first hint) *after* running the plan's other changes,
   since the refusal is independent of them.
+- Offer and base-plan state changes ride the **unary** verbs
+  (`activate`/`deactivate`/`cancel`, one call per item, slice #551); the
+  `batchUpdateStates` siblings are declared redundant in the registry
+  ([ADR-0047](./0047-coverage-dispositions-redundant-and-parked.md)). Only
+  `purchaseOptions.batchUpdateStates` is called, that sub-resource having no
+  unary verb.
 - The `archived` subscription state is **not** reconciled: the current
   Discovery snapshot marks subscription archiving deprecated/output-only,
   so declared state is create/patch/delete only.
