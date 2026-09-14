@@ -1,7 +1,9 @@
 # ADR-0026 — Maximal coverage of Play admin APIs
 
 Date: 2026-06-13
-Status: accepted
+Status: accepted. Amended by [ADR-0047](./0047-coverage-dispositions-redundant-and-parked.md):
+a non-called method may also be declared *redundant* (its canonical is called)
+or *parked* (traced to a `type:parking` issue), next to the nature exclusions.
 
 ## Context
 
