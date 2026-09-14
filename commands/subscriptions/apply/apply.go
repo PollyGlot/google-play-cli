@@ -601,11 +601,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 // not in DRAFT (400, or 403 on some accounts) with the resolution the user
 // actually needs: a published plan must be deactivated first (declare
 // state: INACTIVE, apply, then drop it), the API never deletes it outright.
-// It carries no ExitCode or DiagnosticCode of its own, so the wrapped
-// *api.Error stays authoritative in the envelope: exit 30 / INVALID_ARGUMENT
-// on a 400, exit 11 / PERMISSION_DENIED on a 403, operation
-// monetization.subscriptions.basePlans.delete, upstream reasons verbatim
-// (ADR-0044).
+// It carries no ExitCode of its own, so the wrapped *api.Error stays
+// authoritative for the exit code, the operation
+// (monetization.subscriptions.basePlans.delete) and the verbatim upstream
+// reasons. It does declare its own diagnostic code (exit.Diagnoser,
+// ADR-0044): on the 400 the envelope says BASE_PLAN_NOT_DRAFT (exit 30)
+// rather than the generic INVALID_ARGUMENT, so an agent can branch on
+// "deactivate it first" without regexing the message. A 403 is left to the
+// classifier (exit 11 / PERMISSION_DENIED): the wrapper hedges that it may be
+// the same refusal on some accounts, but it cannot rule out a genuine
+// permission problem, and the hint text still travels in the message.
 type basePlanDeleteError struct {
 	pkg, productID, basePlanID string
 	others                     int
@@ -620,6 +625,16 @@ func (e *basePlanDeleteError) Error() string {
 	return msg
 }
 func (e *basePlanDeleteError) Unwrap() error { return e.cause }
+
+// DiagnosticCode implements exit.Diagnoser: BASE_PLAN_NOT_DRAFT on the 400
+// refusal, empty otherwise so the wrapped *api.Error keeps its own code.
+func (e *basePlanDeleteError) DiagnosticCode() exit.Code {
+	var apiErr *api.Error
+	if errors.As(e.cause, &apiErr) && apiErr.StatusCode == http.StatusBadRequest {
+		return exit.CodeBasePlanNotDraft
+	}
+	return ""
+}
 
 // NewCommand returns the cobra command for `gplay subscriptions apply`.
 func NewCommand(boot kernel.Boot) *cobra.Command {

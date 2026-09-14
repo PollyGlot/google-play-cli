@@ -739,6 +739,7 @@ rather than regexing the message for the word "already".
 | `VALIDATION_FAILED` | 20 | No | Client-side validation rejected the input |
 | `INVALID_ARGUMENT` | 30 | No | The API rejected the request as malformed (400) |
 | `NOT_FOUND` | 30 | No | No such package, track, Edit or resource (404) |
+| `BASE_PLAN_NOT_DRAFT` | 30 | No | `subscriptions apply`: the API only deletes a DRAFT base plan; deactivate it first, apply, then remove it |
 | `API_ERROR` | 30 | No | Other API 4xx rejection |
 | `UPSTREAM_UNAVAILABLE` | 40 | **Yes** | The API is temporarily unhealthy (5xx) |
 | `NETWORK_ERROR` | 50 | **Yes** | Transport failure with no HTTP response |
