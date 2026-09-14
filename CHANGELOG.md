@@ -5,6 +5,17 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/PollyGlot/google-play-cli/compare/v1.4.1...v1.5.0) (2026-09-13)
+
+
+### Features
+
+* **edits:** add `edits validate` and `edits status --live` ([#544](https://github.com/PollyGlot/google-play-cli/issues/544)) ([#547](https://github.com/PollyGlot/google-play-cli/issues/547)) ([40ad498](https://github.com/PollyGlot/google-play-cli/commit/40ad4982bfe479ba3f73eacf0b1446580761a9e9))
+* **iap:** reconcile purchase-option and offer lifecycle states in iap apply ([#551](https://github.com/PollyGlot/google-play-cli/issues/551)) ([a38b4ef](https://github.com/PollyGlot/google-play-cli/commit/a38b4ef86d818b1e74c18d4d912c3e13ae1214d4))
+* **releases:** add `releases artifacts list` for uploaded APKs and bundles ([#548](https://github.com/PollyGlot/google-play-cli/issues/548)) ([6174a23](https://github.com/PollyGlot/google-play-cli/commit/6174a230a59cd01ed8ec8f3a5da76773561681bf))
+* **subscriptions:** apply deletes removed draft base plans ([#549](https://github.com/PollyGlot/google-play-cli/issues/549)) ([19e0a4c](https://github.com/PollyGlot/google-play-cli/commit/19e0a4c276804e422938e623649365d4d0c6b638))
+* **vitals:** --describe prints a metric set's freshness (vitals.*.get) ([#550](https://github.com/PollyGlot/google-play-cli/issues/550)) ([6cd04cc](https://github.com/PollyGlot/google-play-cli/commit/6cd04cc32bf7cfedaf3ef3e4553f59be64eec1d1))
+
 ## [1.4.1](https://github.com/PollyGlot/google-play-cli/compare/v1.4.0...v1.4.1) (2026-09-03)
 
 
