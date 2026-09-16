@@ -5,6 +5,18 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/PollyGlot/google-play-cli/compare/v1.5.0...v1.6.0) (2026-09-16)
+
+
+### Features
+
+* **coverage:** declare redundant and parked dispositions in the API registry (ADR-0047) ([#557](https://github.com/PollyGlot/google-play-cli/issues/557)) ([b4372f7](https://github.com/PollyGlot/google-play-cli/commit/b4372f72532db1736eb6e4babaefcad844aaee12))
+
+
+### Bug Fixes
+
+* **subscriptions:** dedicated BASE_PLAN_NOT_DRAFT diagnostic code for a refused base plan delete ([#556](https://github.com/PollyGlot/google-play-cli/issues/556)) ([f6d1df1](https://github.com/PollyGlot/google-play-cli/commit/f6d1df1a77e243c5a6c00803211cc46319773d46))
+
 ## [1.5.0](https://github.com/PollyGlot/google-play-cli/compare/v1.4.1...v1.5.0) (2026-09-13)
 
 
