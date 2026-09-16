@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -207,6 +208,22 @@ func TestClassify_diagnoserRefinementWins(t *testing.T) {
 	}
 	if d.ExitCode != 60 {
 		t.Errorf("exitCode = %d, want 60 (the refinement does not move the exit code)", d.ExitCode)
+	}
+}
+
+// TestCodeCatalog_basePlanNotDraft pins the row `subscriptions apply` refines
+// a refused base plan delete to (#555): same exit bucket as the 400 it wraps,
+// not retryable (the caller must deactivate the plan first).
+func TestCodeCatalog_basePlanNotDraft(t *testing.T) {
+	doc, ok := exit.LookupCode(exit.CodeBasePlanNotDraft)
+	if !ok {
+		t.Fatal("BASE_PLAN_NOT_DRAFT missing from the catalog")
+	}
+	if doc.ExitCode != 30 || doc.Retryable {
+		t.Errorf("row = %+v, want exit 30 and not retryable", doc)
+	}
+	if !strings.Contains(doc.Meaning, "INACTIVE") {
+		t.Errorf("meaning %q must name the deactivate-first remedy", doc.Meaning)
 	}
 }
 

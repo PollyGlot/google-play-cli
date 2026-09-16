@@ -55,6 +55,13 @@ const (
 	CodeInvalidArgument Code = "INVALID_ARGUMENT"
 	// CodeNotFound is an upstream 404: the package, track or Edit is not there.
 	CodeNotFound Code = "NOT_FOUND"
+	// CodeBasePlanNotDraft is the refused base plan delete in `subscriptions
+	// apply`: the API only deletes a DRAFT base plan, a plan that was ever
+	// published must be deactivated first (declare state: INACTIVE, apply,
+	// then drop it). Without its own code a 400 would fall into
+	// INVALID_ARGUMENT and an agent could not tell "malformed request" from
+	// "deactivate it first", which is precisely the case the hint exists for.
+	CodeBasePlanNotDraft Code = "BASE_PLAN_NOT_DRAFT"
 	// CodeAPIError is the residual upstream 4xx bucket.
 	CodeAPIError Code = "API_ERROR"
 	// CodeUpstreamUnavailable is an upstream 5xx: Google is unhealthy, retry.
@@ -112,6 +119,7 @@ var codeCatalog = []CodeDoc{
 	{CodeValidationFailed, 20, false, "Client-side validation rejected the input before the API accepted it"},
 	{CodeInvalidArgument, 30, false, "The API rejected the request as malformed (400)"},
 	{CodeNotFound, 30, false, "The API found no such package, track, Edit or resource (404)"},
+	{CodeBasePlanNotDraft, 30, false, "The API only deletes a DRAFT base plan; deactivate it first (state: INACTIVE), apply, then remove it"},
 	{CodeAPIError, 30, false, "Other API 4xx rejection"},
 	{CodeUpstreamUnavailable, 40, true, "The API is temporarily unhealthy (5xx); retry"},
 	{CodeNetworkError, 50, true, "Network failure with no HTTP response: timeout, DNS, refused"},

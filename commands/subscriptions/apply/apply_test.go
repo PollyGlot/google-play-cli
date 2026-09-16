@@ -649,7 +649,8 @@ func TestRun_basePlanDelete_plannedAndGated(t *testing.T) {
 // TestRun_basePlanDelete_refusedByAPI_continues asserts a 400 on the base
 // plan DELETE (a published plan) does not abort the independent subscription
 // delete, is warned on stderr, and drives the final error: exit 30 with the
-// INVALID_ARGUMENT diagnostic code on the basePlans.delete operation and the
+// dedicated BASE_PLAN_NOT_DRAFT diagnostic code (not the generic
+// INVALID_ARGUMENT bucket, #555) on the basePlans.delete operation and the
 // deactivate-first hint (ADR-0044).
 func TestRun_basePlanDelete_refusedByAPI_continues(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
@@ -665,8 +666,8 @@ func TestRun_basePlanDelete_refusedByAPI_continues(t *testing.T) {
 		t.Fatalf("calls = %v, want the refused base plan DELETE and the subscription DELETE that follows it", rt.calls)
 	}
 	d := exit.Classify(err)
-	if d.Code != exit.CodeInvalidArgument || d.Operation != "monetization.subscriptions.basePlans.delete" || d.Package != "com.example.app" {
-		t.Errorf("diagnostic = %+v, want INVALID_ARGUMENT on basePlans.delete for the package", d)
+	if d.Code != exit.CodeBasePlanNotDraft || d.ExitCode != 30 || d.Retryable || d.Operation != "monetization.subscriptions.basePlans.delete" || d.Package != "com.example.app" {
+		t.Errorf("diagnostic = %+v, want BASE_PLAN_NOT_DRAFT (exit 30, not retryable) on basePlans.delete for the package", d)
 	}
 	if len(d.Reasons) != 1 || d.Reasons[0] != "badRequest" {
 		t.Errorf("reasons = %v, want the verbatim upstream reason", d.Reasons)
@@ -678,6 +679,50 @@ func TestRun_basePlanDelete_refusedByAPI_continues(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "premium/trial") {
 		t.Errorf("stderr %q should warn about the refused base plan delete", stderr.String())
+	}
+}
+
+// TestRun_basePlanDelete_notFound_keepsNotFound asserts a 404 on the base
+// plan DELETE is not the published-plan refusal: the run aborts (exit 30) and
+// the envelope keeps the generic NOT_FOUND code, so BASE_PLAN_NOT_DRAFT is
+// reserved for the 400 an agent must resolve by deactivating first (#555).
+func TestRun_basePlanDelete_notFound_keepsNotFound(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+	})
+	rt := &subsRT{refuse: map[string]scriptedRefusal{
+		"DELETE /subscriptions/premium/basePlans/trial": {404, `{"error":{"code":404,"message":"Base plan not found","errors":[{"reason":"notFound"}]}}`},
+	}}
+	rc, _ := newRCWithLive(t, rt, liveWithDraftPlan)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	assertExit(t, err, 30)
+	if d := exit.Classify(err); d.Code != exit.CodeNotFound || d.Operation != "monetization.subscriptions.basePlans.delete" {
+		t.Errorf("diagnostic = %+v, want NOT_FOUND on basePlans.delete", d)
+	}
+	if rt.saw("DELETE", "/subscriptions/gone") {
+		t.Errorf("calls = %v, a 404 must abort before the subscription delete", rt.calls)
+	}
+}
+
+// TestRun_basePlanDelete_forbidden_keepsPermissionDenied asserts the 403
+// variant of the refusal is still warned and continued past, but keeps exit
+// 11 / PERMISSION_DENIED: the wrapper cannot rule out a genuine permission
+// problem, so it does not claim BASE_PLAN_NOT_DRAFT there.
+func TestRun_basePlanDelete_forbidden_keepsPermissionDenied(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+	})
+	rt := &subsRT{refuse: map[string]scriptedRefusal{
+		"DELETE /subscriptions/premium/basePlans/trial": {403, `{"error":{"code":403,"message":"forbidden","errors":[{"reason":"forbidden"}]}}`},
+	}}
+	rc, _ := newRCWithLive(t, rt, liveWithDraftPlan)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	assertExit(t, err, 11)
+	if d := exit.Classify(err); d.Code != exit.CodePermissionDenied {
+		t.Errorf("diagnostic = %+v, want PERMISSION_DENIED on a 403", d)
+	}
+	if !rt.saw("DELETE", "/subscriptions/gone") {
+		t.Errorf("calls = %v, a 403 refusal must still continue with the subscription delete", rt.calls)
 	}
 }
 
