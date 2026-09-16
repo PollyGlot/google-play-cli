@@ -1118,7 +1118,7 @@
       }
     }
   },
-  "revision": "20260903",
+  "revision": "20260910",
   "rootUrl": "https://playdeveloperreporting.googleapis.com/",
   "schemas": {
     "ApiservingMcpMcpToolVisibility": {
