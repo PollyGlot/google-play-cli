@@ -62,8 +62,9 @@ func TestRenderIsDeterministic(t *testing.T) {
 }
 
 // TestEveryMethodAppearsExactlyOnce is the completeness claim the document
-// makes: one row per method of paths.txt, no more, no less, in one of the three
-// states. It reads the committed file, so it also catches a row deleted by hand.
+// makes: one row per method of paths.txt, no more, no less, in one of the
+// rendered marks. It reads the committed file, so it also catches a row
+// deleted by hand.
 func TestEveryMethodAppearsExactlyOnce(t *testing.T) {
 	raw, err := os.ReadFile(pathsIndex)
 	if err != nil {
@@ -86,7 +87,7 @@ func TestEveryMethodAppearsExactlyOnce(t *testing.T) {
 		id := strings.Trim(strings.TrimSpace(cells[0]), "`")
 		state := strings.TrimSpace(cells[1])
 		switch state {
-		case "✅", "⚫️", "🔴":
+		case "✅", "⚫️", "⚪", "🔴":
 			rows[id]++
 		default:
 			t.Errorf("method %q carries unknown state %q", id, state)
@@ -107,6 +108,31 @@ func TestEveryMethodAppearsExactlyOnce(t *testing.T) {
 	}
 	for id := range rows {
 		t.Errorf("COVERAGE.md has a row for %q, which paths.txt does not know", id)
+	}
+}
+
+// TestNoUncoveredRowWithoutAnIssue is the promise of ADR-0047 read from the
+// committed file: every 🔴 row is parked behind an issue link. A new Discovery
+// method lands here as a bare 🔴 and fails this test until it is registered,
+// excluded, declared redundant or parked: that is the point, the table can no
+// longer lie by omission.
+func TestNoUncoveredRowWithoutAnIssue(t *testing.T) {
+	doc, err := os.ReadFile(coveragePath)
+	if err != nil {
+		t.Fatalf("read COVERAGE.md: %v", err)
+	}
+	for _, line := range strings.Split(string(doc), "\n") {
+		if !strings.HasPrefix(line, "| `") {
+			continue
+		}
+		cells := strings.Split(strings.Trim(line, "|"), "|")
+		if len(cells) != 3 || strings.TrimSpace(cells[1]) != "🔴" {
+			continue
+		}
+		if !strings.Contains(cells[2], "/issues/") {
+			t.Errorf("method %s is uncovered with no issue: register it, exclude it, declare it redundant or park it (internal/apiregistry, ADR-0047)",
+				strings.TrimSpace(cells[0]))
+		}
 	}
 }
 
