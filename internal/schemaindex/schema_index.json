@@ -1,5 +1,5 @@
 {
-  "revision": "20260910",
+  "revision": "20260921",
   "services": {
     "androidpublisher": {
       "rootUrl": "https://androidpublisher.googleapis.com/",
@@ -5441,6 +5441,10 @@
     "AppStoreAppActiveApkSet": {
       "description": "An installable set of active APKs. All APKs in this set should belong to the same version of the app. A set of APKs might only contain 1 APK if the app in question publishes using APKs. If the app uses app bundles (or a similar technology), this set should contain all APKs (even optional ones) that might be installed for this app. A set of APKs should be installable together. If certain APKs are exclusive to one another and cannot be installed together, then a separate AppStoreAppActiveApkSet should be created.",
       "properties": {
+        "alreadyPublishedOnPlay": {
+          "type": "boolean",
+          "description": "Optional. Whether all APKs referenced in this active APK set are published on Play Store (or derived from an app bundle published on Play Store). When this is set, version_code must be provided."
+        },
         "baseApkId": {
           "type": "string",
           "description": "Required. The ID for the main base application module. Example: base.apk or app.apk."
@@ -5449,6 +5453,10 @@
           "type": "string",
           "repeated": true,
           "description": "Optional. IDs for split modules that might be installed in combination with the base APK. Can be empty if app bundles (or a similar technology) are not used. Example: config.en.apk."
+        },
+        "versionCode": {
+          "type": "string",
+          "description": "Optional. Version code for the version this APK set represents."
         }
       }
     },
