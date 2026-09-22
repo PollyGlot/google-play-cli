@@ -13,7 +13,8 @@
 //     jq line. This deliberately diverges from `releases upload --dry-run`
 //     (offline); the offline role is held by `metadata validate`.
 //   - --confirm performs the real publish (one Edit, one commit, atomic).
-//     --output json is the per-locale listings.patch response bodies.
+//     --output json is the per-locale write response bodies
+//     (listings.patch for a live locale, listings.update for a new one).
 //     Without --confirm a real apply refuses (exit 3: safety flag
 //     required) and points at --dry-run; CI=true never auto-confirms.
 package apply
@@ -86,6 +87,20 @@ func (e *packageNotFoundError) Error() string {
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
+// listingNotFoundError is the 404 of a per-locale Listing write or delete:
+// the package resolved (the Edit opened and the Listings were read), only
+// that language's Listing is missing. Pointing at `gplay apps list` there
+// sent the operator after the wrong cause (#561).
+type listingNotFoundError struct {
+	locale string
+	cause  error
+}
+
+func (e *listingNotFoundError) Error() string {
+	return fmt.Sprintf("no Listing for language %q on Play (the package itself was found): check the locale code, or preview with `gplay metadata apply --dry-run`: %v", e.locale, e.cause)
+}
+func (e *listingNotFoundError) Unwrap() error { return e.cause }
+
 type forbiddenError struct {
 	pkg   string
 	cause error
@@ -97,14 +112,20 @@ func (e *forbiddenError) Error() string {
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
 // classifyEditError adds the 404/403 hints, leaving the wrapped *api.Error
-// to drive the exit code. The orchestrator's own errors (the --confirm
-// safety refusal, Validation, PruneDefaultLanguage) are not *api.Error, so
-// they pass through untouched with their own exit codes.
+// to drive the exit code. A 404 on a per-locale call (an
+// *orchestrator.LocaleError) is about that language's Listing, not the
+// package. The orchestrator's own errors (the --confirm safety refusal,
+// Validation, PruneDefaultLanguage) are not *api.Error, so they pass
+// through untouched with their own exit codes.
 func classifyEditError(pkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
 		switch apiErr.StatusCode {
 		case http.StatusNotFound:
+			var locErr *orchestrator.LocaleError
+			if errors.As(err, &locErr) {
+				return &listingNotFoundError{locale: locErr.Locale, cause: err}
+			}
 			return &packageNotFoundError{pkg: pkg, cause: err}
 		case http.StatusForbidden:
 			return &forbiddenError{pkg: pkg, cause: err}
@@ -115,7 +136,7 @@ func classifyEditError(pkg string, err error) error {
 
 // Payload renders an orchestrator.Result. The shape switches on Result.DryRun:
 // a dry-run renders the diff (JSON = gplay diff schema), a real apply renders
-// what was published (JSON = per-locale patch bodies).
+// what was published (JSON = per-locale write bodies).
 type Payload struct {
 	Result *orchestrator.Result
 }
@@ -162,8 +183,16 @@ func applyRows(r *orchestrator.Result) [][]string {
 		patched = append(patched, loc)
 	}
 	sort.Strings(patched)
+	created := make(map[string]bool, len(r.Created))
+	for _, loc := range r.Created {
+		created[loc] = true
+	}
 	for _, loc := range patched {
-		rows = append(rows, []string{loc, "patched"})
+		action := "patched"
+		if created[loc] {
+			action = "created"
+		}
+		rows = append(rows, []string{loc, action})
 	}
 	for _, loc := range r.Pruned { // already sorted by the orchestrator
 		rows = append(rows, []string{loc, "pruned (deleted)"})
@@ -231,8 +260,9 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 }
 
 // renderJSON emits the gplay diff schema for a dry-run (ADR-0011 §6), or the
-// per-locale listings.patch bodies for a real apply. A pruned locale is
-// reported as {"pruned":true}.
+// per-locale write bodies for a real apply (listings.patch, or
+// listings.update for a created locale). A pruned locale is reported as
+// {"pruned":true}.
 func (p Payload) renderJSON(w io.Writer) error {
 	r := p.Result
 	if r.DryRun {
@@ -297,9 +327,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, classifyEditError(pkg, err)
 	}
 	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
-	// --dry-run), reporting how many locales were patched (and pruned, if any).
+	// --dry-run), reporting how many locales were patched (and created or
+	// pruned, if any). Created locales are counted apart, not as patched.
 	if !in.DryRun {
 		detail := fmt.Sprintf("%d locale(s) patched", len(res.Patched))
+		if len(res.Created) > 0 {
+			detail = fmt.Sprintf("%d locale(s) created, %d patched", len(res.Created), len(res.Patched)-len(res.Created))
+		}
 		if len(res.Pruned) > 0 {
 			detail += fmt.Sprintf(", %d pruned", len(res.Pruned))
 		}
@@ -336,8 +370,9 @@ jq line: jq -e '.summary.create + .summary.update > 0'.
 
 A real apply requires --confirm (every committed Listing is live on the
 store immediately); without it apply refuses and points here. CI=true does
-NOT auto-confirm. The publish is atomic: all locales patch inside one Edit
-committed once, and any per-locale failure discards the Edit (0 published).`,
+NOT auto-confirm. The publish is atomic: all locales are written inside one
+Edit committed once (a locale new to Play is created, a live one patched),
+and any per-locale failure discards the Edit (0 published).`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

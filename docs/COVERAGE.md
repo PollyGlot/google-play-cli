@@ -30,13 +30,13 @@ worth shipping.
 
 | Service | Methods | ✅ called | ⚪ redundant | ⚫️ excluded | 🔴 parked | 🔴 uncovered |
 |---|---:|---:|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 92 | 32 | 11 | 10 | 0 |
+| `androidpublisher` v3 | 145 | 93 | 31 | 11 | 10 | 0 |
 | `playdeveloperreporting` v1beta1 | 25 | 24 | 0 | 0 | 1 | 0 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 | 0 | 0 |
-| **Total** | **181** | **127** | **32** | **11** | **11** | **0** |
+| **Total** | **181** | **128** | **31** | **11** | **11** | **0** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **127 are called**, **32 are redundant** with a called method, **11 are parked** behind an issue and **0 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **128 are called**, **31 are redundant** with a called method, **11 are parked** behind an issue and **0 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -88,8 +88,8 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **127 are 
 | `androidpublisher.edits.listings.deleteall` | ⚪ | redundant with `androidpublisher.edits.listings.delete`: drops every locale at once; `metadata apply --prune` deletes locale by locale and refuses the defaultLanguage Listing (ADR-0011) |
 | `androidpublisher.edits.listings.get` | ✅ | `gplay metadata pull` |
 | `androidpublisher.edits.listings.list` | ✅ | `gplay metadata list`, `gplay metadata pull`, `gplay metadata images list` |
-| `androidpublisher.edits.listings.patch` | ✅ | `gplay metadata apply` |
-| `androidpublisher.edits.listings.update` | ⚪ | redundant with `androidpublisher.edits.listings.patch`: full-body `update` of a Listing; `metadata apply` upserts fields through `patch` (Additive sync, ADR-0011) |
+| `androidpublisher.edits.listings.patch` | ✅ | `gplay metadata apply`; writes the changed fields of a locale already live (ADR-0011: missing is not empty) |
+| `androidpublisher.edits.listings.update` | ✅ | `gplay metadata apply`; creates a locale absent online, which patch cannot (#561) |
 | `androidpublisher.edits.testers.get` | ✅ | `gplay testers list` |
 | `androidpublisher.edits.testers.patch` | ⚪ | redundant with `androidpublisher.edits.testers.update`: partial write of a single-field resource; `testers set` replaces the whole group list through `update` |
 | `androidpublisher.edits.testers.update` | ✅ | `gplay testers set` |

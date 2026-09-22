@@ -167,11 +167,6 @@ var redundancies = []Redundant{
 		Reason:      "drops every locale at once; `metadata apply --prune` deletes locale by locale and refuses the defaultLanguage Listing (ADR-0011)",
 	},
 	{
-		MethodID:    "androidpublisher.edits.listings.update",
-		CanonicalID: "androidpublisher.edits.listings.patch",
-		Reason:      "full-body `update` of a Listing; `metadata apply` upserts fields through `patch` (Additive sync, ADR-0011)",
-	},
-	{
 		MethodID:    "androidpublisher.edits.testers.patch",
 		CanonicalID: "androidpublisher.edits.testers.update",
 		Reason:      "partial write of a single-field resource; `testers set` replaces the whole group list through `update`",

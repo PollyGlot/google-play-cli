@@ -23,8 +23,10 @@ import (
 
 // fakeRT routes the androidpublisher Edit + listings sequence and records
 // every request line. Canned online Listings come from listingsBody;
-// defaultLanguage from detailsLang. failPatch / failDelete inject a 500 on
-// a given locale to test atomicity. Any unexpected call fails the test.
+// defaultLanguage from detailsLang. failPatchLoc / failDeleteLoc inject a
+// 500 on a given locale to test atomicity (failPatchLoc covers both Listing
+// writes, PATCH and PUT); notFoundLoc answers 404 to either write on that
+// locale. Any unexpected call fails the test.
 type fakeRT struct {
 	t             *testing.T
 	editID        string
@@ -32,10 +34,12 @@ type fakeRT struct {
 	detailsLang   string // defaultLanguage for edits.details.get
 	failPatchLoc  string // locale whose PATCH returns 500
 	failDeleteLoc string // locale whose DELETE returns 500
+	notFoundLoc   string // locale whose PATCH/PUT returns 404
 
 	mu        sync.Mutex
 	calls     []string
 	patchBody map[string]string // locale -> raw PATCH body received
+	putBody   map[string]string // locale -> raw PUT body received
 }
 
 func (r *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -43,6 +47,9 @@ func (r *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	defer r.mu.Unlock()
 	if r.patchBody == nil {
 		r.patchBody = map[string]string{}
+	}
+	if r.putBody == nil {
+		r.putBody = map[string]string{}
 	}
 	path := req.URL.Path
 	r.calls = append(r.calls, req.Method+" "+path)
@@ -56,14 +63,21 @@ func (r *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp(200, r.listingsBody), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(path, "/details"):
 		return resp(200, `{"defaultLanguage":"`+r.detailsLang+`","contactEmail":"x@y.z"}`), nil
-	case req.Method == http.MethodPatch && strings.Contains(path, "/listings/"):
+	case (req.Method == http.MethodPatch || req.Method == http.MethodPut) && strings.Contains(path, "/listings/"):
 		loc := path[strings.LastIndex(path, "/")+1:]
 		body, _ := io.ReadAll(req.Body)
-		r.patchBody[loc] = string(body)
+		if req.Method == http.MethodPut {
+			r.putBody[loc] = string(body)
+		} else {
+			r.patchBody[loc] = string(body)
+		}
 		if loc == r.failPatchLoc {
 			return resp(500, `{"error":{"code":500,"message":"boom"}}`), nil
 		}
-		return resp(200, `{"language":"`+loc+`","patched":true}`), nil
+		if loc == r.notFoundLoc {
+			return resp(404, `{"error":{"code":404,"message":"Listing for language '`+loc+`' not found."}}`), nil
+		}
+		return resp(200, `{"language":"`+loc+`","written":"`+req.Method+`"}`), nil
 	case req.Method == http.MethodDelete && strings.Contains(path, "/listings/"):
 		loc := path[strings.LastIndex(path, "/")+1:]
 		if loc == r.failDeleteLoc {
@@ -239,6 +253,15 @@ func TestApply_publishesAtomically(t *testing.T) {
 	if !rt.saw("PATCH", "/listings/en-US") || !rt.saw("PATCH", "/listings/fr-FR") {
 		t.Errorf("expected PATCH on both locales; calls=%v", rt.calls)
 	}
+	// en-US carries a field-level `create` (title absent online) but the
+	// locale is live: it must stay a PATCH, never a PUT that would blank
+	// the unchanged fullDescription.
+	if rt.saw("PUT", "/listings/") {
+		t.Errorf("a live locale was written with PUT; calls=%v", rt.calls)
+	}
+	if len(res.Created) != 0 {
+		t.Errorf("Created = %v, want none (both locales are live)", res.Created)
+	}
 	if !rt.saw("POST", ":commit") {
 		t.Error("expected exactly one commit")
 	}
@@ -258,7 +281,7 @@ func TestApply_publishesAtomically(t *testing.T) {
 }
 
 // TestApply_atomicFailure_discardsZeroPublished: when the second locale's
-// PATCH fails, the Edit auto-discards and nothing is committed.
+// write fails, the Edit auto-discards and nothing is committed.
 func TestApply_atomicFailure_discardsZeroPublished(t *testing.T) {
 	local := listing.Tree{
 		"en-US": ml("en-US", "title", "Hello", "full", "Long"),
@@ -269,7 +292,7 @@ func TestApply_atomicFailure_discardsZeroPublished(t *testing.T) {
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", Confirm: true})
 	if err == nil {
-		t.Fatal("expected an error when a locale PATCH fails")
+		t.Fatal("expected an error when a locale write fails")
 	}
 	if rt.saw("POST", ":commit") {
 		t.Error("commit happened despite a failed PATCH, not atomic")
@@ -464,5 +487,91 @@ func TestApply_dryRunPrune_showsDeleteNoExecute(t *testing.T) {
 	}
 	if rt.saw("DELETE", "/listings/") || rt.saw("POST", ":commit") {
 		t.Errorf("dry-run prune executed a delete/commit; calls=%v", rt.calls)
+	}
+}
+
+// TestApply_newLocale_createdByPUT_liveLocalePatched is the #561 fix: a
+// locale absent from the listings.list read is created with
+// edits.listings.update (PUT) carrying its complete Listing, while a live
+// locale keeps edits.listings.patch with only its changed fields.
+func TestApply_newLocale_createdByPUT_liveLocalePatched(t *testing.T) {
+	local := listing.Tree{
+		"en-US": ml("en-US", "title", "New title", "full", "Long"), // live: title update, full unchanged
+		"de-DE": ml("de-DE", "title", "Meine App", "short", "Kurz", "full", "Lange Beschreibung"),
+	}
+	rt := &fakeRT{t: t, editID: "e561",
+		listingsBody: `{"listings":[{"language":"en-US","title":"Old title","fullDescription":"Long"}]}`}
+	res, err := orchestrator.Apply(context.Background(), client(rt), local,
+		orchestrator.Opts{Package: "com.x", Confirm: true})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	if !rt.saw("PUT", "/applications/com.x/edits/e561/listings/de-DE") {
+		t.Errorf("expected PUT on the new de-DE locale; calls=%v", rt.calls)
+	}
+	if rt.saw("PATCH", "/listings/de-DE") {
+		t.Errorf("new de-DE locale was PATCHed (Play answers 404); calls=%v", rt.calls)
+	}
+	if !rt.saw("PATCH", "/listings/en-US") || rt.saw("PUT", "/listings/en-US") {
+		t.Errorf("live en-US must be PATCHed, never PUT; calls=%v", rt.calls)
+	}
+	if !rt.saw("POST", ":commit") {
+		t.Error("expected exactly one commit")
+	}
+
+	// The PUT body is the complete new Listing.
+	var deBody map[string]string
+	if err := json.Unmarshal([]byte(rt.putBody["de-DE"]), &deBody); err != nil {
+		t.Fatalf("de-DE PUT body is not JSON: %v (%q)", err, rt.putBody["de-DE"])
+	}
+	want := map[string]string{
+		"language": "de-DE", "title": "Meine App",
+		"shortDescription": "Kurz", "fullDescription": "Lange Beschreibung",
+	}
+	if len(deBody) != len(want) {
+		t.Errorf("de-DE PUT body = %v, want %v", deBody, want)
+	}
+	for k, v := range want {
+		if deBody[k] != v {
+			t.Errorf("de-DE PUT body[%s] = %q, want %q", k, deBody[k], v)
+		}
+	}
+	// The PATCH body still carries only the changed field.
+	var enBody map[string]string
+	_ = json.Unmarshal([]byte(rt.patchBody["en-US"]), &enBody)
+	if enBody["title"] != "New title" {
+		t.Errorf("en-US patch body = %v, want title=New title", enBody)
+	}
+	if _, ok := enBody["fullDescription"]; ok {
+		t.Errorf("en-US patch body leaked unchanged fullDescription: %v", enBody)
+	}
+
+	if len(res.Created) != 1 || res.Created[0] != "de-DE" {
+		t.Errorf("Created = %v, want [de-DE]", res.Created)
+	}
+	if len(res.Patched) != 2 {
+		t.Errorf("Patched = %v, want both written locales (pass-through bodies)", res.Patched)
+	}
+}
+
+// TestApply_localeWrite404_isLocaleError: a 404 on a per-locale write comes
+// back as a *orchestrator.LocaleError naming the language, with the
+// *api.Error still reachable (exit 30 unchanged), and the Edit discarded.
+func TestApply_localeWrite404_isLocaleError(t *testing.T) {
+	local := listing.Tree{"de-DE": ml("de-DE", "title", "Meine App", "full", "Lang")}
+	rt := &fakeRT{t: t, editID: "e404", notFoundLoc: "de-DE",
+		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`}
+	_, err := orchestrator.Apply(context.Background(), client(rt), local,
+		orchestrator.Opts{Package: "com.x", Confirm: true})
+	var locErr *orchestrator.LocaleError
+	if !errors.As(err, &locErr) || locErr.Locale != "de-DE" {
+		t.Fatalf("err = %v (%T), want *orchestrator.LocaleError for de-DE", err, err)
+	}
+	if code := exitCode(t, err); code != 30 {
+		t.Errorf("exit = %d, want 30 (the wrapped 404)", code)
+	}
+	if rt.saw("POST", ":commit") || !rt.saw("DELETE", "/edits/e404") {
+		t.Errorf("expected discard and no commit; calls=%v", rt.calls)
 	}
 }

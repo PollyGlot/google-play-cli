@@ -100,3 +100,19 @@ back on**. That difference drives the safety model below.
   `listings.patch` bodies, not a single pass-through).
 - `apply` and `pull` are symmetric around the missing-vs-empty rule, so
   `pull` then `apply` with no edits is a guaranteed no-op.
+
+## Note (2026-09-22, #561)
+
+Decision 2 assumed PATCH could create a locale. It cannot: on a language
+with no Listing, `edits.listings.patch` answers 404, so every `create` the
+diff planned for a new locale failed and discarded the Edit. `apply` now
+picks the verb per locale from the `listings.list` read it already makes:
+a locale live on Play keeps `listings.patch` (missing ≠ empty, unchanged),
+a locale absent online is created with `listings.update` (PUT), which loses
+nothing because there is no live field to preserve. The choice is per
+locale, not per field `op`: a field-level `create` on a live locale (a
+video added to `en-US`) stays a PATCH. A fallback to PUT on a PATCH 404 was
+rejected: it spends a failing call per new locale, and a 404 there cannot
+be told apart from a vanished Edit without parsing Google's message. The
+real `apply` JSON (decision 6) is thus the per-locale write body, from
+`listings.update` for a created locale.
