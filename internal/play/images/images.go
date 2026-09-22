@@ -199,12 +199,12 @@ func List(ctx context.Context, hc *http.Client, pkg, editID, language string, im
 }
 
 // Upload sends one image's bytes into a slot at edits.images.upload, using the
-// same simple-media protocol as bundles.upload (the upload sub-host,
-// uploadType=media, Content-Type: application/octet-stream). It returns the
-// Image Google created: crucially its sha256, which `apply` compares against
-// the local file's hash. images.upload APPENDS to a gallery (there is no
-// position parameter); ordering is the caller's job (upload in name order
-// after a DeleteAll: ADR-0013).
+// simple-media protocol (the upload sub-host, uploadType=media) with the media
+// type sniffed from the bytes. It returns the Image Google created: crucially
+// its sha256, which `apply` compares against the local file's hash.
+// images.upload APPENDS to a gallery (there is no position parameter);
+// ordering is the caller's job (upload in name order after a DeleteAll:
+// ADR-0013).
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, data []byte) (*Image, error) {
 	u, err := methodUpload.UploadURL(slotParams(pkg, editID, language, imageType))
 	if err != nil {
@@ -221,7 +221,13 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 	req.GetBody = func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(data)), nil
 	}
-	req.Header.Set("Content-Type", "application/octet-stream")
+	// The endpoint declares `image/*` and rejects application/octet-stream with
+	// a 400 (#560), so the type is sniffed from the leading bytes, as
+	// appstore.UploadImage does. A type other than png/jpeg is sent as sniffed,
+	// not refused here: the default apply path already decodes every file as
+	// png/jpeg upstream (imagevalidate), and --no-validate hands the verdict to
+	// Play, whose 400 then names the type actually sent (ADR-0013 §4).
+	req.Header.Set("Content-Type", http.DetectContentType(data))
 	resp, err := hc.Do(req)
 	if err != nil {
 		return nil, &api.Error{Operation: opImagesUpload, Package: pkg, Message: err.Error(), Cause: err}

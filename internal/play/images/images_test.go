@@ -11,6 +11,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -123,8 +126,8 @@ func TestList_absentSlotIsEmpty(t *testing.T) {
 }
 
 // TestUpload_usesMediaProtocol_andParsesImage asserts Upload POSTs the bytes
-// to the upload sub-host with uploadType=media + octet-stream, and parses
-// the {"image":{...}} envelope.
+// to the upload sub-host with uploadType=media, and parses the
+// {"image":{...}} envelope.
 func TestUpload_usesMediaProtocol_andParsesImage(t *testing.T) {
 	transport := &rt{body: `{"image":{"id":"new1","url":"https://play/img/new1","sha1":"s1","sha256":"s256"}}`}
 	hc := &http.Client{Transport: transport}
@@ -147,14 +150,49 @@ func TestUpload_usesMediaProtocol_andParsesImage(t *testing.T) {
 	if !strings.Contains(transport.gotQuery, "uploadType=media") {
 		t.Errorf("query = %q, want uploadType=media", transport.gotQuery)
 	}
-	if transport.gotType != "application/octet-stream" {
-		t.Errorf("Content-Type = %q, want application/octet-stream", transport.gotType)
-	}
 	if !bytes.Equal(transport.gotBody, data) {
 		t.Errorf("uploaded body = %q, want the image bytes verbatim", transport.gotBody)
 	}
 	if img.ID != "new1" || img.Sha256 != "s256" {
 		t.Errorf("image = %+v, want id=new1 sha256=s256", img)
+	}
+}
+
+// TestUpload_announcesSniffedMediaType pins #560: edits.images.upload accepts
+// only image/* and answers application/octet-stream with a 400, so every
+// upload failed. Real encoder output (true magic bytes) must go out as
+// image/png or image/jpeg; any other type is announced as sniffed, never
+// masked as octet-stream, so Play's rejection names the real type.
+func TestUpload_announcesSniffedMediaType(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	var pngBuf, jpegBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, img); err != nil {
+		t.Fatalf("png.Encode: %v", err)
+	}
+	if err := jpeg.Encode(&jpegBuf, img, nil); err != nil {
+		t.Fatalf("jpeg.Encode: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		data []byte
+		want string
+	}{
+		{"png", pngBuf.Bytes(), "image/png"},
+		{"jpeg", jpegBuf.Bytes(), "image/jpeg"},
+		{"gif passes through for Play to judge", []byte("GIF89a\x01\x00\x01\x00"), "image/gif"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := &rt{body: `{"image":{"id":"new1","sha256":"s256"}}`}
+			hc := &http.Client{Transport: transport}
+			if _, err := images.Upload(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.FeatureGraphic, tc.data); err != nil {
+				t.Fatalf("Upload: %v", err)
+			}
+			if transport.gotType != tc.want {
+				t.Errorf("Content-Type = %q, want %q", transport.gotType, tc.want)
+			}
+		})
 	}
 }
 
