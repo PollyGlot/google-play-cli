@@ -454,7 +454,12 @@ the cache another PR reads. With the build cache warm, Go also reuses **test
 results**: a package whose sources, dependencies, and test inputs are unchanged
 prints `(cached)` instead of running again. The cache is content-addressed, so a
 changed input always invalidates the result; the one thing it can hide is a
-flaky test in a package nobody touched.
+flaky test in a package nobody touched. Packages whose tests read files from the checkout
+(`internal/apiregistry`, `internal/discovery`, `internal/schemaindex`, ...) rerun
+every time anyway: Go keys those inputs on mtime, and `actions/checkout` sets a
+fresh one. Each `main` commit adds about 300 MB of cache entries (seven jobs of
+about 40 MB); GitHub's 10 GB per-repo quota evicts the oldest, and only the
+latest is ever restored.
 
 **The safety net.** `test-uncached.yml` runs `go test -race -count=1 ./...`
 every night (and on demand) with no cache at all, so a flaky test surfaces
