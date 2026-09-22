@@ -108,6 +108,59 @@ func TestDeprecated_acceptedWithWarning(t *testing.T) {
 	}
 }
 
+// TestRetiredAlias_warnsWithoutSuccessor covers #559: manage-managed-play is
+// Public contract, so it still resolves, but Google retired its enum with no
+// replacement. Both entry points must warn (the alias branch returns before
+// the raw-enum check, which is how the alias used to resolve silently), and
+// neither warning may name a successor that does not exist.
+func TestRetiredAlias_warnsWithoutSuccessor(t *testing.T) {
+	const enum = "CAN_CHANGE_MANAGED_PLAY_SETTING_GLOBAL"
+	for _, tok := range []string{"manage-managed-play", enum} {
+		t.Run(tok, func(t *testing.T) {
+			got, warns, err := vocab.ResolvePermissions(vocab.Account, []string{tok})
+			if err != nil {
+				t.Fatalf("%s must still resolve (Public contract): %v", tok, err)
+			}
+			if len(got) != 1 || got[0] != enum {
+				t.Errorf("resolved = %v, want [%s]", got, enum)
+			}
+			if len(warns) != 1 {
+				t.Fatalf("warnings = %v, want exactly one", warns)
+			}
+			w := warns[0]
+			for _, want := range []string{tok, enum, "deprecated, no longer supported by Google"} {
+				if !strings.Contains(w, want) {
+					t.Errorf("warning %q should contain %q", w, want)
+				}
+			}
+			if strings.Contains(w, "prefer") {
+				t.Errorf("warning %q must not steer to a successor: none exists", w)
+			}
+		})
+	}
+}
+
+// TestAliasDeprecated_onlyManagedPlay pins which aliases carry the deprecated
+// marking, and asserts a live alias resolves without a warning.
+func TestAliasDeprecated_onlyManagedPlay(t *testing.T) {
+	var marked []string
+	for _, a := range vocab.Aliases() {
+		if a.Deprecated() {
+			marked = append(marked, a.Name)
+		}
+	}
+	if strings.Join(marked, ",") != "manage-managed-play" {
+		t.Errorf("deprecated aliases = %v, want [manage-managed-play]", marked)
+	}
+	_, warns, err := vocab.ResolvePermissions(vocab.Account, []string{"create-managed-play-apps", "release-production"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) != 0 {
+		t.Errorf("live aliases must not warn: %v", warns)
+	}
+}
+
 // TestUnknownAlias_exit2_pointsAtPermissions asserts a typo'd alias is a usage
 // error whose message points at `gplay team permissions`.
 func TestUnknownAlias_exit2_pointsAtPermissions(t *testing.T) {
