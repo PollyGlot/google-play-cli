@@ -118,8 +118,7 @@ jobs:
         run: go build ./cmd/gplay
 
       - name: Save Go build and module cache
-        # TEMP (PR #566 cache proof, reverted before merge): also save from this PR.
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.head_ref == 'ci/go-cache-and-shards'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -200,12 +199,9 @@ jobs:
           mapfile -t pkgs < <(awk -v n="$SHARDS" -v i="$SHARD" '(NR-1) % n == i' <<<"$ordered")
           echo "shard $SHARD/$SHARDS: ${#pkgs[@]} of $(wc -l <<<"$all") packages"
           go test -race "${pkgs[@]}"
-          # TEMP (PR #566 red-shard proof, reverted before merge)
-          if [ "$SHARD" = 3 ]; then echo "::error::injected shard failure"; exit 1; fi
 
       - name: Save Go build and module cache
-        # TEMP (PR #566 cache proof, reverted before merge): also save from this PR.
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.head_ref == 'ci/go-cache-and-shards'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
