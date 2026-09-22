@@ -61,49 +61,190 @@ jobs:
               # a change here can desynchronise the embedded Schema index.
               - 'docs/discovery/**'
 
-  build:
-    name: Build, lint, test
+  # "Build, lint, test" used to be one serial job (gofmt, vet, golangci-lint,
+  # `go test -race`, build: ~7.5 min, the test step alone ~6.5 min). It is now
+  # three jobs: `lint` and the `test` shards run in parallel, and `build` is the
+  # aggregator that carries the required check's name. See docs/CI_CD.md
+  # § "Build, lint, test: parallel jobs and a living Go cache".
+  lint:
+    name: Lint (gofmt, vet, golangci-lint, build)
     runs-on: ubuntu-latest
     needs: changes
-    # NOTE: no job-level `if`. "Build, lint, test" is a required check on main,
-    # and a *skipped* required job blocks merge (GitHub treats skipped as
-    # unsatisfied). So the job always runs and reports success; the expensive
-    # steps self-select on `changes.outputs.code`. On a docs-only PR every step
-    # below is skipped and the job goes green in seconds — merge stays unblocked.
+    # Not a required check itself: `build` below aggregates its result, so a
+    # job-level skip on docs-only PRs is safe here.
+    if: needs.changes.outputs.code == 'true'
     steps:
-      - if: needs.changes.outputs.code == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - if: needs.changes.outputs.code == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      # Same living cache as the `test` shards (see there), under its own key:
+      # `go vet` spends most of its time compiling the project's packages.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version: '1.25'
-          cache: true
+          cache: false
+
+      - name: Locate Go caches
+        id: gocache
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Go build and module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ github.sha }}
+          restore-keys: |
+            go-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-
 
       - name: gofmt
-        if: needs.changes.outputs.code == 'true'
         run: |
           diff <(gofmt -d .) <(echo -n) || (echo '::error::run "make format" to fix formatting'; exit 1)
 
       - name: go vet
-        if: needs.changes.outputs.code == 'true'
         run: go vet ./...
 
       - name: golangci-lint
-        if: needs.changes.outputs.code == 'true'
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.2
 
-      - name: test
-        if: needs.changes.outputs.code == 'true'
-        run: go test -race ./...
-
       - name: build
-        if: needs.changes.outputs.code == 'true'
         run: go build ./cmd/gplay
+
+      - name: Save Go build and module cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ github.sha }}
+
+  test:
+    name: Test (shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    needs: changes
+    # Same as `lint`: aggregated by `build`, so skipping it outright is safe.
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      # Let every shard finish: one red shard should not hide a second one.
+      fail-fast: false
+      matrix:
+        # The shard count is read back from strategy.job-total below, so adding
+        # a shard means adding a number here and nothing else.
+        shard: [0, 1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # setup-go's own cache is keyed on go.sum only and is never rewritten once
+      # the key exists, so it never holds the project's compiled packages or
+      # test results. The explicit cache below replaces it.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
+        with:
+          go-version: '1.25'
+          cache: false
+
+      - name: Locate Go caches
+        id: gocache
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      # A living cache: one entry per main commit (the key ends in the sha),
+      # restored by prefix. PRs only read it; only pushes to main write it (see
+      # the save step), so a PR can never feed the cache another PR reads.
+      - name: Restore Go build and module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-test-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-shard${{ strategy.job-index }}of${{ strategy.job-total }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-shard${{ strategy.job-index }}of${{ strategy.job-total }}-
+            go-test-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-
+
+      # Packages are dealt round-robin over `go list ./...`, so every package
+      # lands in exactly one shard and a new package needs no CI edit. The few
+      # packages whose tests run far longer than the rest are dealt first, one
+      # per shard, so they never stack up on the same runner; a stale name in
+      # that list is simply ignored.
+      - name: go test -race (shard ${{ matrix.shard }} of ${{ strategy.job-total }})
+        env:
+          SHARD: ${{ strategy.job-index }}
+          SHARDS: ${{ strategy.job-total }}
+        run: |
+          set -euo pipefail
+          module=$(go list -m)
+          slow="internal/artifact commands/releases/upload commands/releases/expansion-files/upload internal/metadata/imagevalidate"
+          all=$(go list ./...)
+          ordered=$(
+            for s in $slow; do grep -xF "$module/$s" <<<"$all" || true; done
+            grep -vxF -f <(for s in $slow; do echo "$module/$s"; done) <<<"$all"
+          )
+          # Guard: the reordering must neither drop nor duplicate a package.
+          if [ "$(sort <<<"$ordered")" != "$(sort <<<"$all")" ]; then
+            echo '::error::shard package list does not match go list ./...'
+            exit 1
+          fi
+          mapfile -t pkgs < <(awk -v n="$SHARDS" -v i="$SHARD" '(NR-1) % n == i' <<<"$ordered")
+          echo "shard $SHARD/$SHARDS: ${#pkgs[@]} of $(wc -l <<<"$all") packages"
+          go test -race "${pkgs[@]}"
+
+      - name: Save Go build and module cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-test-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-shard${{ strategy.job-index }}of${{ strategy.job-total }}-${{ github.sha }}
+
+  build:
+    name: Build, lint, test
+    runs-on: ubuntu-latest
+    needs: [changes, lint, test]
+    # NOTE: "Build, lint, test" is a required check on main, and a *skipped*
+    # required job blocks merge (GitHub treats skipped as unsatisfied). So this
+    # aggregator must never skip: `always()` makes it run whatever happened
+    # upstream, and it then re-derives the verdict itself. On a docs-only PR
+    # `lint` and `test` skip and this job goes green in seconds; on a code PR it
+    # is green only if `lint` and every `test` shard succeeded.
+    if: always()
+    steps:
+      - name: Aggregate lint and test results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          LINT: ${{ needs.lint.result }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          echo "changes=$CHANGES code=$CODE lint=$LINT test=$TEST"
+          # A failed scope detection leaves `code` empty, which would otherwise
+          # read as docs-only and wave the PR through untested.
+          if [ "$CHANGES" != success ]; then
+            echo "::error::change scope detection did not succeed ($CHANGES)"
+            exit 1
+          fi
+          if [ "$CODE" != true ]; then
+            echo 'docs/site-only change: lint and tests skipped by design'
+            exit 0
+          fi
+          # `needs.test.result` is the matrix as a whole: failure or cancelled
+          # if any shard is.
+          if [ "$LINT" != success ] || [ "$TEST" != success ]; then
+            echo "::error::lint=$LINT test=$TEST"
+            exit 1
+          fi
 
   fuzz:
     name: Fuzz smoke (untrusted-input parsers)
