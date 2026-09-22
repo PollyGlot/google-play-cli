@@ -78,10 +78,29 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same living cache as the `test` shards (see there), under its own key:
+      # `go vet` spends most of its time compiling the project's packages.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version: '1.25'
-          cache: true
+          cache: false
+
+      - name: Locate Go caches
+        id: gocache
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Go build and module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ github.sha }}
+          restore-keys: |
+            go-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-
 
       - name: gofmt
         run: |
@@ -97,6 +116,16 @@ jobs:
 
       - name: build
         run: go build ./cmd/gplay
+
+      - name: Save Go build and module cache
+        # TEMP (PR #566 cache proof, reverted before merge): also save from this PR.
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.head_ref == 'ci/go-cache-and-shards'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ github.sha }}
 
   test:
     name: Test (shard ${{ matrix.shard }})

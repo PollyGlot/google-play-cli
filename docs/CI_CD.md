@@ -446,10 +446,10 @@ that reads the results. It is red when:
 **A living cache.** `setup-go`'s built-in cache is keyed on `go.sum` and is
 never rewritten once that key exists, so it only ever holds dependencies: the
 project's own packages were recompiled and every test rerun on every run. The
-`test` shards instead cache `GOCACHE` and `GOMODCACHE` explicitly
-(`actions/cache/restore` and `actions/cache/save`), one entry per shard and per
-`main` commit (`go-test-<os>-go<version>-shard<i>of<n>-<sha>`), restored by
-prefix. Only pushes to `main` save; pull requests only read, so no PR can feed
+`lint` job and the `test` shards instead cache `GOCACHE` and `GOMODCACHE`
+explicitly (`actions/cache/restore` and `actions/cache/save`), one entry per job
+and per `main` commit (`go-lint-<os>-go<version>-<sha>`,
+`go-test-<os>-go<version>-shard<i>of<n>-<sha>`), restored by prefix. Only pushes to `main` save; pull requests only read, so no PR can feed
 the cache another PR reads. With the build cache warm, Go also reuses **test
 results**: a package whose sources, dependencies, and test inputs are unchanged
 prints `(cached)` instead of running again. The cache is content-addressed, so a
@@ -463,7 +463,6 @@ workflows (CodeQL, govulncheck, Discovery Watch) it is not a check on any PR; a
 failure is reported by GitHub's scheduled-workflow notification and shows in
 the Actions tab.
 
-`lint` keeps `setup-go`'s built-in cache: it is not on the critical path.
 
 ### Release rehearsal
 
