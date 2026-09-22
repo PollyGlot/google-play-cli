@@ -1,0 +1,34 @@
+name: Tests without cache
+
+# Safety net for the living Go cache in ci.yml. PR and main runs reuse test
+# results cached by earlier main runs, so a package whose inputs did not change
+# reports "(cached)" and its tests are not executed again. That is correct for
+# a deterministic test, but it would hide a flaky one indefinitely. This run
+# executes every test for real, every night, from a cold toolchain cache.
+# See docs/CI_CD.md § "Build, lint, test: parallel jobs and a living Go cache".
+on:
+  schedule:
+    - cron: '43 3 * * *'  # Daily, 03:43 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: go test -race -count=1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # cache: false on purpose: nothing restored, nothing saved.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.25'
+          cache: false
+
+      # -count=1 bypasses the test result cache even if one existed.
+      - name: go test -race -count=1
+        run: go test -race -count=1 ./...

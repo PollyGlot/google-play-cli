@@ -350,7 +350,8 @@ third-party action is SHA-pinned (see
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `ci.yml` — **Build, lint, test** | PR + push to `main` | gofmt, `go vet`, golangci-lint, `go test -race`, build. **Required check.** |
+| `ci.yml`: **Build, lint, test** | PR + push to `main` | aggregator over the `lint` job (gofmt, `go vet`, golangci-lint, build) and the `test` shards (`go test -race`, split by package). **Required check.** |
+| `test-uncached.yml` | daily + manual | `go test -race -count=1 ./...` with no cache, the safety net for the cached test results. Not required. |
 | `ci.yml` — **Docs sanity** | PR + push to `main` | verb-gate (ADR-0019), shellcheck, required-files. **Required check.** |
 | `ci.yml` — **Fuzz smoke** | PR + push to `main` | bounded fuzzing of the untrusted-input parsers. Not required. |
 | `codeql.yml` | PR + push to `main` + weekly | CodeQL `security-and-quality` static analysis of our own Go. Not required (yet). |
@@ -385,17 +386,19 @@ The rule of thumb: `code` means *"can this change the built binary?"*, not
 *"does this end in `.go`?"*.
 
 On a docs-only PR the heavy jobs short-circuit, so the frequent self-merged doc
-PRs don't pay the ~2m40s build + ~1m50s fuzz. **The required-check interplay is
+PRs don't pay the Go jobs (lint, test shards, fuzz). **The required-check interplay is
 the subtle part:**
 
 - **`fuzz`** is *not* required, so it skips outright at the job level:
   `if: needs.changes.outputs.code == 'true'`.
+- **`lint`** and **`test`** are *not* required either, so they skip at the job
+  level on docs-only PRs too.
 - **`build`** ("Build, lint, test") *is* required. GitHub treats a **skipped**
-  required job as unsatisfied — it would block merge forever. So `build` has
-  **no job-level `if`**; it always runs and always reports success, and each
-  expensive *step* self-selects on `needs.changes.outputs.code`. On a docs-only
-  PR every step is skipped and the job goes green in seconds, leaving the
-  required check satisfied without running any Go tooling.
+  required job as unsatisfied: it would block merge forever. So `build` runs
+  with `if: always()`: it never skips, whatever happened upstream, and derives
+  its verdict from `needs.*.result` (see the next section). On a docs-only PR it
+  finds `code` false and goes green in seconds, leaving the required check
+  satisfied without running any Go tooling.
 - **`docs`** ("Docs sanity") always runs — it's required, cheap, and relevant to
   every PR.
 
@@ -405,8 +408,62 @@ snapshots flips `code` true and runs the full pipeline unchanged — gating is b
 changed path, never by trust, so there's no loss of safety.
 
 When adding a path that the build consumes, add it to the filter in the same PR.
-A green "Build, lint, test" that finished in seconds means the job *skipped*, not
-that it passed — check the job's step list before reading it as a signal.
+A green "Build, lint, test" that finished in seconds on a code PR cannot happen
+any more: the aggregator is red unless `lint` and every `test` shard succeeded.
+On a docs-only PR its log says `docs/site-only change: lint and tests skipped by
+design`.
+
+### Build, lint, test: parallel jobs and a living Go cache
+
+The required check used to be one serial job, about 7.5 minutes of which
+`go test -race ./...` took 6.5: most of that is compiling and linking one race
+test binary per package, not running tests. Two levers shorten it without
+dropping a single check.
+
+**Parallel jobs.** `lint` (gofmt, `go vet`, golangci-lint, `go build`) runs
+beside the `test` matrix, and `go test -race` is split into shards. Packages
+are dealt round-robin over `go list ./...`, so every package lands in exactly
+one shard and a new package needs no CI edit; a guard fails the shard if the
+dealt list differs from `go list ./...`. The few packages whose tests run far
+longer than the rest (`internal/artifact` alone runs for about 80 s) are dealt
+first, one per shard, so they never stack up on one runner. The shard count is
+the length of the `matrix.shard` list; the script reads it back from
+`strategy.job-total`. Runners are free on this public repo, so extra jobs cost
+nothing.
+
+**The aggregator keeps the required name.** The job named "Build, lint, test"
+now only aggregates: `needs: [changes, lint, test]`, `if: always()`, one step
+that reads the results. It is red when:
+
+- `changes` did not succeed (an empty `code` output must not read as
+  docs-only);
+- `code` is true and `lint` is anything but `success`;
+- `code` is true and `test` is anything but `success`. For a matrix job,
+  `needs.test.result` is the result of the matrix as a whole, so one failed or
+  cancelled shard makes it `failure`/`cancelled`. `fail-fast: false` lets the
+  other shards finish so every red shard is visible.
+
+**A living cache.** `setup-go`'s built-in cache is keyed on `go.sum` and is
+never rewritten once that key exists, so it only ever holds dependencies: the
+project's own packages were recompiled and every test rerun on every run. The
+`test` shards instead cache `GOCACHE` and `GOMODCACHE` explicitly
+(`actions/cache/restore` and `actions/cache/save`), one entry per shard and per
+`main` commit (`go-test-<os>-go<version>-shard<i>of<n>-<sha>`), restored by
+prefix. Only pushes to `main` save; pull requests only read, so no PR can feed
+the cache another PR reads. With the build cache warm, Go also reuses **test
+results**: a package whose sources, dependencies, and test inputs are unchanged
+prints `(cached)` instead of running again. The cache is content-addressed, so a
+changed input always invalidates the result; the one thing it can hide is a
+flaky test in a package nobody touched.
+
+**The safety net.** `test-uncached.yml` runs `go test -race -count=1 ./...`
+every night (and on demand) with no cache at all, so a flaky test surfaces
+within a day even when no PR touches its package. Like the other scheduled
+workflows (CodeQL, govulncheck, Discovery Watch) it is not a check on any PR; a
+failure is reported by GitHub's scheduled-workflow notification and shows in
+the Actions tab.
+
+`lint` keeps `setup-go`'s built-in cache: it is not on the critical path.
 
 ### Release rehearsal
 
