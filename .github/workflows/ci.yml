@@ -173,7 +173,8 @@ jobs:
           go test -race "${pkgs[@]}"
 
       - name: Save Go build and module cache
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # TEMP (PR #566 cache proof, reverted before merge): also save from this PR.
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.head_ref == 'ci/go-cache-and-shards'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
