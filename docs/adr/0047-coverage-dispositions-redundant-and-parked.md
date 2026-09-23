@@ -96,3 +96,12 @@ method, and `docs/COVERAGE.md` renders five states:
    claim coverage the code does not have, the exact drift PRD #513 removed.
 3. **Keep the 43 as bare 🔴 and explain them in prose.** Rejected: prose
    drifts, the registry is the only input a test can anchor to.
+
+## Note (2026-09-22, #561)
+
+`edits.listings.update` was declared redundant with `edits.listings.patch`.
+The pair failed the test of decision 5: PATCH cannot create a locale, so the
+two are not the same resource in another shape. `metadata apply` now calls
+`update` to create a new locale ([ADR-0011](./0011-metadata-apply-sync-model.md)
+note of the same date), and the disposition is gone: 128 called, 31
+redundant.

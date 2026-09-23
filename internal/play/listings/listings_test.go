@@ -1,7 +1,7 @@
 // Package listings_test exercises the play-layer Listing operations
 // against a fake transport. List/Get are the reads behind `gplay metadata
-// list / pull`; Patch/Delete are the per-locale writes behind `gplay
-// metadata apply`. Each runs inside an already-open Edit, so the tests
+// list / pull`; Patch/Update/Delete are the per-locale writes behind
+// `gplay metadata apply`. Each runs inside an already-open Edit, so the tests
 // drive the bare operation, not the Edit lifecycle.
 package listings_test
 
@@ -129,6 +129,50 @@ func TestPatch_sendsBodyVerbatim_andReturnsRaw(t *testing.T) {
 	}
 	if strings.TrimSpace(string(gotRaw)) != strings.TrimSpace(respBody) {
 		t.Errorf("response body = %s, want verbatim %s", gotRaw, respBody)
+	}
+}
+
+// TestUpdate_sendsPUT_withFullBody_andReturnsRaw asserts Update PUTs
+// edits.listings.update on the locale path (the only Listings call that can
+// create a language absent online, #561), transmits the complete
+// caller-built body verbatim, and returns the raw response body.
+func TestUpdate_sendsPUT_withFullBody_andReturnsRaw(t *testing.T) {
+	reqBody := `{"fullDescription":"Lange Beschreibung","language":"de-DE","shortDescription":"Kurz","title":"Meine App"}`
+	respBody := `{"language":"de-DE","title":"Meine App","shortDescription":"Kurz","fullDescription":"Lange Beschreibung","video":""}`
+	transport := &rt{body: respBody}
+	hc := &http.Client{Transport: transport}
+
+	gotRaw, err := listings.Update(context.Background(), hc, "com.example.app", "edit-123", "de-DE", []byte(reqBody))
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-123/listings/de-DE"
+	if transport.gotMethod != http.MethodPut || transport.gotPath != wantPath {
+		t.Errorf("request = %s %s, want PUT %s", transport.gotMethod, transport.gotPath, wantPath)
+	}
+	if transport.gotBody != reqBody {
+		t.Errorf("request body = %s, want verbatim %s", transport.gotBody, reqBody)
+	}
+	if strings.TrimSpace(string(gotRaw)) != strings.TrimSpace(respBody) {
+		t.Errorf("response body = %s, want verbatim %s", gotRaw, respBody)
+	}
+}
+
+// TestUpdate_apiError_carriesUpdateOperation asserts a failed PUT surfaces
+// as an *api.Error named listings.update (not listings.patch), so the error
+// envelope names the call that actually ran.
+func TestUpdate_apiError_carriesUpdateOperation(t *testing.T) {
+	transport := &rt{status: 404, body: `{"error":{"code":404,"message":"Listing for language 'xx-XX' not found."}}`}
+	hc := &http.Client{Transport: transport}
+
+	_, err := listings.Update(context.Background(), hc, "com.example.app", "edit-123", "xx-XX", []byte(`{}`))
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v (%T), want *api.Error", err, err)
+	}
+	if apiErr.Operation != "listings.update" || apiErr.StatusCode != 404 {
+		t.Errorf("api.Error = {Operation:%q Status:%d}, want {listings.update 404}", apiErr.Operation, apiErr.StatusCode)
 	}
 }
 

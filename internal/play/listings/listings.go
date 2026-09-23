@@ -1,7 +1,8 @@
 // Package listings reads and writes the per-locale Store front Listings of
 // a Google Play app within an open Edit. The operations exposed: List
-// (every locale's Listing), Get (one locale), Patch (upsert one locale),
-// and Delete (drop one locale's whole Listing): back the metadata
+// (every locale's Listing), Get (one locale), Patch (write fields of an
+// existing locale), Update (create a locale that has no Listing yet), and
+// Delete (drop one locale's whole Listing): back the metadata
 // list / pull / apply commands. Every function runs inside an Edit the
 // caller has already opened (edits.WithEdit / edits.WithReadOnlyEdit);
 // none opens or commits an Edit of its own.
@@ -22,6 +23,7 @@ const (
 	opListingsList   = "listings.list"
 	opListingsGet    = "listings.get"
 	opListingsPatch  = "listings.patch"
+	opListingsUpdate = "listings.update"
 	opListingsDelete = "listings.delete"
 )
 
@@ -33,6 +35,7 @@ var (
 	methodList   = apiregistry.MustResolve("androidpublisher.edits.listings.list")
 	methodGet    = apiregistry.MustResolve("androidpublisher.edits.listings.get")
 	methodPatch  = apiregistry.MustResolve("androidpublisher.edits.listings.patch")
+	methodUpdate = apiregistry.MustResolve("androidpublisher.edits.listings.update")
 	methodDelete = apiregistry.MustResolve("androidpublisher.edits.listings.delete")
 )
 
@@ -164,38 +167,56 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, language string) (*L
 	return &parsed, raw, nil
 }
 
-// Patch upserts one locale's Listing at edits.listings.patch, sending the
-// caller-built body verbatim. The body is built by the caller (the apply
-// command) and carries exactly the fields it means to write; PATCH (not
-// PUT) is used on purpose so a field absent from the body is left
-// untouched online: the ADR-0011 "missing ≠ empty" rule, enforced at the
-// wire level. Returns the raw response body (the patched Listing) for the
-// per-locale --output json pass-through (ADR-0003).
+// Patch writes fields of one EXISTING locale's Listing at
+// edits.listings.patch, sending the caller-built body verbatim. The body
+// carries exactly the fields the caller means to write; PATCH (not PUT) is
+// used on purpose so a field absent from the body is left untouched online:
+// the ADR-0011 "missing ≠ empty" rule, enforced at the wire level. PATCH
+// cannot create a locale: on a language with no Listing, Play answers 404
+// (#561), so a new locale goes through Update. Returns the raw response body
+// (the patched Listing) for the per-locale --output json pass-through
+// (ADR-0003).
 func Patch(ctx context.Context, hc *http.Client, pkg, editID, language string, body []byte) (json.RawMessage, error) {
-	u, err := methodPatch.URL(map[string]string{
+	return write(ctx, hc, methodPatch, opListingsPatch, pkg, editID, language, body)
+}
+
+// Update creates one locale's Listing at edits.listings.update (PUT), the
+// only Listings method that can create a language Play does not have yet
+// (#561). PUT replaces the whole resource, so the caller reserves it for a
+// locale absent online: there is no live field to preserve, and "missing ≠
+// empty" (ADR-0011) holds trivially. Same body and return contract as
+// Patch.
+func Update(ctx context.Context, hc *http.Client, pkg, editID, language string, body []byte) (json.RawMessage, error) {
+	return write(ctx, hc, methodUpdate, opListingsUpdate, pkg, editID, language, body)
+}
+
+// write is the shared body of Patch and Update: the two differ only by the
+// registry method (verb) and the operation name carried by *api.Error.
+func write(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, editID, language string, body []byte) (json.RawMessage, error) {
+	u, err := m.URL(map[string]string{
 		"packageName": pkg,
 		"editId":      editID,
 		"language":    language,
 	})
 	if err != nil {
-		return nil, &api.Error{Operation: opListingsPatch, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, methodPatch.Verb, u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, m.Verb, u, bytes.NewReader(body))
 	if err != nil {
-		return nil, &api.Error{Operation: opListingsPatch, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, &api.Error{Operation: opListingsPatch, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
 		msg, reasons := api.ParseErrorEnvelope(errBody, resp.StatusCode)
 		return nil, &api.Error{
-			Operation:  opListingsPatch,
+			Operation:  op,
 			Package:    pkg,
 			StatusCode: resp.StatusCode,
 			Message:    msg,

@@ -32,16 +32,19 @@ import (
 )
 
 // applyRT terminates the /token exchange and routes the apply sequence,
-// recording every request line and each PATCH body.
+// recording every request line and each PATCH / PUT body. notFoundLoc makes
+// either Listing write on that locale answer 404.
 type applyRT struct {
 	t            *testing.T
 	editID       string
 	listingsBody string
 	detailsLang  string
+	notFoundLoc  string
 
 	mu        sync.Mutex
 	calls     []string
 	patchBody map[string]string
+	putBody   map[string]string
 	tokenHits int
 }
 
@@ -50,6 +53,9 @@ func (r *applyRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	defer r.mu.Unlock()
 	if r.patchBody == nil {
 		r.patchBody = map[string]string{}
+	}
+	if r.putBody == nil {
+		r.putBody = map[string]string{}
 	}
 	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
 		r.tokenHits++
@@ -68,10 +74,17 @@ func (r *applyRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return jsonResp(200, r.listingsBody), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(path, "/details"):
 		return jsonResp(200, `{"defaultLanguage":"`+r.detailsLang+`","contactEmail":"x@y.z"}`), nil
-	case req.Method == http.MethodPatch && strings.Contains(path, "/listings/"):
+	case (req.Method == http.MethodPatch || req.Method == http.MethodPut) && strings.Contains(path, "/listings/"):
 		loc := path[strings.LastIndex(path, "/")+1:]
 		b, _ := io.ReadAll(req.Body)
-		r.patchBody[loc] = string(b)
+		if req.Method == http.MethodPut {
+			r.putBody[loc] = string(b)
+		} else {
+			r.patchBody[loc] = string(b)
+		}
+		if loc == r.notFoundLoc {
+			return jsonResp(404, `{"error":{"code":404,"message":"Listing for language '`+loc+`' not found."}}`), nil
+		}
 		return jsonResp(200, `{"language":"`+loc+`","title":"echo"}`), nil
 	case req.Method == http.MethodDelete && strings.Contains(path, "/listings/"):
 		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
@@ -367,3 +380,100 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
 	}
 }
+
+// TestRun_applyConfirm_createsNewLocaleWithPUT is the #561 scenario: the app
+// has only en-US, the tree adds de-DE. The new locale is created through
+// edits.listings.update (PUT, full body), reported as "created", and its
+// response body is in the per-locale --output json.
+func TestRun_applyConfirm_createsNewLocaleWithPUT(t *testing.T) {
+	dir := writeTree(t, listing.Tree{
+		"en-US": ml("en-US", "title", "T", "full", "F"),
+		"de-DE": ml("de-DE", "title", "Meine App", "short", "Kurz", "full", "Lang"),
+	})
+	rt := &applyRT{t: t, editID: "e561",
+		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`}
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	r, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !rt.saw("PUT", "/applications/com.x/edits/e561/listings/de-DE") || rt.saw("PATCH", "/listings/de-DE") {
+		t.Errorf("expected PUT (not PATCH) on de-DE; calls=%v", rt.calls)
+	}
+	var body map[string]string
+	_ = json.Unmarshal([]byte(rt.putBody["de-DE"]), &body)
+	if body["title"] != "Meine App" || body["shortDescription"] != "Kurz" || body["fullDescription"] != "Lang" || body["language"] != "de-DE" {
+		t.Errorf("de-DE PUT body = %v, want the complete Listing", body)
+	}
+
+	var tbl bytes.Buffer
+	if err := r.Renderers().Table(&tbl); err != nil {
+		t.Fatalf("table render: %v", err)
+	}
+	if !strings.Contains(tbl.String(), "de-DE") || !strings.Contains(tbl.String(), "created") {
+		t.Errorf("table should report de-DE as created:\n%s", tbl.String())
+	}
+	var js bytes.Buffer
+	if err := r.Renderers().JSON(&js); err != nil {
+		t.Fatalf("JSON render: %v", err)
+	}
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(js.Bytes(), &out); err != nil {
+		t.Fatalf("apply JSON did not parse: %v\n%s", err, js.String())
+	}
+	if _, ok := out["de-DE"]; !ok {
+		t.Errorf("apply JSON missing de-DE body: %s", js.String())
+	}
+	if !strings.Contains(stderr.String(), "1 locale(s) created, 0 patched") {
+		t.Errorf("stderr ✓ line should count the created locale: %q", stderr.String())
+	}
+}
+
+// TestRun_listing404_namesLanguageNotPackage: a 404 on a per-locale Listing
+// write names the language and no longer sends the operator to `gplay apps
+// list` (#561). The exit code stays 30 (the wrapped *api.Error).
+func TestRun_listing404_namesLanguageNotPackage(t *testing.T) {
+	dir := writeTree(t, listing.Tree{"de-DE": ml("de-DE", "title", "Meine App", "full", "Lang")})
+	rt := &applyRT{t: t, editID: "e404", notFoundLoc: "de-DE",
+		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`}
+	rc := newRC(t, rt)
+
+	_, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true})
+	if code := exitCodeOf(t, err); code != 30 {
+		t.Errorf("exit = %d, want 30", code)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `language "de-DE"`) {
+		t.Errorf("message should name the language: %s", msg)
+	}
+	if strings.Contains(msg, "apps list") || strings.Contains(msg, `package "com.x" not found`) {
+		t.Errorf("message still blames the package: %s", msg)
+	}
+}
+
+// TestRun_edit404_stillNamesPackage guards the other side: a 404 outside a
+// per-locale call (here the Edit insert) keeps the package hint.
+func TestRun_edit404_stillNamesPackage(t *testing.T) {
+	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
+	rc := newRC(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+			return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+		}
+		return jsonResp(404, `{"error":{"code":404,"message":"Package not found: com.x."}}`), nil
+	}))
+
+	_, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true})
+	if code := exitCodeOf(t, err); code != 30 {
+		t.Errorf("exit = %d, want 30", code)
+	}
+	if !strings.Contains(err.Error(), `package "com.x" not found`) {
+		t.Errorf("an Edit-level 404 should keep the package hint: %s", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }

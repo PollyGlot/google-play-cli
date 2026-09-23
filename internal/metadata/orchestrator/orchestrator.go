@@ -1,10 +1,10 @@
 // Package orchestrator is the side-effecting glue behind `gplay metadata
 // apply`. It wires auth → the Edit lifecycle → the pure diff engine →
-// listings.patch / listings.delete, applying the ADR-0011 safety model:
-// --confirm gates every real write, the sync is additive unless --prune is
-// set, and all locales are patched inside a single Edit committed once (so
-// the store is never left half-applied). It is the metadata analogue of
-// internal/releases/orchestrator.
+// listings.patch / listings.update / listings.delete, applying the ADR-0011
+// safety model: --confirm gates every real write, the sync is additive
+// unless --prune is set, and all locales are written inside a single Edit
+// committed once (so the store is never left half-applied). It is the
+// metadata analogue of internal/releases/orchestrator.
 //
 // Two read paths and one write path:
 //
@@ -12,12 +12,13 @@
 //     computes the diff, and discards: the online preview ADR-0011 §3
 //     mandates (apply reconciles, so a meaningful dry-run must read the
 //     other side). Nothing is committed.
-//   - Apply(Confirm): opens ONE write Edit, fetches, diffs, patches every
-//     changed locale (and deletes pruned ones), and commits once. On any
-//     per-locale failure the Edit auto-discards (edits.WithEdit), so 0
-//     locales are published: atomicity for free. When the diff is a no-op
-//     the Edit is discarded rather than committed, conserving Google's
-//     daily publish quota (no empty commits).
+//   - Apply(Confirm): opens ONE write Edit, fetches, diffs, writes every
+//     changed locale (PATCH when the locale is live, PUT when it is new:
+//     PATCH cannot create a Listing, #561), deletes pruned ones, and
+//     commits once. On any per-locale failure the Edit auto-discards
+//     (edits.WithEdit), so 0 locales are published: atomicity for free.
+//     When the diff is a no-op the Edit is discarded rather than committed,
+//     conserving Google's daily publish quota (no empty commits).
 package orchestrator
 
 import (
@@ -69,17 +70,34 @@ type Opts struct {
 }
 
 // Result is what Apply returns. Diff is always populated (the computed
-// reconciliation). Patched/Pruned are populated only on a real,
-// change-bearing apply: Patched maps each written locale to the
-// listings.patch response body (the per-locale --output json pass-through,
-// ADR-0011 §6), Pruned lists the locales whose Listing was deleted.
+// reconciliation). Patched/Created/Pruned are populated only on a real,
+// change-bearing apply: Patched maps each written locale to the write
+// response body (listings.patch, or listings.update for a new locale: the
+// per-locale --output json pass-through, ADR-0011 §6), Created lists the
+// subset of those locales that did not exist online and were created, and
+// Pruned lists the locales whose Listing was deleted.
 type Result struct {
 	Package string
 	DryRun  bool
 	Diff    diff.Result
 	Patched map[string]json.RawMessage
+	Created []string
 	Pruned  []string
 }
+
+// LocaleError tags a failed per-locale write or delete with its locale, so
+// the command can say which language failed instead of blaming the
+// package: a 404 there means "no Listing for this language", not "unknown
+// package" (#561). Error() stays the wrapped error's text and Unwrap keeps
+// the *api.Error reachable, so the exit code and the JSON error envelope
+// are unchanged.
+type LocaleError struct {
+	Locale string
+	Err    error
+}
+
+func (e *LocaleError) Error() string { return e.Err.Error() }
+func (e *LocaleError) Unwrap() error { return e.Err }
 
 // confirmRequired builds the refusal for a real apply invoked without
 // --confirm. It is an *exit.SafetyFlagError, so it exits 3 ("safety flag
@@ -185,7 +203,7 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	if opts.DryRun {
 		// Read-only: open, fetch+diff+guard, discard. Never commits.
 		if err := edits.WithReadOnlyEdit(ctx, hc, opts.Package, func(editID string) error {
-			d, err := plan(ctx, hc, opts, editID, local)
+			d, _, err := plan(ctx, hc, opts, editID, local)
 			if err != nil {
 				return err
 			}
@@ -205,9 +223,9 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	// and never commits or discards: the staged changes stay in the open Edit
 	// for the user to `gplay edits commit`/`discard`.
 	patched := make(map[string]json.RawMessage)
-	var pruned []string
+	var created, pruned []string
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
-		d, err := plan(ctx, hc, opts, editID, local)
+		d, online, err := plan(ctx, hc, opts, editID, local)
 		if err != nil {
 			return err
 		}
@@ -215,19 +233,31 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 		if !d.HasChanges() {
 			return errNoChanges
 		}
-		// Patch every changed locale (sorted for determinism), then delete
-		// every pruned locale, all inside this one Edit.
+		// Write every changed locale (sorted for determinism), then delete
+		// every pruned locale, all inside this one Edit. The verb is chosen
+		// per locale, not per field: a field-level `create` on a locale that
+		// is already live (say a video added to en-US) must stay a PATCH, or
+		// PUT would blank every live field absent from the body. Only a
+		// locale absent from the listings.list read above goes through PUT,
+		// the one call that can create it (#561).
 		for _, loc := range changedLocales(d) {
-			body := patchBody(local, loc, d)
-			raw, e := listings.Patch(ctx, hc, opts.Package, editID, loc, body)
+			body := writeBody(local, loc, d)
+			write, isNew := listings.Patch, false
+			if _, live := online[loc]; !live {
+				write, isNew = listings.Update, true
+			}
+			raw, e := write(ctx, hc, opts.Package, editID, loc, body)
 			if e != nil {
-				return e
+				return &LocaleError{Locale: loc, Err: e}
 			}
 			patched[loc] = raw
+			if isNew {
+				created = append(created, loc)
+			}
 		}
 		for _, loc := range deleteLocales(d) {
 			if e := listings.Delete(ctx, hc, opts.Package, editID, loc); e != nil {
-				return e
+				return &LocaleError{Locale: loc, Err: e}
 			}
 			pruned = append(pruned, loc)
 		}
@@ -239,6 +269,7 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	if len(patched) > 0 {
 		result.Patched = patched
 	}
+	result.Created = created
 	result.Pruned = pruned
 	return result, nil
 }
@@ -246,11 +277,12 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 // plan fetches the live Listings inside the already-open editID, computes
 // the diff, and enforces the --prune defaultLanguage guard. Shared by the
 // dry-run and real-apply paths so the preview and the publish reconcile
-// identically.
-func plan(ctx context.Context, hc *http.Client, opts Opts, editID string, local listing.Tree) (diff.Result, error) {
+// identically. It also returns the online tree, whose keys tell the write
+// loop which locales already exist on Play.
+func plan(ctx context.Context, hc *http.Client, opts Opts, editID string, local listing.Tree) (diff.Result, listing.Tree, error) {
 	apiListings, _, err := listings.List(ctx, hc, opts.Package, editID)
 	if err != nil {
-		return diff.Result{}, err
+		return diff.Result{}, nil, err
 	}
 	online := onlineTree(apiListings)
 	d := diff.Compute(opts.Package, local, online, opts.Prune)
@@ -258,15 +290,15 @@ func plan(ctx context.Context, hc *http.Client, opts Opts, editID string, local 
 	if opts.Prune && d.Summary.Delete > 0 {
 		defLang, err := details.GetDefaultLanguage(ctx, hc, opts.Package, editID)
 		if err != nil {
-			return diff.Result{}, err
+			return diff.Result{}, nil, err
 		}
 		for _, c := range d.Changes {
 			if c.Op == diff.OpDelete && c.Locale == defLang {
-				return diff.Result{}, &PruneDefaultLanguageError{Locale: defLang}
+				return diff.Result{}, nil, &PruneDefaultLanguageError{Locale: defLang}
 			}
 		}
 	}
-	return d, nil
+	return d, online, nil
 }
 
 // onlineTree projects the play-layer's []listings.Listing onto a
@@ -322,7 +354,7 @@ func allowSet(locales []string) map[string]bool {
 }
 
 // changedLocales returns the locales carrying at least one field change
-// (create/update/clear), sorted, so patches run in a deterministic order.
+// (create/update/clear), sorted, so writes run in a deterministic order.
 func changedLocales(d diff.Result) []string {
 	seen := make(map[string]bool)
 	for _, c := range d.Changes {
@@ -351,12 +383,14 @@ func deleteLocales(d diff.Result) []string {
 	return out
 }
 
-// patchBody builds the edits.listings.patch body for one locale: a JSON
-// object carrying each changed field's target value (the disk value for a
-// create/update, "" for a clear) plus "language". PATCH merge semantics
-// mean fields absent from the body are left untouched online: the
-// missing ≠ empty rule enforced on the wire (ADR-0011 §2).
-func patchBody(local listing.Tree, loc string, d diff.Result) []byte {
+// writeBody builds the listings.patch / listings.update body for one
+// locale: a JSON object carrying each changed field's target value (the
+// disk value for a create/update, "" for a clear) plus "language". On a
+// live locale PATCH merge semantics leave fields absent from the body
+// untouched online: the missing ≠ empty rule enforced on the wire (ADR-0011
+// §2). On a new locale every non-empty field on disk is a `create`, so the
+// same body is the complete Listing the PUT creates.
+func writeBody(local listing.Tree, loc string, d diff.Result) []byte {
 	m := map[string]string{"language": loc}
 	ll := local[loc]
 	for _, c := range d.Changes {
