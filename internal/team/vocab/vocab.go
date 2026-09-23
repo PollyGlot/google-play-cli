@@ -16,7 +16,12 @@
 //     accepted verbatim (the escape hatch, so a permission Google ships before
 //     gplay has an alias is still grantable); gplay is a convenience layer,
 //     never a gate. Two guards: a `*_UNSPECIFIED` sentinel is rejected, and
-//     the two deprecated values are accepted with a steering warning.
+//     a deprecated value is accepted with a warning.
+//   - A published alias outlives its enum's deprecation. When Google
+//     deprecates the enum behind an alias already in the Public contract, the
+//     alias stays accepted but is marked deprecated: it warns on use (alias or
+//     raw enum alike) and `team permissions` flags it (ADR-0016 amendment,
+//     #559). Removal is reserved for a major version.
 package vocab
 
 import (
@@ -78,6 +83,10 @@ type Alias struct {
 
 	stem        string
 	accountOnly bool
+	// retired is set when Google deprecated the alias's enum with NO modern
+	// equivalent ("no longer supported"): the alias stays accepted (Public
+	// contract) but warns, and `team permissions` flags it (#559).
+	retired bool
 }
 
 // AccountEnum returns the account-wide (`_GLOBAL`-suffixed) enum for the alias.
@@ -109,6 +118,11 @@ func (a Alias) Enum(scope Scope) (string, bool) {
 // (it is the all-permissions alias).
 func (a Alias) IsAdminConferring() bool { return a.stem == adminStem }
 
+// Deprecated reports whether Google deprecated the enum behind this alias.
+// The alias remains accepted (it is part of the Public contract) but every use
+// warns, and `team permissions` flags it.
+func (a Alias) Deprecated() bool { return a.retired }
+
 // Bundle is a frozen role bundle (ADR-0016 §3): a closed, gplay-defined preset
 // that expands to a fixed set of alias members. Membership never changes
 // silently: only by an explicit, versioned gplay change (a Public-contract
@@ -130,7 +144,11 @@ var readBase = []string{"view-app-info", "view-app-quality"}
 // order is the order `team permissions` prints. The deprecated values
 // (CAN_SEE_ALL_APPS, CAN_ACCESS_APP) are deliberately NOT aliases: gplay
 // never offers a deprecated value, steering raw users to the modern one
-// (ADR-0016 §2 / consequences).
+// (ADR-0016 §2 / consequences). The one exception is an alias published
+// BEFORE Google deprecated its enum (manage-managed-play, #559): dropping it
+// would break the Public contract, so it stays, marked `retired`, and warns.
+// TestAliases_anchoredToDiscovery keeps this marking in step with the
+// snapshot's enumDeprecated.
 var aliases = []Alias{
 	{Name: "view-app-info", stem: "CAN_VIEW_NON_FINANCIAL_DATA", Label: "View app information (read-only)"},
 	{Name: "view-app-quality", stem: "CAN_VIEW_APP_QUALITY", Label: "View app quality (Android vitals, crashes & ANRs)"},
@@ -149,7 +167,7 @@ var aliases = []Alias{
 	{Name: "edit-games", stem: "CAN_EDIT_GAMES", accountOnly: true, Label: "Edit Play Games Services projects (account-wide)"},
 	{Name: "publish-games", stem: "CAN_PUBLISH_GAMES", accountOnly: true, Label: "Publish Play Games Services projects (account-wide)"},
 	{Name: "create-managed-play-apps", stem: "CAN_CREATE_MANAGED_PLAY_APPS", accountOnly: true, Label: "Create managed Play (private) apps (account-wide)"},
-	{Name: "manage-managed-play", stem: "CAN_CHANGE_MANAGED_PLAY_SETTING", accountOnly: true, Label: "Change managed Play settings (account-wide)"},
+	{Name: "manage-managed-play", stem: "CAN_CHANGE_MANAGED_PLAY_SETTING", accountOnly: true, retired: true, Label: "Change managed Play settings (account-wide)"},
 	{Name: "view-connected-apps", stem: "CAN_VIEW_CONNECTED_APPS", accountOnly: true, Label: "View connected (SDK) apps (account-wide)"},
 	{Name: "edit-connected-apps", stem: "CAN_EDIT_CONNECTED_APPS", accountOnly: true, Label: "Edit connected (SDK) apps (account-wide)"},
 }
@@ -168,11 +186,28 @@ var bundles = []Bundle{
 }
 
 // deprecated maps a deprecated raw enum (as a caller might type it) to the
-// modern equivalent the steering warning points at (ADR-0016 §2). Both values
-// are accepted verbatim (gplay never gates) but warn.
+// modern equivalent the steering warning points at (ADR-0016 §2). Every value
+// is accepted verbatim (gplay never gates) but warns. An empty modern value
+// means Google retired the permission with no replacement: the warning then
+// names no successor. The enums of `retired` aliases are added by init(), so
+// the alias registry stays the one place that marks them.
 var deprecated = map[string]string{
 	"CAN_SEE_ALL_APPS": "CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL", // legacy account-wide
 	"CAN_ACCESS_APP":   "CAN_VIEW_NON_FINANCIAL_DATA",        // legacy app-level
+}
+
+// deprecationWarning is the warning for a deprecated enum reached by token
+// (an alias name or the raw enum). With no modern equivalent it points nowhere:
+// a successor that does not exist would mislead.
+func deprecationWarning(token, enum string) string {
+	subject := token
+	if token != enum {
+		subject = token + " (" + enum + ")"
+	}
+	if modern := deprecated[enum]; modern != "" {
+		return "permission " + subject + " is deprecated; prefer " + modern
+	}
+	return "permission " + subject + " is deprecated, no longer supported by Google"
 }
 
 // aliasByName / bundleByName index the registries for O(1) lookup; built once.
@@ -184,6 +219,12 @@ var (
 func init() {
 	for _, a := range aliases {
 		aliasByName[a.Name] = a
+		if a.retired {
+			deprecated[a.AccountEnum()] = ""
+			if e, ok := a.AppEnum(); ok {
+				deprecated[e] = ""
+			}
+		}
 	}
 	for _, b := range bundles {
 		bundleByName[b.Name] = b
@@ -267,10 +308,10 @@ func IsAdminConferring(enums []string) bool {
 
 // ResolvePermissions resolves a list of --permissions tokens (each an alias or
 // a raw CAN_* enum) to API enum values under scope, in input order with
-// duplicates removed. It returns any steering warnings (a deprecated raw enum
-// was used) and a *exit.UsageError (exit 2), whose message points at
-// `gplay team permissions`: for an unknown alias, a `*_UNSPECIFIED` sentinel,
-// or an account-only alias used under Scope App.
+// duplicates removed. It returns any warnings (a deprecated enum was reached,
+// through a retired alias or raw) and a *exit.UsageError (exit 2), whose
+// message points at `gplay team permissions`: for an unknown alias, a
+// `*_UNSPECIFIED` sentinel, or an account-only alias used under Scope App.
 func ResolvePermissions(scope Scope, tokens []string) (enums []string, warnings []string, err error) {
 	seen := make(map[string]bool, len(tokens))
 	for _, raw := range tokens {
@@ -283,6 +324,12 @@ func ResolvePermissions(scope Scope, tokens []string) (enums []string, warnings 
 			e, ok := a.Enum(scope)
 			if !ok {
 				return nil, nil, exit.Usagef("permission %q is account-wide only and has no per-app form; grant it with `gplay team users` (account scope), or drop it", tok)
+			}
+			// The deprecation check sits here, not only in the raw branch
+			// below: this branch `continue`s first, so a retired alias would
+			// otherwise resolve silently (#559).
+			if _, dep := deprecated[e]; dep {
+				warnings = append(warnings, deprecationWarning(tok, e))
 			}
 			if !seen[e] {
 				seen[e] = true
@@ -299,8 +346,8 @@ func ResolvePermissions(scope Scope, tokens []string) (enums []string, warnings 
 			return nil, nil, exit.Usagef("permission %q is a non-grantable sentinel and cannot be set; run `gplay team permissions` for the valid aliases", tok)
 		}
 		if strings.HasPrefix(tok, "CAN_") {
-			if modern, dep := deprecated[tok]; dep {
-				warnings = append(warnings, "permission "+tok+" is deprecated; prefer "+modern)
+			if _, dep := deprecated[tok]; dep {
+				warnings = append(warnings, deprecationWarning(tok, tok))
 			}
 			if !seen[tok] {
 				seen[tok] = true

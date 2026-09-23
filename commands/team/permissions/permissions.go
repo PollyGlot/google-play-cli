@@ -8,7 +8,8 @@
 //
 // --scope account|app selects which enum family is resolved (account
 // `_GLOBAL` vs bare app-level); --output json marks admin-conferring aliases
-// and bundles for machine consumers (ADR-0017 §5).
+// and bundles for machine consumers (ADR-0017 §5), and deprecated aliases
+// (#559).
 package permissions
 
 import (
@@ -25,6 +26,10 @@ import (
 // appEnumNone is the table/markdown placeholder for an account-only alias that
 // has no per-app enum.
 const appEnumNone = "n/a"
+
+// deprecatedNote is appended to a deprecated alias's label in table/markdown.
+// It names no successor on purpose: Google retired the enum without one (#559).
+const deprecatedNote = " [deprecated: no longer supported by Google]"
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
@@ -50,7 +55,8 @@ type bundleRow struct {
 // aliasJSON / bundleJSON are the machine-readable views. `enum` is the alias
 // resolved to the selected scope (omitted when an account-only alias is viewed
 // under --scope app); adminConferring marks the all-permissions alias/bundle
-// (ADR-0017 §5).
+// (ADR-0017 §5); deprecated marks an alias still accepted whose enum Google
+// retired (added for #559, an additive field of the Public contract).
 type aliasJSON struct {
 	Alias           string   `json:"alias"`
 	AccountEnum     string   `json:"accountEnum"`
@@ -59,6 +65,7 @@ type aliasJSON struct {
 	Label           string   `json:"label"`
 	Bundles         []string `json:"bundles,omitempty"`
 	AdminConferring bool     `json:"adminConferring"`
+	Deprecated      bool     `json:"deprecated"`
 }
 
 type bundleJSON struct {
@@ -96,12 +103,16 @@ func (p Payload) aliasRows() []aliasRow {
 		if e, ok := a.AppEnum(); ok {
 			appEnum = e
 		}
+		label := a.Label
+		if a.Deprecated() {
+			label += deprecatedNote
+		}
 		rows = append(rows, aliasRow{
 			alias:       a.Name,
 			accountEnum: a.AccountEnum(),
 			appEnum:     appEnum,
 			bundles:     strings.Join(vocab.BundlesContaining(a.Name), ","),
-			label:       a.Label,
+			label:       label,
 		})
 	}
 	return rows
@@ -173,6 +184,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Label:           a.Label,
 			Bundles:         vocab.BundlesContaining(a.Name),
 			AdminConferring: a.IsAdminConferring(),
+			Deprecated:      a.Deprecated(),
 		}
 		if e, ok := a.AppEnum(); ok {
 			row.AppEnum = e
@@ -225,7 +237,10 @@ the single source of truth the ` + "`team`" + ` write commands resolve --role an
 ` + "`_GLOBAL`" + ` for ` + "`team users`" + `, bare for ` + "`team grants`" + `); --output json marks the
 admin-conferring alias and bundle so an agent can discover the --grant-admin
 gate before building a command. Any raw CAN_* enum is also always accepted by
-the write commands, even one with no alias here.`,
+the write commands, even one with no alias here.
+
+An alias marked deprecated is still accepted, but Google no longer supports
+its enum: the write commands warn when it is used.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

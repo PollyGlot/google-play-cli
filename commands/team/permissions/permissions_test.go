@@ -188,3 +188,63 @@ func TestNewCommand_flags(t *testing.T) {
 		t.Errorf("cmd.Use = %q, want permissions", cmd.Use)
 	}
 }
+
+// TestPermissions_flagsDeprecatedAlias covers #559: manage-managed-play stays
+// listed (Public contract) but is flagged as deprecated, in the table (label
+// note, no successor named) and in JSON (the additive `deprecated` field, the
+// label itself untouched). No other alias carries the marking.
+func TestPermissions_flagsDeprecatedAlias(t *testing.T) {
+	rc := newOfflineRC(t)
+	r, err := permscmd.Run(rc, permscmd.Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const note = "[deprecated: no longer supported by Google]"
+	table := renderTable(t, r)
+	var marked []string
+	for _, line := range strings.Split(table, "\n") {
+		if strings.Contains(line, note) {
+			marked = append(marked, strings.Fields(line)[0])
+		}
+	}
+	if strings.Join(marked, ",") != "manage-managed-play" {
+		t.Errorf("table rows carrying the deprecation note = %v, want [manage-managed-play]\n%s", marked, table)
+	}
+	if strings.Contains(table, "prefer") {
+		t.Errorf("table must not steer to a successor: none exists\n%s", table)
+	}
+
+	var view struct {
+		Aliases []struct {
+			Alias      string `json:"alias"`
+			Label      string `json:"label"`
+			Deprecated *bool  `json:"deprecated"`
+		} `json:"aliases"`
+	}
+	if err := json.Unmarshal([]byte(renderJSON(t, r)), &view); err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, a := range view.Aliases {
+		if a.Deprecated == nil {
+			t.Fatalf("alias %q: JSON must carry the deprecated field on every alias", a.Alias)
+		}
+		if a.Alias == "manage-managed-play" {
+			found = true
+			if !*a.Deprecated {
+				t.Error("manage-managed-play must be marked deprecated in JSON")
+			}
+			if a.Label != "Change managed Play settings (account-wide)" {
+				t.Errorf("JSON label = %q: the label must stay verbatim, the marking lives in `deprecated`", a.Label)
+			}
+			continue
+		}
+		if *a.Deprecated {
+			t.Errorf("alias %q must not be marked deprecated", a.Alias)
+		}
+	}
+	if !found {
+		t.Error("manage-managed-play must stay listed (Public contract)")
+	}
+}

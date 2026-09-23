@@ -97,3 +97,22 @@ permission Google ships tomorrow.
   a *rejected-by-Google* permission surfaces as an `*api.Error`.
 - A deprecated value used raw still works but warns; gplay never offers it
   as an alias, steering callers to the modern permission.
+
+## Amendment (2026-09-22, #559)
+
+The Discovery refresh of #558 marks `CAN_CHANGE_MANAGED_PLAY_SETTING_GLOBAL`
+as `enumDeprecated` ("no longer supported", no replacement), and that is the
+enum behind the published alias `manage-managed-play`. "gplay never offers a
+deprecated value" cannot hold for an alias that is already Public contract
+([ADR-0010](./0010-versioning-public-contract-and-ga.md)), so the exception is:
+
+- An alias already published whose enum Google later deprecates **stays
+  accepted, with a warning**. The alias is marked deprecated in the registry,
+  `team permissions` flags it (a label note, and an additive `deprecated`
+  field in `--output json`), and both the alias and the raw enum warn on use.
+  When Google names no modern equivalent, the warning names none either.
+- **Removing such an alias is reserved for a major version.**
+- A test anchors the alias registry to the committed Discovery snapshot's
+  `enumDeprecated`, so the next deprecation of an aliased enum fails CI
+  instead of shipping silently. New aliases still never point at a
+  deprecated value.
