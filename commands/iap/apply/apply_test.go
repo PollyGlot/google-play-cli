@@ -560,6 +560,111 @@ func TestRun_unreachableState_isUsageError(t *testing.T) {
 	}
 }
 
+// liveOffersGameReward serves the live promo offer as a game reward offer
+// capped at 5 redemptions: the seed for the gameRewardOffer diff (#537).
+const liveOffersGameReward = `{"oneTimeProductOffers":[
+  {"packageName":"com.example.app","productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}],"gameRewardOffer":{"redemptionLimit":"5"}}
+]}`
+
+// TestRun_offerGameReward_isManaged asserts gameRewardOffer sits in the
+// offer projection like its discountedOffer/preOrderOffer siblings (#537): a
+// changed or removed value plans an offer patch whose fields, and the
+// updateMask actually sent on offers:batchUpdate, carry gameRewardOffer, while
+// an identical value stays unchanged (no phantom patch).
+func TestRun_offerGameReward_isManaged(t *testing.T) {
+	const offerHead = `{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]`
+	catalogWith := func(offer string) string {
+		return writeCatalog(t, map[string]string{
+			"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE","offers":[` + offer + `]}]}`,
+			"old_gems.json": `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`,
+		})
+	}
+	const batchSuffix = "/oneTimeProducts/coins100/purchaseOptions/buy/offers:batchUpdate"
+
+	for name, tc := range map[string]struct {
+		offer      string
+		wantPatch  bool
+		wantReward string // redemptionLimit the outgoing offer must carry; "" = field absent
+	}{
+		"changed":   {offer: offerHead + `,"gameRewardOffer":{"redemptionLimit":"10"}}`, wantPatch: true, wantReward: "10"},
+		"removed":   {offer: offerHead + `}`, wantPatch: true},
+		"unchanged": {offer: offerHead + `,"gameRewardOffer":{"redemptionLimit":"5"}}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rt := &iapRT{offersBody: liveOffersGameReward}
+			rc := newRC(t, rt)
+			r, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: catalogWith(tc.offer)})
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			var js bytes.Buffer
+			if err := r.Renderers().JSON(&js); err != nil {
+				t.Fatalf("JSON: %v", err)
+			}
+			var view struct {
+				Changes []struct {
+					Op      string   `json:"op"`
+					Kind    string   `json:"kind"`
+					OfferID string   `json:"offerId"`
+					Fields  []string `json:"fields"`
+				} `json:"changes"`
+				Summary map[string]int `json:"summary"`
+			}
+			if err := json.Unmarshal(js.Bytes(), &view); err != nil {
+				t.Fatalf("decode plan %s: %v", js.String(), err)
+			}
+			m := rt.mutations()
+
+			if !tc.wantPatch {
+				if len(m) != 0 {
+					t.Errorf("unchanged gameRewardOffer must not mutate; got %v", m)
+				}
+				if len(view.Changes) != 0 || view.Summary["offerPatch"] != 0 {
+					t.Errorf("plan %s must carry no phantom offer patch", js.String())
+				}
+				return
+			}
+
+			if len(view.Changes) != 1 || view.Changes[0].Op != "patch" || view.Changes[0].Kind != "offer" || view.Changes[0].OfferID != "promo" ||
+				strings.Join(view.Changes[0].Fields, ",") != "gameRewardOffer" {
+				t.Fatalf("plan %s: want exactly one offer patch on promo with fields [gameRewardOffer]", js.String())
+			}
+			if len(m) != 1 || !strings.HasSuffix(m[0], batchSuffix) {
+				t.Fatalf("mutations = %v, want exactly the offers:batchUpdate call", m)
+			}
+			var sent struct {
+				Requests []struct {
+					OneTimeProductOffer struct {
+						OfferID         string `json:"offerId"`
+						GameRewardOffer *struct {
+							RedemptionLimit string `json:"redemptionLimit"`
+						} `json:"gameRewardOffer"`
+					} `json:"oneTimeProductOffer"`
+					AllowMissing bool   `json:"allowMissing"`
+					UpdateMask   string `json:"updateMask"`
+				} `json:"requests"`
+			}
+			body := rt.bodies[m[0]]
+			if err := json.Unmarshal([]byte(body), &sent); err != nil {
+				t.Fatalf("decode batchUpdate body %s: %v", body, err)
+			}
+			if len(sent.Requests) != 1 {
+				t.Fatalf("batchUpdate body %s: want one request", body)
+			}
+			req := sent.Requests[0]
+			if req.UpdateMask != "gameRewardOffer" || req.AllowMissing || req.OneTimeProductOffer.OfferID != "promo" {
+				t.Errorf("batchUpdate request %s: want updateMask=gameRewardOffer on promo, no allowMissing", body)
+			}
+			switch got := req.OneTimeProductOffer.GameRewardOffer; {
+			case tc.wantReward == "" && got != nil:
+				t.Errorf("batchUpdate body %s: a removed gameRewardOffer must be absent (the mask clears it)", body)
+			case tc.wantReward != "" && (got == nil || got.RedemptionLimit != tc.wantReward):
+				t.Errorf("batchUpdate body %s: want gameRewardOffer.redemptionLimit=%s", body, tc.wantReward)
+			}
+		})
+	}
+}
+
 func assertExit(t *testing.T, err error, want int) {
 	t.Helper()
 	if err == nil {

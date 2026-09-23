@@ -57,12 +57,14 @@ var managedFields = []reconcile.Field{
 // offerManagedFields is the offer-level projection: everything declarable on a
 // OneTimeProductOffer. Identity, the server-stamped regionsVersion and the
 // output-only state (reconciled by planStates through the state verbs) are
-// simply not listed, so they can never diff.
+// simply not listed, so they can never diff. TestOfferManagedFields_matchDiscovery
+// pins this list to the Discovery schema (#537).
 var offerManagedFields = []reconcile.Field{
 	{Name: "regionalPricingAndAvailabilityConfigs"},
 	{Name: "offerTags"},
 	{Name: "discountedOffer"},
 	{Name: "preOrderOffer"},
+	{Name: "gameRewardOffer"},
 }
 
 // Input is the request-shaped struct cobra builds from flags.
