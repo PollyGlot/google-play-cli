@@ -5,6 +5,16 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1](https://github.com/PollyGlot/google-play-cli/compare/v1.6.0...v1.6.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **iap:** reconcile gameRewardOffer on existing offers in iap apply ([#568](https://github.com/PollyGlot/google-play-cli/issues/568)) ([79d81f6](https://github.com/PollyGlot/google-play-cli/commit/79d81f6db9c4d2d7928dbce0cd81d1a2e6a8323f))
+* **metadata:** create new locales with listings.update instead of a 404ing patch ([#570](https://github.com/PollyGlot/google-play-cli/issues/570)) ([cd28a9c](https://github.com/PollyGlot/google-play-cli/commit/cd28a9ce4016f6774165dd08d35767418e4ea22f))
+* **metadata:** send the sniffed image media type on images.upload ([#567](https://github.com/PollyGlot/google-play-cli/issues/567)) ([7d56a1d](https://github.com/PollyGlot/google-play-cli/commit/7d56a1d84609904393d265e5b87261c58761f67f))
+* **team:** mark manage-managed-play deprecated and warn on use ([#569](https://github.com/PollyGlot/google-play-cli/issues/569)) ([f40452a](https://github.com/PollyGlot/google-play-cli/commit/f40452aa71f134223e911fa4605689b9919591b1))
+
 ## [1.6.0](https://github.com/PollyGlot/google-play-cli/compare/v1.5.0...v1.6.0) (2026-09-16)
 
 
