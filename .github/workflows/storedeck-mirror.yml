@@ -1,0 +1,132 @@
+name: Storedeck Mirror
+
+# Tells PollyGlot/storedeck about gplay CONTRACT changes at release time.
+#
+# storedeck consumes the `gplay` CLI contract, not the Google Play API, so it must
+# learn about a change when a version ships, not when a Discovery snapshot moves
+# (PRD #501, slice #504). A slice that changes a command's contract carries the
+# `affects:storedeck` label; on each release this workflow collects the issues
+# closed by that version's PRs, keeps the labelled ones, and opens (or updates)
+# exactly ONE mirror issue in storedeck. A release with no labelled issue creates
+# nothing and says so in the job summary.
+#
+# Trigger: `release: published`. release-please cuts the release with the gplay
+# App token, and App-token events DO start workflows (that is exactly why
+# release.yml refuses a `push: tags` trigger), so this fires reliably once per
+# published version. `workflow_dispatch` is the manual replay: it is idempotent,
+# re-running a version updates the same issue.
+#
+# ── Cross-repo credential (REQUIRED, does not exist yet) ─────────────────────
+# storedeck is a private repo, so GITHUB_TOKEN cannot touch it. Two options, in
+# order of preference:
+#
+#   1. gplay GitHub App (preferred, no PAT to rotate). Install the existing gplay
+#      App on PollyGlot/storedeck and grant it `Issues: Read and write` there.
+#      No new secret: this workflow reuses GPLAY_APP_ID / GPLAY_APP_PRIVATE_KEY
+#      and mints a token scoped to `storedeck` only.
+#   2. Fine-grained PAT fallback. Create a fine-grained token on PollyGlot,
+#      repository access limited to `PollyGlot/storedeck`, permission
+#      `Issues: Read and write` (nothing else), and store it as the repository
+#      secret `STOREDECK_ISSUES_TOKEN` in PollyGlot/google-play-cli. When that
+#      secret is set it wins over the App token.
+#
+# Until one of the two exists, the job fails on the "Resolve credential" step
+# with an explicit message rather than silently skipping the mirror.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Released tag to mirror (e.g. v1.4.1).
+        type: string
+        required: true
+      previous_tag:
+        description: 'Tag to diff against. Default: the tag preceding it.'
+        type: string
+        required: false
+      dry_run:
+        description: Render the issue in the job log without writing to storedeck.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # One mirror run per version: a replay must not race the release-time run and
+  # open a duplicate issue between the "search" and the "create" steps.
+  group: storedeck-mirror-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Mirror contract changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the script walks tag..tag to find the merged PRs
+          persist-credentials: false
+
+      # Least privilege: `issues: write` on storedeck ONLY. Never fails the job
+      # here — the "Resolve credential" step below owns the error message.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.GPLAY_APP_ID }}
+          private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: storedeck
+          permission-issues: write
+
+      - name: Resolve credential
+        id: cred
+        env:
+          PAT: ${{ secrets.STOREDECK_ISSUES_TOKEN }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PAT" ]; then
+            echo "::add-mask::$PAT"
+            echo "token=$PAT" >> "$GITHUB_OUTPUT"
+            echo "Using the STOREDECK_ISSUES_TOKEN fine-grained PAT."
+            exit 0
+          fi
+          if [ -n "$APP_TOKEN" ]; then
+            echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+            echo "Using a gplay App token scoped to PollyGlot/storedeck."
+            exit 0
+          fi
+          {
+            echo "### storedeck mirror: missing credential"
+            echo
+            echo "No cross-repo credential for \`PollyGlot/storedeck\`. Fix one of:"
+            echo
+            echo "1. Install the **gplay GitHub App** on \`PollyGlot/storedeck\` with"
+            echo "   \`Issues: Read and write\` (no new secret needed), or"
+            echo "2. Set the repository secret \`STOREDECK_ISSUES_TOKEN\` to a fine-grained"
+            echo "   PAT limited to \`PollyGlot/storedeck\` with \`Issues: Read and write\`."
+            echo
+            echo "See the header of \`.github/workflows/storedeck-mirror.yml\`."
+          } | tee -a "$GITHUB_STEP_SUMMARY" >&2
+          exit 1
+
+      - name: Mirror to storedeck
+        env:
+          GH_TOKEN: ${{ steps.cred.outputs.token }}
+          # Reading closingIssuesReferences on THIS repo needs a token valid here;
+          # the storedeck credential is not. The script reads with GH_TOKEN and
+          # this repo is public, so the default token would do — but keep the
+          # source queries explicit for the day the repo goes private.
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          PREVIOUS_TAG: ${{ inputs.previous_tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=(--tag "$TAG")
+          [ -n "${PREVIOUS_TAG:-}" ] && args+=(--previous-tag "$PREVIOUS_TAG")
+          [ "${DRY_RUN:-false}" = "true" ] && args+=(--dry-run)
+          scripts/storedeck-mirror.sh "${args[@]}"
