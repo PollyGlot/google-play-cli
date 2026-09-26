@@ -18,7 +18,7 @@ import (
 )
 
 // makeTestSA builds a valid *ServiceAccount with a real RSA
-// private key so JWTConfigFromJSON can actually sign the token-exchange JWT.
+// private key so Source can actually sign the token-exchange JWT.
 func makeTestSA(t *testing.T) *serviceaccount.ServiceAccount {
 	t.Helper()
 	key := testkit.RSAKey(t)

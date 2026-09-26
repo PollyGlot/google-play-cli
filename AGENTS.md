@@ -33,7 +33,7 @@ Canonical terms live in `CONTEXT.md`; use them verbatim, no synonyms. The core f
 ## Les pièges de ce repo
 
 - Never write an API URL by hand: call `apiregistry.Resolve(<method id>)` for the verb and URL template, and add the method to `internal/apiregistry` if it is missing (`archgate_test.go` there fails on any literal API path under `internal/play/` or `commands/`, `internal/play/gcs` excepted).
-- Hand-roll every Developer API call in `internal/play/api/` over raw HTTP; the interface stays `google.golang.org/api/androidpublisher`-free (ADR-0007). Auth uses `golang.org/x/oauth2/google`.
+- Hand-roll every Developer API call in `internal/play/api/` over raw HTTP; the interface stays `google.golang.org/api/androidpublisher`-free (ADR-0007). Auth uses `golang.org/x/oauth2/jwt` fed by the parsed key (depguard bars `oauth2/google`: it links the GCE metadata client).
 - `--output json` mirrors the API response verbatim (ADR-0003); stdout carries data, stderr carries logs. Keep it that way in every command.
 - release-please bumps the CLI version from the commit **type** alone, blind to paths: reserve `feat`/`fix` for changes to the shipped binary, and type `website/`, `docs/`, `.github/` work as `docs`/`chore`/`ci` (the site deploys on path triggers regardless).
 - Solo maintainer, so no approving review can exist: code PRs merge through `scripts/merge-pr.sh <n>` (refuses a head behind `origin/main` or a required check not green, then `gh pr merge --admin --squash`); docs-only PRs (only `*.md` and doc assets, the inverse of the `code` filter in `.github/workflows/ci.yml`, `docs/discovery/**`, the generated `docs/COVERAGE.md` and the pages holding `make docs-update` blocks, `README.md` included, count as code) may skip it once every check is green.
