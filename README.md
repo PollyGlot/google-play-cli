@@ -79,6 +79,18 @@ no sha256 tool. Set `GPLAY_INSTALL_NO_VERIFY=1` to bypass (prints
 a warning, greppable in CI). To add cosign and provenance checks on top, see
 [Verify a release](#verify-a-release).
 
+**Homebrew formula users: switch to the cask once.** The tap now ships gplay
+as a cask (macOS and Linux) instead of a formula, and `brew upgrade` does not
+move a formula install over by itself. If `brew list --formula gplay` finds it:
+
+```bash
+brew uninstall --formula gplay
+brew install --cask PollyGlot/tap/gplay
+```
+
+Uninstall the formula first: installed side by side, the cask skips linking
+`gplay` and the old formula binary stays first on your `PATH`.
+
 ## Agent skills
 
 `gplay` is shaped for a non-human caller: explicit flags, no interactive
