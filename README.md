@@ -45,7 +45,8 @@ means free to evolve. `--help` tells you which, per command.
 >
 > **`--help` is the source of truth**: the label is on the command itself.
 > See [Stability and the Public contract](https://gplay.sh/docs/concepts/stability/),
-> [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/), and
+> [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/),
+> [Migrating to 2.0](https://gplay.sh/docs/migration/2.0/), and
 > the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking) for what's out of scope.
 
 ## Why
