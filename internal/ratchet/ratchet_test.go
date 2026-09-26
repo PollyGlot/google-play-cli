@@ -111,7 +111,7 @@ var rules = []rule{
 		id:           "test-roundtripper",
 		hasAllowlist: true,
 		what:         "RoundTrip method on a test type",
-		fix:          "use internal/testkit (testkit.NewFake, or testkit.TokenResponse and testkit.Response) and extend the kit when it cannot express the case",
+		fix:          "use internal/testkit (testkit.NewFake, or a testkit.RoundTripFunc built on testkit.TokenResponse and testkit.Response) and extend the kit when it cannot express the case",
 		exempt:       []string{"internal/testkit/"},
 		testCode:     true,
 		detect:       detectRoundTrip,

@@ -1,0 +1,7 @@
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/apks
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/bundles
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1

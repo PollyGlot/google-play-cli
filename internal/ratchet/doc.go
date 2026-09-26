@@ -16,8 +16,9 @@
 //   - request-helper: a direct (*http.Client).Do outside internal/play/api.
 //     Send the request through the executor, api.Do / api.DoJSON.
 //   - test-roundtripper: a RoundTrip method declared by test code outside
-//     internal/testkit. Use testkit.NewFake, or testkit.TokenResponse and
-//     testkit.Response; extend the kit when it cannot express a case.
+//     internal/testkit. Use testkit.NewFake, or a testkit.RoundTripFunc built
+//     on testkit.TokenResponse and testkit.Response; extend the kit when it
+//     cannot express a case.
 //   - test-rsa-keygen: rsa.GenerateKey in test code outside internal/testkit.
 //     Use testkit.RSAKey, PrivateKeyPEM or ServiceAccountJSON.
 //   - http-client: an http.Client constructed by shipped code outside
