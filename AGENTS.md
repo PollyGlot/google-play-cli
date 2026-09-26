@@ -35,7 +35,7 @@ Canonical terms live in `CONTEXT.md`; use them verbatim, no synonyms. The core f
 - Hand-roll every Developer API call in `internal/play/api/` over raw HTTP; the interface stays `google.golang.org/api/androidpublisher`-free (ADR-0007). Auth uses `golang.org/x/oauth2/google`.
 - `--output json` mirrors the API response verbatim (ADR-0003); stdout carries data, stderr carries logs. Keep it that way in every command.
 - release-please bumps the CLI version from the commit **type** alone, blind to paths: reserve `feat`/`fix` for changes to the shipped binary, and type `website/`, `docs/`, `.github/` work as `docs`/`chore`/`ci` (the site deploys on path triggers regardless).
-- Docs-only PRs (only `*.md` and doc assets, matching the inverse of the `code` filter in `.github/workflows/ci.yml`, `docs/discovery/**` counts as code) may be squash-merged solo via `gh pr merge <n> --admin --squash`, after confirming every CI check is green; anything touching code needs a normal reviewed merge.
+- Solo maintainer, so no approving review can exist: code PRs merge through `scripts/merge-pr.sh <n>` (refuses a head behind `origin/main` or a required check not green, then `gh pr merge --admin --squash`); docs-only PRs (only `*.md` and doc assets, the inverse of the `code` filter in `.github/workflows/ci.yml`, `docs/discovery/**` counts as code) may skip it once every check is green.
 - `internal/` and `commands/` count as code whatever the extension: the binary embeds JSON and CSV via `go:embed`.
 
 ## Goût
