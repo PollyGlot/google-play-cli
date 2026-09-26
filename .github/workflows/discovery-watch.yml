@@ -63,31 +63,29 @@ on:
         required: false
         type: string
 
+# Read-only by default: every write (push, PR, label, merge) goes through the
+# gplay App token minted below, never through GITHUB_TOKEN.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+# A Monday schedule and a manual dispatch must not force-push the rolling
+# branch at the same time; queue the second run instead of cancelling either.
+concurrency:
+  group: discovery-refresh
+  cancel-in-progress: false
 
 jobs:
   watch:
     name: Refresh Discovery snapshots
     runs-on: ubuntu-latest
     steps:
-      # Same gplay App token pattern as release-please: a PR opened with the
-      # default GITHUB_TOKEN would not trigger CI on itself.
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: app-token
-        with:
-          app-id: ${{ secrets.GPLAY_APP_ID }}
-          private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-pull-requests: write
-
+      # Checked out with the read-only GITHUB_TOKEN and no persisted credential:
+      # the App token (a ruleset bypass actor) is only minted after
+      # `make discovery-update`, so it never sits in .git/config while the
+      # regeneration runs.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app-token.outputs.token }}
-          persist-credentials: true
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -143,6 +141,19 @@ jobs:
             echo 'SCHEMA_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      # Same gplay App token pattern as release-please: a PR opened with the
+      # default GITHUB_TOKEN would not trigger CI on itself. Minted here, after
+      # the regeneration, for the reason given at the checkout step.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ secrets.GPLAY_APP_ID }}
+          private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Open or refresh the rolling PR
         id: pr
         if: inputs.pr == '' && steps.diff.outputs.changed == 'true'
@@ -164,7 +175,14 @@ jobs:
             *)       TITLE="chore(discovery): refresh snapshots (revision bump only)" ;;
           esac
           git commit -m "$TITLE"
+          # The checkout persisted no credential: git asks gh for one at push
+          # time, and gh answers with GH_TOKEN from this step's environment, so
+          # the App token is never written to disk.
+          gh auth setup-git
           git push -f origin "$BRANCH"
+          # The exact commit this run classified. The merge path below pins it,
+          # so anything pushed to the branch afterwards is never merged unseen.
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           {
             echo "## Summary"
             case "$KIND" in
@@ -226,6 +244,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
           # Auto-merge is only ever allowed to land generated files. Anything
@@ -233,7 +252,7 @@ jobs:
           # classified: refuse and hand it back to a human. The check itself is
           # shared with the verdict-merge path (discovery-verdict.yml), so the
           # two merge buttons can never drift apart.
-          if ! .github/scripts/discovery-blast-radius.sh "$PR"; then
+          if ! .github/scripts/discovery-blast-radius.sh "$PR" "$HEAD_SHA"; then
             gh pr edit "$PR" --add-label discovery:needs-decision
             exit 1
           fi
@@ -244,6 +263,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
           # The force-push above may not have registered any check run yet, and
@@ -256,8 +276,13 @@ jobs:
           gh pr checks "$PR" --watch --fail-fast --interval 30
           # --squash because the repo is squash-only; --admin because a bot
           # cannot approve its own PR and the review requirement would otherwise
-          # deadlock the merge.
-          gh pr merge "$PR" --squash --admin --delete-branch
+          # deadlock the merge. --match-head-commit because minutes pass between
+          # the guard and this line: a push landing in between moves the head,
+          # the merge refuses, and the PR goes back to a human.
+          if ! gh pr merge "$PR" --squash --admin --delete-branch --match-head-commit "$HEAD_SHA"; then
+            gh pr edit "$PR" --add-label discovery:needs-decision
+            exit 1
+          fi
           echo "merged=true" >> "$GITHUB_OUTPUT"
 
       # The webhook call takes the same three facts whether it was reached

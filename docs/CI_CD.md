@@ -307,24 +307,33 @@ Exit code follows the upstream status (see the [exit-code table](DESIGN.md#9-exi
 Either way the cause is the same orphaned Edit, and **retrying immediately will
 keep failing** — don't put this behind a blind retry loop.
 
-### How to recover (with today's command surface)
+### How to recover
 
-There is no gplay command to discard an orphaned Edit yet (that's the parked
-explicit-edits mode, [#48](https://github.com/PollyGlot/google-play-cli/issues/48)).
-Two recovery paths exist today:
+First check whether the open Edit is one gplay pinned in this checkout:
+`gplay edits status --package <your.package>` reads `.gplay/edit-<package>.json`.
 
-1. **Wait for Play-side expiry.** An open Edit auto-expires after **~24h**.
+1. **A pinned explicit Edit: `gplay edits discard`.** An Edit opened with
+   `gplay edits begin` stays open until `edits commit` or `edits discard`, by
+   design. If a run died between the two and its checkout survived,
+   `gplay edits discard --package <your.package>` releases it and clears the
+   pin at once.
+2. **Wait for Play-side expiry.** An open Edit auto-expires after **~24h**.
    After that, the next run's `edits.insert` succeeds with no intervention. Best
    when the pipeline is not time-critical.
-2. **Release it via the Google Play Console (immediate).** Open the app in the
+3. **Release it via the Google Play Console (immediate).** Open the app in the
    Play Console; a stale/pending Edit can be discarded there, after which
    re-running gplay succeeds right away.
+
+`edits discard` only reaches the Edit pinned in the checkout it runs in. The
+orphan left by a hard-killed implicit command has no pin, and neither has an
+Edit opened by another client or on a runner that was since recycled: those
+take path 2 or 3.
 
 Confirm access is otherwise healthy with
 `gplay auth doctor --package <your.package>` — it opens and discards a throwaway
 Edit, so once the orphan is gone it round-trips cleanly.
 
-### In a pipeline, meanwhile
+### In a pipeline
 
 - **Branch on the exit code, don't blind-retry.** Treat exit 30 / 60 with an
   `editAlreadyExists` reason as "needs the orphan cleared", not "retry now". The
@@ -336,10 +345,19 @@ Edit, so once the orphan is gone it round-trips cleanly.
 - **Prevent it where you can:** give jobs a generous step timeout so the runner
   doesn't evict gplay mid-commit, and avoid `kill -9` on the process.
 
-The structural fix — explicit `edits begin/commit/discard` so a pipeline can
-adopt and discard an Edit by ID — is tracked in
-[#48](https://github.com/PollyGlot/google-play-cli/issues/48) and intentionally
-parked; this runbook covers recovery with the commands that exist today.
+- **Batching several changes? Discard on failure.** In explicit mode
+  (`gplay edits begin`, which needs a project from `gplay init`), nothing is
+  auto-discarded: every write command reuses the pinned Edit until you commit.
+  Give the job a failure step that discards it, so a red run leaves no Edit
+  behind for the next one:
+
+  ```yaml
+      - run: gplay edits begin --package com.example.myapp
+      - run: gplay releases upload app.aab --package com.example.myapp --track internal
+      - run: gplay edits commit --package com.example.myapp
+      - if: failure()
+        run: gplay edits discard --package com.example.myapp
+  ```
 
 ## 8. gplay's own CI (for repository maintainers)
 
@@ -347,31 +365,65 @@ parked; this runbook covers recovery with the commands that exist today.
 > documents how the **gplay repository itself** is tested — relevant only if
 > you're contributing to gplay, not to using the CLI.
 
-The pipeline lives in [`.github/workflows/`](../.github/workflows/); every
-third-party action is SHA-pinned (see
-[`CONTRIBUTING.md`](../CONTRIBUTING.md#github-actions-are-sha-pinned)).
+The pipeline lives in [`.github/workflows/`](../.github/workflows/). Every
+action, GitHub's own included, is pinned to a full commit SHA (see
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#github-actions-are-sha-pinned)), and
+`workflow-lint.yml` fails a PR that adds an unpinned one.
 
-| Workflow | Trigger | What it does |
-|---|---|---|
-| `ci.yml`: **Build, lint, test** | PR + push to `main` | aggregator over the `lint` job (gofmt, `go vet`, golangci-lint, build) and the `test` shards (`go test -race`, split by package). **Required check.** |
-| `test-uncached.yml` | daily + manual | `go test -race -count=1 ./...` with no cache, the safety net for the cached test results. Not required. |
-| `ci.yml` — **Docs sanity** | PR + push to `main` | verb-gate (ADR-0019), shellcheck, required-files. **Required check.** |
-| `ci.yml` — **Fuzz smoke** | PR + push to `main` | bounded fuzzing of the untrusted-input parsers. Not required. |
-| `codeql.yml` | PR + push to `main` + weekly | CodeQL `security-and-quality` static analysis of our own Go. Not required (yet). |
-| `govulncheck.yml` | weekly + `go.mod`/`go.sum` push | dependency-vulnerability scan. |
-| `release-rehearsal.yml` | PR touching release machinery | non-publishing GoReleaser dry run. Not required. |
+The two **required checks** are "Build, lint, test" and "Docs sanity". Every
+other workflow reports, but never blocks a merge.
+
+| Workflow | Trigger | What it does | Secrets and variables |
+|---|---|---|---|
+| `ci.yml`: **Build, lint, test** | PR + push to `main` | aggregator over the `lint` job (gofmt, `go vet`, golangci-lint, build) and the `test` shards (`go test -race`, split by package). **Required check.** | none |
+| `ci.yml`: **Docs sanity** | PR + push to `main` | verb gate (ADR-0019), em dash gate, shellcheck of the install scripts, the install script's fail-closed checksum test (offline), required files. **Required check.** | none |
+| `ci.yml`: **Fuzz smoke** | PR + push to `main` | bounded fuzzing of the untrusted-input parsers. Not required. | none |
+| `test-uncached.yml` | daily + manual | `go test -race -count=1 ./...` with no cache, the safety net for the cached test results. Not required. | none |
+| `codeql.yml` | PR + push to `main` + weekly | CodeQL `security-and-quality` static analysis of our own Go. Not required (yet). | none |
+| `govulncheck.yml` | weekly + manual + `go.mod`/`go.sum` push to `main` | dependency-vulnerability scan. Not required. | none |
+| `workflow-lint.yml` | PR + push to `main` touching `.github/**` | actionlint and zizmor (regular persona, medium and above) over the workflows; accepted findings live in `.github/zizmor.yml`. Not required. | none |
+| `release-rehearsal.yml` | PR touching release machinery + manual | non-publishing GoReleaser dry run. Not required. | none |
+| `release-please.yml` | push to `main` | maintains the release PR; once it merges, cuts the tag and GitHub Release and calls `release.yml`. | `GPLAY_APP_ID`, `GPLAY_APP_PRIVATE_KEY` (gplay App token), `HOMEBREW_TAP_GITHUB_TOKEN` (passed on) |
+| `release.yml` | called by `release-please.yml` + manual (tag input) | GoReleaser build, cosign signature, SBOMs, build-provenance attestations, Homebrew tap push. | `HOMEBREW_TAP_GITHUB_TOKEN`, `GITHUB_TOKEN` |
+| `deploy-site.yml` | push to `main` touching `website/**`, `deploy/gplay.sh/**` or the workflow itself + release published + manual | builds the site and deploys the Cloudflare Worker serving gplay.sh and `/install` (ADR-0025). | `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID` |
+| `discovery-watch.yml` | weekly + manual | refreshes the Discovery snapshots on a rolling PR, auto-merges a revision-only bump, hands a schema or surface change to the triage routine (PRD #501). | `GPLAY_APP_ID`, `GPLAY_APP_PRIVATE_KEY`, `DISCOVERY_TRIAGE_WEBHOOK_URL`, `DISCOVERY_TRIAGE_API_TOKEN`, variable `DISCOVERY_TRIAGE_ENABLED` |
+| `discovery-verdict.yml` | label on the rolling Discovery PR | acts on the routine's verdict label: merges on `discovery:verdict-merge`, only reports on `discovery:needs-decision`. | `GPLAY_APP_ID`, `GPLAY_APP_PRIVATE_KEY` |
+
+### Workflow hardening
+
+The workflows that publish something, or hold a token that can, follow four
+rules. `workflow-lint.yml` checks the first three on every change to
+`.github/**`.
+
+- **Pinned actions.** A tag can be moved; a commit SHA cannot. Dependabot
+  proposes SHA bumps weekly, after a seven-day cooldown on fresh releases.
+- **No dependency cache where something ships.** `release.yml` (signed release
+  binaries) and `deploy-site.yml` (the Worker behind `gplay.sh/install`)
+  restore no Go or npm cache: a `main`-scoped cache entry is writable by any
+  workflow running on `main`, so a poisoned one would flow into what users
+  install. The CI jobs and the non-publishing rehearsal keep their caches.
+- **Read-only `GITHUB_TOKEN` by default.** Each workflow declares
+  `contents: read` at the top and grants more only to the job that needs it.
+  The release-please and Discovery bots write through the gplay App token
+  instead, and `discovery-watch.yml` mints that token only after the snapshot
+  regeneration, with no credential persisted in the checkout.
+- **Bot merges pin the head they checked.** The two Discovery merge buttons
+  capture the PR head once, check the blast radius of that exact commit
+  (`.github/scripts/discovery-blast-radius.sh`), and merge with
+  `gh pr merge --match-head-commit`. A push landing in between fails the merge
+  and relabels the PR `discovery:needs-decision`.
 
 ### Path-based job gating
 
 A leading **`changes`** job ([`dorny/paths-filter`](https://github.com/dorny/paths-filter))
 classifies each diff and exposes a `code` output. A change is `code: true` if it
 touches any of `cmd/**`, `commands/**`, `internal/**`, `**/*.go`, `go.mod`,
-`go.sum`, `Makefile`, `.github/**`, `scripts/**`, `install.sh`, or
-`docs/discovery/**` — the same "not docs-only" boundary as
-[`CLAUDE.md`](../CLAUDE.md). Everything else (Markdown, the rest of `docs/**`,
+`go.sum`, `Makefile`, `.github/**`, `scripts/**`, `install.sh`,
+`docs/discovery/**`, or `docs/COVERAGE.md`: the same "not docs-only" boundary as
+[`AGENTS.md`](../AGENTS.md). Everything else (Markdown, the rest of `docs/**`,
 `website/**`, doc assets) is docs/site-only.
 
-Two entries in that list are easy to get wrong, and both were:
+Three entries in that list are easy to get wrong, and all three were:
 
 - **The Go source directories are matched wholesale, not by `*.go` extension.**
   The binary embeds non-Go files — `internal/schemaindex/schema_index.json` and
@@ -384,6 +436,10 @@ Two entries in that list are easy to get wrong, and both were:
   are the inputs to `make schema-index-update`, so changing them can
   desynchronise the embedded Schema index even when nothing under `internal/`
   moves.
+- **`docs/COVERAGE.md` is code too.** It is generated (`make coverage-update`)
+  and `internal/coveragedoc`'s freshness test fails on a hand edit, but that
+  test only runs when `code` is true. Without this entry, a PR editing only
+  that file passed as docs-only and skipped the one test that guards it.
 
 The rule of thumb: `code` means *"can this change the built binary?"*, not
 *"does this end in `.go`?"*.
@@ -408,9 +464,10 @@ the subtle part:**
   every PR.
 
 Net effect: docs-only PRs get a fast green pipeline; any touch to a Go source
-directory, `go.mod`, `Makefile`, `.github`, `scripts`, or the Discovery
-snapshots flips `code` true and runs the full pipeline unchanged — gating is by
-changed path, never by trust, so there's no loss of safety.
+directory, `go.mod`, `Makefile`, `.github`, `scripts`, the Discovery
+snapshots, or `docs/COVERAGE.md` flips `code` true and runs the full pipeline
+unchanged: gating is by changed path, never by trust, so there's no loss of
+safety.
 
 When adding a path that the build consumes, add it to the filter in the same PR.
 A green "Build, lint, test" that finished in seconds on a code PR cannot happen
