@@ -8,6 +8,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -110,10 +111,33 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 // "2-space indent, trailing newline" shape. Every command's JSON
 // renderer should call this: keeping the encoder configuration in one
 // place stops the SetIndent setting from drifting between commands.
+//
+// HTML escaping is off: the encoder's default rewrites <, > and & as
+// \u003c, \u003e and \u0026, which only helps JSON inlined in an HTML
+// page. Here it made API passthrough strings (review text, listing copy,
+// a json.RawMessage re-indented on the way out) differ byte-wise from what
+// the API returned (ADR-0003), and turned "--package <pkg>" in an error
+// envelope into text grep and humans cannot read.
 func WriteJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
+}
+
+// Marshal is json.Marshal without HTML escaping, for the compact JSON gplay
+// assembles from API bytes before it reaches WriteJSON: a merged page
+// envelope, a composite view. json.Marshal escapes <, > and & even inside a
+// json.RawMessage, and WriteJSON cannot undo an escape already baked into
+// the bytes, so such an envelope must be built here to stay verbatim.
+func Marshal(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 // RegisterFlag binds the standard --output flag to dest on cmd. Every

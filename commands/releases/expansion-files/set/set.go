@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/expansionfilescmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -73,16 +74,16 @@ func dryRunSuffix(dry bool) string {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, expansionfilescmd.Usagef("missing or invalid --version-code: the APK whose expansion config is being set is required")
+		return nil, exit.Usagef("missing or invalid --version-code: the APK whose expansion config is being set is required")
 	}
 	if in.ReferencesVersion <= 0 {
-		return nil, expansionfilescmd.Usagef("missing or invalid --references-version: the APK versionCode whose expansion file to reference is required")
+		return nil, exit.Usagef("missing or invalid --references-version: the APK versionCode whose expansion file to reference is required")
 	}
 	ft, err := expansionfilescmd.NormalizeType(in.Type)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := expansionfilescmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

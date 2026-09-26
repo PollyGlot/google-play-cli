@@ -9,17 +9,16 @@ package create
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 )
@@ -31,73 +30,6 @@ type Input struct {
 	Name              string
 	DryRun            bool
 	KeepEditOnFailure bool
-}
-
-// usageError is a CLI-misuse error (missing track name, no package);
-// ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-// Error returns the misuse message.
-func (e *usageError) Error() string { return e.msg }
-
-// ExitCode reports 2 (CLI misuse) per docs/DESIGN.md §9.
-func (e *usageError) ExitCode() int { return 2 }
-
-// forbiddenError wraps a 403 (service account not invited on the app)
-// with the standard grant-access hint. It carries no ExitCode of its own
-// so the wrapped *api.Error (403 → exit 11) stays authoritative.
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-// Error renders the forbidden message plus the Play Console grant hint.
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 403 to exit 11.
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// packageNotFoundError wraps an edits.insert 404 (the package is unknown
-// or not registered) with a hint pointing at `gplay apps list`. It
-// carries no ExitCode of its own so the wrapped *api.Error (404 → exit
-// 30) stays authoritative through the Coder chain, mirroring the sibling
-// `gplay tracks view` / `tracks list`.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-// Error renders the not-found message plus the `gplay apps list` hint.
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 404 to exit 30.
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
-
-// classifyEditError attaches an actionable hint to the operator-facing
-// failures of a create, while leaving the wrapped *api.Error to drive
-// the exit code. An edits.insert 404 means the package is unknown (→
-// `gplay apps list` hint, mirroring `tracks list`), a 403 means the
-// service account was not invited on the app. Every other failure: in
-// particular the tracks.create 400/409 "track already exists" (exit
-// 30/60), which gplay surfaces verbatim rather than faking idempotency:
-// propagates untouched.
-func classifyEditError(pkg string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
-	}
-	return err
 }
 
 // Payload satisfies output.Renderable. Raw carries the tracks.create
@@ -185,15 +117,12 @@ func renderMarkdown(w io.Writer, p Payload) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
-		return nil, &usageError{msg: "missing track name: gplay tracks create <name>"}
+		return nil, &exit.UsageError{Msg: "missing track name: gplay tracks create <name>"}
 	}
 
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a missing
@@ -233,7 +162,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		created, raw = t, r
 		return nil
 	}); err != nil {
-		return nil, classifyEditError(pkg, err)
+		// A tracks.create 400/409 "track already exists" is not a 403/404,
+		// so it surfaces verbatim (exit 30/60) rather than faking idempotency.
+		return nil, apihint.ForPackage(pkg, err)
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The

@@ -85,12 +85,9 @@ func (p Payload) columns() []output.Column[vitals.Row] {
 // POST, projects the timeline, warns about freshness, and returns the Payload.
 // It is the single body both the generic command and the presets call.
 func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
-	pkg := p.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(p.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	idx, err := schemaindex.Embedded()

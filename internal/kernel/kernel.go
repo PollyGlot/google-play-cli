@@ -276,8 +276,9 @@ type RunContext struct {
 	// Format is the resolved output Format: never FormatAuto.
 	Format output.Format
 
-	// Resolved is the full cascade snapshot. Commands access the
-	// Project pin via rc.Resolved.Pin and the accounts list via
+	// Resolved is the full cascade snapshot. Package-axis commands resolve
+	// their target through rc.Package (flag, then the Project pin), never
+	// by reading rc.Resolved.Pin themselves; the accounts list is
 	// rc.Resolved.Accounts.
 	Resolved *config.Resolved
 

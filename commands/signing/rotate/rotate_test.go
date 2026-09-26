@@ -26,10 +26,10 @@ import (
 
 const rotateBody = `{"rotatedKeyCertificate":{"certificateHashMd5":"AA:BB","certificateHashSha1":"CC:DD","certificateHashSha256":"EE:FF"}}`
 
-const (
-	certPEM    = "-----BEGIN CERTIFICATE-----\nZmFrZQ==\n-----END CERTIFICATE-----\n"
-	lineageBin = "\x00\x01lineage-bytes\xff"
-)
+const lineageBin = "\x00\x01lineage-bytes\xff"
+
+// certPEM is a real self-signed certificate: ReadPEM parses every block.
+func certPEM(t *testing.T) string { return string(testkit.CertificatePEM(t)) }
 
 // rt is the offline transport: it answers the OAuth token exchange and the
 // single appsigning POST, recording the request for shape assertions.
@@ -99,7 +99,7 @@ func validInput(t *testing.T) rotatecmd.Input {
 	return rotatecmd.Input{
 		Package: "com.example.app",
 		KmsKey:  "projects/p/cryptoKeyVersions/2",
-		KmsCert: writeFile(t, dir, "new.pem", certPEM),
+		KmsCert: writeFile(t, dir, "new.pem", certPEM(t)),
 		Lineage: writeFile(t, dir, "lineage.bin", lineageBin),
 		Reason:  "routine-key-upgrade",
 		Confirm: true,
@@ -194,7 +194,7 @@ func TestRun_postsRotateRequest(t *testing.T) {
 	if got := body.RotatedCloudKmsKey.CloudKmsKeyAndCert.CloudKmsKey.CryptoKeyVersionResource; got != in.KmsKey {
 		t.Errorf("cryptoKeyVersionResource = %q, want %q", got, in.KmsKey)
 	}
-	if got := string(body.RotatedCloudKmsKey.CloudKmsKeyAndCert.PemCertificate); got != certPEM {
+	if got := string(body.RotatedCloudKmsKey.CloudKmsKeyAndCert.PemCertificate); got != certPEM(t) {
 		t.Errorf("pemCertificate decodes to %q, want the PEM file's bytes", got)
 	}
 	if got := string(body.RotatedCloudKmsKey.SigningCertificateLineage); got != lineageBin {

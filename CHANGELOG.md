@@ -5,6 +5,16 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2](https://github.com/PollyGlot/google-play-cli/compare/v1.6.1...v1.6.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* **auth:** exit 10 on a refused token exchange and never retry it ([#605](https://github.com/PollyGlot/google-play-cli/issues/605)) ([3d62b0f](https://github.com/PollyGlot/google-play-cli/commit/3d62b0f6713074d4e895f8e6b04fe85f24964ed5))
+* **auth:** never echo the service-account value, redact gplay-authored stdout ([#606](https://github.com/PollyGlot/google-play-cli/issues/606)) ([5a10d62](https://github.com/PollyGlot/google-play-cli/commit/5a10d62adaf7ed135658743d4b387ef396de4b66))
+* **build:** build on Go 1.27.1 from go.mod and keep Go modules current ([#610](https://github.com/PollyGlot/google-play-cli/issues/610)) ([81eef5a](https://github.com/PollyGlot/google-play-cli/commit/81eef5a149d4ff472b2a27580a813536264e5a8f))
+* **retry:** request executor, retry decided by declared idempotency ([#611](https://github.com/PollyGlot/google-play-cli/issues/611)) ([df98729](https://github.com/PollyGlot/google-play-cli/commit/df98729ad9cb18ca819a4d6206ce46dd486ff7f6))
+
 ## [1.6.1](https://github.com/PollyGlot/google-play-cli/compare/v1.6.0...v1.6.1) (2026-09-23)
 
 
