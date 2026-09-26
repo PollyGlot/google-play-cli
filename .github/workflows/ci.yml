@@ -321,28 +321,38 @@ jobs:
       # fixed number of executions rather than a wall-clock -fuzztime. The
       # clock bound was what flaked: the coordinator's deadline could expire
       # mid-shutdown ("context deadline exceeded"), even from a fresh corpus
-      # (#384 did not end it). A count has no deadline. The counts are
-      # calibrated to about 25 s per target on a 4-core runner with all
-      # targets sharing it; see docs/CI_CD.md § "Fuzz smoke".
+      # (#384 did not end it). A count has no deadline. Each count is about
+      # 35 s of work at the rate measured with all ten targets sharing the
+      # 4-core runner; see docs/CI_CD.md § "Fuzz smoke".
       - name: Fuzz parsers
         run: |
           set -euo pipefail
           # No cache here holds a corpus; clear it anyway so a smoke always
           # starts from the in-code f.Add seeds.
           rm -rf "$(go env GOCACHE)/fuzz"
-          # package, target, -fuzztime
+          # package, target, executions (-fuzztime)
           targets=(
-            "./internal/play/api FuzzParseErrorEnvelope 25s"
-            "./internal/transport FuzzScopesFromAssertion 25s"
-            "./internal/transport FuzzParseRetryAfter 25s"
-            "./internal/reviews/batch FuzzParse 25s"
-            "./internal/reviews/history FuzzHistoryParse 25s"
-            "./internal/artifact FuzzParseBinaryXMLPackage 25s"
-            "./internal/artifact FuzzParseProtoManifestPackage 25s"
-            "./internal/redact FuzzRedactString 25s"
-            "./internal/output FuzzSanitizeCell 25s"
-            "./internal/compliance/datasafety FuzzDataSafetyValidate 25s"
+            "./internal/play/api FuzzParseErrorEnvelope 45000x"
+            "./internal/transport FuzzScopesFromAssertion 55000x"
+            "./internal/transport FuzzParseRetryAfter 75000x"
+            "./internal/reviews/batch FuzzParse 230000x"
+            "./internal/reviews/history FuzzHistoryParse 200000x"
+            "./internal/artifact FuzzParseBinaryXMLPackage 70000x"
+            "./internal/artifact FuzzParseProtoManifestPackage 90000x"
+            "./internal/redact FuzzRedactString 8000x"
+            "./internal/output FuzzSanitizeCell 100000x"
+            "./internal/compliance/datasafety FuzzDataSafetyValidate 380000x"
           )
+          # Every Fuzz function in the tree must be listed: a new target that
+          # only replays its seeds in `test` is the gap this job exists for.
+          found=$(grep -rEo --include='*_test.go' '^func Fuzz[A-Za-z0-9_]*' cmd commands internal |
+            sed -E 's#^(.*)/[^/]*:func (.*)$#./\1 \2#' | sort -u)
+          listed=$(printf '%s\n' "${targets[@]}" | awk '{print $1, $2}' | sort -u)
+          if [ "$found" != "$listed" ]; then
+            diff <(echo "$listed") <(echo "$found") || true
+            echo '::error::the fuzz target list differs from the Fuzz functions in the tree (> missing, < stale)'
+            exit 1
+          fi
           # Instrumented builds share most of their dependencies (the standard
           # library included). Build them once up front: ten concurrent `go
           # test` would each compile them again.
