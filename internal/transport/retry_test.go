@@ -10,11 +10,13 @@ import (
 	"time"
 )
 
-// step is one scripted outcome: status 0 means "return a transport error",
-// otherwise an HTTP response with that status (and optional headers).
+// step is one scripted outcome: status 0 means "return a transport error"
+// (err when set, else a generic one), otherwise an HTTP response with that
+// status (and optional headers).
 type step struct {
 	status int
 	header http.Header
+	err    error
 }
 
 // scriptRT serves a fixed sequence of outcomes and records the body bytes seen
@@ -41,6 +43,9 @@ func (s *scriptRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	st := s.steps[i]
 	if st.status == 0 {
+		if st.err != nil {
+			return nil, st.err
+		}
 		return nil, errors.New("transport boom")
 	}
 	h := st.header
@@ -200,7 +205,9 @@ func TestRetry_exhaustedReturnsLastResponse(t *testing.T) {
 func TestRetry_uploadBodyRecreatedPerAttempt(t *testing.T) {
 	inner := &scriptRT{t: t, steps: []step{{status: 500}, {status: 200}}}
 	rt, _ := newRetry(t, inner, 1)
-	resp, err := rt.RoundTrip(newReq(t, http.MethodPost, apiURL, "payload-bytes"))
+	// PUT (tracks.update): a replay after a 5xx needs an idempotent method, see
+	// TestRetry_nonIdempotentPOST* for the POST side.
+	resp, err := rt.RoundTrip(newReq(t, http.MethodPut, apiURL, "payload-bytes"))
 	if err != nil {
 		t.Fatalf("RoundTrip: %v", err)
 	}

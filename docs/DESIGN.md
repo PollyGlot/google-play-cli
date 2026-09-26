@@ -559,10 +559,17 @@ blip retries a timeout.
 ### Opt-in retry (`--retry`)
 
 The global **`--retry N`** flag (default `0` = no retry) layers a transport
-middleware on the authed client that retries the transient classes — transport
-errors, HTTP 5xx, and 429 (honoring `Retry-After`) — with exponential backoff
-plus jitter. Non-transient 4xx (auth, validation) and `edits.commit` (a
-duplicate could double-publish) are never retried, so it is safe to leave on.
+middleware on the authed client that retries the transient classes (transport
+errors, HTTP 5xx, and 429 honoring `Retry-After`, capped at the 30s maximum
+backoff) with exponential backoff plus jitter. Non-transient 4xx (auth,
+validation) and `edits.commit` (a duplicate could double-publish) are never
+retried. A write is replayed only when its API method is declared idempotent in
+`internal/apiregistry` (GET, PUT, PATCH, DELETE, plus an allowlist of
+read-shaped POSTs such as the vitals queries and `edits.validate`); any other
+POST (an image upload, a create, a refund) is retried only when the failure
+proves it never reached the server (a dial or DNS error, or a 429), so a 5xx
+after the write may have landed is returned instead of duplicated. It is safe to
+leave on.
 When `--retry` is set, `--timeout` becomes a **per-attempt** bound rather than a
 single per-request one; request bodies are recreated per attempt (uploads
 re-send from a fresh reader). Details and CI examples: [`CI_CD.md`](CI_CD.md#4-exit-codes--retry-vs-fail).

@@ -234,11 +234,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 
 	// Global opt-in retry (docs/CI_CD.md §4). Default 0 = today's behavior (no
 	// retry). When > 0 the kernel layers a retry transport that retries
-	// transport errors / 5xx / 429 (honoring Retry-After) with exponential
-	// backoff + jitter; --timeout then bounds each attempt. The kernel reads it
-	// via FromCobra → Inputs.Retry.
+	// transport errors / 5xx / 429 (honoring Retry-After up to the max delay)
+	// with exponential backoff + jitter, replaying only idempotent requests
+	// (#575); --timeout then bounds each attempt. The kernel reads it via
+	// FromCobra → Inputs.Retry.
 	root.PersistentFlags().Int("retry", 0,
-		"retry transient failures (transport errors, 5xx, 429) up to N times with exponential backoff (default: 0, no retry)")
+		"retry transient failures (transport errors, 5xx, 429) up to N times with exponential backoff, replaying only idempotent requests; Retry-After is capped at the 30s max delay (default: 0, no retry)")
 
 	auth := &cobra.Command{
 		Use:           "auth",

@@ -134,3 +134,49 @@ func TestSource_returnsAuthError_on401(t *testing.T) {
 		t.Errorf("AuthError.StatusCode = %d, want 401", ae.StatusCode)
 	}
 }
+
+// TestSource_classifiesTokenRefusals (#584): Google refuses a deleted key, a
+// bad signature or a skewed clock with 400 invalid_grant, so a 400 naming the
+// credential is an *AuthError (exit 10) like a 401/403. A 400 about the
+// request itself and a 5xx stay plain errors (not a credential verdict).
+func TestSource_classifiesTokenRefusals(t *testing.T) {
+	cases := []struct {
+		name     string
+		status   int
+		body     string
+		wantAuth bool
+	}{
+		{"400 invalid_grant", 400, `{"error":"invalid_grant","error_description":"Invalid JWT Signature."}`, true},
+		{"400 unauthorized_client", 400, `{"error":"unauthorized_client"}`, true},
+		{"400 invalid_client", 400, `{"error":"invalid_client"}`, true},
+		{"401 invalid_grant", 401, `{"error":"invalid_grant"}`, true},
+		{"403 no body", 403, ``, true},
+		{"400 invalid_scope", 400, `{"error":"invalid_scope"}`, false},
+		{"400 unparseable body", 400, `<html>bad request</html>`, false},
+		{"503", 503, `{"error":"backend_error"}`, false},
+	}
+	sa := makeTestSA(t)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: tc.status,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(tc.body)),
+				}, nil
+			})
+			ts, err := token.Source(ctx, sa)
+			if err != nil {
+				t.Fatalf("Source: %v", err)
+			}
+			_, err = ts.Token()
+			if err == nil {
+				t.Fatalf("Token: expected an error on HTTP %d", tc.status)
+			}
+			var ae *token.AuthError
+			if got := errors.As(err, &ae); got != tc.wantAuth {
+				t.Errorf("errors.As(*AuthError) = %v, want %v; err=%v", got, tc.wantAuth, err)
+			}
+		})
+	}
+}
