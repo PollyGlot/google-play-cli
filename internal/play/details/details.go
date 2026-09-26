@@ -15,10 +15,8 @@
 package details
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -102,11 +100,7 @@ func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, 
 		raw json.RawMessage
 	)
 	if err := edits.WithReadOnlyEdit(ctx, hc, pkg, func(editID string) error {
-		u, err := methodDetailsGet.URL(map[string]string{"packageName": pkg, "editId": editID})
-		if err != nil {
-			return &api.Error{Operation: opDetailsGet, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		body, status, err := getJSON(ctx, hc, methodDetailsGet.Verb, opDetailsGet, pkg, u)
+		body, status, err := getJSON(ctx, hc, methodDetailsGet, opDetailsGet, pkg, editParams(pkg, editID))
 		if err != nil {
 			return err
 		}
@@ -229,69 +223,20 @@ type AppDetailsPatch struct {
 // *api.Error so the exit-code taxonomy maps transparently. Modeled on
 // testers.Update, but a PATCH (partial) rather than a PUT (wholesale).
 func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDetailsPatch) (*AppDetails, json.RawMessage, error) {
-	payload, err := json.Marshal(patch)
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodDetailsPatch, Op: opDetailsPatch, Target: pkg,
+		Params: editParams(pkg, editID),
+		Body:   patch,
+	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
-	}
-
-	u, err := methodDetailsPatch.URL(map[string]string{"packageName": pkg, "editId": editID})
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, methodDetailsPatch.Verb, u, bytes.NewReader(payload))
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opDetailsPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Mirror getJSON's defensive read: a truncated/interrupted read on
-		// the error path would otherwise mask the real reason behind a
-		// generic ParseErrorEnvelope fallback. Surface it verbatim so the
-		// operator knows the request reached the server but the stream broke.
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		if readErr != nil {
-			return nil, nil, &api.Error{
-				Operation:  opDetailsPatch,
-				Package:    pkg,
-				StatusCode: resp.StatusCode,
-				Message:    "read error response body: " + readErr.Error(),
-				Cause:      readErr,
-			}
-		}
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opDetailsPatch,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	// Same defensive read on the success path: a partial JSON body would
-	// otherwise reach json.Unmarshal and surface as a "decode response"
-	// error that buries the real (network) cause.
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, nil, &api.Error{
-			Operation:  opDetailsPatch,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response body: " + readErr.Error(),
-			Cause:      readErr,
-		}
+		return nil, nil, err
 	}
 	var parsed AppDetails
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, raw, &api.Error{
 			Operation:  opDetailsPatch,
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: http.StatusOK,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
 		}
@@ -303,11 +248,7 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDe
 // defaultLanguage, contactEmail, err). The raw body is what feeds the
 // `"details"` slot of the apps view envelope.
 func fetchDetails(ctx context.Context, hc *http.Client, pkg, editID string) (json.RawMessage, string, string, error) {
-	u, err := methodDetailsGet.URL(map[string]string{"packageName": pkg, "editId": editID})
-	if err != nil {
-		return nil, "", "", &api.Error{Operation: opDetailsGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	raw, status, err := getJSON(ctx, hc, methodDetailsGet.Verb, opDetailsGet, pkg, u)
+	raw, status, err := getJSON(ctx, hc, methodDetailsGet, opDetailsGet, pkg, editParams(pkg, editID))
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -345,11 +286,9 @@ func fetchDetails(ctx context.Context, hc *http.Client, pkg, editID string) (jso
 // today; the rest of the listing is preserved in the raw envelope for
 // --output json consumers who want richer detail.
 func fetchListing(ctx context.Context, hc *http.Client, pkg, editID, language string) (json.RawMessage, string, error) {
-	u, err := methodListingsGet.URL(map[string]string{"packageName": pkg, "editId": editID, "language": language})
-	if err != nil {
-		return nil, "", &api.Error{Operation: opListingsGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	raw, status, err := getJSON(ctx, hc, methodListingsGet.Verb, opListingsGet, pkg, u)
+	params := editParams(pkg, editID)
+	params["language"] = language
+	raw, status, err := getJSON(ctx, hc, methodListingsGet, opListingsGet, pkg, params)
 	if err != nil {
 		return nil, "", err
 	}
@@ -390,105 +329,40 @@ func fetchIcon(ctx context.Context, hc *http.Client, pkg, editID, language strin
 }
 
 // getJSON is the shared scaffolding for a GET that returns a JSON body
-// inside an open Edit: build the request, run it, on 2xx return the raw
-// bytes (capped at MaxAPISuccessBodyRead) AND the HTTP status, on non-2xx
-// wrap the error envelope in an *api.Error tagged with op so the exit-code
-// taxonomy stays uniform across details.get and listings.get. Returning
-// the HTTP status alongside the body lets callers stamp a downstream
-// decode-failure *api.Error with the real status (200 in practice, but
-// 204 or 206 are valid 2xx the server might emit) rather than hardcoding
-// it: keeping parity with GetDefaultLanguage's behavior.
-func getJSON(ctx context.Context, hc *http.Client, verb, op, pkg, u string) (json.RawMessage, int, error) {
-	req, err := http.NewRequestWithContext(ctx, verb, u, http.NoBody)
+// inside an open Edit, tagged with op so the exit-code taxonomy stays uniform
+// across details.get and listings.get. It returns the status a caller stamps
+// on a downstream decode failure: the executor hands back only 2xx bodies,
+// and Play answers these reads with 200, the tag they always carried.
+func getJSON(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg string, params map[string]string) (json.RawMessage, int, error) {
+	raw, err := api.Do(ctx, hc, api.Call{Method: m, Op: op, Target: pkg, Params: params})
 	if err != nil {
-		return nil, 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, 0, err
 	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// A truncated/interrupted read on the error path would
-		// otherwise mask the real reason behind a generic
-		// ParseErrorEnvelope fallback ("HTTP <status>"). Surface the
-		// read failure verbatim so the operator knows the request
-		// reached the server but the response stream broke: a
-		// retryable network condition mapped to exit 50 by
-		// StatusToExitCode when StatusCode is 0, or to the HTTP class
-		// otherwise.
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		if readErr != nil {
-			return nil, resp.StatusCode, &api.Error{
-				Operation:  op,
-				Package:    pkg,
-				StatusCode: resp.StatusCode,
-				Message:    "read error response body: " + readErr.Error(),
-				Cause:      readErr,
-			}
-		}
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, resp.StatusCode, &api.Error{
-			Operation:  op,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	// Same defensive read on the success path: a partial JSON body
-	// would otherwise reach json.Unmarshal and surface as a
-	// "decode response" error that buries the real (network) cause.
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, resp.StatusCode, &api.Error{
-			Operation:  op,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response body: " + readErr.Error(),
-			Cause:      readErr,
-		}
-	}
-	return raw, resp.StatusCode, nil
+	return raw, http.StatusOK, nil
+}
+
+// editParams addresses a resource of the Edit editID on pkg.
+func editParams(pkg, editID string) map[string]string {
+	return map[string]string{"packageName": pkg, "editId": editID}
 }
 
 // GetDefaultLanguage returns the app's defaultLanguage from
 // edits.details.get. Errors are wrapped in *api.Error so the gplay
 // exit-code taxonomy is honored end-to-end.
 func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string) (string, error) {
-	u, err := methodDetailsGet.URL(map[string]string{"packageName": pkg, "editId": editID})
+	const op = "edits.details.get"
+	body, status, err := getJSON(ctx, hc, methodDetailsGet, op, pkg, editParams(pkg, editID))
 	if err != nil {
-		return "", &api.Error{Operation: "edits.details.get", Package: pkg, Message: err.Error(), Cause: err}
+		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, methodDetailsGet.Verb, u, http.NoBody)
-	if err != nil {
-		return "", &api.Error{Operation: "edits.details.get", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return "", &api.Error{Operation: "edits.details.get", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return "", &api.Error{
-			Operation:  "edits.details.get",
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed struct {
 		DefaultLanguage string `json:"defaultLanguage"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return "", &api.Error{
-			Operation:  "edits.details.get",
+			Operation:  op,
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
 		}
@@ -498,9 +372,9 @@ func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string
 		// contract violation: downstream callers would emit release
 		// notes with empty language keys.
 		return "", &api.Error{
-			Operation:  "edits.details.get",
+			Operation:  op,
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: status,
 			Message:    "missing defaultLanguage in response body",
 		}
 	}

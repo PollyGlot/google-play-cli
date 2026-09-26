@@ -10,7 +10,6 @@ package countryavailability
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -54,55 +53,21 @@ type TrackCountryAvailability struct {
 // gplay exit-code taxonomy maps transparently (403 → 11, 404 → 30,
 // 5xx → 40, network → 50).
 func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*TrackCountryAvailability, json.RawMessage, error) {
-	u, err := method.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
-		"track":       track,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: method, Op: opCountryAvailabilityGet, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID, "track": track},
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opCountryAvailabilityGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method.Verb, u, nil)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opCountryAvailabilityGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opCountryAvailabilityGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opCountryAvailabilityGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	// Capture the read error on the success path (matching tracks.List /
-	// listings / reviews): a partial body would otherwise reach
-	// json.Unmarshal and surface as a "decode response" error that buries
-	// the real (network) cause.
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, nil, &api.Error{
-			Operation:  opCountryAvailabilityGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
-		}
+		return nil, nil, err
 	}
 	var parsed TrackCountryAvailability
 	if err := json.Unmarshal(raw, &parsed); err != nil {
+		// A body that does not decode keeps the 200 status tag it always
+		// had, so its exit code (30) is unchanged.
 		return nil, raw, &api.Error{
 			Operation:  opCountryAvailabilityGet,
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: http.StatusOK,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
 		}

@@ -11,11 +11,9 @@
 package expansionfiles
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -118,39 +116,22 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 // uploaded file. fileSize is output-only, so the request only ever carries
 // referencesVersion.
 func Update(ctx context.Context, hc *http.Client, pkg, editID string, versionCode int, fileType string, referencesVersion int) (json.RawMessage, error) {
-	body, err := json.Marshal(ExpansionFile{ReferencesVersion: referencesVersion})
-	if err != nil {
-		return nil, &api.Error{Operation: opUpdate, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
-	}
-	u, err := methodUpdate.URL(fileParams(pkg, editID, versionCode, fileType))
-	if err != nil {
-		return nil, &api.Error{Operation: opUpdate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, methodUpdate.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, &api.Error{Operation: opUpdate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opUpdate, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: methodUpdate, Op: opUpdate, Target: pkg,
+		Params: fileParams(pkg, editID, versionCode, fileType),
+		Body:   ExpansionFile{ReferencesVersion: referencesVersion},
+	})
 }
 
 // Get reads the expansion file configuration (fileSize XOR referencesVersion).
 func Get(ctx context.Context, hc *http.Client, pkg, editID string, versionCode int, fileType string) (ExpansionFile, json.RawMessage, error) {
-	u, err := methodGet.URL(fileParams(pkg, editID, versionCode, fileType))
-	if err != nil {
-		return ExpansionFile{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
-	if err != nil {
-		return ExpansionFile{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, opGet, pkg, req)
+	var ef ExpansionFile
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: methodGet, Op: opGet, Target: pkg,
+		Params: fileParams(pkg, editID, versionCode, fileType),
+	}, &ef)
 	if err != nil {
 		return ExpansionFile{}, nil, err
-	}
-	var ef ExpansionFile
-	if err := json.Unmarshal(raw, &ef); err != nil {
-		return ExpansionFile{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return ef, raw, nil
 }
@@ -174,23 +155,4 @@ func openRegular(path string) (*os.File, os.FileInfo, error) {
 		return nil, nil, &LocalIOError{Path: path, Cause: fmt.Errorf("not a regular file")}
 	}
 	return f, info, nil
-}
-
-// do runs req and maps the response to (raw body, *api.Error).
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
 }
