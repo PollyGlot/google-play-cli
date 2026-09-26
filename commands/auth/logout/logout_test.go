@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -265,5 +266,113 @@ func TestLogout_activeAccount_leavesRegistryWithoutActive(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("beta should still be registered; got %+v", cfg.Accounts)
+	}
+}
+
+// TestLogout_fileWrittenWithoutKeyring_removedOnceKeyringReachable is the
+// SEC-03 (#589) scenario: login ran where the keyring was unreachable (SSH to
+// a locked macOS keychain) so the key went to the plaintext file; logout then
+// runs where the keyring answers. Deleting only from the selected keyring
+// backend used to swallow ErrNotFound, print "removed", and leave the key on
+// disk.
+func TestLogout_fileWrittenWithoutKeyring_removedOnceKeyringReachable(t *testing.T) {
+	kr := newFakeKeyring(true) // unreachable at login time
+	boot := newBoot(t, kr)
+	seed(t, boot, "alpha", "beta")
+	path := filepath.Join(boot.KeystoreRoot, "beta.json")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("seed did not write %s: %v", path, err)
+	}
+
+	kr.unavailable = false // the keyring answers now
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm"); err != nil {
+		t.Fatalf("Execute: %v (stderr %q)", err, stderr.String())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("plaintext credential still on disk at %s (stat err=%v)", path, err)
+	}
+	if !strings.Contains(stderr.String(), path) {
+		t.Errorf("stderr = %q, want it to name the file store %s", stderr.String(), path)
+	}
+}
+
+// TestLogout_bothStores_removesBothAndNamesThem covers a key present in the
+// keyring and, from an earlier keyring-less login, in the file too.
+func TestLogout_bothStores_removesBothAndNamesThem(t *testing.T) {
+	kr := newFakeKeyring(true)
+	boot := newBoot(t, kr)
+	seed(t, boot, "alpha", "beta") // file copies
+	kr.unavailable = false
+	if err := keystore.NewKeyringBackend(kr, keystore.KeyringService).Save(context.Background(), "beta", []byte(`{}`)); err != nil {
+		t.Fatalf("keyring Save: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if _, err := keystore.NewKeyringBackend(kr, keystore.KeyringService).Load(context.Background(), "beta"); !errors.Is(err, keystore.ErrNotFound) {
+		t.Errorf("keyring Load after logout = %v, want ErrNotFound", err)
+	}
+	path := filepath.Join(boot.KeystoreRoot, "beta.json")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("file copy still at %s", path)
+	}
+	for _, want := range []string{"OS keyring", path} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr = %q, want it to name %q", stderr.String(), want)
+		}
+	}
+}
+
+// TestLogout_noStoredCredential_reachableKeyring_idempotent: with the keyring
+// reachable and neither store holding the key, the key is provably gone, so
+// logout stays idempotent (exit 0) but warns instead of claiming a deletion;
+// the registry entry still goes.
+func TestLogout_noStoredCredential_reachableKeyring_idempotent(t *testing.T) {
+	kr := newFakeKeyring(false)
+	boot := newBoot(t, kr)
+	seed(t, boot, "alpha", "beta")
+	if err := keystore.NewKeyringBackend(kr, keystore.KeyringService).Delete(context.Background(), "beta"); err != nil {
+		t.Fatalf("pre-delete: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm"); err != nil {
+		t.Fatalf("Execute: %v, want success (idempotent logout)", err)
+	}
+	if !strings.Contains(stderr.String(), "no stored credential found, nothing to delete") {
+		t.Errorf("stderr = %q, want the nothing-to-delete warning", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "credential deleted from") {
+		t.Errorf("stderr claims a deletion that did not happen: %q", stderr.String())
+	}
+	cfg, lerr := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
+	if lerr != nil {
+		t.Fatalf("LoadGlobalOrEmpty: %v", lerr)
+	}
+	for _, a := range cfg.Accounts {
+		if a.Name == "beta" {
+			t.Errorf("beta still registered: %+v", cfg.Accounts)
+		}
+	}
+}
+
+// TestLogout_keyringUnreachable_notInFile_warnsKeyMayRemain: with the file
+// backend selected and no file copy, the key may still be in the keyring we
+// could not reach; the error must say so rather than imply nothing existed.
+func TestLogout_keyringUnreachable_notInFile_warnsKeyMayRemain(t *testing.T) {
+	kr := newFakeKeyring(true)
+	boot := newBoot(t, kr)
+	seed(t, boot, "alpha", "beta")
+	if err := os.Remove(filepath.Join(boot.KeystoreRoot, "beta.json")); err != nil {
+		t.Fatalf("remove file copy: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm")
+	if err == nil || !strings.Contains(err.Error(), "OS keyring is unavailable") || !strings.Contains(err.Error(), "NOT deleted") {
+		t.Fatalf("err = %v, want the keyring-unreachable failure", err)
 	}
 }
