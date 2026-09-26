@@ -19,13 +19,16 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/mappings"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// rt speaks the resumable-upload protocol: POST initiate returns a session
-// URI in Location, then the chunk PUT(s) carry the bytes and return the
-// final resource body. initiateStatus (>= 400) short-circuits at initiate;
-// resumeAfter makes the first N chunk PUTs answer 308 before the final one.
-type rt struct {
+// resumable speaks the resumable-upload protocol through a
+// testkit.RoundTripFunc (a Fake cannot set the Location and Range headers the
+// protocol needs): POST initiate returns a session URI in Location, then the
+// chunk PUT(s) carry the bytes and return the final resource body.
+// initiateStatus (>= 400) short-circuits at initiate; resumeAfter makes the
+// first N chunk PUTs answer 308 before the final one.
+type resumable struct {
 	initiateStatus int
 	putStatus      int
 	body           string
@@ -39,7 +42,15 @@ type rt struct {
 	putHits   int
 }
 
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
+// client returns an http.Client whose every request lands on r.
+func (r *resumable) client() *http.Client {
+	return &http.Client{Transport: testkit.RoundTripFunc(r.serve)}
+}
+
+func (r *resumable) serve(req *http.Request) (*http.Response, error) {
+	if resp, ok := testkit.TokenResponse(req); ok {
+		return resp, nil
+	}
 	r.methods = append(r.methods, req.Method)
 
 	if req.Method == http.MethodPost {
@@ -50,18 +61,11 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 			status = 200
 		}
 		if status >= 400 {
-			return &http.Response{
-				StatusCode: status,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(r.body)),
-			}, nil
+			return testkit.Response(status, r.body), nil
 		}
-		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-1"
-		return &http.Response{
-			StatusCode: status,
-			Header:     http.Header{"Location": []string{loc}},
-			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
+		resp := testkit.Response(status, "")
+		resp.Header.Set("Location", req.URL.Scheme+"://"+req.URL.Host+req.URL.Path+"?upload_id=session-1")
+		return resp, nil
 	}
 
 	r.putHits++
@@ -69,21 +73,15 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 	b, _ := io.ReadAll(req.Body)
 	r.putBody = append(r.putBody, b...)
 	if r.putHits <= r.resumeAfter {
-		return &http.Response{
-			StatusCode: 308,
-			Header:     http.Header{"Range": []string{"bytes=0-" + strconv.Itoa(len(r.putBody)-1)}},
-			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
+		resp := testkit.Response(308, "")
+		resp.Header.Set("Range", "bytes=0-"+strconv.Itoa(len(r.putBody)-1))
+		return resp, nil
 	}
 	status := r.putStatus
 	if status == 0 {
 		status = 200
 	}
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(r.body)),
-	}, nil
+	return testkit.Response(status, r.body), nil
 }
 
 // writeMapping creates a non-empty mapping.txt the uploader can stream.
@@ -104,8 +102,8 @@ func writeMapping(t *testing.T) string {
 // raw body for the ADR-0003 pass-through.
 func TestUpload_happyPath_hitsDeobfuscationEndpoint_parsesSymbolType(t *testing.T) {
 	mapping := writeMapping(t)
-	transport := &rt{body: `{"deobfuscationFile":{"symbolType":"proguard"}}`}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{body: `{"deobfuscationFile":{"symbolType":"proguard"}}`}
+	hc := transport.client()
 
 	res, err := mappings.Upload(context.Background(), hc, "com.example.app", "edit-123", 142, mappings.TypeProguard, mapping)
 	if err != nil {
@@ -140,8 +138,8 @@ func TestUpload_happyPath_hitsDeobfuscationEndpoint_parsesSymbolType(t *testing.
 // intermediate 308 and still parses the final resource body.
 func TestUpload_resumeAfter308_completes(t *testing.T) {
 	mapping := writeMapping(t)
-	transport := &rt{body: `{"deobfuscationFile":{"symbolType":"proguard"}}`, resumeAfter: 1}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{body: `{"deobfuscationFile":{"symbolType":"proguard"}}`, resumeAfter: 1}
+	hc := transport.client()
 
 	res, err := mappings.Upload(context.Background(), hc, "com.example.app", "edit-1", 7, mappings.TypeProguard, mapping)
 	if err != nil {
@@ -159,8 +157,8 @@ func TestUpload_resumeAfter308_completes(t *testing.T) {
 // verbatim from the Discovery enum (nativeCode), not lowercased/invented.
 func TestUpload_nativeCodeType_inPath(t *testing.T) {
 	mapping := writeMapping(t)
-	transport := &rt{body: `{"deobfuscationFile":{"symbolType":"nativeCode"}}`}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{body: `{"deobfuscationFile":{"symbolType":"nativeCode"}}`}
+	hc := transport.client()
 
 	if _, err := mappings.Upload(context.Background(), hc, "com.example.app", "edit-1", 7, mappings.TypeNativeCode, mapping); err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -174,8 +172,8 @@ func TestUpload_nativeCodeType_inPath(t *testing.T) {
 // mapping path fails as a client-side validation error (exit 20) before
 // any HTTP: distinct from a transport error (50).
 func TestUpload_missingFile_returnsLocalIOError_exit20(t *testing.T) {
-	transport := &rt{}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{}
+	hc := transport.client()
 
 	_, err := mappings.Upload(context.Background(), hc, "com.example.app", "edit-1", 142, mappings.TypeProguard, "/no/such/mapping.txt")
 	if err == nil {
@@ -193,8 +191,8 @@ func TestUpload_missingFile_returnsLocalIOError_exit20(t *testing.T) {
 // mapped to *api.Error carrying the upstream status code.
 func TestUpload_apiError_surfacesAPIError(t *testing.T) {
 	mapping := writeMapping(t)
-	transport := &rt{initiateStatus: http.StatusForbidden, body: `{"error":{"code":403,"message":"caller lacks permission"}}`}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{initiateStatus: http.StatusForbidden, body: `{"error":{"code":403,"message":"caller lacks permission"}}`}
+	hc := transport.client()
 
 	_, err := mappings.Upload(context.Background(), hc, "com.example.app", "edit-1", 142, mappings.TypeProguard, mapping)
 	if err == nil {
@@ -214,8 +212,8 @@ func TestUpload_apiError_surfacesAPIError(t *testing.T) {
 // error (exit 20) BEFORE any HTTP. Regression for the PR #264 review.
 func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {
 	dir := t.TempDir() // a directory, not a regular file
-	transport := &rt{}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{}
+	hc := transport.client()
 
 	_, err := mappings.Upload(context.Background(), hc, "com.example.app", "edit-1", 142, mappings.TypeProguard, dir)
 	if err == nil {
