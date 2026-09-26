@@ -338,7 +338,7 @@ Two read-only checks complete the lifecycle (#544):
 ## 5. Reviews
 
 - API hard limit: **only the last 7 days** are exposed. Surfaced in `--help`
-  and as a stderr `warning:` line on **every** successful run — including an empty
+  and as a stderr `warning:` line on **every** successful run, including an empty
   result (a quiet empty result must not read as "this app has no reviews").
 - Auto-pagination is on by default; `--limit N` caps the result count, default
   is no cap.
