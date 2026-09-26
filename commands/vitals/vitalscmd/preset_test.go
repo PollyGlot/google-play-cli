@@ -188,7 +188,6 @@ func TestPresets_coverEveryMetricSet(t *testing.T) {
 // five additional metric sets, alongside crashes/anr).
 func TestRunPreset_everyPresetHitsItsResource(t *testing.T) {
 	for _, spec := range Presets {
-		spec := spec
 		t.Run(spec.Use, func(t *testing.T) {
 			rt := &presetRT{}
 			rc := newRC(t, rt)

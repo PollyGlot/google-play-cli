@@ -73,7 +73,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	switch {
 	case remoteErr != nil && clearErr != nil:
-		return nil, fmt.Errorf("discard explicit edit %s for %s: %w; also failed to clear the local pin: %v", pin.EditID, pkg, remoteErr, clearErr)
+		return nil, fmt.Errorf("discard explicit edit %s for %s: %w; also failed to clear the local pin: %w", pin.EditID, pkg, remoteErr, clearErr)
 	case remoteErr != nil:
 		return nil, remoteErr
 	case clearErr != nil:

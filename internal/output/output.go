@@ -97,6 +97,8 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 		fn = r.JSON
 	case FormatMarkdown:
 		fn = r.Markdown
+	case FormatAuto:
+		// Resolve never returns it; a nil fn reports it as unsupported below.
 	}
 	if fn == nil {
 		return unsupportedFormat(f)

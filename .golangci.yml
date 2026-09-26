@@ -3,6 +3,12 @@ version: "2"
 run:
   timeout: 5m
 
+issues:
+  # Report every finding: a capped report hides the second half of a batch
+  # that a new linter surfaces.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 linters:
   enable:
     - errcheck
@@ -11,6 +17,38 @@ linters:
     - staticcheck
     - unused
     - misspell
+    # Added by #590. Each one earns its place by catching a real bug class at
+    # near-zero noise on this tree; none of them is a style rule.
+    - canonicalheader
+    - copyloopvar
+    - durationcheck
+    # errorlint: a type assertion or == on an error breaks the day someone
+    # wraps it. A deliberate %v (breaking the chain so exit.For does not pick a
+    # secondary error's exit code) carries a //nolint with the reason.
+    - errorlint
+    # exhaustive: a new Op or Status must force a decision at every switch on
+    # it. A default branch counts as that decision.
+    - exhaustive
+    - exptostd
+    - fatcontext
+    - makezero
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nolintlint
+    - thelper
+    - tparallel
+    - unconvert
+    - usetesting
+    - wastedassign
+    # Considered and left out (2026-09 audit, TEST-10): paralleltest (1839
+    # hits), goconst and revive (style noise), gosec (G304 flags the CLI
+    # reading user paths by design, already guarded by pathguard), gocritic
+    # (mostly unlambda), contextcheck (false positives on the deliberately
+    # detached cleanup context), bodyclose (test fakes only).
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: true
   exclusions:
     rules:
       - path: cmd/gplay/main.go

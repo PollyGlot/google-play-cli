@@ -369,7 +369,7 @@ func lookGit(cmd *cobra.Command, opts Options, pin Pin) (string, error) {
 	// failure (git present but not executable, say) would be misdescribed by the
 	// "install git" recipe, so surface the real cause instead.
 	if !errors.Is(err, exec.ErrNotFound) {
-		return "", fmt.Errorf("resolve git on PATH: %v", err)
+		return "", fmt.Errorf("resolve git on PATH: %w", err)
 	}
 	// Leave the agent with what to do, not a dead end. Best-effort write: the
 	// exit code is the load-bearing signal.

@@ -2,6 +2,7 @@ package vitals_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -142,10 +143,4 @@ func containsStr(ss []string, want string) bool {
 	return false
 }
 
-func asAPIErr(err error, target **api.Error) bool {
-	if e, ok := err.(*api.Error); ok {
-		*target = e
-		return true
-	}
-	return false
-}
+func asAPIErr(err error, target **api.Error) bool { return errors.As(err, target) }

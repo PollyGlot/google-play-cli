@@ -552,7 +552,7 @@ func TestEnsureAccount_idempotent_memoisesInvalidError(t *testing.T) {
 		}
 		// Same pointer ⟹ the second call returned the memoised result rather
 		// than re-resolving.
-		if first != second {
+		if first != second { //nolint:errorlint // pointer identity is what proves memoisation
 			t.Errorf("EnsureAccount did not memoise the invalid error: first=%p second=%p", first, second)
 		}
 		return nil, nil

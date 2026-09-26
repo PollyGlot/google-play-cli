@@ -40,7 +40,7 @@ func TestMatchRequestRoundTripsEveryEntry(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s.%s: %v", e.MethodID, name, err)
 			}
-			req, err := http.NewRequest(m.Verb, u+"?uploadType=media&pageToken=x", nil)
+			req, err := http.NewRequestWithContext(t.Context(), m.Verb, u+"?uploadType=media&pageToken=x", nil)
 			if err != nil {
 				t.Fatalf("NewRequest(%s): %v", u, err)
 			}

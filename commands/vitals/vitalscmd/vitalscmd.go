@@ -69,13 +69,11 @@ func (p Payload) columns() []output.Column[vitals.Row] {
 		{Key: "date", Header: "DATE", Value: func(r vitals.Row) string { return r.Date }},
 	}
 	for _, d := range p.Dimensions {
-		d := d
 		cols = append(cols, output.Column[vitals.Row]{
 			Key: d, Header: strings.ToUpper(d), Value: func(r vitals.Row) string { return r.Dimensions[d] },
 		})
 	}
 	for _, m := range p.Metrics {
-		m := m
 		cols = append(cols, output.Column[vitals.Row]{
 			Key: m, Header: m, Value: func(r vitals.Row) string { return r.Metrics[m] },
 		})

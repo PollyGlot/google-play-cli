@@ -59,9 +59,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		// The Edit is open server-side but we could not persist the pin. Discard
 		// it so the user is not left with an orphaned 24h Edit lock they cannot
 		// see locally. If the discard ALSO fails, surface both: the Edit is
-		// still open with no local pin to recover it.
+		// still open with no local pin to recover it. The discard error stays
+		// %v: the pin write is the primary failure and owns the exit code,
+		// which a wrapped API error would otherwise take through exit.For.
 		if discardErr := edits.DiscardExplicit(rc.Ctx, httpClient, pkg, editID); discardErr != nil {
-			return nil, fmt.Errorf("write edit pin: %w; cleanup also failed: explicit edit %s is still open on Play (discard it via the Play Console or wait ~24h): %v", err, editID, discardErr)
+			return nil, fmt.Errorf("write edit pin: %w; cleanup also failed: explicit edit %s is still open on Play (discard it via the Play Console or wait ~24h): %v", err, editID, discardErr) //nolint:errorlint // secondary error must not own the exit code
 		}
 		return nil, err
 	}

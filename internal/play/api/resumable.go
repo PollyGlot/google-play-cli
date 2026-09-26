@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -115,7 +116,8 @@ func ResumableUploadWithInitiateBody(
 		resp, putErr := resumablePutChunk(noRetryCtx, hc, sessionURI, contentType, r, offset, size, op)
 		if putErr != nil {
 			// A local read failure is terminal (exit 20): no point resuming.
-			if _, ok := putErr.(*LocalIOError); ok {
+			var localErr *LocalIOError
+			if errors.As(putErr, &localErr) {
 				return nil, 0, putErr
 			}
 			// Transport failure: probe the committed offset and resume.
@@ -343,8 +345,8 @@ func validOffset(offset, size int64, op, pkg string) *Error {
 // retrying under the stall bound: a transport error (no status) or an upstream
 // 5xx. Terminal 4xx responses stay immediate.
 func probeErrIsTransient(err error) bool {
-	apiErr, ok := err.(*Error)
-	return ok && (apiErr.StatusCode == 0 || apiErr.StatusCode >= 500)
+	var apiErr *Error
+	return errors.As(err, &apiErr) && (apiErr.StatusCode == 0 || apiErr.StatusCode >= 500)
 }
 
 // errorFromResponse builds an *Error from a non-success response, parsing the

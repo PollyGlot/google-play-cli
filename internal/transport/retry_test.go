@@ -74,9 +74,9 @@ func newReq(t *testing.T, method, url, body string) *http.Request {
 	var r *http.Request
 	var err error
 	if body == "" {
-		r, err = http.NewRequest(method, url, nil)
+		r, err = http.NewRequestWithContext(t.Context(), method, url, nil)
 	} else {
-		r, err = http.NewRequest(method, url, strings.NewReader(body))
+		r, err = http.NewRequestWithContext(t.Context(), method, url, strings.NewReader(body))
 	}
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)

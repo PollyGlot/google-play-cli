@@ -50,39 +50,39 @@ var sharedPEM = sync.OnceValues(func() ([]byte, error) {
 
 // RSAKey returns the RSA-2048 key shared by every test in the binary. Callers
 // must not mutate it.
-func RSAKey(t testing.TB) *rsa.PrivateKey {
-	t.Helper()
+func RSAKey(tb testing.TB) *rsa.PrivateKey {
+	tb.Helper()
 	key, err := sharedKey()
 	if err != nil {
-		t.Fatalf("testkit: generate RSA key: %v", err)
+		tb.Fatalf("testkit: generate RSA key: %v", err)
 	}
 	return key
 }
 
 // PrivateKeyPEM returns RSAKey as a PKCS#8 "PRIVATE KEY" PEM block, the form
 // a service-account JSON carries. The slice is a fresh copy.
-func PrivateKeyPEM(t testing.TB) []byte {
-	t.Helper()
+func PrivateKeyPEM(tb testing.TB) []byte {
+	tb.Helper()
 	b, err := sharedPEM()
 	if err != nil {
-		t.Fatalf("testkit: encode RSA key: %v", err)
+		tb.Fatalf("testkit: encode RSA key: %v", err)
 	}
 	return append([]byte(nil), b...)
 }
 
 // ServiceAccountJSON mints a service-account key file backed by RSAKey, with
 // token_uri set to TokenURL so the token exchange lands on the fake transport.
-func ServiceAccountJSON(t testing.TB) []byte {
-	t.Helper()
+func ServiceAccountJSON(tb testing.TB) []byte {
+	tb.Helper()
 	raw, err := json.Marshal(map[string]any{
 		"type":         "service_account",
 		"project_id":   ProjectID,
-		"private_key":  string(PrivateKeyPEM(t)),
+		"private_key":  string(PrivateKeyPEM(tb)),
 		"client_email": ClientEmail,
 		"token_uri":    TokenURL,
 	})
 	if err != nil {
-		t.Fatalf("testkit: marshal service account: %v", err)
+		tb.Fatalf("testkit: marshal service account: %v", err)
 	}
 	return raw
 }

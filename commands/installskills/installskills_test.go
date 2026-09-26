@@ -37,7 +37,7 @@ func fixtureRepo(t *testing.T, files map[string]string) (repoDir, commit string)
 	}
 	git := func(args ...string) {
 		t.Helper()
-		c := exec.Command("git", args...)
+		c := exec.CommandContext(t.Context(), "git", args...)
 		c.Dir = repoDir
 		c.Env = append(os.Environ(),
 			"GIT_AUTHOR_NAME=gplay", "GIT_AUTHOR_EMAIL=gplay@example.test",
@@ -56,7 +56,7 @@ func fixtureRepo(t *testing.T, files map[string]string) (repoDir, commit string)
 	git("add", "-A")
 	git("commit", "--quiet", "-m", "fixture pack")
 
-	c := exec.Command("git", "rev-parse", "HEAD")
+	c := exec.CommandContext(t.Context(), "git", "rev-parse", "HEAD")
 	c.Dir = repoDir
 	out, err := c.Output()
 	if err != nil {
@@ -230,7 +230,7 @@ func TestInstallSkills_unexpectedSkillInCheckoutIsRefused(t *testing.T) {
 // GIT_DIR the test sets.
 func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	c := exec.Command("git", args...)
+	c := exec.CommandContext(t.Context(), "git", args...)
 	c.Dir = dir
 	env := make([]string, 0, len(os.Environ()))
 	for _, kv := range os.Environ() {

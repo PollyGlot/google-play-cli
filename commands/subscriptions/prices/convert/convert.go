@@ -90,7 +90,7 @@ func ParseMoney(amount, currency string) (subscriptions.Money, error) {
 	if frac != "" {
 		padded := frac + strings.Repeat("0", 9-len(frac))
 		for _, d := range padded {
-			nanos = nanos*10 + int32(d-'0')
+			nanos = nanos*10 + (d - '0')
 		}
 	}
 	return subscriptions.Money{CurrencyCode: currency, Units: units, Nanos: nanos}, nil

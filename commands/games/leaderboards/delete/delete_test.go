@@ -12,6 +12,7 @@ import (
 )
 
 func noCall(t *testing.T) gamescmdtest.RTFunc {
+	t.Helper()
 	return func(r *http.Request) (*http.Response, error) {
 		if resp, ok := gamescmdtest.Token(r); ok {
 			return resp, nil
