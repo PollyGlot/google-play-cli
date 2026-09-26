@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
 // ErrNotFound is returned by Load and Delete when no credential is stored
@@ -40,22 +42,39 @@ func NewFileBackend(dir string) *FileBackend {
 
 const fileSuffix = ".json"
 
-func (b *FileBackend) path(name string) string {
-	return filepath.Join(b.root, name+fileSuffix)
+// path maps an Account name to its credential file. The name is refused unless
+// it is one plain path component: it reaches here from `auth login --name`,
+// `--account`, GPLAY_ACCOUNT and a repo's .gplay/config.local.json, and a
+// `../x` from any of them would read, write or delete a file outside root
+// (#603). The OS keyring backend keys items by name without touching the
+// filesystem, so it keeps accepting any name.
+func (b *FileBackend) path(name string) (string, error) {
+	if err := pathguard.Segment("Account name", name); err != nil {
+		return "", err
+	}
+	return filepath.Join(b.root, name+fileSuffix), nil
 }
 
 // Save writes data to <root>/<name>.json with mode 0600, creating the parent
 // directory if needed.
 func (b *FileBackend) Save(_ context.Context, name string, data []byte) error {
+	p, err := b.path(name)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(b.root, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(b.path(name), data, 0o600)
+	return os.WriteFile(p, data, 0o600)
 }
 
 // Load returns the bytes stored under name, or ErrNotFound.
 func (b *FileBackend) Load(_ context.Context, name string) ([]byte, error) {
-	data, err := os.ReadFile(b.path(name))
+	p, err := b.path(name)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotFound
 	}
@@ -64,7 +83,11 @@ func (b *FileBackend) Load(_ context.Context, name string) ([]byte, error) {
 
 // Delete removes the credential. Returns ErrNotFound if absent.
 func (b *FileBackend) Delete(_ context.Context, name string) error {
-	err := os.Remove(b.path(name))
+	p, err := b.path(name)
+	if err != nil {
+		return err
+	}
+	err = os.Remove(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrNotFound
 	}
