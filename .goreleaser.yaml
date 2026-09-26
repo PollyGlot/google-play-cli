@@ -5,9 +5,13 @@ version: 2
 
 project_name: gplay
 
+# Check, never mutate: a plain `go mod tidy` here rewrote go.mod after the
+# tag was cut, so the shipped binary carried `+dirty` and vcs.modified=true
+# and differed from the tagged tree. `-diff` fails the release instead; the
+# lint job (`make lint`, ci.yml) runs the same check on every PR.
 before:
   hooks:
-    - go mod tidy
+    - go mod tidy -diff
 
 builds:
   - id: gplay

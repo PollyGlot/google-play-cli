@@ -74,15 +74,22 @@ func (p Payload) Renderers() output.Renderers {
 // headerRows is the scalar header shared by the table and markdown views: the
 // review's identifying fields in a fixed order. Empty values are kept (an
 // absent author/device reads as a blank cell, not a dropped row).
+//
+// These renderers print by hand rather than through output.Column, so they do
+// not inherit its escape-sequence stripping: every API string goes through
+// output.SanitizeCell here (and the bodies through SanitizeText below).
+// Author and review text are written by anonymous Play users, the hostile case
+// (#213, #589): an OSC 8 hyperlink or OSC 52 clipboard write must not reach
+// the developer's terminal. JSON stays verbatim (ADR-0003).
 func headerRows(r reviews.Review) [][2]string {
 	return [][2]string{
-		{"AUTHOR", r.Author()},
+		{"AUTHOR", output.SanitizeCell(r.Author())},
 		{"STARS", strconv.Itoa(r.Stars())},
 		{"DATE", formatDate(r.LastModified())},
-		{"LOCALE", r.Locale()},
-		{"DEVICE", r.Device()},
-		{"APP_VERSION", r.AppVersion()},
-		{"REVIEW_ID", r.ReviewID},
+		{"LOCALE", output.SanitizeCell(r.Locale())},
+		{"DEVICE", output.SanitizeCell(r.Device())},
+		{"APP_VERSION", output.SanitizeCell(r.AppVersion())},
+		{"REVIEW_ID", output.SanitizeCell(r.ReviewID)},
 	}
 }
 
@@ -97,7 +104,7 @@ func renderTable(w io.Writer, r reviews.Review) error {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "\nReview:\n%s\n", r.Text()); err != nil {
+	if _, err := fmt.Fprintf(w, "\nReview:\n%s\n", output.SanitizeText(r.Text())); err != nil {
 		return err
 	}
 	for _, dc := range r.DeveloperReplies() {
@@ -106,7 +113,7 @@ func renderTable(w io.Writer, r reviews.Review) error {
 		if when != "" {
 			label = fmt.Sprintf("Developer reply (%s):", when)
 		}
-		if _, err := fmt.Fprintf(w, "\n%s\n%s\n", label, dc.Text); err != nil {
+		if _, err := fmt.Fprintf(w, "\n%s\n%s\n", label, output.SanitizeText(dc.Text)); err != nil {
 			return err
 		}
 	}
@@ -130,8 +137,8 @@ func renderJSON(w io.Writer, p Payload) error {
 // any developer replies as blockquotes, so a pasted report stands alone.
 func renderMarkdown(w io.Writer, r reviews.Review) error {
 	heading := "Review"
-	if r.Author() != "" {
-		heading = "Review by " + r.Author()
+	if author := output.SanitizeCell(r.Author()); author != "" {
+		heading = "Review by " + author
 	}
 	if _, err := fmt.Fprintf(w, "## %s\n\n", heading); err != nil {
 		return err
@@ -142,7 +149,7 @@ func renderMarkdown(w io.Writer, r reviews.Review) error {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "\n%s\n", blockquote(r.Text())); err != nil {
+	if _, err := fmt.Fprintf(w, "\n%s\n", blockquote(output.SanitizeText(r.Text()))); err != nil {
 		return err
 	}
 	for _, dc := range r.DeveloperReplies() {
@@ -151,7 +158,7 @@ func renderMarkdown(w io.Writer, r reviews.Review) error {
 		if when != "" {
 			hdr = fmt.Sprintf("**Developer reply** (%s)", when)
 		}
-		if _, err := fmt.Fprintf(w, "\n%s\n\n%s\n", hdr, blockquote(dc.Text)); err != nil {
+		if _, err := fmt.Fprintf(w, "\n%s\n\n%s\n", hdr, blockquote(output.SanitizeText(dc.Text))); err != nil {
 			return err
 		}
 	}

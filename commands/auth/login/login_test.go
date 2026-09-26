@@ -359,4 +359,25 @@ func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
 	if _, err := os.Stat(boot.KeystoreRoot); !os.IsNotExist(err) {
 		t.Errorf("expected no file at %s when keyring backend active; stat err=%v", boot.KeystoreRoot, err)
 	}
+	// And no plaintext warning: it belongs to the file fallback only.
+	if strings.Contains(stderr.String(), "plaintext") {
+		t.Errorf("keyring login printed the file warning: %q", stderr.String())
+	}
+}
+
+// TestLogin_fileBackend_warnsWithPath pins SEC-03 (#589): when the keyring
+// probe fails, login must say, without -v, that the key went to a plaintext
+// file and name that file. A bare "registered" line is how a login over SSH
+// to a Mac with a locked keychain left the key on disk unnoticed.
+func TestLogin_fileBackend_warnsWithPath(t *testing.T) {
+	saPath := writeSA(t, validSAJSON)
+	stdout, stderr, boot := newCmd(t) // keyring unavailable: file backend
+	if err := runCmd(t, boot, stdout, stderr, "--service-account", saPath); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	want := filepath.Join(boot.KeystoreRoot, "playci.json")
+	got := stderr.String()
+	if !strings.Contains(got, "plaintext file "+want) || !strings.Contains(got, "keyring unavailable") {
+		t.Errorf("stderr = %q, want the plaintext-file warning naming %s and the reason", got, want)
+	}
 }
