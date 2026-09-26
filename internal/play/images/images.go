@@ -92,14 +92,6 @@ var specs = []Spec{
 	{Type: WearScreenshots, Gallery: true},
 }
 
-// Specs returns the canonical type table in display order (a copy, so callers
-// cannot mutate the package table).
-func Specs() []Spec {
-	out := make([]Spec, len(specs))
-	copy(out, specs)
-	return out
-}
-
 // Types returns the nine image Types in canonical display order.
 func Types() []Type {
 	out := make([]Type, len(specs))

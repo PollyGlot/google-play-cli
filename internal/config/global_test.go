@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/config/configtest"
 )
 
 // TestGlobal_addAndSaveLoad_roundTrips verifies the in-memory FS seam
 // without t.TempDir: proof that the FS interface lets the config tests
 // run hermetic and in-memory.
 func TestGlobal_addAndSaveLoad_roundTrips(t *testing.T) {
-	fsys := config.NewMemFS("/", "/home/u")
+	fsys := configtest.NewMemFS("/", "/home/u")
 	ctx := context.Background()
 	path := "/cfg/config.json"
 
@@ -79,7 +80,7 @@ func TestGlobal_setActive_unknownAccount_returnsErr(t *testing.T) {
 }
 
 func TestGlobal_loadGlobalOrEmpty_missingFile_returnsEmptyGlobal(t *testing.T) {
-	fsys := config.NewMemFS("/", "/home/u")
+	fsys := configtest.NewMemFS("/", "/home/u")
 	missing := "/does/not/exist.json"
 	g, err := config.LoadGlobalOrEmpty(context.Background(), fsys, missing)
 	if err != nil {
@@ -138,7 +139,7 @@ func TestGlobal_removeAccount_unknownReturnsErr(t *testing.T) {
 // FS-level: a failing Rename must leave the original file (if any)
 // intact and not write the destination path.
 func TestGlobal_Save_isAtomicViaRename(t *testing.T) {
-	fsys := config.NewMemFS("/", "/home/u")
+	fsys := configtest.NewMemFS("/", "/home/u")
 	path := "/cfg/config.json"
 
 	// Seed an existing valid config.
@@ -172,7 +173,7 @@ func TestGlobal_Save_isAtomicViaRename(t *testing.T) {
 // slice. The omitempty tag also guarantees re-saving such a config does
 // not introduce noisy `"packages":null` keys.
 func TestGlobal_legacyConfigWithoutPackagesField_loadsCleanly(t *testing.T) {
-	fsys := config.NewMemFS("/", "/home/u")
+	fsys := configtest.NewMemFS("/", "/home/u")
 	path := "/cfg/config.json"
 	legacy := []byte(`{"accounts":[{"name":"playci","active":true}]}`)
 	if err := fsys.WriteFile(path, legacy, 0o600); err != nil {

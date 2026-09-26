@@ -25,7 +25,6 @@
 package vocab
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -370,13 +369,4 @@ func ResolveRole(scope Scope, role string) ([]string, error) {
 		return nil, exit.Usagef("unknown role %q (valid: %s): run `gplay team permissions` to see what each grants", role, strings.Join(RoleNames(), ", "))
 	}
 	return b.Enums(scope), nil
-}
-
-// SortedEnums returns enums sorted lexicographically: a stable form for a
-// diff or a deterministic payload preview. The resolver preserves input order;
-// callers wanting determinism across differently-ordered inputs sort.
-func SortedEnums(enums []string) []string {
-	out := append([]string{}, enums...)
-	sort.Strings(out)
-	return out
 }

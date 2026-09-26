@@ -18,6 +18,7 @@ import (
 	listcmd "github.com/PollyGlot/google-play-cli/commands/releases/artifacts/list"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/config/configtest"
 	"github.com/PollyGlot/google-play-cli/internal/editpin"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -186,7 +187,7 @@ func TestRun_kindApk_sendsOnlyApksRequest(t *testing.T) {
 func TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete(t *testing.T) {
 	rt := &artRT{}
 	rc := newRC(t, rt)
-	fsys := config.NewMemFS("/repo", "/home")
+	fsys := configtest.NewMemFS("/repo", "/home")
 	if err := editpin.Write(fsys, "/repo/.gplay", "com.example.app", "edit-pinned"); err != nil {
 		t.Fatalf("editpin.Write: %v", err)
 	}
