@@ -49,12 +49,6 @@ type Input struct {
 	SkipPreflight bool
 }
 
-// usageError is CLI misuse (exit 2): a missing required flag or artifact path.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // notEnrolledError wraps a 403 on customApps.create (the account is not enrolled
 // in managed Google Play, or the service account lacks CAN_CREATE_MANAGED_PLAY_APPS)
 // with an actionable hint. It carries no ExitCode of its own so the wrapped
@@ -169,13 +163,13 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if strings.TrimSpace(in.ArtifactPath) == "" {
-		return nil, &usageError{msg: "missing artifact path: gplay customapps create --title … --default-language … <app.aab|app.apk> --confirm"}
+		return nil, &exit.UsageError{Msg: "missing artifact path: gplay customapps create --title … --default-language … <app.aab|app.apk> --confirm"}
 	}
 	if strings.TrimSpace(in.Title) == "" {
-		return nil, &usageError{msg: "missing --title: the custom app's display title is required"}
+		return nil, &exit.UsageError{Msg: "missing --title: the custom app's display title is required"}
 	}
 	if strings.TrimSpace(in.Language) == "" {
-		return nil, &usageError{msg: "missing --default-language: the default listing language (BCP 47, e.g. en-US) is required"}
+		return nil, &exit.UsageError{Msg: "missing --default-language: the default listing language (BCP 47, e.g. en-US) is required"}
 	}
 
 	account, err := addressing.Resolve(in.DeveloperID, os.Getenv(addressing.EnvDeveloperID), rc.Resolved)

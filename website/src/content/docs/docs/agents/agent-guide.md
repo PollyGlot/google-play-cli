@@ -25,7 +25,10 @@ autonomous release managers. This page is the contract an agent can rely on.
 The [exit code taxonomy](/docs/concepts/exit-codes/) makes failure handling
 decidable without parsing prose: `40`/`50` are retry-safe, `2` means the
 command was malformed, `10`/`11` mean credentials/permissions, `60` means
-state conflict.
+state conflict. The one `40`/`50` that is not retry-safe is an Edit commit
+whose outcome is unknown: the `--output json` envelope says
+`COMMIT_OUTCOME_UNKNOWN` with `"retryable": false`, so read `retryable`
+rather than the exit code alone and check the live state before re-running.
 
 **Exit `3` is the agent-resolvable refusal**: the command was well-formed,
 but a named safety acknowledgment (`--confirm`, `--grant-admin`) is

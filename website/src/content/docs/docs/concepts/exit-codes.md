@@ -30,6 +30,10 @@ This table is generated from the catalog in the binary (`internal/exit`), the
 same one `gplay exit-codes` prints, and a test fails the build when the two
 disagree.
 
+Two details the one-line catalog entries leave out: exit `10` also covers a
+token refused by the API itself (an HTTP `401`), and exits `40` and `50` are
+retryable except for an Edit commit whose outcome is unknown (below).
+
 ## Diagnostic codes
 
 An exit code says which *bucket* a failure fell into; a **diagnostic code**
@@ -54,9 +58,10 @@ message (see [Output formats](/docs/concepts/output-formats/)).
 | `API_ERROR` | `30` | No | Other API 4xx rejection |
 | `UPSTREAM_UNAVAILABLE` | `40` | **Yes** | The API is temporarily unhealthy (5xx); retry |
 | `NETWORK_ERROR` | `50` | **Yes** | Network failure with no HTTP response: timeout, DNS, refused |
+| `COMMIT_OUTCOME_UNKNOWN` | `50` | No | An Edit commit failed after it was sent (timeout, reset or 5xx, exit 50 or 40) and may be live; check the live state before re-running |
 | `STATE_CONFLICT` | `60` | No | Remote state conflicts with the request (409) |
 | `EDIT_ALREADY_EXISTS` | `60` | No | An Edit is already open on this package; commit or delete it first |
-| `EDIT_EXPIRED` | `60` | No | The pinned Edit expired; begin a new Edit and replay the mutation |
+| `EDIT_EXPIRED` | `60` | No | The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit and replay the mutation |
 | `RATE_LIMIT_EXCEEDED` | `60` | **Yes** | Rate or quota limit exceeded; back off and retry |
 | `FINDINGS_PRESENT` | `70` | No | A read-only check command completed and reported findings; not a failure |
 <!-- END GENERATED diagnostic-codes -->
@@ -106,6 +111,20 @@ for attempt in 1 2 3; do
 done
 exit 1
 ```
+
+## An Edit commit whose outcome is unknown
+
+Committing an Edit is the one step where "retry-safe" does not hold. When the
+commit fails after the request was sent (a timeout, a reset, a 5xx), Google
+may have applied it. gplay keeps the exit code (`50` or `40`) but tells you
+it is not a blind retry: the error says the commit may be live, and the
+`--output json` envelope carries `"code": "COMMIT_OUTCOME_UNKNOWN"` with
+`"retryable": false`. Check the live state before re-running:
+`gplay releases list` (or the Play Console) after a write command, or
+`gplay edits status --live` after `gplay edits commit` (an Edit that is gone
+was most likely committed). Re-running an upload that did publish fails on
+the already-used version code, which the loop above would report as a failed
+release.
 
 ## Exit 3: machine-resolvable refusals
 

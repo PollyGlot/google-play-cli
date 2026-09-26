@@ -8,7 +8,6 @@ package rollout
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -34,15 +35,10 @@ type Input struct {
 	To                string
 	ToSet             bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 }
-
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // Payload satisfies output.Renderable for the resulting state-transition
 // Result. JSON is API pass-through (the raw tracks.update body, ADR-0003).
@@ -89,9 +85,7 @@ func renderJSON(w io.Writer, r *orchestrator.Result) error {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(r)
+	return output.WriteJSON(w, r)
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
@@ -122,15 +116,12 @@ type stateFunc func(ctx context.Context, hc *http.Client, opts orchestrator.Stat
 // action is the past-tense transition word ("set" / "halted" / "resumed" /
 // "completed") for the ✓ confirmation line.
 func runState(rc *kernel.RunContext, in Input, userFraction float64, action string, call stateFunc) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	if in.Track == "" {
-		return nil, &usageError{msg: "missing --track"}
+		return nil, &exit.UsageError{Msg: "missing --track"}
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a missing
@@ -163,6 +154,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		UserFraction:      userFraction,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -187,20 +179,21 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 // orchestrator.Rollout.
 func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.ToSet {
-		return nil, &usageError{msg: "missing --to: gplay releases rollout --to <fraction> (0 < f ≤ 1.0)"}
+		return nil, &exit.UsageError{Msg: "missing --to: gplay releases rollout --to <fraction> (0 < f ≤ 1.0)"}
 	}
 	fraction, err := strconv.ParseFloat(strings.TrimSpace(in.To), 64)
 	if err != nil {
-		return nil, &usageError{msg: "--to must be a number in (0, 1] (e.g. 0.05, 0.20)"}
+		return nil, &exit.UsageError{Msg: "--to must be a number in (0, 1] (e.g. 0.05, 0.20)"}
 	}
 	if fraction <= 0 || fraction > 1.0 {
-		return nil, &usageError{msg: "--to fraction must be in (0, 1] (e.g. 0.05, 0.20)"}
+		return nil, &exit.UsageError{Msg: "--to fraction must be in (0, 1] (e.g. 0.05, 0.20)"}
 	}
 	return runState(rc, in, fraction, "set", orchestrator.Rollout)
 }
 
 // bindCommonFlags registers the flags every verb shares (output, package,
-// track, the two disambiguators, keep-edit-on-failure, dry-run).
+// track, the two disambiguators, keep-edit-on-failure, the commit opt-ins,
+// dry-run).
 func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	output.RegisterFlag(cmd, outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
@@ -208,6 +201,7 @@ func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the release with this versionCode (disambiguator when the track holds more than one)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the release with this name (disambiguator)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "required to roll out / resume / complete a release on production (reaches real users)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the transition without any HTTP call")
 }

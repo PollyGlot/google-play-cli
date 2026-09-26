@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Service account JSON is valid",
+    "passed": true,
+    "skipped": false,
+    "exit_code": 10
+  },
+  {
+    "name": "OAuth2 access token can be minted",
+    "passed": true,
+    "skipped": false,
+    "exit_code": 10
+  },
+  {
+    "name": "Token carries the androidpublisher scope",
+    "passed": true,
+    "skipped": false,
+    "exit_code": 10
+  },
+  {
+    "name": "Token can be minted for the playdeveloperreporting scope",
+    "passed": true,
+    "skipped": false,
+    "exit_code": 10
+  },
+  {
+    "name": "Service account can edit com.example.app",
+    "passed": true,
+    "skipped": false,
+    "exit_code": 11
+  }
+]

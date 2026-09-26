@@ -393,9 +393,12 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 
 // statusToExitCode maps a Google Play API HTTP status to the gplay
 // exit-code taxonomy (docs/DESIGN.md §9). Shared by both `edits.insert`
-// and `edits.delete` failure paths.
+// and `edits.delete` failure paths. A 401 is the API refusing the token, so
+// it is exit 10 here as in api.StatusToExitCode (#598).
 func statusToExitCode(status int) int {
 	switch {
+	case status == http.StatusUnauthorized:
+		return exitAuth
 	case status == http.StatusForbidden:
 		return exitAuthz
 	case status >= 500:

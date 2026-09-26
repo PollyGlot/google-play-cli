@@ -41,6 +41,20 @@ func TestPrivateKeyPEM_isPKCS8OfTheSharedKey(t *testing.T) {
 	}
 }
 
+func TestCertificatePEM_isASelfSignedCertOfTheSharedKey(t *testing.T) {
+	block, rest := pem.Decode(testkit.CertificatePEM(t))
+	if block == nil || block.Type != "CERTIFICATE" || len(rest) != 0 {
+		t.Fatalf("PEM block = %+v (rest %d bytes), want exactly one CERTIFICATE block", block, len(rest))
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("ParseCertificate: %v", err)
+	}
+	if !testkit.RSAKey(t).PublicKey.Equal(cert.PublicKey) {
+		t.Error("certificate must carry the shared key's public half")
+	}
+}
+
 func TestServiceAccountJSON_fields(t *testing.T) {
 	var sa map[string]string
 	if err := json.Unmarshal(testkit.ServiceAccountJSON(t), &sa); err != nil {
