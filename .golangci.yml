@@ -49,6 +49,11 @@ linters:
   settings:
     exhaustive:
       default-signifies-exhaustive: true
+    thelper:
+      # Keep the t.Helper() checks; drop the rule that a testing.TB parameter
+      # be named tb. The repo names it t, and the name catches no bug.
+      tb:
+        name: false
   exclusions:
     rules:
       - path: cmd/gplay/main.go

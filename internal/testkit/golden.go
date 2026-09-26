@@ -20,24 +20,24 @@ var update = flag.Bool("update", false, "rewrite testdata golden files instead o
 // Golden compares got with the file testdata/<name> of the calling package.
 // With -update it writes got there instead (creating testdata/ as needed), so
 // an intended output change is one command plus a reviewable diff.
-func Golden(tb testing.TB, name string, got []byte) {
-	tb.Helper()
+func Golden(t testing.TB, name string, got []byte) {
+	t.Helper()
 	path := filepath.Join("testdata", filepath.FromSlash(name))
 	if *update {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			tb.Fatalf("testkit: create %s: %v", filepath.Dir(path), err)
+			t.Fatalf("testkit: create %s: %v", filepath.Dir(path), err)
 		}
 		if err := os.WriteFile(path, got, 0o644); err != nil {
-			tb.Fatalf("testkit: write golden %s: %v", path, err)
+			t.Fatalf("testkit: write golden %s: %v", path, err)
 		}
 		return
 	}
 	want, err := os.ReadFile(path)
 	if err != nil {
-		tb.Fatalf("testkit: read golden %s: %v (run the test with -update to create it)", path, err)
+		t.Fatalf("testkit: read golden %s: %v (run the test with -update to create it)", path, err)
 	}
 	if !bytes.Equal(got, want) {
-		tb.Errorf("output differs from golden %s (run with -update if the change is intended)\n%s", path, firstDiff(want, got))
+		t.Errorf("output differs from golden %s (run with -update if the change is intended)\n%s", path, firstDiff(want, got))
 	}
 }
 
