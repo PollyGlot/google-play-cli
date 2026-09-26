@@ -873,11 +873,15 @@ func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) 
 		// --retry: a transport middleware retries transport errors / 5xx / 429
 		// (honoring Retry-After) with exponential backoff + jitter. It owns the
 		// per-ATTEMPT deadline (so a retry sequence can outlast a single
-		// timeout), so the per-request client.Timeout stays unset here.
+		// timeout), so the per-request client.Timeout must stay unset here.
+		// oauth2.NewClient copies the context client's Timeout (timedBase's)
+		// onto the returned client, which would cap the whole retry sequence
+		// at one attempt's deadline: clear it explicitly.
 		client.Transport = transport.WithRetry(client.Transport, transport.RetryOptions{
 			MaxRetries: rc.Retry,
 			Timeout:    timeout,
 		})
+		client.Timeout = 0
 		return client, nil
 	}
 	// No retry: the per-request deadline lives on the client (the oauth2
