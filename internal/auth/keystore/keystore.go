@@ -42,39 +42,38 @@ func NewFileBackend(dir string) *FileBackend {
 
 const fileSuffix = ".json"
 
-// path maps an Account name to its credential file. The name is refused unless
-// it is one plain path component: it reaches here from `auth login --name`,
-// `--account`, GPLAY_ACCOUNT and a repo's .gplay/config.local.json, and a
-// `../x` from any of them would read, write or delete a file outside root
-// (#603). The OS keyring backend keys items by name without touching the
-// filesystem, so it keeps accepting any name.
-func (b *FileBackend) path(name string) (string, error) {
-	if err := pathguard.Segment("Account name", name); err != nil {
-		return "", err
-	}
-	return filepath.Join(b.root, name+fileSuffix), nil
+// validName refuses an Account name that is not one plain path component,
+// before Save, Load or Delete joins it into a path. The name reaches the file
+// backend from `auth login --name`, `--account`, GPLAY_ACCOUNT and a repo's
+// .gplay/config.local.json, and a `../x` from any of them would read, write or
+// delete a file outside root (#603). The OS keyring backend keys items by name
+// without touching the filesystem, so it keeps accepting any name.
+func validName(name string) error {
+	return pathguard.Segment("Account name", name)
+}
+
+func (b *FileBackend) path(name string) string {
+	return filepath.Join(b.root, name+fileSuffix)
 }
 
 // Save writes data to <root>/<name>.json with mode 0600, creating the parent
 // directory if needed.
 func (b *FileBackend) Save(_ context.Context, name string, data []byte) error {
-	p, err := b.path(name)
-	if err != nil {
+	if err := validName(name); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(b.root, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(p, data, 0o600)
+	return os.WriteFile(b.path(name), data, 0o600)
 }
 
 // Load returns the bytes stored under name, or ErrNotFound.
 func (b *FileBackend) Load(_ context.Context, name string) ([]byte, error) {
-	p, err := b.path(name)
-	if err != nil {
+	if err := validName(name); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(p)
+	data, err := os.ReadFile(b.path(name))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotFound
 	}
@@ -83,11 +82,10 @@ func (b *FileBackend) Load(_ context.Context, name string) ([]byte, error) {
 
 // Delete removes the credential. Returns ErrNotFound if absent.
 func (b *FileBackend) Delete(_ context.Context, name string) error {
-	p, err := b.path(name)
-	if err != nil {
+	if err := validName(name); err != nil {
 		return err
 	}
-	err = os.Remove(p)
+	err := os.Remove(b.path(name))
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrNotFound
 	}
