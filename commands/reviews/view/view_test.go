@@ -283,6 +283,69 @@ func TestRun_packageFlagTrimmed(t *testing.T) {
 	}
 }
 
+// hostileReviewBody carries the escape families sanitize_test.go pins (CSI
+// color, OSC 0 title, OSC 8 hyperlink, OSC 52 clipboard write, bare ESC/BEL/CR)
+// in every string an anonymous Play user controls: author, device, review text,
+// plus a developer reply. \u001b / \u0007 are how they arrive in JSON.
+const hostileReviewBody = `{
+	"reviewId":"gp:hostile",
+	"authorName":"\u001b]8;;https://evil.example\u001b\\Jane\u001b]8;;\u001b\\ \u001b[31mDoe\u001b[0m",
+	"comments":[
+		{"userComment":{"text":"line one \u001b]52;c;cGF5bG9hZA==\u0007ok\nline two\u001b]0;pwned\u0007\r\tindented 日本 🎉","starRating":1,"device":"fl\u001b[2Jame","lastModified":{"seconds":"1700000000"}}},
+		{"developerComment":{"text":"reply\u001b[1;1H one\nreply two\u0007","lastModified":{"seconds":"1700000600"}}}
+	]
+}`
+
+// TestRun_human_neutralizesHostileReview pins SEC-04 (#589): the hand-rolled
+// table and markdown renderers strip escape sequences from every API string,
+// while the review and reply bodies keep their line breaks and tabs. JSON is
+// the ADR-0003 pass-through and keeps the bytes.
+func TestRun_human_neutralizesHostileReview(t *testing.T) {
+	for _, format := range []output.Format{output.FormatTable, output.FormatMarkdown} {
+		t.Run(string(format), func(t *testing.T) {
+			rt := &getRT{t: t, body: hostileReviewBody}
+			rc, _, _ := newRC(t, rt, format)
+			r, err := Run(rc, Input{Package: "com.example.app", ReviewID: "gp:hostile"})
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			var buf bytes.Buffer
+			if err := output.Render(&buf, format, r.Renderers()); err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			out := buf.String()
+			for _, bad := range []string{"\x1b", "\x07", "\r", "evil.example", "cGF5bG9hZA", "pwned"} {
+				if strings.Contains(out, bad) {
+					t.Errorf("output contains %q:\n%q", bad, out)
+				}
+			}
+			for _, want := range []string{"Jane Doe", "flame", "line one ok", "line two", "\tindented 日本 🎉", "reply one", "reply two"} {
+				if !strings.Contains(out, want) {
+					t.Errorf("output missing %q:\n%q", want, out)
+				}
+			}
+			// Line breaks survive: the body is two lines, not one.
+			if strings.Contains(out, "line one okline two") || strings.Contains(out, "reply onereply two") {
+				t.Errorf("sanitizer flattened a multi-line body:\n%q", out)
+			}
+		})
+	}
+
+	rt := &getRT{t: t, body: hostileReviewBody}
+	rc, _, _ := newRC(t, rt, output.FormatJSON)
+	r, err := Run(rc, Input{Package: "com.example.app", ReviewID: "gp:hostile"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := output.Render(&buf, output.FormatJSON, r.Renderers()); err != nil {
+		t.Fatalf("Render json: %v", err)
+	}
+	if !strings.Contains(buf.String(), `\u001b]52;c;`) {
+		t.Errorf("json must stay verbatim (ADR-0003); got %s", buf.String())
+	}
+}
+
 func TestRun_noPackage_exit2_noNetwork(t *testing.T) {
 	rt := &getRT{t: t, body: oneReviewBody}
 	rc, _, _ := newRC(t, rt, output.FormatJSON)

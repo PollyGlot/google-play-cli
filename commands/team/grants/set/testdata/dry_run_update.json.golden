@@ -1,0 +1,23 @@
+{
+  "dryRun": true,
+  "email": "dev@example.com",
+  "package": "com.example.app",
+  "verb": "update",
+  "current": [
+    "CAN_ACCESS_APP",
+    "CAN_REPLY_TO_REVIEWS"
+  ],
+  "desired": [
+    "CAN_REPLY_TO_REVIEWS",
+    "CAN_MANAGE_TRACK_APKS",
+    "CAN_ACCESS_APP"
+  ],
+  "add": [
+    "CAN_MANAGE_TRACK_APKS"
+  ],
+  "remove": [],
+  "requires": [],
+  "warnings": [
+    "permission CAN_ACCESS_APP is deprecated; prefer CAN_VIEW_NON_FINANCIAL_DATA"
+  ]
+}

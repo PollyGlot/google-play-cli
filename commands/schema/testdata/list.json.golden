@@ -1,0 +1,45 @@
+{
+  "methods": {
+    "androidpublisher.edits.bundles.list": {
+      "httpMethod": "GET",
+      "path": "androidpublisher/v3/applications/{packageName}/edits/{editId}/bundles",
+      "response": "BundlesListResponse"
+    },
+    "androidpublisher.edits.tracks.get": {
+      "httpMethod": "GET",
+      "path": "androidpublisher/v3/applications/{packageName}/edits/{editId}/tracks/{track}",
+      "response": "Track"
+    },
+    "androidpublisher.edits.tracks.update": {
+      "httpMethod": "PUT",
+      "path": "androidpublisher/v3/applications/{packageName}/edits/{editId}/tracks/{track}",
+      "description": "Updates a track & its releases.",
+      "parameters": [
+        {
+          "name": "editId",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Identifier of the edit."
+        },
+        {
+          "name": "packageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Package name of the app."
+        },
+        {
+          "name": "track",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Identifier of the track."
+        }
+      ],
+      "request": "Track",
+      "response": "Track"
+    }
+  },
+  "schemas": {}
+}

@@ -5,6 +5,9 @@
 package signingcmd
 
 import (
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -28,20 +31,59 @@ func RequireConfirm(confirm bool, msg string) error {
 	return exit.SafetyFlag("confirm", "%s", msg)
 }
 
-// ReadPEM reads a certificate file and hands back its raw bytes (the caller
-// passes them straight to the API, which base64-encodes them as a `format:
-// byte` field). Taking a path rather than a blob is deliberate: nobody should
-// have to paste base64 on a command line. A file that is not PEM is caught here
-// instead of a hundred milliseconds later as an opaque 400.
+// ReadPEM reads a certificate file and hands back the PEM of its certificate
+// blocks (the caller passes them straight to the API, which base64-encodes
+// them as a `format: byte` field). Taking a path rather than a blob is
+// deliberate: nobody should have to paste base64 on a command line.
+//
+// The bytes land in the body of an irreversible call, so the file is decoded,
+// not sniffed: every block must be a CERTIFICATE that x509 parses. A private
+// key block (the usual `openssl pkcs12 -nodes` export puts the upload key and
+// its certificate in one file) or a service-account JSON (its private_key
+// field holds a PEM key) is refused, naming the block type and never quoting
+// its bytes. Anything else is caught here instead of as an opaque 400. Text
+// around the blocks (openssl "Bag Attributes") is dropped: only re-encoded
+// certificate blocks are forwarded.
 func ReadPEM(flag, path string) ([]byte, error) {
 	b, err := ReadFile(flag, path)
 	if err != nil {
 		return nil, err
 	}
-	if !strings.Contains(string(b), "-----BEGIN") {
-		return nil, exit.Usagef("--%s: %s is not a PEM certificate (no \"-----BEGIN\" header): export the certificate in PEM format", flag, path)
+	hint := certHint(flag)
+	if json.Valid(b) {
+		return nil, exit.Usagef("--%s: %s is a JSON file (a service-account key?), not a certificate: %s", flag, path, hint)
 	}
-	return b, nil
+	var out []byte
+	for rest := b; ; {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if strings.Contains(block.Type, "PRIVATE KEY") {
+			return nil, exit.Usagef("--%s: %s contains a %q block: a private key must never be sent to Google Play; %s", flag, path, block.Type, hint)
+		}
+		if block.Type != "CERTIFICATE" {
+			return nil, exit.Usagef("--%s: %s contains a %q block, not a certificate: %s", flag, path, block.Type, hint)
+		}
+		if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+			return nil, exit.Usagef("--%s: %s holds a CERTIFICATE block that is not a valid X.509 certificate (%v): %s", flag, path, err, hint)
+		}
+		out = append(out, pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: block.Bytes})...)
+	}
+	if len(out) == 0 {
+		return nil, exit.Usagef("--%s: %s is not a PEM certificate (no \"-----BEGIN CERTIFICATE-----\" block): %s", flag, path, hint)
+	}
+	return out, nil
+}
+
+// certHint says what to pass instead, per flag: the upload certificate comes
+// out of the developer's own keystore, the KMS one alongside the key version.
+func certHint(flag string) string {
+	if flag == "upload-cert" {
+		return "pass the upload key's certificate alone, in PEM (e.g. `keytool -export -rfc -keystore upload.jks -alias upload -file upload_cert.pem`)"
+	}
+	return "pass the X.509 certificate of the Cloud KMS key version alone, in PEM (\"-----BEGIN CERTIFICATE-----\" blocks only)"
 }
 
 // ReadFile reads an input file, turning an unreadable path into a usage error

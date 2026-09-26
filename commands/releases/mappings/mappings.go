@@ -8,7 +8,6 @@
 package mappings
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -67,9 +66,7 @@ func renderJSON(w io.Writer, r *orchestrator.MappingResult) error {
 	}
 	// Fallback to the gplay MappingResult shape (e.g. on --dry-run, where
 	// no upload happened).
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(r)
+	return output.WriteJSON(w, r)
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.MappingResult) error {

@@ -93,7 +93,8 @@ func writeFile(t *testing.T, name, content string) string {
 	return p
 }
 
-const certPEM = "-----BEGIN CERTIFICATE-----\nZmFrZQ==\n-----END CERTIFICATE-----\n"
+// certPEM is a real self-signed certificate: ReadPEM parses every block.
+func certPEM(t *testing.T) string { return string(testkit.CertificatePEM(t)) }
 
 func exitCode(t *testing.T, err error) int {
 	t.Helper()
@@ -191,8 +192,8 @@ func TestRun_existingApp_postsEnrollExistingApp(t *testing.T) {
 func TestRun_newApp_postsEnrollNewApp_base64Cert(t *testing.T) {
 	r := &rt{}
 	rc, _ := newRC(t, r, output.FormatJSON)
-	certPath := writeFile(t, "kms.pem", certPEM)
-	uploadPath := writeFile(t, "upload.pem", certPEM+"upload\n")
+	certPath := writeFile(t, "kms.pem", certPEM(t))
+	uploadPath := writeFile(t, "upload.pem", certPEM(t)+certPEM(t))
 	_, err := enrollcmd.Run(rc, enrollcmd.Input{
 		Package: "com.example.app", KmsKey: "k", NewApp: true,
 		KmsCert: certPath, UploadCert: uploadPath, Confirm: true,
@@ -219,10 +220,10 @@ func TestRun_newApp_postsEnrollNewApp_base64Cert(t *testing.T) {
 	if body.EnrollNewApp == nil {
 		t.Fatalf("--new-app must set enrollNewApp: %s", r.body)
 	}
-	if got := string(body.EnrollNewApp.CloudKmsKeyAndCert.PemCertificate); got != certPEM {
+	if got := string(body.EnrollNewApp.CloudKmsKeyAndCert.PemCertificate); got != certPEM(t) {
 		t.Errorf("pemCertificate decodes to %q, want the file's bytes", got)
 	}
-	if got := string(body.PemUploadCertificate); got != certPEM+"upload\n" {
+	if got := string(body.PemUploadCertificate); got != certPEM(t)+certPEM(t) {
 		t.Errorf("pemUploadCertificate decodes to %q, want the upload file's bytes", got)
 	}
 }
@@ -230,7 +231,7 @@ func TestRun_newApp_postsEnrollNewApp_base64Cert(t *testing.T) {
 // TestRun_flagCombinations_areUsageErrors asserts the oneof distinction is
 // enforced client-side (exit 2), never sent to the API as a wrong shape.
 func TestRun_flagCombinations_areUsageErrors(t *testing.T) {
-	certPath := writeFile(t, "kms.pem", certPEM)
+	certPath := writeFile(t, "kms.pem", certPEM(t))
 	cases := []struct {
 		name string
 		in   enrollcmd.Input
@@ -270,6 +271,31 @@ func TestRun_nonPEMCert_isUsageError(t *testing.T) {
 	}
 	if len(r.calls) != 0 {
 		t.Errorf("must not reach the network; calls=%v", r.calls)
+	}
+}
+
+// TestRun_privateKeyOrServiceAccountAsCert_refusedEvenInDryRun reproduces
+// SEC-08 (#589): a key file or the service-account JSON passed as
+// --upload-cert used to pass validation (it contains "-----BEGIN") and would
+// have shipped the private key in the enrollApp body. It must fail as a usage
+// error before any preview or network call.
+func TestRun_privateKeyOrServiceAccountAsCert_refusedEvenInDryRun(t *testing.T) {
+	for name, content := range map[string]string{
+		"key.pem":  string(testkit.PrivateKeyPEM(t)),
+		"sa.json":  string(testkit.ServiceAccountJSON(t)),
+		"both.pem": string(testkit.PrivateKeyPEM(t)) + certPEM(t),
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &rt{}
+			rc, _ := newRC(t, r, output.FormatJSON)
+			_, err := enrollcmd.Run(rc, enrollcmd.Input{Package: "p", KmsKey: "k", UploadCert: writeFile(t, name, content), DryRun: true})
+			if got := exitCode(t, err); got != 2 {
+				t.Errorf("exit = %d, want 2 (%v)", got, err)
+			}
+			if len(r.calls) != 0 {
+				t.Errorf("must not reach the network; calls=%v", r.calls)
+			}
+		})
 	}
 }
 

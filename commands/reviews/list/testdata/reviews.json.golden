@@ -1,0 +1,46 @@
+{
+  "reviews": [
+    {
+      "reviewId": "gp:AOqpTOE-example-1",
+      "authorName": "A Google user",
+      "comments": [
+        {
+          "userComment": {
+            "text": "Crashes on start & loses my <streak>",
+            "lastModified": {
+              "seconds": "1785748500"
+            },
+            "starRating": 2,
+            "reviewerLanguage": "en",
+            "appVersionCode": 142,
+            "appVersionName": "1.4.2"
+          }
+        },
+        {
+          "developerComment": {
+            "text": "Fixed in 1.4.3",
+            "lastModified": {
+              "seconds": "1785837600"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "reviewId": "gp:AOqpTOE-example-2",
+      "authorName": "A Google user",
+      "comments": [
+        {
+          "userComment": {
+            "text": "Parfait",
+            "lastModified": {
+              "seconds": "1785955200"
+            },
+            "starRating": 5,
+            "reviewerLanguage": "fr"
+          }
+        }
+      ]
+    }
+  ]
+}
