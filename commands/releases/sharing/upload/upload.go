@@ -24,6 +24,7 @@ import (
 	// Aliased: this package already has a local `artifact` type for the
 	// classified local file.
 	preflight "github.com/PollyGlot/google-play-cli/internal/artifact"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/sharing"
@@ -37,12 +38,6 @@ type Input struct {
 	DryRun        bool
 	SkipPreflight bool
 }
-
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // classifyError signals that gplay could not determine or read the artifact: an
 // unrecognized extension with no --format, or a missing/unreadable/non-regular
@@ -90,7 +85,7 @@ func classify(path, formatOverride string) (artifact, error) {
 			return artifact{}, &classifyError{path: path, msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
 		}
 	default:
-		return artifact{}, &usageError{msg: "--format must be apk or bundle"}
+		return artifact{}, &exit.UsageError{Msg: "--format must be apk or bundle"}
 	}
 
 	info, err := os.Stat(path)
@@ -186,14 +181,11 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if strings.TrimSpace(in.ArtifactPath) == "" {
-		return nil, &usageError{msg: "missing artifact path: gplay releases sharing upload <app.apk|app.aab>"}
+		return nil, &exit.UsageError{Msg: "missing artifact path: gplay releases sharing upload <app.apk|app.aab>"}
 	}
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	art, err := classify(in.ArtifactPath, in.Format)

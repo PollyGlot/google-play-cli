@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/orders/orderscmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/orders"
@@ -267,12 +268,12 @@ func trimIDs(raw []string) []string {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	ids := trimIDs(in.OrderIDs)
 	if len(ids) == 0 {
-		return nil, orderscmd.Usagef("no order: pass one or more order IDs: gplay orders view <orderId> [<orderId>...]")
+		return nil, exit.Usagef("no order: pass one or more order IDs: gplay orders view <orderId> [<orderId>...]")
 	}
 	if len(ids) > orders.MaxBatchOrderIDs {
-		return nil, orderscmd.Usagef("too many order IDs (%d): orders.batchget accepts between 1 and %d per request; split the list into smaller batches", len(ids), orders.MaxBatchOrderIDs)
+		return nil, exit.Usagef("too many order IDs (%d): orders.batchget accepts between 1 and %d per request; split the list into smaller batches", len(ids), orders.MaxBatchOrderIDs)
 	}
-	pkg, err := orderscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

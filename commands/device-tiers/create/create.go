@@ -130,7 +130,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := validateBody(body); err != nil {
 		return nil, err
 	}
-	pkg, err := devicetierscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
