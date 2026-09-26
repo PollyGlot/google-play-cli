@@ -171,10 +171,11 @@ type Diagnostic struct {
 	Code      Code
 	ExitCode  int
 	Retryable bool
-	Operation string   // API operation, e.g. "edits.commit"; empty on a local failure
-	Package   string   // targeted package; empty when the failure is not package-scoped
-	Reasons   []string // verbatim upstream error.errors[].reason values
-	Message   string   // the same human string stderr carries
+	Operation string       // API operation, e.g. "edits.commit"; empty on a local failure
+	Resource  api.Resource // what the call addressed, on any axis; zero when unknown
+	Package   string       // Resource.ID when it is a package, empty otherwise (#599)
+	Reasons   []string     // verbatim upstream error.errors[].reason values
+	Message   string       // the same human string stderr carries
 }
 
 // Classify is the one classifier: it maps any error to its Diagnostic. A nil
@@ -192,7 +193,12 @@ func Classify(err error) Diagnostic {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
 		d.Operation = apiErr.Operation
-		d.Package = apiErr.Package
+		d.Resource = apiErr.Target()
+		// package is derived from the target, never copied from a module's
+		// field: the envelope's `package` promises an Android package name.
+		if d.Resource.Kind == api.KindPackage {
+			d.Package = d.Resource.ID
+		}
 		d.Reasons = apiErr.Reasons
 	}
 	return d

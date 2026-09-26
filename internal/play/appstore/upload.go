@@ -151,7 +151,7 @@ func uploadMedia(ctx context.Context, hc *http.Client, m apiregistry.Method, op,
 	// failure without reopening the file.
 	if initiate != nil {
 		raw, _, err := api.ResumableUploadWithInitiateBody(
-			ctx, hc, op, pkg, u, contentType, f, info.Size(),
+			ctx, hc, op, api.PackageResource(pkg), u, contentType, f, info.Size(),
 			initiate, "application/json; charset=UTF-8",
 		)
 		return raw, err
