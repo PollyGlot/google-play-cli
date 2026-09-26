@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
@@ -196,15 +197,12 @@ func RunSet(rc *kernel.RunContext, in SetInput) (output.Renderable, error) {
 	// validation. Run it first, before package resolution, so the misuse
 	// is reported regardless of pin state.
 	if !anyFieldSet(in) {
-		return nil, &usageError{msg: "refusing to patch App details without any field flag; pass at least one of --default-language, --contact-email, --contact-phone, --contact-website (an empty value clears a field, e.g. --contact-phone \"\")"}
+		return nil, &exit.UsageError{Msg: "refusing to patch App details without any field flag; pass at least one of --default-language, --contact-email, --contact-phone, --contact-website (an empty value clears a field, e.g. --contact-phone \"\")"}
 	}
 
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	patch := buildPatch(in)
@@ -237,7 +235,7 @@ func RunSet(rc *kernel.RunContext, in SetInput) (output.Renderable, error) {
 		raw = r
 		return nil
 	}); err != nil {
-		return nil, classifyEditError(pkg, err)
+		return nil, apihint.ForPackage(pkg, err)
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The

@@ -1,0 +1,13 @@
+{
+  "dryRun": true,
+  "productId": "premium_monthly",
+  "basePlanId": "monthly-autorenew",
+  "regions": [
+    "FR",
+    "US"
+  ],
+  "oldestAllowedPriceVersionTime": "2026-01-01T00:00:00Z",
+  "requires": [
+    "confirm"
+  ]
+}

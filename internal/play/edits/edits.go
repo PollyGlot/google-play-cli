@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
+	"github.com/PollyGlot/google-play-cli/internal/editpin"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
@@ -62,6 +63,65 @@ func (e *DanglingEditError) ExitCode() int {
 		return c.ExitCode()
 	}
 	return 60
+}
+
+// StalePinError wraps a write that failed because the explicit Edit pinned in
+// .gplay/edit-<package>.json no longer exists server-side (it expired, or was
+// committed or discarded by another client). Without it the user sees a bare
+// 404 from, say, tracks.update, with nothing saying a local pin silently
+// redirected the command to a dead Edit. The message names the pin and the
+// verb that clears it; the exit code and diagnostic code stay those of the
+// wrapped API error, so the frozen exit-code contract does not move.
+type StalePinError struct {
+	Package string
+	EditID  string
+	Err     error
+}
+
+func (e *StalePinError) Error() string {
+	return fmt.Sprintf("%v: the command ran against explicit edit %s pinned in .gplay/%s, which no longer exists (expired, or committed or discarded elsewhere); run `gplay edits discard --package %s` to clear the pin, then retry",
+		e.Err, e.EditID, editpin.FileName(e.Package), e.Package)
+}
+
+func (e *StalePinError) Unwrap() error { return e.Err }
+
+// ExitCode forwards to the wrapped error, falling back to 30 (the 404 bucket
+// the wrapped failure comes from).
+func (e *StalePinError) ExitCode() int {
+	var c interface{ ExitCode() int }
+	if errors.As(e.Err, &c) {
+		return c.ExitCode()
+	}
+	return 30
+}
+
+// explainStalePin decides whether an explicit-mode failure is the pinned Edit
+// having vanished, and wraps it in a *StalePinError when it is. An editExpired
+// reason says so outright. A bare 404 is ambiguous (the Edit, or a resource
+// inside it such as a track not created yet, whose own hint must not be
+// drowned), so it is settled by one edits.get on the pinned id: the same probe
+// `gplay edits status --live` uses. Any other failure, or a probe that finds
+// the Edit alive or cannot tell, returns err untouched.
+func explainStalePin(ctx context.Context, hc *http.Client, pkg, editID string, err error) error {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	stale := &StalePinError{Package: pkg, EditID: editID, Err: err}
+	if hasReason(apiErr, "editExpired") {
+		return stale
+	}
+	if apiErr.StatusCode != http.StatusNotFound {
+		return err
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, _, probeErr := GetExplicit(probeCtx, hc, pkg, editID)
+	var probe *api.Error
+	if errors.As(probeErr, &probe) && (probe.StatusCode == http.StatusNotFound || hasReason(probe, "editExpired")) {
+		return stale
+	}
+	return err
 }
 
 // Options tunes the Edit lifecycle. KeepOnFailure suppresses the
@@ -234,7 +294,10 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	// drives those via `gplay edits commit`/`discard`, so a mid-batch failure
 	// leaves the Edit open for a retry or an explicit discard.
 	if opts.ExplicitEditID != "" {
-		return fn(opts.ExplicitEditID)
+		if err := fn(opts.ExplicitEditID); err != nil {
+			return explainStalePin(ctx, hc, pkg, opts.ExplicitEditID, err)
+		}
+		return nil
 	}
 	editID, err := insertEdit(ctx, hc, pkg)
 	if err != nil {
@@ -505,8 +568,14 @@ func isEditAlreadyExists(err error) bool {
 	if !errors.As(err, &apiErr) {
 		return false
 	}
-	for _, r := range apiErr.Reasons {
-		if strings.EqualFold(r, "editAlreadyExists") {
+	return hasReason(apiErr, "editAlreadyExists")
+}
+
+// hasReason reports whether e carries the Google error.errors[].reason want,
+// compared case-insensitively like the exit classifier does.
+func hasReason(e *api.Error, want string) bool {
+	for _, r := range e.Reasons {
+		if strings.EqualFold(strings.TrimSpace(r), want) {
 			return true
 		}
 	}

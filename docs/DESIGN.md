@@ -333,6 +333,13 @@ Two read-only checks complete the lifecycle (#544):
   cleared implicitly. Without `--live`, `status` stays a local read with no
   auth and no network; `--live` without a pin also stays offline.
 
+A write command that fails against a pinned Edit which no longer exists (an
+`editExpired` reason, or a `404` that the same `edits.get` probe confirms is
+the Edit itself rather than a resource inside it) names the pin file and
+`gplay edits discard --package <pkg>` in its error. The exit code and the
+diagnostic code stay those of the API failure; the pin is never cleared
+implicitly.
+
 ### Committing while changes are in review (#598)
 
 Every command that commits an Edit (`gplay edits commit`, and each write
@@ -852,7 +859,7 @@ rather than regexing the message for the word "already".
 | `COMMIT_OUTCOME_UNKNOWN` | 50 | No | An Edit commit failed after it was sent (timeout, reset or 5xx, so exit `50` or `40`) and may be live; check before re-running (§4) |
 | `STATE_CONFLICT` | 60 | No | Remote state conflicts with the request (409) |
 | `EDIT_ALREADY_EXISTS` | 60 | No | An Edit is already open on this package |
-| `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; begin a new Edit |
+| `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit |
 | `RATE_LIMIT_EXCEEDED` | 60 | **Yes** | Rate or quota limit exceeded; back off |
 | `FINDINGS_PRESENT` | 70 | No | A check command completed and reported findings; not a failure |
 

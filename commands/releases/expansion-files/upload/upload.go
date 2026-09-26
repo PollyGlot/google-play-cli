@@ -15,6 +15,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/expansionfilescmd"
 	"github.com/PollyGlot/google-play-cli/internal/artifact"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -68,16 +69,16 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, expansionfilescmd.Usagef("missing or invalid --version-code: the APK versionCode the expansion file attaches to is required")
+		return nil, exit.Usagef("missing or invalid --version-code: the APK versionCode the expansion file attaches to is required")
 	}
 	if in.OBBPath == "" {
-		return nil, expansionfilescmd.Usagef("missing .obb path: gplay releases expansion-files upload <file.obb> ...")
+		return nil, exit.Usagef("missing .obb path: gplay releases expansion-files upload <file.obb> ...")
 	}
 	ft, err := expansionfilescmd.NormalizeType(in.Type)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := expansionfilescmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

@@ -24,6 +24,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -45,15 +47,6 @@ type Input struct {
 	Commit            commitflags.Flags
 }
 
-// usageError is a CLI-misuse error (missing --track, no package, the
-// footgun guard, --group/--clear conflict); ExitCode()=2 per
-// docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-
-func (e *usageError) ExitCode() int { return 2 }
-
 // trackNotFoundError wraps a testers.update 404 with an actionable hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
 // the wrapped *api.Error (404 → exit 30) stays authoritative through the
@@ -71,41 +64,6 @@ func (e *trackNotFoundError) Error() string {
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
 // mapping the 404 to exit 30.
 func (e *trackNotFoundError) Unwrap() error { return e.cause }
-
-// forbiddenError wraps a 403 (service account not invited on the app)
-// with the standard grant-access hint. It carries no ExitCode of its own
-// so the wrapped *api.Error (403 → exit 11) stays authoritative.
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-// Error renders the forbidden message plus the Play Console grant hint.
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 403 to exit 11.
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// packageNotFoundError wraps an edits.insert 404 (the package is unknown
-// or not registered) with a hint pointing at `gplay apps list`. Like
-// trackNotFoundError, it carries no ExitCode of its own so the wrapped
-// *api.Error (404 → exit 30) stays authoritative through the Coder chain.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-// Error renders the not-found message plus the `gplay apps list` hint.
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 404 to exit 30.
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
 // Payload satisfies output.Renderable. Raw carries the testers.update body
 // for the ADR-0003 JSON pass-through (empty on --dry-run, which never hits
@@ -204,7 +162,7 @@ func isStatus(err error, status int) bool {
 	return false
 }
 
-// classifyEditError attaches an actionable hint to the operator-facing
+// classifyTrackError attaches an actionable hint to the operator-facing
 // failures of a testers replacement, while leaving the wrapped *api.Error
 // to drive the exit code. A testers.update 404 is already wrapped as
 // *trackNotFoundError inside the write closure (it carries the
@@ -214,21 +172,12 @@ func isStatus(err error, status int) bool {
 // (→ `gplay apps list` hint), a 403 means the service account was not
 // invited on the app. Every other failure (5xx, network, edit conflict)
 // propagates verbatim.
-func classifyEditError(pkg string, err error) error {
+func classifyTrackError(pkg string, err error) error {
 	var tnf *trackNotFoundError
 	if errors.As(err, &tnf) {
 		return err
 	}
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
-	}
-	return err
+	return apihint.ForPackage(pkg, err)
 }
 
 // targetGroups resolves the audience to write from the validated flags.
@@ -256,17 +205,17 @@ func targetGroups(in Input) []string {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
-		return nil, &usageError{msg: "missing --track"}
+		return nil, &exit.UsageError{Msg: "missing --track"}
 	}
 
 	// Footgun guard: a bare `set` with neither --group nor --clear must
 	// never reach the API: a forgotten --group would otherwise silently
 	// wipe the list. Emptying on purpose is the explicit --clear.
 	if !in.GroupsSet && !in.Clear {
-		return nil, &usageError{msg: "refusing to change testers without --group or --clear (a forgotten --group must not silently wipe the list); pass --group a@googlegroups.com[,…] to declare the set, or --clear to empty it"}
+		return nil, &exit.UsageError{Msg: "refusing to change testers without --group or --clear (a forgotten --group must not silently wipe the list); pass --group a@googlegroups.com[,…] to declare the set, or --clear to empty it"}
 	}
 	if in.GroupsSet && in.Clear {
-		return nil, &usageError{msg: "--group and --clear are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--group and --clear are mutually exclusive"}
 	}
 
 	groups := targetGroups(in)
@@ -274,15 +223,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// send an empty set under the guise of --group (that's what --clear is
 	// for).
 	if in.GroupsSet && len(groups) == 0 {
-		return nil, &usageError{msg: "--group was passed but lists no non-empty group; pass --group a@googlegroups.com[,…], or --clear to empty the list"}
+		return nil, &exit.UsageError{Msg: "--group was passed but lists no non-empty group; pass --group a@googlegroups.com[,…], or --clear to empty the list"}
 	}
 
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a missing
@@ -323,7 +269,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		parsed, raw = tt, r
 		return nil
 	}); err != nil {
-		return nil, classifyEditError(pkg, err)
+		return nil, classifyTrackError(pkg, err)
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The

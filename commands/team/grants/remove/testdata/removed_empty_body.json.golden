@@ -1,0 +1,5 @@
+{
+  "ok": true,
+  "removed": "dev@example.com",
+  "package": "com.example.app"
+}

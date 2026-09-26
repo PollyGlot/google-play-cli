@@ -51,12 +51,6 @@ type Input struct {
 	NoVerify bool
 }
 
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // authError signals "no account resolved"; ExitCode()=10 per
 // docs/DESIGN.md §9 and the resolver precedence rules.
 type authError struct{ msg string }
@@ -94,7 +88,7 @@ func (e *validationError) ExitCode() int { return 20 }
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkgs := dedup(in.Packages)
 	if len(pkgs) == 0 {
-		return nil, &usageError{msg: "apps add: at least one <package> argument is required"}
+		return nil, &exit.UsageError{Msg: "apps add: at least one <package> argument is required"}
 	}
 
 	account, g, err := resolveAccount(rc)
@@ -210,7 +204,7 @@ func resolveAccount(rc *kernel.RunContext) (string, *config.Global, error) {
 			return "", nil, err
 		}
 		if rc.Account != nil {
-			return "", nil, &usageError{msg: "apps add: cannot register under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
+			return "", nil, &exit.UsageError{Msg: "apps add: cannot register under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
 		return "", nil, &authError{msg: "no Account resolved; run `gplay auth login`, set GPLAY_ACCOUNT, or pass --account"}
 	}
@@ -307,7 +301,7 @@ func reportBatch(rc *kernel.RunContext, results []pkgResult, account string, noV
 // package.
 func validatePackage(pkg string) error {
 	if pkg == "" {
-		return &usageError{msg: "apps add: <package> argument is required"}
+		return &exit.UsageError{Msg: "apps add: <package> argument is required"}
 	}
 	if !strings.Contains(pkg, ".") {
 		return &validationError{msg: fmt.Sprintf("apps add: %q is not a valid Android package name (must contain a dot, e.g. com.example.myapp)", pkg)}

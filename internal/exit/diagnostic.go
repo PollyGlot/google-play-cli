@@ -132,7 +132,7 @@ var codeCatalog = []CodeDoc{
 	{CodeCommitOutcomeUnknown, 50, false, "An Edit commit failed after it was sent (timeout, reset or 5xx, exit 50 or 40) and may be live; check the live state before re-running"},
 	{CodeStateConflict, 60, false, "Remote state conflicts with the request (409)"},
 	{CodeEditAlreadyExists, 60, false, "An Edit is already open on this package; commit or delete it first"},
-	{CodeEditExpired, 60, false, "The pinned Edit expired; begin a new Edit and replay the mutation"},
+	{CodeEditExpired, 60, false, "The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit and replay the mutation"},
 	{CodeRateLimitExceeded, 60, true, "Rate or quota limit exceeded; back off and retry"},
 	{CodeFindingsPresent, 70, false, "A read-only check command completed and reported findings; not a failure"},
 }
