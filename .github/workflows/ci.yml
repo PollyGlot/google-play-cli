@@ -352,7 +352,7 @@ jobs:
           declare -A pid
           for t in "${targets[@]}"; do
             read -r pkg fn budget <<<"$t"
-            go test -run='^$' -fuzz="^${fn}\$" -fuzztime="$budget" -parallel=1 "$pkg" > "$logs/$fn.log" 2>&1 &
+            go test -run='^$' -fuzz="^${fn}\$" -fuzztime="$budget" -fuzzminimizetime=0 -parallel=1 "$pkg" > "$logs/$fn.log" 2>&1 &
             pid[$fn]=$!
           done
           failed=()
