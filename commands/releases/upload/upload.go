@@ -80,9 +80,11 @@ func preflightKind(format string) artifact.Kind {
 	return artifact.KindBundle
 }
 
-// Payload satisfies output.Renderable for the resulting upload Result.
+// Payload satisfies output.Renderable for the resulting upload Result. DryRun
+// marks the --dry-run preview, the path with no API body to pass through.
 type Payload struct {
 	Result *orchestrator.Result
+	DryRun bool
 }
 
 // Renderers returns the per-Format renderers. The JSON form is API
@@ -91,7 +93,7 @@ type Payload struct {
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p.Result) },
-		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result) },
+		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result, p.DryRun) },
 		Markdown: func(w io.Writer) error { return renderMarkdown(w, p.Result) },
 	}
 }
@@ -141,14 +143,20 @@ func renderTable(w io.Writer, r *orchestrator.Result) error {
 	return nil
 }
 
-func renderJSON(w io.Writer, r *orchestrator.Result) error {
-	// API pass-through: emit the raw tracks.update body (ADR-0003).
+func renderJSON(w io.Writer, r *orchestrator.Result, dryRun bool) error {
+	// API pass-through: emit the raw tracks.update body (ADR-0003), never
+	// touched: the dryRun marker below lives only in gplay's own shape.
 	if len(r.RawTrackResponse) > 0 {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
 	}
-	// Fallback to the gplay Result shape if we somehow lost the raw.
-	return output.WriteJSON(w, r)
+	// Fallback to the gplay Result shape (the --dry-run preview, or a live
+	// upload that somehow lost the raw), led under --dry-run by the dryRun
+	// marker every other mutating command's preview carries.
+	return output.WriteJSON(w, struct {
+		DryRun bool `json:"dryRun,omitempty"`
+		*orchestrator.Result
+	}{DryRun: dryRun, Result: r})
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
@@ -297,7 +305,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.ConfirmMutation(explicitEditID, "uploaded versionCode %d to track %q (status %s%s)",
 			result.VersionCode, result.Track, result.Status, extra)
 	}
-	return Payload{Result: result}, nil
+	return Payload{Result: result, DryRun: in.DryRun}, nil
 }
 
 // NewCommand returns the cobra command for `gplay releases upload`.

@@ -1,4 +1,5 @@
 {
+  "dryRun": true,
   "versionCode": 0,
   "track": "internal",
   "releaseName": "(dry-run)",
