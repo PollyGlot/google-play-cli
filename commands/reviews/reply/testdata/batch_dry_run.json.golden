@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "reviewId": "gp:ok-1",
+      "status": "planned"
+    },
+    {
+      "reviewId": "gp:ok-2",
+      "status": "planned"
+    }
+  ]
+}

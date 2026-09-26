@@ -1,0 +1,33 @@
+[
+  {
+    "name": "Service account JSON is valid",
+    "passed": true,
+    "skipped": false,
+    "exit_code": 10
+  },
+  {
+    "name": "OAuth2 access token can be minted",
+    "passed": false,
+    "skipped": false,
+    "exit_code": 10,
+    "hint": "token exchange refused <invalid_grant> & key revoked; run `gplay auth login`"
+  },
+  {
+    "name": "Token carries the androidpublisher scope",
+    "passed": false,
+    "skipped": true,
+    "exit_code": 10
+  },
+  {
+    "name": "Token can be minted for the playdeveloperreporting scope",
+    "passed": false,
+    "skipped": true,
+    "exit_code": 10
+  },
+  {
+    "name": "Service account can edit com.example.app",
+    "passed": false,
+    "skipped": true,
+    "exit_code": 11
+  }
+]

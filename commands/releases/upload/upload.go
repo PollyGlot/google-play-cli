@@ -6,7 +6,6 @@
 package upload
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -152,9 +151,7 @@ func renderJSON(w io.Writer, r *orchestrator.Result) error {
 		return err
 	}
 	// Fallback to the gplay Result shape if we somehow lost the raw.
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(r)
+	return output.WriteJSON(w, r)
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
