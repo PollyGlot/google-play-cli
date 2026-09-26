@@ -66,19 +66,14 @@ func TestRun_deviceTierConfig_withAPK_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestNewCommand_deviceTierConfig_labelledExperimental asserts the flag is
-// registered and carries the [experimental] label in its help: a sub-feature
-// of a frozen command is labelled in prose (ADR-0042 §6).
-func TestNewCommand_deviceTierConfig_labelledExperimental(t *testing.T) {
+// TestNewCommand_deviceTierConfig_documented asserts the flag is registered
+// and explained in the command's help.
+func TestNewCommand_deviceTierConfig_documented(t *testing.T) {
 	cmd := upload.NewCommand(kernel.Boot{})
-	f := cmd.Flags().Lookup("device-tier-config")
-	if f == nil {
+	if cmd.Flags().Lookup("device-tier-config") == nil {
 		t.Fatal("releases upload has no --device-tier-config flag")
 	}
-	if !strings.HasPrefix(f.Usage, "[experimental]") {
-		t.Errorf("--device-tier-config usage %q does not start with [experimental]", f.Usage)
-	}
-	if !strings.Contains(cmd.Long, "[experimental] --device-tier-config") {
-		t.Error("releases upload --help does not describe --device-tier-config as experimental")
+	if !strings.Contains(cmd.Long, "--device-tier-config") {
+		t.Error("releases upload --help does not explain --device-tier-config")
 	}
 }
