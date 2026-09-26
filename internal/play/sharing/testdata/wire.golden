@@ -1,0 +1,42 @@
+## UploadAPK / ok
+POST https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/internalappsharing/com.example.app/artifacts/apk?uploadType=media
+Content-Type: application/octet-stream
+content-length=19 replayable=true
+PK artifact bytes
+=> ok [{},{}]
+
+## UploadAPK / denied
+POST https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/internalappsharing/com.example.app/artifacts/apk?uploadType=media
+Content-Type: application/octet-stream
+content-length=19 replayable=true
+PK artifact bytes
+=> error (exit 11): internalappsharingartifacts.uploadapk on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## UploadAPK / malformed
+POST https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/internalappsharing/com.example.app/artifacts/apk?uploadType=media
+Content-Type: application/octet-stream
+content-length=19 replayable=true
+PK artifact bytes
+=> error (exit 30): internalappsharingartifacts.uploadapk on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
+
+## UploadBundle / ok
+POST https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/internalappsharing/com.example.app/artifacts/bundle?uploadType=media
+Content-Type: application/octet-stream
+content-length=19 replayable=true
+PK artifact bytes
+=> ok [{},{}]
+
+## UploadBundle / denied
+POST https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/internalappsharing/com.example.app/artifacts/bundle?uploadType=media
+Content-Type: application/octet-stream
+content-length=19 replayable=true
+PK artifact bytes
+=> error (exit 11): internalappsharingartifacts.uploadbundle on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## UploadBundle / malformed
+POST https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/internalappsharing/com.example.app/artifacts/bundle?uploadType=media
+Content-Type: application/octet-stream
+content-length=19 replayable=true
+PK artifact bytes
+=> error (exit 30): internalappsharingartifacts.uploadbundle on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
+

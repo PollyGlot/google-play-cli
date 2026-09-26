@@ -1,0 +1,87 @@
+## Create / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs
+Content-Type: application/json
+content-length=34 replayable=true
+{"deviceGroups":[{"name":"high"}]}
+=> ok [{},{}]
+
+## Create / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs
+Content-Type: application/json
+content-length=34 replayable=true
+{"deviceGroups":[{"name":"high"}]}
+=> error (exit 11): deviceTierConfigs.create on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Create / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs
+Content-Type: application/json
+content-length=34 replayable=true
+{"deviceGroups":[{"name":"high"}]}
+=> error (exit 50): deviceTierConfigs.create on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## Create allow unknown / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?allowUnknownDevices=true
+Content-Type: application/json
+content-length=34 replayable=true
+{"deviceGroups":[{"name":"high"}]}
+=> ok [{},{}]
+
+## Create allow unknown / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?allowUnknownDevices=true
+Content-Type: application/json
+content-length=34 replayable=true
+{"deviceGroups":[{"name":"high"}]}
+=> error (exit 11): deviceTierConfigs.create on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Create allow unknown / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?allowUnknownDevices=true
+Content-Type: application/json
+content-length=34 replayable=true
+{"deviceGroups":[{"name":"high"}]}
+=> error (exit 50): deviceTierConfigs.create on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## Get / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs/123
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## Get / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs/123
+content-length=0 replayable=true
+=> error (exit 11): deviceTierConfigs.get on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Get / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs/123
+content-length=0 replayable=true
+=> error (exit 50): deviceTierConfigs.get on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## List / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## List / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs
+content-length=0 replayable=true
+=> error (exit 11): deviceTierConfigs.list on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## List / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs
+content-length=0 replayable=true
+=> error (exit 50): deviceTierConfigs.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## List paged / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?pageSize=10&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## List paged / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?pageSize=10&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> error (exit 11): deviceTierConfigs.list on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## List paged / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?pageSize=10&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> error (exit 50): deviceTierConfigs.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+

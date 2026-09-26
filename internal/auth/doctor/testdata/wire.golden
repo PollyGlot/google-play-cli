@@ -1,0 +1,96 @@
+## CheckPackageAccess / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e%201%2F2
+Authorization: Bearer a.b.c
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":true,"skipped":false,"exit_code":0}]
+
+## CheckPackageAccess / created, delete 204
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1
+Authorization: Bearer a.b.c
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":true,"skipped":false,"exit_code":0}]
+
+## CheckPackageAccess / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":11,"hint":"Service account is not granted access to com.example.app. In Play Console → Setup → API access, grant the appropriate permission to ci@p.iam.gserviceaccount.com."}]
+
+## CheckPackageAccess / not found
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":30,"hint":"Package com.example.app not found in Play Console under this service account's organization."}]
+
+## CheckPackageAccess / bad request
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":30,"hint":"plain text refusal (HTTP 400 from edits.insert on com.example.app)"}]
+
+## CheckPackageAccess / unavailable
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":40,"hint":"temporary upstream failure: safe to retry (HTTP 503 from edits.insert on com.example.app)"}]
+
+## CheckPackageAccess / unauthorized
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":10,"hint":"HTTP 401 (HTTP 401 from edits.insert on com.example.app)"}]
+
+## CheckPackageAccess / accepted
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":30,"hint":"{\"id\":\"e1\"} (HTTP 202 from edits.insert on com.example.app)"}]
+
+## CheckPackageAccess / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":40,"hint":"edits.insert for com.example.app returned a malformed body: no Edit ID to discard"}]
+
+## CheckPackageAccess / no id
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":40,"hint":"edits.insert for com.example.app returned a malformed body: no Edit ID to discard"}]
+
+## CheckPackageAccess / delete fails
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1
+Authorization: Bearer a.b.c
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":30,"hint":"edits.insert on com.example.app succeeded but cleanup failed: edit is being committed (HTTP 409)"}]
+
+## CheckPackageAccess / delete 5xx
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Authorization: Bearer a.b.c
+Content-Type: application/json
+content-length=0 replayable=true
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1
+Authorization: Bearer a.b.c
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":40,"hint":"edits.insert on com.example.app succeeded but cleanup failed: temporary upstream failure, safe to retry (HTTP 502)"}]
+

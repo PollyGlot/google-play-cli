@@ -1,0 +1,45 @@
+## GetRecentAppView / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentAppViews/com.example.app
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## GetRecentAppView / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentAppViews/com.example.app
+content-length=0 replayable=true
+=> error (exit 11): appstorecatalog.recentappviews.get on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## GetRecentAppView / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentAppViews/com.example.app
+content-length=0 replayable=true
+=> error (exit 50): appstorecatalog.recentappviews.get on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListRecentUpdateEvents / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentUpdateEvents?endTime=2026-09-02T00%3A00%3A00Z&startTime=2026-09-01T00%3A00%3A00Z
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## ListRecentUpdateEvents / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentUpdateEvents?endTime=2026-09-02T00%3A00%3A00Z&startTime=2026-09-01T00%3A00%3A00Z
+content-length=0 replayable=true
+=> error (exit 11): appstorecatalog.recentupdateevents.list on : The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListRecentUpdateEvents / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentUpdateEvents?endTime=2026-09-02T00%3A00%3A00Z&startTime=2026-09-01T00%3A00%3A00Z
+content-length=0 replayable=true
+=> error (exit 50): appstorecatalog.recentupdateevents.list on : decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListRecentUpdateEvents paged / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentUpdateEvents?endTime=2026-09-02T00%3A00%3A00Z&pageSize=500&pageToken=tok%2F%2B%3D&startTime=2026-09-01T00%3A00%3A00Z
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## ListRecentUpdateEvents paged / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentUpdateEvents?endTime=2026-09-02T00%3A00%3A00Z&pageSize=500&pageToken=tok%2F%2B%3D&startTime=2026-09-01T00%3A00%3A00Z
+content-length=0 replayable=true
+=> error (exit 11): appstorecatalog.recentupdateevents.list on : The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListRecentUpdateEvents paged / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/appstorecatalog/com.example.store/recentUpdateEvents?endTime=2026-09-02T00%3A00%3A00Z&pageSize=500&pageToken=tok%2F%2B%3D&startTime=2026-09-01T00%3A00%3A00Z
+content-length=0 replayable=true
+=> error (exit 50): appstorecatalog.recentupdateevents.list on : decode response: invalid character 'o' in literal null (expecting 'u')
+

@@ -50,6 +50,13 @@ type Call struct {
 	Query  string
 	Header http.Header
 	Body   []byte
+	// URL is the request URL as sent, escaping included (Path is decoded).
+	URL string
+	// ContentLength is the length the request declared (-1 unknown).
+	ContentLength int64
+	// Replayable reports whether the --retry transport could re-send the
+	// request: it has no body, or a GetBody to re-open it.
+	Replayable bool
 }
 
 // Responder decides the response for a Call. ok=false falls through to the
@@ -98,6 +105,10 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 		Query:  req.URL.RawQuery,
 		Header: req.Header.Clone(),
 		Body:   body,
+
+		URL:           req.URL.String(),
+		ContentLength: req.ContentLength,
+		Replayable:    req.Body == nil || req.Body == http.NoBody || req.GetBody != nil,
 	}
 	f.mu.Lock()
 	f.calls = append(f.calls, c)

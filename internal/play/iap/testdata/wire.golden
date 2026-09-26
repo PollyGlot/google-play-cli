@@ -1,0 +1,102 @@
+## ListOneTimeProducts / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts?pageSize=100
+content-length=0 replayable=true
+=> ok null
+
+## ListOneTimeProducts / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts?pageSize=100
+content-length=0 replayable=true
+=> error (exit 11): monetization.onetimeproducts.list on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListOneTimeProducts / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): monetization.onetimeproducts.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListOneTimeProducts / two pages
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts?pageSize=100
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts?pageSize=100&pageToken=p%2F2%2B
+content-length=0 replayable=true
+=> ok [{"ProductID":"coins","Raw":{"productId":"coins"}},{"ProductID":"coins","Raw":{"productId":"coins"}}]
+
+## ListOneTimeProducts / token loop
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts?pageSize=100
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts?pageSize=100&pageToken=again
+content-length=0 replayable=true
+=> error (exit 50): monetization.onetimeproducts.list on com.example.app: pagination token loop detected in onetimeproducts.list (server repeated a nextPageToken)
+
+## ListOneTimeProducts / anonymous item
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): monetization.onetimeproducts.list on com.example.app: response contains a one-time product without a productId: refusing a catalog entry that cannot be addressed
+
+## ListAllOffers / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100
+content-length=0 replayable=true
+=> ok null
+
+## ListAllOffers / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100
+content-length=0 replayable=true
+=> error (exit 11): monetization.onetimeproducts.purchaseOptions.offers.list on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListAllOffers / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): monetization.onetimeproducts.purchaseOptions.offers.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListAllOffers / two pages
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100&pageToken=p%2F2%2B
+content-length=0 replayable=true
+=> ok [{"ProductID":"coins","PurchaseOptionID":"buy","OfferID":"promo","Raw":{"productId":"coins","purchaseOptionId":"buy","offerId":"promo"}},{"ProductID":"coins","PurchaseOptionID":"buy","OfferID":"promo","Raw":{"productId":"coins","purchaseOptionId":"buy","offerId":"promo"}}]
+
+## ListAllOffers / token loop
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100&pageToken=again
+content-length=0 replayable=true
+=> error (exit 50): monetization.onetimeproducts.purchaseOptions.offers.list on com.example.app: pagination token loop detected in offers.list (server repeated a nextPageToken)
+
+## ListAllOffers / anonymous item
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): monetization.onetimeproducts.purchaseOptions.offers.list on com.example.app: response contains an offer without its full identity (productId/purchaseOptionId/offerId): refusing a catalog entry that cannot be addressed
+
+## ListInAppProducts / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/inappproducts
+content-length=0 replayable=true
+=> ok null
+
+## ListInAppProducts / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/inappproducts
+content-length=0 replayable=true
+=> error (exit 11): inappproducts.list on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListInAppProducts / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/inappproducts
+content-length=0 replayable=true
+=> error (exit 50): inappproducts.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListInAppProducts / two pages
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/inappproducts
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/inappproducts?token=p%2F2%2B
+content-length=0 replayable=true
+=> ok [{"SKU":"coins","Raw":{"sku":"coins"}},{"SKU":"coins","Raw":{"sku":"coins"}}]
+
+## ListInAppProducts / token loop
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/inappproducts
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/inappproducts?token=again
+content-length=0 replayable=true
+=> error (exit 50): inappproducts.list on com.example.app: pagination token loop detected in inappproducts.list (server repeated a nextPageToken)
+
+## ListInAppProducts / anonymous item
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/inappproducts
+content-length=0 replayable=true
+=> error (exit 50): inappproducts.list on com.example.app: response contains an in-app product without a sku: refusing a catalog entry that cannot be addressed
+

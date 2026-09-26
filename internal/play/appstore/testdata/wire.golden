@@ -1,0 +1,63 @@
+## CreateHostedApp / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps:create
+Content-Type: application/json; charset=UTF-8
+content-length=33 replayable=true
+{"packageName":"com.example.app"}
+=> ok {}
+
+## CreateHostedApp / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps:create
+Content-Type: application/json; charset=UTF-8
+content-length=33 replayable=true
+{"packageName":"com.example.app"}
+=> error (exit 11): appstoreappsreview.createAppStoreHostedApp on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## CreateHostedApp / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps:create
+Content-Type: application/json; charset=UTF-8
+content-length=33 replayable=true
+{"packageName":"com.example.app"}
+=> ok not json
+
+## UpdateHostedApp / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps:update
+Content-Type: application/json; charset=UTF-8
+content-length=77 replayable=true
+{"alpha":[1,2],"developerName":"Ex","packageName":"com.example.app","zeta":1}
+=> ok {}
+
+## UpdateHostedApp / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps:update
+Content-Type: application/json; charset=UTF-8
+content-length=77 replayable=true
+{"alpha":[1,2],"developerName":"Ex","packageName":"com.example.app","zeta":1}
+=> error (exit 11): appstoreappsreview.updateAppStoreHostedApp on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## UpdateHostedApp / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps:update
+Content-Type: application/json; charset=UTF-8
+content-length=77 replayable=true
+{"alpha":[1,2],"developerName":"Ex","packageName":"com.example.app","zeta":1}
+=> ok not json
+
+## UpdatePublishStatus / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps/com.example.app:updateAppStoreHostedAppPublishStatus
+Content-Type: application/json; charset=UTF-8
+content-length=58 replayable=true
+{"publishState":"APP_STORE_APP_PUBLISH_STATE_UNPUBLISHED"}
+=> ok {}
+
+## UpdatePublishStatus / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps/com.example.app:updateAppStoreHostedAppPublishStatus
+Content-Type: application/json; charset=UTF-8
+content-length=58 replayable=true
+{"publishState":"APP_STORE_APP_PUBLISH_STATE_UNPUBLISHED"}
+=> error (exit 11): appstoreappsreview.updateAppStoreHostedAppPublishStatus on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## UpdatePublishStatus / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/appstore/com.example.store/apps/com.example.app:updateAppStoreHostedAppPublishStatus
+Content-Type: application/json; charset=UTF-8
+content-length=58 replayable=true
+{"publishState":"APP_STORE_APP_PUBLISH_STATE_UNPUBLISHED"}
+=> ok not json
+

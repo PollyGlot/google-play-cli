@@ -1,0 +1,323 @@
+## Create / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?productId=gold&regionsVersion.version=2026%2F09
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> ok {}
+
+## Create / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?productId=gold&regionsVersion.version=2026%2F09
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> error (exit 11): monetization.subscriptions.create on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Create / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?productId=gold&regionsVersion.version=2026%2F09
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> ok not json
+
+## Patch / ok
+PATCH https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold?regionsVersion.version=2026%2F09&updateMask=listings%2CbasePlans
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> ok {}
+
+## Patch / denied
+PATCH https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold?regionsVersion.version=2026%2F09&updateMask=listings%2CbasePlans
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> error (exit 11): monetization.subscriptions.patch on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Patch / malformed
+PATCH https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold?regionsVersion.version=2026%2F09&updateMask=listings%2CbasePlans
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> ok not json
+
+## Delete / ok
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold
+content-length=0 replayable=true
+=> ok null
+
+## Delete / denied
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold
+content-length=0 replayable=true
+=> error (exit 11): monetization.subscriptions.delete on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Delete / malformed
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold
+content-length=0 replayable=true
+=> ok null
+
+## ConvertRegionPrices / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/pricing:convertRegionPrices
+Content-Type: application/json
+content-length=62 replayable=true
+{"price":{"currencyCode":"EUR","units":"4","nanos":990000000}}
+=> ok {}
+
+## ConvertRegionPrices / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/pricing:convertRegionPrices
+Content-Type: application/json
+content-length=62 replayable=true
+{"price":{"currencyCode":"EUR","units":"4","nanos":990000000}}
+=> error (exit 11): monetization.convertRegionPrices on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ConvertRegionPrices / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/pricing:convertRegionPrices
+Content-Type: application/json
+content-length=62 replayable=true
+{"price":{"currencyCode":"EUR","units":"4","nanos":990000000}}
+=> ok not json
+
+## CreateOffer / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers?offerId=intro&regionsVersion.version=2026%2F09
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> ok {}
+
+## CreateOffer / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers?offerId=intro&regionsVersion.version=2026%2F09
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> error (exit 11): monetization.subscriptions.basePlans.offers.create on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## CreateOffer / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers?offerId=intro&regionsVersion.version=2026%2F09
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> ok not json
+
+## PatchOffer / ok
+PATCH https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro?regionsVersion.version=2026%2F09&updateMask=phases
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> ok {}
+
+## PatchOffer / denied
+PATCH https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro?regionsVersion.version=2026%2F09&updateMask=phases
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> error (exit 11): monetization.subscriptions.basePlans.offers.patch on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## PatchOffer / malformed
+PATCH https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro?regionsVersion.version=2026%2F09&updateMask=phases
+Content-Type: application/json
+content-length=73 replayable=true
+{"productId":"gold","listings":[{"languageCode":"en-US","title":"Gold"}]}
+=> ok not json
+
+## DeleteOffer / ok
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro
+content-length=0 replayable=true
+=> ok null
+
+## DeleteOffer / denied
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro
+content-length=0 replayable=true
+=> error (exit 11): monetization.subscriptions.basePlans.offers.delete on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## DeleteOffer / malformed
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro
+content-length=0 replayable=true
+=> ok null
+
+## SetBasePlanState activate / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:activate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> ok {}
+
+## SetBasePlanState activate / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:activate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> error (exit 11): monetization.subscriptions.basePlans.activate on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## SetBasePlanState activate / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:activate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> ok not json
+
+## SetBasePlanState deactivate / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:deactivate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> ok {}
+
+## SetBasePlanState deactivate / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:deactivate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> error (exit 11): monetization.subscriptions.basePlans.deactivate on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## SetBasePlanState deactivate / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:deactivate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> ok not json
+
+## DeleteBasePlan / ok
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly
+content-length=0 replayable=true
+=> ok null
+
+## DeleteBasePlan / denied
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly
+content-length=0 replayable=true
+=> error (exit 11): monetization.subscriptions.basePlans.delete on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## DeleteBasePlan / malformed
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly
+content-length=0 replayable=true
+=> ok null
+
+## SetOfferState activate / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro:activate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> ok {}
+
+## SetOfferState activate / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro:activate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> error (exit 11): monetization.subscriptions.basePlans.offers.activate on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## SetOfferState activate / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro:activate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> ok not json
+
+## SetOfferState deactivate / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro:deactivate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> ok {}
+
+## SetOfferState deactivate / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro:deactivate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> error (exit 11): monetization.subscriptions.basePlans.offers.deactivate on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## SetOfferState deactivate / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly/offers/intro:deactivate
+Content-Type: application/json
+content-length=2 replayable=true
+{}
+=> ok not json
+
+## MigrateBasePlanPrices / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:migratePrices
+Content-Type: application/json
+content-length=217 replayable=true
+{"packageName":"com.example.app","productId":"gold","basePlanId":"monthly","regionalPriceMigrations":[{"regionCode":"FR","oldestAllowedPriceVersionTime":"2026-01-01T00:00:00Z"}],"regionsVersion":{"version":"2026/09"}}
+=> ok {}
+
+## MigrateBasePlanPrices / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:migratePrices
+Content-Type: application/json
+content-length=217 replayable=true
+{"packageName":"com.example.app","productId":"gold","basePlanId":"monthly","regionalPriceMigrations":[{"regionCode":"FR","oldestAllowedPriceVersionTime":"2026-01-01T00:00:00Z"}],"regionsVersion":{"version":"2026/09"}}
+=> error (exit 11): monetization.subscriptions.basePlans.migratePrices on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## MigrateBasePlanPrices / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/gold/basePlans/monthly:migratePrices
+Content-Type: application/json
+content-length=217 replayable=true
+{"packageName":"com.example.app","productId":"gold","basePlanId":"monthly","regionalPriceMigrations":[{"regionCode":"FR","oldestAllowedPriceVersionTime":"2026-01-01T00:00:00Z"}],"regionsVersion":{"version":"2026/09"}}
+=> ok not json
+
+## List / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=100
+content-length=0 replayable=true
+=> ok null
+
+## List / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=100
+content-length=0 replayable=true
+=> error (exit 11): monetization.subscriptions.list on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## List / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): monetization.subscriptions.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListAllOffers / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=100
+content-length=0 replayable=true
+=> ok null
+
+## ListAllOffers / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=100
+content-length=0 replayable=true
+=> error (exit 11): monetization.subscriptions.basePlans.offers.list on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListAllOffers / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): monetization.subscriptions.basePlans.offers.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## List / two pages
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=100
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=100&pageToken=p%2F2%2B
+content-length=0 replayable=true
+=> ok [{"ProductID":"gold","Raw":{"productId":"gold"}},{"ProductID":"gold","Raw":{"productId":"gold"}}]
+
+## List / token loop
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=100
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=100&pageToken=again
+content-length=0 replayable=true
+=> error (exit 50): monetization.subscriptions.list on com.example.app: pagination token loop detected in monetization.subscriptions.list (server repeated a nextPageToken)
+
+## List / anonymous item
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): monetization.subscriptions.list on com.example.app: response contains a subscription without a productId: refusing a catalog entry that cannot be addressed
+
+## ListAllOffers / two pages
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=100
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=100&pageToken=p%2F2%2B
+content-length=0 replayable=true
+=> ok [{"ProductID":"gold","BasePlanID":"monthly","OfferID":"intro","Raw":{"productId":"gold","basePlanId":"monthly","offerId":"intro"}},{"ProductID":"gold","BasePlanID":"monthly","OfferID":"intro","Raw":{"productId":"gold","basePlanId":"monthly","offerId":"intro"}}]
+
+## ListAllOffers / token loop
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=100
+content-length=0 replayable=true
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=100&pageToken=again
+content-length=0 replayable=true
+=> error (exit 50): monetization.subscriptions.basePlans.offers.list on com.example.app: pagination token loop detected in offers.list (server repeated a nextPageToken)
+
+## ListAllOffers / anonymous item
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): monetization.subscriptions.basePlans.offers.list on com.example.app: response contains an offer without its full identity (productId/basePlanId/offerId): refusing a catalog entry that cannot be addressed
+

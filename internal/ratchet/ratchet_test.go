@@ -132,6 +132,10 @@ var rules = []rule{
 		exempt: []string{
 			"internal/transport/",
 			"internal/discovery/", // dev tool, see request-helper
+			// The test harness: its package name does not end in "test", so
+			// the scan counts it as shipped code, but no production package
+			// imports it and its clients only ever wrap the fake transport.
+			"internal/testkit/",
 		},
 		detect: detectHTTPClient,
 	},
