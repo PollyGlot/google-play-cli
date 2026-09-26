@@ -75,6 +75,24 @@ func GroupRunE(cmd *cobra.Command, args []string) error {
 	return exit.Usagef("unknown command %q for %q%s", args[0], cmd.CommandPath(), suggestionsFor(cmd, args[0]))
 }
 
+// Group builds a grouping noun (`apps`, `releases`, `team users`, ...): a
+// command with no business logic of its own that carries GroupRunE plus the
+// SilenceUsage/SilenceErrors pair it needs, and adopts children in the order
+// given. It is the one place those defaults live, so a new group cannot forget
+// the RunE and silently print help (exit 0) on a mistyped subcommand. The root
+// is built by hand instead: it also needs Args: cobra.ArbitraryArgs and a Long.
+func Group(use, short string, children ...*cobra.Command) *cobra.Command {
+	g := &cobra.Command{
+		Use:           use,
+		Short:         short,
+		RunE:          GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	g.AddCommand(children...)
+	return g
+}
+
 // suggestionsFor renders the "Did you mean this?" block for a mistyped
 // subcommand, or "" when nothing is close enough. The matching is cobra's own
 // (SuggestionsFor: Levenshtein within SuggestionsMinimumDistance, plus prefix
