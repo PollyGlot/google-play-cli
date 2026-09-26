@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/recovery/recoverycmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
@@ -70,16 +71,16 @@ func (p Payload) renderJSON(w io.Writer) error {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, recoverycmd.Usagef("missing or invalid --version-code: the bad APK versionCode the recovery targets is required")
+		return nil, exit.Usagef("missing or invalid --version-code: the bad APK versionCode the recovery targets is required")
 	}
 	if !in.AllUsers && len(in.Regions) == 0 && len(in.SdkLevels) == 0 {
-		return nil, recoverycmd.Usagef("missing targeting: pass one of --all-users, --regions, or --sdk-levels")
+		return nil, exit.Usagef("missing targeting: pass one of --all-users, --regions, or --sdk-levels")
 	}
 	cols, err := recoverycmd.ResolveColumns("")
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := recoverycmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/games/gamescmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
@@ -42,7 +43,7 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.MaxResults < 0 {
-		return nil, gamescmd.Usagef("invalid --max-results: must be >= 0")
+		return nil, exit.Usagef("invalid --max-results: must be >= 0")
 	}
 	cols, err := gamescmd.ResolveLeaderboardColumns(in.Columns)
 	if err != nil {

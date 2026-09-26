@@ -32,12 +32,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/diff"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/orchestrator"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/tree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 // DefaultDir is the metadata tree root used when --dir is unset. Shared by
@@ -55,12 +55,6 @@ type Input struct {
 	AllowLocale []string
 }
 
-// usageError is a CLI-misuse error (no package); ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // dirError signals an unreadable --dir (missing tree). It maps to exit 20
 // (client-side validation): the same family as a malformed tree.
 type dirError struct {
@@ -73,19 +67,6 @@ func (e *dirError) Error() string {
 }
 func (e *dirError) Unwrap() error { return e.cause }
 func (e *dirError) ExitCode() int { return 20 }
-
-// packageNotFoundError / forbiddenError mirror `tracks list` / `metadata
-// list`: actionable hints on a 404 / 403, with the wrapped *api.Error left
-// to drive the exit code.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
 // listingNotFoundError is the 404 of a per-locale Listing write or delete:
 // the package resolved (the Edit opened and the Listings were read), only
@@ -101,37 +82,18 @@ func (e *listingNotFoundError) Error() string {
 }
 func (e *listingNotFoundError) Unwrap() error { return e.cause }
 
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// classifyEditError adds the 404/403 hints, leaving the wrapped *api.Error
+// classifyApplyError adds the 404/403 hints, leaving the wrapped *api.Error
 // to drive the exit code. A 404 on a per-locale call (an
 // *orchestrator.LocaleError) is about that language's Listing, not the
 // package. The orchestrator's own errors (the --confirm safety refusal,
 // Validation, PruneDefaultLanguage) are not *api.Error, so they pass
 // through untouched with their own exit codes.
-func classifyEditError(pkg string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			var locErr *orchestrator.LocaleError
-			if errors.As(err, &locErr) {
-				return &listingNotFoundError{locale: locErr.Locale, cause: err}
-			}
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
+func classifyApplyError(pkg string, err error) error {
+	var locErr *orchestrator.LocaleError
+	if apihint.Status(err) == http.StatusNotFound && errors.As(err, &locErr) {
+		return &listingNotFoundError{locale: locErr.Locale, cause: err}
 	}
-	return err
+	return apihint.ForPackage(pkg, err)
 }
 
 // Payload renders an orchestrator.Result. The shape switches on Result.DryRun:
@@ -280,12 +242,9 @@ func (p Payload) renderJSON(w io.Writer) error {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	dir := in.Dir
 	if dir == "" {
@@ -324,7 +283,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ExplicitEditID: explicitEditID,
 	})
 	if err != nil {
-		return nil, classifyEditError(pkg, err)
+		return nil, classifyApplyError(pkg, err)
 	}
 	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
 	// --dry-run), reporting how many locales were patched (and created or

@@ -16,6 +16,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
 	"github.com/PollyGlot/google-play-cli/internal/artifact"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -45,12 +46,6 @@ type Input struct {
 	DeviceTierConfig string
 }
 
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // resolveFormat classifies the artifact as an APK or an AAB, from an
 // explicit --format override or the file extension (.apk / .aab). It
 // mirrors the `releases sharing upload` convention (ADR-0030), including
@@ -70,10 +65,10 @@ func resolveFormat(path, formatOverride string) (string, error) {
 		case ".aab":
 			return orchestrator.FormatBundle, nil
 		default:
-			return "", &usageError{msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
+			return "", &exit.UsageError{Msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
 		}
 	default:
-		return "", &usageError{msg: "--format must be apk or bundle"}
+		return "", &exit.UsageError{Msg: "--format must be apk or bundle"}
 	}
 }
 
@@ -181,7 +176,7 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Mutual exclusion validation (ADR-0002 / DESIGN §3 / §9).
 	if in.ReleaseNotes != "" && in.ReleaseNotesDir != "" {
-		return nil, &usageError{msg: "--release-notes and --release-notes-dir are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
 	statusFlags := 0
 	if in.Draft {
@@ -194,25 +189,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		statusFlags++
 	}
 	if statusFlags > 1 {
-		return nil, &usageError{msg: "--draft, --complete, and --staged are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--draft, --complete, and --staged are mutually exclusive"}
 	}
 	if in.StagedFractionSet && (in.StagedFraction <= 0 || in.StagedFraction > 1.0) {
-		return nil, &usageError{msg: "--staged fraction must be in (0, 1]"}
+		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
 	}
 	if in.AABPath == "" {
-		return nil, &usageError{msg: "missing AAB path: gplay releases upload <aab> ..."}
+		return nil, &exit.UsageError{Msg: "missing AAB path: gplay releases upload <aab> ..."}
 	}
 
 	// Resolve package: --package flag → project pin.
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	if in.Track == "" {
-		return nil, &usageError{msg: "missing --track"}
+		return nil, &exit.UsageError{Msg: "missing --track"}
 	}
 
 	// Classify APK vs AAB up front (before any HTTP and even on --dry-run)
