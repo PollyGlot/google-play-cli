@@ -2,7 +2,7 @@ package upload_test
 
 // Artifact preflight (PRD #448) on `gplay releases upload`: the local check
 // that runs before any Edit is opened and before the first upload byte leaves
-// the machine. It shares the suite's uploadRT / newRC harness, so every
+// the machine. It shares the suite's newUploadTransport / newRC harness, so every
 // assertion below is also an assertion that nothing reached the network.
 
 import (
@@ -24,15 +24,15 @@ func TestRun_preflight_refusesAPKPassedToABundleUpload(t *testing.T) {
 	// A real APK container behind an .aab name, so extension auto-detect
 	// resolves "bundle" and only the container check can catch it.
 	p := artifacttest.APK(t, t.TempDir(), "app.aab", "com.example.app")
-	rt := &uploadRT{t: t}
-	rc, _ := newRC(t, rt)
+	rt, transport := newUploadTransport(uploadAPI{})
+	rc, _ := newRC(t, transport)
 
 	_, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: p})
 	if got := exit.For(err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("a refused artifact must make no network call; calls=%v", rt.calls)
+	if touched(rt) {
+		t.Errorf("a refused artifact must make no network call; calls=%v", apiCalls(rt))
 	}
 	for _, want := range []string{"expected an Android App Bundle (AAB)", "found an APK", "--skip-preflight"} {
 		if !strings.Contains(err.Error(), want) {
@@ -46,15 +46,15 @@ func TestRun_preflight_refusesAPKPassedToABundleUpload(t *testing.T) {
 // never receive app B's build.
 func TestRun_preflight_refusesAnotherAppsBuild(t *testing.T) {
 	p := artifacttest.AAB(t, t.TempDir(), "app.aab", "com.other.app")
-	rt := &uploadRT{t: t}
-	rc, _ := newRC(t, rt)
+	rt, transport := newUploadTransport(uploadAPI{})
+	rc, _ := newRC(t, transport)
 
 	_, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: p})
 	if got := exit.For(err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("a refused artifact must make no network call; calls=%v", rt.calls)
+	if touched(rt) {
+		t.Errorf("a refused artifact must make no network call; calls=%v", apiCalls(rt))
 	}
 	for _, want := range []string{"package mismatch", `"com.example.app"`, `"com.other.app"`} {
 		if !strings.Contains(err.Error(), want) {
@@ -69,13 +69,12 @@ func TestRun_preflight_refusesAnotherAppsBuild(t *testing.T) {
 // sequence. This is the parser-gap release valve, so it must never be partial.
 func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 	p := artifacttest.WriteFile(t, t.TempDir(), "app.aab", []byte("not an artifact at all"))
-	rt := &uploadRT{
-		t:                  t,
+	rt, transport := newUploadTransport(uploadAPI{
 		editID:             "edit-skip",
 		versionCode:        7,
 		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"7","status":"completed","versionCodes":["7"]}]}`,
-	}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, transport)
 
 	if _, err := upload.Run(rc, upload.Input{
 		Package:       "com.example.app",
@@ -86,21 +85,13 @@ func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 		t.Fatalf("Run with --skip-preflight: %v", err)
 	}
 	wantSequence := []string{
-		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-skip/bundles",
 		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-skip/bundles",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-skip/tracks/internal",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-skip:commit",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
-	}
-	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
-		}
-	}
+	assertSequence(t, rt, wantSequence)
 }
 
 // TestRun_preflight_dryRunReportsWhatItFound asserts a rehearsal names the
@@ -108,8 +99,8 @@ func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 // network call: a preview that stayed silent would say nothing about the
 // check it just ran.
 func TestRun_preflight_dryRunReportsWhatItFound(t *testing.T) {
-	rt := &uploadRT{t: t}
-	rc, _ := newRC(t, rt)
+	rt, transport := newUploadTransport(uploadAPI{})
+	rc, _ := newRC(t, transport)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -121,8 +112,8 @@ func TestRun_preflight_dryRunReportsWhatItFound(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("dry-run: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run must make no network call; calls=%v", rt.calls)
+	if touched(rt) {
+		t.Errorf("dry-run must make no network call; calls=%v", apiCalls(rt))
 	}
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run must not write a ✓ line: %q", stderr.String())
@@ -143,13 +134,12 @@ func TestRun_preflight_unreadableManifestDegradesRatherThanRefuses(t *testing.T)
 		"BundleConfig.pb":                   {},
 		"base/manifest/AndroidManifest.xml": []byte("\xff\xff not a protobuf manifest"),
 	})
-	rt := &uploadRT{
-		t:                  t,
+	_, transport := newUploadTransport(uploadAPI{
 		editID:             "edit-degraded",
 		versionCode:        8,
 		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"8","status":"completed","versionCodes":["8"]}]}`,
-	}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, transport)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -170,13 +160,12 @@ func TestRun_preflight_unreadableManifestDegradesRatherThanRefuses(t *testing.T)
 func TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads(t *testing.T) {
 	p := artifacttest.AABWith(t, t.TempDir(), "app.aab", "com.example.app",
 		artifacttest.FillerMembers(artifact.MaxZipEntries+1))
-	rt := &uploadRT{
-		t:                  t,
+	_, transport := newUploadTransport(uploadAPI{
 		editID:             "edit-huge",
 		versionCode:        9,
 		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"9","status":"completed","versionCodes":["9"]}]}`,
-	}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, transport)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -194,8 +183,8 @@ func TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads(t *testing.
 // `customapps create` and `releases expansion-files upload` did; the test is
 // here so the three surfaces answer alike whichever check gets there first.
 func TestRun_skipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
-	rt := &uploadRT{t: t}
-	rc, _ := newRC(t, rt)
+	rt, transport := newUploadTransport(uploadAPI{})
+	rc, _ := newRC(t, transport)
 
 	_, err := upload.Run(rc, upload.Input{
 		Package:       "com.example.app",
@@ -207,7 +196,7 @@ func TestRun_skipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
 	if got := exit.For(err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("a missing artifact must make no network call; calls=%v", rt.calls)
+	if touched(rt) {
+		t.Errorf("a missing artifact must make no network call; calls=%v", apiCalls(rt))
 	}
 }

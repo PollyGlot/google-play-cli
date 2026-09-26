@@ -14,13 +14,13 @@ import (
 // The title carries &, < and >: the envelope is built with output.Marshal, so
 // the listing bytes reach stdout unescaped.
 func TestRenderJSON_envelope_golden(t *testing.T) {
-	fake := viewAPI{
+	api := &viewAPI{
 		editID:  "edit-view",
 		details: `{"contactEmail":"dev@example.com","defaultLanguage":"en-US"}`,
 		listing: `{"language":"en-US","title":"Example <Notes> & Tasks"}`,
 		icon:    `{"images":[{"id":"ic1","url":"https://play.example/icon.png","sha1":"d1","sha256":"3f1e0c2a"}]}`,
-	}.fake()
-	rc, _ := newRC(t, fake)
+	}
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if err != nil {

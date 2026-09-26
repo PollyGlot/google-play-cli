@@ -1,0 +1,27 @@
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/listings
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/listings/fr-FR
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+PATCH https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/listings/fr-FR
+Accept-Encoding: gzip
+Content-Length: 17
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+{"title":"Été"}
+
+PUT https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/listings/de-DE
+Accept-Encoding: gzip
+Content-Length: 32
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+{"language":"de-DE","title":"T"}
+
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/listings/de-DE
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1

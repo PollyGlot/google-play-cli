@@ -7,10 +7,8 @@
 package testers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -45,45 +43,16 @@ type Testers struct {
 // diagnostics. Like the tracks reads, it runs inside an Edit the caller has
 // already opened.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Testers, json.RawMessage, error) {
-	u, err := methodGet.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
-		"track":       track,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodGet, Op: opTestersGet, Target: pkg,
+		Params: trackParams(pkg, editID, track),
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opTestersGet, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTestersGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTestersGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opTestersGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed Testers
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opTestersGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+	if err := decode(opTestersGet, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return &parsed, raw, nil
 }
@@ -100,51 +69,31 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, gro
 	if groups == nil {
 		groups = []string{}
 	}
-	payload, err := json.Marshal(Testers{GoogleGroups: groups})
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTestersUpdate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
-	}
-
-	u, err := methodUpdate.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
-		"track":       track,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodUpdate, Op: opTestersUpdate, Target: pkg,
+		Params: trackParams(pkg, editID, track),
+		Body:   Testers{GoogleGroups: groups},
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opTestersUpdate, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, methodUpdate.Verb, u, bytes.NewReader(payload))
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTestersUpdate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTestersUpdate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opTestersUpdate,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed Testers
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opTestersUpdate,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+	if err := decode(opTestersUpdate, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return &parsed, raw, nil
+}
+
+// trackParams addresses one track's audience inside an Edit.
+func trackParams(pkg, editID, track string) map[string]string {
+	return map[string]string{"packageName": pkg, "editId": editID, "track": track}
+}
+
+// decode unmarshals a 2xx body into out. A body that does not decode keeps
+// the 200 status tag it always had, so its exit code (30) is unchanged.
+func decode(op, pkg string, raw json.RawMessage, out any) error {
+	if err := json.Unmarshal(raw, out); err != nil {
+		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+	}
+	return nil
 }

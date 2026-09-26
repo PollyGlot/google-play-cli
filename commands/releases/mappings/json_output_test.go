@@ -38,15 +38,15 @@ func TestRenderJSON_passthrough_isTheUploadBodyVerbatim(t *testing.T) {
 // TestRenderJSON_dryRun_golden freezes the gplay MappingResult shape --dry-run
 // prints: no upload ran, so there is no API body to pass through.
 func TestRenderJSON_dryRun_golden(t *testing.T) {
-	rt := &mappingRT{t: t}
-	rc := newRC(t, rt)
+	rt, transport := newMappingTransport("")
+	rc := newRC(t, transport)
 
 	r, err := mappings.Run(rc, mappings.Input{Package: "com.example.app", MappingPath: writeFakeMapping(t), VersionCode: 142, DryRun: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Fatalf("dry-run hit the network: %v", rt.calls)
+	if touched(rt) {
+		t.Fatalf("dry-run hit the network: %v", apiCalls(rt))
 	}
 	outputtest.GoldenJSON(t, "dry_run.json.golden", r)
 }

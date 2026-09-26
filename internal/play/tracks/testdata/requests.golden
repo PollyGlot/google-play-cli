@@ -1,0 +1,31 @@
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/tracks/beta
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/tracks
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+PUT https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/tracks/beta
+Accept-Encoding: gzip
+Content-Length: 191
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+{"track":"beta","releases":[{"name":"142","status":"inProgress","userFraction":0.1,"versionCodes":["142"],"releaseNotes":[{"language":"en-US","text":"Fixes \u003c\u0026\u003e \"quotes\""}]}]}
+
+PUT https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/tracks/beta
+Accept-Encoding: gzip
+Content-Length: 89
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+{"track":"beta","releases":[{"status":"halted","countryTargeting":{"countries":["FR"]}}]}
+
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/tracks
+Accept-Encoding: gzip
+Content-Length: 66
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+{"track":"qa team","type":"CLOSED_TESTING","formFactor":"DEFAULT"}

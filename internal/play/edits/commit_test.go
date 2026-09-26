@@ -183,17 +183,17 @@ func TestCommit_definiteFailuresStayPlain(t *testing.T) {
 		assertPlain(t, err, 60, exit.CodeRateLimitExceeded)
 	})
 	t.Run("dns", func(t *testing.T) {
-		hc := &http.Client{Transport: failingRT{&net.DNSError{Err: "no such host", Name: "androidpublisher.googleapis.com"}}}
+		hc := &http.Client{Transport: failingRT(&net.DNSError{Err: "no such host", Name: "androidpublisher.googleapis.com"})}
 		err := edits.CommitExplicit(context.Background(), hc, commitPkg, "edit-9", edits.CommitOptions{})
 		assertPlain(t, err, 50, exit.CodeNetworkError)
 	})
 	t.Run("dial", func(t *testing.T) {
-		hc := &http.Client{Transport: failingRT{&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}}}
+		hc := &http.Client{Transport: failingRT(&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")})}
 		err := edits.CommitExplicit(context.Background(), hc, commitPkg, "edit-9", edits.CommitOptions{})
 		assertPlain(t, err, 50, exit.CodeNetworkError)
 	})
 	t.Run("token refused", func(t *testing.T) {
-		hc := &http.Client{Transport: failingRT{&token.AuthError{StatusCode: 400, Body: "invalid_grant"}}}
+		hc := &http.Client{Transport: failingRT(&token.AuthError{StatusCode: 400, Body: "invalid_grant"})}
 		err := edits.CommitExplicit(context.Background(), hc, commitPkg, "edit-9", edits.CommitOptions{})
 		assertPlain(t, err, 10, exit.CodeAuthFailed)
 	})
@@ -213,6 +213,6 @@ func assertPlain(t *testing.T, err error, wantExit int, wantCode exit.Code) {
 
 // failingRT fails every round trip with err, before any response exists: the
 // shape a DNS, dial or token-exchange failure takes inside http.Client.
-type failingRT struct{ err error }
-
-func (r failingRT) RoundTrip(*http.Request) (*http.Response, error) { return nil, r.err }
+func failingRT(err error) http.RoundTripper {
+	return testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) { return nil, err })
+}

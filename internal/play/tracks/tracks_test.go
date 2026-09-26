@@ -8,43 +8,29 @@ package tracks_test
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// rt is a minimal RoundTripper that returns a canned response for the
-// tracks.list GET (and the tracks.create POST) and records the request
-// line (plus the request body, for write ops) for assertion.
-type rt struct {
-	t      *testing.T
-	status int
-	body   string
-
-	gotPath   string
-	gotMethod string
-	gotBody   []byte
+// fakeWith answers every request with status and body.
+func fakeWith(status int, body string) *testkit.Fake {
+	return testkit.NewFake(testkit.Any(status, body))
 }
 
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.gotPath = req.URL.Path
-	r.gotMethod = req.Method
-	if req.Body != nil {
-		r.gotBody, _ = io.ReadAll(req.Body)
+// onlyCall returns the single request the Fake served, failing the test on
+// any other count.
+func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := f.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("want exactly one request, got %d: %+v", len(calls), calls)
 	}
-	status := r.status
-	if status == 0 {
-		status = 200
-	}
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(r.body)),
-	}, nil
+	return calls[0]
 }
 
 // TestList_parsesEveryTrack_andReturnsRawBody asserts List GETs
@@ -57,7 +43,7 @@ func TestList_parsesEveryTrack_andReturnsRawBody(t *testing.T) {
 		`{"track":"internal","releases":[]},` +
 		`{"track":"qa-closed","releases":[{"name":"99","status":"completed","versionCodes":["99"]}]}` +
 		`]}`
-	transport := &rt{t: t, body: raw}
+	transport := fakeWith(200, raw)
 	hc := &http.Client{Transport: transport}
 
 	got, gotRaw, err := tracks.List(context.Background(), hc, "com.example.app", "edit-123")
@@ -66,8 +52,9 @@ func TestList_parsesEveryTrack_andReturnsRawBody(t *testing.T) {
 	}
 
 	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-123/tracks"
-	if transport.gotMethod != http.MethodGet || transport.gotPath != wantPath {
-		t.Errorf("request = %s %s, want GET %s", transport.gotMethod, transport.gotPath, wantPath)
+	c := onlyCall(t, transport)
+	if c.Method != http.MethodGet || c.Path != wantPath {
+		t.Errorf("request = %s %s, want GET %s", c.Method, c.Path, wantPath)
 	}
 	if len(got) != 3 {
 		t.Fatalf("got %d tracks, want 3: %+v", len(got), got)
@@ -90,7 +77,7 @@ func TestList_parsesEveryTrack_andReturnsRawBody(t *testing.T) {
 // response surfaces as an *api.Error carrying the HTTP status so the
 // gplay exit-code taxonomy maps it (403 -> 11, 404 -> 30, ...).
 func TestList_apiError_isWrappedWithStatus(t *testing.T) {
-	transport := &rt{t: t, status: 403, body: `{"error":{"code":403,"message":"The caller does not have permission"}}`}
+	transport := fakeWith(403, `{"error":{"code":403,"message":"The caller does not have permission"}}`)
 	hc := &http.Client{Transport: transport}
 
 	_, _, err := tracks.List(context.Background(), hc, "com.example.app", "edit-123")
@@ -113,7 +100,7 @@ func TestList_apiError_isWrappedWithStatus(t *testing.T) {
 // body verbatim for the ADR-0003 JSON pass-through.
 func TestCreate_postsClosedTestingConfig_andReturnsRawBody(t *testing.T) {
 	raw := `{"track":"qa-team","releases":[]}`
-	transport := &rt{t: t, body: raw}
+	transport := fakeWith(200, raw)
 	hc := &http.Client{Transport: transport}
 
 	got, gotRaw, err := tracks.Create(context.Background(), hc, "com.example.app", "edit-123", "qa-team", tracks.FormFactorDefault)
@@ -122,10 +109,11 @@ func TestCreate_postsClosedTestingConfig_andReturnsRawBody(t *testing.T) {
 	}
 
 	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-123/tracks"
-	if transport.gotMethod != http.MethodPost || transport.gotPath != wantPath {
-		t.Errorf("request = %s %s, want POST %s", transport.gotMethod, transport.gotPath, wantPath)
+	c := onlyCall(t, transport)
+	if c.Method != http.MethodPost || c.Path != wantPath {
+		t.Errorf("request = %s %s, want POST %s", c.Method, c.Path, wantPath)
 	}
-	body := string(transport.gotBody)
+	body := string(c.Body)
 	for _, want := range []string{`"track":"qa-team"`, `"type":"CLOSED_TESTING"`, `"formFactor":"DEFAULT"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("request body = %s, want it to contain %s", body, want)
@@ -145,7 +133,7 @@ func TestCreate_postsClosedTestingConfig_andReturnsRawBody(t *testing.T) {
 // taxonomy maps it (400 -> 30 via StatusToExitCode), with the envelope
 // reason preserved.
 func TestCreate_apiError_isWrappedWithStatus(t *testing.T) {
-	transport := &rt{t: t, status: 400, body: `{"error":{"code":400,"message":"Track already exists.","errors":[{"reason":"badRequest"}]}}`}
+	transport := fakeWith(400, `{"error":{"code":400,"message":"Track already exists.","errors":[{"reason":"badRequest"}]}}`)
 	hc := &http.Client{Transport: transport}
 
 	_, _, err := tracks.Create(context.Background(), hc, "com.example.app", "edit-123", "qa-team", tracks.FormFactorDefault)

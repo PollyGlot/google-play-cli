@@ -90,10 +90,9 @@ type rule struct {
 
 var rules = []rule{
 	{
-		id:           "request-helper",
-		hasAllowlist: true,
-		what:         "direct (*http.Client).Do",
-		fix:          "send the request through the executor, api.Do / api.DoJSON in internal/play/api",
+		id:   "request-helper",
+		what: "direct (*http.Client).Do",
+		fix:  "send the request through the executor, api.Do / api.DoJSON in internal/play/api",
 		exempt: []string{
 			"internal/play/api/", // the executor itself
 			"internal/transport/",
@@ -111,7 +110,7 @@ var rules = []rule{
 		id:           "test-roundtripper",
 		hasAllowlist: true,
 		what:         "RoundTrip method on a test type",
-		fix:          "use internal/testkit (testkit.NewFake, or testkit.TokenResponse and testkit.Response) and extend the kit when it cannot express the case",
+		fix:          "use internal/testkit (testkit.NewFake, or a testkit.RoundTripFunc built on testkit.TokenResponse and testkit.Response) and extend the kit when it cannot express the case",
 		exempt:       []string{"internal/testkit/"},
 		testCode:     true,
 		detect:       detectRoundTrip,

@@ -12,75 +12,110 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-type coded struct{ code int }
-
-func (c coded) Error() string { return "refused" }
-func (c coded) ExitCode() int { return c.code }
-
-// Wire must tell apart every property of a request that reaches the network
-// or decides a replay: escaping, headers, declared length, a re-openable body.
-func TestWire_rendersWhatReachesTheNetwork(t *testing.T) {
-	send := func(hc *http.Client) (any, error) {
-		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://api.test/a%2Fb?x=1", bytes.NewReader([]byte(`{"k":1}`)))
-		req.Header.Set("Content-Type", "application/json")
-		if _, err := hc.Do(req); err != nil {
-			return nil, err
-		}
-		stream, _ := http.NewRequestWithContext(context.Background(), http.MethodPut, "https://api.test/up", io.NopCloser(strings.NewReader("raw")))
-		stream.ContentLength = 3
-		_, err := hc.Do(stream)
-		return rawJSON(`{"done":true}`), err
+// send issues one request through hc and returns the status and body.
+func send(t *testing.T, hc *http.Client, method, url, contentType string, body io.Reader) (int, string, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, url, body)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
 	}
-	got := testkit.Exchange("post", send, testkit.Any(http.StatusOK, `{}`))
-	want := "## post\n" +
-		"POST https://api.test/a%2Fb?x=1\nContent-Type: application/json\ncontent-length=7 replayable=true\n{\"k\":1}\n" +
-		"PUT https://api.test/up\ncontent-length=3 replayable=false\nraw\n" +
-		"=> ok {\"done\":true}\n\n"
-	if got != want {
-		t.Errorf("Exchange =\n%s\nwant\n%s", got, want)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b), nil
+}
+
+func TestWire_recordsRequestsAsTheServerReadsThem(t *testing.T) {
+	w := testkit.NewWire(t, func(c testkit.Call) (int, string, bool) {
+		return http.StatusCreated, `{"ok":true}`, c.Method == http.MethodPost
+	})
+	hc := w.Client()
+
+	status, body, err := send(t, hc, http.MethodPost, "https://androidpublisher.googleapis.com/a/b?x=1", "application/json", strings.NewReader(`{"k":"v"}`))
+	if err != nil || status != http.StatusCreated || body != `{"ok":true}` {
+		t.Errorf("POST = %d %s %v, want the responder's 201", status, body, err)
+	}
+	if status, _, err = send(t, hc, http.MethodGet, "https://upload.example.com/c", "", nil); err != nil || status != 599 {
+		t.Errorf("unclaimed GET = %d %v, want 599", status, err)
+	}
+	if _, _, err = send(t, hc, http.MethodPost, "https://androidpublisher.googleapis.com/d", "image/png", bytes.NewReader([]byte{0xff, 0xfe})); err != nil {
+		t.Fatalf("POST binary: %v", err)
+	}
+
+	tr := string(w.Transcript())
+	for _, want := range []string{
+		"POST https://androidpublisher.googleapis.com/a/b?x=1\n",
+		"Content-Length: 9\n",
+		"Content-Type: application/json\n",
+		"\n{\"k\":\"v\"}\n",
+		"GET https://upload.example.com/c\n",
+		"<2 bytes, sha256 ",
+	} {
+		if !strings.Contains(tr, want) {
+			t.Errorf("transcript lacks %q:\n%s", want, tr)
+		}
 	}
 }
 
-type rawJSON string
-
-func (j rawJSON) MarshalJSON() ([]byte, error) { return []byte(j), nil }
-
-func TestExchange_recordsTheExitCodeOfAnError(t *testing.T) {
-	got := testkit.Exchange("refused", func(*http.Client) (any, error) { return nil, coded{11} })
-	if !strings.HasSuffix(got, "=> error (exit 11): refused\n\n") {
-		t.Errorf("Exchange = %q", got)
+func TestReplyHeader_setsTheHeaderOnTheResponsesItClaims(t *testing.T) {
+	loc := func(c testkit.Call, status int) string {
+		if status != http.StatusOK {
+			return ""
+		}
+		return "https://" + c.Host + c.Path + "?upload_id=s1"
 	}
-	got = testkit.Exchange("plain", func(*http.Client) (any, error) { return nil, errors.New("boom") })
-	if !strings.HasSuffix(got, "=> error (exit -1): boom\n\n") {
-		t.Errorf("Exchange = %q", got)
+	f := testkit.NewFake(
+		testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
+			return 0, `{}`, c.Method == http.MethodPost
+		}, "Location", loc),
+		testkit.ReplyHeader(testkit.Any(http.StatusBadRequest, `{}`), "Location", loc),
+	)
+	hc := &http.Client{Transport: f}
+	for _, tc := range []struct{ method, want string }{
+		{http.MethodPost, "https://upload.example.com/u?upload_id=s1"},
+		{http.MethodGet, ""},
+	} {
+		req, _ := http.NewRequestWithContext(context.Background(), tc.method, "https://upload.example.com/u", nil)
+		resp, err := hc.Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.method, err)
+		}
+		_ = resp.Body.Close()
+		if got := resp.Header.Get("Location"); got != tc.want {
+			t.Errorf("%s Location = %q, want %q", tc.method, got, tc.want)
+		}
 	}
 }
 
-func TestSequence_servesPagesThenRepeatsTheLast(t *testing.T) {
-	seq := testkit.Sequence("a", "b")
-	var got []string
-	for range 3 {
-		_, body, ok := seq(testkit.Call{})
-		if !ok {
-			t.Fatal("Sequence must claim every call")
-		}
-		got = append(got, body)
+func TestRefuse_failsTheTestOnAnyCall(t *testing.T) {
+	probe := &testing.T{}
+	f := testkit.NewFake(testkit.Refuse(probe, " in dry-run"))
+	if _, _, err := send(t, &http.Client{Transport: f}, http.MethodGet, "https://androidpublisher.googleapis.com/x", "", nil); err == nil {
+		t.Error("a refused call must fail the round trip")
 	}
-	if strings.Join(got, ",") != "a,b,b" {
-		t.Errorf("bodies = %v, want a,b,b", got)
+	if !probe.Failed() {
+		t.Error("Refuse must fail the test it was given")
 	}
 }
 
 func TestRoundTripFunc_isATransport(t *testing.T) {
-	var rt http.RoundTripper = testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+	boom := errors.New("boom")
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if resp, ok := testkit.TokenResponse(r); ok {
 			return resp, nil
 		}
-		return testkit.Response(http.StatusTeapot, `{}`), nil
-	})
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://api.test/", nil)
-	resp, err := rt.RoundTrip(req)
-	if err != nil || resp.StatusCode != http.StatusTeapot {
-		t.Fatalf("RoundTrip = %v, %v", resp, err)
+		return nil, boom
+	})}
+	if status, _, err := send(t, hc, http.MethodPost, testkit.TokenURL, "", nil); err != nil || status != http.StatusOK {
+		t.Fatalf("token POST = %d %v, want 200", status, err)
+	}
+	if _, _, err := send(t, hc, http.MethodGet, "https://androidpublisher.googleapis.com/x", "", nil); !errors.Is(err, boom) {
+		t.Errorf("err = %v, want the closure's error", err)
 	}
 }

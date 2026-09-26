@@ -13,73 +13,75 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/detailscmd"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// setRT terminates the OAuth2 /token exchange and routes every
-// androidpublisher call needed by an App details write: edits.insert,
-// details.patch (PATCH, body captured), edits.commit, and edits.delete
-// (the failure/discard path). Configurable status codes on the patch and
-// commit exercise the error and discard paths.
-type setRT struct {
-	t          *testing.T
+// setAPI is the Play API an App details write sees, served by a testkit
+// Fake: edits.insert, details.patch (PATCH, body recorded), edits.commit,
+// and edits.delete (the failure/discard path). Configurable status codes on
+// the patch and commit exercise the error and discard paths.
+type setAPI struct {
 	editID     string
 	patchResp  string
 	patchCode  int // 0 → 200
 	commitCode int // 0 → 200
 
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
-	patchReq  []byte
+	fake *testkit.Fake
 }
 
-func (r *setRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (a *setAPI) serve(t *testing.T) *testkit.Fake {
+	t.Helper()
+	a.fake = testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return 204, "", true
+		case c.Method == http.MethodPatch && strings.HasSuffix(c.Path, "/details"):
+			resp := a.patchResp
+			if resp == "" {
+				resp = string(c.Body) // echo the patch as the resulting resource
+			}
+			return a.patchCode, resp, true
+		case strings.HasSuffix(c.Path, ":commit"):
+			return a.commitCode, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
+		}
+		return 0, "", false
+	}, testkit.Refuse(t, ""))
+	return a.fake
+}
 
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+// calls lists the requests as "METHOD path", the token exchanges first: the
+// oauth2 transport runs the exchange before the first API call and caches
+// the token, and the Fake counts exchanges without recording them.
+func (a *setAPI) calls() []string {
+	var out []string
+	for range a.fake.TokenExchanges() {
+		out = append(out, "POST /token")
 	}
+	for _, c := range a.fake.Calls() {
+		out = append(out, c.Method+" "+c.Path)
+	}
+	return out
+}
 
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodPatch && strings.HasSuffix(req.URL.Path, "/details"):
-		body, _ := io.ReadAll(req.Body)
-		r.patchReq = body
-		code := r.patchCode
-		if code == 0 {
-			code = 200
+// patchReq returns the body of the last details.patch request.
+func (a *setAPI) patchReq() []byte {
+	var body []byte
+	for _, c := range a.fake.Calls() {
+		if c.Method == http.MethodPatch && strings.HasSuffix(c.Path, "/details") {
+			body = c.Body
 		}
-		resp := r.patchResp
-		if resp == "" {
-			resp = string(body) // echo the patch as the resulting resource
-		}
-		return jsonResp(code, resp), nil
-	case strings.HasSuffix(req.URL.Path, ":commit"):
-		code := r.commitCode
-		if code == 0 {
-			code = 200
-		}
-		return jsonResp(code, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, r.editID)), nil
 	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
+	return body
 }
 
 // TestSet_onlyChangedField_inBody asserts the core partial-patch
@@ -89,8 +91,8 @@ func (r *setRT) RoundTrip(req *http.Request) (*http.Response, error) {
 // runs (/token → insert → PATCH → commit) and --output json is the
 // details.patch response verbatim.
 func TestSet_onlyChangedField_inBody(t *testing.T) {
-	rt := &setRT{t: t, editID: "edit-set"}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{editID: "edit-set"}
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:         "com.example.app",
@@ -110,26 +112,26 @@ func TestSet_onlyChangedField_inBody(t *testing.T) {
 		"PATCH /androidpublisher/v3/applications/com.example.app/edits/edit-set/details",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-set:commit",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(api.calls()) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(api.calls()), api.calls(), len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if api.calls()[i] != want {
+			t.Errorf("call %d = %q, want %q", i, api.calls()[i], want)
 		}
 	}
 
 	// The patch body carries ONLY contactEmail.
 	var body map[string]json.RawMessage
-	if err := json.Unmarshal(rt.patchReq, &body); err != nil {
-		t.Fatalf("patch body is not JSON: %v\nbody=%s", err, rt.patchReq)
+	if err := json.Unmarshal(api.patchReq(), &body); err != nil {
+		t.Fatalf("patch body is not JSON: %v\nbody=%s", err, api.patchReq())
 	}
 	if _, ok := body["contactEmail"]; !ok {
-		t.Errorf("patch body missing contactEmail: %s", rt.patchReq)
+		t.Errorf("patch body missing contactEmail: %s", api.patchReq())
 	}
 	for _, absent := range []string{"defaultLanguage", "contactPhone", "contactWebsite"} {
 		if _, ok := body[absent]; ok {
-			t.Errorf("patch body unexpectedly contains %q (a set of one field must not touch the others): %s", absent, rt.patchReq)
+			t.Errorf("patch body unexpectedly contains %q (a set of one field must not touch the others): %s", absent, api.patchReq())
 		}
 	}
 
@@ -147,8 +149,8 @@ func TestSet_onlyChangedField_inBody(t *testing.T) {
 // (`--contact-phone ""`) is sent verbatim (clears the field), while a
 // field NOT passed is absent from the body.
 func TestSet_clearField_sendsEmpty(t *testing.T) {
-	rt := &setRT{t: t, editID: "edit-clear"}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{editID: "edit-clear"}
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:         "com.example.app",
@@ -160,19 +162,19 @@ func TestSet_clearField_sendsEmpty(t *testing.T) {
 	}
 
 	var body map[string]json.RawMessage
-	if err := json.Unmarshal(rt.patchReq, &body); err != nil {
-		t.Fatalf("patch body is not JSON: %v\nbody=%s", err, rt.patchReq)
+	if err := json.Unmarshal(api.patchReq(), &body); err != nil {
+		t.Fatalf("patch body is not JSON: %v\nbody=%s", err, api.patchReq())
 	}
 	raw, ok := body["contactPhone"]
 	if !ok {
-		t.Fatalf("patch body missing contactPhone (an explicit empty value must be sent to clear): %s", rt.patchReq)
+		t.Fatalf("patch body missing contactPhone (an explicit empty value must be sent to clear): %s", api.patchReq())
 	}
 	if string(raw) != `""` {
 		t.Errorf("contactPhone = %s, want \"\" (empty string, to clear the field)", raw)
 	}
 	for _, absent := range []string{"defaultLanguage", "contactEmail", "contactWebsite"} {
 		if _, ok := body[absent]; ok {
-			t.Errorf("patch body unexpectedly contains %q: %s", absent, rt.patchReq)
+			t.Errorf("patch body unexpectedly contains %q: %s", absent, api.patchReq())
 		}
 	}
 }
@@ -180,8 +182,8 @@ func TestSet_clearField_sendsEmpty(t *testing.T) {
 // TestSet_multipleFields_inBody asserts that passing several flags emits
 // all of them (and only them): here defaultLanguage + contactWebsite.
 func TestSet_multipleFields_inBody(t *testing.T) {
-	rt := &setRT{t: t, editID: "edit-multi"}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{editID: "edit-multi"}
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:            "com.example.app",
@@ -195,17 +197,17 @@ func TestSet_multipleFields_inBody(t *testing.T) {
 	}
 
 	var body map[string]json.RawMessage
-	if err := json.Unmarshal(rt.patchReq, &body); err != nil {
-		t.Fatalf("patch body is not JSON: %v\nbody=%s", err, rt.patchReq)
+	if err := json.Unmarshal(api.patchReq(), &body); err != nil {
+		t.Fatalf("patch body is not JSON: %v\nbody=%s", err, api.patchReq())
 	}
 	for _, present := range []string{"defaultLanguage", "contactWebsite"} {
 		if _, ok := body[present]; !ok {
-			t.Errorf("patch body missing %q: %s", present, rt.patchReq)
+			t.Errorf("patch body missing %q: %s", present, api.patchReq())
 		}
 	}
 	for _, absent := range []string{"contactEmail", "contactPhone"} {
 		if _, ok := body[absent]; ok {
-			t.Errorf("patch body unexpectedly contains %q: %s", absent, rt.patchReq)
+			t.Errorf("patch body unexpectedly contains %q: %s", absent, api.patchReq())
 		}
 	}
 }
@@ -214,15 +216,15 @@ func TestSet_multipleFields_inBody(t *testing.T) {
 // `set` with no field flag is misuse: it short-circuits with exit 2
 // before any HTTP, so a forgotten flag can never emit an empty patch.
 func TestSet_noFieldFlag_exit2_noHTTP(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := detailscmd.RunSet(rc, detailscmd.SetInput{Package: "com.example.app"})
 	if got := exit.For(err); got != 2 {
 		t.Errorf("exit.For(err) = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", api.calls())
 	}
 }
 
@@ -230,8 +232,8 @@ func TestSet_noFieldFlag_exit2_noHTTP(t *testing.T) {
 // HTTP (and zero auth) and still returns a non-nil Renderable whose table
 // view shows the field that would be written.
 func TestSet_dryRun_noHTTP(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:         "com.example.app",
@@ -245,8 +247,8 @@ func TestSet_dryRun_noHTTP(t *testing.T) {
 	if r == nil {
 		t.Fatal("RunSet returned nil Renderable on --dry-run")
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", api.calls())
 	}
 
 	var tableOut bytes.Buffer
@@ -268,8 +270,8 @@ func TestSet_dryRun_noHTTP(t *testing.T) {
 // erroring. This is the contract a CI pipeline relies on; it must not
 // regress. Still zero HTTP.
 func TestSet_dryRunJSON_previewsPatch(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:         "com.example.app",
@@ -280,8 +282,8 @@ func TestSet_dryRunJSON_previewsPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunSet: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", api.calls())
 	}
 
 	var jsonOut bytes.Buffer
@@ -312,8 +314,8 @@ func TestSet_dryRunJSON_previewsPatch(t *testing.T) {
 // TestSet_dryRun_worksWithNoAccount asserts --dry-run never touches auth:
 // even with no resolved Account it previews successfully.
 func TestSet_dryRun_worksWithNoAccount(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	rc.Account = nil
 
 	_, err := detailscmd.RunSet(rc, detailscmd.SetInput{
@@ -325,8 +327,8 @@ func TestSet_dryRun_worksWithNoAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunSet with --dry-run and no Account should succeed offline, got: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", api.calls())
 	}
 }
 
@@ -334,8 +336,8 @@ func TestSet_dryRun_worksWithNoAccount(t *testing.T) {
 // auto-discards the Edit (a DELETE is seen) so a dangling Edit does not
 // block the next publish, and the 5xx maps to exit 40.
 func TestSet_commitFailure_discardsEdit(t *testing.T) {
-	rt := &setRT{t: t, editID: "edit-commitfail", commitCode: 500}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{editID: "edit-commitfail", commitCode: 500}
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:         "com.example.app",
@@ -346,13 +348,13 @@ func TestSet_commitFailure_discardsEdit(t *testing.T) {
 		t.Errorf("exit.For(err) = %d, want 40 (5xx); err=%v", got, err)
 	}
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range api.calls() {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-commitfail") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("Edit not discarded after commit failure; calls = %v", rt.calls)
+		t.Errorf("Edit not discarded after commit failure; calls = %v", api.calls())
 	}
 }
 
@@ -361,13 +363,12 @@ func TestSet_commitFailure_discardsEdit(t *testing.T) {
 // *edits.DanglingEditError carrying the Edit ID, and the Edit is NOT
 // discarded (no DELETE).
 func TestSet_keepEditOnFailure_danglingError(t *testing.T) {
-	rt := &setRT{
-		t:         t,
+	api := &setAPI{
 		editID:    "edit-keep",
 		patchCode: 500,
 		patchResp: `{"error":{"code":500,"message":"backend error"}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:           "com.example.app",
@@ -382,9 +383,9 @@ func TestSet_keepEditOnFailure_danglingError(t *testing.T) {
 	if dangling.EditID != "edit-keep" {
 		t.Errorf("DanglingEditError.EditID = %q, want %q", dangling.EditID, "edit-keep")
 	}
-	for _, c := range rt.calls {
+	for _, c := range api.calls() {
 		if strings.HasPrefix(c, "DELETE ") {
-			t.Errorf("Edit was discarded despite --keep-edit-on-failure; calls = %v", rt.calls)
+			t.Errorf("Edit was discarded despite --keep-edit-on-failure; calls = %v", api.calls())
 		}
 	}
 }
@@ -392,13 +393,12 @@ func TestSet_keepEditOnFailure_danglingError(t *testing.T) {
 // TestSet_patch403_exit11_apiAccessHint asserts a 403 on details.patch
 // maps to exit 11 with the Play Console API access hint.
 func TestSet_patch403_exit11_apiAccessHint(t *testing.T) {
-	rt := &setRT{
-		t:         t,
+	api := &setAPI{
 		editID:    "edit-403",
 		patchCode: 403,
 		patchResp: `{"error":{"code":403,"message":"insufficient permissions"}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:         "com.example.app",
@@ -416,13 +416,12 @@ func TestSet_patch403_exit11_apiAccessHint(t *testing.T) {
 // TestSet_patch404_exit30_appsListHint asserts a 404 maps to exit 30 with
 // the `gplay apps list` hint.
 func TestSet_patch404_exit30_appsListHint(t *testing.T) {
-	rt := &setRT{
-		t:         t,
+	api := &setAPI{
 		editID:    "edit-404",
 		patchCode: 404,
 		patchResp: `{"error":{"code":404,"message":"not found"}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := detailscmd.RunSet(rc, detailscmd.SetInput{
 		Package:         "com.example.app",
@@ -469,8 +468,8 @@ func TestNewSetCommand_registersExpectedFlags(t *testing.T) {
 // single ✓ line on stderr (DESIGN §8) naming the package, alongside its stdout
 // payload.
 func TestSet_emitsConfirmationOnStderr(t *testing.T) {
-	rt := &setRT{t: t, editID: "edit-set"}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{editID: "edit-set"}
+	rc, _ := newRC(t, api.serve(t))
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -489,8 +488,8 @@ func TestSet_emitsConfirmationOnStderr(t *testing.T) {
 
 // TestSet_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestSet_dryRun_noConfirmationOnStderr(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
