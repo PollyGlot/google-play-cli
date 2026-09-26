@@ -7,8 +7,7 @@
       "release-type": "simple",
       "package-name": "gplay",
       "include-component-in-tag": false,
-      "changelog-path": "CHANGELOG.md",
-      "release-as": "2.0.0"
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }
