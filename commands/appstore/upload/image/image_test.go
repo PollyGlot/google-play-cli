@@ -51,12 +51,12 @@ type testRoundTripper struct {
 	failWith int
 }
 
-func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *testRoundTripper) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 
@@ -68,7 +68,7 @@ func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 			r.initBody = testkit.ReadBody(req)
 		}
 		if r.failWith != 0 {
-			return jsonResp(r.failWith, `{"error":{"message":"nope"}}`), nil
+			return testkit.Response(r.failWith, `{"error":{"message":"nope"}}`), nil
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -84,13 +84,9 @@ func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		if body == "" {
 			body = defaultResp
 		}
-		return jsonResp(200, body), nil
+		return testkit.Response(http.StatusOK, body), nil
 	}
 	return nil, http.ErrNotSupported
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -102,13 +98,13 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
+func newRC(t *testing.T, rt *testRoundTripper) *kernel.RunContext {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rt.serve)})
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa
 	return rc

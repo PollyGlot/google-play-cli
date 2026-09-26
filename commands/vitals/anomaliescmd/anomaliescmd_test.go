@@ -6,10 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -21,23 +19,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-type anomRT struct {
-	mu      sync.Mutex
-	body    string
-	lastURL string
-	method  string
-}
-
-func (r *anomRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	h := http.Header{"Content-Type": []string{"application/json"}}
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(`{"access_token":"a","token_type":"Bearer","expires_in":3600}`))}, nil
+// lastCall returns the last API call the fake recorded.
+func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	r.lastURL = req.URL.String()
-	r.method = req.Method
-	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(r.body))}, nil
+	return calls[len(calls)-1]
 }
 
 func saJSON(t *testing.T) []byte {
@@ -59,34 +48,35 @@ func saJSON(t *testing.T) []byte {
 	return raw
 }
 
-func newRC(t *testing.T, body string) (*kernel.RunContext, *anomRT, *bytes.Buffer) {
+func newRC(t *testing.T, body string) (*kernel.RunContext, *testkit.Fake, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(saJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	rt := &anomRT{body: body}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, body))
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fake})
 	var stderr bytes.Buffer
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &stderr}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa
 	rc.Scope = token.ReportingScope
-	return rc, rt, &stderr
+	return rc, fake, &stderr
 }
 
 func TestRun_listsAnomalies_withSinceWindow(t *testing.T) {
 	body := `{"anomalies":[{"metricSet":"apps/com.example.app/crashRateMetricSet","metric":{"metric":"crashRate","decimalValue":{"value":"0.08"}},"timelineSpec":{"startTime":{"year":2026,"month":6,"day":10},"endTime":{"year":2026,"month":6,"day":12}}}]}`
-	rc, rt, _ := newRC(t, body)
+	rc, fake, _ := newRC(t, body)
 	r, err := Run(rc, Input{Package: "com.example.app", Since: "90d"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.method != http.MethodGet || !strings.Contains(rt.lastURL, "/apps/com.example.app/anomalies") {
-		t.Errorf("call = %s %s", rt.method, rt.lastURL)
+	last := lastCall(t, fake)
+	if last.Method != http.MethodGet || !strings.Contains(last.URL, "/apps/com.example.app/anomalies") {
+		t.Errorf("call = %s %s", last.Method, last.URL)
 	}
 	// --since builds an activeBetween(...) filter.
-	if !strings.Contains(rt.lastURL, "activeBetween") {
-		t.Errorf("URL missing activeBetween filter: %q", rt.lastURL)
+	if !strings.Contains(last.URL, "activeBetween") {
+		t.Errorf("URL missing activeBetween filter: %q", last.URL)
 	}
 	p := r.(Payload)
 	if len(p.Anomalies) != 1 || p.Anomalies[0].MetricSet != "crashRateMetricSet" || p.Anomalies[0].Value != "0.08" {
@@ -95,7 +85,7 @@ func TestRun_listsAnomalies_withSinceWindow(t *testing.T) {
 }
 
 func TestRun_rawFilterOverridesSince(t *testing.T) {
-	rc, rt, _ := newRC(t, `{"anomalies":[]}`)
+	rc, fake, _ := newRC(t, `{"anomalies":[]}`)
 	raw := `activeBetween("2026-01-01T00:00:00Z", UNBOUNDED)`
 	// Both --since AND --filter are set: --filter must win, so the raw
 	// (UNBOUNDED) predicate reaches the API and the --since-derived
@@ -103,8 +93,8 @@ func TestRun_rawFilterOverridesSince(t *testing.T) {
 	if _, err := Run(rc, Input{Package: "com.example.app", Since: "7d", Filter: raw}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.lastURL, "UNBOUNDED") {
-		t.Errorf("explicit --filter should override --since and reach the API: %q", rt.lastURL)
+	if last := lastCall(t, fake); !strings.Contains(last.URL, "UNBOUNDED") {
+		t.Errorf("explicit --filter should override --since and reach the API: %q", last.URL)
 	}
 }
 

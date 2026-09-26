@@ -1,7 +1,7 @@
 // Package viewcmd_test exercises `gplay apps view` at the kernel level:
-// a RunContext built by hand, a RoundTripper injected via the
+// a RunContext built by hand, a testkit.Fake injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// releases/list harness: the transport FAILS on any PUT or :commit,
+// releases/list harness: the fake API FAILS on any PUT or :commit,
 // because `apps view` is a read-only listing (open Edit → details.get
 // → listings.get → discard, never commit).
 package viewcmd_test
@@ -14,10 +14,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -30,76 +28,53 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// viewRT terminates the OAuth2 /token exchange and routes the apps-view
-// sequence: edits.insert, edits.details.get, edits.listings.get(lang),
-// edits.delete. It deliberately has NO PUT or :commit branch: reaching
-// one means the command tried to mutate state, which a read-only
-// listing must never do, so the transport fails the test.
-type viewRT struct {
-	t       *testing.T
+// viewAPI is the canned apps-view API: edits.insert, edits.details.get,
+// edits.listings.get(lang), the listing icon, edits.delete. It deliberately
+// has NO PUT or :commit route: the Fake fails any request no route claims,
+// so a command that tried to mutate state, which a read-only listing must
+// never do, fails its round trip.
+type viewAPI struct {
 	editID  string
 	details string
 	listing string
 	icon    string // body for /listings/{lang}/icon (defaults to empty slot)
 
+	// A zero code serves 200.
 	detailsCode int
 	listingCode int
 	iconCode    int
-
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
 }
 
-func (r *viewRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/details"):
-		code := r.detailsCode
-		if code == 0 {
-			code = 200
+func (a viewAPI) fake() *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return http.StatusNoContent, "", true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/details"):
+			return a.detailsCode, a.details, true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/icon"):
+			body := a.icon
+			if body == "" {
+				body = `{"images":[]}` // missing == empty (ADR-0013)
+			}
+			return a.iconCode, body, true
+		case c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/"):
+			return a.listingCode, a.listing, true
 		}
-		return jsonResp(code, r.details), nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/icon"):
-		code := r.iconCode
-		if code == 0 {
-			code = 200
-		}
-		body := r.icon
-		if body == "" {
-			body = `{"images":[]}` // missing == empty (ADR-0013)
-		}
-		return jsonResp(code, body), nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/listings/"):
-		code := r.listingCode
-		if code == 0 {
-			code = 200
-		}
-		return jsonResp(code, r.listing), nil
-	}
-	r.t.Fatalf("unexpected request (apps view is read-only): %s %s", req.Method, req.URL)
-	return nil, nil
+		return 0, "", false
+	})
 }
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
+// callLines renders each API call the fake served as "METHOD path"; token
+// exchanges are not calls here, fake.TokenExchanges counts them.
+func callLines(fake *testkit.Fake) []string {
+	var lines []string
+	for _, c := range fake.Calls() {
+		lines = append(lines, c.Method+" "+c.Path)
 	}
+	return lines
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -158,13 +133,12 @@ func exitCodeOf(t *testing.T, err error) int {
 func TestRun_happyPath(t *testing.T) {
 	detailsBody := `{"contactEmail":"hi@example.com","contactPhone":"+1","contactWebsite":"https://x","defaultLanguage":"en-US"}`
 	listingBody := `{"language":"en-US","title":"MyApp","shortDescription":"hi","fullDescription":"world","video":""}`
-	rt := &viewRT{
-		t:       t,
+	fake := viewAPI{
 		editID:  "edit-info",
 		details: detailsBody,
 		listing: listingBody,
-	}
-	rc, _ := newRC(t, rt)
+	}.fake()
+	rc, _ := newRC(t, fake)
 
 	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if err != nil {
@@ -174,28 +148,28 @@ func TestRun_happyPath(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
 
-	if rt.tokenHits == 0 {
-		t.Errorf("RoundTripper saw no /token exchange; calls=%v", rt.calls)
+	calls := callLines(fake)
+	if n := fake.TokenExchanges(); n != 1 {
+		t.Errorf("token exchanges = %d, want 1 before the API calls; calls=%v", n, calls)
 	}
 	wantSequence := []string{
-		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/details",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/listings/en-US",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/listings/en-US/icon",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-info",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(calls) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(calls), calls, len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, calls[i], want)
 		}
 	}
 	// Exactly one Edit opened (single edits.insert), reused for all reads.
 	inserts := 0
-	for _, c := range rt.calls {
+	for _, c := range calls {
 		if c == "POST /androidpublisher/v3/applications/com.example.app/edits" {
 			inserts++
 		}
@@ -234,14 +208,13 @@ func TestRun_happyPath(t *testing.T) {
 // {"url":..,"sha256":..} verbatim, and the table/markdown views show the
 // sha256 line. The whole read still opens exactly one Edit.
 func TestRun_iconPresent_inEnvelopeAndViews(t *testing.T) {
-	rt := &viewRT{
-		t:       t,
+	fake := viewAPI{
 		editID:  "edit-info",
 		details: `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
 		listing: `{"language":"en-US","title":"MyApp"}`,
 		icon:    `{"images":[{"id":"ic1","url":"https://play.example/icon.png","sha1":"d1","sha256":"ICON_SHA_256"}]}`,
-	}
-	rc, _ := newRC(t, rt)
+	}.fake()
+	rc, _ := newRC(t, fake)
 
 	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if err != nil {
@@ -289,14 +262,13 @@ func TestRun_iconPresent_inEnvelopeAndViews(t *testing.T) {
 // icon key is omitted from the envelope and no icon row appears in the
 // table/markdown views.
 func TestRun_iconAbsent_noIconRow(t *testing.T) {
-	rt := &viewRT{
-		t:       t,
+	fake := viewAPI{
 		editID:  "edit-info",
 		details: `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
 		listing: `{"language":"en-US","title":"MyApp"}`,
-		// icon left empty → transport serves {"images":[]}
-	}
-	rc, _ := newRC(t, rt)
+		// icon left empty → the fake serves {"images":[]}
+	}.fake()
+	rc, _ := newRC(t, fake)
 
 	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if err != nil {
@@ -329,15 +301,14 @@ func TestRun_iconAbsent_noIconRow(t *testing.T) {
 // TestRun_iconRead403_exit11 asserts a 403 on the icon read bubbles up
 // as exit 11 (authorization).
 func TestRun_iconRead403_exit11(t *testing.T) {
-	rt := &viewRT{
-		t:        t,
+	fake := viewAPI{
 		editID:   "edit-icon-403",
 		details:  `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
 		listing:  `{"language":"en-US","title":"MyApp"}`,
 		iconCode: 403,
 		icon:     `{"error":{"code":403,"message":"insufficient permissions"}}`,
-	}
-	rc, _ := newRC(t, rt)
+	}.fake()
+	rc, _ := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 11 {
 		t.Errorf("ExitCode() = %d, want 11", code)
@@ -347,15 +318,14 @@ func TestRun_iconRead403_exit11(t *testing.T) {
 // TestRun_iconRead404_exit30 asserts a 404 on the icon read maps to
 // exit 30 (API 4xx other than auth/perms).
 func TestRun_iconRead404_exit30(t *testing.T) {
-	rt := &viewRT{
-		t:        t,
+	fake := viewAPI{
 		editID:   "edit-icon-404",
 		details:  `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
 		listing:  `{"language":"en-US","title":"MyApp"}`,
 		iconCode: 404,
 		icon:     `{"error":{"code":404,"message":"not found"}}`,
-	}
-	rc, _ := newRC(t, rt)
+	}.fake()
+	rc, _ := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Errorf("ExitCode() = %d, want 30", code)
@@ -366,38 +336,37 @@ func TestRun_iconRead404_exit30(t *testing.T) {
 // falls back to rc.Resolved.Pin (the .gplay/config.json pin), matching
 // the same precedence rule as `gplay releases list`.
 func TestRun_usesPin_whenNoFlag(t *testing.T) {
-	rt := &viewRT{
-		t:       t,
+	fake := viewAPI{
 		editID:  "edit-pin",
 		details: `{"defaultLanguage":"fr-FR","contactEmail":"hi@example.com"}`,
 		listing: `{"language":"fr-FR","title":"MonApp"}`,
-	}
-	rc, _ := newRC(t, rt)
+	}.fake()
+	rc, _ := newRC(t, fake)
 	rc.Resolved.Pin = "com.pinned.app"
 
 	if _, err := viewcmd.Run(rc, viewcmd.Input{}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	for _, c := range rt.calls {
+	for _, c := range callLines(fake) {
 		if strings.Contains(c, "com.pinned.app") {
 			return
 		}
 	}
-	t.Errorf("expected calls scoped to com.pinned.app, got: %v", rt.calls)
+	t.Errorf("expected calls scoped to com.pinned.app, got: %v", callLines(fake))
 }
 
 // TestRun_missingPackage_exit2 asserts that with neither --package nor
 // a pinned project, the command short-circuits with a usage error
 // before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
-	rt := &viewRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := viewAPI{}.fake()
+	rc, _ := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if n := fake.TokenExchanges(); n != 0 || len(fake.Calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %d token exchange(s), %v", n, callLines(fake))
 	}
 }
 
@@ -406,14 +375,14 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 // contain a dot, reverse-DNS convention) fails fast with exit 20
 // before any HTTP round-trip. Same gate as `apps add`.
 func TestRun_invalidPackage_exit20(t *testing.T) {
-	rt := &viewRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := viewAPI{}.fake()
+	rc, _ := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "not-a-package"})
 	if code := exitCodeOf(t, err); code != 20 {
 		t.Errorf("ExitCode() = %d, want 20", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before validation error, saw: %v", rt.calls)
+	if n := fake.TokenExchanges(); n != 0 || len(fake.Calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before validation error, saw: %d token exchange(s), %v", n, callLines(fake))
 	}
 }
 
@@ -421,28 +390,27 @@ func TestRun_invalidPackage_exit20(t *testing.T) {
 // command fails auth (exit 10) before any HTTP call: there is no
 // dry-run path for a read-only listing.
 func TestRun_noAccount_exit10(t *testing.T) {
-	rt := &viewRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := viewAPI{}.fake()
+	rc, _ := newRC(t, fake)
 	rc.Account = nil
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 10 {
 		t.Errorf("ExitCode() = %d, want 10", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before auth error, saw: %v", rt.calls)
+	if n := fake.TokenExchanges(); n != 0 || len(fake.Calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before auth error, saw: %d token exchange(s), %v", n, callLines(fake))
 	}
 }
 
 // TestRun_detailsGet403_exit11 asserts a 403 on details.get bubbles up
 // as exit 11 (authorization). The Edit is still discarded.
 func TestRun_detailsGet403_exit11(t *testing.T) {
-	rt := &viewRT{
-		t:           t,
+	fake := viewAPI{
 		editID:      "edit-403",
 		detailsCode: 403,
 		details:     `{"error":{"code":403,"message":"insufficient permissions"}}`,
-	}
-	rc, _ := newRC(t, rt)
+	}.fake()
+	rc, _ := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 11 {
 		t.Errorf("ExitCode() = %d, want 11", code)
@@ -452,13 +420,12 @@ func TestRun_detailsGet403_exit11(t *testing.T) {
 // TestRun_detailsGet404_exit30 asserts a 404 on details.get maps to
 // exit 30 (API 4xx other than auth/perms).
 func TestRun_detailsGet404_exit30(t *testing.T) {
-	rt := &viewRT{
-		t:           t,
+	fake := viewAPI{
 		editID:      "edit-404",
 		detailsCode: 404,
 		details:     `{"error":{"code":404,"message":"app not found"}}`,
-	}
-	rc, _ := newRC(t, rt)
+	}.fake()
+	rc, _ := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Errorf("ExitCode() = %d, want 30", code)

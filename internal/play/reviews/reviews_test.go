@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,96 +15,50 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// reviewsRT is a RoundTripper that serves a fixed sequence of canned
-// reviews.list pages and records the request path+query it saw for each
-// call, so a test can assert both the parsed result and the wire calls.
-type reviewsRT struct {
-	pages []string // JSON bodies, served in order
+// callLine renders a recorded call as "METHOD path?query", so a test can
+// assert the wire calls of a paginated list.
+func callLine(c testkit.Call) string { return c.Method + " " + c.Path + "?" + c.Query }
 
-	mu    sync.Mutex
-	calls []string // "METHOD path?query" per request
-	n     int
-}
-
-func (r *reviewsRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path+"?"+req.URL.RawQuery)
-	body := "{}"
-	if r.n < len(r.pages) {
-		body = r.pages[r.n]
+func callLines(fake *testkit.Fake) []string {
+	var lines []string
+	for _, c := range fake.Calls() {
+		lines = append(lines, callLine(c))
 	}
-	r.n++
-	return &http.Response{
-		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader(body)),
-		Header:     make(http.Header),
-	}, nil
+	return lines
 }
 
-// loopingRT always advertises the same nextPageToken, simulating an API that
+// onlyCall returns the single request the Fake recorded, failing otherwise.
+func onlyCall(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want exactly one", len(calls))
+	}
+	return calls[0]
+}
+
+// loopingFake always advertises the same nextPageToken, simulating an API that
 // cycles a pagination token. It self-limits so an unguarded loop fails the
 // test fast instead of hanging.
-type loopingRT struct {
-	t     *testing.T
-	calls int
-}
-
-func (r *loopingRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.calls++
-	if r.calls > 10 {
-		r.t.Fatalf("List made %d calls without terminating: pagination token loop not guarded", r.calls)
-	}
-	body := `{"reviews":[{"reviewId":"r","comments":[{"userComment":{"starRating":5,"reviewerLanguage":"en"}}]}],"tokenPagination":{"nextPageToken":"LOOP"}}`
-	return &http.Response{
-		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader(body)),
-		Header:     make(http.Header),
-	}, nil
-}
-
-// replyRT captures the reviews.reply POST (method, path, and request body)
-// and serves a canned response. code/errBody force a non-2xx for the
-// error-mapping test (0 → 200).
-type replyRT struct {
-	code     int
-	respBody string
-	errBody  string
-
-	mu      sync.Mutex
-	method  string
-	path    string
-	reqBody string
-	calls   int
-}
-
-func (r *replyRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls++
-	r.method = req.Method
-	r.path = req.URL.Path
-	if req.Body != nil {
-		b := testkit.ReadBody(req)
-		r.reqBody = string(b)
-	}
-	code := r.code
-	if code == 0 {
-		code = 200
-	}
-	body := r.respBody
-	if code != 200 {
-		body = r.errBody
-	}
-	return &http.Response{
-		StatusCode: code,
-		Body:       io.NopCloser(strings.NewReader(body)),
-		Header:     make(http.Header),
-	}, nil
+func loopingFake(t *testing.T) *testkit.Fake {
+	t.Helper()
+	var (
+		mu sync.Mutex
+		n  int
+	)
+	return testkit.NewFake(func(testkit.Call) (int, string, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		n++
+		if n > 10 {
+			t.Fatalf("List made %d calls without terminating: pagination token loop not guarded", n)
+		}
+		return http.StatusOK, `{"reviews":[{"reviewId":"r","comments":[{"userComment":{"starRating":5,"reviewerLanguage":"en"}}]}],"tokenPagination":{"nextPageToken":"LOOP"}}`, true
+	})
 }
 
 func TestReply_postsReplyTextAndReturnsRawBody(t *testing.T) {
-	rt := &replyRT{respBody: `{"result":{"replyText":"thanks","lastEdited":{"seconds":"1700000000"}}}`}
+	rt := testkit.NewFake(testkit.Any(http.StatusOK, `{"result":{"replyText":"thanks","lastEdited":{"seconds":"1700000000"}}}`))
 	hc := &http.Client{Transport: rt}
 
 	raw, err := Reply(context.Background(), hc, "com.example.app", "gp:AOqpT123", "thanks")
@@ -113,21 +66,22 @@ func TestReply_postsReplyTextAndReturnsRawBody(t *testing.T) {
 		t.Fatalf("Reply: %v", err)
 	}
 
-	if rt.method != http.MethodPost {
-		t.Errorf("method = %q, want POST", rt.method)
+	c := onlyCall(t, rt)
+	if c.Method != http.MethodPost {
+		t.Errorf("method = %q, want POST", c.Method)
 	}
 	// The reviewId's own colon and the :reply custom-method colon both stay
 	// literal in the path.
 	wantPath := "/androidpublisher/v3/applications/com.example.app/reviews/gp:AOqpT123:reply"
-	if rt.path != wantPath {
-		t.Errorf("path = %q, want %q", rt.path, wantPath)
+	if c.Path != wantPath {
+		t.Errorf("path = %q, want %q", c.Path, wantPath)
 	}
 	// The body carries the reply under the API's replyText field.
 	var sent struct {
 		ReplyText string `json:"replyText"`
 	}
-	if err := json.Unmarshal([]byte(rt.reqBody), &sent); err != nil {
-		t.Fatalf("request body is not JSON: %v (%s)", err, rt.reqBody)
+	if err := json.Unmarshal(c.Body, &sent); err != nil {
+		t.Fatalf("request body is not JSON: %v (%s)", err, c.Body)
 	}
 	if sent.ReplyText != "thanks" {
 		t.Errorf("replyText = %q, want %q", sent.ReplyText, "thanks")
@@ -152,7 +106,7 @@ func TestReply_nonOKBecomesAPIErrorWithStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &replyRT{code: tc.code, errBody: `{"error":{"code":` + strconv.Itoa(tc.code) + `,"message":"nope"}}`}
+			rt := testkit.NewFake(testkit.Any(tc.code, `{"error":{"code":`+strconv.Itoa(tc.code)+`,"message":"nope"}}`))
 			hc := &http.Client{Transport: rt}
 
 			_, err := Reply(context.Background(), hc, "com.example.app", "r1", "hi")
@@ -171,7 +125,7 @@ func TestReply_nonOKBecomesAPIErrorWithStatus(t *testing.T) {
 }
 
 func TestList_stopsOnRepeatedPaginationToken(t *testing.T) {
-	rt := &loopingRT{t: t}
+	rt := loopingFake(t)
 	hc := &http.Client{Transport: rt}
 
 	_, err := List(context.Background(), hc, "com.example.app")
@@ -179,8 +133,8 @@ func TestList_stopsOnRepeatedPaginationToken(t *testing.T) {
 		t.Fatal("expected an error when the API repeats a pagination token, got nil")
 	}
 	// First call yields LOOP (new), second call repeats LOOP → detected.
-	if rt.calls != 2 {
-		t.Errorf("expected exactly 2 calls before detecting the loop, got %d", rt.calls)
+	if n := len(rt.Calls()); n != 2 {
+		t.Errorf("expected exactly 2 calls before detecting the loop, got %d", n)
 	}
 }
 
@@ -188,7 +142,7 @@ func TestList_autoPaginates(t *testing.T) {
 	page1 := `{"reviews":[{"reviewId":"r1","comments":[{"userComment":{"text":"a","starRating":5,"reviewerLanguage":"en"}}]}],"tokenPagination":{"nextPageToken":"PAGE2"}}`
 	page2 := `{"reviews":[{"reviewId":"r2","comments":[{"userComment":{"text":"b","starRating":3,"reviewerLanguage":"en"}}]}],"tokenPagination":{"nextPageToken":"PAGE3"}}`
 	page3 := `{"reviews":[{"reviewId":"r3","comments":[{"userComment":{"text":"c","starRating":1,"reviewerLanguage":"en"}}]}]}` // no nextPageToken → stop
-	rt := &reviewsRT{pages: []string{page1, page2, page3}}
+	rt := testkit.NewFake(testkit.Sequence(page1, page2, page3))
 	hc := &http.Client{Transport: rt}
 
 	got, err := List(context.Background(), hc, "com.example.app")
@@ -208,13 +162,14 @@ func TestList_autoPaginates(t *testing.T) {
 	// Three calls: the first with no token, then the nextPageToken of each
 	// prior page carried forward in the `token` query param. Pagination
 	// stops when a page omits nextPageToken.
-	if len(rt.calls) != 3 {
-		t.Fatalf("made %d calls, want 3: %v", len(rt.calls), rt.calls)
+	calls := callLines(rt)
+	if len(calls) != 3 {
+		t.Fatalf("made %d calls, want 3: %v", len(calls), calls)
 	}
-	if got := rt.calls[1]; !strings.Contains(got, "token=PAGE2") {
+	if got := calls[1]; !strings.Contains(got, "token=PAGE2") {
 		t.Errorf("2nd call = %q, want token=PAGE2", got)
 	}
-	if got := rt.calls[2]; !strings.Contains(got, "token=PAGE3") {
+	if got := calls[2]; !strings.Contains(got, "token=PAGE3") {
 		t.Errorf("3rd call = %q, want token=PAGE3", got)
 	}
 }
@@ -224,7 +179,7 @@ func TestList_singlePage(t *testing.T) {
 		{"reviewId":"r1","comments":[{"userComment":{"text":"Great app\nsecond line","starRating":5,"reviewerLanguage":"en","lastModified":{"seconds":"1700000000","nanos":0}}}]},
 		{"reviewId":"r2","comments":[{"userComment":{"text":"Bad","starRating":1,"reviewerLanguage":"fr-FR","lastModified":{"seconds":"1700000100"}}}]}
 	]}`
-	rt := &reviewsRT{pages: []string{body}}
+	rt := testkit.NewFake(testkit.Sequence(body))
 	hc := &http.Client{Transport: rt}
 
 	got, err := List(context.Background(), hc, "com.example.app")
@@ -237,8 +192,8 @@ func TestList_singlePage(t *testing.T) {
 
 	// The call lands on the reviews collection of the package, with no edit.
 	wantCall := "GET /androidpublisher/v3/applications/com.example.app/reviews?"
-	if len(rt.calls) != 1 || rt.calls[0] != wantCall {
-		t.Errorf("calls = %v, want exactly [%q]", rt.calls, wantCall)
+	if calls := callLines(rt); len(calls) != 1 || calls[0] != wantCall {
+		t.Errorf("calls = %v, want exactly [%q]", calls, wantCall)
 	}
 
 	// Parsed view, read through the public accessors.
@@ -272,35 +227,6 @@ func TestList_singlePage(t *testing.T) {
 	}
 }
 
-// getRT captures the reviews.get GET (method and path) and serves a canned
-// body, or a forced non-2xx for the error-mapping test (code 0 → 200).
-type getRT struct {
-	code int
-	body string
-
-	mu     sync.Mutex
-	method string
-	path   string
-	calls  int
-}
-
-func (r *getRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls++
-	r.method = req.Method
-	r.path = req.URL.Path
-	code := r.code
-	if code == 0 {
-		code = 200
-	}
-	return &http.Response{
-		StatusCode: code,
-		Body:       io.NopCloser(strings.NewReader(r.body)),
-		Header:     make(http.Header),
-	}, nil
-}
-
 func TestGet_fetchesSingleReviewAndParsesThread(t *testing.T) {
 	body := `{
 		"reviewId":"gp:AOqpT123",
@@ -310,7 +236,7 @@ func TestGet_fetchesSingleReviewAndParsesThread(t *testing.T) {
 			{"developerComment":{"text":"Sorry — fixed in 1.2.4","lastModified":{"seconds":"1700000600"}}}
 		]
 	}`
-	rt := &getRT{body: body}
+	rt := testkit.NewFake(testkit.Any(http.StatusOK, body))
 	hc := &http.Client{Transport: rt}
 
 	got, err := Get(context.Background(), hc, "com.example.app", "gp:AOqpT123")
@@ -318,13 +244,14 @@ func TestGet_fetchesSingleReviewAndParsesThread(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 
-	if rt.method != http.MethodGet {
-		t.Errorf("method = %q, want GET", rt.method)
+	c := onlyCall(t, rt)
+	if c.Method != http.MethodGet {
+		t.Errorf("method = %q, want GET", c.Method)
 	}
 	// The reviewId's own colon stays literal in the path (no :reply suffix).
 	wantPath := "/androidpublisher/v3/applications/com.example.app/reviews/gp:AOqpT123"
-	if rt.path != wantPath {
-		t.Errorf("path = %q, want %q", rt.path, wantPath)
+	if c.Path != wantPath {
+		t.Errorf("path = %q, want %q", c.Path, wantPath)
 	}
 
 	// Header accessors.
@@ -382,7 +309,7 @@ func TestGet_appVersionPartialAndAbsent(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			body := `{"reviewId":"r1","comments":[{"userComment":{` + tc.uc + `}}]}`
-			rt := &getRT{body: body}
+			rt := testkit.NewFake(testkit.Any(http.StatusOK, body))
 			got, err := Get(context.Background(), &http.Client{Transport: rt}, "com.example.app", "r1")
 			if err != nil {
 				t.Fatalf("Get: %v", err)
@@ -405,7 +332,7 @@ func TestGet_nonOKBecomesAPIErrorWithStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &getRT{code: tc.code, body: `{"error":{"code":` + strconv.Itoa(tc.code) + `,"message":"nope"}}`}
+			rt := testkit.NewFake(testkit.Any(tc.code, `{"error":{"code":`+strconv.Itoa(tc.code)+`,"message":"nope"}}`))
 			hc := &http.Client{Transport: rt}
 
 			_, err := Get(context.Background(), hc, "com.example.app", "r1")

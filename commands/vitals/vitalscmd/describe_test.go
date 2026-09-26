@@ -1,43 +1,28 @@
 package vitalscmd
 
 import (
-	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// describeRT answers the token exchange and records every API call's verb and
-// URL, so a preset test can assert "one GET, no POST".
-type describeRT struct {
-	presetRT
-	calls []string // "VERB path"
-}
-
-func (r *describeRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return r.presetRT.RoundTrip(req)
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	h := http.Header{"Content-Type": []string{"application/json"}}
-	body := `{"name":"apps/com.example.app/anrRateMetricSet","freshnessInfo":{"freshnesses":[{"aggregationPeriod":"DAILY","latestEndTime":{"year":2026,"month":9,"day":12,"timeZone":{"id":"America/Los_Angeles"}}}]}}`
-	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(body))}, nil
-}
+const describeBody = `{"name":"apps/com.example.app/anrRateMetricSet","freshnessInfo":{"freshnesses":[{"aggregationPeriod":"DAILY","latestEndTime":{"year":2026,"month":9,"day":12,"timeZone":{"id":"America/Los_Angeles"}}}]}}`
 
 // TestRunPreset_describe_getsTheMetricSet proves a preset's --describe reaches
 // the set's `.get`: exactly one GET on the bare resource, never the `:query`
 // POST (#545).
 func TestRunPreset_describe_getsTheMetricSet(t *testing.T) {
-	rt := &describeRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, describeBody))
+	rc := newRC(t, fake)
 	r, err := runPreset(rc, set(t, "anrrate"), presetInput{Package: "com.example.app", Describe: true})
 	if err != nil {
 		t.Fatalf("runPreset: %v", err)
 	}
-	if len(rt.calls) != 1 || rt.calls[0] != "GET /v1beta1/apps/com.example.app/anrRateMetricSet" {
-		t.Errorf("API calls = %v, want exactly one GET on the anrRateMetricSet resource", rt.calls)
+	if calls := fake.Calls(); len(calls) != 1 || calls[0].Method+" "+calls[0].Path != "GET /v1beta1/apps/com.example.app/anrRateMetricSet" {
+		t.Errorf("API calls = %v, want exactly one GET on the anrRateMetricSet resource", calls)
 	}
 	p, ok := r.(DescribePayload)
 	if !ok {
@@ -51,8 +36,8 @@ func TestRunPreset_describe_getsTheMetricSet(t *testing.T) {
 // TestRunPreset_describe_rejectsWindowFlags: --by/--version/--since/--period
 // set alongside --describe is usage misuse, caught before any request.
 func TestRunPreset_describe_rejectsWindowFlags(t *testing.T) {
-	rt := &describeRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, describeBody))
+	rc := newRC(t, fake)
 	_, err := runPreset(rc, set(t, "crashrate"), presetInput{
 		Package: "com.example.app", Describe: true, By: "device", WindowFlags: []string{"by"},
 	})
@@ -62,8 +47,8 @@ func TestRunPreset_describe_rejectsWindowFlags(t *testing.T) {
 	if !strings.Contains(err.Error(), "--by does not apply") {
 		t.Errorf("error must name the clashing flag: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("no request must be sent on a flag clash, got %v", rt.calls)
+	if calls := fake.Calls(); len(calls) != 0 {
+		t.Errorf("no request must be sent on a flag clash, got %v", calls)
 	}
 }
 

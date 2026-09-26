@@ -42,7 +42,7 @@ type hangingPlay struct {
 	ready      sync.Once
 }
 
-func (h *hangingPlay) RoundTrip(req *http.Request) (*http.Response, error) {
+func (h *hangingPlay) serve(req *http.Request) (*http.Response, error) {
 	upload := strings.HasPrefix(req.URL.Path, "/upload/")
 	if upload || (h.hangDelete && req.Method == http.MethodDelete) {
 		if upload {
@@ -75,7 +75,7 @@ func TestInterruptHelperProcess(t *testing.T) {
 		},
 	)
 	rt := &hangingPlay{fake: fake, hangDelete: os.Getenv(envInterruptHang) == "delete"}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rt.serve)})
 
 	root := newRootCmd(kernel.Boot{
 		ConfigPath:   filepath.Join(dir, "config.json"),

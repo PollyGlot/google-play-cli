@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -23,36 +21,20 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// refundRT answers the /token exchange and the orders.refund POST, recording
-// the API URL/method. status/body are configurable for the refusal paths;
-// otherwise it returns 204 with an empty body (the API's success shape).
-type refundRT struct {
-	mu     sync.Mutex
-	calls  []string
-	apiURL string
-	method string
-	status int
-	body   string
+// newFake answers the orders.refund POST with status and body; the API's
+// success shape is a 204 with an empty body.
+func newFake(status int, body string) *testkit.Fake {
+	return testkit.NewFake(testkit.Any(status, body))
 }
 
-func (r *refundRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+// lastURL is the URL of the last API call, failing the test when none was made.
+func lastURL(t *testing.T, fake *testkit.Fake) string {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.apiURL = req.URL.String()
-	r.method = req.Method
-	if r.status != 0 {
-		return jsonResp(r.status, r.body), nil
-	}
-	return jsonResp(204, ""), nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+	return calls[len(calls)-1].URL
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -80,8 +62,8 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 // query (default: money back, entitlement kept) and emits a parseable success
 // object.
 func TestRun_refund_success(t *testing.T) {
-	rt := &refundRT{}
-	rc := newRC(t, rt)
+	fake := newFake(http.StatusNoContent, "")
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 	r, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "GPA.1234", Confirm: true})
@@ -93,14 +75,19 @@ func TestRun_refund_success(t *testing.T) {
 	if !strings.HasPrefix(stderr.String(), "✓ ") || !strings.Contains(stderr.String(), "entitlement kept") {
 		t.Errorf("stderr missing the ✓ entitlement-kept confirmation:\n%s", stderr.String())
 	}
-	if rt.method != http.MethodPost {
-		t.Errorf("method = %q, want POST", rt.method)
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	if !strings.HasSuffix(rt.apiURL, "/applications/com.example.app/orders/GPA.1234:refund") {
-		t.Errorf("url %q is not the orders.refund endpoint", rt.apiURL)
+	apiURL := calls[len(calls)-1].URL
+	if m := calls[len(calls)-1].Method; m != http.MethodPost {
+		t.Errorf("method = %q, want POST", m)
 	}
-	if strings.Contains(rt.apiURL, "revoke") {
-		t.Errorf("url %q must not carry revoke by default", rt.apiURL)
+	if !strings.HasSuffix(apiURL, "/applications/com.example.app/orders/GPA.1234:refund") {
+		t.Errorf("url %q is not the orders.refund endpoint", apiURL)
+	}
+	if strings.Contains(apiURL, "revoke") {
+		t.Errorf("url %q must not carry revoke by default", apiURL)
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
@@ -122,16 +109,16 @@ func TestRun_refund_success(t *testing.T) {
 // TestRun_refund_revoke asserts --revoke maps to the revoke=true query parameter
 // and reports revoked:true.
 func TestRun_refund_revoke(t *testing.T) {
-	rt := &refundRT{}
-	rc := newRC(t, rt)
+	fake := newFake(http.StatusNoContent, "")
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 	r, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "GPA.1234", Confirm: true, Revoke: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "revoke=true") {
-		t.Errorf("url %q must carry revoke=true", rt.apiURL)
+	if apiURL := lastURL(t, fake); !strings.Contains(apiURL, "revoke=true") {
+		t.Errorf("url %q must carry revoke=true", apiURL)
 	}
 	// The ✓ confirmation must name the revoked entitlement (distinct from the
 	// entitlement-kept default).
@@ -156,8 +143,8 @@ func TestRun_refund_revoke(t *testing.T) {
 // TestRun_missingConfirm_exit3_noNetwork asserts a refund without --confirm
 // refuses with exit 3 naming the flag, before any HTTP call.
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
-	rt := &refundRT{}
-	rc := newRC(t, rt)
+	fake := newFake(http.StatusNoContent, "")
+	rc := newRC(t, fake)
 	_, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "GPA.1234"})
 	assertExit(t, err, 3)
 	// The structured Flag is the signal an automated caller branches on, so pin
@@ -172,22 +159,22 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	if !strings.Contains(err.Error(), "--confirm") {
 		t.Errorf("exit-3 message %q must name --confirm", err.Error())
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_dryRun_requiresConfirm_noNetwork asserts --dry-run previews offline
 // and surfaces requires:["confirm"] under --output json.
 func TestRun_dryRun_requiresConfirm_noNetwork(t *testing.T) {
-	rt := &refundRT{}
-	rc := newRC(t, rt)
+	fake := newFake(http.StatusNoContent, "")
+	rc := newRC(t, fake)
 	r, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "GPA.1234", DryRun: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("dry-run must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
@@ -209,8 +196,8 @@ func TestRun_dryRun_requiresConfirm_noNetwork(t *testing.T) {
 // TestRun_403_namesManageOrders asserts a forbidden refund maps to exit 11 and
 // the refusal names CAN_MANAGE_ORDERS (agent-resolvable).
 func TestRun_403_namesManageOrders(t *testing.T) {
-	rt := &refundRT{status: 403, body: `{"error":{"message":"The caller does not have permission"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
+	rc := newRC(t, fake)
 	_, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "GPA.1234", Confirm: true})
 	assertExit(t, err, 11)
 	if !strings.Contains(err.Error(), "CAN_MANAGE_ORDERS") {
@@ -225,8 +212,8 @@ func TestRun_403_namesManageOrders(t *testing.T) {
 // classifier stops wrapping the too-old case (the raw *api.Error would still
 // echo "3 years" and exit 30, which would silently pass a weaker assertion).
 func TestRun_tooOld_specificRefusal(t *testing.T) {
-	rt := &refundRT{status: 400, body: `{"error":{"message":"Orders older than 3 years cannot be refunded."}}`}
-	rc := newRC(t, rt)
+	fake := newFake(400, `{"error":{"message":"Orders older than 3 years cannot be refunded."}}`)
+	rc := newRC(t, fake)
 	_, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "GPA.old", Confirm: true})
 	assertExit(t, err, 30)
 	if !strings.Contains(err.Error(), "hard API limit, not a permission issue") {
@@ -237,12 +224,12 @@ func TestRun_tooOld_specificRefusal(t *testing.T) {
 // TestRun_missingOrderID_exit2_noNetwork asserts an empty order ID is CLI misuse
 // caught before any HTTP call (and before the confirm gate).
 func TestRun_missingOrderID_exit2_noNetwork(t *testing.T) {
-	rt := &refundRT{}
-	rc := newRC(t, rt)
+	fake := newFake(http.StatusNoContent, "")
+	rc := newRC(t, fake)
 	_, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "  ", Confirm: true})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 

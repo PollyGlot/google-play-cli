@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -21,29 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-type recRT struct {
-	t      *testing.T
-	mu     sync.Mutex
-	calls  []string
-	getURL string
-}
-
-func (r *recRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.getURL = req.URL.String()
-	return jsonResp(`{"recoveryActions":[{"appRecoveryId":"1","status":"RECOVERY_STATUS_ACTIVE"}]}`), nil
-}
-
-func jsonResp(body string) *http.Response {
-	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
@@ -68,14 +43,15 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 
 // TestRun_happyPath_sendsVersionCode asserts the required version param + passthrough.
 func TestRun_happyPath_sendsVersionCode(t *testing.T) {
-	rt := &recRT{t: t}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"recoveryActions":[{"appRecoveryId":"1","status":"RECOVERY_STATUS_ACTIVE"}]}`))
+	rc := newRC(t, fake)
 	r, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", VersionCode: 142})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.getURL, "versionCode=142") {
-		t.Errorf("url %q missing versionCode=142", rt.getURL)
+	calls := fake.Calls()
+	if len(calls) != 1 || !strings.Contains(calls[0].URL, "versionCode=142") {
+		t.Errorf("calls = %+v, want one GET carrying versionCode=142", calls)
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
@@ -88,14 +64,14 @@ func TestRun_happyPath_sendsVersionCode(t *testing.T) {
 
 // TestRun_missingVersionCode_exit2_noNetwork asserts --version-code is required.
 func TestRun_missingVersionCode_exit2_noNetwork(t *testing.T) {
-	rt := &recRT{t: t}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"recoveryActions":[{"appRecoveryId":"1","status":"RECOVERY_STATUS_ACTIVE"}]}`))
+	rc := newRC(t, fake)
 	_, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app"})
 	var c interface{ ExitCode() int }
 	if !errors.As(err, &c) || c.ExitCode() != 2 {
 		t.Errorf("err = %v, want exit 2", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -53,11 +52,11 @@ type scriptedRefusal struct {
 	body   string
 }
 
-func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *subsRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+	if resp, ok := testkit.TokenResponse(req); ok {
+		return resp, nil
 	}
 	key := req.Method + " " + req.URL.Path
 	r.calls = append(r.calls, key)
@@ -71,7 +70,7 @@ func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	for suffix, ref := range r.refuse {
 		if strings.HasPrefix(suffix, req.Method+" ") && strings.HasSuffix(key, strings.TrimPrefix(suffix, req.Method+" ")) {
-			return jsonResp(ref.status, ref.body), nil
+			return testkit.Response(ref.status, ref.body), nil
 		}
 	}
 	if req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/subscriptions/-/basePlans/-/offers") {
@@ -79,16 +78,16 @@ func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if body == "" {
 			body = `{}`
 		}
-		return jsonResp(200, body), nil
+		return testkit.Response(http.StatusOK, body), nil
 	}
 	if req.Method == http.MethodGet {
 		body := r.liveBody
 		if body == "" {
 			body = liveCatalog
 		}
-		return jsonResp(200, body), nil
+		return testkit.Response(http.StatusOK, body), nil
 	}
-	return jsonResp(200, `{}`), nil
+	return testkit.Response(http.StatusOK, `{}`), nil
 }
 
 func (r *subsRT) saw(method, fragment string) bool {
@@ -114,10 +113,6 @@ func (r *subsRT) mutations() []string {
 	return m
 }
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
-
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -127,13 +122,13 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
+func newRC(t *testing.T, rt *subsRT) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rt.serve)})
 	stderr := &bytes.Buffer{}
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: stderr}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa

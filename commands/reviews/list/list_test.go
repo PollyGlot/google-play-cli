@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -22,7 +21,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// listRT is a RoundTripper covering both the OAuth2 /token exchange and the
+// listRT is a transport covering both the OAuth2 /token exchange and the
 // reviews.list calls a `reviews list` invocation makes. It serves the canned
 // pages in order; reviewCode/errBody let a test force an error status on the
 // reviews call (403, 404, ...).
@@ -38,41 +37,31 @@ type listRT struct {
 	n         int
 }
 
-func (r *listRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *listRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.tokenHits++
 		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 
 	if strings.HasSuffix(req.URL.Path, "/reviews") {
 		if r.reviewCode != 0 {
-			return jsonResp(r.reviewCode, r.errBody), nil
+			return testkit.Response(r.reviewCode, r.errBody), nil
 		}
 		body := "{}"
 		if r.n < len(r.pages) {
 			body = r.pages[r.n]
 		}
 		r.n++
-		return jsonResp(200, body), nil
+		return testkit.Response(http.StatusOK, body), nil
 	}
 	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 	return nil, nil
-}
-
-func jsonResp(code int, body string) *http.Response {
-	h := make(http.Header)
-	h.Set("Content-Type", "application/json")
-	return &http.Response{
-		StatusCode: code,
-		Body:       io.NopCloser(strings.NewReader(body)),
-		Header:     h,
-	}
 }
 
 // signedSAJSON builds a syntactically valid service_account.json with a
@@ -145,7 +134,7 @@ func ids(p Payload) []string {
 func TestRun_starsFilter_keepsOnlyMatching(t *testing.T) {
 	// twoReviewsBody: r1=5★, r2=1★.
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Stars: "1"})
 	if err != nil {
@@ -168,7 +157,7 @@ func TestRun_limitCapsAfterFilter(t *testing.T) {
 	// stars=1 keeps r2 and r4 (in order); limit=1 then caps to r2: proving
 	// the cap is applied AFTER the filter, not against the raw page.
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Stars: "1", Limit: 1})
 	if err != nil {
@@ -181,7 +170,7 @@ func TestRun_limitCapsAfterFilter(t *testing.T) {
 
 func TestRun_limitZeroMeansNoCap(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Limit: 0})
 	if err != nil {
@@ -201,7 +190,7 @@ func TestRun_limitZeroMeansNoCap(t *testing.T) {
 // exactly the capped rows and nothing about the warning.
 func TestRun_limitTruncation_warnsOnStderr(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
-	rc, stdout, stderr := newRC(t, rt)
+	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Limit: 2})
 	if err != nil {
@@ -225,7 +214,7 @@ func TestRun_limitTruncation_warnsOnStderr(t *testing.T) {
 // the result set is not a truncation, and warning there would be noise.
 func TestRun_limitNotReached_doesNotWarn(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
-	rc, _, stderr := newRC(t, rt)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	if _, err := Run(rc, Input{Package: "com.example.app", Limit: 10}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -237,7 +226,7 @@ func TestRun_limitNotReached_doesNotWarn(t *testing.T) {
 
 func TestRun_negativeLimit_exit2(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", Limit: -3})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -247,7 +236,7 @@ func TestRun_negativeLimit_exit2(t *testing.T) {
 
 func TestPayload_Table_defaultColumns_summaryFirstLine(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app"})
 	if err != nil {
@@ -280,7 +269,7 @@ func TestPayload_Table_defaultColumns_summaryFirstLine(t *testing.T) {
 
 func TestRun_columnsOverride_dropsOthers(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Columns: "stars,reviewId"})
 	if err != nil {
@@ -303,7 +292,7 @@ func TestRun_columnsOverride_dropsOthers(t *testing.T) {
 
 func TestRun_unknownColumn_exit2(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", Columns: "stars,bogus"})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -313,7 +302,7 @@ func TestRun_unknownColumn_exit2(t *testing.T) {
 
 func TestPayload_Markdown_isAGFMTable(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app"})
 	if err != nil {
@@ -363,7 +352,7 @@ func TestSummary(t *testing.T) {
 func TestPayload_JSON_reflectsFilteredSet_verbatim(t *testing.T) {
 	// r1=5★, r2=1★; --stars 1 keeps only r2.
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Stars: "1"})
 	if err != nil {
@@ -404,7 +393,7 @@ func TestPayload_JSON_reflectsFilteredSet_verbatim(t *testing.T) {
 
 func TestRun_forbidden_exit11_withReplyHint(t *testing.T) {
 	rt := &listRT{t: t, reviewCode: 403, errBody: `{"error":{"code":403,"message":"caller lacks permission"}}`}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 11 {
@@ -415,16 +404,14 @@ func TestRun_forbidden_exit11_withReplyHint(t *testing.T) {
 	}
 }
 
-// timeoutRT serves the /token exchange instantly but blocks the reviews.list
-// call until the request context is canceled: standing in for a hung upstream
-// connection. A well-behaved transport observes ctx cancellation, which is how
-// the kernel-applied deadline (the global --timeout / 60s default) interrupts
-// the request.
-type timeoutRT struct{}
-
-func (timeoutRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+// hangUntilCanceled serves the /token exchange instantly but blocks the
+// reviews.list call until the request context is canceled: standing in for a
+// hung upstream connection. A well-behaved transport observes ctx
+// cancellation, which is how the kernel-applied deadline (the global --timeout
+// / 60s default) interrupts the request.
+func hangUntilCanceled(req *http.Request) (*http.Response, error) {
+	if resp, ok := testkit.TokenResponse(req); ok {
+		return resp, nil
 	}
 	<-req.Context().Done()
 	return nil, req.Context().Err()
@@ -440,7 +427,7 @@ func TestRun_timeout_mapsToExit50(t *testing.T) {
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: timeoutRT{}})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(hangUntilCanceled)})
 	boot := kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
 	rc := kernel.NewForTest(ctx, boot, kernel.Inputs{Format: output.FormatJSON, Timeout: 150 * time.Millisecond})
 	rc.Account = sa
@@ -465,15 +452,15 @@ type retryRT struct {
 	reviewAttempts int
 }
 
-func (r *retryRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+func (r *retryRT) serve(req *http.Request) (*http.Response, error) {
+	if resp, ok := testkit.TokenResponse(req); ok {
+		return resp, nil
 	}
 	r.reviewAttempts++
 	if r.reviewAttempts == 1 {
-		return jsonResp(500, `{"error":{"code":500,"message":"backend hiccup"}}`), nil
+		return testkit.Response(http.StatusInternalServerError, `{"error":{"code":500,"message":"backend hiccup"}}`), nil
 	}
-	return jsonResp(200, r.body), nil
+	return testkit.Response(http.StatusOK, r.body), nil
 }
 
 // TestRun_retry_recoversFrom5xx drives `reviews list` with --retry 1 against a
@@ -486,7 +473,7 @@ func TestRun_retry_recoversFrom5xx(t *testing.T) {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
 	rt := &retryRT{body: twoReviewsBody}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rt.serve)})
 	boot := kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
 	rc := kernel.NewForTest(ctx, boot, kernel.Inputs{Format: output.FormatJSON, Retry: 1})
 	rc.Account = sa
@@ -505,7 +492,7 @@ func TestRun_retry_recoversFrom5xx(t *testing.T) {
 
 func TestRun_unknownPackage_exit30(t *testing.T) {
 	rt := &listRT{t: t, reviewCode: 404, errBody: `{"error":{"code":404,"message":"not found"}}`}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.nope"})
 	if code := exitCodeOf(t, err); code != 30 {
@@ -538,7 +525,7 @@ func TestRun_hostileReviewText_tableSanitized_jsonByteFaithful(t *testing.T) {
 		t.Fatalf("marshal hostile body: %v", err)
 	}
 	rt := &listRT{t: t, pages: []string{string(raw)}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app"})
 	if err != nil {
@@ -588,7 +575,7 @@ func TestRun_hostileReviewText_tableSanitized_jsonByteFaithful(t *testing.T) {
 
 func TestRun_emptyResult_isNotAnError_butStillWarns(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{`{"reviews":[]}`}}
-	rc, _, stderr := newRC(t, rt)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app"})
 	if err != nil {
@@ -606,7 +593,7 @@ func TestRun_invalidStars_exit2(t *testing.T) {
 	for _, spec := range []string{"0", "6", "5-1", "abc"} {
 		t.Run(spec, func(t *testing.T) {
 			rt := &listRT{t: t, pages: []string{twoReviewsBody}}
-			rc, _, _ := newRC(t, rt)
+			rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 			_, err := Run(rc, Input{Package: "com.example.app", Stars: spec})
 			if code := exitCodeOf(t, err); code != 2 {
@@ -622,7 +609,7 @@ func TestRun_invalidStars_exit2(t *testing.T) {
 
 func TestRun_happyPath_warnsAndReturnsPayload(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
-	rc, _, stderr := newRC(t, rt)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app"})
 	if err != nil {

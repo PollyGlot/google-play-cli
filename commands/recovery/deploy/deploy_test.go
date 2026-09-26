@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -21,29 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-type rt struct {
-	t       *testing.T
-	mu      sync.Mutex
-	calls   []string
-	postURL string
-}
-
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.postURL = req.URL.String()
-	return jsonResp(`{}`), nil
-}
-
-func jsonResp(body string) *http.Response {
-	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
 
 func saJSON(t *testing.T) []byte {
 	t.Helper()
@@ -81,8 +56,8 @@ func exitOf(t *testing.T, err error) int {
 // TestRun_missingConfirm_exit3_noNetwork asserts the destructive gate fires
 // before any HTTP and is exit 3 (deterministically resolvable).
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
-	r := &rt{t: t}
-	rc := newRC(t, r)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	_, err := deploycmd.Run(rc, deploycmd.Input{Package: "com.example.app", ID: "555"})
 	if got := exitOf(t, err); got != 3 {
 		t.Errorf("exit = %d, want 3; err=%v", got, err)
@@ -91,24 +66,24 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	if errors.As(err, &sf) && !strings.Contains(err.Error(), "--confirm") {
 		t.Errorf("error %q should name --confirm", err.Error())
 	}
-	if len(r.calls) != 0 {
-		t.Errorf("must not reach the network without --confirm; calls=%v", r.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network without --confirm; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_dryRun_noNetwork_requiresConfirm asserts --dry-run rehearses offline
 // and the JSON view advertises requires:["confirm"].
 func TestRun_dryRun_noNetwork_requiresConfirm(t *testing.T) {
-	r := &rt{t: t}
-	rc := newRC(t, r)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 	res, err := deploycmd.Run(rc, deploycmd.Input{Package: "com.example.app", ID: "555", DryRun: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(r.calls) != 0 {
-		t.Errorf("dry-run must make no network call; calls=%v", r.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("dry-run must make no network call; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run emitted a ✓; stderr=%q", stderr.String())
@@ -130,16 +105,17 @@ func TestRun_dryRun_noNetwork_requiresConfirm(t *testing.T) {
 // TestRun_confirmed_postsDeploy_andPassesThrough asserts the confirmed path
 // POSTs :deploy, emits ✓, and passes the empty {} through verbatim.
 func TestRun_confirmed_postsDeploy_andPassesThrough(t *testing.T) {
-	r := &rt{t: t}
-	rc := newRC(t, r)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 	res, err := deploycmd.Run(rc, deploycmd.Input{Package: "com.example.app", ID: "555", Confirm: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.HasSuffix(r.postURL, "/appRecoveries/555:deploy") {
-		t.Errorf("url %q should POST :deploy", r.postURL)
+	calls := fake.Calls()
+	if len(calls) != 1 || calls[0].Method != http.MethodPost || !strings.HasSuffix(calls[0].URL, "/appRecoveries/555:deploy") {
+		t.Fatalf("calls = %+v, want one POST :deploy", calls)
 	}
 	if !strings.HasPrefix(stderr.String(), "✓ ") || !strings.Contains(stderr.String(), "555") {
 		t.Errorf("stderr missing ✓ with id:\n%s", stderr.String())

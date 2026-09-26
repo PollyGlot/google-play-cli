@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -37,12 +36,14 @@ type queryRT struct {
 	tokenScopes string
 }
 
-func (r *queryRT) RoundTrip(req *http.Request) (*http.Response, error) {
+// serve answers the token hop itself rather than through the Fake, because
+// the test asserts the scope claim carried by that exchange.
+func (r *queryRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.tokenScopes = scopeClaim(r.t, req)
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	r.queryURL = req.URL.String()
 	b := testkit.ReadBody(req)
@@ -51,13 +52,7 @@ func (r *queryRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	if code == 0 {
 		code = 200
 	}
-	return jsonResp(code, r.respBody), nil
-}
-
-func jsonResp(code int, body string) *http.Response {
-	h := make(http.Header)
-	h.Set("Content-Type", "application/json")
-	return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)), Header: h}
+	return testkit.Response(code, r.respBody), nil
 }
 
 func scopeClaim(t *testing.T, req *http.Request) string {
@@ -122,7 +117,7 @@ const twoRowBody = `{"rows":[
 
 func TestRun_crashrate_endToEnd(t *testing.T) {
 	rt := &queryRT{t: t, respBody: twoRowBody}
-	rc, _, stderr := newRC(t, rt)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{MetricSet: "crashrate", Package: "com.example.app"})
 	if err != nil {
@@ -178,7 +173,7 @@ func TestRun_everyMetricSetReachable(t *testing.T) {
 	for _, ms := range vitals.MetricSets() {
 		t.Run(ms.Name, func(t *testing.T) {
 			rt := &queryRT{t: t, respBody: `{"rows":[]}`}
-			rc, _, _ := newRC(t, rt)
+			rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 			if _, err := Run(rc, Input{MetricSet: ms.Name, Package: "com.example.app"}); err != nil {
 				t.Fatalf("Run(%s): %v", ms.Name, err)
 			}
@@ -192,7 +187,7 @@ func TestRun_everyMetricSetReachable(t *testing.T) {
 
 func TestRun_emptyWindow_warnsNotZero(t *testing.T) {
 	rt := &queryRT{t: t, respBody: `{"rows":[]}`}
-	rc, _, stderr := newRC(t, rt)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 	if _, err := Run(rc, Input{MetricSet: "crashrate", Package: "com.example.app"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -203,7 +198,7 @@ func TestRun_emptyWindow_warnsNotZero(t *testing.T) {
 
 func TestRun_unknownMetricSet_isUsageError(t *testing.T) {
 	rt := &queryRT{t: t, respBody: `{}`}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 	_, err := Run(rc, Input{MetricSet: "bogusrate", Package: "com.example.app"})
 	if code := exitCode(t, err); code != 2 {
 		t.Errorf("exit = %d, want 2 (usage)", code)
@@ -212,7 +207,7 @@ func TestRun_unknownMetricSet_isUsageError(t *testing.T) {
 
 func TestRun_unknownMetric_isUsageError(t *testing.T) {
 	rt := &queryRT{t: t, respBody: `{}`}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 	_, err := Run(rc, Input{MetricSet: "crashrate", Package: "com.example.app", Metrics: []string{"madeUpMetric"}})
 	if code := exitCode(t, err); code != 2 {
 		t.Errorf("exit = %d, want 2 (usage)", code)
@@ -221,7 +216,7 @@ func TestRun_unknownMetric_isUsageError(t *testing.T) {
 
 func TestRun_unknownPeriod_isUsageError(t *testing.T) {
 	rt := &queryRT{t: t, respBody: `{}`}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 	_, err := Run(rc, Input{MetricSet: "crashrate", Package: "com.example.app", Period: "WEEKLY"})
 	if code := exitCode(t, err); code != 2 {
 		t.Errorf("exit = %d, want 2 (usage)", code)
@@ -236,7 +231,7 @@ func TestRun_memorySets_hourlyRejectedOffline(t *testing.T) {
 		for _, period := range []string{"HOURLY", "FULL_RANGE"} {
 			t.Run(name+"/"+period, func(t *testing.T) {
 				rt := &queryRT{t: t, respBody: `{"rows":[]}`}
-				rc, _, _ := newRC(t, rt)
+				rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 				_, err := Run(rc, Input{MetricSet: name, Package: "com.example.app", Period: period})
 				if code := exitCode(t, err); code != 2 {
 					t.Errorf("exit = %d, want 2 (usage)", code)
@@ -263,7 +258,7 @@ func TestRun_memorySets_dailyQueriesTheirPercentiles(t *testing.T) {
 	for name, metric := range cases {
 		t.Run(name, func(t *testing.T) {
 			rt := &queryRT{t: t, respBody: `{"rows":[]}`}
-			rc, _, _ := newRC(t, rt)
+			rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 			in := Input{MetricSet: name, Package: "com.example.app", Metrics: []string{metric}, Dimensions: []string{"deviceRamBucket"}}
 			if _, err := Run(rc, in); err != nil {
 				t.Fatalf("Run(%s): %v", name, err)

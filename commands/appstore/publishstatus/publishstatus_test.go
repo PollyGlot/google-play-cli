@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -25,45 +24,27 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// testRoundTripper answers the /token exchange and the
-// updateAppStoreHostedAppPublishStatus call, recording the request shape.
-// status/body are configurable so the refusal paths can return a 403/404.
-// Nothing here touches the network.
-type testRoundTripper struct {
-	mu     sync.Mutex
-	calls  []string
-	apiURL string
-	method string
-	body   []byte
-	status int
-	resp   string
+// newFake answers every updateAppStoreHostedAppPublishStatus call with status
+// and body; a zero status serves a 200 carrying body, or {} when body is
+// empty. Nothing here touches the network.
+func newFake(status int, body string) *testkit.Fake {
+	if status == 0 {
+		status = http.StatusOK
+		if body == "" {
+			body = `{}`
+		}
+	}
+	return testkit.NewFake(testkit.Any(status, body))
 }
 
-func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+// last is the most recent API call, failing the test when none was made.
+func last(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.apiURL = req.URL.String()
-	r.method = req.Method
-	if req.Body != nil {
-		r.body = testkit.ReadBody(req)
-	}
-	if r.status != 0 {
-		return jsonResp(r.status, r.resp), nil
-	}
-	resp := r.resp
-	if resp == "" {
-		resp = `{}`
-	}
-	return jsonResp(200, resp), nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+	return calls[len(calls)-1]
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -109,22 +90,23 @@ func TestRun_requestShape(t *testing.T) {
 		"unpublished": appstore.PublishStateUnpublished,
 	} {
 		t.Run(word, func(t *testing.T) {
-			rt := &testRoundTripper{}
-			rc := newRC(t, rt)
+			fake := newFake(0, "")
+			rc := newRC(t, fake)
 
 			if _, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", Package: "com.example.app", State: word}); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-			if rt.method != http.MethodPost {
-				t.Errorf("method = %q, want POST", rt.method)
+			apiCall := last(t, fake)
+			if apiCall.Method != http.MethodPost {
+				t.Errorf("method = %q, want POST", apiCall.Method)
 			}
-			if !strings.HasSuffix(rt.apiURL, "/appstore/com.example.store/apps/com.example.app:updateAppStoreHostedAppPublishStatus") {
-				t.Errorf("url %q is not the updateAppStoreHostedAppPublishStatus endpoint", rt.apiURL)
+			if !strings.HasSuffix(apiCall.URL, "/appstore/com.example.store/apps/com.example.app:updateAppStoreHostedAppPublishStatus") {
+				t.Errorf("url %q is not the updateAppStoreHostedAppPublishStatus endpoint", apiCall.URL)
 			}
-			if strings.Contains(rt.apiURL, "/edits/") {
-				t.Errorf("url %q must not open an Edit", rt.apiURL)
+			if strings.Contains(apiCall.URL, "/edits/") {
+				t.Errorf("url %q must not open an Edit", apiCall.URL)
 			}
-			if got := sentState(t, rt.body); got != want {
+			if got := sentState(t, apiCall.Body); got != want {
 				t.Errorf("body publishState = %q, want %q", got, want)
 			}
 		})
@@ -136,13 +118,13 @@ func TestRun_requestShape(t *testing.T) {
 // while the wire still carries the exact API enum.
 func TestRun_stateCaseInsensitive(t *testing.T) {
 	for _, word := range []string{"UNPUBLISHED", "Unpublished", "  unPUBLISHed  "} {
-		rt := &testRoundTripper{}
-		rc := newRC(t, rt)
+		fake := newFake(0, "")
+		rc := newRC(t, fake)
 
 		if _, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", Package: "com.example.app", State: word}); err != nil {
 			t.Fatalf("Run(%q): %v", word, err)
 		}
-		if got := sentState(t, rt.body); got != appstore.PublishStateUnpublished {
+		if got := sentState(t, last(t, fake).Body); got != appstore.PublishStateUnpublished {
 			t.Errorf("Run(%q): body publishState = %q, want %q", word, got, appstore.PublishStateUnpublished)
 		}
 	}
@@ -153,8 +135,8 @@ func TestRun_stateCaseInsensitive(t *testing.T) {
 // never a server-side 400.
 func TestRun_invalidState_exit2(t *testing.T) {
 	for _, word := range []string{"draft", "", "APP_STORE_APP_PUBLISH_STATE_UNSPECIFIED"} {
-		rt := &testRoundTripper{}
-		rc := newRC(t, rt)
+		fake := newFake(0, "")
+		rc := newRC(t, fake)
 
 		_, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", Package: "com.example.app", State: word})
 		assertExit(t, err, 2)
@@ -163,8 +145,8 @@ func TestRun_invalidState_exit2(t *testing.T) {
 				t.Errorf("Run(%q): error %q should enumerate %q", word, err, want)
 			}
 		}
-		if len(rt.calls) != 0 {
-			t.Errorf("Run(%q): validation must fail before any HTTP call, got %v", word, rt.calls)
+		if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+			t.Errorf("Run(%q): validation must fail before any HTTP call, got %v", word, fake.Calls())
 		}
 	}
 }
@@ -172,32 +154,34 @@ func TestRun_invalidState_exit2(t *testing.T) {
 // TestRun_storePackagePathEscaped asserts both addressing values are
 // path-escaped on the way into the URL.
 func TestRun_storePackagePathEscaped(t *testing.T) {
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	if _, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example store", Package: "com.example app", State: "published"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if strings.Contains(rt.apiURL, " ") {
-		t.Errorf("url %q did not escape the package names", rt.apiURL)
+	apiCall := last(t, fake)
+	if strings.Contains(apiCall.URL, " ") {
+		t.Errorf("url %q did not escape the package names", apiCall.URL)
 	}
-	if !strings.Contains(rt.apiURL, "com.example%20store") || !strings.Contains(rt.apiURL, "com.example%20app") {
-		t.Errorf("url %q missing the escaped package names", rt.apiURL)
+	if !strings.Contains(apiCall.URL, "com.example%20store") || !strings.Contains(apiCall.URL, "com.example%20app") {
+		t.Errorf("url %q missing the escaped package names", apiCall.URL)
 	}
 }
 
 // TestRun_packageDefaultsToProjectPin asserts an omitted --package falls back to
 // the repo's .gplay/config.json pin, like every other package-axis command.
 func TestRun_packageDefaultsToProjectPin(t *testing.T) {
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 	rc.Resolved = &config.Resolved{Pin: "com.pinned.app"}
 
 	if _, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", State: "published"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/apps/com.pinned.app:") {
-		t.Errorf("url %q should target the project pin com.pinned.app", rt.apiURL)
+	apiCall := last(t, fake)
+	if !strings.Contains(apiCall.URL, "/apps/com.pinned.app:") {
+		t.Errorf("url %q should target the project pin com.pinned.app", apiCall.URL)
 	}
 }
 
@@ -205,8 +189,8 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 // (ADR-0003), including fields the empty response schema does not model.
 func TestRun_jsonPassthrough(t *testing.T) {
 	const body = `{"unmodeledFutureField":"kept"}`
-	rt := &testRoundTripper{resp: body}
-	rc := newRC(t, rt)
+	fake := newFake(0, body)
+	rc := newRC(t, fake)
 
 	r, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", Package: "com.example.app", State: "unpublished"})
 	if err != nil {
@@ -225,8 +209,8 @@ func TestRun_jsonPassthrough(t *testing.T) {
 // JSON: the documented ADR-0003 exception (as in `appstore create`), never zero
 // bytes on the CI default format, and that it names the applied state.
 func TestRun_jsonEmptyBodyFallback(t *testing.T) {
-	rt := &testRoundTripper{status: 200, resp: ""}
-	rc := newRC(t, rt)
+	fake := newFake(200, "")
+	rc := newRC(t, fake)
 
 	r, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", Package: "com.example.app", State: "unpublished"})
 	if err != nil {
@@ -254,8 +238,8 @@ func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 // and the applied enum: the response carries no fields, so the echo is the
 // whole view.
 func TestRun_humanViews(t *testing.T) {
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	r, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", Package: "com.example.app", State: "unpublished"})
 	if err != nil {
@@ -283,15 +267,15 @@ func TestRun_humanViews(t *testing.T) {
 // (empty) machine-readable requires array: empty because the flip is
 // reversible and gated by no safety flag.
 func TestRun_dryRun_noHTTP(t *testing.T) {
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	r, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", Package: "com.example.app", State: "unpublished", DryRun: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("--dry-run must not perform any HTTP call, got %v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("--dry-run must not perform any HTTP call, got %v", fake.Calls())
 	}
 
 	var table bytes.Buffer
@@ -330,13 +314,13 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 // unresolvable target: the rehearsal previews a real call, not a hypothetical.
 func TestRun_dryRun_validatesFirst(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	_, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{Package: "com.example.app", State: "published", DryRun: true})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("validation must fail before any HTTP call, got %v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("validation must fail before any HTTP call, got %v", fake.Calls())
 	}
 }
 
@@ -345,16 +329,16 @@ func TestRun_dryRun_validatesFirst(t *testing.T) {
 // project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	_, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{Package: "com.example.app", State: "published"})
 	assertExit(t, err, 2)
 	if !strings.Contains(err.Error(), "store-package") {
 		t.Errorf("error %q should name the --store-package flag", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("validation must fail before any HTTP call, got %v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("validation must fail before any HTTP call, got %v", fake.Calls())
 	}
 }
 
@@ -363,42 +347,44 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 // absent, so a CI job exports the store identity once for the whole namespace.
 func TestRun_storePackageEnvCascade(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	if _, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{Package: "com.example.app", State: "published"}); err != nil {
 		t.Fatalf("Run with env fallback: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/appstore/com.env.store/") {
-		t.Errorf("url %q should carry the env-supplied app store package name", rt.apiURL)
+	apiCall := last(t, fake)
+	if !strings.Contains(apiCall.URL, "/appstore/com.env.store/") {
+		t.Errorf("url %q should carry the env-supplied app store package name", apiCall.URL)
 	}
 
 	if _, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.flag.store", Package: "com.example.app", State: "published"}); err != nil {
 		t.Fatalf("Run with flag over env: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/appstore/com.flag.store/") {
-		t.Errorf("url %q: the --store-package flag must win over the env var", rt.apiURL)
+	apiCall = last(t, fake)
+	if !strings.Contains(apiCall.URL, "/appstore/com.flag.store/") {
+		t.Errorf("url %q: the --store-package flag must win over the env var", apiCall.URL)
 	}
 }
 
 // TestRun_missingPackage_exit2 asserts an unresolvable hosted app package is CLI
 // misuse, before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	_, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", State: "published"})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("validation must fail before any HTTP call, got %v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("validation must fail before any HTTP call, got %v", fake.Calls())
 	}
 }
 
 // TestRun_403_namesEnrollment asserts a forbidden flip surfaces as an
 // agent-resolvable refusal naming the app store, at the authz exit code.
 func TestRun_403_namesEnrollment(t *testing.T) {
-	rt := &testRoundTripper{status: 403, resp: `{"error":{"message":"The caller does not have permission"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
+	rc := newRC(t, fake)
 
 	_, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.example.store", Package: "com.example.app", State: "unpublished"})
 	assertExit(t, err, 11)
@@ -411,8 +397,8 @@ func TestRun_403_namesEnrollment(t *testing.T) {
 // record never created) surfaces a hint pointing at --store-package, at the
 // API-misuse exit code.
 func TestRun_404_namesStorePackage(t *testing.T) {
-	rt := &testRoundTripper{status: 404, resp: `{"error":{"message":"not found"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(404, `{"error":{"message":"not found"}}`)
+	rc := newRC(t, fake)
 
 	_, err := publishstatuscmd.Run(rc, publishstatuscmd.Input{StorePackage: "com.unknown.store", Package: "com.example.app", State: "published"})
 	assertExit(t, err, 30)

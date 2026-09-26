@@ -22,7 +22,7 @@ type deadlineRecorder struct {
 	budget map[string]time.Duration // 0 = no deadline
 }
 
-func (d *deadlineRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+func (d *deadlineRecorder) serve(req *http.Request) (*http.Response, error) {
 	var left time.Duration
 	if dl, ok := req.Context().Deadline(); ok {
 		left = time.Until(dl)
@@ -68,7 +68,7 @@ func TestUploadClient_boundsControlPlaneButNotMedia(t *testing.T) {
 	}
 	for _, retry := range []int{0, 2} {
 		rec := &deadlineRecorder{budget: map[string]time.Duration{}}
-		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rec})
+		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rec.serve)})
 		rc := kernel.NewForTest(ctx, newBoot(t), kernel.Inputs{Retry: retry})
 		rc.Account = signedAccount(t)
 		hc, err := rc.UploadClient()
@@ -109,7 +109,7 @@ func TestUploadClient_boundsControlPlaneButNotMedia(t *testing.T) {
 // the media transfer included.
 func TestUploadClient_explicitTimeoutBoundsMedia(t *testing.T) {
 	rec := &deadlineRecorder{budget: map[string]time.Duration{}}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rec})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rec.serve)})
 	rc := kernel.NewForTest(ctx, newBoot(t), kernel.Inputs{Timeout: 7 * time.Second})
 	rc.Account = signedAccount(t)
 	hc, err := rc.UploadClient()

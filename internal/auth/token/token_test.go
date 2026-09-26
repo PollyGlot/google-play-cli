@@ -1,16 +1,13 @@
 package token_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
-	"strings"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -19,15 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-// roundTripperFunc is the canonical pattern documented in CLAUDE.md: a
-// function type that implements http.RoundTripper, so each test wires up
-// the response shape it needs without a wrapper interface.
-type roundTripperFunc func(req *http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
 
 // makeTestSA builds a valid *ServiceAccount with a real RSA
 // private key so JWTConfigFromJSON can actually sign the token-exchange JWT.
@@ -66,7 +54,7 @@ func x509Marshal(t *testing.T, key *rsa.PrivateKey) []byte {
 	return b
 }
 
-func ctxWithRT(t *testing.T, fn roundTripperFunc) context.Context {
+func ctxWithRT(t *testing.T, fn testkit.RoundTripFunc) context.Context {
 	t.Helper()
 	httpClient := &http.Client{Transport: fn}
 	return context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
@@ -77,15 +65,12 @@ func TestSource_mintsToken_on200(t *testing.T) {
 	called := false
 	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
 		called = true
-		if req.URL.String() != "https://oauth2.googleapis.com/token" {
+		resp, ok := testkit.TokenResponse(req)
+		if !ok {
 			t.Errorf("RoundTrip URL = %q", req.URL)
+			return nil, errors.New("not the token endpoint")
 		}
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
+		return resp, nil
 	})
 
 	ts, err := token.Source(ctx, sa)
@@ -99,20 +84,15 @@ func TestSource_mintsToken_on200(t *testing.T) {
 	if !called {
 		t.Error("token endpoint was not called")
 	}
-	if tok.AccessToken != "abc.def.ghi" {
-		t.Errorf("AccessToken = %q, want %q", tok.AccessToken, "abc.def.ghi")
+	if tok.AccessToken != "a.b.c" {
+		t.Errorf("AccessToken = %q, want %q", tok.AccessToken, "a.b.c")
 	}
 }
 
 func TestSource_returnsAuthError_on401(t *testing.T) {
 	sa := makeTestSA(t)
 	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
-		body := `{"error":"invalid_grant","error_description":"signature mismatch"}`
-		return &http.Response{
-			StatusCode: 401,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(body)),
-		}, nil
+		return testkit.Response(http.StatusUnauthorized, `{"error":"invalid_grant","error_description":"signature mismatch"}`), nil
 	})
 
 	ts, err := token.Source(ctx, sa)
@@ -156,11 +136,7 @@ func TestSource_classifiesTokenRefusals(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: tc.status,
-					Header:     http.Header{"Content-Type": []string{"application/json"}},
-					Body:       io.NopCloser(strings.NewReader(tc.body)),
-				}, nil
+				return testkit.Response(tc.status, tc.body), nil
 			})
 			ts, err := token.Source(ctx, sa)
 			if err != nil {

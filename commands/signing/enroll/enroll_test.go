@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -37,12 +36,12 @@ type rt struct {
 	resp   string
 }
 
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *rt) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.calls = append(r.calls, "POST /token")
-		return jsonResp(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 	r.url = req.URL.String()
@@ -54,11 +53,7 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 	if body == "" {
 		body = enrollBody
 	}
-	return jsonResp(body), nil
-}
-
-func jsonResp(body string) *http.Response {
-	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+	return testkit.Response(http.StatusOK, body), nil
 }
 
 func saJSON(t *testing.T) []byte {
@@ -122,7 +117,7 @@ func render(t *testing.T, r output.Renderable, format output.Format) string {
 // without --confirm the command refuses (exit 3) before touching the network.
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	r := &rt{}
-	rc, _ := newRC(t, r, output.FormatJSON)
+	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
 	_, err := enrollcmd.Run(rc, enrollcmd.Input{Package: "com.example.app", KmsKey: "projects/p/cryptoKeyVersions/1"})
 	if got := exitCode(t, err); got != 3 {
 		t.Errorf("exit = %d, want 3", got)
@@ -139,7 +134,7 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 // reports the gate through the ADR-0017 `requires` array.
 func TestRun_dryRun_previewsWithoutHTTP(t *testing.T) {
 	r := &rt{}
-	rc, _ := newRC(t, r, output.FormatJSON)
+	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
 	got, err := enrollcmd.Run(rc, enrollcmd.Input{Package: "com.example.app", KmsKey: "k", DryRun: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -159,7 +154,7 @@ func TestRun_dryRun_previewsWithoutHTTP(t *testing.T) {
 // and the verbatim JSON pass-through (ADR-0003).
 func TestRun_existingApp_postsEnrollExistingApp(t *testing.T) {
 	r := &rt{}
-	rc, _ := newRC(t, r, output.FormatJSON)
+	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
 	got, err := enrollcmd.Run(rc, enrollcmd.Input{Package: "com.example.app", KmsKey: "projects/p/cryptoKeyVersions/1", Confirm: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -194,7 +189,7 @@ func TestRun_existingApp_postsEnrollExistingApp(t *testing.T) {
 // the KMS key AND the base64 of the PEM file's bytes.
 func TestRun_newApp_postsEnrollNewApp_base64Cert(t *testing.T) {
 	r := &rt{}
-	rc, _ := newRC(t, r, output.FormatJSON)
+	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
 	certPath := writeFile(t, "kms.pem", certPEM(t))
 	uploadPath := writeFile(t, "upload.pem", certPEM(t)+certPEM(t))
 	_, err := enrollcmd.Run(rc, enrollcmd.Input{
@@ -247,7 +242,7 @@ func TestRun_flagCombinations_areUsageErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &rt{}
-			rc, _ := newRC(t, r, output.FormatJSON)
+			rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
 			_, err := enrollcmd.Run(rc, tc.in)
 			if got := exitCode(t, err); got != 2 {
 				t.Errorf("exit = %d, want 2 (%v)", got, err)
@@ -266,7 +261,7 @@ func TestRun_flagCombinations_areUsageErrors(t *testing.T) {
 // caught locally rather than as an opaque 400.
 func TestRun_nonPEMCert_isUsageError(t *testing.T) {
 	r := &rt{}
-	rc, _ := newRC(t, r, output.FormatJSON)
+	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
 	bad := writeFile(t, "cert.der", "not a pem file")
 	_, err := enrollcmd.Run(rc, enrollcmd.Input{Package: "p", KmsKey: "k", NewApp: true, KmsCert: bad, Confirm: true})
 	if got := exitCode(t, err); got != 2 {
@@ -290,7 +285,7 @@ func TestRun_privateKeyOrServiceAccountAsCert_refusedEvenInDryRun(t *testing.T) 
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := &rt{}
-			rc, _ := newRC(t, r, output.FormatJSON)
+			rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
 			_, err := enrollcmd.Run(rc, enrollcmd.Input{Package: "p", KmsKey: "k", UploadCert: writeFile(t, name, content), DryRun: true})
 			if got := exitCode(t, err); got != 2 {
 				t.Errorf("exit = %d, want 2 (%v)", got, err)
@@ -306,7 +301,7 @@ func TestRun_privateKeyOrServiceAccountAsCert_refusedEvenInDryRun(t *testing.T) 
 // returned hashes, one row per certificate the API actually sent.
 func TestRun_tablePrintsCertificateHashes(t *testing.T) {
 	r := &rt{}
-	rc, _ := newRC(t, r, output.FormatTable)
+	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatTable)
 	got, err := enrollcmd.Run(rc, enrollcmd.Input{Package: "com.example.app", KmsKey: "k", Confirm: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -323,7 +318,7 @@ func TestRun_tablePrintsCertificateHashes(t *testing.T) {
 // the API did not return.
 func TestRun_noUploadCertificate_omitsTheRow(t *testing.T) {
 	r := &rt{resp: `{"signingCertificate":{"certificateHashSha256":"EE:FF"}}`}
-	rc, _ := newRC(t, r, output.FormatTable)
+	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatTable)
 	got, err := enrollcmd.Run(rc, enrollcmd.Input{Package: "com.example.app", KmsKey: "k", Confirm: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)

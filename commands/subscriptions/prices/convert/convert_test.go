@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -29,30 +27,6 @@ const convertBody = `{
     "BR": {"regionCode": "BR", "price": {"currencyCode": "BRL", "units": "24", "nanos": 990000000}}
   }
 }`
-
-type convertRT struct {
-	mu    sync.Mutex
-	calls []string
-	body  string
-}
-
-func (r *convertRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	if req.Body != nil {
-		b := testkit.ReadBody(req)
-		r.body = string(b)
-	}
-	return jsonResp(200, convertBody), nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
@@ -101,17 +75,18 @@ func TestParseMoney_shapes(t *testing.T) {
 // TestRun_convertsAndPassesThrough asserts the POST hits the pricing endpoint,
 // the table is one sorted line per region, and json is verbatim.
 func TestRun_convertsAndPassesThrough(t *testing.T) {
-	rt := &convertRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, convertBody))
+	rc := newRC(t, fake)
 	r, err := convertcmd.Run(rc, convertcmd.Input{Package: "com.example.app", Price: "4.99", Currency: "USD"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 1 || !strings.Contains(rt.calls[0], "pricing:convertRegionPrices") {
-		t.Fatalf("calls = %v, want the pricing:convertRegionPrices POST", rt.calls)
+	calls := fake.Calls()
+	if len(calls) != 1 || !strings.Contains(calls[0].Path, "pricing:convertRegionPrices") {
+		t.Fatalf("calls = %v, want the pricing:convertRegionPrices POST", calls)
 	}
-	if !strings.Contains(rt.body, `"currencyCode":"USD"`) {
-		t.Errorf("request body %q must carry the base Money", rt.body)
+	if !strings.Contains(string(calls[0].Body), `"currencyCode":"USD"`) {
+		t.Errorf("request body %q must carry the base Money", calls[0].Body)
 	}
 	var tbl bytes.Buffer
 	if err := r.Renderers().Table(&tbl); err != nil {
@@ -136,12 +111,12 @@ func TestRun_convertsAndPassesThrough(t *testing.T) {
 // TestRun_badPrice_exit2_noNetwork asserts an invalid amount is CLI misuse
 // before any HTTP call.
 func TestRun_badPrice_exit2_noNetwork(t *testing.T) {
-	rt := &convertRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, convertBody))
+	rc := newRC(t, fake)
 	_, err := convertcmd.Run(rc, convertcmd.Input{Package: "com.example.app", Price: "abc", Currency: "USD"})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 {
+		t.Errorf("must not reach the network; calls=%v", fake.Calls())
 	}
 }
 

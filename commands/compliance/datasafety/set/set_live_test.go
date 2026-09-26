@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -43,13 +42,13 @@ type liveRT struct {
 	postBody []byte
 }
 
-func (r *liveRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *liveRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.calls = append(r.calls, "POST /token")
-		return liveJSONResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
@@ -61,7 +60,7 @@ func (r *liveRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if code == 0 {
 			code = 200
 		}
-		return liveJSONResp(code, r.postResp), nil
+		return testkit.Response(code, r.postResp), nil
 	}
 	r.t.Fatalf("unexpected request (datasafety set is a single write-only POST): %s %s", req.Method, req.URL)
 	return nil, nil
@@ -76,14 +75,6 @@ func (r *liveRT) posted() bool {
 		}
 	}
 	return false
-}
-
-func liveJSONResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
 }
 
 func liveSAJSON(t *testing.T) []byte {
@@ -110,13 +101,13 @@ func liveSAJSON(t *testing.T) []byte {
 // newLiveRC builds a RunContext with a resolved Account and the mocked
 // transport threaded through ctx (the kernel's test seam covers BOTH the
 // /token exchange and the androidpublisher POST).
-func newLiveRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
+func newLiveRC(t *testing.T, rt *liveRT) *kernel.RunContext {
 	t.Helper()
 	sa, err := serviceaccount.Parse(liveSAJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rt.serve)})
 	var stdout bytes.Buffer
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &stdout}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa

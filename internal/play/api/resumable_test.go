@@ -57,7 +57,7 @@ type step struct {
 	cutBody bool   // the 2xx body fails mid-read (the final response is lost)
 }
 
-func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
 	switch req.Method {
 	case http.MethodPost:
 		if req.URL.String() != initiateURL {
@@ -70,15 +70,17 @@ func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if status == 0 {
 			status = http.StatusOK
 		}
-		h := http.Header{}
+		resp := testkit.Response(status, r.initBody)
 		if status >= 200 && status < 300 && !r.initNoLoc {
-			h.Set("Location", sessionURI)
+			resp.Header.Set("Location", sessionURI)
 		}
-		return &http.Response{StatusCode: status, Header: h, Body: io.NopCloser(strings.NewReader(r.initBody))}, nil
+		return resp, nil
 
 	case http.MethodPut:
 		body := testkit.ReadBody(req)
-		_ = req.Body.Close()
+		if req.Body != nil {
+			_ = req.Body.Close()
+		}
 		r.puts = append(r.puts, putRecord{contentRange: req.Header.Get("Content-Range"), bodyLen: len(body)})
 		if r.putIdx >= len(r.putSteps) {
 			r.t.Fatalf("unexpected PUT #%d: only %d scripted", r.putIdx+1, len(r.putSteps))
@@ -95,15 +97,14 @@ func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if st.status == 0 {
 			return nil, &net0Error{}
 		}
-		h := http.Header{}
+		resp := testkit.Response(st.status, st.body)
 		if st.rng != "" {
-			h.Set("Range", st.rng)
+			resp.Header.Set("Range", st.rng)
 		}
-		var respBody io.Reader = strings.NewReader(st.body)
 		if st.cutBody {
-			respBody = io.MultiReader(strings.NewReader(st.body[:len(st.body)/2]), errReader{})
+			resp.Body = io.NopCloser(io.MultiReader(strings.NewReader(st.body[:len(st.body)/2]), errReader{}))
 		}
-		return &http.Response{StatusCode: st.status, Header: h, Body: io.NopCloser(respBody)}, nil
+		return resp, nil
 
 	default:
 		r.t.Fatalf("unexpected method %s", req.Method)
@@ -132,7 +133,7 @@ func run(t *testing.T, rt *resumeRT, size int) ([]byte, int, error) {
 func runCtx(t *testing.T, ctx context.Context, rt *resumeRT, size int, chunkTimeout time.Duration) ([]byte, int, error) {
 	t.Helper()
 	api.SetResumeTiming(t, chunkTimeout, &rt.waits)
-	hc := &http.Client{Transport: rt}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
 	return api.ResumableUpload(ctx, hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", reader(size), int64(size))
 }
 
@@ -383,7 +384,7 @@ func (s *shortReader) ReadAt(p []byte, off int64) (int, error) {
 // LocalIOError (exit 20).
 func TestResumable_shortRead_isLocalIOError(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{}}
-	hc := &http.Client{Transport: rt}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
 	_, _, err := api.ResumableUpload(context.Background(), hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", &shortReader{actual: 512}, 1024)
 	var lioErr *api.LocalIOError
 	if !errors.As(err, &lioErr) {

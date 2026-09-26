@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -21,31 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-type rt struct {
-	t       *testing.T
-	mu      sync.Mutex
-	calls   []string
-	postURL string
-	body    []byte
-}
-
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.postURL = req.URL.String()
-	r.body = testkit.ReadBody(req)
-	return jsonResp(`{}`), nil
-}
-
-func jsonResp(body string) *http.Response {
-	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
 
 func saJSON(t *testing.T) []byte {
 	t.Helper()
@@ -82,46 +55,47 @@ func exitOf(t *testing.T, err error) int {
 
 // TestRun_missingSelector_exit2 asserts a targeting selector is required, offline.
 func TestRun_missingSelector_exit2(t *testing.T) {
-	r := &rt{t: t}
-	rc := newRC(t, r)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	_, err := addtargeting.Run(rc, addtargeting.Input{Package: "com.example.app", ID: "555", Confirm: true})
 	if got := exitOf(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2; err=%v", got, err)
 	}
-	if len(r.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", r.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_missingConfirm_exit3 asserts the destructive gate fires (with a valid
 // selector) before any HTTP.
 func TestRun_missingConfirm_exit3(t *testing.T) {
-	r := &rt{t: t}
-	rc := newRC(t, r)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	_, err := addtargeting.Run(rc, addtargeting.Input{Package: "com.example.app", ID: "555", Regions: []string{"DE"}})
 	if got := exitOf(t, err); got != 3 {
 		t.Errorf("exit = %d, want 3; err=%v", got, err)
 	}
-	if len(r.calls) != 0 {
-		t.Errorf("must not reach the network without --confirm; calls=%v", r.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network without --confirm; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_confirmed_postsAddTargeting asserts the confirmed path POSTs
 // :addTargeting with the widening body and emits ✓.
 func TestRun_confirmed_postsAddTargeting(t *testing.T) {
-	r := &rt{t: t}
-	rc := newRC(t, r)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 	if _, err := addtargeting.Run(rc, addtargeting.Input{Package: "com.example.app", ID: "555", Regions: []string{"DE"}, Confirm: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.HasSuffix(r.postURL, "/appRecoveries/555:addTargeting") {
-		t.Errorf("url %q should POST :addTargeting", r.postURL)
+	calls := fake.Calls()
+	if len(calls) != 1 || calls[0].Method != http.MethodPost || !strings.HasSuffix(calls[0].URL, "/appRecoveries/555:addTargeting") {
+		t.Fatalf("calls = %+v, want one POST :addTargeting", calls)
 	}
-	if !strings.Contains(string(r.body), `"targetingUpdate"`) || !strings.Contains(string(r.body), "DE") {
-		t.Errorf("body %q should carry the targetingUpdate", r.body)
+	if !strings.Contains(string(calls[0].Body), `"targetingUpdate"`) || !strings.Contains(string(calls[0].Body), "DE") {
+		t.Errorf("body %q should carry the targetingUpdate", calls[0].Body)
 	}
 	if !strings.HasPrefix(stderr.String(), "✓ ") {
 		t.Errorf("stderr missing ✓:\n%s", stderr.String())

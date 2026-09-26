@@ -38,13 +38,13 @@ type replyRT struct {
 	tokenHits int
 }
 
-func (r *replyRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *replyRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.tokenHits++
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	if req.Method != http.MethodPost || !strings.HasSuffix(req.URL.Path, ":reply") {
 		r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
@@ -57,9 +57,9 @@ func (r *replyRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		code = c
 	}
 	if code != 200 {
-		return jsonResp(code, fmt.Sprintf(`{"error":{"code":%d,"message":"nope"}}`, code)), nil
+		return testkit.Response(code, fmt.Sprintf(`{"error":{"code":%d,"message":"nope"}}`, code)), nil
 	}
-	return jsonResp(200, fmt.Sprintf(`{"result":{"replyText":"echo for %s"}}`, id)), nil
+	return testkit.Response(http.StatusOK, fmt.Sprintf(`{"result":{"replyText":"echo for %s"}}`, id)), nil
 }
 
 // reviewIDFromPath recovers the reviewId from a .../reviews/<id>:reply path.
@@ -74,12 +74,6 @@ func reviewIDFromPath(p string) string {
 		return dec
 	}
 	return seg
-}
-
-func jsonResp(code int, body string) *http.Response {
-	h := make(http.Header)
-	h.Set("Content-Type", "application/json")
-	return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)), Header: h}
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -144,7 +138,7 @@ func exitCodeOf(t *testing.T, err error) int {
 
 func TestRun_single_postsAndEchoesJSON(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, stdout, stderr := newRC(t, rt, output.FormatJSON, nil)
+	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON, nil)
 
 	err := Run(rc, Input{Package: "com.example.app", ReviewID: "r1", Reply: "thanks!"})
 	if err != nil {
@@ -165,7 +159,7 @@ func TestRun_single_postsAndEchoesJSON(t *testing.T) {
 
 func TestRun_single_nonJSON_stdoutEmpty(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, stdout, stderr := newRC(t, rt, output.FormatTable, nil)
+	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
 
 	if err := Run(rc, Input{Package: "com.example.app", ReviewID: "r1", Reply: "hi"}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -180,7 +174,7 @@ func TestRun_single_nonJSON_stdoutEmpty(t *testing.T) {
 
 func TestRun_reviewIDAndBatch_exit2(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, _, _ := newRC(t, rt, output.FormatJSON, nil)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON, nil)
 
 	err := Run(rc, Input{Package: "com.example.app", ReviewID: "r1", Reply: "hi", BatchSet: true, Batch: "f.tsv"})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -193,7 +187,7 @@ func TestRun_reviewIDAndBatch_exit2(t *testing.T) {
 
 func TestRun_noMode_exit2(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, _, _ := newRC(t, rt, output.FormatJSON, nil)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON, nil)
 
 	err := Run(rc, Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -203,7 +197,7 @@ func TestRun_noMode_exit2(t *testing.T) {
 
 func TestRun_reviewIDWithoutReply_exit2(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, _, _ := newRC(t, rt, output.FormatJSON, nil)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON, nil)
 
 	err := Run(rc, Input{Package: "com.example.app", ReviewID: "r1"})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -213,7 +207,7 @@ func TestRun_reviewIDWithoutReply_exit2(t *testing.T) {
 
 func TestRun_single_forbidden_exit11_withHint(t *testing.T) {
 	rt := &replyRT{t: t, status: map[string]int{"r1": 403}}
-	rc, _, _ := newRC(t, rt, output.FormatJSON, nil)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON, nil)
 
 	err := Run(rc, Input{Package: "com.example.app", ReviewID: "r1", Reply: "hi"})
 	if code := exitCodeOf(t, err); code != 11 {
@@ -226,7 +220,7 @@ func TestRun_single_forbidden_exit11_withHint(t *testing.T) {
 
 func TestRun_single_unknownReview_exit30(t *testing.T) {
 	rt := &replyRT{t: t, status: map[string]int{"bad": 404}}
-	rc, _, _ := newRC(t, rt, output.FormatJSON, nil)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON, nil)
 
 	err := Run(rc, Input{Package: "com.example.app", ReviewID: "bad", Reply: "hi"})
 	if code := exitCodeOf(t, err); code != 30 {
@@ -240,7 +234,7 @@ func TestRun_single_unknownReview_exit30(t *testing.T) {
 
 func TestRun_single_dryRun_noNetwork(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, stdout, stderr := newRC(t, rt, output.FormatJSON, nil)
+	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON, nil)
 
 	if err := Run(rc, Input{Package: "com.example.app", ReviewID: "r1", Reply: "hi", DryRun: true}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -258,7 +252,7 @@ func TestRun_single_dryRun_noNetwork(t *testing.T) {
 
 func TestRun_batch_file_postsEachInOrder(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, _, stderr := newRC(t, rt, output.FormatTable, nil)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
 
 	path := writeTSV(t, "r1\tthanks\nr2\tcheers\n")
 	if err := Run(rc, Input{Package: "com.example.app", BatchSet: true, Batch: path}); err != nil {
@@ -276,7 +270,7 @@ func TestRun_batch_file_postsEachInOrder(t *testing.T) {
 
 func TestRun_batch_stdin(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, _, stderr := newRC(t, rt, output.FormatTable, strings.NewReader("r1\thi\n"))
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, strings.NewReader("r1\thi\n"))
 
 	if err := Run(rc, Input{Package: "com.example.app", BatchSet: true, Batch: "-"}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -293,7 +287,7 @@ func TestRun_batch_perLineFailureContinues_aggregateExit30(t *testing.T) {
 	// r2 → 404; r1 and r3 succeed. The failure must not abort the batch, and
 	// the aggregate exit is the highest code seen (30).
 	rt := &replyRT{t: t, status: map[string]int{"r2": 404}}
-	rc, _, stderr := newRC(t, rt, output.FormatTable, nil)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
 
 	path := writeTSV(t, "r1\ta\nr2\tb\nr3\tc\n")
 	err := Run(rc, Input{Package: "com.example.app", BatchSet: true, Batch: path})
@@ -315,7 +309,7 @@ func TestRun_batch_perLineFailureContinues_aggregateExit30(t *testing.T) {
 
 func TestRun_batch_jsonEnvelope(t *testing.T) {
 	rt := &replyRT{t: t, status: map[string]int{"r2": 404}}
-	rc, stdout, _ := newRC(t, rt, output.FormatJSON, nil)
+	rc, stdout, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON, nil)
 
 	path := writeTSV(t, "r1\ta\nr2\tb\n")
 	_ = Run(rc, Input{Package: "com.example.app", BatchSet: true, Batch: path})
@@ -343,7 +337,7 @@ func TestRun_batch_jsonEnvelope(t *testing.T) {
 
 func TestRun_batch_malformedLine_reportedAndContinues(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, _, stderr := newRC(t, rt, output.FormatTable, nil)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
 
 	// The middle line has no tab → malformed; r1 and r3 still post.
 	path := writeTSV(t, "r1\ta\nbroken-no-tab\nr3\tc\n")
@@ -362,7 +356,7 @@ func TestRun_batch_malformedLine_reportedAndContinues(t *testing.T) {
 
 func TestRun_batch_dryRun_noNetwork(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, _, stderr := newRC(t, rt, output.FormatTable, nil)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
 
 	path := writeTSV(t, "r1\ta\nr2\tb\n")
 	if err := Run(rc, Input{Package: "com.example.app", BatchSet: true, Batch: path, DryRun: true}); err != nil {
@@ -378,7 +372,7 @@ func TestRun_batch_dryRun_noNetwork(t *testing.T) {
 
 func TestRun_batch_empty_exit2(t *testing.T) {
 	rt := &replyRT{t: t}
-	rc, _, _ := newRC(t, rt, output.FormatTable, nil)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
 
 	path := writeTSV(t, "# only a comment\n\n")
 	err := Run(rc, Input{Package: "com.example.app", BatchSet: true, Batch: path})

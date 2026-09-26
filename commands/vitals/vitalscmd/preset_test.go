@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -23,23 +21,21 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-type presetRT struct {
-	mu       sync.Mutex
-	queryURL string
-	body     string
+const presetRowsBody = `{"rows":[{"startTime":{"year":2026,"month":6,"day":1},"metrics":[{"metric":"crashRate","decimalValue":{"value":"0.01"}}]}]}`
+
+// newPresetFake answers every metric-set query with one crashRate row.
+func newPresetFake() *testkit.Fake {
+	return testkit.NewFake(testkit.Any(http.StatusOK, presetRowsBody))
 }
 
-func (r *presetRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	h := http.Header{"Content-Type": []string{"application/json"}}
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(`{"access_token":"a","token_type":"Bearer","expires_in":3600}`))}, nil
+// lastCall returns the last API call the fake recorded.
+func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	r.queryURL = req.URL.String()
-	b := testkit.ReadBody(req)
-	r.body = string(b)
-	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(`{"rows":[{"startTime":{"year":2026,"month":6,"day":1},"metrics":[{"metric":"crashRate","decimalValue":{"value":"0.01"}}]}]}`))}, nil
+	return calls[len(calls)-1]
 }
 
 func saJSON(t *testing.T) []byte {
@@ -86,49 +82,51 @@ func set(t *testing.T, name string) vitals.MetricSet {
 }
 
 func TestRunPreset_crashes_defaultsToPrimaryMetric(t *testing.T) {
-	rt := &presetRT{}
-	rc := newRC(t, rt)
+	fake := newPresetFake()
+	rc := newRC(t, fake)
 	if _, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app"}); err != nil {
 		t.Fatalf("runPreset: %v", err)
 	}
-	if !strings.HasSuffix(rt.queryURL, "/apps/com.example.app/crashRateMetricSet:query") {
-		t.Errorf("URL = %q", rt.queryURL)
+	last := lastCall(t, fake)
+	if !strings.HasSuffix(last.URL, "/apps/com.example.app/crashRateMetricSet:query") {
+		t.Errorf("URL = %q", last.URL)
 	}
-	if !strings.Contains(rt.body, `"crashRate"`) {
-		t.Errorf("preset must default to the primary crashRate metric: %s", rt.body)
+	if !strings.Contains(string(last.Body), `"crashRate"`) {
+		t.Errorf("preset must default to the primary crashRate metric: %s", last.Body)
 	}
 }
 
 func TestRunPreset_anr_hitsAnrSet(t *testing.T) {
-	rt := &presetRT{}
-	rc := newRC(t, rt)
+	fake := newPresetFake()
+	rc := newRC(t, fake)
 	if _, err := runPreset(rc, set(t, "anrrate"), presetInput{Package: "com.example.app"}); err != nil {
 		t.Fatalf("runPreset: %v", err)
 	}
-	if !strings.HasSuffix(rt.queryURL, "/apps/com.example.app/anrRateMetricSet:query") {
-		t.Errorf("URL = %q, want the anrRateMetricSet resource", rt.queryURL)
+	if last := lastCall(t, fake); !strings.HasSuffix(last.URL, "/apps/com.example.app/anrRateMetricSet:query") {
+		t.Errorf("URL = %q, want the anrRateMetricSet resource", last.URL)
 	}
 }
 
 func TestRunPreset_byAndVersion(t *testing.T) {
-	rt := &presetRT{}
-	rc := newRC(t, rt)
+	fake := newPresetFake()
+	rc := newRC(t, fake)
 	_, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app", By: "device", Version: "123"})
 	if err != nil {
 		t.Fatalf("runPreset: %v", err)
 	}
 	// --by device → the deviceModel dimension.
-	if !strings.Contains(rt.body, `"deviceModel"`) {
-		t.Errorf("--by device must map to deviceModel: %s", rt.body)
+	body := string(lastCall(t, fake).Body)
+	if !strings.Contains(body, `"deviceModel"`) {
+		t.Errorf("--by device must map to deviceModel: %s", body)
 	}
 	// --version 123 → a versionCode filter.
-	if !strings.Contains(rt.body, `versionCode = 123`) {
-		t.Errorf("--version must produce a versionCode filter: %s", rt.body)
+	if !strings.Contains(body, `versionCode = 123`) {
+		t.Errorf("--version must produce a versionCode filter: %s", body)
 	}
 }
 
 func TestRunPreset_unknownBy_isUsageError(t *testing.T) {
-	rc := newRC(t, &presetRT{})
+	rc := newRC(t, newPresetFake())
 	_, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app", By: "phase-of-moon"})
 	if got := exitCode(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2", got)
@@ -136,7 +134,7 @@ func TestRunPreset_unknownBy_isUsageError(t *testing.T) {
 }
 
 func TestRunPreset_badVersion_isUsageError(t *testing.T) {
-	rc := newRC(t, &presetRT{})
+	rc := newRC(t, newPresetFake())
 	_, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app", Version: "not-a-number"})
 	if got := exitCode(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2", got)
@@ -189,15 +187,15 @@ func TestPresets_coverEveryMetricSet(t *testing.T) {
 func TestRunPreset_everyPresetHitsItsResource(t *testing.T) {
 	for _, spec := range Presets {
 		t.Run(spec.Use, func(t *testing.T) {
-			rt := &presetRT{}
-			rc := newRC(t, rt)
+			fake := newPresetFake()
+			rc := newRC(t, fake)
 			ms := set(t, spec.Set)
 			if _, err := runPreset(rc, ms, presetInput{Package: "com.example.app"}); err != nil {
 				t.Fatalf("runPreset: %v", err)
 			}
 			want := "/apps/com.example.app/" + ms.Resource + ":query"
-			if !strings.HasSuffix(rt.queryURL, want) {
-				t.Errorf("preset %q URL = %q, want suffix %q", spec.Use, rt.queryURL, want)
+			if last := lastCall(t, fake); !strings.HasSuffix(last.URL, want) {
+				t.Errorf("preset %q URL = %q, want suffix %q", spec.Use, last.URL, want)
 			}
 		})
 	}

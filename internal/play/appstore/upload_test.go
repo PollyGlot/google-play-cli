@@ -3,7 +3,6 @@ package appstore_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,23 +30,25 @@ type uploadRT struct {
 	initFailWith int // non-zero => fail the initiate POST with this status
 }
 
-func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
+// client serves r through testkit.RoundTripFunc: the initiate answer carries a
+// Location header, which the Fake's status-and-body responders cannot set.
+func (r *uploadRT) client() *http.Client {
+	return &http.Client{Transport: testkit.RoundTripFunc(r.serve)}
+}
+
+func (r *uploadRT) serve(req *http.Request) (*http.Response, error) {
 	switch req.Method {
 	case http.MethodPost:
 		r.initURL = req.URL.String()
 		r.initCT = req.Header.Get("X-Upload-Content-Type")
 		r.initBodyCT = req.Header.Get("Content-Type")
-		if req.Body != nil {
-			r.initBody = testkit.ReadBody(req)
-		}
+		r.initBody = testkit.ReadBody(req)
 		if r.initFailWith != 0 {
-			return resp(r.initFailWith, `{"error":{"message":"nope"}}`), nil
+			return testkit.Response(r.initFailWith, `{"error":{"message":"nope"}}`), nil
 		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Location": []string{uploadSessionURI}},
-			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
+		ok := testkit.Response(http.StatusOK, "")
+		ok.Header.Set("Location", uploadSessionURI)
+		return ok, nil
 
 	case http.MethodPut:
 		r.putBody = testkit.ReadBody(req)
@@ -59,7 +60,7 @@ func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if body == "" {
 			body = `{}`
 		}
-		return resp(status, body), nil
+		return testkit.Response(status, body), nil
 	}
 	return nil, http.ErrNotSupported
 }
@@ -84,7 +85,7 @@ func TestUploadAPK_requestShape(t *testing.T) {
 	rt := &uploadRT{respBody: `{"apkId":"apk-42"}`}
 	path := writeFile(t, "app.apk", []byte("PK\x03\x04 pretend apk"))
 
-	id, raw, err := appstore.UploadAPK(context.Background(), &http.Client{Transport: rt}, "com.example.store", "com.example.app", path)
+	id, raw, err := appstore.UploadAPK(context.Background(), rt.client(), "com.example.store", "com.example.app", path)
 	if err != nil {
 		t.Fatalf("UploadAPK: %v", err)
 	}
@@ -126,7 +127,7 @@ func TestUploadAPK_pathEscapesBothKeys(t *testing.T) {
 	rt := &uploadRT{respBody: `{"apkId":"a"}`}
 	path := writeFile(t, "app.apk", []byte("bytes"))
 
-	if _, _, err := appstore.UploadAPK(context.Background(), &http.Client{Transport: rt}, "com.example store", "com.example/app", path); err != nil {
+	if _, _, err := appstore.UploadAPK(context.Background(), rt.client(), "com.example store", "com.example/app", path); err != nil {
 		t.Fatalf("UploadAPK: %v", err)
 	}
 	if !strings.Contains(rt.initURL, "/appstore/com.example%20store/apps/com.example%2Fapp/apks:upload") {
@@ -141,7 +142,7 @@ func TestUploadImage_sniffsContentType(t *testing.T) {
 	rt := &uploadRT{respBody: `{"imageId":"img-7"}`}
 	path := writeFile(t, "icon", pngBytes) // no extension on purpose
 
-	id, _, err := appstore.UploadImage(context.Background(), &http.Client{Transport: rt}, "com.example.store", "com.example.app", path)
+	id, _, err := appstore.UploadImage(context.Background(), rt.client(), "com.example.store", "com.example.app", path)
 	if err != nil {
 		t.Fatalf("UploadImage: %v", err)
 	}
@@ -162,7 +163,7 @@ func TestUploadPolicy_sendsRequiredFileType(t *testing.T) {
 	rt := &uploadRT{respBody: `{"fileId":"file-9"}`}
 	path := writeFile(t, "policy.pdf", []byte("%PDF-1.4\n stub"))
 
-	id, _, err := appstore.UploadPolicyDeclarationFile(context.Background(), &http.Client{Transport: rt}, "com.example.store", "com.example.app", path)
+	id, _, err := appstore.UploadPolicyDeclarationFile(context.Background(), rt.client(), "com.example.store", "com.example.app", path)
 	if err != nil {
 		t.Fatalf("UploadPolicyDeclarationFile: %v", err)
 	}
@@ -190,7 +191,7 @@ func TestUploadPolicy_sendsRequiredFileType(t *testing.T) {
 // (exit 20) instead of letting it surface as transport (exit 50).
 func TestUpload_missingFile_exit20(t *testing.T) {
 	rt := &uploadRT{}
-	_, _, err := appstore.UploadAPK(context.Background(), &http.Client{Transport: rt}, "s", "p", filepath.Join(t.TempDir(), "nope.apk"))
+	_, _, err := appstore.UploadAPK(context.Background(), rt.client(), "s", "p", filepath.Join(t.TempDir(), "nope.apk"))
 	assertExitCode(t, err, 20)
 	if rt.initURL != "" {
 		t.Errorf("a missing file must fail before any HTTP call, got %q", rt.initURL)
@@ -200,14 +201,14 @@ func TestUpload_missingFile_exit20(t *testing.T) {
 // TestUpload_directory_exit20 covers the path that passes Open and Stat but
 // cannot be streamed.
 func TestUpload_directory_exit20(t *testing.T) {
-	_, _, err := appstore.UploadImage(context.Background(), &http.Client{Transport: &uploadRT{}}, "s", "p", t.TempDir())
+	_, _, err := appstore.UploadImage(context.Background(), (&uploadRT{}).client(), "s", "p", t.TempDir())
 	assertExitCode(t, err, 20)
 }
 
 // TestUpload_emptyFile_exit20 rejects a zero-byte file: there is nothing to
 // sniff and nothing worth uploading.
 func TestUpload_emptyFile_exit20(t *testing.T) {
-	_, _, err := appstore.UploadImage(context.Background(), &http.Client{Transport: &uploadRT{}}, "s", "p", writeFile(t, "empty.png", nil))
+	_, _, err := appstore.UploadImage(context.Background(), (&uploadRT{}).client(), "s", "p", writeFile(t, "empty.png", nil))
 	assertExitCode(t, err, 20)
 }
 
@@ -216,7 +217,7 @@ func TestUpload_emptyFile_exit20(t *testing.T) {
 // into `appstore update`.
 func TestUpload_responseWithoutID_errors(t *testing.T) {
 	rt := &uploadRT{respBody: `{}`}
-	_, _, err := appstore.UploadAPK(context.Background(), &http.Client{Transport: rt}, "s", "p", writeFile(t, "a.apk", []byte("x")))
+	_, _, err := appstore.UploadAPK(context.Background(), rt.client(), "s", "p", writeFile(t, "a.apk", []byte("x")))
 	if err == nil {
 		t.Fatal("want an error when the response carries no apkId, got nil")
 	}
@@ -228,14 +229,14 @@ func TestUpload_responseWithoutID_errors(t *testing.T) {
 // TestUpload_403_exit11 pins that upstream failures keep the shared taxonomy.
 func TestUpload_403_exit11(t *testing.T) {
 	rt := &uploadRT{initFailWith: http.StatusForbidden}
-	_, _, err := appstore.UploadAPK(context.Background(), &http.Client{Transport: rt}, "s", "p", writeFile(t, "a.apk", []byte("x")))
+	_, _, err := appstore.UploadAPK(context.Background(), rt.client(), "s", "p", writeFile(t, "a.apk", []byte("x")))
 	assertExitCode(t, err, 11)
 }
 
 // TestUpload_404_exit30 covers the store or hosted app not existing.
 func TestUpload_404_exit30(t *testing.T) {
 	rt := &uploadRT{initFailWith: http.StatusNotFound}
-	_, _, err := appstore.UploadImage(context.Background(), &http.Client{Transport: rt}, "s", "p", writeFile(t, "i.png", pngBytes))
+	_, _, err := appstore.UploadImage(context.Background(), rt.client(), "s", "p", writeFile(t, "i.png", pngBytes))
 	assertExitCode(t, err, 30)
 }
 

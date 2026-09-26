@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -26,58 +25,27 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// testRoundTripper answers the /token exchange and the updateAppStoreHostedApp
-// call, recording the request shape. status/resp are configurable so the
-// refusal paths can return a 403/404. Nothing here touches the network.
-type testRoundTripper struct {
-	mu     sync.Mutex
-	calls  []string
-	apiURL string
-	method string
-	body   []byte
-	status int
-	resp   string
-}
-
-func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.apiURL = req.URL.String()
-	r.method = req.Method
-	if req.Body != nil {
-		r.body = testkit.ReadBody(req)
-	}
-	if r.status != 0 {
-		return jsonResp(r.status, r.resp), nil
-	}
-	resp := r.resp
-	if resp == "" {
-		resp = `{}`
-	}
-	return jsonResp(200, resp), nil
-}
-
-// apiCalls counts the requests that were NOT the token exchange: the number
-// that matters when asserting "no HTTP happened".
-func (r *testRoundTripper) apiCalls() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	n := 0
-	for _, c := range r.calls {
-		if c != "POST /token" {
-			n++
+// newFake answers every updateAppStoreHostedApp call with status and body; a
+// zero status serves a 200 carrying body, or {} when body is empty. Nothing
+// here touches the network.
+func newFake(status int, body string) *testkit.Fake {
+	if status == 0 {
+		status = http.StatusOK
+		if body == "" {
+			body = `{}`
 		}
 	}
-	return n
+	return testkit.NewFake(testkit.Any(status, body))
 }
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+// last is the most recent API call, failing the test when none was made.
+func last(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
+	}
+	return calls[len(calls)-1]
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -127,8 +95,8 @@ func writeBody(t *testing.T, content string) string {
 // TestRun_requestShape asserts the command emits the submit call on the app
 // store axis and forwards the whole declarative body, field names included.
 func TestRun_requestShape(t *testing.T) {
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt, "")
+	fake := newFake(0, "")
+	rc := newRC(t, fake, "")
 
 	if _, err := updatecmd.Run(rc, updatecmd.Input{
 		StorePackage: "com.example.store",
@@ -139,30 +107,31 @@ func TestRun_requestShape(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if rt.method != http.MethodPost {
-		t.Errorf("method = %q, want POST", rt.method)
+	apiCall := last(t, fake)
+	if apiCall.Method != http.MethodPost {
+		t.Errorf("method = %q, want POST", apiCall.Method)
 	}
-	if !strings.HasSuffix(rt.apiURL, "/appstore/com.example.store/apps:update") {
-		t.Errorf("url %q is not the updateAppStoreHostedApp endpoint", rt.apiURL)
+	if !strings.HasSuffix(apiCall.URL, "/appstore/com.example.store/apps:update") {
+		t.Errorf("url %q is not the updateAppStoreHostedApp endpoint", apiCall.URL)
 	}
-	if strings.Contains(rt.apiURL, "/edits/") {
-		t.Errorf("url %q must not open an Edit", rt.apiURL)
+	if strings.Contains(apiCall.URL, "/edits/") {
+		t.Errorf("url %q must not open an Edit", apiCall.URL)
 	}
 
 	var sent map[string]any
-	if err := json.Unmarshal(rt.body, &sent); err != nil {
-		t.Fatalf("request body %q is not JSON: %v", rt.body, err)
+	if err := json.Unmarshal(apiCall.Body, &sent); err != nil {
+		t.Fatalf("request body %q is not JSON: %v", apiCall.Body, err)
 	}
 	for _, key := range []string{"packageName", "appDetails", "activeApks", "activeLocalizedStoreListings", "policyDeclarations"} {
 		if _, ok := sent[key]; !ok {
-			t.Errorf("request body dropped the %q field: %s", key, rt.body)
+			t.Errorf("request body dropped the %q field: %s", key, apiCall.Body)
 		}
 	}
 	// The media ids are the whole point of the upload verbs: they must survive
 	// the round trip through the CLI untouched, under the API's own spelling.
 	for _, want := range []string{`"baseApkId":"apk-base"`, `"splitApkId":["apk-en","apk-fr"]`, `"appIconId":"img-icon"`, `"screenshotId":["img-1","img-2"]`} {
-		if !strings.Contains(string(rt.body), want) {
-			t.Errorf("request body is missing %s: %s", want, rt.body)
+		if !strings.Contains(string(apiCall.Body), want) {
+			t.Errorf("request body is missing %s: %s", want, apiCall.Body)
 		}
 	}
 }
@@ -171,16 +140,17 @@ func TestRun_requestShape(t *testing.T) {
 // stays json.RawMessage: Google keeps adding question types, and a response
 // shape gplay has never seen must still reach the API intact.
 func TestRun_unknownPolicyVariantSurvives(t *testing.T) {
-	rt := &testRoundTripper{}
+	fake := newFake(0, "")
 	body := `{"policyDeclarations":[{"declarationId":"d","responses":[{"questionId":"q","futureResponse":{"shape":"unknown","depth":[1,2]}}]}]}`
 
-	if _, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	if _, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "s", Package: "com.example.app", File: writeBody(t, body), Confirm: true,
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(string(rt.body), `"futureResponse":{"shape":"unknown","depth":[1,2]}`) {
-		t.Errorf("an unmodelled policy response variant was dropped: %s", rt.body)
+	apiCall := last(t, fake)
+	if !strings.Contains(string(apiCall.Body), `"futureResponse":{"shape":"unknown","depth":[1,2]}`) {
+		t.Errorf("an unmodelled policy response variant was dropped: %s", apiCall.Body)
 	}
 }
 
@@ -189,13 +159,14 @@ func TestRun_unknownPolicyVariantSurvives(t *testing.T) {
 func TestRun_readsStdin(t *testing.T) {
 	for _, file := range []string{"", "-"} {
 		t.Run("file="+file, func(t *testing.T) {
-			rt := &testRoundTripper{}
-			rc := newRC(t, rt, fullBody)
+			fake := newFake(0, "")
+			rc := newRC(t, fake, fullBody)
 			if _, err := updatecmd.Run(rc, updatecmd.Input{StorePackage: "s", Package: "com.example.app", File: file, Confirm: true}); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-			if !strings.Contains(string(rt.body), `"developerName":"Acme"`) {
-				t.Errorf("the body piped on stdin did not reach the wire: %s", rt.body)
+			apiCall := last(t, fake)
+			if !strings.Contains(string(apiCall.Body), `"developerName":"Acme"`) {
+				t.Errorf("the body piped on stdin did not reach the wire: %s", apiCall.Body)
 			}
 		})
 	}
@@ -204,16 +175,16 @@ func TestRun_readsStdin(t *testing.T) {
 // TestRun_missingConfirm_exit3 is the gate: submission is immediate and cannot
 // be recalled, so the run must refuse (before any HTTP) naming the flag.
 func TestRun_missingConfirm_exit3(t *testing.T) {
-	rt := &testRoundTripper{}
-	_, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, "")
+	_, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "s", Package: "com.example.app", File: writeBody(t, fullBody),
 	})
 	assertExit(t, err, 3)
 	if !strings.Contains(err.Error(), "confirm") {
 		t.Errorf("error %q does not name the --confirm flag an agent must pass", err)
 	}
-	if rt.apiCalls() != 0 {
-		t.Errorf("a refused submission must emit no API call, got %v", rt.calls)
+	if len(fake.Calls()) != 0 {
+		t.Errorf("a refused submission must emit no API call, got %v", fake.Calls())
 	}
 }
 
@@ -221,15 +192,15 @@ func TestRun_missingConfirm_exit3(t *testing.T) {
 // gate. If --dry-run demanded --confirm there would be no way to check a
 // submission before making it.
 func TestRun_dryRunNeedsNoConfirm(t *testing.T) {
-	rt := &testRoundTripper{}
-	got, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, "")
+	got, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "com.example.store", Package: "com.example.app", File: writeBody(t, fullBody), DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("dry-run must not require --confirm: %v", err)
 	}
-	if rt.apiCalls() != 0 {
-		t.Errorf("--dry-run must emit no API call, got %v", rt.calls)
+	if len(fake.Calls()) != 0 {
+		t.Errorf("--dry-run must emit no API call, got %v", fake.Calls())
 	}
 
 	// ADR-0017 §4: the gate is machine-readable, so an agent learns what the
@@ -264,19 +235,19 @@ func TestRun_dryRunNeedsNoConfirm(t *testing.T) {
 
 // TestRun_invalidJSON_exit2 keeps a malformed file client-side misuse.
 func TestRun_invalidJSON_exit2(t *testing.T) {
-	rt := &testRoundTripper{}
-	_, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, "")
+	_, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "s", Package: "com.example.app", File: writeBody(t, `{"appDetails": `), Confirm: true,
 	})
 	assertExit(t, err, 2)
-	if rt.apiCalls() != 0 {
-		t.Errorf("a malformed body must not reach the API, got %v", rt.calls)
+	if len(fake.Calls()) != 0 {
+		t.Errorf("a malformed body must not reach the API, got %v", fake.Calls())
 	}
 }
 
 // TestRun_emptyBody_exit2 covers the pipe that delivered nothing.
 func TestRun_emptyBody_exit2(t *testing.T) {
-	_, err := updatecmd.Run(newRC(t, &testRoundTripper{}, "   "), updatecmd.Input{
+	_, err := updatecmd.Run(newRC(t, newFake(0, ""), "   "), updatecmd.Input{
 		StorePackage: "s", Package: "com.example.app", Confirm: true,
 	})
 	assertExit(t, err, 2)
@@ -284,7 +255,7 @@ func TestRun_emptyBody_exit2(t *testing.T) {
 
 // TestRun_unreadableFile_exit2 names which input path failed.
 func TestRun_unreadableFile_exit2(t *testing.T) {
-	_, err := updatecmd.Run(newRC(t, &testRoundTripper{}, ""), updatecmd.Input{
+	_, err := updatecmd.Run(newRC(t, newFake(0, ""), ""), updatecmd.Input{
 		StorePackage: "s", Package: "com.example.app", File: filepath.Join(t.TempDir(), "absent.json"), Confirm: true,
 	})
 	assertExit(t, err, 2)
@@ -294,8 +265,8 @@ func TestRun_unreadableFile_exit2(t *testing.T) {
 // body naming a different app than the resolved target is refused rather than
 // resolved one way silently.
 func TestRun_bodyPackageContradictsFlag_exit2(t *testing.T) {
-	rt := &testRoundTripper{}
-	_, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, "")
+	_, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "s",
 		Package:      "com.example.app",
 		File:         writeBody(t, `{"packageName":"com.other.app","appDetails":{"developerName":"Acme"}}`),
@@ -305,38 +276,40 @@ func TestRun_bodyPackageContradictsFlag_exit2(t *testing.T) {
 	if !strings.Contains(err.Error(), "com.other.app") || !strings.Contains(err.Error(), "com.example.app") {
 		t.Errorf("error %q must name BOTH packages so the operator sees the contradiction", err)
 	}
-	if rt.apiCalls() != 0 {
-		t.Errorf("the contradiction must be caught offline, got %v", rt.calls)
+	if len(fake.Calls()) != 0 {
+		t.Errorf("the contradiction must be caught offline, got %v", fake.Calls())
 	}
 }
 
 // TestRun_bodyPackageAgrees accepts the redundant-but-consistent case.
 func TestRun_bodyPackageAgrees(t *testing.T) {
-	rt := &testRoundTripper{}
-	if _, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, "")
+	if _, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "s", Package: "com.example.app",
 		File:    writeBody(t, `{"packageName":"com.example.app","appDetails":{"developerName":"Acme"}}`),
 		Confirm: true,
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(string(rt.body), `"packageName":"com.example.app"`) {
-		t.Errorf("request body = %s, want the agreed package", rt.body)
+	apiCall := last(t, fake)
+	if !strings.Contains(string(apiCall.Body), `"packageName":"com.example.app"`) {
+		t.Errorf("request body = %s, want the agreed package", apiCall.Body)
 	}
 }
 
 // TestRun_packageDefaultsToProjectPin: the repo pin resolves the target like
 // everywhere else in the CLI.
 func TestRun_packageDefaultsToProjectPin(t *testing.T) {
-	rt := &testRoundTripper{}
-	rc := newRC(t, rt, "")
+	fake := newFake(0, "")
+	rc := newRC(t, fake, "")
 	rc.Resolved = &config.Resolved{Pin: "com.pinned.app"}
 
 	if _, err := updatecmd.Run(rc, updatecmd.Input{StorePackage: "s", File: writeBody(t, fullBody), Confirm: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(string(rt.body), `"packageName":"com.pinned.app"`) {
-		t.Errorf("request body = %s, want the project pin as the target", rt.body)
+	apiCall := last(t, fake)
+	if !strings.Contains(string(apiCall.Body), `"packageName":"com.pinned.app"`) {
+		t.Errorf("request body = %s, want the project pin as the target", apiCall.Body)
 	}
 }
 
@@ -344,35 +317,36 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 // no project-pin fallback (ADR-0043).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &testRoundTripper{}
-	_, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, "")
+	_, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	})
 	assertExit(t, err, 2)
-	if rt.apiCalls() != 0 {
-		t.Errorf("an unresolved store package must fail before any API call, got %v", rt.calls)
+	if len(fake.Calls()) != 0 {
+		t.Errorf("an unresolved store package must fail before any API call, got %v", fake.Calls())
 	}
 }
 
 // TestRun_storePackageEnvCascade: flag beats env (ADR-0043 §1).
 func TestRun_storePackageEnvCascade(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
-	rt := &testRoundTripper{}
-	if _, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, "")
+	if _, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/appstore/com.env.store/") {
-		t.Errorf("url %q did not pick the store package up from the environment", rt.apiURL)
+	apiCall := last(t, fake)
+	if !strings.Contains(apiCall.URL, "/appstore/com.env.store/") {
+		t.Errorf("url %q did not pick the store package up from the environment", apiCall.URL)
 	}
 }
 
 // TestRun_jsonPassthrough: ADR-0003: whatever the API says is what --output
 // json prints, verbatim, fields gplay does not model included.
 func TestRun_jsonPassthrough(t *testing.T) {
-	rt := &testRoundTripper{resp: `{"reviewId":"rev-1","unmodelled":{"x":1}}`}
-	got, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, `{"reviewId":"rev-1","unmodelled":{"x":1}}`)
+	got, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "s", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	})
 	if err != nil {
@@ -391,8 +365,8 @@ func TestRun_jsonPassthrough(t *testing.T) {
 // server answering with nothing would leave --output json (the CI default) with
 // zero bytes to parse. A gplay-shaped object stands in.
 func TestRun_jsonEmptyBodyFallback(t *testing.T) {
-	rt := &testRoundTripper{resp: " "}
-	got, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(0, " ")
+	got, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "com.example.store", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	})
 	if err != nil {
@@ -419,7 +393,7 @@ func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 // TestRun_humanViews: the table and markdown views must say the submission is
 // gone to review: the fact an operator most needs to read back.
 func TestRun_humanViews(t *testing.T) {
-	got, err := updatecmd.Run(newRC(t, &testRoundTripper{}, ""), updatecmd.Input{
+	got, err := updatecmd.Run(newRC(t, newFake(0, ""), ""), updatecmd.Input{
 		StorePackage: "com.example.store", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	})
 	if err != nil {
@@ -443,8 +417,8 @@ func TestRun_humanViews(t *testing.T) {
 // TestRun_403_namesEnrollment / _404: upstream refusals keep the shared exit
 // taxonomy and the namespace's hints.
 func TestRun_403_exit11(t *testing.T) {
-	rt := &testRoundTripper{status: http.StatusForbidden, resp: `{"error":{"message":"denied"}}`}
-	_, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(http.StatusForbidden, `{"error":{"message":"denied"}}`)
+	_, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "com.example.store", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	})
 	assertExit(t, err, 11)
@@ -458,8 +432,8 @@ func TestRun_403_exit11(t *testing.T) {
 // so a 404 must name it rather than sending the caller to audit a
 // --store-package that is probably correct.
 func TestRun_404_exit30(t *testing.T) {
-	rt := &testRoundTripper{status: http.StatusNotFound, resp: `{"error":{"message":"missing"}}`}
-	_, err := updatecmd.Run(newRC(t, rt, ""), updatecmd.Input{
+	fake := newFake(http.StatusNotFound, `{"error":{"message":"missing"}}`)
+	_, err := updatecmd.Run(newRC(t, fake, ""), updatecmd.Input{
 		StorePackage: "com.example.store", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	})
 	assertExit(t, err, 30)

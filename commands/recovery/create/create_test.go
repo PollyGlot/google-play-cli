@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -24,33 +22,12 @@ import (
 
 const draftBody = `{"appRecoveryId":"555","status":"RECOVERY_STATUS_DRAFT"}`
 
-type recRT struct {
-	t       *testing.T
-	mu      sync.Mutex
-	calls   []string
-	postURL string
-	body    []byte
-}
-
-func (r *recRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/appRecoveries") {
-		r.postURL = req.URL.String()
-		r.body = testkit.ReadBody(req)
-		return jsonResp(200, draftBody), nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+// newFake serves the draft on the create POST; any other request fails the
+// round trip.
+func newFake() *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		return http.StatusOK, draftBody, c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/appRecoveries")
+	})
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -89,8 +66,8 @@ func exitOf(t *testing.T, err error) int {
 // TestRun_happyPath_postsDraft asserts a draft is posted with the targeting and
 // the response passes through, with a ✓ line.
 func TestRun_happyPath_postsDraft(t *testing.T) {
-	rt := &recRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -98,8 +75,12 @@ func TestRun_happyPath_postsDraft(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(string(rt.body), `"versionCodes"`) || !strings.Contains(string(rt.body), "142") {
-		t.Errorf("request body %q should carry the version targeting", rt.body)
+	calls := fake.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %+v, want the one create POST", calls)
+	}
+	if body := calls[0].Body; !strings.Contains(string(body), `"versionCodes"`) || !strings.Contains(string(body), "142") {
+		t.Errorf("request body %q should carry the version targeting", body)
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
@@ -115,42 +96,42 @@ func TestRun_happyPath_postsDraft(t *testing.T) {
 
 // TestRun_missingVersionCode_exit2 asserts the bad version is required, offline.
 func TestRun_missingVersionCode_exit2(t *testing.T) {
-	rt := &recRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	_, err := createcmd.Run(rc, createcmd.Input{Package: "com.example.app", AllUsers: true})
 	if got := exitOf(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_missingTargeting_exit2 asserts an audience selector is required, offline.
 func TestRun_missingTargeting_exit2(t *testing.T) {
-	rt := &recRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	_, err := createcmd.Run(rc, createcmd.Input{Package: "com.example.app", VersionCode: 142})
 	if got := exitOf(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_dryRun_noNetwork_noConfirm asserts --dry-run rehearses offline.
 func TestRun_dryRun_noNetwork_noConfirm(t *testing.T) {
-	rt := &recRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 	r, err := createcmd.Run(rc, createcmd.Input{Package: "com.example.app", VersionCode: 142, AllUsers: true, DryRun: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run must make no network call; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("dry-run must make no network call; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run emitted a ✓; stderr=%q", stderr.String())
