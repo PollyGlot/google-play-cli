@@ -39,6 +39,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/audit"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/fanout"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/accessibleapps"
@@ -175,13 +176,25 @@ func Run(rc *kernel.RunContext, in Input) (Report, error) {
 		return Report{}, err
 	}
 
+	// Apps are independent (one throwaway Edit each), so they are read
+	// fanout.Limit at a time. Each result lands at its package's index and is
+	// folded below in package order, so ran, failures and findings come out
+	// exactly as a serial sweep orders them. A per-app failure is data, not a
+	// fanout error: it never stops the other apps.
+	snaps := make([]audit.Snapshot, len(packages))
+	readErrs := make([]error, len(packages))
+	_ = fanout.Each(len(packages), func(i int) error {
+		snaps[i], readErrs[i] = readSnapshot(rc, httpClient, packages[i])
+		return nil
+	})
+
 	var (
 		snapshots []audit.Snapshot
 		ran       []string
 		failures  []SweepError
 	)
-	for _, pkg := range packages {
-		snap, readErr := readSnapshot(rc, httpClient, pkg)
+	for i, pkg := range packages {
+		snap, readErr := snaps[i], readErrs[i]
 		if readErr != nil {
 			failures = append(failures, SweepError{
 				Package:  pkg,
@@ -295,6 +308,8 @@ func (e *discoveryError) Unwrap() error { return e.cause }
 
 // readSnapshot reads one app: open a read-only Edit, list its tracks and its
 // Listings, discard the Edit. Two GETs per app; the Edit is never committed.
+// The two GETs stay serial: the sweep already runs fanout.Limit apps at once,
+// and nesting a second fan-out here would double the burst past that limit.
 func readSnapshot(rc *kernel.RunContext, hc *http.Client, pkg string) (audit.Snapshot, error) {
 	snap := audit.Snapshot{Package: pkg}
 	err := edits.WithReadOnlyEdit(rc.Ctx, hc, pkg, func(editID string) error {
