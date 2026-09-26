@@ -96,10 +96,10 @@ func listQuery(maxResults int, pageToken string) string {
 // (GET/DELETE), wrapping a construction failure as *api.Error. Verb and URL
 // both come from m, so a call site cannot pair one method's verb with
 // another's path (#516). query is the already-encoded suffix ("" for none).
-func newJSONReq(ctx context.Context, m apiregistry.Method, op, ref string, params map[string]string, query string, body []byte) (*http.Request, error) {
+func newJSONReq(ctx context.Context, m apiregistry.Method, op string, ref api.Resource, params map[string]string, query string, body []byte) (*http.Request, error) {
 	u, err := m.URL(params)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: ref, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: ref, Message: err.Error(), Cause: err}
 	}
 	if query != "" {
 		u += "?" + query
@@ -110,7 +110,7 @@ func newJSONReq(ctx context.Context, m apiregistry.Method, op, ref string, param
 	}
 	req, err := http.NewRequestWithContext(ctx, m.Verb, u, r)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: ref, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: ref, Message: err.Error(), Cause: err}
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -119,22 +119,38 @@ func newJSONReq(ctx context.Context, m apiregistry.Method, op, ref string, param
 }
 
 // do runs req and maps the response to (raw body, *api.Error). ref is the
-// addressing context (application ID or resource ID) carried in api.Error for
-// the human-readable message.
-func do(hc *http.Client, op, ref string, req *http.Request) (json.RawMessage, error) {
+// addressing context (the games application, or the achievement / leaderboard
+// the call names) carried as the error's Resource, for the human-readable
+// message and the JSON envelope's `resource`.
+func do(hc *http.Client, op string, ref api.Resource, req *http.Request) (json.RawMessage, error) {
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: ref, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: ref, Message: err.Error(), Cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
 		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: ref, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
+		return nil, &api.Error{Operation: op, Resource: ref, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: ref, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
+		return nil, &api.Error{Operation: op, Resource: ref, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
 	}
 	return json.RawMessage(raw), nil
+}
+
+// gamesApp, achievement and leaderboard name the target of a failed call on
+// the Play Games Services axis. None of them is an Android package, and the
+// JSON error envelope reports each under its own kind (#599).
+func gamesApp(appID string) api.Resource {
+	return api.Resource{Kind: api.KindGamesApplication, ID: appID}
+}
+
+func achievement(id string) api.Resource {
+	return api.Resource{Kind: api.KindAchievement, ID: id}
+}
+
+func leaderboard(id string) api.Resource {
+	return api.Resource{Kind: api.KindLeaderboard, ID: id}
 }

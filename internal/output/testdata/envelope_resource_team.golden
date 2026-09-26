@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "PERMISSION_DENIED",
+    "exitCode": 11,
+    "retryable": false,
+    "operation": "users.list",
+    "resource": {
+      "kind": "developerAccount",
+      "id": "1234567890123456789"
+    },
+    "message": "users.list on 1234567890123456789: The caller does not have permission (HTTP 403)"
+  }
+}

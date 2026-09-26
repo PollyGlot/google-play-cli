@@ -23,7 +23,7 @@ the behavior matches Fastlane: `completed` at 100%.
 | --- | --- |
 | `supply --aab app.aab --track internal` | `gplay releases upload app.aab --track internal` |
 | `supply --track internal --track_promote_to beta` | `gplay releases promote --from internal --to beta` |
-| `supply --rollout 0.1` | `gplay releases rollout --track production --to 0.1 --confirm` |
+| `supply --rollout 0.1` | `gplay releases rollout --track production --staged 0.1 --confirm` |
 | `supply --skip_upload_apk ... metadata sync` | `gplay metadata apply` / `gplay metadata images apply` |
 | `supply --metadata_path ./metadata` | `gplay metadata apply --dir ./metadata` |
 

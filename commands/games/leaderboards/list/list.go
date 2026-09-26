@@ -20,7 +20,7 @@ import (
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	ApplicationID string
-	MaxResults    int
+	PageSize      int
 	PageToken     string
 	Columns       string
 }
@@ -42,8 +42,8 @@ func (p Payload) Renderers() output.Renderers {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if in.MaxResults < 0 {
-		return nil, exit.Usagef("invalid --max-results: must be >= 0")
+	if in.PageSize < 0 {
+		return nil, exit.Usagef("invalid --page-size: must be >= 0")
 	}
 	cols, err := gamescmd.ResolveLeaderboardColumns(in.Columns)
 	if err != nil {
@@ -57,7 +57,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	lr, raw, err := games.ListLeaderboards(rc.Ctx, httpClient, appID, in.MaxResults, in.PageToken)
+	lr, raw, err := games.ListLeaderboards(rc.Ctx, httpClient, appID, in.PageSize, in.PageToken)
 	if err != nil {
 		return nil, gamescmd.Classify(appID, err)
 	}
@@ -76,12 +76,12 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `List the leaderboard configurations for a Play Games Services application.
 
 Addressing rides the numeric Play Games application ID (--application-id): a
-distinct ID space from the Android package. Use --max-results and
+distinct ID space from the Android package. Use --page-size and
 --page-token to page; --output json passes the
 LeaderboardConfigurationListResponse through verbatim, including
 nextPageToken.`,
 		Example: `  gplay games leaderboards list --application-id 123456789012
-  gplay games leaderboards list --application-id 123456789012 --max-results 50 --output json`,
+  gplay games leaderboards list --application-id 123456789012 --page-size 50 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -93,7 +93,7 @@ nextPageToken.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.ApplicationID, "application-id", "", "numeric Play Games Services application ID (required)")
-	cmd.Flags().IntVar(&in.MaxResults, "max-results", 0, "max configs per page (API default when unset)")
+	cmd.Flags().IntVar(&in.PageSize, "page-size", 0, "max configs per page (API default when unset)")
 	cmd.Flags().StringVar(&in.PageToken, "page-token", "", "page token from a previous response's nextPageToken")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns (default: "+gamescmd.DefaultLeaderboardColumns()+")")
 	return cmd

@@ -139,11 +139,11 @@ func TestRunRollout_happyPath_fullSequence(t *testing.T) {
 	rc := newRC(t, rt)
 
 	r, err := rollout.RunRollout(rc, rollout.Input{
-		Package: "com.example.app",
-		Track:   "production",
-		To:      "0.2",
-		ToSet:   true,
-		Confirm: true,
+		Package:           "com.example.app",
+		Track:             "production",
+		StagedFraction:    0.2,
+		StagedFractionSet: true,
+		Confirm:           true,
 	})
 	if err != nil {
 		t.Fatalf("RunRollout: %v", err)
@@ -275,55 +275,39 @@ func TestRun_productionWriteWithoutConfirm_returnsExit3(t *testing.T) {
 	}
 }
 
-// TestRunRollout_missingTo_returnsExit2 asserts that omitting --to is a CLI
-// misuse caught before any HTTP, with a message naming the flag.
-func TestRunRollout_missingTo_returnsExit2(t *testing.T) {
+// TestRunRollout_missingStaged_returnsExit2 asserts that omitting --staged is
+// a CLI misuse caught before any HTTP, with a message naming the flag.
+func TestRunRollout_missingStaged_returnsExit2(t *testing.T) {
 	rt := &stateRT{t: t}
 	rc := newRC(t, rt)
 
 	_, err := rollout.RunRollout(rc, rollout.Input{
 		Package: "com.example.app",
 		Track:   "production",
-		// ToSet false → --to not supplied.
+		// StagedFractionSet false → --staged not supplied.
 	})
 	assertExit(t, err, 2)
 	if len(rt.calls) != 0 {
 		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
 	}
-	if !strings.Contains(err.Error(), "--to") {
-		t.Errorf("err = %q, want it to mention --to", err.Error())
+	if !strings.Contains(err.Error(), "--staged") {
+		t.Errorf("err = %q, want it to mention --staged", err.Error())
 	}
 }
 
-// TestRunRollout_nonNumericTo_returnsExit2 asserts AC6's non-numeric case:
-// --to abc is a CLI misuse (exit 2), not cobra's exit-1 parse error.
-func TestRunRollout_nonNumericTo_returnsExit2(t *testing.T) {
+// TestRunRollout_outOfRangeStaged_returnsExit2 asserts the range guard (AC6):
+// --staged 1.5 is rejected with exit 2 and a range hint, before any HTTP. A
+// non-numeric value never reaches RunRollout: --staged is a float64 flag, so
+// pflag rejects it at parse time, which is already exit 2.
+func TestRunRollout_outOfRangeStaged_returnsExit2(t *testing.T) {
 	rt := &stateRT{t: t}
 	rc := newRC(t, rt)
 
 	_, err := rollout.RunRollout(rc, rollout.Input{
-		Package: "com.example.app",
-		Track:   "production",
-		To:      "abc",
-		ToSet:   true,
-	})
-	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
-	}
-}
-
-// TestRunRollout_outOfRangeTo_returnsExit2 asserts the range guard (AC6):
-// --to 1.5 is rejected with exit 2 and a range hint, before any HTTP.
-func TestRunRollout_outOfRangeTo_returnsExit2(t *testing.T) {
-	rt := &stateRT{t: t}
-	rc := newRC(t, rt)
-
-	_, err := rollout.RunRollout(rc, rollout.Input{
-		Package: "com.example.app",
-		Track:   "production",
-		To:      "1.5",
-		ToSet:   true,
+		Package:           "com.example.app",
+		Track:             "production",
+		StagedFraction:    1.5,
+		StagedFractionSet: true,
 	})
 	assertExit(t, err, 2)
 	if len(rt.calls) != 0 {
@@ -423,7 +407,7 @@ func TestRunRollout_emitsConfirmationWithUserFractionPercent(t *testing.T) {
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.2}]}`,
 	}
 	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
-		_, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", To: "0.2", ToSet: true, Confirm: true})
+		_, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", StagedFraction: 0.2, StagedFractionSet: true, Confirm: true})
 		return err
 	})
 	if !strings.HasPrefix(got, "✓ ") {
@@ -492,7 +476,7 @@ func TestRunComplete_emitsConfirmation(t *testing.T) {
 func TestRunRollout_dryRun_noConfirmation(t *testing.T) {
 	rt := &stateRT{t: t, editID: "edit-dry", trackGetResp: oneInProgressRelease}
 	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
-		_, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", To: "0.2", ToSet: true, DryRun: true})
+		_, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", StagedFraction: 0.2, StagedFractionSet: true, DryRun: true})
 		return err
 	})
 	if strings.Contains(got, "✓") {

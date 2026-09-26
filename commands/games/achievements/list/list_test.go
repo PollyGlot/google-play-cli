@@ -22,7 +22,7 @@ func TestRun_happyPath_addressesApplicationAndPassesThrough(t *testing.T) {
 		gotURL = r.URL.String()
 		return gamescmdtest.JSONResp(listBody), nil
 	}))
-	r, err := listcmd.Run(rc, listcmd.Input{ApplicationID: "12345", MaxResults: 50})
+	r, err := listcmd.Run(rc, listcmd.Input{ApplicationID: "12345", PageSize: 50})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestRun_happyPath_addressesApplicationAndPassesThrough(t *testing.T) {
 		t.Errorf("url %q should address the application's achievements", gotURL)
 	}
 	if !strings.Contains(gotURL, "maxResults=50") {
-		t.Errorf("url %q should carry --max-results", gotURL)
+		t.Errorf("url %q should carry --page-size", gotURL)
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {

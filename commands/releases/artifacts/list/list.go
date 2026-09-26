@@ -27,7 +27,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 )
 
-// Artifact kinds, the values of --kind and of the `kind` column.
+// Artifact kinds, the values of --format and of the `kind` column.
 const (
 	KindApk    = "apk"
 	KindBundle = "bundle"
@@ -36,7 +36,7 @@ const (
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
-	Kind    string
+	Format  string // --format: apk or bundle, the name the upload commands give the artifact container
 	Columns string
 }
 
@@ -61,7 +61,7 @@ func ResolveColumns(spec string) ([]output.Column[Row], error) { return columns.
 
 // Payload renders the merged rows as a table, or the raw responses as JSON.
 // With both kinds the JSON view is {"apks": <raw>, "bundles": <raw>}; with
-// --kind it is that one response verbatim (ADR-0003).
+// --format it is that one response verbatim (ADR-0003).
 type Payload struct {
 	Rows    []Row
 	Cols    []output.Column[Row]
@@ -108,7 +108,7 @@ func bytesOrNull(b json.RawMessage) string {
 	return strings.TrimSpace(string(b))
 }
 
-// normalizeKind validates --kind: "" means both, anything else must be one of
+// normalizeKind validates --format: "" means both, anything else must be one of
 // the two artifact kinds (CLI misuse otherwise, exit 2).
 func normalizeKind(k string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(k)) {
@@ -119,7 +119,7 @@ func normalizeKind(k string) (string, error) {
 	case KindBundle:
 		return KindBundle, nil
 	default:
-		return "", exit.Usagef("--kind must be apk or bundle")
+		return "", exit.Usagef("--format must be apk or bundle")
 	}
 }
 
@@ -145,7 +145,7 @@ func BuildRows(apks artifacts.ApksListResponse, bundles artifacts.BundlesListRes
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	kind, err := normalizeKind(in.Kind)
+	kind, err := normalizeKind(in.Format)
 	if err != nil {
 		return nil, err
 	}
@@ -223,14 +223,14 @@ Reads edits.apks.list and edits.bundles.list inside a read-only Edit
 for the package (` + "`gplay edits begin`" + `), the read happens inside it instead, so
 artifacts uploaded there and not yet committed are visible.
 
---kind apk|bundle restricts the listing to one resource (only that request
+--format apk|bundle restricts the listing to one resource (only that request
 is sent). Rows are ordered by versionCode.
 
 Default table columns: kind, versionCode, sha256. --output json is the raw
 API response: {"apks": ..., "bundles": ...} with both kinds, or the single
-list response verbatim with --kind.`,
+list response verbatim with --format.`,
 		Example: `  gplay releases artifacts list
-  gplay releases artifacts list --kind bundle
+  gplay releases artifacts list --format bundle
   gplay releases artifacts list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
@@ -243,7 +243,7 @@ list response verbatim with --kind.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Kind, "kind", "", "restrict to one artifact kind: apk or bundle (default: both)")
+	cmd.Flags().StringVar(&in.Format, "format", "", "restrict to one artifact format: apk or bundle (default: both)")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns (default: "+strings.Join(columns.DefaultKeys(), ",")+")")
 	return cmd
 }

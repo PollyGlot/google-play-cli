@@ -29,7 +29,7 @@ type AppDetails struct {
 }
 
 // ActiveApkSet mirrors AppStoreAppActiveApkSet: one base module plus the split
-// modules delivered with it. The ids are the ones `appstore upload apk`
+// modules delivered with it. The ids are the ones `appstore apk upload`
 // returned.
 type ActiveApkSet struct {
 	BaseApkID   string   `json:"baseApkId,omitempty"`
@@ -42,7 +42,7 @@ type ActiveApks struct {
 }
 
 // StoreListing mirrors AppStoreAppStoreListing: the per-locale store text and
-// the image ids `appstore upload image` returned.
+// the image ids `appstore image upload` returned.
 type StoreListing struct {
 	LanguageCode     string   `json:"languageCode,omitempty"`
 	AppName          string   `json:"appName,omitempty"`

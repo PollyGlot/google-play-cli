@@ -59,70 +59,70 @@ type LeaderboardListResponse struct {
 
 // ListLeaderboards returns the leaderboard configurations for an application.
 func ListLeaderboards(ctx context.Context, hc *http.Client, appID string, maxResults int, pageToken string) (LeaderboardListResponse, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, mLbList, opLbList, appID, map[string]string{"applicationId": appID}, listQuery(maxResults, pageToken), nil)
+	req, err := newJSONReq(ctx, mLbList, opLbList, gamesApp(appID), map[string]string{"applicationId": appID}, listQuery(maxResults, pageToken), nil)
 	if err != nil {
 		return LeaderboardListResponse{}, nil, err
 	}
-	raw, err := do(hc, opLbList, appID, req)
+	raw, err := do(hc, opLbList, gamesApp(appID), req)
 	if err != nil {
 		return LeaderboardListResponse{}, nil, err
 	}
 	var lr LeaderboardListResponse
 	if err := json.Unmarshal(raw, &lr); err != nil {
-		return LeaderboardListResponse{}, nil, &api.Error{Operation: opLbList, Package: appID, Message: "decode response: " + err.Error(), Cause: err}
+		return LeaderboardListResponse{}, nil, &api.Error{Operation: opLbList, Resource: gamesApp(appID), Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return lr, raw, nil
 }
 
 // GetLeaderboard reads a single leaderboard configuration by its ID.
 func GetLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string) (LeaderboardConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, mLbGet, opLbGet, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, "", nil)
+	req, err := newJSONReq(ctx, mLbGet, opLbGet, leaderboard(leaderboardID), map[string]string{"leaderboardId": leaderboardID}, "", nil)
 	if err != nil {
 		return LeaderboardConfiguration{}, nil, err
 	}
-	return doLeaderboard(hc, opLbGet, leaderboardID, req)
+	return doLeaderboard(hc, opLbGet, leaderboard(leaderboardID), req)
 }
 
 // CreateLeaderboard inserts a new leaderboard configuration in an application
 // from the JSON body (a LeaderboardConfiguration).
 func CreateLeaderboard(ctx context.Context, hc *http.Client, appID string, body []byte) (LeaderboardConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, mLbInsert, opLbInsert, appID, map[string]string{"applicationId": appID}, "", body)
+	req, err := newJSONReq(ctx, mLbInsert, opLbInsert, gamesApp(appID), map[string]string{"applicationId": appID}, "", body)
 	if err != nil {
 		return LeaderboardConfiguration{}, nil, err
 	}
-	return doLeaderboard(hc, opLbInsert, appID, req)
+	return doLeaderboard(hc, opLbInsert, gamesApp(appID), req)
 }
 
 // UpdateLeaderboard replaces the leaderboard configuration's metadata (PUT)
 // from the JSON body.
 func UpdateLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string, body []byte) (LeaderboardConfiguration, json.RawMessage, error) {
-	req, err := newJSONReq(ctx, mLbUpdate, opLbUpdate, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, "", body)
+	req, err := newJSONReq(ctx, mLbUpdate, opLbUpdate, leaderboard(leaderboardID), map[string]string{"leaderboardId": leaderboardID}, "", body)
 	if err != nil {
 		return LeaderboardConfiguration{}, nil, err
 	}
-	return doLeaderboard(hc, opLbUpdate, leaderboardID, req)
+	return doLeaderboard(hc, opLbUpdate, leaderboard(leaderboardID), req)
 }
 
 // DeleteLeaderboard deletes the leaderboard configuration with the given ID.
 func DeleteLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string) error {
-	req, err := newJSONReq(ctx, mLbDelete, opLbDelete, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, "", nil)
+	req, err := newJSONReq(ctx, mLbDelete, opLbDelete, leaderboard(leaderboardID), map[string]string{"leaderboardId": leaderboardID}, "", nil)
 	if err != nil {
 		return err
 	}
-	_, err = do(hc, opLbDelete, leaderboardID, req)
+	_, err = do(hc, opLbDelete, leaderboard(leaderboardID), req)
 	return err
 }
 
 // doLeaderboard executes req, parses the 2xx body as a LeaderboardConfiguration,
 // and returns it with the verbatim raw body.
-func doLeaderboard(hc *http.Client, op, ref string, req *http.Request) (LeaderboardConfiguration, json.RawMessage, error) {
+func doLeaderboard(hc *http.Client, op string, ref api.Resource, req *http.Request) (LeaderboardConfiguration, json.RawMessage, error) {
 	raw, err := do(hc, op, ref, req)
 	if err != nil {
 		return LeaderboardConfiguration{}, nil, err
 	}
 	var l LeaderboardConfiguration
 	if err := json.Unmarshal(raw, &l); err != nil {
-		return LeaderboardConfiguration{}, nil, &api.Error{Operation: op, Package: ref, Message: "decode response: " + err.Error(), Cause: err}
+		return LeaderboardConfiguration{}, nil, &api.Error{Operation: op, Resource: ref, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return l, raw, nil
 }

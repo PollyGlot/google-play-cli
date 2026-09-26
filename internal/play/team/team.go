@@ -135,7 +135,7 @@ func ListUsers(ctx context.Context, hc *http.Client, developerID string) ([]User
 		Users []json.RawMessage `json:"users"`
 	}{Users: rawAll})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: "marshal merged response: " + err.Error(), Cause: err}
+		return nil, nil, &api.Error{Operation: opUsersList, Resource: account(developerID), Message: "marshal merged response: " + err.Error(), Cause: err}
 	}
 	return users, merged, nil
 }
@@ -159,7 +159,7 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 		// the path only (#516).
 		u, err := accountURL(mUsersList, developerID)
 		if err != nil {
-			return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: err.Error(), Cause: err}
+			return nil, nil, &api.Error{Operation: opUsersList, Resource: account(developerID), Message: err.Error(), Cause: err}
 		}
 		q := url.Values{}
 		q.Set("pageSize", strconv.Itoa(listPageSize))
@@ -174,12 +174,12 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 		}
 		var pg listPage
 		if err := json.Unmarshal(page, &pg); err != nil {
-			return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: "decode response: " + err.Error(), Cause: err}
+			return nil, nil, &api.Error{Operation: opUsersList, Resource: account(developerID), Message: "decode response: " + err.Error(), Cause: err}
 		}
 		for _, rawUser := range pg.Users {
 			var usr User
 			if err := json.Unmarshal(rawUser, &usr); err != nil {
-				return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: "decode user: " + err.Error(), Cause: err}
+				return nil, nil, &api.Error{Operation: opUsersList, Resource: account(developerID), Message: "decode user: " + err.Error(), Cause: err}
 			}
 			users = append(users, usr)
 			raw = append(raw, rawUser)
@@ -190,7 +190,7 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 		if _, dup := seen[pg.NextPageToken]; dup {
 			return nil, nil, &api.Error{
 				Operation: opUsersList,
-				Package:   developerID,
+				Resource:  account(developerID),
 				Message:   "pagination token loop detected in users.list (server repeated a nextPageToken)",
 			}
 		}
@@ -248,7 +248,7 @@ type grantWriteBody struct {
 func CreateUser(ctx context.Context, hc *http.Client, developerID, email string, perms []string) (json.RawMessage, error) {
 	u, err := accountURL(mUsersCreate, developerID)
 	if err != nil {
-		return nil, &api.Error{Operation: opUsersCreate, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: opUsersCreate, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	return sendJSON(ctx, hc, mUsersCreate.Verb, opUsersCreate, developerID, u, userWriteBody{Email: email, DeveloperAccountPermissions: nonNil(perms)})
 }
@@ -260,7 +260,7 @@ func CreateUser(ctx context.Context, hc *http.Client, developerID, email string,
 func SetUserPermissions(ctx context.Context, hc *http.Client, developerID, email string, perms []string) (json.RawMessage, error) {
 	u, err := memberURL(mUsersPatch, developerID, email)
 	if err != nil {
-		return nil, &api.Error{Operation: opUsersPatch, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: opUsersPatch, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	u += "?updateMask=developerAccountPermissions"
 	return sendJSON(ctx, hc, mUsersPatch.Verb, opUsersPatch, developerID, u, userWriteBody{DeveloperAccountPermissions: nonNil(perms)})
@@ -271,7 +271,7 @@ func SetUserPermissions(ctx context.Context, hc *http.Client, developerID, email
 func DeleteUser(ctx context.Context, hc *http.Client, developerID, email string) (json.RawMessage, error) {
 	u, err := memberURL(mUsersDelete, developerID, email)
 	if err != nil {
-		return nil, &api.Error{Operation: opUsersDelete, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: opUsersDelete, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	return sendJSON(ctx, hc, mUsersDelete.Verb, opUsersDelete, developerID, u, nil)
 }
@@ -281,7 +281,7 @@ func DeleteUser(ctx context.Context, hc *http.Client, developerID, email string)
 func CreateGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string, perms []string) (json.RawMessage, error) {
 	u, err := memberURL(mGrantsCreate, developerID, email)
 	if err != nil {
-		return nil, &api.Error{Operation: opGrantsCreate, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: opGrantsCreate, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	return sendJSON(ctx, hc, mGrantsCreate.Verb, opGrantsCreate, developerID, u, grantWriteBody{PackageName: pkg, AppLevelPermissions: nonNil(perms)})
 }
@@ -291,7 +291,7 @@ func CreateGrant(ctx context.Context, hc *http.Client, developerID, email, pkg s
 func PatchGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string, perms []string) (json.RawMessage, error) {
 	u, err := grantURL(mGrantsPatch, developerID, email, pkg)
 	if err != nil {
-		return nil, &api.Error{Operation: opGrantsPatch, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: opGrantsPatch, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	u += "?updateMask=appLevelPermissions"
 	return sendJSON(ctx, hc, mGrantsPatch.Verb, opGrantsPatch, developerID, u, grantWriteBody{AppLevelPermissions: nonNil(perms)})
@@ -311,7 +311,7 @@ func nonNil(s []string) []string {
 func DeleteGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string) (json.RawMessage, error) {
 	u, err := grantURL(mGrantsDelete, developerID, email, pkg)
 	if err != nil {
-		return nil, &api.Error{Operation: opGrantsDelete, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: opGrantsDelete, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	return sendJSON(ctx, hc, mGrantsDelete.Verb, opGrantsDelete, developerID, u, nil)
 }
@@ -322,7 +322,7 @@ func DeleteGrant(ctx context.Context, hc *http.Client, developerID, email, pkg s
 func getJSON(ctx context.Context, hc *http.Client, verb, op, developerID, u string) (json.RawMessage, error) {
 	req, err := http.NewRequestWithContext(ctx, verb, u, nil)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	return doRequest(hc, op, developerID, req)
 }
@@ -335,13 +335,13 @@ func sendJSON(ctx context.Context, hc *http.Client, method, op, developerID, u s
 	if body != nil {
 		payload, err := json.Marshal(body)
 		if err != nil {
-			return nil, &api.Error{Operation: op, Package: developerID, Message: "marshal payload: " + err.Error(), Cause: err}
+			return nil, &api.Error{Operation: op, Resource: account(developerID), Message: "marshal payload: " + err.Error(), Cause: err}
 		}
 		reader = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, reader)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -349,13 +349,19 @@ func sendJSON(ctx context.Context, hc *http.Client, method, op, developerID, u s
 	return doRequest(hc, op, developerID, req)
 }
 
+// account is the error target of these account-scoped calls: the developer
+// account ID, never labelled a package (#599).
+func account(developerID string) api.Resource {
+	return api.Resource{Kind: api.KindDeveloperAccount, ID: developerID}
+}
+
 // doRequest executes req and maps the response to (raw body, *api.Error). The
-// Package field carries the developerID for these account-scoped calls so the
-// error string identifies the target.
+// error carries the developer account as its Resource so the error string and
+// the JSON envelope identify the target.
 func doRequest(hc *http.Client, op, developerID string, req *http.Request) (json.RawMessage, error) {
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: developerID, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: account(developerID), Message: err.Error(), Cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -364,7 +370,7 @@ func doRequest(hc *http.Client, op, developerID string, req *http.Request) (json
 		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return nil, &api.Error{
 			Operation:  op,
-			Package:    developerID,
+			Resource:   account(developerID),
 			StatusCode: resp.StatusCode,
 			Message:    msg,
 			Reasons:    reasons,
@@ -372,7 +378,7 @@ func doRequest(hc *http.Client, op, developerID string, req *http.Request) (json
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: developerID, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
+		return nil, &api.Error{Operation: op, Resource: account(developerID), StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
 	}
 	return json.RawMessage(raw), nil
 }

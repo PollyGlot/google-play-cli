@@ -55,11 +55,11 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **128 are 
 | `androidpublisher.appsigning.enrollApp` | ✅ | `gplay signing enroll`; --confirm-gated (ADR-0043) |
 | `androidpublisher.appsigning.rotateAppSigningKey` | ✅ | `gplay signing rotate`; --confirm-gated (ADR-0043) |
 | `androidpublisher.appstoreappsreview.createappstorehostedapp` | ✅ | `gplay appstore create` |
-| `androidpublisher.appstoreappsreview.updateappstorehostedapp` | ✅ | `gplay appstore update`; --confirm-gated: sends the app to review (ADR-0043) |
-| `androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus` | ✅ | `gplay appstore publish-status` |
-| `androidpublisher.appstoreappsreview.uploadapk` | ✅ | `gplay appstore upload apk` |
-| `androidpublisher.appstoreappsreview.uploadappstoreapppolicydeclarationfile` | ✅ | `gplay appstore upload policy` |
-| `androidpublisher.appstoreappsreview.uploadimage` | ✅ | `gplay appstore upload image` |
+| `androidpublisher.appstoreappsreview.updateappstorehostedapp` | ✅ | `gplay appstore submit`; --confirm-gated: sends the app to review (ADR-0043) |
+| `androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus` | ✅ | `gplay appstore publish-status set` |
+| `androidpublisher.appstoreappsreview.uploadapk` | ✅ | `gplay appstore apk upload` |
+| `androidpublisher.appstoreappsreview.uploadappstoreapppolicydeclarationfile` | ✅ | `gplay appstore policy upload` |
+| `androidpublisher.appstoreappsreview.uploadimage` | ✅ | `gplay appstore image upload` |
 | `androidpublisher.appstorecatalog.recentappviews.get` | ✅ | `gplay appstore catalog view` |
 | `androidpublisher.appstorecatalog.recentupdateevents.list` | ✅ | `gplay appstore catalog events list` |
 | `androidpublisher.edits.apks.addexternallyhosted` | 🔴 | parked, [#546](https://github.com/PollyGlot/google-play-cli/issues/546): externally hosted APKs are a Managed Play only flow |
@@ -222,16 +222,16 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **128 are 
 
 | Method | State | Commands / reason |
 |---|---|---|
-| `gamesConfiguration.achievementConfigurations.delete` | ✅ | `gplay games achievements delete` |
+| `gamesConfiguration.achievementConfigurations.delete` | ✅ | `gplay games achievements remove` |
 | `gamesConfiguration.achievementConfigurations.get` | ✅ | `gplay games achievements view` |
 | `gamesConfiguration.achievementConfigurations.insert` | ✅ | `gplay games achievements create` |
 | `gamesConfiguration.achievementConfigurations.list` | ✅ | `gplay games achievements list` |
-| `gamesConfiguration.achievementConfigurations.update` | ✅ | `gplay games achievements update` |
-| `gamesConfiguration.leaderboardConfigurations.delete` | ✅ | `gplay games leaderboards delete` |
+| `gamesConfiguration.achievementConfigurations.update` | ✅ | `gplay games achievements set` |
+| `gamesConfiguration.leaderboardConfigurations.delete` | ✅ | `gplay games leaderboards remove` |
 | `gamesConfiguration.leaderboardConfigurations.get` | ✅ | `gplay games leaderboards view` |
 | `gamesConfiguration.leaderboardConfigurations.insert` | ✅ | `gplay games leaderboards create` |
 | `gamesConfiguration.leaderboardConfigurations.list` | ✅ | `gplay games leaderboards list` |
-| `gamesConfiguration.leaderboardConfigurations.update` | ✅ | `gplay games leaderboards update` |
+| `gamesConfiguration.leaderboardConfigurations.update` | ✅ | `gplay games leaderboards set` |
 
 ## `playcustomapp` v1 (1 methods)
 

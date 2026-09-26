@@ -15,7 +15,7 @@ import (
 )
 
 // PresetSpec describes one opinionated `gplay vitals <name>` command: a fixed
-// metric set with a friendly flag surface (--by, --version) instead of the raw
+// metric set with a friendly flag surface (--by, --version-code) instead of the raw
 // --metrics/--dimensions of `vitals query`. The presets are data, so adding the
 // remaining metric sets (#260) is a list append, not new command code.
 type PresetSpec struct {
@@ -70,11 +70,11 @@ func contains(ss []string, want string) bool {
 	return false
 }
 
-// PresetParams resolves the friendly preset flags (--by, --version) into Params
+// PresetParams resolves the friendly preset flags (--by, --version-code) into Params
 // for a metric set: --by maps to the API dimension (validated against THIS set's
-// supported dimensions, since not every set supports every one), --version to a
+// supported dimensions, since not every set supports every one), --version-code to a
 // versionCode filter. Shared by the opinionated presets and `vitals errors
-// counts`. A bad --by or --version is CLI misuse; the --by error names the
+// counts`. A bad --by or --version-code is CLI misuse; the --by error names the
 // user's token (e.g. `country`), not the internal API dimension.
 func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by, since, period string) (Params, error) {
 	var dimensions []string
@@ -92,7 +92,7 @@ func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by,
 	if version != "" {
 		n, err := strconv.Atoi(strings.TrimSpace(version))
 		if err != nil || n <= 0 {
-			return Params{}, exit.Usagef("invalid --version %q (want a positive versionCode, e.g. 123)", version)
+			return Params{}, exit.Usagef("invalid --version-code %q (want a positive versionCode, e.g. 123)", version)
 		}
 		filter = "versionCode = " + strconv.Itoa(n)
 	}
@@ -108,19 +108,19 @@ func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by,
 
 // presetInput is the flag surface shared by every preset.
 type presetInput struct {
-	Package  string
-	Version  string // --version: filter by versionCode
-	By       string // --by: versionCode|device|country
-	Since    string
-	Period   string
-	Describe bool // --describe: the set's `.get` (freshness) instead of `:query`
+	Package     string
+	VersionCode string // --version-code: filter by versionCode
+	By          string // --by: versionCode|device|country
+	Since       string
+	Period      string
+	Describe    bool // --describe: the set's `.get` (freshness) instead of `:query`
 	// WindowFlags is the ChangedFlags list of the query-shaping flags, recorded
 	// by the cobra layer so runPreset can reject them under --describe.
 	WindowFlags []string
 }
 
 // presetWindowFlags are the preset flags that only make sense for a `:query`.
-var presetWindowFlags = []string{"since", "period", "by", "version"}
+var presetWindowFlags = []string{"since", "period", "by", "version-code"}
 
 // runPreset resolves the friendly preset flags into Params and delegates to
 // Execute. Metrics are left empty so the set's primary metric is used: the
@@ -138,7 +138,7 @@ func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (out
 	if err != nil {
 		return nil, err
 	}
-	p, err := PresetParams(idx, set, in.Package, in.Version, in.By, in.Since, in.Period)
+	p, err := PresetParams(idx, set, in.Package, in.VersionCode, in.By, in.Since, in.Period)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ An opinionated preset over ` + "`gplay vitals query " + spec.Set + "`" + `: no
 metric or dimension knowledge required: the set's primary metric is reported
 over the default 28-day DAILY window.
 
---by slices the timeline (` + ByChoices() + `); --version filters to one
+--by slices the timeline (` + ByChoices() + `); --version-code filters to one
 versionCode. This is a READ-ONLY surface on the Play Developer Reporting
 service. --output json mirrors the API response verbatim; a freshness note is
 printed to stderr so an empty window is not mistaken for zero.
@@ -175,7 +175,7 @@ printed to stderr so an empty window is not mistaken for zero.
 --describe fetches the metric set's descriptor instead of a timeline: the
 latest end time for which data is available, per aggregation period, in the
 set's timezone. It answers "up to when is this data complete?"; the window
-flags (--since, --period, --by, --version) do not apply and are rejected.`,
+flags (--since, --period, --by, --version-code) do not apply and are rejected.`,
 		Example: `  gplay vitals ` + spec.Use + ` --package com.example.app
 
   # The last week, one row per versionCode
@@ -195,7 +195,7 @@ flags (--since, --period, --by, --version) do not apply and are rejected.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Version, "version", "", "filter to a single versionCode")
+	cmd.Flags().StringVar(&in.VersionCode, "version-code", "", "filter to a single versionCode")
 	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension ("+ByChoices()+"; availability depends on the metric set)")
 	cmd.Flags().StringVar(&in.Since, "since", DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")

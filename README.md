@@ -45,7 +45,8 @@ means free to evolve. `--help` tells you which, per command.
 >
 > **`--help` is the source of truth**: the label is on the command itself.
 > See [Stability and the Public contract](https://gplay.sh/docs/concepts/stability/),
-> [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/), and
+> [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/),
+> [Migrating to 2.0](https://gplay.sh/docs/migration/2.0/), and
 > the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking) for what's out of scope.
 
 ## Why
@@ -171,7 +172,7 @@ gplay releases upload app.aab \
 gplay releases promote --package com.example.myapp --from internal --to beta
 
 # Stage a production rollout, then advance it.
-gplay releases rollout --package com.example.myapp --track production --to 0.10
+gplay releases rollout --package com.example.myapp --track production --staged 0.10
 
 # Read the most recent reviews (API exposes the last 7 days only) and reply.
 gplay reviews list --package com.example.myapp --stars 1-2

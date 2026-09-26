@@ -93,21 +93,21 @@ func ParseRFC3339(flag, value string) (time.Time, string, error) {
 	return t, v, nil
 }
 
-// ValidateTimeRange validates the required --start-time / --end-time pair and
+// ValidateTimeRange validates the required --since / --until pair and
 // returns the two strings to send. The range is [start, end): the API documents
 // the start as inclusive and the end as exclusive, so an end at or before the
 // start can only ever return nothing and is rejected as CLI misuse (exit 2).
 func ValidateTimeRange(startFlag, endFlag string) (string, string, error) {
-	start, startStr, err := ParseRFC3339("start-time", startFlag)
+	start, startStr, err := ParseRFC3339("since", startFlag)
 	if err != nil {
 		return "", "", err
 	}
-	end, endStr, err := ParseRFC3339("end-time", endFlag)
+	end, endStr, err := ParseRFC3339("until", endFlag)
 	if err != nil {
 		return "", "", err
 	}
 	if !end.After(start) {
-		return "", "", exit.Usagef("invalid time range: --end-time %q must be after --start-time %q (the range is [start, end), end exclusive)", endStr, startStr)
+		return "", "", exit.Usagef("invalid time range: --until %q must be after --since %q (the range is [start, end), end exclusive)", endStr, startStr)
 	}
 	return startStr, endStr, nil
 }
@@ -185,10 +185,11 @@ func ClassifyStoreRead(storePkg string, err error) error {
 }
 
 // ClassifyHostedApp is ClassifyReview for the calls that act on an app the
-// store has ALREADY created: upload, publish-status, update. It differs on
-// 404 only: there, a missing hosted app record is at least as likely as a
-// wrong store, so the hint names both. Use ClassifyReview for `appstore
-// create`, where the record cannot be the thing that is missing.
+// store has ALREADY created: the three uploads, publish-status set and
+// submit. It differs on 404 only: there, a missing hosted app record is at
+// least as likely as a wrong store, so the hint names both. Use
+// ClassifyReview for `appstore create`, where the record cannot be the thing
+// that is missing.
 func ClassifyHostedApp(storePkg, pkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
@@ -225,10 +226,10 @@ func (e *reviewStoreNotFoundError) Error() string {
 func (e *reviewStoreNotFoundError) Unwrap() error { return e.cause }
 
 // hostedAppNotFoundError wraps a 404 on a call that addresses an EXISTING
-// hosted app (upload, publish-status, update) rather than creating one. Two
-// things can be missing there, and only one of them is the store: Google's own
-// contract is that `createappstorehostedapp` "must be called before any other
-// RPCs for this hosted app", so a caller who skipped `appstore create` lands
+// hosted app (the three uploads, publish-status set, submit) rather than
+// creating one. Two things can be missing there, and only one of them is the
+// store: Google's own contract is that `createappstorehostedapp` "must be
+// called before any other RPCs for this hosted app", so a caller who skipped `appstore create` lands
 // here. Naming only the store would send them auditing a --store-package that
 // is very likely correct. The wrapped *api.Error drives the exit code
 // (404 → exit 30).

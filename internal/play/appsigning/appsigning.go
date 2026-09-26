@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -224,34 +225,46 @@ func Rotate(ctx context.Context, hc *http.Client, name string, opts RotateOpts) 
 func post(ctx context.Context, hc *http.Client, m apiregistry.Method, op, name string, body any, out any) (json.RawMessage, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: name, Message: "marshal request: " + err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: signingTarget(name), Message: "marshal request: " + err.Error(), Cause: err}
 	}
 	u, err := m.URL(map[string]string{"name": name})
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: name, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: signingTarget(name), Message: err.Error(), Cause: err}
 	}
 	req, err := http.NewRequestWithContext(ctx, m.Verb, u, bytes.NewReader(b))
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: name, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: signingTarget(name), Message: err.Error(), Cause: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: name, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: signingTarget(name), Message: err.Error(), Cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		eb, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
 		msg, reasons := api.ParseErrorEnvelope(eb, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: name, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
+		return nil, &api.Error{Operation: op, Resource: signingTarget(name), StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: name, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
+		return nil, &api.Error{Operation: op, Resource: signingTarget(name), StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return nil, &api.Error{Operation: op, Package: name, StatusCode: resp.StatusCode, Message: "decode response: " + err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: signingTarget(name), StatusCode: resp.StatusCode, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return json.RawMessage(raw), nil
+}
+
+// signingTarget is the error target of an app-signing call. The `name` path
+// parameter takes the package name or the numeric Play Console app ID; an app
+// ID is not a package, so it is reported as KindApp and the JSON error
+// envelope's `package` stays reserved for real package names (#599). A package
+// name always contains a dot and never is all digits, so the test is exact.
+func signingTarget(name string) api.Resource {
+	if name != "" && strings.Trim(name, "0123456789") == "" {
+		return api.Resource{Kind: api.KindApp, ID: name}
+	}
+	return api.PackageResource(name)
 }
