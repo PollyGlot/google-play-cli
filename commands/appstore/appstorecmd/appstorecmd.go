@@ -93,21 +93,21 @@ func ParseRFC3339(flag, value string) (time.Time, string, error) {
 	return t, v, nil
 }
 
-// ValidateTimeRange validates the required --start-time / --end-time pair and
+// ValidateTimeRange validates the required --since / --until pair and
 // returns the two strings to send. The range is [start, end): the API documents
 // the start as inclusive and the end as exclusive, so an end at or before the
 // start can only ever return nothing and is rejected as CLI misuse (exit 2).
 func ValidateTimeRange(startFlag, endFlag string) (string, string, error) {
-	start, startStr, err := ParseRFC3339("start-time", startFlag)
+	start, startStr, err := ParseRFC3339("since", startFlag)
 	if err != nil {
 		return "", "", err
 	}
-	end, endStr, err := ParseRFC3339("end-time", endFlag)
+	end, endStr, err := ParseRFC3339("until", endFlag)
 	if err != nil {
 		return "", "", err
 	}
 	if !end.After(start) {
-		return "", "", exit.Usagef("invalid time range: --end-time %q must be after --start-time %q (the range is [start, end), end exclusive)", endStr, startStr)
+		return "", "", exit.Usagef("invalid time range: --until %q must be after --since %q (the range is [start, end), end exclusive)", endStr, startStr)
 	}
 	return startStr, endStr, nil
 }

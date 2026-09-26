@@ -18,6 +18,7 @@
 #   appstore publish-status <state>     -> appstore publish-status set <state>
 #   releases rollout --to <fraction>    -> releases rollout --staged <fraction>
 #   --max-results / --from-json / --no-validate -> --page-size / --file / --skip-preflight
+#   --start-time/--end-time, reviews history --from/--to -> --since/--until
 #
 # (The other 2.0.0 flag renames, `--version` -> `--version-code` on vitals,
 # `--region` -> `--regions`, `--kind` -> `--format`, are too common as words
@@ -90,6 +91,8 @@ report "releases rollout --to <fraction> -> --staged <fraction>" \
 	"$(grep_all -E 'releases[[:space:]]+rollout[^|]*--to[[:space:]=]+[0-9.]')"
 report "--max-results / --from-json / --no-validate -> --page-size / --file / --skip-preflight" \
 	"$(grep_all -E -- '--(max-results|from-json|no-validate)([^[:alnum:]_-]|$)')"
+report "time windows: --start-time/--end-time, reviews history --from/--to -> --since/--until" \
+	"$(grep_all -E -- '--(start-time|end-time)([^[:alnum:]_-]|$)|reviews[[:space:]]+history[^|]*--(from|to)[[:space:]=]+[0-9]')"
 
 if [ "$fail" -ne 0 ]; then
 	echo "verb-gate: FAILED, use the canonical verbs (docs/adr/0019-canonical-verb-vocabulary.md)." >&2

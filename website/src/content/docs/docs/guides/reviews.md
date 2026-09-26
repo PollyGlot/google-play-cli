@@ -49,7 +49,7 @@ Reporting bucket, the only channel that goes further back than the API:
 ```sh
 gplay reviews history                          # latest month present
 gplay reviews history --month 2026-03
-gplay reviews history --from 2026-01 --to 2026-06   # merged across months
+gplay reviews history --since 2026-01 --until 2026-06   # merged across months
 ```
 
 It talks to Cloud Storage, not the Developer API, so the service account

@@ -182,7 +182,7 @@ func NormalizeMonth(month string) (string, error) {
 	return m[1] + m[2], nil
 }
 
-// maxRangeMonths caps how many months a single --from/--to sweep may span. Each
+// maxRangeMonths caps how many months a single --since/--until sweep may span. Each
 // month is one sequential GCS fetch, so an unbounded range (e.g. a mistyped year
 // like 1026 that still satisfies the YYYY-MM regex) would fire thousands of
 // requests; the cap turns that fat-finger into a fast usage error instead. Ten
@@ -190,7 +190,7 @@ func NormalizeMonth(month string) (string, error) {
 const maxRangeMonths = 120
 
 // MonthRange returns every YYYYMM from `from` to `to` inclusive (both given in
-// the --from/--to YYYY-MM shape). It rejects a malformed bound, an inverted
+// the --since/--until YYYY-MM shape). It rejects a malformed bound, an inverted
 // range (from after to), or a span wider than maxRangeMonths, naming the
 // offending flag so the error points at what the operator typed. The result is
 // chronologically ordered and, on success, never empty (from == to yields a
@@ -198,15 +198,15 @@ const maxRangeMonths = 120
 func MonthRange(from, to string) ([]string, error) {
 	fn, err := NormalizeMonth(from)
 	if err != nil {
-		return nil, fmt.Errorf("invalid --from %q: want YYYY-MM (e.g. 2026-06)", from)
+		return nil, fmt.Errorf("invalid --since %q: want YYYY-MM (e.g. 2026-06)", from)
 	}
 	tn, err := NormalizeMonth(to)
 	if err != nil {
-		return nil, fmt.Errorf("invalid --to %q: want YYYY-MM (e.g. 2026-06)", to)
+		return nil, fmt.Errorf("invalid --until %q: want YYYY-MM (e.g. 2026-06)", to)
 	}
 	// YYYYMM sorts lexicographically the same as chronologically.
 	if fn > tn {
-		return nil, fmt.Errorf("--from %s is after --to %s", from, to)
+		return nil, fmt.Errorf("--since %s is after --until %s", from, to)
 	}
 	fy, fm := splitYYYYMM(fn)
 	ty, tm := splitYYYYMM(tn)

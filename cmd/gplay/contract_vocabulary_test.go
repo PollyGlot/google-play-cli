@@ -67,7 +67,9 @@ var flagVocabulary = map[string]string{
 	"filter":     "AIP-160 filter expression",
 	"order-by":   "sort order expression",
 	"stars":      "star-rating filter",
-	"since":      "start of the time window, as a length back from now",
+	"since":      "start of the time window (a length back from now, or an absolute bound where the command takes one)",
+	"until":      "end of the time window, the absolute bound paired with --since",
+	"month":      "one calendar month to read (YYYY-MM), not a window",
 	"period":     "aggregation period",
 	"by":         "dimension to slice a timeline by",
 	"dimensions": "dimensions of a raw metric query",
@@ -136,22 +138,13 @@ var flagVocabulary = map[string]string{
 // flagNameDrift lists today's flags that name a concept already in
 // flagVocabulary under another name (or reuse a canonical name for another
 // concept). 2.0.0 settled every group #597 decided (--staged, --version-code,
-// --page-size, --file, --regions, --skip-preflight, --format) with no alias;
-// what is left waits on a name nobody has chosen yet.
+// --page-size, --file, --regions, --skip-preflight, --format, and the time
+// window --since/--until) with no alias, so it is empty and only stops a new
+// synonym from being admitted.
 var flagNameDrift = ratchet{
 	name:    "flagNameDrift",
-	ceiling: 5,
-	entries: []string{
-		// Time windows start at --since elsewhere (a length back from now);
-		// these take absolute bounds and no end-of-window name has been chosen
-		// yet, so both ends of both ranges wait. `reviews history --from/--to`
-		// also reuse the promotion's track flags for months.
-		"appstore catalog events list --end-time",
-		"appstore catalog events list --start-time",
-		"reviews history --from",
-		"reviews history --month",
-		"reviews history --to",
-	},
+	ceiling: 0,
+	entries: []string{},
 }
 
 // verbVocabulary maps the last token of a leaf path to its category in
