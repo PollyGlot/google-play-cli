@@ -8,14 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func jsonResp(status int, body string) *http.Response {
 	return &http.Response{
@@ -48,11 +46,11 @@ func TestMetricSetByName(t *testing.T) {
 func TestQuery_issuesPOST(t *testing.T) {
 	set, _ := vitals.MetricSetByName("crashrate")
 	var gotURL, gotMethod, gotBody, gotCT string
-	hc := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
 		gotCT = r.Header.Get("Content-Type")
-		b, _ := io.ReadAll(r.Body)
+		b := testkit.ReadBody(r)
 		gotBody = string(b)
 		return jsonResp(200, `{"rows":[]}`), nil
 	})}
@@ -83,7 +81,7 @@ func TestQuery_issuesPOST(t *testing.T) {
 // classifier surfaces it as exit 11.
 func TestQuery_nonOKBecomesAPIError(t *testing.T) {
 	set, _ := vitals.MetricSetByName("crashrate")
-	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResp(403, `{"error":{"message":"denied"}}`), nil
 	})}
 	_, err := vitals.Query(context.Background(), hc, set, "com.example.app", []byte(`{}`))
@@ -231,7 +229,7 @@ func TestParseTimeline_hourlyMidnightCarriesTime(t *testing.T) {
 // as a decode error: it yields an empty {rows:[]} envelope.
 func TestQuery_emptyBodyTolerated(t *testing.T) {
 	set, _ := vitals.MetricSetByName("crashrate")
-	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})}
 	raw, err := vitals.Query(context.Background(), hc, set, "com.example.app", []byte(`{"metrics":["crashRate"]}`))

@@ -55,7 +55,7 @@ func (r *liveRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/dataSafety") {
 		if req.Body != nil {
-			r.postBody, _ = io.ReadAll(req.Body)
+			r.postBody = testkit.ReadBody(req)
 		}
 		code := r.postCode
 		if code == 0 {

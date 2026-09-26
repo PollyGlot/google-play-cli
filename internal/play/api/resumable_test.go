@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
@@ -75,7 +77,7 @@ func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: status, Header: h, Body: io.NopCloser(strings.NewReader(r.initBody))}, nil
 
 	case http.MethodPut:
-		body, _ := io.ReadAll(req.Body)
+		body := testkit.ReadBody(req)
 		_ = req.Body.Close()
 		r.puts = append(r.puts, putRecord{contentRange: req.Header.Get("Content-Range"), bodyLen: len(body)})
 		if r.putIdx >= len(r.putSteps) {

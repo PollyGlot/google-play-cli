@@ -45,7 +45,7 @@ func (r *queryRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
 	}
 	r.queryURL = req.URL.String()
-	b, _ := io.ReadAll(req.Body)
+	b := testkit.ReadBody(req)
 	r.queryBody = string(b)
 	code := r.respCode
 	if code == 0 {

@@ -65,7 +65,7 @@ func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		r.initCT = req.Header.Get("X-Upload-Content-Type")
 		r.initBodyCT = req.Header.Get("Content-Type")
 		if req.Body != nil {
-			r.initBody, _ = io.ReadAll(req.Body)
+			r.initBody = testkit.ReadBody(req)
 		}
 		if r.failWith != 0 {
 			return jsonResp(r.failWith, `{"error":{"message":"nope"}}`), nil
@@ -78,7 +78,7 @@ func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	case http.MethodPut:
 		if req.Body != nil {
-			r.putBody, _ = io.ReadAll(req.Body)
+			r.putBody = testkit.ReadBody(req)
 		}
 		body := r.respBody
 		if body == "" {

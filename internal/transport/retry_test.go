@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // step is one scripted outcome: status 0 means "return a transport error"
@@ -32,7 +34,7 @@ func (s *scriptRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	i := s.calls
 	s.calls++
 	if req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		s.bodies = append(s.bodies, string(b))
 		_ = req.Body.Close()
 	} else {

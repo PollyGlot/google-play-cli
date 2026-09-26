@@ -42,7 +42,7 @@ func (r *recRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/appRecoveries") {
 		r.postURL = req.URL.String()
-		r.body, _ = io.ReadAll(req.Body)
+		r.body = testkit.ReadBody(req)
 		return jsonResp(200, draftBody), nil
 	}
 	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)

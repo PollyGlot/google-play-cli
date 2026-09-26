@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
@@ -28,7 +30,7 @@ func (r *seqRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	h := http.Header{"Content-Type": []string{"application/json"}}
 	tok := req.URL.Query().Get("pageToken")
 	if req.Method == http.MethodPost && req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		var m map[string]json.RawMessage
 		_ = json.Unmarshal(b, &m)
 		if v, ok := m["pageToken"]; ok {

@@ -18,6 +18,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/customapps"
 )
@@ -56,7 +58,7 @@ func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		r.initCType = req.Header.Get("Content-Type")
 		r.uploadCType = req.Header.Get("X-Upload-Content-Type")
 		r.uploadLength = req.Header.Get("X-Upload-Content-Length")
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		_ = req.Body.Close()
 		r.initBody = string(b)
 		status := r.initStatus
@@ -70,7 +72,7 @@ func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: status, Header: h, Body: io.NopCloser(strings.NewReader(""))}, nil
 
 	case http.MethodPut:
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		_ = req.Body.Close()
 		r.putBytes = b
 		r.putRange = req.Header.Get("Content-Range")

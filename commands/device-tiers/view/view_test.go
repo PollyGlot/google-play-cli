@@ -21,10 +21,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-type rtFunc func(*http.Request) (*http.Response, error)
-
-func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
 func token(r *http.Request) (*http.Response, bool) {
 	if r.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(r.URL.Path, "/token") {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`))}, true
@@ -63,7 +59,7 @@ const configBody = `{"deviceTierConfigId":"42","deviceGroups":[{"name":"high"}]}
 // and the JSON view is verbatim.
 func TestRun_happyPath_addressesIDAndPassesThrough(t *testing.T) {
 	var gotURL string
-	rt := rtFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if resp, ok := token(r); ok {
 			return resp, nil
 		}
@@ -89,7 +85,7 @@ func TestRun_happyPath_addressesIDAndPassesThrough(t *testing.T) {
 
 // TestRun_missingID_exit2 asserts an empty id is CLI misuse.
 func TestRun_missingID_exit2(t *testing.T) {
-	rt := rtFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if resp, ok := token(r); ok {
 			return resp, nil
 		}

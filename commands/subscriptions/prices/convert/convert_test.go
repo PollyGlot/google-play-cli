@@ -44,7 +44,7 @@ func (r *convertRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 	if req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		r.body = string(b)
 	}
 	return jsonResp(200, convertBody), nil

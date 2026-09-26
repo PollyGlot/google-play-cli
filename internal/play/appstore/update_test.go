@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
 )
@@ -32,10 +33,10 @@ const submissionBody = `{
 func TestUpdateHostedApp_requestShape(t *testing.T) {
 	var gotMethod, gotURL string
 	var gotBody []byte
-	rt := testRoundTripper(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotMethod, gotURL = r.Method, r.URL.String()
 		if r.Body != nil {
-			gotBody, _ = io.ReadAll(r.Body)
+			gotBody = testkit.ReadBody(r)
 		}
 		return resp(200, `{}`), nil
 	})
@@ -78,8 +79,8 @@ func TestUpdateHostedApp_requestShape(t *testing.T) {
 func TestUpdateHostedApp_forcesPackageName(t *testing.T) {
 	for _, body := range []string{`{"packageName":"com.stale.app"}`, `{}`} {
 		var gotBody []byte
-		rt := testRoundTripper(func(r *http.Request) (*http.Response, error) {
-			gotBody, _ = io.ReadAll(r.Body)
+		rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			gotBody = testkit.ReadBody(r)
 			return resp(200, `{}`), nil
 		})
 		if _, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", "com.example.app", json.RawMessage(body)); err != nil {
@@ -110,8 +111,8 @@ func TestUpdateHostedApp_forwardsUnmodelledFields(t *testing.T) {
       "policyDeclarations": [{"declarationId": "d", "responses": [{"questionId": "q", "futureResponse": {"shape": "unknown"}}]}]
     }`
 	var gotBody []byte
-	rt := testRoundTripper(func(r *http.Request) (*http.Response, error) {
-		gotBody, _ = io.ReadAll(r.Body)
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		gotBody = testkit.ReadBody(r)
 		return resp(200, `{}`), nil
 	})
 
@@ -130,7 +131,7 @@ func TestUpdateHostedApp_forwardsUnmodelledFields(t *testing.T) {
 // cannot have packageName forced onto it, and must fail before the request.
 func TestUpdateHostedApp_invalidBody_errors(t *testing.T) {
 	var called bool
-	rt := testRoundTripper(func(*http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		called = true
 		return resp(200, `{}`), nil
 	})
@@ -145,7 +146,7 @@ func TestUpdateHostedApp_invalidBody_errors(t *testing.T) {
 // TestUpdateHostedApp_rawPassthrough keeps ADR-0003 honest even though the
 // documented response is empty.
 func TestUpdateHostedApp_rawPassthrough(t *testing.T) {
-	rt := testRoundTripper(func(*http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(200, `{"unexpected":"field"}`), nil
 	})
 	raw, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", "p", json.RawMessage(`{}`))
@@ -163,9 +164,9 @@ func TestUpdateHostedApp_rawPassthrough(t *testing.T) {
 func TestUpdatePublishStatus_requestShape(t *testing.T) {
 	var gotURL string
 	var gotBody []byte
-	rt := testRoundTripper(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
-		gotBody, _ = io.ReadAll(r.Body)
+		gotBody = testkit.ReadBody(r)
 		return resp(200, `{}`), nil
 	})
 
@@ -189,7 +190,7 @@ func TestUpdatePublishStatus_requestShape(t *testing.T) {
 // TestUpdate_pathEscaped guards both path keys, on both verbs.
 func TestUpdate_pathEscaped(t *testing.T) {
 	var gotURL string
-	rt := testRoundTripper(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return resp(200, `{}`), nil
 	})
@@ -222,7 +223,7 @@ func TestUpdate_errorTaxonomy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := testRoundTripper(func(*http.Request) (*http.Response, error) {
+			rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 				return resp(tc.status, `{"error":{"message":"boom"}}`), nil
 			})
 			_, err := appstore.UpdateHostedApp(context.Background(), &http.Client{Transport: rt}, "s", "p", json.RawMessage(`{}`))
@@ -236,7 +237,7 @@ func TestUpdate_errorTaxonomy(t *testing.T) {
 
 // TestUpdate_transport_exit50 keeps a dial failure distinct from an API refusal.
 func TestUpdate_transport_exit50(t *testing.T) {
-	rt := testRoundTripper(func(*http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("dial tcp: connection refused")
 	})
 	_, err := appstore.UpdatePublishStatus(context.Background(), &http.Client{Transport: rt}, "s", "p", appstore.PublishStatePublished)

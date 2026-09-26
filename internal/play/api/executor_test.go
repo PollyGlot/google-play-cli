@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -30,7 +32,7 @@ func (r *execRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.reqs = append(r.reqs, req)
 	body := ""
 	if req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		body = string(b)
 	}
 	r.bodies = append(r.bodies, body)

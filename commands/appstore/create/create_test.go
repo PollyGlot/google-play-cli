@@ -48,7 +48,7 @@ func (r *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	r.apiURL = req.URL.String()
 	r.method = req.Method
 	if req.Body != nil {
-		r.body, _ = io.ReadAll(req.Body)
+		r.body = testkit.ReadBody(req)
 	}
 	if r.status != 0 {
 		return jsonResp(r.status, r.resp), nil

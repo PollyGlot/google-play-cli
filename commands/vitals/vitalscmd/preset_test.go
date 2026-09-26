@@ -37,7 +37,7 @@ func (r *presetRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(`{"access_token":"a","token_type":"Bearer","expires_in":3600}`))}, nil
 	}
 	r.queryURL = req.URL.String()
-	b, _ := io.ReadAll(req.Body)
+	b := testkit.ReadBody(req)
 	r.body = string(b)
 	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(`{"rows":[{"startTime":{"year":2026,"month":6,"day":1},"metrics":[{"metric":"crashRate","decimalValue":{"value":"0.01"}}]}]}`))}, nil
 }

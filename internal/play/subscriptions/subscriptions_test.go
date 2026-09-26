@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
@@ -38,7 +40,7 @@ func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	defer r.mu.Unlock()
 	var body string
 	if req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		body = string(b)
 	}
 	r.requests = append(r.requests, recordedReq{method: req.Method, url: req.URL.String(), body: body})

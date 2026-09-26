@@ -20,10 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-type rtFunc func(*http.Request) (*http.Response, error)
-
-func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
 func saJSON(t *testing.T) []byte {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -51,7 +47,7 @@ const listBody = `{"deviceTierConfigs":[{"deviceTierConfigId":"7"},{"deviceTierC
 // the response (with nextPageToken) is passed through verbatim.
 func TestRun_pagination_and_passthrough(t *testing.T) {
 	var gotURL string
-	rt := rtFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(r.URL.Path, "/token") {
 			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`))}, nil
 		}

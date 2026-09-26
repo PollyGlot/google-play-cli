@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -84,7 +86,7 @@ func (r *replyRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.method = req.Method
 	r.path = req.URL.Path
 	if req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		r.reqBody = string(b)
 	}
 	code := r.code

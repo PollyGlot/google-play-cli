@@ -63,7 +63,7 @@ func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.calls = append(r.calls, key)
 	r.urls = append(r.urls, req.URL.String())
 	if req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
+		b := testkit.ReadBody(req)
 		if r.bodies == nil {
 			r.bodies = map[string]string{}
 		}

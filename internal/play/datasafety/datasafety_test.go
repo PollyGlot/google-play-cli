@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/datasafety"
 )
@@ -35,7 +37,7 @@ func (r *postRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.method = req.Method
 	r.path = req.URL.Path
 	if req.Body != nil {
-		r.body, _ = io.ReadAll(req.Body)
+		r.body = testkit.ReadBody(req)
 	}
 	code := r.code
 	if code == 0 {

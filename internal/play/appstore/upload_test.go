@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
 )
@@ -36,7 +38,7 @@ func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		r.initCT = req.Header.Get("X-Upload-Content-Type")
 		r.initBodyCT = req.Header.Get("Content-Type")
 		if req.Body != nil {
-			r.initBody, _ = io.ReadAll(req.Body)
+			r.initBody = testkit.ReadBody(req)
 		}
 		if r.initFailWith != 0 {
 			return resp(r.initFailWith, `{"error":{"message":"nope"}}`), nil
@@ -48,7 +50,7 @@ func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		}, nil
 
 	case http.MethodPut:
-		r.putBody, _ = io.ReadAll(req.Body)
+		r.putBody = testkit.ReadBody(req)
 		status := r.respStatus
 		if status == 0 {
 			status = http.StatusOK
