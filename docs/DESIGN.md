@@ -337,8 +337,9 @@ Two read-only checks complete the lifecycle (#544):
 
 Every command that commits an Edit (`gplay edits commit`, and each write
 command in implicit mode) takes two opt-ins, forwarded as `edits.commit` query
-parameters. They are `[experimental]` sub-features of frozen commands (§11),
-labelled in their help text:
+parameters. They are frozen like the commands carrying them (no
+`[experimental]` label): each mirrors one Google parameter 1:1, so there is no
+shape left to settle.
 
 | Flag | Sent as | Effect |
 |---|---|---|

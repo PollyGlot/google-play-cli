@@ -87,10 +87,10 @@ its exit code (50 or 40) but is reported as not retryable
 committing again.
 
 If changes are already in Google's review, Google's default is to cancel that
-review and submit everything again. [experimental] Pass
---changes-in-review error to fail instead and leave the review untouched, or
---changes-not-sent-for-review to commit without sending the changes for
-review (send them later from the Play Console).
+review and submit everything again. Pass --changes-in-review error to fail
+instead and leave the review untouched, or --changes-not-sent-for-review to
+commit without sending the changes for review (send them later from the Play
+Console).
 
 The package defaults to the repo's .gplay/config.json pin when --package is
 omitted.`,

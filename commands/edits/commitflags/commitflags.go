@@ -6,9 +6,9 @@
 //
 // Both flags are additive opt-ins: left alone they send nothing, so the commit
 // request and Google's default (cancel a pending review, resubmit everything)
-// are unchanged. They ship [experimental] in their help text, the sub-feature
-// label of docs/DESIGN.md §11, because the commands carrying them are frozen
-// and a flag-level annotation does not exist.
+// are unchanged. They are frozen like the commands carrying them, with no
+// [experimental] label: each mirrors one Google query parameter 1:1, so their
+// shape has nothing left to settle, and the surface golden pins them.
 package commitflags
 
 import (
@@ -35,9 +35,9 @@ type Flags struct {
 // Register declares both flags on cmd, bound to f.
 func Register(cmd *cobra.Command, f *Flags) {
 	cmd.Flags().Var((*changesInReviewValue)(&f.ChangesInReview), ChangesInReview,
-		"[experimental] what the commit does when changes are already in review: cancel (cancel that review and submit everything again, Google's default when unset) or error (fail and leave the review untouched)")
+		"what the commit does when changes are already in review: cancel (cancel that review and submit everything again, Google's default when unset) or error (fail and leave the review untouched)")
 	cmd.Flags().BoolVar(&f.ChangesNotSentForReview, ChangesNotSentForReview, false,
-		"[experimental] commit without sending the changes for review; they wait until sent from the Play Console")
+		"commit without sending the changes for review; they wait until sent from the Play Console")
 }
 
 // Options returns the commit parameters for an Edit this invocation commits

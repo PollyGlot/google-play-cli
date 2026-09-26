@@ -84,7 +84,7 @@ Google's default is to **cancel that review and submit everything again**,
 which restarts the review. gplay keeps that default: with no flag, it sends
 the commit exactly as before. Every command that commits an Edit
 (`gplay edits commit`, and each write command in implicit mode) accepts two
-opt-ins, still `[experimental]`:
+opt-ins:
 
 - `--changes-in-review error` makes the commit fail instead, leaving the
   review untouched (the Edit stays valid). `--changes-in-review cancel` asks

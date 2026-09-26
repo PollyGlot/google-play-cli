@@ -51,8 +51,10 @@ func TestCommitFlags_onEveryEditCommittingLeaf(t *testing.T) {
 				t.Errorf("%q lacks --%s", cmd.CommandPath(), name)
 				continue
 			}
-			if !strings.HasPrefix(f.Usage, "[experimental]") {
-				t.Errorf("%q --%s usage %q must open with the [experimental] sub-feature label", cmd.CommandPath(), name, f.Usage)
+			// Frozen like their leaves (they mirror Google's parameters 1:1),
+			// so no [experimental] label may creep back into the help.
+			if strings.Contains(f.Usage, "[experimental]") {
+				t.Errorf("%q --%s usage %q carries an [experimental] label; these flags are frozen", cmd.CommandPath(), name, f.Usage)
 			}
 		}
 	}
