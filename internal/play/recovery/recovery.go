@@ -13,11 +13,10 @@
 package recovery
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -133,29 +132,17 @@ func Create(ctx context.Context, hc *http.Client, pkg string, opts CreateOpts) (
 	if len(opts.VersionCodes) > 0 {
 		t.VersionList = &versionList{VersionCodes: opts.VersionCodes}
 	}
-	body, err := json.Marshal(createDraftAppRecoveryRequest{
-		RemoteInAppUpdate: &remoteInAppUpdate{IsRemoteInAppUpdateRequested: opts.RemoteInAppUpdate},
-		Targeting:         t,
-	})
-	if err != nil {
-		return Action{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
-	}
-	u, err := mCreate.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return Action{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mCreate.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return Action{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	raw, err := do(hc, opCreate, pkg, req)
+	var a Action
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: mCreate, Op: opCreate, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Body: createDraftAppRecoveryRequest{
+			RemoteInAppUpdate: &remoteInAppUpdate{IsRemoteInAppUpdateRequested: opts.RemoteInAppUpdate},
+			Targeting:         t,
+		},
+	}, &a)
 	if err != nil {
 		return Action{}, nil, err
-	}
-	var a Action
-	if err := json.Unmarshal(raw, &a); err != nil {
-		return Action{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return a, raw, nil
 }
@@ -163,41 +150,14 @@ func Create(ctx context.Context, hc *http.Client, pkg string, opts CreateOpts) (
 // List reads the recovery actions for a versionCode (required by the API). It
 // returns the parsed actions and the verbatim ListAppRecoveriesResponse.
 func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (ListResponse, json.RawMessage, error) {
-	u, err := mList.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mList.Verb, u+"?versionCode="+strconv.FormatInt(versionCode, 10), nil)
-	if err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, opList, pkg, req)
+	var lr ListResponse
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: mList, Op: opList, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Query:  url.Values{"versionCode": {strconv.FormatInt(versionCode, 10)}},
+	}, &lr)
 	if err != nil {
 		return ListResponse{}, nil, err
 	}
-	var lr ListResponse
-	if err := json.Unmarshal(raw, &lr); err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
-	}
 	return lr, raw, nil
-}
-
-// do runs req and maps the response to (raw body, *api.Error). Shared with the
-// lifecycle leaves (deploy/cancel/add-targeting) in lifecycle.go.
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
 }

@@ -7,11 +7,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -24,29 +22,23 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// eventsRT answers the /token exchange and the recentupdateevents.list call,
-// recording the API URL. Nothing here reaches the network.
-type eventsRT struct {
-	mu     sync.Mutex
-	calls  []string
-	apiURL string
-	status int
-	body   string
+// newFake answers every recentupdateevents.list call with status and body; a
+// zero status serves eventsBody. Nothing here reaches the network.
+func newFake(status int, body string) *testkit.Fake {
+	if status == 0 {
+		status, body = http.StatusOK, eventsBody
+	}
+	return testkit.NewFake(testkit.Any(status, body))
 }
 
-func (r *eventsRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+// last is the most recent API call, failing the test when none was made.
+func last(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.apiURL = req.URL.String()
-	if r.status != 0 {
-		return jsonResp(r.status, r.body), nil
-	}
-	return jsonResp(200, eventsBody), nil
+	return calls[len(calls)-1]
 }
 
 const eventsBody = `{
@@ -56,10 +48,6 @@ const eventsBody = `{
   ],
   "nextPageToken": "tok-2"
 }`
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
@@ -103,20 +91,21 @@ const (
 // passes the envelope through verbatim on --output json (ADR-0003).
 func TestRun_requestShape(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &eventsRT{}
-	rc, _ := newRC(t, rt)
+	fake := newFake(0, "")
+	rc, _ := newRC(t, fake)
 
 	r, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/appstorecatalog/com.store.alt/recentUpdateEvents?") {
-		t.Errorf("url %q is not the recentupdateevents.list endpoint", rt.apiURL)
+	apiCall := last(t, fake)
+	if !strings.Contains(apiCall.URL, "/appstorecatalog/com.store.alt/recentUpdateEvents?") {
+		t.Errorf("url %q is not the recentupdateevents.list endpoint", apiCall.URL)
 	}
-	if strings.Contains(rt.apiURL, "/edits/") {
-		t.Errorf("url %q must not open an Edit", rt.apiURL)
+	if strings.Contains(apiCall.URL, "/edits/") {
+		t.Errorf("url %q must not open an Edit", apiCall.URL)
 	}
-	q := query(t, rt.apiURL)
+	q := query(t, apiCall.URL)
 	if q.Get("startTime") != start {
 		t.Errorf("startTime = %q, want %q", q.Get("startTime"), start)
 	}
@@ -125,7 +114,7 @@ func TestRun_requestShape(t *testing.T) {
 	}
 	// pageSize/pageToken are omitted when unset so the server applies its default.
 	if q.Has("pageSize") || q.Has("pageToken") {
-		t.Errorf("url %q must omit pageSize/pageToken when unset", rt.apiURL)
+		t.Errorf("url %q must omit pageSize/pageToken when unset", apiCall.URL)
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
@@ -140,8 +129,8 @@ func TestRun_requestShape(t *testing.T) {
 // package, time and MODIFICATION/DELETION type.
 func TestRun_table(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &eventsRT{}
-	rc, _ := newRC(t, rt)
+	fake := newFake(0, "")
+	rc, _ := newRC(t, fake)
 
 	r, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end})
 	if err != nil {
@@ -163,13 +152,14 @@ func TestRun_table(t *testing.T) {
 // query, so an incremental sync can walk the whole range.
 func TestRun_pagingParamsPropagate(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &eventsRT{}
-	rc, _ := newRC(t, rt)
+	fake := newFake(0, "")
+	rc, _ := newRC(t, fake)
 
 	if _, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end, PageSize: 250, PageToken: "tok-1"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	q := query(t, rt.apiURL)
+	apiCall := last(t, fake)
+	q := query(t, apiCall.URL)
 	if q.Get("pageSize") != "250" {
 		t.Errorf("pageSize = %q, want 250", q.Get("pageSize"))
 	}
@@ -178,7 +168,7 @@ func TestRun_pagingParamsPropagate(t *testing.T) {
 	}
 	// The time bounds must still ride along on a paged call.
 	if q.Get("startTime") != start || q.Get("endTime") != end {
-		t.Errorf("url %q must keep the same time range across pages", rt.apiURL)
+		t.Errorf("url %q must keep the same time range across pages", apiCall.URL)
 	}
 }
 
@@ -186,8 +176,8 @@ func TestRun_pagingParamsPropagate(t *testing.T) {
 // the next --page-token, so a table read never silently under-reports.
 func TestRun_nextPageTokenNoted(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &eventsRT{}
-	rc, stderr := newRC(t, rt)
+	fake := newFake(0, "")
+	rc, stderr := newRC(t, fake)
 
 	if _, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -215,16 +205,16 @@ func TestRun_timeFlagValidation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(appstorecmd.EnvStorePackage, "com.store.alt")
-			rt := &eventsRT{}
-			rc, _ := newRC(t, rt)
+			fake := newFake(0, "")
+			rc, _ := newRC(t, fake)
 
 			_, err := listcmd.Run(rc, listcmd.Input{StartTime: tc.start, EndTime: tc.end})
 			assertExit(t, err, 2)
 			if !strings.Contains(err.Error(), tc.wantIn) {
 				t.Errorf("error %q must mention %q", err.Error(), tc.wantIn)
 			}
-			if len(rt.calls) != 0 {
-				t.Errorf("must not reach the network; calls=%v", rt.calls)
+			if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+				t.Errorf("must not reach the network; calls=%v", fake.Calls())
 			}
 		})
 	}
@@ -234,14 +224,14 @@ func TestRun_timeFlagValidation(t *testing.T) {
 // and travels verbatim, so a caller need not convert to Z first.
 func TestRun_acceptsOffsetTimestamps(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.alt")
-	rt := &eventsRT{}
-	rc, _ := newRC(t, rt)
+	fake := newFake(0, "")
+	rc, _ := newRC(t, fake)
 
 	const offsetStart = "2026-07-01T02:00:00+02:00"
 	if _, err := listcmd.Run(rc, listcmd.Input{StartTime: offsetStart, EndTime: end}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if got := query(t, rt.apiURL).Get("startTime"); got != offsetStart {
+	if got := query(t, last(t, fake).URL).Get("startTime"); got != offsetStart {
 		t.Errorf("startTime = %q, want the offset timestamp verbatim %q", got, offsetStart)
 	}
 }
@@ -250,13 +240,13 @@ func TestRun_acceptsOffsetTimestamps(t *testing.T) {
 // misuse caught before any HTTP call.
 func TestRun_negativePageSize_exit2_noNetwork(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.alt")
-	rt := &eventsRT{}
-	rc, _ := newRC(t, rt)
+	fake := newFake(0, "")
+	rc, _ := newRC(t, fake)
 
 	_, err := listcmd.Run(rc, listcmd.Input{StartTime: start, EndTime: end, PageSize: -1})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v", fake.Calls())
 	}
 }
 
@@ -264,16 +254,16 @@ func TestRun_negativePageSize_exit2_noNetwork(t *testing.T) {
 // package-name resolution applies here too, and fails before the network.
 func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &eventsRT{}
-	rc, _ := newRC(t, rt)
+	fake := newFake(0, "")
+	rc, _ := newRC(t, fake)
 
 	_, err := listcmd.Run(rc, listcmd.Input{StartTime: start, EndTime: end})
 	assertExit(t, err, 2)
 	if !strings.Contains(err.Error(), "--store-package") {
 		t.Errorf("usage error %q must name --store-package", err.Error())
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v", fake.Calls())
 	}
 }
 
@@ -281,14 +271,15 @@ func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 // resolves from $GPLAY_APP_STORE_PACKAGE when the flag is omitted.
 func TestRun_storePackageFromEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.fromenv")
-	rt := &eventsRT{}
-	rc, _ := newRC(t, rt)
+	fake := newFake(0, "")
+	rc, _ := newRC(t, fake)
 
 	if _, err := listcmd.Run(rc, listcmd.Input{StartTime: start, EndTime: end}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/appstorecatalog/com.store.fromenv/") {
-		t.Errorf("url %q should use the app store package name from the environment", rt.apiURL)
+	apiCall := last(t, fake)
+	if !strings.Contains(apiCall.URL, "/appstorecatalog/com.store.fromenv/") {
+		t.Errorf("url %q should use the app store package name from the environment", apiCall.URL)
 	}
 }
 
@@ -296,8 +287,8 @@ func TestRun_storePackageFromEnv(t *testing.T) {
 // naming the app store package.
 func TestRun_403_exit11(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &eventsRT{status: 403, body: `{"error":{"message":"The caller does not have permission"}}`}
-	rc, _ := newRC(t, rt)
+	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
+	rc, _ := newRC(t, fake)
 
 	_, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end})
 	assertExit(t, err, 11)
@@ -310,8 +301,8 @@ func TestRun_403_exit11(t *testing.T) {
 // exit code with an enrollment hint.
 func TestRun_404_exit30(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &eventsRT{status: 404, body: `{"error":{"message":"not found"}}`}
-	rc, _ := newRC(t, rt)
+	fake := newFake(404, `{"error":{"message":"not found"}}`)
+	rc, _ := newRC(t, fake)
 
 	_, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.unknown", StartTime: start, EndTime: end})
 	assertExit(t, err, 30)

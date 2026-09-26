@@ -7,10 +7,8 @@
 package reviews
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -194,50 +192,13 @@ func (r Review) DeveloperReplies() []DeveloperComment {
 // (ADR-0003). A non-2xx becomes an *api.Error carrying the status, so the
 // shared classifier maps 403 → exit 11 and 404 → exit 30.
 func Reply(ctx context.Context, hc *http.Client, pkg, reviewID, text string) (json.RawMessage, error) {
-	payload, err := json.Marshal(struct {
-		ReplyText string `json:"replyText"`
-	}{ReplyText: text})
-	if err != nil {
-		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
-	}
-
-	u, err := mReviewsReply.URL(map[string]string{"packageName": pkg, "reviewId": reviewID})
-	if err != nil {
-		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, mReviewsReply.Verb, u, bytes.NewReader(payload))
-	if err != nil {
-		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: opReviewsReply, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{
-			Operation:  opReviewsReply,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{
-			Operation:  opReviewsReply,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
-		}
-	}
-	return raw, nil
+	return api.Do(ctx, hc, api.Call{
+		Method: mReviewsReply, Op: opReviewsReply, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "reviewId": reviewID},
+		Body: struct {
+			ReplyText string `json:"replyText"`
+		}{ReplyText: text},
+	})
 }
 
 // Get fetches a single review by reviewID via reviews.get. Like List/Reply it
@@ -248,131 +209,53 @@ func Reply(ctx context.Context, hc *http.Client, pkg, reviewID, text string) (js
 // a 404 here means an unknown OR expired reviewId (a valid review that has
 // fallen out of the API's 7-day window).
 func Get(ctx context.Context, hc *http.Client, pkg, reviewID string) (Review, error) {
-	u, err := mReviewsGet.URL(map[string]string{"packageName": pkg, "reviewId": reviewID})
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: mReviewsGet, Op: opReviewsGet, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "reviewId": reviewID},
+	})
 	if err != nil {
-		return Review{}, &api.Error{Operation: opReviewsGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, mReviewsGet.Verb, u, nil)
-	if err != nil {
-		return Review{}, &api.Error{Operation: opReviewsGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return Review{}, &api.Error{Operation: opReviewsGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return Review{}, &api.Error{
-			Operation:  opReviewsGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return Review{}, &api.Error{
-			Operation:  opReviewsGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
-		}
+		return Review{}, err
 	}
 	var rv Review
 	if err := json.Unmarshal(raw, &rv); err != nil {
-		return Review{}, &api.Error{
-			Operation:  opReviewsGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode review: " + err.Error(),
-			Cause:      err,
-		}
+		return Review{}, decodeError(opReviewsGet, pkg, "decode review: ", err)
 	}
 	rv.Raw = raw
 	return rv, nil
 }
 
+// decodeError tags a 2xx body that does not decode. It keeps the status tag
+// (exit 30) this module always gave it, unlike api.DoJSON's status-less one.
+func decodeError(op, pkg, what string, err error) error {
+	return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: what + err.Error(), Cause: err}
+}
+
 // List fetches every review of pkg from reviews.list, following
 // tokenPagination.nextPageToken (carried back as the `token` query param)
 // until the API stops returning one. It returns one Review per API entry,
-// each retaining its verbatim JSON for the pass-through.
+// each retaining its verbatim JSON for the pass-through. A server that repeats
+// or cycles a token fails the walk rather than silently truncating it.
 func List(ctx context.Context, hc *http.Client, pkg string) ([]Review, error) {
-	var out []Review
-	pageToken := ""
-	// seen guards against a server that repeats or cycles a pagination
-	// token: without this the loop would request the same page forever
-	// (until context cancellation). A non-progressing token is treated as a
-	// server fault rather than silently truncating the result.
-	seen := map[string]struct{}{}
-	for {
-		reviews, next, err := listPage(ctx, hc, pkg, pageToken)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, reviews...)
-		if next == "" {
-			return out, nil
-		}
-		if _, dup := seen[next]; dup {
-			return nil, &api.Error{
-				Operation: opReviewsList,
-				Package:   pkg,
-				Message:   "pagination token loop detected in reviews.list (server repeated a nextPageToken)",
-			}
-		}
-		seen[next] = struct{}{}
-		pageToken = next
-	}
+	out, _, err := api.Paginate(api.Pager{Op: opReviewsList, Target: pkg, What: "reviews.list"},
+		func(token string, _ int) ([]Review, string, error) { return listPage(ctx, hc, pkg, token) })
+	return out, err
 }
 
 // listPage fetches a single reviews.list page. pageToken is the prior page's
 // nextPageToken ("" for the first call). It returns the page's reviews and
 // the nextPageToken to continue with ("" when the page is the last).
 func listPage(ctx context.Context, hc *http.Client, pkg, pageToken string) ([]Review, string, error) {
-	// The token query stays hand-built: the resolver answers with the path
-	// only (#516).
-	u, err := mReviewsList.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return nil, "", &api.Error{Operation: opReviewsList, Package: pkg, Message: err.Error(), Cause: err}
-	}
+	var q url.Values
 	if pageToken != "" {
-		u += "?token=" + url.QueryEscape(pageToken)
+		q = url.Values{"token": {pageToken}}
 	}
-
-	req, err := http.NewRequestWithContext(ctx, mReviewsList.Verb, u, nil)
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: mReviewsList, Op: opReviewsList, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Query:  q,
+	})
 	if err != nil {
-		return nil, "", &api.Error{Operation: opReviewsList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, "", &api.Error{Operation: opReviewsList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, "", &api.Error{
-			Operation:  opReviewsList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, "", &api.Error{
-			Operation:  opReviewsList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
-		}
+		return nil, "", err
 	}
 	var page struct {
 		Reviews         []json.RawMessage `json:"reviews"`
@@ -381,25 +264,13 @@ func listPage(ctx context.Context, hc *http.Client, pkg, pageToken string) ([]Re
 		} `json:"tokenPagination"`
 	}
 	if err := json.Unmarshal(raw, &page); err != nil {
-		return nil, "", &api.Error{
-			Operation:  opReviewsList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+		return nil, "", decodeError(opReviewsList, pkg, "decode response: ", err)
 	}
 	reviews := make([]Review, 0, len(page.Reviews))
 	for _, rm := range page.Reviews {
 		var rv Review
 		if err := json.Unmarshal(rm, &rv); err != nil {
-			return nil, "", &api.Error{
-				Operation:  opReviewsList,
-				Package:    pkg,
-				StatusCode: resp.StatusCode,
-				Message:    "decode review: " + err.Error(),
-				Cause:      err,
-			}
+			return nil, "", decodeError(opReviewsList, pkg, "decode review: ", err)
 		}
 		rv.Raw = rm
 		reviews = append(reviews, rv)

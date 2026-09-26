@@ -99,103 +99,85 @@ type LegacyItem struct {
 // nextPageToken to completion (no silent truncation: a missing page would
 // read as deletes in a Reconciliation plan).
 func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
-	var (
-		items []Item
-		token string
-	)
-	// seen guards against a server that repeats a pageToken forever.
-	seen := map[string]struct{}{}
-	for {
-		q := url.Values{}
-		q.Set("pageSize", strconv.Itoa(listPageSize))
-		if token != "" {
-			q.Set("pageToken", token)
-		}
-		var pg struct {
-			OneTimeProducts []json.RawMessage `json:"oneTimeProducts"`
-			NextPageToken   string            `json:"nextPageToken"`
-		}
-		if _, err := api.DoJSON(ctx, hc, api.Call{
-			Method: mList, Op: opList, Target: pkg,
-			Params: map[string]string{"packageName": pkg},
-			Query:  q,
-		}, &pg); err != nil {
-			return nil, err
-		}
-		for _, rawP := range pg.OneTimeProducts {
-			var p struct {
-				ProductID string `json:"productId"`
+	items, _, err := api.Paginate(api.Pager{Op: opList, Target: pkg, What: "onetimeproducts.list"},
+		func(token string, _ int) ([]Item, string, error) {
+			var pg struct {
+				OneTimeProducts []json.RawMessage `json:"oneTimeProducts"`
+				NextPageToken   string            `json:"nextPageToken"`
 			}
-			if err := json.Unmarshal(rawP, &p); err != nil {
-				return nil, &api.Error{Operation: opList, Package: pkg, Message: "decode one-time product: " + err.Error(), Cause: err}
+			if _, err := api.DoJSON(ctx, hc, api.Call{
+				Method: mList, Op: opList, Target: pkg,
+				Params: map[string]string{"packageName": pkg},
+				Query:  pageQuery(token),
+			}, &pg); err != nil {
+				return nil, "", err
 			}
-			if p.ProductID == "" {
-				return nil, &api.Error{Operation: opList, Package: pkg, Message: "response contains a one-time product without a productId: refusing a catalog entry that cannot be addressed"}
+			page := make([]Item, 0, len(pg.OneTimeProducts))
+			for _, rawP := range pg.OneTimeProducts {
+				var p struct {
+					ProductID string `json:"productId"`
+				}
+				if err := json.Unmarshal(rawP, &p); err != nil {
+					return nil, "", &api.Error{Operation: opList, Package: pkg, Message: "decode one-time product: " + err.Error(), Cause: err}
+				}
+				if p.ProductID == "" {
+					return nil, "", &api.Error{Operation: opList, Package: pkg, Message: "response contains a one-time product without a productId: refusing a catalog entry that cannot be addressed"}
+				}
+				page = append(page, Item{ProductID: p.ProductID, Raw: rawP})
 			}
-			items = append(items, Item{ProductID: p.ProductID, Raw: rawP})
-		}
-		if pg.NextPageToken == "" {
-			return items, nil
-		}
-		if _, dup := seen[pg.NextPageToken]; dup {
-			return nil, &api.Error{Operation: opList, Package: pkg, Message: "pagination token loop detected in onetimeproducts.list (server repeated a nextPageToken)"}
-		}
-		seen[pg.NextPageToken] = struct{}{}
-		token = pg.NextPageToken
+			return page, pg.NextPageToken, nil
+		})
+	return items, err
+}
+
+// pageQuery is the query of one v2 list page: the fixed page size, plus the
+// continuation token past the first page.
+func pageQuery(token string) url.Values {
+	q := url.Values{}
+	q.Set("pageSize", strconv.Itoa(listPageSize))
+	if token != "" {
+		q.Set("pageToken", token)
 	}
+	return q
 }
 
 // ListAllOffers reads every v2 offer of the app in one wildcard walk
 // (productId='-', purchaseOptionId='-'), following nextPageToken to
 // completion.
 func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferItem, error) {
-	var (
-		items []OfferItem
-		token string
-	)
-	seen := map[string]struct{}{}
-	for {
-		q := url.Values{}
-		q.Set("pageSize", strconv.Itoa(listPageSize))
-		if token != "" {
-			q.Set("pageToken", token)
-		}
-		// The wildcard walk rides the same template as a scoped list: `-` is a
-		// legal path segment, so escaping leaves it untouched.
-		var pg struct {
-			OneTimeProductOffers []json.RawMessage `json:"oneTimeProductOffers"`
-			NextPageToken        string            `json:"nextPageToken"`
-		}
-		if _, err := api.DoJSON(ctx, hc, api.Call{
-			Method: mOffersList, Op: opOffersList, Target: pkg,
-			Params: map[string]string{"packageName": pkg, "productId": "-", "purchaseOptionId": "-"},
-			Query:  q,
-		}, &pg); err != nil {
-			return nil, err
-		}
-		for _, rawO := range pg.OneTimeProductOffers {
-			var o struct {
-				ProductID        string `json:"productId"`
-				PurchaseOptionID string `json:"purchaseOptionId"`
-				OfferID          string `json:"offerId"`
+	items, _, err := api.Paginate(api.Pager{Op: opOffersList, Target: pkg, What: "offers.list"},
+		func(token string, _ int) ([]OfferItem, string, error) {
+			// The wildcard walk rides the same template as a scoped list: `-`
+			// is a legal path segment, so escaping leaves it untouched.
+			var pg struct {
+				OneTimeProductOffers []json.RawMessage `json:"oneTimeProductOffers"`
+				NextPageToken        string            `json:"nextPageToken"`
 			}
-			if err := json.Unmarshal(rawO, &o); err != nil {
-				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err}
+			if _, err := api.DoJSON(ctx, hc, api.Call{
+				Method: mOffersList, Op: opOffersList, Target: pkg,
+				Params: map[string]string{"packageName": pkg, "productId": "-", "purchaseOptionId": "-"},
+				Query:  pageQuery(token),
+			}, &pg); err != nil {
+				return nil, "", err
 			}
-			if o.ProductID == "" || o.PurchaseOptionID == "" || o.OfferID == "" {
-				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/purchaseOptionId/offerId): refusing a catalog entry that cannot be addressed"}
+			page := make([]OfferItem, 0, len(pg.OneTimeProductOffers))
+			for _, rawO := range pg.OneTimeProductOffers {
+				var o struct {
+					ProductID        string `json:"productId"`
+					PurchaseOptionID string `json:"purchaseOptionId"`
+					OfferID          string `json:"offerId"`
+				}
+				if err := json.Unmarshal(rawO, &o); err != nil {
+					return nil, "", &api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err}
+				}
+				if o.ProductID == "" || o.PurchaseOptionID == "" || o.OfferID == "" {
+					return nil, "", &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/purchaseOptionId/offerId): refusing a catalog entry that cannot be addressed"}
+				}
+				page = append(page, OfferItem{ProductID: o.ProductID, PurchaseOptionID: o.PurchaseOptionID, OfferID: o.OfferID, Raw: rawO})
 			}
-			items = append(items, OfferItem{ProductID: o.ProductID, PurchaseOptionID: o.PurchaseOptionID, OfferID: o.OfferID, Raw: rawO})
-		}
-		if pg.NextPageToken == "" {
-			return items, nil
-		}
-		if _, dup := seen[pg.NextPageToken]; dup {
-			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "pagination token loop detected in offers.list (server repeated a nextPageToken)"}
-		}
-		seen[pg.NextPageToken] = struct{}{}
-		token = pg.NextPageToken
-	}
+			return page, pg.NextPageToken, nil
+		})
+	return items, err
 }
 
 // PatchOneTimeProduct upserts (allowMissing=true, the v2 create: the API has
@@ -367,49 +349,39 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchas
 // the legacy tokenPagination envelope to completion. Read-only: gplay never
 // writes the legacy surface in place (ADR-0041 §8).
 func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]LegacyItem, error) {
-	var (
-		items []LegacyItem
-		token string
-	)
-	seen := map[string]struct{}{}
-	for {
-		var q url.Values
-		if token != "" {
-			q = url.Values{"token": {token}}
-		}
-		var pg struct {
-			InAppProduct    []json.RawMessage `json:"inappproduct"`
-			TokenPagination struct {
-				NextPageToken string `json:"nextPageToken"`
-			} `json:"tokenPagination"`
-		}
-		if _, err := api.DoJSON(ctx, hc, api.Call{
-			Method: mLegacyList, Op: opLegacyList, Target: pkg,
-			Params: map[string]string{"packageName": pkg},
-			Query:  q,
-		}, &pg); err != nil {
-			return nil, err
-		}
-		for _, rawP := range pg.InAppProduct {
-			var p struct {
-				SKU string `json:"sku"`
+	items, _, err := api.Paginate(api.Pager{Op: opLegacyList, Target: pkg, What: "inappproducts.list"},
+		func(token string, _ int) ([]LegacyItem, string, error) {
+			var q url.Values
+			if token != "" {
+				q = url.Values{"token": {token}}
 			}
-			if err := json.Unmarshal(rawP, &p); err != nil {
-				return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: "decode in-app product: " + err.Error(), Cause: err}
+			var pg struct {
+				InAppProduct    []json.RawMessage `json:"inappproduct"`
+				TokenPagination struct {
+					NextPageToken string `json:"nextPageToken"`
+				} `json:"tokenPagination"`
 			}
-			if p.SKU == "" {
-				return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: "response contains an in-app product without a sku: refusing a catalog entry that cannot be addressed"}
+			if _, err := api.DoJSON(ctx, hc, api.Call{
+				Method: mLegacyList, Op: opLegacyList, Target: pkg,
+				Params: map[string]string{"packageName": pkg},
+				Query:  q,
+			}, &pg); err != nil {
+				return nil, "", err
 			}
-			items = append(items, LegacyItem{SKU: p.SKU, Raw: rawP})
-		}
-		next := pg.TokenPagination.NextPageToken
-		if next == "" {
-			return items, nil
-		}
-		if _, dup := seen[next]; dup {
-			return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: "pagination token loop detected in inappproducts.list (server repeated a nextPageToken)"}
-		}
-		seen[next] = struct{}{}
-		token = next
-	}
+			page := make([]LegacyItem, 0, len(pg.InAppProduct))
+			for _, rawP := range pg.InAppProduct {
+				var p struct {
+					SKU string `json:"sku"`
+				}
+				if err := json.Unmarshal(rawP, &p); err != nil {
+					return nil, "", &api.Error{Operation: opLegacyList, Package: pkg, Message: "decode in-app product: " + err.Error(), Cause: err}
+				}
+				if p.SKU == "" {
+					return nil, "", &api.Error{Operation: opLegacyList, Package: pkg, Message: "response contains an in-app product without a sku: refusing a catalog entry that cannot be addressed"}
+				}
+				page = append(page, LegacyItem{SKU: p.SKU, Raw: rawP})
+			}
+			return page, pg.TokenPagination.NextPageToken, nil
+		})
+	return items, err
 }

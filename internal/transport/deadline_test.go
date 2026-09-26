@@ -9,25 +9,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
 // hangOrAnswer blocks a request until its context is done when hang is set,
-// else answers with a body that is read after RoundTrip returns.
-type hangOrAnswer struct{ hang bool }
-
-func (h hangOrAnswer) RoundTrip(req *http.Request) (*http.Response, error) {
-	if h.hang {
-		<-req.Context().Done()
-		return nil, req.Context().Err()
-	}
-	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`)), Request: req}, nil
+// else answers with a body that is read after the round trip returns.
+func hangOrAnswer(hang bool) http.RoundTripper {
+	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if hang {
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		}
+		resp := testkit.Response(http.StatusOK, `{"ok":true}`)
+		resp.Request = req
+		return resp, nil
+	})
 }
 
 // A hung control-plane request fails on the bound instead of hanging, while a
 // media transfer on the same transport is left alone.
 func TestControlPlaneDeadline_cutsHungControlPlaneOnly(t *testing.T) {
-	hc := &http.Client{Transport: transport.WithControlPlaneDeadline(hangOrAnswer{hang: true}, 50*time.Millisecond)}
+	hc := &http.Client{Transport: transport.WithControlPlaneDeadline(hangOrAnswer(true), 50*time.Millisecond)}
 
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/p/edits/e1:commit", nil)
 	start := time.Now()
@@ -54,7 +57,7 @@ func TestControlPlaneDeadline_cutsHungControlPlaneOnly(t *testing.T) {
 // The bound stays armed until the body is closed, not just until headers: the
 // body must still be readable after RoundTrip returns.
 func TestControlPlaneDeadline_bodyReadableAfterRoundTrip(t *testing.T) {
-	hc := &http.Client{Transport: transport.WithControlPlaneDeadline(hangOrAnswer{}, time.Minute)}
+	hc := &http.Client{Transport: transport.WithControlPlaneDeadline(hangOrAnswer(false), time.Minute)}
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/p/edits/e1", nil)
 	resp, err := hc.Do(req)
 	if err != nil {

@@ -105,52 +105,26 @@ func upload(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg,
 		return Artifact{}, nil, &LocalIOError{Op: op, Path: path, Cause: fmt.Errorf("not a regular file")}
 	}
 
-	u, err := m.UploadURL(map[string]string{"packageName": pkg})
+	// A Stream with an explicit Size: Go would otherwise use chunked
+	// Transfer-Encoding, which some upload front-ends handle poorly and which
+	// blocks transport retries; Open runs once per attempt, so a retry or a
+	// redirect replays the body from a fresh handle (net/http closes
+	// Request.Body each attempt).
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: m, Op: op, Target: pkg,
+		Params:      map[string]string{"packageName": pkg},
+		Media:       true,
+		Body:        &api.Stream{Open: func() (io.ReadCloser, error) { return os.Open(path) }, Size: info.Size()},
+		ContentType: "application/octet-stream",
+	})
 	if err != nil {
-		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u+"?uploadType=media", f)
-	if err != nil {
-		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	// Explicit ContentLength (Go would otherwise use chunked Transfer-Encoding,
-	// which some upload front-ends handle poorly and which blocks transport
-	// retries). GetBody re-opens a fresh handle per attempt so a retry/redirect
-	// replays the body independently (net/http closes Request.Body each attempt).
-	req.ContentLength = info.Size()
-	req.GetBody = func() (io.ReadCloser, error) { return os.Open(path) }
-	req.Header.Set("Content-Type", "application/octet-stream")
-
-	resp, err := hc.Do(req)
-	if err != nil {
-		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return Artifact{}, nil, &api.Error{
-			Operation:  op,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
+		return Artifact{}, nil, err
 	}
 	var art Artifact
 	if err := json.Unmarshal(raw, &art); err != nil {
-		return Artifact{}, nil, &api.Error{
-			Operation:  op,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+		// A 2xx that does not decode is the API misbehaving, not the network:
+		// it keeps the status tag (exit 30) this module always gave it.
+		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
 	}
-	return art, json.RawMessage(raw), nil
+	return art, raw, nil
 }

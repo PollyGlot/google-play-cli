@@ -9,6 +9,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 const describeBody = `{"name":"apps/com.example.app/crashRateMetricSet","freshnessInfo":{"freshnesses":[{"aggregationPeriod":"DAILY","latestEndTime":{"year":2026,"month":9,"day":12,"timeZone":{"id":"America/Los_Angeles"}}}]}}`
@@ -20,14 +21,14 @@ type describeRT struct {
 	methods []string
 }
 
-func (r *describeRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return r.queryRT.RoundTrip(req)
+func (r *describeRT) serve(req *http.Request) (*http.Response, error) {
+	if testkit.IsTokenRequest(req) {
+		return r.queryRT.serve(req)
 	}
 	// Not delegated: queryRT reads a request body, and a GET has none.
 	r.methods = append(r.methods, req.Method)
 	r.queryURL = req.URL.String()
-	return jsonResp(200, r.respBody), nil
+	return testkit.Response(http.StatusOK, r.respBody), nil
 }
 
 // TestRun_describe_getsTheMetricSet proves `vitals query <set> --describe`
@@ -36,7 +37,7 @@ func (r *describeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 // freshness table (#545).
 func TestRun_describe_getsTheMetricSet(t *testing.T) {
 	rt := &describeRT{queryRT: queryRT{t: t, respBody: describeBody}}
-	rc, _, stderr := newRC(t, rt)
+	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{MetricSet: "crashrate", Package: "com.example.app", Describe: true})
 	if err != nil {
@@ -90,7 +91,7 @@ func TestRun_describe_getsTheMetricSet(t *testing.T) {
 // sent at all.
 func TestRun_describe_rejectsWindowFlags(t *testing.T) {
 	rt := &describeRT{queryRT: queryRT{t: t, respBody: describeBody}}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 	_, err := Run(rc, Input{
 		MetricSet: "crashrate", Package: "com.example.app", Describe: true,
 		Since: "7d", Dimensions: []string{"versionCode"}, WindowFlags: []string{"dimensions", "since"},

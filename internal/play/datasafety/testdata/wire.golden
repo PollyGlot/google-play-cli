@@ -1,0 +1,21 @@
+## Post / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/dataSafety
+Content-Type: application/json
+content-length=72 replayable=true
+{"safetyLabels":"Question ID,Response\n\"PSL_DATA\",\u003ctrue\u003e\n"}
+=> ok {}
+
+## Post / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/dataSafety
+Content-Type: application/json
+content-length=72 replayable=true
+{"safetyLabels":"Question ID,Response\n\"PSL_DATA\",\u003ctrue\u003e\n"}
+=> error (exit 11): applications.dataSafety on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Post / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/dataSafety
+Content-Type: application/json
+content-length=72 replayable=true
+{"safetyLabels":"Question ID,Response\n\"PSL_DATA\",\u003ctrue\u003e\n"}
+=> ok not json
+

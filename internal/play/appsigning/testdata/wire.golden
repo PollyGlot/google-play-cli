@@ -1,0 +1,63 @@
+## Enroll existing / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:enrollApp
+Content-Type: application/json
+content-length=140 replayable=true
+{"enrollExistingApp":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"}}}
+=> ok [{},{}]
+
+## Enroll existing / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:enrollApp
+Content-Type: application/json
+content-length=140 replayable=true
+{"enrollExistingApp":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"}}}
+=> error (exit 11): appsigning.enrollApp on applications/com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Enroll existing / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:enrollApp
+Content-Type: application/json
+content-length=140 replayable=true
+{"enrollExistingApp":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"}}}
+=> error (exit 30): appsigning.enrollApp on applications/com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
+
+## Enroll new / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:enrollApp
+Content-Type: application/json
+content-length=220 replayable=true
+{"enrollNewApp":{"cloudKmsKeyAndCert":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"},"pemCertificate":"Q0VSVA=="}},"pemUploadCertificate":"VVBMT0FE"}
+=> ok [{},{}]
+
+## Enroll new / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:enrollApp
+Content-Type: application/json
+content-length=220 replayable=true
+{"enrollNewApp":{"cloudKmsKeyAndCert":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"},"pemCertificate":"Q0VSVA=="}},"pemUploadCertificate":"VVBMT0FE"}
+=> error (exit 11): appsigning.enrollApp on applications/com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Enroll new / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:enrollApp
+Content-Type: application/json
+content-length=220 replayable=true
+{"enrollNewApp":{"cloudKmsKeyAndCert":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"},"pemCertificate":"Q0VSVA=="}},"pemUploadCertificate":"VVBMT0FE"}
+=> error (exit 30): appsigning.enrollApp on applications/com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
+
+## Rotate / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:rotateAppSigningKey
+Content-Type: application/json
+content-length=277 replayable=true
+{"rotatedCloudKmsKey":{"cloudKmsKeyAndCert":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"},"pemCertificate":"Q0VSVA=="},"signingCertificateLineage":"TElORUFHRQ=="},"keyRotationReason":"ROUTINE_KEY_UPGRADE"}
+=> ok [{},{}]
+
+## Rotate / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:rotateAppSigningKey
+Content-Type: application/json
+content-length=277 replayable=true
+{"rotatedCloudKmsKey":{"cloudKmsKeyAndCert":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"},"pemCertificate":"Q0VSVA=="},"signingCertificateLineage":"TElORUFHRQ=="},"keyRotationReason":"ROUTINE_KEY_UPGRADE"}
+=> error (exit 11): appsigning.rotateAppSigningKey on applications/com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Rotate / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/applications%2Fcom.example.app/appSigning:rotateAppSigningKey
+Content-Type: application/json
+content-length=277 replayable=true
+{"rotatedCloudKmsKey":{"cloudKmsKeyAndCert":{"cloudKmsKey":{"cryptoKeyVersionResource":"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"},"pemCertificate":"Q0VSVA=="},"signingCertificateLineage":"TElORUFHRQ=="},"keyRotationReason":"ROUTINE_KEY_UPGRADE"}
+=> error (exit 30): appsigning.rotateAppSigningKey on applications/com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
+

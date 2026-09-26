@@ -78,7 +78,7 @@ func TestSearchErrorIssues_truncationSignal(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &seqRT{pages: tc.pages}
+			rt := seqFake(tc.pages...)
 			raw, truncated, err := vitals.SearchErrorIssues(context.Background(),
 				&http.Client{Transport: rt}, "com.example.app", vitals.SearchOptions{Limit: tc.limit})
 			if err != nil {
@@ -101,10 +101,10 @@ func TestSearchErrorIssues_truncationSignal(t *testing.T) {
 // TestListAnomalies_truncationSignal repeats the mid-stream case on the other
 // paginated Reporting surface, so the signal is not an errors-only accident.
 func TestListAnomalies_truncationSignal(t *testing.T) {
-	rt := &seqRT{pages: []string{
+	rt := seqFake(
 		`{"anomalies":[{"metricSet":"apps/x/crashRateMetricSet"}],"nextPageToken":"P2"}`,
 		`{"anomalies":[{"metricSet":"apps/x/anrRateMetricSet"}],"nextPageToken":"P3"}`,
-	}}
+	)
 	_, truncated, err := vitals.ListAnomalies(context.Background(),
 		&http.Client{Transport: rt}, "com.example.app", vitals.AnomalyListOptions{Limit: 1})
 	if err != nil {

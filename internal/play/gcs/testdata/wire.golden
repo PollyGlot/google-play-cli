@@ -1,0 +1,29 @@
+## ListObjects / ok
+GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?prefix=reviews%2Freviews_com.example.app
+content-length=0 replayable=true
+=> ok null
+
+## ListObjects / denied
+GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?prefix=reviews%2Freviews_com.example.app
+content-length=0 replayable=true
+=> error (exit 11): storage.objects.list on pubsite_prod_rev_01234: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListObjects / malformed
+GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?prefix=reviews%2Freviews_com.example.app
+content-length=0 replayable=true
+=> error (exit 50): storage.objects.list on pubsite_prod_rev_01234: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListObjects / two pages
+GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?prefix=reviews%2Freviews_com.example.app
+content-length=0 replayable=true
+GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?pageToken=p%2F2%2B&prefix=reviews%2Freviews_com.example.app
+content-length=0 replayable=true
+=> ok [{"name":"a.csv"},{"name":"b.csv"}]
+
+## ListObjects / token loop
+GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?prefix=reviews%2Freviews_com.example.app
+content-length=0 replayable=true
+GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?pageToken=again&prefix=reviews%2Freviews_com.example.app
+content-length=0 replayable=true
+=> error (exit 50): storage.objects.list on pubsite_prod_rev_01234: pagination token loop detected in storage.objects.list (server repeated a nextPageToken)
+

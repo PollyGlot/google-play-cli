@@ -8,13 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/devicetiers"
 )
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func resp(status int, body string) *http.Response {
 	return &http.Response{
@@ -32,10 +30,10 @@ const createdBody = `{"deviceTierConfigId":"42","deviceGroups":[{"name":"high"},
 func TestCreate_postsBody_noEdit(t *testing.T) {
 	var gotURL, gotMethod string
 	var gotBody []byte
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
-		gotBody, _ = io.ReadAll(r.Body)
+		gotBody = testkit.ReadBody(r)
 		return resp(200, createdBody), nil
 	})
 	hc := &http.Client{Transport: rt}
@@ -68,7 +66,7 @@ func TestCreate_postsBody_noEdit(t *testing.T) {
 // param only when true.
 func TestCreate_allowUnknownDevices_queryParam(t *testing.T) {
 	var gotURL string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return resp(200, createdBody), nil
 	})
@@ -85,7 +83,7 @@ func TestCreate_allowUnknownDevices_queryParam(t *testing.T) {
 // nextPageToken is preserved.
 func TestList_paginationAndPassthrough(t *testing.T) {
 	var gotURL string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return resp(200, `{"deviceTierConfigs":[{"deviceTierConfigId":"7"}],"nextPageToken":"next"}`), nil
 	})
@@ -110,7 +108,7 @@ func TestList_paginationAndPassthrough(t *testing.T) {
 // TestGet_byID asserts the single-resource path.
 func TestGet_byID(t *testing.T) {
 	var gotURL string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return resp(200, `{"deviceTierConfigId":"42"}`), nil
 	})
@@ -128,7 +126,7 @@ func TestErrors_mapExitCodes(t *testing.T) {
 	for _, tc := range []struct {
 		status, want int
 	}{{403, 11}, {404, 30}, {500, 40}} {
-		rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return resp(tc.status, `{"error":{"message":"nope"}}`), nil
 		})
 		hc := &http.Client{Transport: rt}

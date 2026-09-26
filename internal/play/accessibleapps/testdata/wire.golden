@@ -1,0 +1,30 @@
+## Search / ok
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## Search / denied
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search
+content-length=0 replayable=true
+=> error (exit 11): playdeveloperreporting.apps.search on : The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Search / malformed
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search
+content-length=0 replayable=true
+=> error (exit 50): playdeveloperreporting.apps.search on : decode response: invalid character 'o' in literal null (expecting 'u')
+
+## Search paged / ok
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search?pageSize=50&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## Search paged / denied
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search?pageSize=50&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> error (exit 11): playdeveloperreporting.apps.search on : The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Search paged / malformed
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search?pageSize=50&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> error (exit 50): playdeveloperreporting.apps.search on : decode response: invalid character 'o' in literal null (expecting 'u')
+

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/discovery"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // TestNormalize_sortsStripsEtagAndIsIdempotent feeds a deliberately
@@ -109,7 +110,7 @@ func TestFetch_hitsDiscoveryURLAndReturnsBody(t *testing.T) {
 	// DiscoveryURL hardcodes https; test the request shape via a custom client
 	// that rewrites the scheme/host to the loopback server.
 	svc := discovery.Service{Name: "androidpublisher", Host: host, Version: "v3"}
-	client := &http.Client{Transport: schemeRewriter{base: srv.URL}}
+	client := &http.Client{Transport: schemeRewriter(srv.URL)}
 
 	body, err := discovery.Fetch(context.Background(), client, svc)
 	if err != nil {
@@ -134,7 +135,7 @@ func TestFetch_nonOKStatusIsError(t *testing.T) {
 	defer srv.Close()
 
 	svc := discovery.Service{Name: "x", Host: strings.TrimPrefix(srv.URL, "http://"), Version: "v3"}
-	client := &http.Client{Transport: schemeRewriter{base: srv.URL}}
+	client := &http.Client{Transport: schemeRewriter(srv.URL)}
 	if _, err := discovery.Fetch(context.Background(), client, svc); err == nil {
 		t.Error("Fetch: want error on HTTP 404, got nil")
 	}
@@ -150,12 +151,12 @@ func TestSnapshotFilename(t *testing.T) {
 // schemeRewriter sends every request to base (the loopback server) regardless
 // of the request URL's host, so Fetch's https://<host>/... URL is exercised
 // without real DNS or TLS.
-type schemeRewriter struct{ base string }
-
-func (s schemeRewriter) RoundTrip(r *http.Request) (*http.Response, error) {
-	r.URL.Scheme = "http"
-	r.URL.Host = strings.TrimPrefix(s.base, "http://")
-	return http.DefaultTransport.RoundTrip(r)
+func schemeRewriter(base string) http.RoundTripper {
+	return testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		r.URL.Scheme = "http"
+		r.URL.Host = strings.TrimPrefix(base, "http://")
+		return http.DefaultTransport.RoundTrip(r)
+	})
 }
 
 func keyOrder(jsonObj string) []string {

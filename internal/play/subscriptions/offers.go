@@ -72,63 +72,41 @@ type offersPage struct {
 // one paginated call instead of one per base plan, and no silent truncation
 // (a missing page would read as offer deletes in a Reconciliation plan).
 func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferItem, error) {
-	var (
-		items []OfferItem
-		token string
-	)
-	// seen guards against a server that repeats a pageToken forever.
-	seen := map[string]struct{}{}
-	for {
-		q := url.Values{}
-		q.Set("pageSize", strconv.Itoa(listPageSize))
-		if token != "" {
-			q.Set("pageToken", token)
-		}
-		// The wildcard walk rides the same template as a scoped list: `-` is a
-		// legal path segment, so escaping leaves it untouched.
-		u, err := mOffersList.URL(map[string]string{"packageName": pkg, "productId": "-", "basePlanId": "-"})
-		if err != nil {
-			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		req, err := http.NewRequestWithContext(ctx, mOffersList.Verb, u+"?"+q.Encode(), nil)
-		if err != nil {
-			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		raw, err := do(hc, opOffersList, pkg, req)
-		if err != nil {
-			return nil, err
-		}
-		var pg offersPage
-		if err := json.Unmarshal(raw, &pg); err != nil {
-			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
-		}
-		for _, rawOffer := range pg.SubscriptionOffers {
-			var o struct {
-				ProductID  string `json:"productId"`
-				BasePlanID string `json:"basePlanId"`
-				OfferID    string `json:"offerId"`
+	items, _, err := api.Paginate(api.Pager{Op: opOffersList, Target: pkg, What: "offers.list"},
+		func(token string, _ int) ([]OfferItem, string, error) {
+			q := url.Values{}
+			q.Set("pageSize", strconv.Itoa(listPageSize))
+			if token != "" {
+				q.Set("pageToken", token)
 			}
-			if err := json.Unmarshal(rawOffer, &o); err != nil {
-				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err}
+			// The wildcard walk rides the same template as a scoped list: `-` is
+			// a legal path segment, so escaping leaves it untouched.
+			var pg offersPage
+			if _, err := api.DoJSON(ctx, hc, api.Call{
+				Method: mOffersList, Op: opOffersList, Target: pkg,
+				Params: map[string]string{"packageName": pkg, "productId": "-", "basePlanId": "-"},
+				Query:  q,
+			}, &pg); err != nil {
+				return nil, "", err
 			}
-			if o.ProductID == "" || o.BasePlanID == "" || o.OfferID == "" {
-				return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/basePlanId/offerId): refusing a catalog entry that cannot be addressed"}
+			page := make([]OfferItem, 0, len(pg.SubscriptionOffers))
+			for _, rawOffer := range pg.SubscriptionOffers {
+				var o struct {
+					ProductID  string `json:"productId"`
+					BasePlanID string `json:"basePlanId"`
+					OfferID    string `json:"offerId"`
+				}
+				if err := json.Unmarshal(rawOffer, &o); err != nil {
+					return nil, "", &api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err}
+				}
+				if o.ProductID == "" || o.BasePlanID == "" || o.OfferID == "" {
+					return nil, "", &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/basePlanId/offerId): refusing a catalog entry that cannot be addressed"}
+				}
+				page = append(page, OfferItem{ProductID: o.ProductID, BasePlanID: o.BasePlanID, OfferID: o.OfferID, Raw: rawOffer})
 			}
-			items = append(items, OfferItem{ProductID: o.ProductID, BasePlanID: o.BasePlanID, OfferID: o.OfferID, Raw: rawOffer})
-		}
-		if pg.NextPageToken == "" {
-			return items, nil
-		}
-		if _, dup := seen[pg.NextPageToken]; dup {
-			return nil, &api.Error{
-				Operation: opOffersList,
-				Package:   pkg,
-				Message:   "pagination token loop detected in offers.list (server repeated a nextPageToken)",
-			}
-		}
-		seen[pg.NextPageToken] = struct{}{}
-		token = pg.NextPageToken
-	}
+			return page, pg.NextPageToken, nil
+		})
+	return items, err
 }
 
 // CreateOffer creates an offer under its base plan from the catalog fragment,
@@ -137,16 +115,12 @@ func CreateOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanI
 	q := url.Values{}
 	q.Set("offerId", offerID)
 	q.Set("regionsVersion.version", regionsVersion)
-	u, err := mOffersCreate.URL(offerScope(pkg, productID, basePlanID))
-	if err != nil {
-		return nil, &api.Error{Operation: opOffersCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mOffersCreate.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
-	if err != nil {
-		return nil, &api.Error{Operation: opOffersCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opOffersCreate, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mOffersCreate, Op: opOffersCreate, Target: pkg,
+		Params: offerScope(pkg, productID, basePlanID),
+		Query:  q,
+		Body:   body,
+	})
 }
 
 // PatchOffer updates an offer from the catalog fragment, sent verbatim, with
@@ -155,31 +129,22 @@ func PatchOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
 	q.Set("regionsVersion.version", regionsVersion)
-	u, err := mOffersPatch.URL(offerScope(pkg, productID, basePlanID, offerID))
-	if err != nil {
-		return nil, &api.Error{Operation: opOffersPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mOffersPatch.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
-	if err != nil {
-		return nil, &api.Error{Operation: opOffersPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opOffersPatch, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mOffersPatch, Op: opOffersPatch, Target: pkg,
+		Params: offerScope(pkg, productID, basePlanID, offerID),
+		Query:  q,
+		Body:   body,
+	})
 }
 
 // DeleteOffer deletes an offer. Reaching here means the plan carried a delete
 // and the operator passed --confirm; the API refuses to delete an active offer,
 // so the gate covers intent while the server covers damage (ADR-0041 §3).
 func DeleteOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID string) error {
-	u, err := mOffersDelete.URL(offerScope(pkg, productID, basePlanID, offerID))
-	if err != nil {
-		return &api.Error{Operation: opOffersDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mOffersDelete.Verb, u, nil)
-	if err != nil {
-		return &api.Error{Operation: opOffersDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	_, err = do(hc, opOffersDelete, pkg, req)
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: mOffersDelete, Op: opOffersDelete, Target: pkg,
+		Params: offerScope(pkg, productID, basePlanID, offerID),
+	})
 	return err
 }
 
@@ -191,11 +156,7 @@ func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, base
 	if activate {
 		m, op = mBasePlanActivate, opBasePlanActivate
 	}
-	u, err := m.URL(offerScope(pkg, productID, basePlanID))
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return postEmpty(ctx, hc, m, op, pkg, u)
+	return postEmpty(ctx, hc, m, op, pkg, offerScope(pkg, productID, basePlanID))
 }
 
 // DeleteBasePlan deletes a base plan (slice #542): the shrink arm of the
@@ -205,15 +166,10 @@ func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, base
 // and the caller surfaces that refusal with the deactivate-first hint rather
 // than retrying.
 func DeleteBasePlan(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string) error {
-	u, err := mBasePlanDelete.URL(offerScope(pkg, productID, basePlanID))
-	if err != nil {
-		return &api.Error{Operation: opBasePlanDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mBasePlanDelete.Verb, u, nil)
-	if err != nil {
-		return &api.Error{Operation: opBasePlanDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	_, err = do(hc, opBasePlanDelete, pkg, req)
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: mBasePlanDelete, Op: opBasePlanDelete, Target: pkg,
+		Params: offerScope(pkg, productID, basePlanID),
+	})
 	return err
 }
 
@@ -223,11 +179,7 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, basePla
 	if activate {
 		m, op = mOffersActivate, opOffersActivate
 	}
-	u, err := m.URL(offerScope(pkg, productID, basePlanID, offerID))
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return postEmpty(ctx, hc, m, op, pkg, u)
+	return postEmpty(ctx, hc, m, op, pkg, offerScope(pkg, productID, basePlanID, offerID))
 }
 
 // opMigratePrices tags *api.Error for the subscriber price migration.
@@ -266,20 +218,11 @@ type MigrateBasePlanPricesRequest struct {
 // the ADR-0031 stance). The command gates it behind --confirm before reaching
 // here.
 func MigrateBasePlanPrices(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, request MigrateBasePlanPricesRequest) (json.RawMessage, error) {
-	body, err := json.Marshal(request)
-	if err != nil {
-		return nil, &api.Error{Operation: opMigratePrices, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
-	}
-	u, err := mMigratePrices.URL(offerScope(pkg, productID, basePlanID))
-	if err != nil {
-		return nil, &api.Error{Operation: opMigratePrices, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mMigratePrices.Verb, u, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, &api.Error{Operation: opMigratePrices, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opMigratePrices, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mMigratePrices, Op: opMigratePrices, Target: pkg,
+		Params: offerScope(pkg, productID, basePlanID),
+		Body:   request,
+	})
 }
 
 // offerScope builds the path parameters shared by every base-plan and offer
@@ -293,12 +236,7 @@ func offerScope(pkg, productID, basePlanID string, offerID ...string) map[string
 	return p
 }
 
-// postEmpty POSTs an empty JSON object to a custom-verb URL.
-func postEmpty(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, u string) (json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, strings.NewReader("{}"))
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, op, pkg, req)
+// postEmpty POSTs an empty JSON object to a custom verb.
+func postEmpty(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg string, params map[string]string) (json.RawMessage, error) {
+	return api.Do(ctx, hc, api.Call{Method: m, Op: op, Target: pkg, Params: params, Body: []byte("{}")})
 }

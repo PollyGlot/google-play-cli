@@ -8,13 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
-
-type rtFunc func(*http.Request) (*http.Response, error)
-
-func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func jsonResp(status int, body string) *http.Response {
 	return &http.Response{
@@ -26,11 +24,11 @@ func jsonResp(status int, body string) *http.Response {
 
 // recorder captures the last request's method, URL, and body, returning resp.
 func recorder(resp *http.Response, gotURL, gotMethod, gotBody *string) *http.Client {
-	return &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+	return &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		*gotURL = r.URL.String()
 		*gotMethod = r.Method
 		if r.Body != nil {
-			b, _ := io.ReadAll(r.Body)
+			b := testkit.ReadBody(r)
 			*gotBody = string(b)
 		}
 		return resp, nil
@@ -206,7 +204,7 @@ func TestDo_forbiddenMapsToAPIError(t *testing.T) {
 }
 
 func TestDo_transportErrorMapsToExit50(t *testing.T) {
-	hc := &http.Client{Transport: rtFunc(func(*http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("dial tcp: connection refused")
 	})}
 	err := games.DeleteAchievement(context.Background(), hc, "a7")

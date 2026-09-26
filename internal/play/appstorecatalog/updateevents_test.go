@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstorecatalog"
 )
@@ -31,7 +33,7 @@ const (
 func TestListRecentUpdateEvents_requestShape(t *testing.T) {
 	var got *url.URL
 	var gotMethod string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		got, gotMethod = r.URL, r.Method
 		return resp(200, eventsBody), nil
 	})
@@ -74,7 +76,7 @@ func TestListRecentUpdateEvents_requestShape(t *testing.T) {
 // ride the query alongside the unchanged time range.
 func TestListRecentUpdateEvents_pagingParams(t *testing.T) {
 	var got *url.URL
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		got = r.URL
 		return resp(200, `{}`), nil
 	})
@@ -98,7 +100,7 @@ func TestListRecentUpdateEvents_pagingParams(t *testing.T) {
 // name is escaped in the path, so a value carrying a slash cannot forge a path.
 func TestListRecentUpdateEvents_escapesStorePackage(t *testing.T) {
 	var gotPath string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotPath = r.URL.EscapedPath()
 		return resp(200, `{}`), nil
 	})
@@ -114,7 +116,7 @@ func TestListRecentUpdateEvents_escapesStorePackage(t *testing.T) {
 // TestListRecentUpdateEvents_apiError maps a non-2xx to an *api.Error carrying
 // the status and the RPC id, so the shared classifier can map it to an exit code.
 func TestListRecentUpdateEvents_apiError(t *testing.T) {
-	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(404, `{"error":{"message":"not found"}}`), nil
 	})
 

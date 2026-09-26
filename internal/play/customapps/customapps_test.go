@@ -10,13 +10,14 @@ package customapps_test
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/customapps"
@@ -28,7 +29,8 @@ const sessionURI = "https://playcustomapp.googleapis.com/upload/session/abc123"
 // session URI (unless initStatus is an error) and serves the single chunk PUT
 // with the final resource body. It records the initiate body and the PUT bytes
 // so a test can assert the metadata reached the initiate and the artifact
-// reached the chunk.
+// reached the chunk. It serves through testkit.RoundTripFunc: the initiate
+// answer carries a Location header, which the Fake's responders cannot set.
 type resumeRT struct {
 	t *testing.T
 
@@ -47,8 +49,11 @@ type resumeRT struct {
 	putRange     string
 }
 
-func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
 	r.calls++
+	if req.Body != nil {
+		defer func() { _ = req.Body.Close() }()
+	}
 	switch req.Method {
 	case http.MethodPost:
 		r.initMethod = req.Method
@@ -56,33 +61,25 @@ func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		r.initCType = req.Header.Get("Content-Type")
 		r.uploadCType = req.Header.Get("X-Upload-Content-Type")
 		r.uploadLength = req.Header.Get("X-Upload-Content-Length")
-		b, _ := io.ReadAll(req.Body)
-		_ = req.Body.Close()
-		r.initBody = string(b)
+		r.initBody = string(testkit.ReadBody(req))
 		status := r.initStatus
 		if status == 0 {
 			status = http.StatusOK
 		}
-		h := http.Header{}
+		resp := testkit.Response(status, "")
 		if status >= 200 && status < 300 {
-			h.Set("Location", sessionURI)
+			resp.Header.Set("Location", sessionURI)
 		}
-		return &http.Response{StatusCode: status, Header: h, Body: io.NopCloser(strings.NewReader(""))}, nil
+		return resp, nil
 
 	case http.MethodPut:
-		b, _ := io.ReadAll(req.Body)
-		_ = req.Body.Close()
-		r.putBytes = b
+		r.putBytes = testkit.ReadBody(req)
 		r.putRange = req.Header.Get("Content-Range")
 		status := r.putStatus
 		if status == 0 {
 			status = http.StatusOK
 		}
-		return &http.Response{
-			StatusCode: status,
-			Header:     http.Header{"Content-Type": {"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(r.putBody)),
-		}, nil
+		return testkit.Response(status, r.putBody), nil
 
 	default:
 		r.t.Fatalf("unexpected method %s", req.Method)
@@ -108,7 +105,7 @@ const okResp = `{"title":"My Internal App","languageCode":"en-US","packageName":
 // , and that the response is parsed + passed through verbatim.
 func TestCreate_resumableShape(t *testing.T) {
 	rt := &resumeRT{t: t, putBody: okResp}
-	hc := &http.Client{Transport: rt}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
 	const artifactBytes = "PK\x03\x04 fake bundle bytes"
 	artifact := writeArtifact(t, "app.aab", artifactBytes)
 
@@ -171,7 +168,7 @@ func TestCreate_resumableShape(t *testing.T) {
 // metadata has no organizations key (the app then defaults to the account's org).
 func TestCreate_noOrganizations_omitsField(t *testing.T) {
 	rt := &resumeRT{t: t, putBody: okResp}
-	hc := &http.Client{Transport: rt}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
 	artifact := writeArtifact(t, "app.aab", "bytes")
 
 	if _, _, err := customapps.Create(context.Background(), hc, "42", artifact, customapps.CreateOpts{
@@ -190,7 +187,7 @@ func TestCreate_noOrganizations_omitsField(t *testing.T) {
 // into an agent-resolvable refusal.
 func TestCreate_403_apiError(t *testing.T) {
 	rt := &resumeRT{t: t, initStatus: 403}
-	hc := &http.Client{Transport: rt}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
 	artifact := writeArtifact(t, "app.aab", "bytes")
 
 	_, _, err := customapps.Create(context.Background(), hc, "42", artifact, customapps.CreateOpts{Title: "T", LanguageCode: "en-US"})
@@ -210,7 +207,7 @@ func TestCreate_403_apiError(t *testing.T) {
 // a client-side *LocalIOError (exit 20) and makes no HTTP call.
 func TestCreate_missingArtifact_exit20_noNetwork(t *testing.T) {
 	rt := &resumeRT{t: t, putBody: okResp}
-	hc := &http.Client{Transport: rt}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
 
 	_, _, err := customapps.Create(context.Background(), hc, "42", filepath.Join(t.TempDir(), "nope.aab"), customapps.CreateOpts{Title: "T", LanguageCode: "en-US"})
 	var ioErr *customapps.LocalIOError
@@ -228,7 +225,7 @@ func TestCreate_missingArtifact_exit20_noNetwork(t *testing.T) {
 // TestCreate_directory_exit20 asserts a non-regular path is rejected up front.
 func TestCreate_directory_exit20(t *testing.T) {
 	rt := &resumeRT{t: t, putBody: okResp}
-	hc := &http.Client{Transport: rt}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
 
 	_, _, err := customapps.Create(context.Background(), hc, "42", t.TempDir(), customapps.CreateOpts{Title: "T", LanguageCode: "en-US"})
 	var ioErr *customapps.LocalIOError

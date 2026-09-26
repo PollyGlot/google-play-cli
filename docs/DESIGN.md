@@ -904,13 +904,19 @@ warning.
 `--page-size` or `--max-results`) and return exactly ONE page, with
 `nextPageToken` passed through verbatim in the body: a machine caller loses
 nothing, but the table and markdown views carry no token column, so a human
-reading them cannot tell a full listing from a first page. `apps accessible
-list` and `appstore catalog events list` close that gap with a `NOTE:` on stderr
-carrying the next `--page-token`; `device-tiers list`, `games achievements list`
-and `games leaderboards list` do not, and their human views stay silent about
-the next page. That note is deliberately NOT `rc.WarnTruncated`: the remediation
+reading them cannot tell a full listing from a first page. Every cursor
+listing (`apps accessible list`, `appstore catalog events list`, `device-tiers
+list`, `games achievements list`, `games leaderboards list`) closes that gap with
+a `NOTE:` on stderr carrying the next `--page-token`, and says nothing on the
+last page. That note is deliberately NOT `rc.WarnTruncated`: the remediation
 is a cursor to pass back, not a cap to raise, and the standard truncation line
 cannot carry the token.
+
+A loop that walks every page itself goes through `api.Paginate`
+(`internal/play/api`), which refuses a token the server already sent and, when
+given a page bound, fails once the bound is reached with a token still set
+rather than returning a partial list as if it were whole. `apps audit` bounds
+its `apps.search` discovery that way (1000 pages).
 
 Prefer the auto-paginated shape for a new listing. Reach for a cursor listing
 when the collection is unbounded or the API charges per page, and then emit the

@@ -104,7 +104,7 @@ func (w *Wire) serve(rw http.ResponseWriter, r *http.Request) {
 	w.lines = append(w.lines, b.String())
 	w.mu.Unlock()
 
-	c := Call{Method: r.Method, Host: r.Host, Path: r.URL.Path, Query: r.URL.RawQuery, Header: r.Header.Clone(), Body: body, Reply: http.Header{}}
+	c := Call{Method: r.Method, Host: r.Host, Path: r.URL.Path, Query: r.URL.RawQuery, Header: r.Header.Clone(), Body: body, URL: "https://" + r.Host + r.RequestURI, ContentLength: r.ContentLength, Reply: http.Header{}}
 	for _, resp := range w.responders {
 		if status, out, ok := resp(c); ok {
 			if status == 0 {

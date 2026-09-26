@@ -176,14 +176,16 @@ structured []CheckResult for scripting.`,
 // doctorBaseHTTP returns the underlying http.Client doctor wraps with
 // its scope observer. Tests inject a base via ctx.Value(oauth2.HTTPClient);
 // production falls back to http.DefaultClient (each check minted its
-// own oauth2 client on top via oauth2.NewClient(ctx, ts)).
+// own oauth2 client on top via oauth2.NewClient(ctx, ts)). The caller
+// copies the client before swapping its transport, so the shared default
+// is never mutated.
 func doctorBaseHTTP(rc *kernel.RunContext) *http.Client {
 	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
 		if c, ok := v.(*http.Client); ok && c != nil {
 			return c
 		}
 	}
-	return &http.Client{}
+	return http.DefaultClient
 }
 
 func buildChecks(obs *transport.ScopeObserver, packages []string) []authdoctor.Check {

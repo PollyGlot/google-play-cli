@@ -11,10 +11,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -29,41 +27,27 @@ import (
 
 const artifactBody = `{"downloadUrl":"https://play.google.com/apps/test/abc123","certificateFingerprint":"AA:BB:CC","sha256":"deadbeef"}`
 
-// sharingRT terminates the /token exchange and routes the single artifact
-// upload POST, capturing the call sequence + the request URL.
-type sharingRT struct {
-	t *testing.T
-
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
-	uploadURL string
+// newFake routes the single artifact upload POST; any other API call fails
+// the round trip.
+func newFake() *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		return http.StatusOK, artifactBody, c.Method == http.MethodPost && strings.Contains(c.Path, "/internalappsharing/")
+	})
 }
 
-func (r *sharingRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+// uploadURL returns the URL of the recorded artifact upload POST, or "".
+func uploadURL(fake *testkit.Fake) string {
+	for _, c := range fake.Calls() {
+		if c.Method == http.MethodPost && strings.Contains(c.Path, "/internalappsharing/") {
+			return c.URL
+		}
 	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	if req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/internalappsharing/") {
-		r.uploadURL = req.URL.String()
-		return jsonResp(200, artifactBody), nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
+	return ""
 }
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
+// networkCalls counts every request that reached the transport, token
+// exchanges included.
+func networkCalls(fake *testkit.Fake) int { return len(fake.Calls()) + fake.TokenExchanges() }
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
@@ -129,8 +113,8 @@ func exitOf(t *testing.T, err error) int {
 // artifact endpoint, the JSON view passes the artifact through verbatim, and a
 // ✓ line is written to stderr.
 func TestRun_apk_happyPath(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -138,12 +122,12 @@ func TestRun_apk_happyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.tokenHits == 0 {
-		t.Errorf("no /token exchange; calls=%v", rt.calls)
+	if fake.TokenExchanges() == 0 {
+		t.Errorf("no /token exchange; calls=%v", fake.Calls())
 	}
 	for _, want := range []string{"/applications/internalappsharing/com.example.app/artifacts/apk", "uploadType=media"} {
-		if !strings.Contains(rt.uploadURL, want) {
-			t.Errorf("upload url %q missing %q", rt.uploadURL, want)
+		if !strings.Contains(uploadURL(fake), want) {
+			t.Errorf("upload url %q missing %q", uploadURL(fake), want)
 		}
 	}
 	var jsonOut bytes.Buffer
@@ -160,74 +144,74 @@ func TestRun_apk_happyPath(t *testing.T) {
 
 // TestRun_aab_usesBundleEndpoint asserts a .aab routes to the bundle endpoint.
 func TestRun_aab_usesBundleEndpoint(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 	if _, err := uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", ArtifactPath: writeArtifact(t, "app.aab")}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.uploadURL, "/artifacts/bundle") {
-		t.Errorf("upload url %q should hit the bundle endpoint", rt.uploadURL)
+	if !strings.Contains(uploadURL(fake), "/artifacts/bundle") {
+		t.Errorf("upload url %q should hit the bundle endpoint", uploadURL(fake))
 	}
 }
 
 // TestRun_formatOverride asserts --format forces the endpoint regardless of
 // extension.
 func TestRun_formatOverride(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 	if _, err := uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", ArtifactPath: writeArtifact(t, "build.bin"), Format: "bundle"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.uploadURL, "/artifacts/bundle") {
-		t.Errorf("upload url %q should honor --format bundle", rt.uploadURL)
+	if !strings.Contains(uploadURL(fake), "/artifacts/bundle") {
+		t.Errorf("upload url %q should honor --format bundle", uploadURL(fake))
 	}
 }
 
 // TestRun_unknownExtension_exit20_noNetwork asserts an ambiguous extension with
 // no --format fails offline with exit 20.
 func TestRun_unknownExtension_exit20_noNetwork(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 	_, err := uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", ArtifactPath: writeArtifact(t, "build.bin")})
 	if got := exitOf(t, err); got != 20 {
 		t.Errorf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("unknown extension must make no network call; calls=%v", rt.calls)
+	if networkCalls(fake) != 0 {
+		t.Errorf("unknown extension must make no network call; calls=%v", fake.Calls())
 	}
 }
 
 // TestRun_directory_exit20_noNetwork asserts a non-regular path fails offline.
 func TestRun_directory_exit20_noNetwork(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 	_, err := uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", ArtifactPath: t.TempDir(), Format: "apk"})
 	if got := exitOf(t, err); got != 20 {
 		t.Errorf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("a directory must make no network call; calls=%v", rt.calls)
+	if networkCalls(fake) != 0 {
+		t.Errorf("a directory must make no network call; calls=%v", fake.Calls())
 	}
 }
 
 // TestRun_missingPackage_exit2_noNetwork asserts a missing package is CLI misuse.
 func TestRun_missingPackage_exit2_noNetwork(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 	_, err := uploadcmd.Run(rc, uploadcmd.Input{ArtifactPath: writeArtifact(t, "app.apk")})
 	if got := exitOf(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("missing package must make no network call; calls=%v", rt.calls)
+	if networkCalls(fake) != 0 {
+		t.Errorf("missing package must make no network call; calls=%v", fake.Calls())
 	}
 }
 
 // TestRun_dryRun_noNetwork_noConfirmation asserts --dry-run validates offline,
 // emits a dryRun JSON view, and never writes a ✓.
 func TestRun_dryRun_noNetwork_noConfirmation(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -235,8 +219,8 @@ func TestRun_dryRun_noNetwork_noConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run must make no network call; calls=%v", rt.calls)
+	if networkCalls(fake) != 0 {
+		t.Errorf("dry-run must make no network call; calls=%v", fake.Calls())
 	}
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run emitted a ✓; stderr=%q", stderr.String())

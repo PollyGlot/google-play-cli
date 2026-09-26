@@ -15,7 +15,6 @@ package appstorecatalog
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -162,24 +161,13 @@ type RecentAppView struct {
 // envelope and the verbatim body for the ADR-0003 --output json pass-through.
 // No Edit: the GET hangs off /appstorecatalog/, outside the Edit model.
 func GetRecentAppView(ctx context.Context, hc *http.Client, storePkg, playPkg string) (RecentAppView, json.RawMessage, error) {
-	u, err := mRecentAppViewGet.URL(map[string]string{
-		"appStorePackageName": storePkg,
-		"playAppPackageName":  playPkg,
-	})
-	if err != nil {
-		return RecentAppView{}, nil, &api.Error{Operation: opRecentAppViewGet, Package: playPkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mRecentAppViewGet.Verb, u, nil)
-	if err != nil {
-		return RecentAppView{}, nil, &api.Error{Operation: opRecentAppViewGet, Package: playPkg, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, opRecentAppViewGet, playPkg, req)
+	var v RecentAppView
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: mRecentAppViewGet, Op: opRecentAppViewGet, Target: playPkg,
+		Params: map[string]string{"appStorePackageName": storePkg, "playAppPackageName": playPkg},
+	}, &v)
 	if err != nil {
 		return RecentAppView{}, nil, err
-	}
-	var v RecentAppView
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return RecentAppView{}, nil, &api.Error{Operation: opRecentAppViewGet, Package: playPkg, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return v, raw, nil
 }
@@ -220,46 +208,15 @@ func ListRecentUpdateEvents(ctx context.Context, hc *http.Client, storePkg, star
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)
 	}
-	// The query string stays hand-built: the resolver answers with the path
-	// only (#516).
-	u, err := mRecentUpdateEventsList.URL(map[string]string{"appStorePackageName": storePkg})
-	if err != nil {
-		return ListRecentUpdateEventsResponse{}, nil, &api.Error{Operation: opRecentUpdateEventsList, Message: err.Error(), Cause: err}
-	}
-	u += "?" + q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, mRecentUpdateEventsList.Verb, u, nil)
-	if err != nil {
-		return ListRecentUpdateEventsResponse{}, nil, &api.Error{Operation: opRecentUpdateEventsList, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, opRecentUpdateEventsList, "", req)
+	// The feed is store-scoped, not about one Play app: no Target.
+	var resp ListRecentUpdateEventsResponse
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: mRecentUpdateEventsList, Op: opRecentUpdateEventsList,
+		Params: map[string]string{"appStorePackageName": storePkg},
+		Query:  q,
+	}, &resp)
 	if err != nil {
 		return ListRecentUpdateEventsResponse{}, nil, err
 	}
-	var resp ListRecentUpdateEventsResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return ListRecentUpdateEventsResponse{}, nil, &api.Error{Operation: opRecentUpdateEventsList, Message: "decode response: " + err.Error(), Cause: err}
-	}
 	return resp, raw, nil
-}
-
-// do runs req and maps the response to (raw body, *api.Error): a non-2xx body
-// is parsed for the error envelope, a 2xx body is returned verbatim for the
-// ADR-0003 pass-through.
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
 }

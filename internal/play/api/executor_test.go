@@ -13,12 +13,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// execRT records every request (body included) and answers with resp.
+// execRT records every request (body included) and answers with resp. It
+// keeps the *http.Request itself, not a testkit.Call, because the tests assert
+// on GetBody: the executor's replay contract.
 type execRT struct {
 	reqs   []*http.Request
 	bodies []string
@@ -26,14 +30,9 @@ type execRT struct {
 	err    error
 }
 
-func (r *execRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *execRT) serve(req *http.Request) (*http.Response, error) {
 	r.reqs = append(r.reqs, req)
-	body := ""
-	if req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
-		body = string(b)
-	}
-	r.bodies = append(r.bodies, body)
+	r.bodies = append(r.bodies, string(testkit.ReadBody(req)))
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -41,9 +40,7 @@ func (r *execRT) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func answer(status int, body string) func() *http.Response {
-	return func() *http.Response {
-		return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
-	}
+	return func() *http.Response { return testkit.Response(status, body) }
 }
 
 var (
@@ -56,7 +53,7 @@ var (
 
 const pkg = "com.example.app"
 
-func hc(rt http.RoundTripper) *http.Client { return &http.Client{Transport: rt} }
+func hc(rt *execRT) *http.Client { return &http.Client{Transport: testkit.RoundTripFunc(rt.serve)} }
 
 func TestDo_readReturnsBodyVerbatim(t *testing.T) {
 	rt := &execRT{resp: answer(200, `{"orderId": "GPA.1"}`)}

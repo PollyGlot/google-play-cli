@@ -1,0 +1,20 @@
+## download / ok
+GET https://play-lh.googleusercontent.com/abc=w512-h512
+content-length=0 replayable=true
+=> ok ‰PNG image bytes
+
+## download / not found
+GET https://play-lh.googleusercontent.com/abc=w512-h512
+content-length=0 replayable=true
+=> error (exit 30): images.download on : downloading https://play-lh.googleusercontent.com/abc=w512-h512: HTTP 404 (HTTP 404)
+
+## download / denied
+GET https://play-lh.googleusercontent.com/abc=w512-h512
+content-length=0 replayable=true
+=> error (exit 11): images.download on : downloading https://play-lh.googleusercontent.com/abc=w512-h512: HTTP 403 (HTTP 403)
+
+## download / over the cap
+GET https://play-lh.googleusercontent.com/abc=w512-h512
+content-length=0 replayable=true
+=> error (exit 50): images.download on : downloading https://play-lh.googleusercontent.com/abc=w512-h512: image exceeds the 16777216-byte cap
+

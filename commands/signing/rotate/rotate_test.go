@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,24 +43,20 @@ type rt struct {
 	body   []byte
 }
 
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *rt) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.calls = append(r.calls, "POST /token")
-		return jsonResp(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 	r.url = req.URL.String()
 	r.method = req.Method
 	if req.Body != nil {
-		r.body, _ = io.ReadAll(req.Body)
+		r.body = testkit.ReadBody(req)
 	}
-	return jsonResp(rotateBody), nil
-}
-
-func jsonResp(body string) *http.Response {
-	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+	return testkit.Response(http.StatusOK, rotateBody), nil
 }
 
 func saJSON(t *testing.T) []byte {
@@ -132,7 +127,7 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	r := &rt{}
 	in := validInput(t)
 	in.Confirm = false
-	_, err := rotatecmd.Run(newRC(t, r, output.FormatJSON), in)
+	_, err := rotatecmd.Run(newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON), in)
 	if got := exitCode(t, err); got != 3 {
 		t.Errorf("exit = %d, want 3", got)
 	}
@@ -150,7 +145,7 @@ func TestRun_dryRun_previewsWithoutHTTP(t *testing.T) {
 	in := validInput(t)
 	in.Confirm = false
 	in.DryRun = true
-	got, err := rotatecmd.Run(newRC(t, r, output.FormatJSON), in)
+	got, err := rotatecmd.Run(newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON), in)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -171,7 +166,7 @@ func TestRun_postsRotateRequest(t *testing.T) {
 	r := &rt{}
 	in := validInput(t)
 	in.Reason = "compromised-key"
-	got, err := rotatecmd.Run(newRC(t, r, output.FormatJSON), in)
+	got, err := rotatecmd.Run(newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON), in)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -225,7 +220,7 @@ func TestRun_everyReasonMapsToTheApiEnum(t *testing.T) {
 			r := &rt{}
 			in := validInput(t)
 			in.Reason = choice
-			if _, err := rotatecmd.Run(newRC(t, r, output.FormatJSON), in); err != nil {
+			if _, err := rotatecmd.Run(newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON), in); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
 			var body struct{ KeyRotationReason string }
@@ -259,7 +254,7 @@ func TestRun_missingOrInvalidFlags_areUsageErrors(t *testing.T) {
 			r := &rt{}
 			in := validInput(t)
 			tc.mutate(&in)
-			_, err := rotatecmd.Run(newRC(t, r, output.FormatJSON), in)
+			_, err := rotatecmd.Run(newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON), in)
 			if got := exitCode(t, err); got != 2 {
 				t.Errorf("exit = %d, want 2 (%v)", got, err)
 			}
@@ -277,7 +272,7 @@ func TestRun_missingOrInvalidFlags_areUsageErrors(t *testing.T) {
 // rotated key's hashes.
 func TestRun_tablePrintsRotatedKeyHashes(t *testing.T) {
 	r := &rt{}
-	got, err := rotatecmd.Run(newRC(t, r, output.FormatTable), validInput(t))
+	got, err := rotatecmd.Run(newRC(t, testkit.RoundTripFunc(r.serve), output.FormatTable), validInput(t))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
