@@ -18,9 +18,9 @@ func fullPlan() reconcile.Plan {
 		Creates:      []reconcile.Change{{ProductID: "coins"}, {ProductID: "legacy_gem"}},
 		Patches:      []reconcile.Change{{ProductID: "sword", Fields: []string{"listings", "purchaseOptions"}}},
 		Deletes:      []reconcile.Change{{ProductID: "old"}},
-		OfferCreates: []reconcile.Change{{ProductID: "coins/buy/launch"}},
-		OfferPatches: []reconcile.Change{{ProductID: "sword/buy/promo", Fields: []string{"offerTags"}}},
-		OfferDeletes: []reconcile.Change{{ProductID: "sword/buy/stale"}},
+		OfferCreates: []reconcile.Change{{ProductID: "coins", ParentID: "buy", OfferID: "launch"}},
+		OfferPatches: []reconcile.Change{{ProductID: "sword", ParentID: "buy", OfferID: "promo", Fields: []string{"offerTags"}}},
+		OfferDeletes: []reconcile.Change{{ProductID: "sword", ParentID: "buy", OfferID: "stale"}},
 		StateChanges: []reconcile.StateChange{
 			{Kind: "purchaseOption", ProductID: "coins", PurchaseOptionID: "buy", From: "DRAFT", To: "ACTIVE"},
 			{Kind: "offer", ProductID: "coins", PurchaseOptionID: "buy", OfferID: "launch", From: "DRAFT", To: "ACTIVE"},

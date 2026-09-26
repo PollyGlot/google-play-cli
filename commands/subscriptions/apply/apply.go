@@ -29,6 +29,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/monetization/catalog"
+	"github.com/PollyGlot/google-play-cli/internal/monetization/planview"
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -83,203 +84,12 @@ type Payload struct {
 }
 
 func (p Payload) Renderers() output.Renderers {
+	v := planview.View{Axis: planview.Subscriptions, Package: p.Package, Plan: p.Plan, DryRun: p.DryRun, Requires: p.Requires}
 	return output.Renderers{
-		Table:    func(w io.Writer) error { return p.renderHuman(w, false) },
-		JSON:     func(w io.Writer) error { return p.renderJSON(w) },
-		Markdown: func(w io.Writer) error { return p.renderHuman(w, true) },
+		Table:    func(w io.Writer) error { return v.Human(w, false) },
+		JSON:     v.JSON,
+		Markdown: func(w io.Writer) error { return v.Human(w, true) },
 	}
-}
-
-// verb conjugates one plan action for the human views.
-func (p Payload) verb(present, past string) string {
-	if p.DryRun {
-		return present
-	}
-	return past
-}
-
-func (p Payload) changeCount() int {
-	return len(p.Plan.Creates) + len(p.Plan.Patches) + len(p.Plan.Deletes) + len(p.Plan.BasePlanDeletes) +
-		len(p.Plan.OfferCreates) + len(p.Plan.OfferPatches) + len(p.Plan.OfferDeletes) +
-		len(p.Plan.StateChanges)
-}
-
-func (p Payload) renderHuman(w io.Writer, markdown bool) error {
-	if markdown {
-		if _, err := fmt.Fprintf(w, "## subscriptions apply: %s\n\n", p.Package); err != nil {
-			return err
-		}
-	}
-	if !p.Plan.HasChanges() {
-		_, err := fmt.Fprintln(w, "no changes to apply (catalog directory already matches Play)")
-		return err
-	}
-	header := "applied to"
-	if p.DryRun {
-		header = "plan for"
-	}
-	if _, err := fmt.Fprintf(w, "%s %s (%d change(s)):\n", header, p.Package, p.changeCount()); err != nil {
-		return err
-	}
-	line := func(format string, a ...any) error {
-		_, err := fmt.Fprintf(w, "  "+format+"\n", a...)
-		return err
-	}
-	for _, c := range p.Plan.Creates {
-		if err := line("%s %s", p.verb("create", "created"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.Patches {
-		if err := line("%s %s (%s)", p.verb("patch", "patched"), c.ProductID, strings.Join(c.Fields, ", ")); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.OfferCreates {
-		if err := line("%s offer %s", p.verb("create", "created"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.OfferPatches {
-		if err := line("%s offer %s (%s)", p.verb("patch", "patched"), c.ProductID, strings.Join(c.Fields, ", ")); err != nil {
-			return err
-		}
-	}
-	for _, s := range p.Plan.StateChanges {
-		verb := p.verb("activate", "activated")
-		if s.To == "INACTIVE" {
-			verb = p.verb("deactivate", "deactivated")
-		}
-		target := s.ProductID + "/" + s.BasePlanID
-		kind := "base plan"
-		if s.Kind == "offer" {
-			target += "/" + s.OfferID
-			kind = "offer"
-		}
-		if err := line("%s %s %s (%s → %s)", verb, kind, target, s.From, s.To); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.OfferDeletes {
-		if err := line("%s offer %s", p.verb("delete", "deleted"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.BasePlanDeletes {
-		if err := line("%s base plan %s", p.verb("delete", "deleted"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.Deletes {
-		if err := line("%s %s", p.verb("delete", "deleted"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintf(w, "summary: create=%d patch=%d delete=%d basePlanDelete=%d offerCreate=%d offerPatch=%d offerDelete=%d state=%d unchanged=%d\n",
-		len(p.Plan.Creates), len(p.Plan.Patches), len(p.Plan.Deletes), len(p.Plan.BasePlanDeletes),
-		len(p.Plan.OfferCreates), len(p.Plan.OfferPatches), len(p.Plan.OfferDeletes),
-		len(p.Plan.StateChanges), len(p.Plan.Unchanged)); err != nil {
-		return err
-	}
-	if len(p.Requires) > 0 {
-		if _, err := fmt.Fprintf(w, "requires: %s\n", strings.Join(p.Requires, ", ")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// jsonChange is one plan entry of the flat --output json schema (a gplay-owned
-// shape (ADR-0003 exception) kept flat so a CI gate is one jq line). Offer
-// entries carry basePlanId/offerId, base-plan deletes carry basePlanId; state
-// entries use op activate/deactivate with kind and from/to.
-type jsonChange struct {
-	Op         string   `json:"op"`
-	Kind       string   `json:"kind,omitempty"`
-	ProductID  string   `json:"productId"`
-	BasePlanID string   `json:"basePlanId,omitempty"`
-	OfferID    string   `json:"offerId,omitempty"`
-	Fields     []string `json:"fields,omitempty"`
-	From       string   `json:"from,omitempty"`
-	To         string   `json:"to,omitempty"`
-}
-
-type jsonView struct {
-	Package  string         `json:"package"`
-	DryRun   bool           `json:"dryRun"`
-	Changes  []jsonChange   `json:"changes"`
-	Summary  map[string]int `json:"summary"`
-	Requires []string       `json:"requires,omitempty"`
-}
-
-// splitBasePlanKey undoes the composite productId/basePlanId display key the
-// base-plan delete set is keyed under.
-func splitBasePlanKey(composite string) (productID, basePlanID string) {
-	productID, basePlanID, _ = strings.Cut(composite, "/")
-	return productID, basePlanID
-}
-
-// splitOfferKey undoes the composite productId/basePlanId/offerId display key
-// the offer diff is computed under.
-func splitOfferKey(composite string) (productID, basePlanID, offerID string) {
-	parts := strings.SplitN(composite, "/", 3)
-	for len(parts) < 3 {
-		parts = append(parts, "")
-	}
-	return parts[0], parts[1], parts[2]
-}
-
-func (p Payload) renderJSON(w io.Writer) error {
-	changes := make([]jsonChange, 0, p.changeCount())
-	for _, c := range p.Plan.Creates {
-		changes = append(changes, jsonChange{Op: "create", ProductID: c.ProductID})
-	}
-	for _, c := range p.Plan.Patches {
-		changes = append(changes, jsonChange{Op: "patch", ProductID: c.ProductID, Fields: c.Fields})
-	}
-	for _, c := range p.Plan.OfferCreates {
-		pid, bid, oid := splitOfferKey(c.ProductID)
-		changes = append(changes, jsonChange{Op: "create", Kind: "offer", ProductID: pid, BasePlanID: bid, OfferID: oid})
-	}
-	for _, c := range p.Plan.OfferPatches {
-		pid, bid, oid := splitOfferKey(c.ProductID)
-		changes = append(changes, jsonChange{Op: "patch", Kind: "offer", ProductID: pid, BasePlanID: bid, OfferID: oid, Fields: c.Fields})
-	}
-	for _, s := range p.Plan.StateChanges {
-		op := "activate"
-		if s.To == "INACTIVE" {
-			op = "deactivate"
-		}
-		changes = append(changes, jsonChange{Op: op, Kind: s.Kind, ProductID: s.ProductID, BasePlanID: s.BasePlanID, OfferID: s.OfferID, From: s.From, To: s.To})
-	}
-	for _, c := range p.Plan.OfferDeletes {
-		pid, bid, oid := splitOfferKey(c.ProductID)
-		changes = append(changes, jsonChange{Op: "delete", Kind: "offer", ProductID: pid, BasePlanID: bid, OfferID: oid})
-	}
-	for _, c := range p.Plan.BasePlanDeletes {
-		pid, bid := splitBasePlanKey(c.ProductID)
-		changes = append(changes, jsonChange{Op: "delete", Kind: "basePlan", ProductID: pid, BasePlanID: bid})
-	}
-	for _, c := range p.Plan.Deletes {
-		changes = append(changes, jsonChange{Op: "delete", ProductID: c.ProductID})
-	}
-	return output.WriteJSON(w, jsonView{
-		Package: p.Package,
-		DryRun:  p.DryRun,
-		Changes: changes,
-		Summary: map[string]int{
-			"create":         len(p.Plan.Creates),
-			"patch":          len(p.Plan.Patches),
-			"delete":         len(p.Plan.Deletes),
-			"basePlanDelete": len(p.Plan.BasePlanDeletes),
-			"offerCreate":    len(p.Plan.OfferCreates),
-			"offerPatch":     len(p.Plan.OfferPatches),
-			"offerDelete":    len(p.Plan.OfferDeletes),
-			"state":          len(p.Plan.StateChanges),
-			"unchanged":      len(p.Plan.Unchanged),
-		},
-		Requires: p.Requires,
-	})
 }
 
 // planStates computes the lifecycle transitions (slice #369): for every base
@@ -456,22 +266,21 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	for _, c := range plan.Deletes {
 		deletedProducts[c.ProductID] = true
 	}
-	localComposite := map[string]json.RawMessage{}
+	localKeyed := map[reconcile.Key]json.RawMessage{}
 	for key, raw := range localOffers {
-		localComposite[key.String()] = raw
+		localKeyed[reconcile.Key{ProductID: key.ProductID, ParentID: key.BasePlanID, OfferID: key.OfferID}] = raw
 	}
-	liveComposite := map[string]json.RawMessage{}
+	liveKeyed := map[reconcile.Key]json.RawMessage{}
 	for _, o := range liveOffers {
 		if deletedProducts[o.ProductID] {
 			continue
 		}
-		liveComposite[subscriptionscmd.OfferKey{ProductID: o.ProductID, BasePlanID: o.BasePlanID, OfferID: o.OfferID}.String()] = o.Raw
+		liveKeyed[reconcile.Key{ProductID: o.ProductID, ParentID: o.BasePlanID, OfferID: o.OfferID}] = o.Raw
 	}
-	offerPlan, err := reconcile.Compute(localComposite, liveComposite, offerManagedFields)
+	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes, err = reconcile.ComputeChildren(localKeyed, liveKeyed, offerManagedFields)
 	if err != nil {
 		return nil, err
 	}
-	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes = offerPlan.Creates, offerPlan.Patches, offerPlan.Deletes
 
 	// Base-plan shrink (slice #542): a live plan the file dropped. The engine
 	// skips deleted and created products on its own.
@@ -526,14 +335,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 	for _, c := range plan.OfferCreates {
-		pid, bid, oid := splitOfferKey(c.ProductID)
-		if _, err := subscriptions.CreateOffer(rc.Ctx, httpClient, pkg, pid, bid, oid, regionsVersion, localOffers[subscriptionscmd.OfferKey{ProductID: pid, BasePlanID: bid, OfferID: oid}]); err != nil {
+		if _, err := subscriptions.CreateOffer(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID, c.OfferID, regionsVersion, localOffers[subscriptionscmd.OfferKey{ProductID: c.ProductID, BasePlanID: c.ParentID, OfferID: c.OfferID}]); err != nil {
 			return nil, subscriptionscmd.Classify(pkg, err)
 		}
 	}
 	for _, c := range plan.OfferPatches {
-		pid, bid, oid := splitOfferKey(c.ProductID)
-		if _, err := subscriptions.PatchOffer(rc.Ctx, httpClient, pkg, pid, bid, oid, regionsVersion, c.Fields, localOffers[subscriptionscmd.OfferKey{ProductID: pid, BasePlanID: bid, OfferID: oid}]); err != nil {
+		if _, err := subscriptions.PatchOffer(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID, c.OfferID, regionsVersion, c.Fields, localOffers[subscriptionscmd.OfferKey{ProductID: c.ProductID, BasePlanID: c.ParentID, OfferID: c.OfferID}]); err != nil {
 			return nil, subscriptionscmd.Classify(pkg, err)
 		}
 	}
@@ -556,14 +363,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 	for _, c := range plan.OfferDeletes {
-		pid, bid, oid := splitOfferKey(c.ProductID)
-		if err := subscriptions.DeleteOffer(rc.Ctx, httpClient, pkg, pid, bid, oid); err != nil {
+		if err := subscriptions.DeleteOffer(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID, c.OfferID); err != nil {
 			return nil, subscriptionscmd.Classify(pkg, err)
 		}
 	}
 	var refused []*basePlanDeleteError
 	for _, c := range plan.BasePlanDeletes {
-		pid, bid := splitBasePlanKey(c.ProductID)
+		pid, bid := c.ProductID, c.ParentID
 		err := subscriptions.DeleteBasePlan(rc.Ctx, httpClient, pkg, pid, bid)
 		if err == nil {
 			continue
