@@ -1,6 +1,0 @@
-# Ratchet allowlist for rule test-roundtripper (see internal/ratchet/doc.go).
-# Today's offenders, one `path symbol` per line. The list only shrinks:
-# a new offender fails the gate, and so does a line whose offender is gone.
-# Replacement: internal/testkit (NewFake, TokenResponse, Response).
-
-commands/metadata/images/pull/pull_test.go pullRT
