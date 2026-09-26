@@ -17,7 +17,8 @@ import (
 //
 // All the data it carries already exists internally: the diagnostic code and
 // its retryable bit (exit.Classify), the semantic exit code, the failing API
-// operation and package, the upstream API reasons[], the missing safety flag.
+// operation and its target, the upstream API reasons[], the missing safety
+// flag.
 type ErrorEnvelope struct {
 	Error ErrorDetail `json:"error"`
 }
@@ -36,9 +37,18 @@ type ErrorEnvelope struct {
 //     plausibly succeed, so retry logic needs no per-cause table. Always
 //     emitted, including when false: a missing field and "not retryable" must
 //     not look alike.
-//   - Operation names the API call that failed (e.g. "edits.commit"), and
-//     Package the package it targeted. Both omitted on a local failure, which
-//     is itself the signal that no call was made.
+//   - Operation names the API call that failed (e.g. "edits.commit").
+//     Omitted on a local failure, which is itself the signal that no call was
+//     made.
+//   - Resource names what the failed call addressed, on any axis: {kind, id}
+//     with kind one of package, app, developerAccount, gamesApplication,
+//     achievement, leaderboard, bucket (api.ResourceKind, append-only).
+//     Omitted when no target is known (a local failure, an account-wide
+//     search).
+//   - Package is the Android package the call targeted, present only when
+//     resource.kind is "package" (same value as resource.id). Before 2.0.0 it
+//     also carried developer account, games application and bucket ids; it no
+//     longer does (#599, ADR-0048).
 //   - Message is the human-readable error string (the same text stderr shows).
 //   - Reasons carries the upstream Google API error.errors[].reason values
 //     (e.g. "editAlreadyExists", "rateLimitExceeded") when an API envelope was
@@ -52,14 +62,23 @@ type ErrorEnvelope struct {
 //     exit-3 recovery stays deterministic). Omitted when the failure is not a
 //     safety refusal.
 type ErrorDetail struct {
-	Code      string   `json:"code"`
-	ExitCode  int      `json:"exitCode"`
-	Retryable bool     `json:"retryable"`
-	Operation string   `json:"operation,omitempty"`
-	Package   string   `json:"package,omitempty"`
-	Message   string   `json:"message"`
-	Reasons   []string `json:"reasons,omitempty"`
-	Requires  []string `json:"requires,omitempty"`
+	Code      string    `json:"code"`
+	ExitCode  int       `json:"exitCode"`
+	Retryable bool      `json:"retryable"`
+	Operation string    `json:"operation,omitempty"`
+	Resource  *Resource `json:"resource,omitempty"`
+	Package   string    `json:"package,omitempty"`
+	Message   string    `json:"message"`
+	Reasons   []string  `json:"reasons,omitempty"`
+	Requires  []string  `json:"requires,omitempty"`
+}
+
+// Resource is the envelope's `resource` object: the addressing axis of the
+// failed call and the identifier on it. A pointer in ErrorDetail so a failure
+// with no target omits the key rather than emitting an empty object.
+type Resource struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
 }
 
 // WriteErrorEnvelope serializes err as a single ErrorEnvelope to w using the
@@ -83,6 +102,9 @@ func WriteErrorEnvelope(w io.Writer, err error) error {
 		Package:   diag.Package,
 		Message:   redact.String(diag.Message),
 		Reasons:   diag.Reasons,
+	}
+	if !diag.Resource.IsZero() {
+		d.Resource = &Resource{Kind: string(diag.Resource.Kind), ID: diag.Resource.ID}
 	}
 	var safety *exit.SafetyFlagError
 	if errors.As(err, &safety) && safety.Flag != "" {

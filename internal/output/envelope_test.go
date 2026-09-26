@@ -61,6 +61,9 @@ func TestWriteErrorEnvelope_apiError_carriesExitCodeAndReasons(t *testing.T) {
 		t.Errorf("operation/package = %q/%q, want edits.commit/com.example.app",
 			env.Error.Operation, env.Error.Package)
 	}
+	if r := env.Error.Resource; r == nil || r.Kind != "package" || r.ID != "com.example.app" {
+		t.Errorf("resource = %+v, want {package com.example.app}: a package failure names its target on both fields", r)
+	}
 }
 
 // TestWriteErrorEnvelope_retryableIsAlwaysEmitted guards the one field where an
@@ -78,9 +81,11 @@ func TestWriteErrorEnvelope_retryableIsAlwaysEmitted(t *testing.T) {
 	if !strings.Contains(raw, `"code"`) {
 		t.Errorf("envelope omits code:\n%s", raw)
 	}
-	// A local failure made no API call, so neither field should be serialized.
-	if strings.Contains(raw, `"operation"`) || strings.Contains(raw, `"package"`) {
-		t.Errorf("a local failure must not claim an operation or package:\n%s", raw)
+	// A local failure made no API call, so none of these should be serialized.
+	for _, key := range []string{`"operation"`, `"resource"`, `"package"`} {
+		if strings.Contains(raw, key) {
+			t.Errorf("a local failure must not claim %s:\n%s", key, raw)
+		}
 	}
 }
 

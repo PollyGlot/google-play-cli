@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "PERMISSION_DENIED",
+    "exitCode": 11,
+    "retryable": false,
+    "operation": "achievementConfigurations.list",
+    "resource": {
+      "kind": "gamesApplication",
+      "id": "123456789012"
+    },
+    "message": "achievementConfigurations.list on 123456789012: The caller does not have permission (HTTP 403)"
+  }
+}

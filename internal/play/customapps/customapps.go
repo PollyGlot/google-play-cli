@@ -96,7 +96,7 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 		Organizations: opts.Organizations,
 	})
 	if err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, Message: "marshal metadata: " + err.Error(), Cause: err}
+		return CustomApp{}, nil, &api.Error{Operation: op, Resource: developerAccount(account), Message: "marshal metadata: " + err.Error(), Cause: err}
 	}
 
 	f, err := os.Open(artifactPath)
@@ -120,7 +120,7 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 	// the endpoint only (#516).
 	u, err := method.UploadURL(map[string]string{"account": account})
 	if err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, Message: err.Error(), Cause: err}
+		return CustomApp{}, nil, &api.Error{Operation: op, Resource: developerAccount(account), Message: err.Error(), Cause: err}
 	}
 	u += "?uploadType=resumable"
 
@@ -129,7 +129,7 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 	// without reopening the file. The metadata JSON travels in the initiate
 	// body; the artifact travels in the chunk PUTs (application/octet-stream).
 	raw, status, err := api.ResumableUploadWithInitiateBody(
-		ctx, hc, op, account, u, "application/octet-stream", f, info.Size(),
+		ctx, hc, op, developerAccount(account), u, "application/octet-stream", f, info.Size(),
 		metaJSON, "application/json; charset=UTF-8",
 	)
 	if err != nil {
@@ -138,7 +138,14 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 
 	var parsed CustomApp
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Package: account, StatusCode: status, Message: "decode response: " + err.Error(), Cause: err}
+		return CustomApp{}, nil, &api.Error{Operation: op, Resource: developerAccount(account), StatusCode: status, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return parsed, raw, nil
+}
+
+// developerAccount is the error target of a custom-app call: the call is
+// addressed to a developer account, not a package, and the JSON error
+// envelope must say so (#599).
+func developerAccount(account string) api.Resource {
+	return api.Resource{Kind: api.KindDeveloperAccount, ID: account}
 }

@@ -15,7 +15,10 @@
 // A module declares its methods once (`mGet = apiregistry.MustResolve(id)`)
 // and describes each call with a Call: path Params, an optional Query, an
 // optional Body (bytes sent verbatim, a *Stream, or a value to JSON-encode),
-// and the Target the call addresses. Everything else is behind the seam:
+// and what the call addresses: the package in Target, or, on another axis (a
+// developer account, a Play Games application), a typed Resource, so the JSON
+// error envelope never reports a non-package id as a package (#599).
+// Everything else is behind the seam:
 //
 //   - The URL and verb come from the registry, never from a literal (the
 //     archgate test in internal/apiregistry enforces it).
