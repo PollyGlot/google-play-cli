@@ -280,6 +280,30 @@ func neverSent(cause error) bool {
 	return errors.As(cause, &opErr) && opErr.Op == "dial"
 }
 
+// Discard bounds. The cleanup DELETE never runs on the caller's ctx (a canceled
+// or timed-out ctx must not also kill it: a dangling Edit blocks the next
+// publish for up to 24h), so it gets its own deadline.
+const (
+	// discardTimeout leaves room for --retry to replay a 5xx on the DELETE.
+	discardTimeout = 10 * time.Second
+	// interruptedDiscardTimeout applies once the caller's ctx is done, which
+	// in the binary means SIGINT or SIGTERM: a CI runner that cancels a job
+	// sends SIGINT, then SIGTERM 7.5s later and SIGKILL 2.5s after that
+	// (GitHub Actions), so the discard has to fit well inside the first gap.
+	interruptedDiscardTimeout = 5 * time.Second
+)
+
+// discardContext returns the fresh context the cleanup DELETE runs on, bounded
+// by discardTimeout, or by interruptedDiscardTimeout when parent is already
+// done.
+func discardContext(parent context.Context) (context.Context, context.CancelFunc) {
+	d := discardTimeout
+	if parent.Err() != nil {
+		d = interruptedDiscardTimeout
+	}
+	return context.WithTimeout(context.Background(), d)
+}
+
 // WithEdit opens an Edit on pkg, invokes fn with the new Edit ID, and
 // commits on success. On any failure from fn OR from the final commit,
 // the Edit is automatically discarded (edits.delete) before the error
@@ -311,7 +335,7 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 			// publish for up to 24h. `defer cancel()` rather than an
 			// inline call guarantees the timer goroutine is released
 			// even if deleteEdit panics on a misbehaving transport.
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			cleanupCtx, cancel := discardContext(ctx)
 			defer cancel()
 			_ = deleteEdit(cleanupCtx, hc, pkg, editID)
 			return failureErr
@@ -333,7 +357,7 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	defer func() {
 		if r := recover(); r != nil {
 			if !opts.KeepOnFailure {
-				cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				cleanupCtx, cancel := discardContext(ctx)
 				defer cancel()
 				_ = deleteEdit(cleanupCtx, hc, pkg, editID)
 			}
@@ -375,7 +399,7 @@ func WithReadOnlyEdit(ctx context.Context, hc *http.Client, pkg string, fn func(
 		return err
 	}
 	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		cleanupCtx, cancel := discardContext(ctx)
 		defer cancel()
 		_ = deleteEdit(cleanupCtx, hc, pkg, editID)
 	}()
@@ -452,7 +476,7 @@ func Validate(ctx context.Context, hc *http.Client, pkg string) error {
 	// timed-out parent ctx does not prevent cleanup. We still propagate
 	// any cleanup failure as a DanglingEditError so the operator knows
 	// they have an Edit to release manually.
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	cleanupCtx, cancel := discardContext(ctx)
 	defer cancel()
 	if delErr := deleteEdit(cleanupCtx, hc, pkg, editID); delErr != nil {
 		return &DanglingEditError{EditID: editID, Err: delErr}
