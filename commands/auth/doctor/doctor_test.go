@@ -634,7 +634,7 @@ func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
 // TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause asserts
 // the ADR-0020 behavioral delta: a corrupt active credential (missing a
 // required field) makes check 1 surface the REAL resolution cause:
-// the field-named hint, not the synthetic "no active account" message.
+// the field-named hint, not the synthetic "no Account resolved" message.
 func TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause(t *testing.T) {
 	boot := newBoot(t)
 	// Valid JSON, accepted by the keystore, but missing client_email so
@@ -653,7 +653,7 @@ func TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause(t *testing.T
 	if !strings.Contains(out, `missing required field "client_email"`) {
 		t.Errorf("check 1 must surface the real cause (field-named hint); got:\n%s", out)
 	}
-	if strings.Contains(out, "no active account") {
+	if strings.Contains(out, "no Account resolved") {
 		t.Errorf("check 1 must not fall back to the synthetic absent message; got:\n%s", out)
 	}
 	// The checklist is rendered exactly once: no double-report of check 1.
@@ -683,8 +683,8 @@ func TestDoctor_corruptActiveCred_malformedJSON_hintCarriesCause(t *testing.T) {
 }
 
 // TestDoctor_absentCred_check1IsGenericSynthetic is a regression guard: with
-// no credential at all (absent), check 1 keeps the generic synthetic "no
-// active account" message rather than a resolution-error cause.
+// no credential at all (absent), check 1 carries the one no-Account wording
+// (kernel.NoAccountError) rather than a resolution-error cause.
 func TestDoctor_absentCred_check1IsGenericSynthetic(t *testing.T) {
 	boot := newBoot(t) // no seeding → genuinely absent
 
@@ -696,7 +696,7 @@ func TestDoctor_absentCred_check1IsGenericSynthetic(t *testing.T) {
 	if got := exit.For(runErr); got != 10 {
 		t.Errorf("exit.For(err) = %d, want 10", got)
 	}
-	if out := stdout.String(); !strings.Contains(out, "no active account") {
+	if out := stdout.String(); !strings.Contains(out, "no Account resolved: run `gplay auth login`") {
 		t.Errorf("absent case must keep the generic synthetic message; got:\n%s", out)
 	}
 }

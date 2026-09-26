@@ -172,6 +172,11 @@ Device tier configs are immutable: the API has create/get/list only, no
 update or delete, so create needs no --confirm (it can never overwrite or
 destroy an existing config); use --dry-run to validate the body and resolve the
 target without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
+		Example: `  # Validate the body and resolve the target, no HTTP call
+  gplay device-tiers create --file device-tiers.json --dry-run
+
+  # Create it (configs are immutable: a change is a new config)
+  gplay device-tiers create --file device-tiers.json --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

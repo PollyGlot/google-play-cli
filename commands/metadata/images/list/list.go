@@ -26,6 +26,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/apihint"
+	"github.com/PollyGlot/google-play-cli/internal/fanout"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -196,16 +197,25 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if err != nil {
 			return err
 		}
-		for _, loc := range locales {
-			for _, ty := range types {
-				imgs, raw, e := images.List(rc.Ctx, httpClient, pkg, editID, loc, ty)
-				if e != nil {
-					return e
-				}
-				if len(imgs) == 0 {
-					continue
-				}
-				slots = append(slots, Slot{Locale: loc, Type: ty, Images: imgs, RawImages: rawImagesArray(raw)})
+		// One images.list per (locale, type), read fanout.Limit at a time.
+		// Each result lands at its (locale, type) index, so the slots come
+		// out in the same (sorted locale, canonical type) order as a serial
+		// walk, whatever order the responses arrive in.
+		read := make([]Slot, len(locales)*len(types))
+		if err := fanout.Each(len(read), func(i int) error {
+			loc, ty := locales[i/len(types)], types[i%len(types)]
+			imgs, raw, e := images.List(rc.Ctx, httpClient, pkg, editID, loc, ty)
+			if e != nil {
+				return e
+			}
+			read[i] = Slot{Locale: loc, Type: ty, Images: imgs, RawImages: rawImagesArray(raw)}
+			return nil
+		}); err != nil {
+			return err
+		}
+		for _, s := range read {
+			if len(s.Images) > 0 {
+				slots = append(slots, s)
 			}
 		}
 		return nil
@@ -272,6 +282,9 @@ appear.
 
 (--output json carries each slot's images verbatim: the edits.images.list
 objects, id/url/sha1/sha256; --output markdown renders a Markdown table.)`,
+		Example: `  gplay metadata images list
+  gplay metadata images list --type phoneScreenshots
+  gplay metadata images list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

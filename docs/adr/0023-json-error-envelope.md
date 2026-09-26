@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted
+accepted. Amended by #593: the envelope also covers CLI misuse raised before a
+command runs (see Consequences).
 
 ## Context
 
@@ -85,6 +86,18 @@ is emitted from `kernel.Run`.
   format is not yet known there — and surface as the plain stderr line. This is
   acceptable: those are usage/boot errors, not the API/safety failures agents
   branch on.
+- **Amended by #593.** The exemption above turned out wider in practice: every
+  CLI misuse cobra raises before a command runs (unknown or repeated flag,
+  wrong number of positional arguments, unknown subcommand) never reached the
+  kernel either, so `gplay tracks list extra --output json` left stdout empty.
+  Those are exactly the mistakes an agent makes, so `main` now backstops the
+  kernel: once `Execute` fails and nothing reached stdout, it resolves the
+  format from the raw `--output` in argv (flag parsing may have stopped before
+  it), then `GPLAY_DEFAULT_OUTPUT`, `CI` and the TTY check, and writes the same
+  envelope under JSON. The "emitted once" rule holds, since main counts stdout
+  bytes like the kernel does. What stays exempt is an invalid `--output` or
+  `GPLAY_DEFAULT_OUTPUT` value, the one case where no format is known; a
+  config-load error is now enveloped like any other failure.
 - Out of scope (PRD #206): publishing a JSON Schema for the envelope — a
   candidate follow-up alongside `gplay schema`.
 

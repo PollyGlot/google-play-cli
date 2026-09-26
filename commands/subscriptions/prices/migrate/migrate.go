@@ -223,6 +223,13 @@ there is deliberately no bulk migration.
 
 --price-increase-type opt-in requires subscribers to accept the new price or
 churn; opt-out (where Google allows it) applies it automatically with notice.`,
+		Example: `  # Preview: US and Canadian subscribers of premium/monthly priced before 2026
+  gplay subscriptions prices migrate --product premium --base-plan monthly \
+    --region US --region CA --oldest 2026-01-01T00:00:00Z --dry-run
+
+  # Migrate them, asking each subscriber to accept the new price
+  gplay subscriptions prices migrate --product premium --base-plan monthly \
+    --region US --region CA --oldest 2026-01-01T00:00:00Z --price-increase-type opt-in --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

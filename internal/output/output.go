@@ -40,15 +40,21 @@ const (
 const EnvDefaultOutput = "GPLAY_DEFAULT_OUTPUT"
 
 // IsTerminalFn reports whether w is connected to a terminal. The default
-// implementation type-asserts w to *os.File and calls term.IsTerminal on
-// its fd; non-file writers are treated as non-TTY so JSON wins under any
-// test or pipe.
+// implementation asks w for its file descriptor (an *os.File, or a wrapper
+// that forwards Fd, like the stdout byte tally in cmd/gplay) and calls
+// term.IsTerminal on it; writers without one are treated as non-TTY so JSON
+// wins under any test or pipe.
 type IsTerminalFn func(w io.Writer) bool
 
 var isTTY IsTerminalFn = defaultIsTTY
 
+// fileDescriptor is the one method TTY detection needs. Asserting it rather
+// than *os.File lets main count stdout bytes (#593) without every command
+// suddenly seeing a pipe and switching its default format to JSON.
+type fileDescriptor interface{ Fd() uintptr }
+
 func defaultIsTTY(w io.Writer) bool {
-	f, ok := w.(*os.File)
+	f, ok := w.(fileDescriptor)
 	if !ok {
 		return false
 	}

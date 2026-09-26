@@ -22,9 +22,9 @@ type Input struct {
 	Package string
 }
 
-// authError signals "no Account resolved" or "Account name not in
-// global config" (exit code 10 per docs/DESIGN.md §9). Mirrors
-// addcmd/listcmd's error shape for the same reason.
+// authError signals "Account name not in global config" (exit code 10 per
+// docs/DESIGN.md §9). The no-Account case is kernel.NoAccountError, the
+// wording every command shares.
 type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
@@ -70,7 +70,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if rc.Account != nil {
 			return nil, &exit.UsageError{Msg: "apps remove: cannot remove under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
-		return nil, &authError{msg: "no Account resolved; run `gplay auth login`, set GPLAY_ACCOUNT, or pass --account"}
+		return nil, kernel.NoAccountError()
 	}
 
 	g, err := config.LoadGlobalOrEmpty(rc.Ctx, fsOrDefault(rc), rc.ConfigPath)
@@ -88,7 +88,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// stderr hint so CI scripts piping `apps remove` don't lose the
 	// "your input matched nothing" signal in a silent zero exit.
 	if !registry.Has(g.Accounts, rc.AccountName, in.Package) {
-		_, _ = fmt.Fprintf(rc.Stderr, "%q not in registry, nothing to do\n", in.Package)
+		rc.Logf("%q not in registry, nothing to do", in.Package)
 		return nil, nil
 	}
 	// registry.Remove is a no-op on (unknown account, unknown pkg) and
@@ -102,15 +102,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := g.Save(rc.Ctx, fsOrDefault(rc), rc.ConfigPath); err != nil {
 		return nil, err
 	}
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ removed %q from Account %q\n", in.Package, rc.AccountName)
+	rc.Confirmf("removed %q from Account %q", in.Package, rc.AccountName)
 	// Pin warning AFTER the success line so a stderr tail still shows
 	// the dangling-pin signal as the most recent message. The warning
 	// surfaces the inconsistency only: `apps remove` deliberately
 	// does NOT rewrite the project's `.gplay/config.json` (see issue
 	// #24: repinning is the caller's decision, not a side effect).
 	if rc.Resolved != nil && rc.Resolved.Pin == in.Package && rc.Resolved.ProjectSharedPath != "" {
-		_, _ = fmt.Fprintf(rc.Stderr,
-			"warning: .gplay/config.json still pins %q; run `gplay init --package <other>` to repin or edit the file manually\n",
+		rc.Warnf(".gplay/config.json still pins %q; run `gplay init --package <other>` to repin or edit the file manually",
 			in.Package,
 		)
 	}
@@ -168,6 +167,8 @@ Idempotent: removing a package that isn't in the registry exits 0 with
 a stderr note. If the removed package is currently pinned by the
 repo's .gplay/config.json, a stderr warning is printed but the project
 config is left untouched (repinning is the caller's decision).`,
+		Example: `  # Stop tracking an app locally (Google Play is not touched)
+  gplay apps remove com.example.old`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

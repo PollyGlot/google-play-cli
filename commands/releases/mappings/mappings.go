@@ -162,6 +162,14 @@ Performs the full Edit lifecycle in one call:
 
 To upload a mapping at the same time as the AAB (the common case), pass
 --mapping to gplay releases upload instead.`,
+		Example: `  # Symbolicate the crash stacks of versionCode 1042 in Play vitals
+  gplay releases mappings upload app/build/outputs/mapping/release/mapping.txt --version-code 1042
+
+  # Upload native debug symbols instead of an R8 mapping
+  gplay releases mappings upload native-debug-symbols.zip --version-code 1042 --type nativeCode
+
+  # Validate the inputs without any HTTP call
+  gplay releases mappings upload mapping.txt --version-code 1042 --dry-run`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

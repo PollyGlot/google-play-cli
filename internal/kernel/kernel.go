@@ -75,6 +75,24 @@ func GroupRunE(cmd *cobra.Command, args []string) error {
 	return exit.Usagef("unknown command %q for %q%s", args[0], cmd.CommandPath(), suggestionsFor(cmd, args[0]))
 }
 
+// Group builds a grouping noun (`apps`, `releases`, `team users`, ...): a
+// command with no business logic of its own that carries GroupRunE plus the
+// SilenceUsage/SilenceErrors pair it needs, and adopts children in the order
+// given. It is the one place those defaults live, so a new group cannot forget
+// the RunE and silently print help (exit 0) on a mistyped subcommand. The root
+// is built by hand instead: it also needs Args: cobra.ArbitraryArgs and a Long.
+func Group(use, short string, children ...*cobra.Command) *cobra.Command {
+	g := &cobra.Command{
+		Use:           use,
+		Short:         short,
+		RunE:          GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	g.AddCommand(children...)
+	return g
+}
+
 // suggestionsFor renders the "Did you mean this?" block for a mistyped
 // subcommand, or "" when nothing is close enough. The matching is cobra's own
 // (SuggestionsFor: Levenshtein within SuggestionsMinimumDistance, plus prefix
@@ -433,10 +451,7 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 // authoritative signals) and a nil Stderr (possible on a hand-built
 // RunContext) is a no-op rather than a panic.
 func (rc *RunContext) Confirmf(format string, args ...any) {
-	if rc.Stderr == nil {
-		return
-	}
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ "+format+"\n", args...)
+	rc.log().Confirmf(format, args...)
 }
 
 // Warnf emits a single non-fatal advisory line on stderr, prefixed with
@@ -450,10 +465,7 @@ func (rc *RunContext) Confirmf(format string, args ...any) {
 // payload whether or not a warning fired (ADR-0003). Like Confirmf the write is
 // best-effort and a nil Stderr is a no-op rather than a panic.
 func (rc *RunContext) Warnf(format string, args ...any) {
-	if rc.Stderr == nil {
-		return
-	}
-	_, _ = fmt.Fprintf(rc.Stderr, "warning: "+format+"\n", args...)
+	rc.log().Warnf(format, args...)
 }
 
 // WarnTruncated emits the standard truncation advisory for a listing that was
@@ -464,7 +476,7 @@ func (rc *RunContext) Warnf(format string, args ...any) {
 //
 // It is not the note for a CURSOR listing (`--page-token`, one page per call):
 // there the remediation is a token to pass back, not a cap to raise, and those
-// commands write their own `NOTE:` carrying it (docs/DESIGN.md §9).
+// commands carry it in their own Notef line (docs/DESIGN.md §9).
 //
 // n is what was returned; flag is the flag to raise (normally "limit"), named
 // explicitly so the remediation is one step away.
@@ -487,11 +499,8 @@ func (rc *RunContext) ConfirmMutation(explicitEditID, format string, args ...any
 		rc.Confirmf(format, args...)
 		return
 	}
-	if rc.Stderr == nil {
-		return
-	}
 	prefix := fmt.Sprintf("• staged in open edit %s: run `gplay edits commit` to publish (not live yet): ", explicitEditID)
-	_, _ = fmt.Fprintf(rc.Stderr, prefix+format+"\n", args...)
+	rc.log().Logf(prefix+format, args...)
 }
 
 // GplayDir returns the project's .gplay/ directory: the one found via walk-up
@@ -614,7 +623,7 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 	// whether a failing command already wrote its own output (ADR-0023).
 	cw := &countingWriter{w: stdout}
 
-	return &RunContext{
+	rc := &RunContext{
 		Ctx:            ctx,
 		AccountName:    accountName,
 		Format:         format,
@@ -633,7 +642,27 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 		lazy:           true,
 		keyring:        kr,
 		resolverInputs: in.Resolver,
-	}, nil
+	}
+	warnTrackedLocalConfig(rc)
+	return rc, nil
+}
+
+// warnTrackedLocalConfig warns when the repo's .gplay/config.local.json is
+// committed. The file overrides the active Account and developer-id (ADR-0004,
+// ADR-0015), and only the .gitignore gplay writes keeps it local: once tracked,
+// every clone runs with the Account the repo names, among those the operator
+// has registered, and nothing on stderr says so (#603). A warning rather than a
+// refusal: the operator may be the one who committed it, and untracking the
+// file is theirs to do.
+func warnTrackedLocalConfig(rc *RunContext) {
+	if rc.Resolved == nil || rc.Resolved.ProjectLocalPath == "" {
+		return
+	}
+	if !config.GitTracked(rc.Ctx, rc.Resolved.ProjectLocalPath) {
+		return
+	}
+	rc.Warnf("%s is tracked by git, and it picks the Account gplay runs with: anyone who clones the repo runs with the Account it names. Untrack it: git rm --cached %s",
+		rc.Resolved.ProjectLocalPath, rc.Resolved.ProjectLocalPath)
 }
 
 // Backend lazily selects the credential keystore backend, running the OS
@@ -857,12 +886,9 @@ func (rc *RunContext) authedClientFor(timeout time.Duration, mediaExempt bool) (
 	// First call that genuinely needs a credential: this is where the
 	// keyring probe + Load finally happen (see EnsureAccount), not at boot.
 	// A present-but-invalid credential surfaces its real cause here; an
-	// absent one falls through to the authError login hint below.
-	if err := rc.EnsureAccount(); err != nil {
+	// absent one becomes the one no-Account error (NoAccountError).
+	if err := rc.RequireAccount(); err != nil {
 		return nil, err
-	}
-	if rc.Account == nil {
-		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
 	}
 	// The /token exchange runs through the context's HTTP client (jwt.Config
 	// captures the context it is given), so bound it with the same deadline by
@@ -937,6 +963,32 @@ type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
 func (e *authError) ExitCode() int { return 10 }
+
+// noAccountMsg is the one wording for "no credential configured at all"
+// (#593). It names every precedence layer that can fix it (DESIGN §1), stored
+// Account first because that is what `auth login` produces; the registry
+// commands (`apps add/list/remove`) that cannot scope to an inline credential
+// say so in their own follow-up error, which beats four diverging hints.
+const noAccountMsg = "no Account resolved: run `gplay auth login`, pass --account <name> or set GPLAY_ACCOUNT, " +
+	"or supply a service-account key with --service-account or GPLAY_SERVICE_ACCOUNT"
+
+// NoAccountError is the failure every command returns when no Account resolves
+// (exit 10, AUTH_FAILED). Commands build it here rather than spelling their own
+// message, so the fix reads the same whichever command hit it.
+func NoAccountError() error { return &authError{msg: noAccountMsg} }
+
+// RequireAccount resolves the credential (EnsureAccount) and turns the benign
+// "absent" outcome into NoAccountError, for callers that cannot proceed without
+// one. An invalid credential keeps its own exit-10 cause.
+func (rc *RunContext) RequireAccount() error {
+	if err := rc.EnsureAccount(); err != nil {
+		return err
+	}
+	if rc.Account == nil {
+		return NoAccountError()
+	}
+	return nil
+}
 
 // FromCobra builds an Inputs from cmd's persistent flag values
 // (--verbose, --service-account, --account), the credential env vars,

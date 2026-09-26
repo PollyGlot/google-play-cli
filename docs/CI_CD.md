@@ -242,7 +242,7 @@ Pin a verification step into the job that installs `gplay`:
       - name: Install and verify gplay
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: v0.5.0
+          VERSION: v1.6.1 # x-release-please-version
         run: |
           set -euo pipefail
           base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"
@@ -394,6 +394,7 @@ other workflow reports, but never blocks a merge.
 | `codeql.yml` | PR + push to `main` + weekly | CodeQL `security-and-quality` static analysis of our own Go. Not required (yet). | none |
 | `govulncheck.yml` | weekly + manual + `go.mod`/`go.sum` push to `main` or PR | dependency and standard-library vulnerability scan, pinned govulncheck, same toolchain as the release. Not required. | none |
 | `workflow-lint.yml` | PR + push to `main` touching `.github/**` | actionlint and zizmor (regular persona, medium and above) over the workflows; accepted findings live in `.github/zizmor.yml`. Not required. | none |
+| `site.yml` | PR touching `website/**`, `deploy/**`, `cmd/**`, `commands/**` or the workflow itself | builds the site (reference generated from the fresh binary), runs `astro check` and `website/scripts/check-dist.mjs` (internal links and anchors, links to untracked repo paths, mangled flag dashes), and the `deploy/gplay.sh/worker.js` routing tests on `node:test`. Not required. | none |
 | `release-rehearsal.yml` | PR touching release machinery + manual | non-publishing GoReleaser dry run. Not required. | none |
 | `release-please.yml` | push to `main` | maintains the release PR; once it merges, cuts the tag and GitHub Release and calls `release.yml`. | `GPLAY_APP_ID`, `GPLAY_APP_PRIVATE_KEY` (gplay App token), `HOMEBREW_TAP_GITHUB_TOKEN` (passed on) |
 | `release.yml` | called by `release-please.yml` + manual (tag input) | GoReleaser build, cosign signature, SBOMs, build-provenance attestations, Homebrew tap push. | `HOMEBREW_TAP_GITHUB_TOKEN`, `GITHUB_TOKEN` |

@@ -310,7 +310,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 diagnostic: a human or agent holds an order ID from a buyer complaint or a
 payout report and reads its state, total, and line items. This is the order
 lookup boundary of the commerce surface; real-time purchase-token verification
-is a runtime API gplay does not wrap (CONTEXT.md "Order" / ADR-0031).
+is a runtime API gplay does not wrap.
 
 Pass a single order ID for a detailed lookup (orders.get) or several to look
 them up together (orders.batchget, 1–1000 IDs per request: more is a usage
@@ -322,13 +322,17 @@ application-scoped read: it opens no Edit.
 
 The human views show a compact summary (single: order id, state, total,
 creation time, line items; multiple: one line per order); --output json passes
-the Order (single) or BatchGetOrdersResponse (batch) through verbatim
-(ADR-0003), including the fields the summary omits (buyer address, tax, order
+the Order (single) or BatchGetOrdersResponse (batch) through verbatim,
+including the fields the summary omits (buyer address, tax, order
 history, sales channel, …).
 
 Reading orders requires the service account to hold the CAN_VIEW_FINANCIAL_DATA
 permission (never part of a Role bundle); a 403 names it. An unknown order ID
 fails with exit 30.`,
+		Example: `  gplay orders view GPA.1234-5678-9012-34567
+
+  # Look several up in one request
+  gplay orders view GPA.1234-5678-9012-34567 GPA.2345-6789-0123-45678 --output json`,
 		Args:          cobra.MinimumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

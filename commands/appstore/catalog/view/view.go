@@ -410,17 +410,19 @@ The human views summarize the main catalog fields: identity and category,
 developer, active version names, last publish time and first release date, the
 US price (an app with no price is "free") and any active sale price, in-app
 purchases/ads flags, the IARC certificate id and adult-only audience flag, the
-privacy policy URL, the localized store listings, the declared permissions
+privacy policy URL, the per-locale Listings, the declared permissions
 (all-SDK and SDK 23+), the device compatibility requirement sets, and the
 delivery token used with the Google Play Inline Install API.
 
---output json passes the RecentAppView through verbatim (ADR-0003), including
+--output json passes the RecentAppView through verbatim, including
 everything the summary omits: image assets, device exclusions, screen support,
 full descriptions. stdout carries the data, stderr the logs.
 
 This is a direct read outside the Edit model: it opens no Edit. An app that is
 not eligible for catalog inclusion fails with exit 30; a credential not
 authorized for the app store's catalog export fails with exit 11.`,
+		Example: `  gplay appstore catalog view com.example.game --store-package com.example.store
+  gplay appstore catalog view com.example.game --store-package com.example.store --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

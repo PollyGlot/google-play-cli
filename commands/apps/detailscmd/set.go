@@ -269,6 +269,11 @@ HTTP call (no auth needed), and --keep-edit-on-failure to skip the
 auto-discard cleanup for debugging.
 
 --output json returns the edits.details.patch body verbatim.`,
+		Example: `  # Update the support contacts shown on the store
+  gplay apps details set --contact-email support@example.com --contact-website https://example.com
+
+  # Preview clearing the phone number, without any HTTP call
+  gplay apps details set --contact-phone "" --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

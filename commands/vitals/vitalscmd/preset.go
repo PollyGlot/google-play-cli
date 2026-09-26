@@ -167,11 +167,6 @@ An opinionated preset over ` + "`gplay vitals query " + spec.Set + "`" + `: no
 metric or dimension knowledge required: the set's primary metric is reported
 over the default 28-day DAILY window.
 
-  gplay vitals ` + spec.Use + ` --package com.example.app
-  gplay vitals ` + spec.Use + ` --by versionCode --version 123
-  gplay vitals ` + spec.Use + ` --since 7d --period DAILY
-  gplay vitals ` + spec.Use + ` --describe
-
 --by slices the timeline (` + ByChoices() + `); --version filters to one
 versionCode. This is a READ-ONLY surface on the Play Developer Reporting
 service. --output json mirrors the API response verbatim; a freshness note is
@@ -181,6 +176,13 @@ printed to stderr so an empty window is not mistaken for zero.
 latest end time for which data is available, per aggregation period, in the
 set's timezone. It answers "up to when is this data complete?"; the window
 flags (--since, --period, --by, --version) do not apply and are rejected.`,
+		Example: `  gplay vitals ` + spec.Use + ` --package com.example.app
+
+  # The last week, one row per versionCode
+  gplay vitals ` + spec.Use + ` --by versionCode --since 7d
+
+  # Up to when is the data complete?
+  gplay vitals ` + spec.Use + ` --describe`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

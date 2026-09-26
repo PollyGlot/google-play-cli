@@ -226,7 +226,7 @@ Two identifiers address the call, and mixing them up is the common mistake:
 
   --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
-                   falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
+                   falling back to $` + appstorecmd.EnvStorePackage + `
   --package        the hosted app's package name (the subject), defaulting to
                    the repo's .gplay/config.json pin when omitted
 
@@ -239,14 +239,16 @@ The hosted app record must already exist: run ` + "`gplay appstore create`" + ` 
 The call is Edit-free: it opens no Edit and joins none.
 
 No --confirm is required: an upload is inert (it produces an id and changes
-nothing a user can see), so it fails the ADR-0043 gate criterion of being
+nothing a user can see): gplay gates only writes that are both
 irreversible AND externally visible. GPLAY_READONLY still refuses it (exit 4)
 but lets --dry-run run.
 
---output json passes the API response through verbatim (ADR-0003). --dry-run
+--output json passes the API response through verbatim. --dry-run
 previews the resolved target with no HTTP call and without opening the file. An
 unreadable path is a client-side failure (exit 20); a 403 names the app store
 enrollment the call requires.`,
+		Example: `  gplay appstore upload policy age-rating-evidence.pdf --store-package com.example.store --package com.example.game
+  gplay appstore upload policy age-rating-evidence.pdf --store-package com.example.store --package com.example.game --dry-run`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

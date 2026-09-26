@@ -260,6 +260,14 @@ the Edit (0 published).
 ` + "`metadata images validate`" + ` runs as a fail-fast pre-check;
 --no-validate bypasses it (Play's commit stays the ultimate authority).
 --locale and --type restrict the reconciliation to a subset of slots.`,
+		Example: `  # Show what would change on Play, per slot (online, nothing committed)
+  gplay metadata images apply --dry-run
+
+  # Publish only the en-US phone screenshots
+  gplay metadata images apply --locale en-US --type phoneScreenshots --confirm
+
+  # Also delete managed slots' images that exist only on Play
+  gplay metadata images apply --prune --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

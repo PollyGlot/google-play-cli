@@ -253,6 +253,8 @@ GPLAY_DEVELOPER_ID, then --developer-id. An unresolved id fails with exit 10.
 --output json is the matched User object verbatim (the exact users.list bytes
 for that member, grants included); --output markdown renders a record plus a
 grants table.`,
+		Example: `  gplay team users view dev@example.com
+  gplay team users view dev@example.com --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

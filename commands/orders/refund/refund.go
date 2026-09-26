@@ -198,6 +198,11 @@ Refunding requires the service account to hold the CAN_MANAGE_ORDERS permission
 (never part of a Role bundle); a 403 names it. Google does not allow refunding
 orders older than 3 years: that surfaces as a specific refusal, not a generic
 error.`,
+		Example: `  # Preview the refund, no HTTP call
+  gplay orders refund GPA.1234-5678-9012-34567 --dry-run
+
+  # Refund and also revoke what the buyer bought
+  gplay orders refund GPA.1234-5678-9012-34567 --revoke --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -38,6 +38,20 @@ reasoned through in
 handler intercept `/install`, the docs/www hostnames, and Markdown negotiation
 before falling through to asset serving.
 
+## Tests
+
+[`worker.test.mjs`](worker.test.mjs) drives the Worker's `fetch` entry point
+with a fake `env.ASSETS` binding and a stubbed upstream `fetch`: hostname
+redirects (the `/docs2` lookalike included), the `/install` proxy with its 405
+and 502 branches, `Accept` q-value negotiation, Markdown twin lookup with 304
+passthrough, and the `Link`/`Vary`/security headers. No network, no wrangler:
+
+```bash
+node --test deploy/gplay.sh/worker.test.mjs
+```
+
+`.github/workflows/site.yml` runs it on every pull request touching `deploy/**`.
+
 ## Deploy
 
 **The Worker deploys automatically.** Any push to `main` that touches
@@ -119,7 +133,7 @@ to this Cloudflare account and the registrar's nameservers point at Cloudflare
 
    ```bash
    curl -fsSL https://gplay.sh/install | sh           # installer
-   curl -sI   https://docs.gplay.sh/ | grep -i location  # → https://gplay.sh/docs/
+   curl -sI   https://docs.gplay.sh/ | grep -i location  # → https://gplay.sh/docs
    curl -sI   https://www.gplay.sh/  | grep -i location  # → https://gplay.sh/
    open       https://gplay.sh/                        # landing
    open       https://gplay.sh/docs/                   # docs

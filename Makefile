@@ -1,4 +1,4 @@
-.PHONY: help build test check lint verb-gate dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats \
+.PHONY: help build test check lint verb-gate ratchets dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats \
 	lint-version fmt-check vet shellcheck required-files build-check test-race
 
 # Project metadata
@@ -55,6 +55,11 @@ test-race:
 lint: dash-gate ## Run golangci-lint, the go.mod tidiness check and the em dash gate
 	golangci-lint run ./...
 	go mod tidy -diff
+
+ratchets: ## Print the allowlist size of every ratchet rule (internal/ratchet), the before/after count of the paved-road migration
+	@mkdir -p bin
+	@go test -c -o bin/ratchet.test ./internal/ratchet
+	@cd internal/ratchet && ../../bin/ratchet.test -ratchet.report
 
 verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
 	@bash scripts/verb-gate.sh
