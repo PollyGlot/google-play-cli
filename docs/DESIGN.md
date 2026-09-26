@@ -113,6 +113,14 @@ In order, first match wins:
 If nothing resolves: exit code `10` with a message pointing at `gplay auth login`
 and the env var docs.
 
+**Path or inline JSON.** A `--service-account` or `GPLAY_SERVICE_ACCOUNT` value
+is inline JSON when its first non-whitespace character is `{`, and a file path
+otherwise. A value that is neither JSON nor a readable file fails with exit `10`
+and is **never echoed back**: the message names the source, the value's length
+and the OS reason, plus a hint when the value looks base64-encoded, wrapped in
+quotes or prefixed with a byte-order mark. gplay diagnoses those shapes but does
+not decode them (#583).
+
 **Absent vs. invalid.** Resolution has two distinct failure modes, and gplay
 keeps them apart ([ADR-0020](adr/0020-resolution-error-surfacing.md)):
 
