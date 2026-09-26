@@ -350,13 +350,32 @@ third-party action is SHA-pinned (see
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `ci.yml`: **Build, lint, test** | PR + push to `main` | aggregator over the `lint` job (gofmt, `go vet`, golangci-lint, build) and the `test` shards (`go test -race`, split by package). **Required check.** |
+| `ci.yml`: **Build, lint, test** | PR + push to `main` | aggregator over the `lint` job (gofmt, `go mod tidy -diff`, `go vet`, golangci-lint, build) and the `test` shards (`go test -race`, split by package). **Required check.** |
 | `test-uncached.yml` | daily + manual | `go test -race -count=1 ./...` with no cache, the safety net for the cached test results. Not required. |
 | `ci.yml` — **Docs sanity** | PR + push to `main` | verb-gate (ADR-0019), shellcheck, required-files. **Required check.** |
 | `ci.yml` — **Fuzz smoke** | PR + push to `main` | bounded fuzzing of the untrusted-input parsers. Not required. |
 | `codeql.yml` | PR + push to `main` + weekly | CodeQL `security-and-quality` static analysis of our own Go. Not required (yet). |
-| `govulncheck.yml` | weekly + `go.mod`/`go.sum` push | dependency-vulnerability scan. |
+| `govulncheck.yml` | weekly + `go.mod`/`go.sum` push or PR | dependency and standard-library vulnerability scan, pinned govulncheck, same toolchain as the release. Not required. |
 | `release-rehearsal.yml` | PR touching release machinery | non-publishing GoReleaser dry run. Not required. |
+
+### One Go version, from go.mod
+
+`go.mod` is the only place the Go version lives. Its `go` line is the floor
+(the oldest supported Go release, what `go install` users need); its
+`toolchain` line is the exact patch every workflow installs, through
+`actions/setup-go` with `go-version-file: go.mod`. CI, CodeQL, govulncheck, the
+release rehearsal and the release itself therefore build and scan with the Go
+that ships. To move to a new patch or release, edit the `toolchain` line (and
+raise the `go` line when a Go release reaches end of support); no workflow
+changes. Do not set `GOTOOLCHAIN=local` before `setup-go`: it then ignores the
+`toolchain` line and installs the unpatched `go` line.
+
+The released binary is built from the exact tagged tree: the GoReleaser
+`before` hook runs `go mod tidy -diff`, which fails instead of rewriting
+`go.mod`, and the `lint` job runs the same check on every PR. GoReleaser and
+govulncheck are pinned (`version:` in the release workflows, `@vX.Y.Z` in
+`govulncheck.yml`); bump them deliberately, with a rehearsal run for
+GoReleaser.
 
 ### Path-based job gating
 
