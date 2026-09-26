@@ -311,6 +311,12 @@ Each transition is its own verb:
 failure after `begin`, the Edit is **auto-discarded** before the error
 propagates. Pass `--keep-edit-on-failure` to bypass cleanup when debugging.
 
+`SIGINT` and `SIGTERM` count as a failure: the in-flight request is canceled,
+the Edit is discarded under a 5-second bound (inside the CI kill margin: GitHub
+Actions sends `SIGTERM` 7.5s after `SIGINT`), and gplay exits `50`. A second
+signal is not caught and kills gplay at once. Only a hard kill (`SIGKILL`, OOM,
+runner eviction) can still leave an Edit open.
+
 ### Explicit edits
 
 `gplay edits begin / commit / discard`. The Edit ID is persisted to
@@ -332,6 +338,73 @@ Two read-only checks complete the lifecycle (#544):
   `gplay edits discard` to clear the stale pin, with exit `0`: the pin is never
   cleared implicitly. Without `--live`, `status` stays a local read with no
   auth and no network; `--live` without a pin also stays offline.
+
+A write command that fails against a pinned Edit which no longer exists (an
+`editExpired` reason, or a `404` that the same `edits.get` probe confirms is
+the Edit itself rather than a resource inside it) names the pin file and
+`gplay edits discard --package <pkg>` in its error. The exit code and the
+diagnostic code stay those of the API failure; the pin is never cleared
+implicitly.
+
+### Committing while changes are in review (#598)
+
+Every command that commits an Edit (`gplay edits commit`, and each write
+command in implicit mode) takes two opt-ins, forwarded as `edits.commit` query
+parameters. They are frozen like the commands carrying them (no
+`[experimental]` label): each mirrors one Google parameter 1:1, so there is no
+shape left to settle.
+
+| Flag | Sent as | Effect |
+|---|---|---|
+| `--changes-in-review cancel` | `changesInReviewBehavior=CANCEL_IN_REVIEW_AND_SUBMIT` | Google's default, stated explicitly |
+| `--changes-in-review error` | `changesInReviewBehavior=ERROR_IF_IN_REVIEW` | The commit fails while changes are in review; the review is left alone and Google does not invalidate the Edit |
+| `--changes-not-sent-for-review` | `changesNotSentForReview=true` | Commit without sending the changes for review; they wait until someone sends them from the Play Console |
+
+**The default is Google's and stays so.** With neither flag gplay sends no
+parameter, and Google cancels any review in progress and submits everything
+again, which restarts the review. Changing that default would change what every
+existing pipeline publishes, so it is not on the table in `1.x`. A refusal in
+`error` mode is Google's error envelope, passed through with the exit code its
+status maps to (§9). A bad value is CLI misuse (exit `2`), rejected while flags
+are parsed.
+
+With an explicit Edit pinned, a write command stages into it and does not
+commit, so the flags cannot apply there: the command warns on stderr and names
+`gplay edits commit`, which is where they belong.
+
+### A commit whose outcome is unknown
+
+A commit that fails after the request left the machine (a timeout, a reset, a
+`5xx`) may have been applied. It keeps the exit code its failure maps to (`50`
+or `40`), but its diagnostic code is `COMMIT_OUTCOME_UNKNOWN`, **not
+retryable** (§9.1): re-running an upload that did publish fails on the
+already-used version code and reports a successful release as an error. The
+message says how to check instead: the live state (`gplay releases list`, or
+the Play Console) for an implicit Edit, `gplay edits status --live` for
+`gplay edits commit` (the pin stays; an Edit that is gone was most likely
+committed). A failure that proves the commit never left (a DNS or dial error, a
+refused token exchange) keeps its ordinary code. `--retry` never replays
+`edits.commit` in any case.
+
+### Reads and the pinned Edit
+
+Read commands show the **live, committed** state. An Edit-scoped read
+(`releases list`, `tracks list`, `tracks view`, `tracks availability view`,
+`testers list`, `metadata list`, `metadata pull`, `metadata images list`,
+`metadata images pull`, `releases expansion-files view`, `apps view`,
+`apps details view`, `apps audit`) opens its own read-only Edit and discards
+it, even while an explicit Edit is pinned: after `edits begin` and
+`releases upload`, `releases list` still shows what is published, not what is
+staged. Reading the staged state is an opt-in: a read joins the pinned Edit
+only when passed `--edit`. No read takes `--edit` yet; it earns its place
+command by command through an issue. The reason is predictability: a read
+whose source flips on the presence of a file in `.gplay/` answers the same
+command differently in two directories, and the frozen reads keep the
+semantics they shipped with (ADR-0042).
+
+`releases artifacts list` (`[experimental]`, #543) predates this rule and reads
+inside the pinned Edit without `--edit`, so that artifacts uploaded there are
+visible. It is the one known exception.
 
 ### Concurrent reads (#602)
 
@@ -592,10 +665,21 @@ seconds instead of stalling a CI job until the runner-level kill:
   **60s default** deadline, applied once where the kernel builds the
   authenticated HTTP client — every command inherits it, no per-command
   plumbing.
-- **Media uploads** (`releases upload`, `releases sharing upload`,
-  `releases expansion-files upload`, `metadata images apply`) are **exempt from
-  the default**: a multi-hundred-MB transfer is never killed by the short
-  control-plane bound.
+- **Media transfers** (the artifact bytes of `releases upload`,
+  `releases sharing upload`, `releases expansion-files upload`,
+  `releases mappings`, `metadata images apply`, the `appstore upload` and
+  `customapps create` surfaces, and the APK bytes of
+  `releases generated download`) are **exempt from the default**: a
+  multi-hundred-MB transfer is never killed by the short control-plane bound.
+  The exemption is decided per request, so the same commands' Edit calls
+  (`edits.insert`, `tracks.update`, `edits.commit`), the resumable initiate and
+  offset probe, and the token exchange keep the 60s bound.
+- Each **resumable chunk** (8 MiB) carries its own generous 5-minute bound: a
+  connection that stops moving bytes without a reset is cut, then the upload
+  probes the committed offset and resumes. After a failure the resume waits on
+  the same backoff curve as `--retry` (500ms doubling to 30s, with jitter),
+  restarting when the server's offset advances; eight attempts in a row
+  without progress end the upload.
 - The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
   `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
   Unset (`0`) means "60s for control-plane, unbounded for uploads".
@@ -697,16 +781,21 @@ pointing at a shared translation):
 | `2` | CLI misuse (unknown flag, bad value, repeated single-value flag, wrong number of positional args) | No |
 | `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
 | `4` | Denied by environment policy (`GPLAY_READONLY`) — a mutating command was refused; the message names the env var | No — **not** resolvable by adding a flag; change the environment |
-| `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
+| `10` | Authentication failure (SA invalid, token refused by the token endpoint or by the API as a `401`, scope missing) | No |
 | `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
 | `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
-| `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
-| `50` | Network (timeout, DNS, refused) | **Yes** |
+| `40` | API 5xx (upstream temporarily unhealthy) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
+| `50` | Network (timeout, DNS, refused) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
 | `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
 | `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
+
+**An interrupted command exits 50.** A command stopped by `SIGINT` or `SIGTERM`
+before it succeeded exits `50` whatever step it was on, after discarding its
+implicit Edit (§4), so re-running it is safe. A command that completed before
+the signal was handled keeps its `0`.
 
 **Exit 3 has no exceptions.** *Every* refusal for a missing safety-acknowledgment
 flag exits `3` — never `2` — whatever the command and however destructive the
@@ -808,9 +897,10 @@ rather than regexing the message for the word "already".
 | `API_ERROR` | 30 | No | Other API 4xx rejection |
 | `UPSTREAM_UNAVAILABLE` | 40 | **Yes** | The API is temporarily unhealthy (5xx) |
 | `NETWORK_ERROR` | 50 | **Yes** | Transport failure with no HTTP response |
+| `COMMIT_OUTCOME_UNKNOWN` | 50 | No | An Edit commit failed after it was sent (timeout, reset or 5xx, so exit `50` or `40`) and may be live; check before re-running (§4) |
 | `STATE_CONFLICT` | 60 | No | Remote state conflicts with the request (409) |
 | `EDIT_ALREADY_EXISTS` | 60 | No | An Edit is already open on this package |
-| `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; begin a new Edit |
+| `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit |
 | `RATE_LIMIT_EXCEEDED` | 60 | **Yes** | Rate or quota limit exceeded; back off |
 | `FINDINGS_PRESENT` | 70 | No | A check command completed and reported findings; not a failure |
 

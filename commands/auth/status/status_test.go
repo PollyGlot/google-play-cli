@@ -294,6 +294,36 @@ func TestStatus_keyringBackend_jsonOmitsPath(t *testing.T) {
 	}
 }
 
+// TestStatus_keyringBackend_warnsOnStrayPlaintextFiles pins the SEC-03 (#589)
+// audit hint: with the keyring active, a credential file left by an earlier
+// keyring-less login is no longer read by anything, so status names it.
+func TestStatus_keyringBackend_warnsOnStrayPlaintextFiles(t *testing.T) {
+	boot := newBoot(t, newFakeKeyring(false))
+	seedActiveAccount(t, boot)
+	if err := keystore.NewFileBackend(boot.KeystoreRoot).Save(context.Background(), "old", []byte(`{}`)); err != nil {
+		t.Fatalf("file Save: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := runCmd(t, boot, &stdout, &stderr, "--output", "json"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := stderr.String(); !strings.Contains(got, "plaintext credential file(s) remain in "+boot.KeystoreRoot) || !strings.Contains(got, "old") {
+		t.Errorf("stderr = %q, want the stray-file warning naming %s and \"old\"", got, boot.KeystoreRoot)
+	}
+
+	// No stray file: no warning.
+	boot2 := newBoot(t, newFakeKeyring(false))
+	seedActiveAccount(t, boot2)
+	stdout.Reset()
+	stderr.Reset()
+	if err := runCmd(t, boot2, &stdout, &stderr, "--output", "json"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if strings.Contains(stderr.String(), "plaintext") {
+		t.Errorf("clean keyring status warned: %q", stderr.String())
+	}
+}
+
 func TestStatus_verboseFlag_emitsBackendSelectionLog(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	seedActiveAccount(t, boot)

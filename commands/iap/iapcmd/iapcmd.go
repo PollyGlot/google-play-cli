@@ -1,5 +1,5 @@
-// Package iapcmd holds the wiring shared by the `gplay iap` leaves: package
-// resolution, the default catalog directory, 403/404 hint classification, and
+// Package iapcmd holds the wiring shared by the `gplay iap` leaves: the
+// default catalog directory, 403/404 hint classification, and
 // the shaping helpers between the catalog file schema and the API resources.
 // The catalog unions two surfaces: the v2 `monetization.onetimeproducts`
 // model (all writes) and the read-only legacy `inappproducts` (recognizable by
@@ -13,10 +13,8 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
-	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 )
@@ -29,19 +27,6 @@ const DefaultDir = "./monetization/iap"
 // --regions-version overrides it: the latest version Google has published
 // (ADR-0041 §7).
 const DefaultRegionsVersion = "2022/02"
-
-// ResolvePackage resolves the target package: --package wins, else the project
-// pin. The Monetization catalog rides the package/app axis.
-func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
-	pkg := strings.TrimSpace(flag)
-	if pkg == "" && rc != nil && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
-	}
-	return pkg, nil
-}
 
 // forbiddenError wraps a 403 with an agent-resolvable hint (no specific Play
 // permission is tied to these methods in the Discovery snapshot, so no enum is

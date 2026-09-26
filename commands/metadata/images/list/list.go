@@ -15,7 +15,6 @@ package imageslist
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,10 +25,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/fanout"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 	"github.com/PollyGlot/google-play-cli/internal/play/listings"
@@ -41,13 +40,6 @@ type Input struct {
 	Type    string
 }
 
-// usageError is a CLI-misuse error (no package); ExitCode()=2 per
-// docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // validationError is a client-side flag-value failure (an unknown
 // --type); ExitCode()=20 per docs/DESIGN.md §9. Refused offline, before
 // any HTTP round-trip, so a typo like "iconn" surfaces a clear message
@@ -56,42 +48,6 @@ type validationError struct{ msg string }
 
 func (e *validationError) Error() string { return e.msg }
 func (e *validationError) ExitCode() int { return 20 }
-
-// packageNotFoundError / forbiddenError mirror `metadata list`: actionable
-// hints on a 404 / 403, with the wrapped *api.Error left to drive the exit
-// code.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
-
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-func classifyEditError(pkg string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
-	}
-	return err
-}
 
 // Slot is one non-empty (locale, imageType) slot: the parsed images (for the
 // table/markdown count + sha256 view) and the verbatim API images array (for
@@ -211,12 +167,9 @@ func rawImagesArray(envelope json.RawMessage) json.RawMessage {
 // builds an authenticated client, opens a read-only Edit, enumerates the
 // app's locales, then reads every (locale, imageType) slot.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	// [experimental] --type narrows the read to a single AppImageType.
@@ -267,7 +220,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 		return nil
 	}); err != nil {
-		return nil, classifyEditError(pkg, err)
+		return nil, apihint.ForPackage(pkg, err)
 	}
 
 	return Payload{Package: pkg, Slots: slots}, nil

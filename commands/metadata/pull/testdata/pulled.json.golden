@@ -1,0 +1,25 @@
+{
+  "package": "com.example.app",
+  "dir": "./metadata",
+  "pulled": [
+    {
+      "locale": "en-US",
+      "fields": [
+        "title",
+        "shortDescription",
+        "fullDescription",
+        "video"
+      ]
+    },
+    {
+      "locale": "fr-FR",
+      "fields": [
+        "title"
+      ]
+    }
+  ],
+  "summary": {
+    "locales": 2,
+    "files": 5
+  }
+}
