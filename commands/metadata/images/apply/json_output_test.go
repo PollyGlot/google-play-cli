@@ -3,6 +3,7 @@ package imagesapply_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	imagesapply "github.com/PollyGlot/google-play-cli/commands/metadata/images/apply"
@@ -55,11 +56,15 @@ func TestRenderJSON_dryRunPrune_golden(t *testing.T) {
 }
 
 // TestRenderJSON_applied_matchesDryRun pins that a real apply prints the very
-// diff it executed: the JSON renderer ignores DryRun, so a script reads one
-// schema whichever mode ran.
+// diff it executed, so a script reads one schema whichever mode ran: the only
+// difference is the dryRun marker a preview leads with (#622).
 func TestRenderJSON_applied_matchesDryRun(t *testing.T) {
 	got := string(outputtest.RenderJSON(t, payload(false, false)))
-	want := string(outputtest.RenderJSON(t, payload(false, true)))
+	preview := string(outputtest.RenderJSON(t, payload(false, true)))
+	want := strings.Replace(preview, "\n  \"dryRun\": true,", "", 1)
+	if want == preview {
+		t.Fatalf("dry-run JSON lacks the leading dryRun marker:\n%s", preview)
+	}
 	if got != want {
 		t.Errorf("real-apply JSON differs from the dry-run diff\n got: %s\nwant: %s", got, want)
 	}
