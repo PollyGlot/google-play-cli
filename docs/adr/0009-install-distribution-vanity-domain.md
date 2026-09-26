@@ -1,13 +1,18 @@
 # Serve the install script from a vanity domain via a Cloudflare Worker proxy
 
 The `curl … | sh` entry point is served at `https://gplay.sh/install` by a
-Cloudflare Worker that proxies [`install.sh`](../../install.sh) from the repo's
-`main` branch as `text/plain`. The Worker, its config, and deploy notes live in
+Cloudflare Worker that proxies [`install.sh`](../../install.sh) as of the latest
+release tag, as `text/plain` (from `main` until the
+[2026-09-26 amendment](#amendment-2026-09-26-601-serve-the-latest-release-tag-not-main)).
+The Worker, its config, and deploy notes live in
 [`deploy/gplay.sh/`](../../deploy/gplay.sh/).
 
-Status: accepted (the install-proxy decision below stands as written);
+Status: accepted (the install-proxy decision below stands, its source amended);
 **extended — not superseded — by [ADR-0025](./0025-website-served-from-install-worker.md)**,
 which puts the website on this same Worker (see the update note below).
+**Amended (2026-09-26, #601):** point 3 ("`main`, not a tag") is reversed; the
+Worker now serves `install.sh` from the latest release tag (see the amendment at
+the end).
 
 **Update — [ADR-0025](./0025-website-served-from-install-worker.md):** the
 `gplay.sh` domain is now registered and on Cloudflare, and the full website
@@ -30,9 +35,10 @@ which also stays a working fallback.
    of truth — there is no second copy to forget to redeploy. This is the main
    reason to prefer a Worker over hosting the script as a static asset.
 
-3. **`main`, not a tag.** `install.sh` resolves the latest release itself via the
-   GitHub API, so proxying `main` means the endpoint always serves the newest
-   installer without any per-release deploy step.
+3. **`main`, not a tag.** *(Reversed by the 2026-09-26 amendment below.)*
+   `install.sh` resolves the latest release itself via the GitHub API, so
+   proxying `main` means the endpoint always serves the newest installer
+   without any per-release deploy step.
 
 4. **HTTPS is non-negotiable for `curl | sh`.** Serving from a domain we control,
    over TLS, on Cloudflare's edge, is the baseline security posture for a piped
@@ -73,8 +79,9 @@ which also stays a working fallback.
 The Worker is **Deployed** (`wrangler deploy`) only when its own code changes
 (`deploy/gplay.sh/**`) — never on a CLI **Release** and never when `install.sh`
 changes. This decoupling is the whole point of the proxy: `install.sh` is fetched
-live from `main`, and the installer resolves the latest release itself, so neither
-a script edit nor a new CLI version requires touching the Worker. The only changes
+live from `main` (since the 2026-09-26 amendment: from the latest release tag,
+resolved per request), and the installer resolves the latest release itself, so
+neither a script edit nor a new CLI version requires touching the Worker. The only changes
 that warrant a Deploy are edits to `worker.js` / `wrangler.toml` (e.g. attaching the
 `gplay.sh` custom domain, adjusting cache or routes) — expected to happen a handful
 of times in the project's life.
@@ -135,3 +142,45 @@ The Cloudflare MCP server connected to this project is **read-only for Workers**
 DNS tools. Deployment is therefore done with Wrangler locally
 (`wrangler login` + `wrangler deploy`), not via MCP. See
 [`deploy/gplay.sh/README.md`](../../deploy/gplay.sh/README.md).
+
+## Amendment (2026-09-26, #601): serve the latest release tag, not `main`
+
+Point 3 traded safety for convenience, and the trade no longer holds. Proxying
+`main` meant any commit landing there reached every `curl -fsSL
+https://gplay.sh/install | sh` within the 5-minute edge cache: no release, no
+tag, no checksums. The binary that script downloads needs release-please, a
+tag, a cosign-signed checksum file; the script that verifies it needed none of
+that. `main` also has a non-human writer: the gplay-cli GitHub App in the ruleset
+bypass, which the Discovery watch uses to auto-merge. A leaked App key or a
+bot-merged change to `install.sh` would have been code execution on every
+installer user's machine, CI runners included (audit finding SEC-05).
+
+Decision: the Worker serves `install.sh` from the **latest release tag**.
+
+- **Resolution.** The tag comes from the GitHub REST API
+  (`repos/PollyGlot/google-play-cli/releases/latest`, which skips drafts and
+  prereleases), edge-cached for 5 minutes so a release reaches `/install` within
+  minutes, with no Worker deploy per release: the decoupling of "When and how the
+  Worker is deployed" below still holds.
+- **Fallback, explicit and still a tag.** Unauthenticated API calls are rate
+  limited per IP and Worker egress IPs are shared, so a failed API lookup falls
+  back to the `github.com/<repo>/releases/latest` redirect, which names the same
+  tag without the API. That path logs `install_ref_fallback`. If neither yields
+  a release-shaped tag the Worker answers `503` and logs `install_unresolved`:
+  it never serves `main`, silently or otherwise. Failed lookups are not cached,
+  so the next request retries.
+- **Visible.** The response carries `x-gplay-installer-ref: <tag>`.
+- **Tested offline.** `deploy/gplay.sh/worker.test.mjs` (`node --test`, a fake
+  `fetch`) runs in the "Docs sanity" required check and in `make check`.
+
+What we lose: an `install.sh` fix on `main` reaches users only at the next
+release. That is the point: installer changes now ship through the same
+reviewed release path as the binary. An urgent installer fix is an urgent
+release.
+
+Considered: uploading `install.sh` as a release asset and redirecting to
+`releases/latest/download/install.sh`. Rejected for now: it needs a GoReleaser
+change and a release before the Worker can switch, and a raw file at the tag is
+already immutable enough for this threat model. Restricting the Discovery
+auto-merge to its declared paths was also weighed and dropped as the primary
+fix: it narrows one writer, not the class of problem.
