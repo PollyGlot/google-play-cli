@@ -442,6 +442,7 @@ experimental flag "releases sharing upload" --skip-preflight type=bool default="
 frozen leaf "releases upload" use="upload <artifact>" mutating
 frozen flag "releases upload" --complete type=bool default="false"
 frozen flag "releases upload" --confirm type=bool default="false"
+frozen flag "releases upload" --device-tier-config type=string default=""
 frozen flag "releases upload" --draft type=bool default="false"
 frozen flag "releases upload" --dry-run type=bool default="false"
 frozen flag "releases upload" --format type=string default=""

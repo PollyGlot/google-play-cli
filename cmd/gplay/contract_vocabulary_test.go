@@ -41,6 +41,7 @@ var flagVocabulary = map[string]string{
 	"allow-locale":       "locale admitted beyond Play's published list",
 	"type":               "subtype of the addressed resource (mapping, expansion file, image, achievement type)",
 	"format":             "artifact container: apk or bundle",
+	"device-tier-config": "device tier config (an ID, or LATEST) a bundle's deliverables are generated with",
 	"scope":              "permission scope: account or app",
 
 	// Input and output.

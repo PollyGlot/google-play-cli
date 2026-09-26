@@ -169,6 +169,12 @@ type Opts struct {
 	// obfuscated crash stacks in Play vitals depends on it.
 	MappingPath string
 
+	// DeviceTierConfig, when set, is forwarded as the deviceTierConfigId
+	// of edits.bundles.upload: the device tier config (an id, or "LATEST")
+	// Google generates the bundle's deliverables with. AAB only: the command
+	// layer refuses it for an APK before anything is opened.
+	DeviceTierConfig string
+
 	// Confirm gates production-impacting writes. Required when Track is
 	// "production" AND Status would publish to real users (Completed or
 	// InProgress). Draft / safe-default production uploads do not need
@@ -279,7 +285,8 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		if opts.Format == FormatAPK {
 			versionCode, err = apks.Upload(ctx, hc, opts.Package, editID, opts.AABPath)
 		} else {
-			versionCode, err = bundles.Upload(ctx, hc, opts.Package, editID, opts.AABPath)
+			versionCode, err = bundles.UploadWith(ctx, hc, opts.Package, editID, opts.AABPath,
+				bundles.Options{DeviceTierConfigID: opts.DeviceTierConfig})
 		}
 		if err != nil {
 			return err
