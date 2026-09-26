@@ -42,9 +42,10 @@ const surfaceGoldenPath = "testdata/surface.golden"
 
 const surfaceGoldenHeader = `# gplay command surface: every leaf, flag and exit code of the shipped binary.
 # Generated from the cobra tree by "make contract-update"; never edit by hand.
-# The first field is the stability. In a PR, an added or removed line starting
-# with "frozen" changes the Public contract (ADR-0010, ADR-0042): CI requires a
-# "!" in the PR title or an ADR reference in the PR body (scripts/contract-gate.sh).
+# The first field is the stability. In a PR, a removed or modified line starting
+# with "frozen" breaks the Public contract (ADR-0010, ADR-0042): CI requires a
+# "!" in the PR title or an ADR reference in the PR body. Pure additions are
+# compatible and pass (scripts/contract-gate.sh).
 `
 
 // TestSurfaceGolden_isFresh fails when surface.golden no longer matches the
@@ -70,8 +71,8 @@ func TestSurfaceGolden_isFresh(t *testing.T) {
 	}
 	if got != string(want) {
 		t.Errorf("cmd/gplay/%s is stale: run \"make contract-update\" and commit the result. "+
-			"A changed \"frozen\" line alters the Public contract and needs a \"!\" in the PR title "+
-			"or an ADR reference in the PR body.\n%s", surfaceGoldenPath, lineDiff(string(want), got))
+			"A removed or modified \"frozen\" line breaks the Public contract and needs a \"!\" in the "+
+			"PR title or an ADR reference in the PR body; pure additions are compatible.\n%s", surfaceGoldenPath, lineDiff(string(want), got))
 	}
 }
 

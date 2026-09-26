@@ -1,8 +1,9 @@
 # gplay command surface: every leaf, flag and exit code of the shipped binary.
 # Generated from the cobra tree by "make contract-update"; never edit by hand.
-# The first field is the stability. In a PR, an added or removed line starting
-# with "frozen" changes the Public contract (ADR-0010, ADR-0042): CI requires a
-# "!" in the PR title or an ADR reference in the PR body (scripts/contract-gate.sh).
+# The first field is the stability. In a PR, a removed or modified line starting
+# with "frozen" breaks the Public contract (ADR-0010, ADR-0042): CI requires a
+# "!" in the PR title or an ADR reference in the PR body. Pure additions are
+# compatible and pass (scripts/contract-gate.sh).
 
 # Exit codes (docs/DESIGN.md section 9)
 frozen exit 0 meaning="Success" retry-safe="n/a"

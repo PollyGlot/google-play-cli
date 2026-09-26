@@ -206,17 +206,16 @@ var verbVocabulary = map[string]string{
 	"cancel":        "domain",
 	"add-targeting": "domain",
 
-	// 2b. Domain verbs shipped (several frozen) but not yet listed in DESIGN
-	// section 0: the Edit lifecycle, the order refund, the price computations,
-	// the reviews archive read and the app audit sweep.
-	"begin":   "domain, not yet in DESIGN section 0",
-	"commit":  "domain, not yet in DESIGN section 0",
-	"discard": "domain, not yet in DESIGN section 0",
-	"refund":  "domain, not yet in DESIGN section 0",
-	"convert": "domain, not yet in DESIGN section 0",
-	"migrate": "domain, not yet in DESIGN section 0",
-	"history": "domain, not yet in DESIGN section 0",
-	"audit":   "domain, not yet in DESIGN section 0",
+	// 2b. Domain verbs shipped before the vocabulary was checked, listed in
+	// the DESIGN section 0 table with the gesture each one states.
+	"begin":   "domain",
+	"commit":  "domain",
+	"discard": "domain",
+	"refund":  "domain",
+	"convert": "domain",
+	"migrate": "domain",
+	"history": "domain",
+	"audit":   "domain",
 }
 
 // verbPathExceptions are leaves outside the verb grammar for a documented
