@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -72,9 +74,21 @@ func Do(ctx context.Context, hc *http.Client, c Call) (json.RawMessage, error) {
 		msg, reasons := ParseErrorEnvelope(b, resp.StatusCode)
 		return nil, &Error{Operation: op, Package: c.Target, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead))
+	// Read one byte past the cap: reaching it proves the body was cut, and a
+	// cut JSON document must never reach --output json as if it were whole.
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead+1))
 	if err != nil {
-		return nil, &Error{Operation: op, Package: c.Target, StatusCode: resp.StatusCode, Message: "read response body: " + err.Error(), Cause: err}
+		return nil, &Error{
+			Operation: op, Package: c.Target, StatusCode: resp.StatusCode,
+			Message: "read response body: " + err.Error(),
+			Cause:   &bodyReadError{err: err},
+		}
+	}
+	if len(raw) > MaxAPISuccessBodyRead {
+		return nil, &Error{
+			Operation: op, Package: c.Target, StatusCode: resp.StatusCode,
+			Message: fmt.Sprintf("response body exceeds the %d-byte limit (%d MiB): refusing to truncate it", MaxAPISuccessBodyRead, MaxAPISuccessBodyRead>>20),
+		}
 	}
 	return json.RawMessage(raw), nil
 }
@@ -184,4 +198,20 @@ func encodeBody(b any) ([]byte, error) {
 	default:
 		return json.Marshal(v)
 	}
+}
+
+// bodyReadError tags a 2xx whose body could not be read to the end (a reset,
+// a Client.Timeout firing mid-body). The request reached the server and was
+// answered, so the fault is the network's, not the API's: Error.ExitCode maps
+// it to the transport bucket (50), which a CI wrapper retries. A body that was
+// read whole but does not decode is NOT tagged and keeps its own code.
+type bodyReadError struct{ err error }
+
+func (e *bodyReadError) Error() string { return e.err.Error() }
+func (e *bodyReadError) Unwrap() error { return e.err }
+
+// isBodyRead reports whether err carries a bodyReadError.
+func isBodyRead(err error) bool {
+	var b *bodyReadError
+	return errors.As(err, &b)
 }

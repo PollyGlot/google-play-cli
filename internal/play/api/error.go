@@ -59,6 +59,9 @@ func (e *Error) ExitCode() int {
 	if e == nil {
 		return 0
 	}
+	if isBodyRead(e.Cause) {
+		return StatusToExitCode(0) // a 2xx cut mid-body: the network failed, not the API
+	}
 	if e.Operation == "bundles.upload" || e.Operation == "apks.upload" {
 		switch e.StatusCode {
 		case http.StatusBadRequest, http.StatusNotFound:

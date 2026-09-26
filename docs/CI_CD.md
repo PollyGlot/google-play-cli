@@ -194,9 +194,12 @@ gplay releases upload app.aab --package com.example.myapp --track internal \
   --retry 3 --timeout 2m
 ```
 
-`--retry` defaults to `0` (no retry — today's behavior). It **never** retries
-`edits.commit` (a duplicate could double-publish) or non-transient 4xx, so it is
-safe to leave on. A retried upload re-sends its bundle from a fresh reader.
+`--retry` defaults to `0` (no retry, today's behavior). It **never** retries
+`edits.commit` (a duplicate could double-publish) or non-transient 4xx, and it
+replays a non-idempotent write (an image upload, a create, a refund) only when
+the failure proves the request never reached Google (a dial or DNS error, or a
+429), so it is safe to leave on. `Retry-After` is honored up to the 30s maximum
+backoff. A retried upload re-sends its bundle from a fresh reader.
 
 If you still want shell-level control (e.g. to retry across *separate* commands,
 or to add alerting), branch on the exit code yourself:

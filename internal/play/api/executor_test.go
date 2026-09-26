@@ -195,12 +195,70 @@ func TestDo_badParamsFailBeforeSending(t *testing.T) {
 	}
 }
 
+// TestDo_bodyOverLimitIsAnError is the #575 acceptance test: a 2xx past the
+// success cap fails naming the limit, and no byte of it is returned.
+func TestDo_bodyOverLimitIsAnError(t *testing.T) {
+	big := `{"x":"` + strings.Repeat("a", api.MaxAPISuccessBodyRead) + `"}`
+	rt := &execRT{resp: answer(200, big)}
+	raw, err := api.Do(context.Background(), hc(rt), api.Call{Method: mOrdersGet, Params: map[string]string{"packageName": pkg, "orderId": "x"}, Target: pkg})
+	if err == nil || raw != nil {
+		t.Fatalf("raw=%d bytes err=%v, want an error and no body", len(raw), err)
+	}
+	if !strings.Contains(err.Error(), "4194304-byte limit") {
+		t.Errorf("err = %v, want the limit named", err)
+	}
+	if code := exit.For(err); code != 30 {
+		t.Errorf("exit = %d, want 30 (replaying gets the same oversized body)", code)
+	}
+}
+
 func TestDo_bodyAtLimitIsAccepted(t *testing.T) {
 	exact := strings.Repeat(" ", api.MaxAPISuccessBodyRead-2) + "{}"
 	rt := &execRT{resp: answer(200, exact)}
 	raw, err := api.Do(context.Background(), hc(rt), api.Call{Method: mOrdersGet, Params: map[string]string{"packageName": pkg, "orderId": "x"}, Target: pkg})
 	if err != nil || len(raw) != api.MaxAPISuccessBodyRead {
 		t.Errorf("len=%d err=%v, want the full %d bytes", len(raw), err, api.MaxAPISuccessBodyRead)
+	}
+}
+
+// failingBody yields some bytes then a read error, like a connection reset or
+// a Client.Timeout firing mid-body.
+type failingBody struct{ sent bool }
+
+func (b *failingBody) Read(p []byte) (int, error) {
+	if !b.sent {
+		b.sent = true
+		return copy(p, `{"orderId":`), nil
+	}
+	return 0, context.DeadlineExceeded
+}
+func (b *failingBody) Close() error { return nil }
+
+// TestDo_bodyReadFailureExits50 is the #575 acceptance test: a 2xx cut
+// mid-body is a network failure (exit 50, retryable), while a 2xx whose body
+// reads whole but is not JSON keeps the code it had before the executor.
+func TestDo_bodyReadFailureExits50(t *testing.T) {
+	rt := &execRT{resp: func() *http.Response {
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: &failingBody{}}
+	}}
+	call := api.Call{Method: mOrdersGet, Params: map[string]string{"packageName": pkg, "orderId": "x"}, Target: pkg}
+	_, err := api.Do(context.Background(), hc(rt), call)
+	d := exit.Classify(err)
+	if d.ExitCode != 50 || d.Code != exit.CodeNetworkError || !d.Retryable {
+		t.Errorf("diagnostic = %+v, want exit 50 NETWORK_ERROR retryable", d)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "read response body") {
+		t.Errorf("err = %v, want the read cause kept in the chain", err)
+	}
+
+	rt = &execRT{resp: answer(200, `{"orderId":`)}
+	var out struct{}
+	_, err = api.DoJSON(context.Background(), hc(rt), call, &out)
+	if err == nil || !strings.Contains(err.Error(), "decode response") {
+		t.Fatalf("err = %v, want a decode error", err)
+	}
+	if code := exit.For(err); code != api.StatusToExitCode(0) {
+		t.Errorf("malformed body exit = %d, want %d (unchanged by the executor)", code, api.StatusToExitCode(0))
 	}
 }
 

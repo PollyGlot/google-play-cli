@@ -24,7 +24,11 @@
 //     re-send it.
 //   - A non-2xx answer becomes an *Error carrying the status, the message and
 //     the `errors[].reason` values of Google's envelope.
-//   - A 2xx body is read up to MaxAPISuccessBodyRead and returned verbatim.
+//   - A 2xx body larger than MaxAPISuccessBodyRead is an explicit *Error
+//     naming the limit, never a silently truncated document.
+//   - A 2xx whose body cannot be read to the end (a reset, a deadline firing
+//     mid-body) exits 50, the retry-safe network bucket; a body that reads
+//     whole but does not decode keeps the code it always had.
 //
 // What the executor deliberately does not decide: whether a request may be
 // replayed. That is the method's declared Idempotent bit in internal/apiregistry,
@@ -51,6 +55,7 @@ const (
 	// tracks.update response for an app with many locales × release-note
 	// bodies can comfortably exceed 64 KiB, so we use a much larger cap
 	// (4 MiB): enough headroom for any sane Play response while still
-	// bounding memory against a runaway server.
+	// bounding memory against a runaway server. Do fails on a body past the
+	// cap rather than truncating it.
 	MaxAPISuccessBodyRead = 4 * 1024 * 1024
 )
