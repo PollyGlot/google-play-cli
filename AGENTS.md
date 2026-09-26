@@ -21,7 +21,7 @@ Canonical terms live in `CONTEXT.md`; use them verbatim, no synonyms. The core f
 ## Vérifier
 
 - Gate before every PR: `make check`, the required CI checks run locally (`make format` fixes what its format step rejects; `make install-hooks` runs it on pre-push).
-- Tests stay offline: mock with a `testRoundTripper` (`http.RoundTripper`) injected as `&http.Client{Transport: ...}`; a test that reaches the network is wrong.
+- Tests stay offline: use `internal/testkit` (Play transport fake, shared RSA key) injected as `&http.Client{Transport: ...}`; a hand-rolled RoundTripper fails the ratchet (`internal/ratchet`), and a test that reaches the network is wrong.
 - New leaf command: classify it. Unlabelled means frozen Public contract (ADR-0010/0042); mark `kernel.Experimental(...)` at registration if its flags may still change. The registry test in `cmd/gplay` fails on unclassified leaves.
 - To prove a command **behaves** as advertised, build this worktree and drive the
   offline path: `b=$(mktemp -d)/gplay && go build -o "$b" ./cmd/gplay && "$b" schema --list`
