@@ -2,11 +2,15 @@ package edits_test
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
@@ -108,3 +112,107 @@ func TestParseChangesInReview(t *testing.T) {
 		}
 	}
 }
+
+// TestCommit_outcomeUnknown: a commit that may have landed keeps its exit code
+// but is classified COMMIT_OUTCOME_UNKNOWN, retryable false, with a message
+// naming how to check (#598).
+func TestCommit_outcomeUnknown(t *testing.T) {
+	cases := []struct {
+		name     string
+		status   int
+		wantExit int
+	}{
+		{"5xx", http.StatusServiceUnavailable, 40},
+		{"transport failure after send", -1, 50},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := editLifecycle(tc.status, `{"error":{"code":503,"message":"backend error"}}`)
+			err := edits.WithEdit(context.Background(), &http.Client{Transport: f}, commitPkg,
+				edits.Options{}, func(string) error { return nil })
+			var unknown *edits.CommitOutcomeUnknownError
+			if !errors.As(err, &unknown) {
+				t.Fatalf("err = %v (%T), want *CommitOutcomeUnknownError", err, err)
+			}
+			d := exit.Classify(err)
+			if d.ExitCode != tc.wantExit {
+				t.Errorf("exit = %d, want %d (the code is kept)", d.ExitCode, tc.wantExit)
+			}
+			if d.Code != exit.CodeCommitOutcomeUnknown || d.Retryable {
+				t.Errorf("diagnostic = %s retryable=%v, want COMMIT_OUTCOME_UNKNOWN retryable=false", d.Code, d.Retryable)
+			}
+			if d.Operation != "edits.commit" {
+				t.Errorf("operation = %q, want edits.commit (the api.Error stays reachable)", d.Operation)
+			}
+			if !strings.Contains(err.Error(), "gplay releases list") {
+				t.Errorf("message %q does not say how to check the outcome", err.Error())
+			}
+			// The implicit Edit is still discarded: harmless if the commit landed.
+			last := f.Calls()[len(f.Calls())-1]
+			if last.Method != http.MethodDelete {
+				t.Errorf("last call = %s %s, want the edits.delete cleanup", last.Method, last.Path)
+			}
+		})
+	}
+}
+
+func TestCommitExplicit_outcomeUnknownPointsAtStatusLive(t *testing.T) {
+	f := editLifecycle(http.StatusInternalServerError, "")
+	err := edits.CommitExplicit(context.Background(), &http.Client{Transport: f}, commitPkg, "edit-9", edits.CommitOptions{})
+	var unknown *edits.CommitOutcomeUnknownError
+	if !errors.As(err, &unknown) || !unknown.Explicit {
+		t.Fatalf("err = %v (%T), want an explicit *CommitOutcomeUnknownError", err, err)
+	}
+	if !strings.Contains(err.Error(), "gplay edits status --live") {
+		t.Errorf("message %q does not point at `gplay edits status --live`", err.Error())
+	}
+}
+
+// TestCommit_definiteFailuresStayPlain: a commit Google answered with a 4xx, or
+// one that provably never left the machine, has a known outcome (not applied),
+// so it keeps its ordinary code and retryability.
+func TestCommit_definiteFailuresStayPlain(t *testing.T) {
+	t.Run("400", func(t *testing.T) {
+		f := editLifecycle(http.StatusBadRequest, `{"error":{"code":400,"message":"bad"}}`)
+		err := edits.CommitExplicit(context.Background(), &http.Client{Transport: f}, commitPkg, "edit-9", edits.CommitOptions{})
+		assertPlain(t, err, 30, exit.CodeInvalidArgument)
+	})
+	t.Run("429", func(t *testing.T) {
+		f := editLifecycle(http.StatusTooManyRequests, `{"error":{"code":429,"message":"slow down"}}`)
+		err := edits.CommitExplicit(context.Background(), &http.Client{Transport: f}, commitPkg, "edit-9", edits.CommitOptions{})
+		assertPlain(t, err, 60, exit.CodeRateLimitExceeded)
+	})
+	t.Run("dns", func(t *testing.T) {
+		hc := &http.Client{Transport: failingRT{&net.DNSError{Err: "no such host", Name: "androidpublisher.googleapis.com"}}}
+		err := edits.CommitExplicit(context.Background(), hc, commitPkg, "edit-9", edits.CommitOptions{})
+		assertPlain(t, err, 50, exit.CodeNetworkError)
+	})
+	t.Run("dial", func(t *testing.T) {
+		hc := &http.Client{Transport: failingRT{&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}}}
+		err := edits.CommitExplicit(context.Background(), hc, commitPkg, "edit-9", edits.CommitOptions{})
+		assertPlain(t, err, 50, exit.CodeNetworkError)
+	})
+	t.Run("token refused", func(t *testing.T) {
+		hc := &http.Client{Transport: failingRT{&token.AuthError{StatusCode: 400, Body: "invalid_grant"}}}
+		err := edits.CommitExplicit(context.Background(), hc, commitPkg, "edit-9", edits.CommitOptions{})
+		assertPlain(t, err, 10, exit.CodeAuthFailed)
+	})
+}
+
+func assertPlain(t *testing.T, err error, wantExit int, wantCode exit.Code) {
+	t.Helper()
+	var unknown *edits.CommitOutcomeUnknownError
+	if errors.As(err, &unknown) {
+		t.Fatalf("err = %v, want a plain failure, not an unknown outcome", err)
+	}
+	d := exit.Classify(err)
+	if d.ExitCode != wantExit || d.Code != wantCode {
+		t.Errorf("classified exit=%d code=%s, want exit=%d code=%s (err: %v)", d.ExitCode, d.Code, wantExit, wantCode, err)
+	}
+}
+
+// failingRT fails every round trip with err, before any response exists: the
+// shape a DNS, dial or token-exchange failure takes inside http.Client.
+type failingRT struct{ err error }
+
+func (r failingRT) RoundTrip(*http.Request) (*http.Response, error) { return nil, r.err }

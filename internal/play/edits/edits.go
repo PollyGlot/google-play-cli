@@ -12,12 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -138,6 +140,86 @@ func (o CommitOptions) query() url.Values {
 	return q
 }
 
+// CommitOutcomeUnknownError is an edits.commit that failed in a way that does
+// not tell whether Google applied it: the request left the machine and then
+// timed out, was reset, or came back 5xx. The commit may be live. Its exit code
+// stays the one the wrapped failure maps to (50 or 40), but it is NOT
+// retryable (COMMIT_OUTCOME_UNKNOWN): a blind re-run of an upload that did
+// publish fails on the already-used version code and reports a successful
+// release as an error, and a re-run of a metadata change can resubmit it for
+// review. The message says how to check instead.
+type CommitOutcomeUnknownError struct {
+	Package string
+	EditID  string
+	// Explicit is set for `gplay edits commit`, whose pin stays in place and
+	// whose Edit can therefore be probed with `edits status --live`.
+	Explicit bool
+	Err      error
+}
+
+func (e *CommitOutcomeUnknownError) Error() string {
+	check := "check the live state first (for example `gplay releases list --package " + e.Package + "`, or the Play Console)"
+	if e.Explicit {
+		check = "run `gplay edits status --live --package " + e.Package + "` first (an Edit that is gone was most likely committed) and check the live state before committing again"
+	}
+	return fmt.Sprintf("commit of edit %s on %s may have been applied before the failure; do not re-run blindly, %s: %v", e.EditID, e.Package, check, e.Err)
+}
+
+func (e *CommitOutcomeUnknownError) Unwrap() error { return e.Err }
+
+// ExitCode keeps the wrapped failure's code: the bucket (network, upstream) is
+// still true, only its retry-safety is not (#598 keeps the exit code).
+func (e *CommitOutcomeUnknownError) ExitCode() int {
+	var c interface{ ExitCode() int }
+	if errors.As(e.Err, &c) {
+		return c.ExitCode()
+	}
+	return 50
+}
+
+// DiagnosticCode refines the envelope's code, which is what flips `retryable`.
+func (e *CommitOutcomeUnknownError) DiagnosticCode() exit.Code {
+	return exit.CodeCommitOutcomeUnknown
+}
+
+// commitOutcomeUnknown wraps err when it leaves the commit's outcome open, and
+// returns it unchanged otherwise. Unknown means the request may have reached
+// Google's write path: a 5xx, or a transport failure after the connection was
+// made. A refused token exchange (the cause carries its own exit code) and a
+// dial or DNS failure never sent the commit, the same line the --retry
+// transport draws for non-idempotent writes (internal/transport.neverApplied),
+// so they keep their plain meaning. A request that failed to build locally
+// would also land here as unknown; registry URLs make that unreachable, and
+// erring toward "check first" is the safe side.
+func commitOutcomeUnknown(err error, pkg, editID string, explicit bool) error {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	switch {
+	case apiErr.StatusCode >= 500:
+	case apiErr.StatusCode == 0 && !neverSent(apiErr.Cause):
+	default:
+		return err
+	}
+	return &CommitOutcomeUnknownError{Package: pkg, EditID: editID, Explicit: explicit, Err: err}
+}
+
+// neverSent reports whether a transport-level cause proves the commit never
+// left the machine.
+func neverSent(cause error) bool {
+	var coder interface{ ExitCode() int }
+	if errors.As(cause, &coder) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(cause, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(cause, &opErr) && opErr.Op == "dial"
+}
+
 // WithEdit opens an Edit on pkg, invokes fn with the new Edit ID, and
 // commits on success. On any failure from fn OR from the final commit,
 // the Edit is automatically discarded (edits.delete) before the error
@@ -200,7 +282,10 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 		return handleFailure(fnErr)
 	}
 	if commitErr := commitEdit(ctx, hc, pkg, editID, opts.Commit); commitErr != nil {
-		return handleFailure(commitErr)
+		// The discard still runs on an unknown outcome: if the commit landed the
+		// Edit is gone and the delete is a harmless 404; if it did not, the
+		// delete frees the package for the next run.
+		return handleFailure(commitOutcomeUnknown(commitErr, pkg, editID, false))
 	}
 	return nil
 }
@@ -333,9 +418,11 @@ func OpenExplicit(ctx context.Context, hc *http.Client, pkg string) (string, err
 // CommitExplicit commits an already-open Edit (the `gplay edits commit` verb).
 // On failure the Edit stays open (no discard), so the operator can re-attempt
 // the commit or discard it: the caller leaves .gplay/edit-<pkg>.json in place
-// until a commit succeeds.
+// until a commit succeeds. A failure that leaves the outcome open is a
+// *CommitOutcomeUnknownError: re-attempting a commit that did land hits a
+// vanished Edit.
 func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string, opts CommitOptions) error {
-	return commitEdit(ctx, hc, pkg, editID, opts)
+	return commitOutcomeUnknown(commitEdit(ctx, hc, pkg, editID, opts), pkg, editID, true)
 }
 
 // DiscardExplicit discards an already-open Edit (the `gplay edits discard`

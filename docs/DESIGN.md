@@ -329,6 +329,20 @@ With an explicit Edit pinned, a write command stages into it and does not
 commit, so the flags cannot apply there: the command warns on stderr and names
 `gplay edits commit`, which is where they belong.
 
+### A commit whose outcome is unknown
+
+A commit that fails after the request left the machine (a timeout, a reset, a
+`5xx`) may have been applied. It keeps the exit code its failure maps to (`50`
+or `40`), but its diagnostic code is `COMMIT_OUTCOME_UNKNOWN`, **not
+retryable** (§9.1): re-running an upload that did publish fails on the
+already-used version code and reports a successful release as an error. The
+message says how to check instead: the live state (`gplay releases list`, or
+the Play Console) for an implicit Edit, `gplay edits status --live` for
+`gplay edits commit` (the pin stays; an Edit that is gone was most likely
+committed). A failure that proves the commit never left (a DNS or dial error, a
+refused token exchange) keeps its ordinary code. `--retry` never replays
+`edits.commit` in any case.
+
 ---
 
 ## 5. Reviews
@@ -678,8 +692,8 @@ pointing at a shared translation):
 | `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
 | `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
-| `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
-| `50` | Network (timeout, DNS, refused) | **Yes** |
+| `40` | API 5xx (upstream temporarily unhealthy) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
+| `50` | Network (timeout, DNS, refused) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
 | `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
 | `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
 
@@ -785,6 +799,7 @@ rather than regexing the message for the word "already".
 | `API_ERROR` | 30 | No | Other API 4xx rejection |
 | `UPSTREAM_UNAVAILABLE` | 40 | **Yes** | The API is temporarily unhealthy (5xx) |
 | `NETWORK_ERROR` | 50 | **Yes** | Transport failure with no HTTP response |
+| `COMMIT_OUTCOME_UNKNOWN` | 50 | No | An Edit commit failed after it was sent (timeout, reset or 5xx, so exit `50` or `40`) and may be live; check before re-running (§4) |
 | `STATE_CONFLICT` | 60 | No | Remote state conflicts with the request (409) |
 | `EDIT_ALREADY_EXISTS` | 60 | No | An Edit is already open on this package |
 | `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; begin a new Edit |

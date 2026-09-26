@@ -95,6 +95,13 @@ In explicit mode the write commands do not commit, so pass these flags to
 `gplay edits commit`; a write command given them while an Edit is pinned
 warns and ignores them.
 
+## When a commit's outcome is unknown
+
+A commit that times out or gets a 5xx may still have gone through. gplay
+keeps the network or upstream exit code (`50` or `40`) but marks the failure
+`COMMIT_OUTCOME_UNKNOWN`, not retryable: check the live state before running
+the command again. See [Exit codes](/docs/concepts/exit-codes/).
+
 ## Related
 
 - [Tracks & releases](/docs/concepts/tracks-and-releases/)

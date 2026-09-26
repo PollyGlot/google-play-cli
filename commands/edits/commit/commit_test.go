@@ -21,6 +21,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/editpin"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -181,5 +182,30 @@ func TestRun_forwardsCommitOptIns(t *testing.T) {
 	}
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); ok {
 		t.Error("pin still present after a successful commit")
+	}
+}
+
+// TestRun_unknownOutcome_keepsPinAndIsNotRetryable: a 5xx on the commit may
+// have published, so the pin stays (the Edit may still be open) and the
+// failure is COMMIT_OUTCOME_UNKNOWN rather than a retry-safe 40.
+func TestRun_unknownOutcome_keepsPinAndIsNotRetryable(t *testing.T) {
+	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		return http.StatusBadGateway, `{"error":{"code":502,"message":"bad gateway"}}`, true
+	})
+	rc, gplayDir := newRC(t, fake)
+	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-9"); err != nil {
+		t.Fatalf("seed pin: %v", err)
+	}
+
+	_, err := commitcmd.Run(rc, commitcmd.Input{Package: pkg})
+	d := exit.Classify(err)
+	if d.ExitCode != 40 || d.Code != exit.CodeCommitOutcomeUnknown || d.Retryable {
+		t.Errorf("diagnostic = exit %d %s retryable=%v, want exit 40 COMMIT_OUTCOME_UNKNOWN retryable=false", d.ExitCode, d.Code, d.Retryable)
+	}
+	if !strings.Contains(err.Error(), "gplay edits status --live") {
+		t.Errorf("message %q does not say how to check the outcome", err.Error())
+	}
+	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); !ok {
+		t.Error("an unknown outcome must leave the pin in place")
 	}
 }

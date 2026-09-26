@@ -50,7 +50,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	if err := edits.CommitExplicit(rc.Ctx, httpClient, pkg, pin.EditID, in.Commit.Options()); err != nil {
 		// Leave the pin in place: the Edit is still open, so a re-run can retry
-		// the commit (or `gplay edits discard` can abandon it).
+		// the commit (or `gplay edits discard` can abandon it). On an unknown
+		// outcome the Edit may be gone instead; the error says how to check.
 		return nil, err
 	}
 	if err := editpin.Clear(rc.FS, gplayDir, pkg); err != nil {
@@ -80,6 +81,10 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 With no open Edit, commit fails with exit 60. If the commit itself fails (for
 example a validation error from Google), the Edit stays open and the pin is
 left in place: fix the cause and re-run, or ` + "`gplay edits discard`" + `.
+A commit that times out or gets a 5xx may still have been applied: it keeps
+its exit code (50 or 40) but is reported as not retryable
+(COMMIT_OUTCOME_UNKNOWN); run ` + "`gplay edits status --live`" + ` before
+committing again.
 
 If changes are already in Google's review, Google's default is to cancel that
 review and submit everything again. [experimental] Pass
