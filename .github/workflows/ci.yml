@@ -277,36 +277,98 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     # Fuzz smoke is NOT a required check, so it can be skipped outright at the
-    # job level on docs-only PRs — no green-stub gymnastics needed.
+    # job level on docs-only PRs: no green-stub gymnastics needed.
     if: needs.changes.outputs.code == 'true'
+    # Every target is bounded by an iteration count, so nothing else bounds
+    # the job: a pathological input that slows the parser to a crawl must not
+    # hold a runner for the default six hours.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
-      # Short bounded fuzzing of the parsers that consume untrusted bytes (API
-      # error envelope, JWT scope claim, reply-batch TSV). The seed corpora run
-      # as ordinary cases in the `test` job; this surfaces crashers from
-      # generated input without materially slowing it. -fuzztime is small on
-      # purpose — this is a smoke, not an exhaustive campaign.
+      - name: Locate Go caches
+        id: gocache
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      # Read-only: the `lint` job's living cache (modules plus the packages
+      # fuzzing does not instrument). It never holds a fuzz corpus, since only
+      # `lint` on main writes it. This job saves nothing.
+      - name: Restore Go build and module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ github.sha }}
+          restore-keys: |
+            go-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-
+
+      # Short fuzzing of every parser that consumes untrusted bytes. The seed
+      # corpora already run as ordinary cases in `test`; this looks for
+      # crashers in generated input. It is a smoke, not a campaign.
+      #
+      # All targets run at once, one fuzz worker each, and each stops after a
+      # fixed number of executions rather than a wall-clock -fuzztime. The
+      # clock bound was what flaked: the coordinator's deadline could expire
+      # mid-shutdown ("context deadline exceeded"), even from a fresh corpus
+      # (#384 did not end it). A count has no deadline. The counts are
+      # calibrated to about 25 s per target on a 4-core runner with all
+      # targets sharing it; see docs/CI_CD.md § "Fuzz smoke".
       - name: Fuzz parsers
         run: |
           set -euo pipefail
-          # Go persists generated fuzz inputs in $GOCACHE/fuzz, which setup-go's
-          # build cache restores across runs. That corpus grows unboundedly and
-          # eventually pushes the time-boxed run past the coordinator's shutdown
-          # deadline ("context deadline exceeded") on slow runners — seen on the
-          # v0.17.0 release PR (#383). Reset it so each smoke starts from the
-          # in-code f.Add seeds only; regression cases still run in `test`.
+          # No cache here holds a corpus; clear it anyway so a smoke always
+          # starts from the in-code f.Add seeds.
           rm -rf "$(go env GOCACHE)/fuzz"
-          go test -run='^$' -fuzz='^FuzzParseErrorEnvelope$' -fuzztime=30s ./internal/play/api/
-          go test -run='^$' -fuzz='^FuzzScopesFromAssertion$' -fuzztime=30s ./internal/transport/
-          go test -run='^$' -fuzz='^FuzzParse$' -fuzztime=30s ./internal/reviews/batch/
+          # package, target, -fuzztime
+          targets=(
+            "./internal/play/api FuzzParseErrorEnvelope 25s"
+            "./internal/transport FuzzScopesFromAssertion 25s"
+            "./internal/transport FuzzParseRetryAfter 25s"
+            "./internal/reviews/batch FuzzParse 25s"
+            "./internal/reviews/history FuzzHistoryParse 25s"
+            "./internal/artifact FuzzParseBinaryXMLPackage 25s"
+            "./internal/artifact FuzzParseProtoManifestPackage 25s"
+            "./internal/redact FuzzRedactString 25s"
+            "./internal/output FuzzSanitizeCell 25s"
+            "./internal/compliance/datasafety FuzzDataSafetyValidate 25s"
+          )
+          # Instrumented builds share most of their dependencies (the standard
+          # library included). Build them once up front: ten concurrent `go
+          # test` would each compile them again.
+          go test -run='^$' -fuzz='^FuzzParseErrorEnvelope$' -fuzztime=1x ./internal/play/api > /dev/null
+          logs="$RUNNER_TEMP/fuzz"
+          mkdir -p "$logs"
+          declare -A pid
+          for t in "${targets[@]}"; do
+            read -r pkg fn budget <<<"$t"
+            go test -run='^$' -fuzz="^${fn}\$" -fuzztime="$budget" -parallel=1 "$pkg" > "$logs/$fn.log" 2>&1 &
+            pid[$fn]=$!
+          done
+          failed=()
+          for fn in "${!pid[@]}"; do
+            if wait "${pid[$fn]}"; then status=ok; else status=FAILED; failed+=("$fn"); fi
+            echo "::group::$fn: $status, $(grep -o 'execs: [0-9]*' "$logs/$fn.log" | tail -n 1)"
+            cat "$logs/$fn.log"
+            echo "::endgroup::"
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            # A crasher is written under testdata/fuzz in its package: print it
+            # so the run log alone reproduces it.
+            find . -path '*/testdata/fuzz/*' -type f -newer go.mod -print -exec cat {} \;
+            echo "::error::fuzz targets failed: ${failed[*]}"
+            exit 1
+          fi
 
   docs:
     name: Docs sanity
