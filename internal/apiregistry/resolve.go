@@ -53,6 +53,14 @@ type Method struct {
 	// UploadTemplate is the absolute media-upload URL template, empty for a
 	// method that accepts no payload.
 	UploadTemplate string
+	// Idempotent reports whether sending the call twice leaves the server in
+	// the same state as sending it once, so `--retry` may replay it after an
+	// attempt that may have landed. Derived from Verb plus an explicit
+	// allowlist of replay-safe POSTs (idempotency.go).
+	Idempotent bool
+	// Paginated reports whether the response is one page of a listing that a
+	// continuation token extends (idempotency.go).
+	Paginated bool
 }
 
 // URL fills URLTemplate's placeholders with params and returns the absolute
@@ -95,6 +103,8 @@ func Resolve(id string) (Method, error) {
 		ID:          id,
 		Verb:        m.HTTPMethod,
 		URLTemplate: svc.RootURL + svc.BasePath + m.Path,
+		Idempotent:  idempotent(id, m.HTTPMethod),
+		Paginated:   paginated(idx, m),
 	}
 	if m.UploadPath != "" {
 		out.UploadTemplate = svc.RootURL + m.UploadPath

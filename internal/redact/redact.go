@@ -11,7 +11,9 @@
 // #460) rather than a rule every future log line must remember. Wrap an
 // io.Writer with Writer and everything written through it is masked. Stdout is
 // deliberately NOT wrapped: it mirrors API responses verbatim (ADR-0003), and
-// the API never hands back gplay's own credentials.
+// the API never hands back gplay's own credentials. The few gplay-authored
+// strings that do land on stdout (the JSON error envelope's message, the
+// `auth doctor` hints) are masked field by field with String instead (#583).
 //
 // The filter is always on: there is no flag to disable it.
 package redact
@@ -41,6 +43,18 @@ const secretKey = `[a-z0-9_-]*(?:token|secret|password|passwd|pwd|api[_-]?key)`
 // auth failure. A compound (`access_token:`) or a `secret`/`password` key never
 // reads as a package prefix, so those stay in.
 const fieldKey = `(?:[a-z0-9_-]*(?:secret|password|passwd|pwd|api[_-]?key)|[a-z0-9_-]+[_-]token)`
+
+// valueChar is one character of an UNQUOTED credential value: anything but
+// whitespace or a delimiter that cannot be part of a credential, so the rest of
+// the line survives.
+const valueChar = `[^\s"'` + "`" + `,;)\]}]`
+
+// unquotedValue is the value of the two unquoted rules. Its first branch takes
+// an existing Mask (and anything glued to it) whole, which makes String
+// idempotent: valueChar stops at `]`, so without that branch a second pass
+// re-matched "[REDACTED" and left the old `]` behind ("password=[REDACTED]]").
+// Go's regexp prefers the leftmost alternative, so the Mask branch wins.
+var unquotedValue = `(?:` + regexp.QuoteMeta(Mask) + valueChar + `*|` + valueChar + `+)`
 
 // rule is a pattern plus its replacement template. The template is what keeps
 // the surrounding diagnostic readable: masking is not silencing, so a rule
@@ -117,7 +131,7 @@ var patterns = []rule{
 	// an env dump, a flag echoed back in an error. Nothing narrates with `=`, so
 	// this one takes the full key list.
 	{
-		re:   regexp.MustCompile(`(?i)(` + secretKey + `"?\s*=\s*)[^\s"'` + "`" + `,;)\]}]+`),
+		re:   regexp.MustCompile(`(?i)(` + secretKey + `"?\s*=\s*)` + unquotedValue),
 		repl: `${1}` + Mask,
 	},
 	// And in `key: value` form (`password: hunter2`), on the narrower fieldKey:
@@ -127,7 +141,7 @@ var patterns = []rule{
 	// what the quoted rule produced: that leaves a `"` in value position, which
 	// this character class excludes.
 	{
-		re:   regexp.MustCompile(`(?i)(` + fieldKey + `"?\s*:\s*)[^\s"'` + "`" + `,;)\]}]+`),
+		re:   regexp.MustCompile(`(?i)(` + fieldKey + `"?\s*:\s*)` + unquotedValue),
 		repl: `${1}` + Mask,
 	},
 }

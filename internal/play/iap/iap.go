@@ -17,7 +17,6 @@ package iap
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -112,24 +111,16 @@ func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]It
 		if token != "" {
 			q.Set("pageToken", token)
 		}
-		u, err := mList.URL(map[string]string{"packageName": pkg})
-		if err != nil {
-			return nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		req, err := http.NewRequestWithContext(ctx, mList.Verb, u+"?"+q.Encode(), nil)
-		if err != nil {
-			return nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		raw, err := do(hc, opList, pkg, req)
-		if err != nil {
-			return nil, err
-		}
 		var pg struct {
 			OneTimeProducts []json.RawMessage `json:"oneTimeProducts"`
 			NextPageToken   string            `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(raw, &pg); err != nil {
-			return nil, &api.Error{Operation: opList, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
+		if _, err := api.DoJSON(ctx, hc, api.Call{
+			Method: mList, Op: opList, Target: pkg,
+			Params: map[string]string{"packageName": pkg},
+			Query:  q,
+		}, &pg); err != nil {
+			return nil, err
 		}
 		for _, rawP := range pg.OneTimeProducts {
 			var p struct {
@@ -171,24 +162,16 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 		}
 		// The wildcard walk rides the same template as a scoped list: `-` is a
 		// legal path segment, so escaping leaves it untouched.
-		u, err := mOffersList.URL(map[string]string{"packageName": pkg, "productId": "-", "purchaseOptionId": "-"})
-		if err != nil {
-			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		req, err := http.NewRequestWithContext(ctx, mOffersList.Verb, u+"?"+q.Encode(), nil)
-		if err != nil {
-			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		raw, err := do(hc, opOffersList, pkg, req)
-		if err != nil {
-			return nil, err
-		}
 		var pg struct {
 			OneTimeProductOffers []json.RawMessage `json:"oneTimeProductOffers"`
 			NextPageToken        string            `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(raw, &pg); err != nil {
-			return nil, &api.Error{Operation: opOffersList, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
+		if _, err := api.DoJSON(ctx, hc, api.Call{
+			Method: mOffersList, Op: opOffersList, Target: pkg,
+			Params: map[string]string{"packageName": pkg, "productId": "-", "purchaseOptionId": "-"},
+			Query:  q,
+		}, &pg); err != nil {
+			return nil, err
 		}
 		for _, rawO := range pg.OneTimeProductOffers {
 			var o struct {
@@ -229,30 +212,21 @@ func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, r
 	if len(updateMask) > 0 {
 		q.Set("updateMask", strings.Join(updateMask, ","))
 	}
-	u, err := mPatch.URL(map[string]string{"packageName": pkg, "productId": productID})
-	if err != nil {
-		return nil, &api.Error{Operation: opPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mPatch.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
-	if err != nil {
-		return nil, &api.Error{Operation: opPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opPatch, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mPatch, Op: opPatch, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "productId": productID},
+		Query:  q,
+		Body:   body,
+	})
 }
 
 // DeleteOneTimeProduct deletes one v2 product. Reaching here means the plan
 // carried a delete and the operator passed --confirm (ADR-0041 §3).
 func DeleteOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID string) error {
-	u, err := mDelete.URL(map[string]string{"packageName": pkg, "productId": productID})
-	if err != nil {
-		return &api.Error{Operation: opDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mDelete.Verb, u, nil)
-	if err != nil {
-		return &api.Error{Operation: opDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	_, err = do(hc, opDelete, pkg, req)
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: mDelete, Op: opDelete, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "productId": productID},
+	})
 	return err
 }
 
@@ -283,22 +257,13 @@ func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 		r.RegionsVersion.Version = regionsVersion
 		reqs = append(reqs, r)
 	}
-	body, err := json.Marshal(struct {
-		Requests []updateReq `json:"requests"`
-	}{Requests: reqs})
-	if err != nil {
-		return &api.Error{Operation: opOffersBatchUpdate, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
-	}
-	u, err := mOffersBatchUpdate.URL(map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID})
-	if err != nil {
-		return &api.Error{Operation: opOffersBatchUpdate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mOffersBatchUpdate.Verb, u, strings.NewReader(string(body)))
-	if err != nil {
-		return &api.Error{Operation: opOffersBatchUpdate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	_, err = do(hc, opOffersBatchUpdate, pkg, req)
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: mOffersBatchUpdate, Op: opOffersBatchUpdate, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID},
+		Body: struct {
+			Requests []updateReq `json:"requests"`
+		}{Requests: reqs},
+	})
 	return err
 }
 
@@ -315,22 +280,13 @@ func BatchDeleteOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 	for _, id := range offerIDs {
 		reqs = append(reqs, deleteReq{PackageName: pkg, ProductID: productID, PurchaseOptionID: purchaseOptionID, OfferID: id})
 	}
-	body, err := json.Marshal(struct {
-		Requests []deleteReq `json:"requests"`
-	}{Requests: reqs})
-	if err != nil {
-		return &api.Error{Operation: opOffersBatchDelete, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
-	}
-	u, err := mOffersBatchDelete.URL(map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID})
-	if err != nil {
-		return &api.Error{Operation: opOffersBatchDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mOffersBatchDelete.Verb, u, strings.NewReader(string(body)))
-	if err != nil {
-		return &api.Error{Operation: opOffersBatchDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	_, err = do(hc, opOffersBatchDelete, pkg, req)
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: mOffersBatchDelete, Op: opOffersBatchDelete, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID},
+		Body: struct {
+			Requests []deleteReq `json:"requests"`
+		}{Requests: reqs},
+	})
 	return err
 }
 
@@ -367,17 +323,13 @@ func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, 
 			reqs = append(reqs, stateReq{Deactivate: id})
 		}
 	}
-	body, err := json.Marshal(struct {
-		Requests []stateReq `json:"requests"`
-	}{Requests: reqs})
-	if err != nil {
-		return nil, &api.Error{Operation: opOptionStates, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
-	}
-	u, err := mOptionStates.URL(map[string]string{"packageName": pkg, "productId": productID})
-	if err != nil {
-		return nil, &api.Error{Operation: opOptionStates, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return postJSON(ctx, hc, mOptionStates, opOptionStates, pkg, u, body)
+	return api.Do(ctx, hc, api.Call{
+		Method: mOptionStates, Op: opOptionStates, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "productId": productID},
+		Body: struct {
+			Requests []stateReq `json:"requests"`
+		}{Requests: reqs},
+	})
 }
 
 // SetOfferState moves one offer to the declared target through its unary
@@ -403,25 +355,12 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchas
 	default:
 		return nil, &api.Error{Operation: opOffersActivate, Package: pkg, Message: "unsupported offer state target " + strconv.Quote(target)}
 	}
-	body, err := json.Marshal(map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID, "offerId": offerID})
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
-	}
-	u, err := m.URL(map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID, "offerId": offerID})
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return postJSON(ctx, hc, m, op, pkg, u, body)
-}
-
-// postJSON sends a JSON body to a resolved custom-verb URL.
-func postJSON(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, u string, body []byte) (json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, op, pkg, req)
+	identity := map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID, "offerId": offerID}
+	return api.Do(ctx, hc, api.Call{
+		Method: m, Op: op, Target: pkg,
+		Params: identity,
+		Body:   identity,
+	})
 }
 
 // ListInAppProducts reads the complete legacy inappproducts catalog, following
@@ -434,22 +373,9 @@ func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]Lega
 	)
 	seen := map[string]struct{}{}
 	for {
-		u, err := mLegacyList.URL(map[string]string{"packageName": pkg})
-		if err != nil {
-			return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: err.Error(), Cause: err}
-		}
+		var q url.Values
 		if token != "" {
-			q := url.Values{}
-			q.Set("token", token)
-			u += "?" + q.Encode()
-		}
-		req, err := http.NewRequestWithContext(ctx, mLegacyList.Verb, u, nil)
-		if err != nil {
-			return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		raw, err := do(hc, opLegacyList, pkg, req)
-		if err != nil {
-			return nil, err
+			q = url.Values{"token": {token}}
 		}
 		var pg struct {
 			InAppProduct    []json.RawMessage `json:"inappproduct"`
@@ -457,8 +383,12 @@ func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]Lega
 				NextPageToken string `json:"nextPageToken"`
 			} `json:"tokenPagination"`
 		}
-		if err := json.Unmarshal(raw, &pg); err != nil {
-			return nil, &api.Error{Operation: opLegacyList, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
+		if _, err := api.DoJSON(ctx, hc, api.Call{
+			Method: mLegacyList, Op: opLegacyList, Target: pkg,
+			Params: map[string]string{"packageName": pkg},
+			Query:  q,
+		}, &pg); err != nil {
+			return nil, err
 		}
 		for _, rawP := range pg.InAppProduct {
 			var p struct {
@@ -482,25 +412,4 @@ func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]Lega
 		seen[next] = struct{}{}
 		token = next
 	}
-}
-
-// do runs req and maps the response to (raw body, *api.Error): a non-2xx body is
-// parsed for the error envelope, a 2xx body is returned verbatim for the
-// ADR-0003 pass-through.
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
 }

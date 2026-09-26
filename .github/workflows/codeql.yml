@@ -7,9 +7,12 @@ on:
   schedule:
     - cron: '31 4 * * 3'  # Weekly, Wednesday 04:31 UTC
 
+# Same rule as ci.yml: a PR cancels its superseded run; main pushes and the
+# weekly schedule get a group per run and always finish, even when a push and
+# the schedule land on the same sha.
 concurrency:
-  group: codeql-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: codeql-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

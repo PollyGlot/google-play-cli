@@ -6,6 +6,7 @@ package token
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -59,8 +60,8 @@ func (*AuthError) ExitCode() int { return 10 }
 // AndroidPublisherScope (the publishing surface's contract) so existing
 // callers are unaffected; a `gplay vitals` command passes ReportingScope for
 // least-privilege access to the read-only reporting service (#49). Errors from
-// the exchange are wrapped in *AuthError when the HTTP status indicates an auth
-// failure.
+// the exchange are wrapped in *AuthError when they are an auth refusal (see
+// isAuthRefusal).
 func Source(ctx context.Context, sa *serviceaccount.ServiceAccount, scopes ...string) (oauth2.TokenSource, error) {
 	if len(scopes) == 0 {
 		scopes = []string{AndroidPublisherScope}
@@ -83,7 +84,7 @@ func (w *wrappedSource) Token() (*oauth2.Token, error) {
 	}
 	var re *oauth2.RetrieveError
 	if errors.As(err, &re) {
-		if re.Response != nil && isAuthStatus(re.Response.StatusCode) {
+		if re.Response != nil && isAuthRefusal(re) {
 			return nil, &AuthError{
 				StatusCode: re.Response.StatusCode,
 				Body:       string(re.Body),
@@ -94,6 +95,42 @@ func (w *wrappedSource) Token() (*oauth2.Token, error) {
 	return nil, err
 }
 
-func isAuthStatus(code int) bool {
-	return code == http.StatusUnauthorized || code == http.StatusForbidden
+// credentialRefusals are the RFC 6749 §5.2 error codes that mean "this
+// credential will never mint a token": Google answers a deleted or disabled
+// key, a bad JWT signature or a skewed clock with HTTP 400 invalid_grant, not
+// 401, so the status alone misses the most common refusal.
+var credentialRefusals = map[string]bool{
+	"invalid_grant":       true,
+	"unauthorized_client": true,
+	"invalid_client":      true,
+}
+
+// isAuthRefusal reports whether a token-endpoint failure is a permanent auth
+// refusal (exit 10) rather than a transient upstream fault: any 401/403, or a
+// 400 whose error code names the credential. Other 400s (invalid_scope, a
+// malformed request) stay unwrapped, as do 5xx.
+func isAuthRefusal(re *oauth2.RetrieveError) bool {
+	switch re.Response.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return true
+	case http.StatusBadRequest:
+		return credentialRefusals[retrieveErrorCode(re)]
+	}
+	return false
+}
+
+// retrieveErrorCode returns the RFC 6749 `error` parameter of a token-endpoint
+// failure. The jwt flow gplay uses builds its RetrieveError without parsing
+// the body (ErrorCode stays empty), so the JSON body is the fallback source.
+func retrieveErrorCode(re *oauth2.RetrieveError) string {
+	if re.ErrorCode != "" {
+		return re.ErrorCode
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(re.Body, &body) != nil {
+		return ""
+	}
+	return body.Error
 }
