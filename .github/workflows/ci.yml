@@ -5,9 +5,17 @@ on:
   push:
     branches: [main]
 
+# A newer push to a PR supersedes the older run, so a PR keeps one group per
+# ref and cancels. A push to main gets a group of its own (the run id) and never
+# cancels: two merges landing seconds apart must both get a verdict (a
+# cancelled main run hid whether #547 alone was sound) and both save the living
+# Go cache. Turning cancel-in-progress off on a shared group would not be
+# enough: GitHub still cancels the pending run when a third one queues, which
+# is also why the group is per run and not per sha. See docs/CI_CD.md
+# § "Concurrency: PRs cancel, main never does".
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -215,11 +223,16 @@ jobs:
     needs: [changes, lint, test]
     # NOTE: "Build, lint, test" is a required check on main, and a *skipped*
     # required job blocks merge (GitHub treats skipped as unsatisfied). So this
-    # aggregator must never skip: `always()` makes it run whatever happened
-    # upstream, and it then re-derives the verdict itself. On a docs-only PR
-    # `lint` and `test` skip and this job goes green in seconds; on a code PR it
-    # is green only if `lint` and every `test` shard succeeded.
-    if: always()
+    # aggregator runs whatever happened upstream, failures included, and then
+    # re-derives the verdict itself. On a docs-only PR `lint` and `test` skip
+    # and this job goes green in seconds; on a code PR it is green only if
+    # `lint` and every `test` shard succeeded.
+    # `!cancelled()`, not `always()`: a superseded PR run skips this job instead
+    # of painting the required check red with "change scope detection did not
+    # succeed (cancelled)". Still fail-closed: the newer run reports the check,
+    # and a head whose only run was cancelled has no "Build, lint, test" at
+    # all, which blocks merge.
+    if: ${{ !cancelled() }}
     steps:
       - name: Aggregate lint and test results
         env:

@@ -7,8 +7,6 @@ package imagesapply_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
@@ -16,8 +14,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"image"
-	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -33,13 +29,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-func pngOf(w, h int) []byte {
-	var b bytes.Buffer
-	_ = png.Encode(&b, image.NewRGBA(image.Rect(0, 0, w, h)))
-	return b.Bytes()
-}
 
 // applyRT routes the apply sequence. images.list returns empty for every slot
 // (so a local image is a fresh upload). It records uploads, deleteall calls,
@@ -95,7 +86,7 @@ func jsonResp(status int, body string) *http.Response {
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	key := testkit.RSAKey(t)
 	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
 	raw, _ := json.Marshal(map[string]any{
@@ -123,7 +114,7 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 func seedIcon(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.Icon: {pngOf(512, 512)}}}); err != nil {
+	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.Icon: {testkit.PNG(512, 512)}}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	return dir
@@ -247,7 +238,7 @@ func TestRun_typeFilter_isATracer(t *testing.T) {
 // bypasses it.
 func TestRun_validateFailFast(t *testing.T) {
 	dir := t.TempDir()
-	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.Icon: {pngOf(500, 500)}}}); err != nil {
+	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.Icon: {testkit.PNG(500, 500)}}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	rt := &applyRT{t: t, editID: "e"}
@@ -276,7 +267,7 @@ func TestRun_validateFailFast(t *testing.T) {
 // schema (the #135 jq gate), without committing.
 func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 	dir := t.TempDir()
-	shot := pngOf(1080, 1920)
+	shot := testkit.PNG(1080, 1920)
 	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.PhoneScreenshots: {shot}}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

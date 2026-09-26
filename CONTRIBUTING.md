@@ -150,8 +150,11 @@ None of those bump the version or land in the CLI `CHANGELOG.md`. Reserve
 
 ## Code review
 
-Every PR needs at least one approval (admin can bypass in early bootstrap).
-The reviewer checks:
+The ruleset asks for one approval, which the solo maintainer cannot give to
+their own PR, so the maintainer merges with `scripts/merge-pr.sh <n>`: it
+refuses a PR that is behind `main` or has a required check that is not green,
+then squash-merges with `--admin`. An external reviewer on a PR still gets the
+last word. The reviewer checks:
 
 1. The change matches the docs (or updates them).
 2. Tests cover the new behavior (RoundTripper-mocked, see AGENTS.md).

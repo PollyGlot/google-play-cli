@@ -175,6 +175,9 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := String(tc.in)
+			if again := String(got); again != got {
+				t.Errorf("String is not idempotent:\nonce  %s\ntwice %s", got, again)
+			}
 			for _, want := range tc.wantAbsent {
 				if strings.Contains(got, want) {
 					t.Errorf("output still contains %q:\n%s", want, got)
@@ -211,7 +214,45 @@ func TestStringMasksGenericKeyValueShapes(t *testing.T) {
 			if !strings.Contains(got, Mask) {
 				t.Errorf("String(%q) = %q, nothing was masked", tc.in, got)
 			}
+			if again := String(got); again != got {
+				t.Errorf("String is not idempotent: String(%q) = %q", got, again)
+			}
 		})
+	}
+}
+
+// Masking an already masked value is a no-op (#583). The unquoted rules used to
+// re-match "[REDACTED" (their value class stops at `]`) and leave the original
+// `]` behind, so a message masked once and relayed through a second masking
+// point (an API error echoing masked text, the envelope after the stderr
+// filter) came out as "password=[REDACTED]]".
+func TestStringIsIdempotent(t *testing.T) {
+	for _, in := range []string{
+		"password=hunter2",
+		"password: hunter2",
+		"client_secret=abc123def456&next=1",
+		"my_api_key: abc123def456, retry",
+		`{"token":"abc123def456"}`,
+		`{"private_key":"` + strings.ReplaceAll(samplePEM, "\n", `\n`) + `"}`,
+		"Authorization: Bearer ya29.a0AfB_byLEAKEDSECRETBODY123456",
+		"could not read credential: " + samplePEM,
+	} {
+		once := String(in)
+		if once == in {
+			t.Errorf("String(%q) masked nothing; the case does not exercise the property", in)
+		}
+		if twice := String(once); twice != once {
+			t.Errorf("String is not idempotent on %q:\nonce  %s\ntwice %s", in, once, twice)
+		}
+	}
+	for _, masked := range []string{Mask, "password=" + Mask, "password: " + Mask} {
+		if got := String(masked); got != masked {
+			t.Errorf("String(%q) = %q, want it unchanged", masked, got)
+		}
+	}
+	// A secret glued to a mask is still consumed, never half-kept.
+	if got := String("password=" + Mask + "LEAKEDSECRETBODY"); strings.Contains(got, "LEAKEDSECRETBODY") {
+		t.Errorf("secret after a mask survived: %q", got)
 	}
 }
 

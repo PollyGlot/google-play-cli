@@ -59,8 +59,10 @@ Two global flags make unattended runs predictable. `--timeout <duration>`
 bounds each API request (control-plane calls default to 60s; uploads are
 exempt unless you set it). `--retry N` retries the transient classes
 (transport errors, 5xx, 429 honouring `Retry-After`) with exponential
-backoff, and never retries non-transient 4xx or `edits.commit`. Both are safe
-defaults for an agent to set on every call.
+backoff, and never retries non-transient 4xx or `edits.commit`. A
+non-idempotent write (an upload, a create, a refund) is replayed only when the
+request provably never reached Google, so a retry cannot duplicate it. Both are
+safe defaults for an agent to set on every call.
 
 ## Rehearse before writing
 
