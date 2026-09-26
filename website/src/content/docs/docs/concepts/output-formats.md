@@ -97,6 +97,11 @@ the failure without scraping stderr:
 - `requires` names the missing safety flag on an exit-3 refusal; omitted
   otherwise.
 
+The envelope covers CLI misuse too (an unknown or repeated flag, a missing or
+stray argument, an unknown subcommand), with `"code": "USAGE_ERROR"` and exit
+`2`. The one failure without it is an invalid `--output` value itself: no
+format is known there.
+
 Under `table` / `markdown` a failure leaves stdout empty: the error goes to
 stderr only. The envelope shape is part of gplay's public contract.
 
