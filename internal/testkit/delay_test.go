@@ -19,7 +19,7 @@ func TestDelayed_recordsPeakInFlight(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req, _ := http.NewRequest(http.MethodGet, "https://example.test/x", nil)
+			req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.test/x", nil)
 			if resp, err := d.RoundTrip(req); err == nil {
 				_ = resp.Body.Close()
 			}

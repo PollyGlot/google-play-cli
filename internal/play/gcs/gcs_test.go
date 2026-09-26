@@ -27,7 +27,7 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 	if code == 0 {
 		code = 200
 	}
-	body := ""
+	var body string
 	switch {
 	case r.code != 0:
 		body = r.errBody

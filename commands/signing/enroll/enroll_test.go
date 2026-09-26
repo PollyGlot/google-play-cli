@@ -94,7 +94,10 @@ func writeFile(t *testing.T, name, content string) string {
 }
 
 // certPEM is a real self-signed certificate: ReadPEM parses every block.
-func certPEM(t *testing.T) string { return string(testkit.CertificatePEM(t)) }
+func certPEM(t *testing.T) string {
+	t.Helper()
+	return string(testkit.CertificatePEM(t))
+}
 
 func exitCode(t *testing.T, err error) int {
 	t.Helper()

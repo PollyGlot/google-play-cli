@@ -66,13 +66,12 @@ func validateStatusValue(status Status) error {
 // applying the ADR-0002 safe-default rule. Shared by both the upload
 // and promote orchestrators so the rule is defined exactly once.
 func resolvedStatus(track string, status Status) string {
-	if status == StatusUnspecified {
+	switch status {
+	case StatusUnspecified:
 		if track == TrackProduction {
 			return "draft"
 		}
 		return "completed"
-	}
-	switch status {
 	case StatusDraft:
 		return "draft"
 	case StatusCompleted:
@@ -101,14 +100,12 @@ func requiresConfirm(track string, status Status) bool {
 // is Unspecified (production → draft, others → completed/1.0). Shared
 // by buildRelease (upload) and buildPromoteRelease (promote).
 func statusPayload(track string, status Status, userFraction float64) (string, float64) {
-	if status == StatusUnspecified {
-		if track == TrackProduction {
-			status = StatusDraft
-		} else {
-			status = StatusCompleted
-		}
-	}
 	switch status {
+	case StatusUnspecified:
+		if track == TrackProduction {
+			return "draft", 0
+		}
+		return "completed", 1.0
 	case StatusDraft:
 		return "draft", 0
 	case StatusCompleted:

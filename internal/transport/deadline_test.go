@@ -29,7 +29,7 @@ func (h hangOrAnswer) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestControlPlaneDeadline_cutsHungControlPlaneOnly(t *testing.T) {
 	hc := &http.Client{Transport: transport.WithControlPlaneDeadline(hangOrAnswer{hang: true}, 50*time.Millisecond)}
 
-	req, _ := http.NewRequest(http.MethodPost, "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/p/edits/e1:commit", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/p/edits/e1:commit", nil)
 	start := time.Now()
 	_, err := hc.Do(req)
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -55,7 +55,7 @@ func TestControlPlaneDeadline_cutsHungControlPlaneOnly(t *testing.T) {
 // body must still be readable after RoundTrip returns.
 func TestControlPlaneDeadline_bodyReadableAfterRoundTrip(t *testing.T) {
 	hc := &http.Client{Transport: transport.WithControlPlaneDeadline(hangOrAnswer{}, time.Minute)}
-	req, _ := http.NewRequest(http.MethodGet, "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/p/edits/e1", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/p/edits/e1", nil)
 	resp, err := hc.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ func TestIsMediaTransfer(t *testing.T) {
 		if c.body {
 			body = strings.NewReader("x")
 		}
-		req, _ := http.NewRequest(c.method, c.url, body)
+		req, _ := http.NewRequestWithContext(t.Context(), c.method, c.url, body)
 		if got := transport.IsMediaTransfer(req); got != c.want {
 			t.Errorf("IsMediaTransfer(%s %s, body=%v) = %v, want %v", c.method, c.url, c.body, got, c.want)
 		}

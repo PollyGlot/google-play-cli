@@ -365,6 +365,8 @@ func changedLocales(d diff.Result) []string {
 		switch c.Op {
 		case diff.OpCreate, diff.OpUpdate, diff.OpClear:
 			seen[c.Locale] = true
+		case diff.OpUnchanged, diff.OpUntouchedLocale, diff.OpDelete:
+			// No field write: a delete prunes the whole locale (deleteLocales).
 		}
 	}
 	out := make([]string, 0, len(seen))
@@ -409,6 +411,8 @@ func writeBody(local listing.Tree, loc string, d diff.Result) []byte {
 			}
 			v, _ := ll.Get(spec.Field)
 			m[c.Field] = v
+		case diff.OpUnchanged, diff.OpUntouchedLocale, diff.OpDelete:
+			// Absent from the body, so PATCH leaves the field as it is online.
 		}
 	}
 	// map[string]string of small, known keys: Marshal cannot fail.

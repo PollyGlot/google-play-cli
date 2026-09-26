@@ -176,7 +176,6 @@ func TestRun_crashrate_endToEnd(t *testing.T) {
 // to that set's own REST resource.
 func TestRun_everyMetricSetReachable(t *testing.T) {
 	for _, ms := range vitals.MetricSets() {
-		ms := ms
 		t.Run(ms.Name, func(t *testing.T) {
 			rt := &queryRT{t: t, respBody: `{"rows":[]}`}
 			rc, _, _ := newRC(t, rt)

@@ -1,4 +1,6 @@
-package config
+// Package configtest holds test doubles for internal/config. It is imported by
+// tests only, so none of it ships in the gplay binary.
+package configtest
 
 import (
 	"errors"
@@ -6,7 +8,12 @@ import (
 	"path"
 	"sync"
 	"time"
+
+	"github.com/PollyGlot/google-play-cli/internal/config"
 )
+
+// MemFS must keep up with every operation the real filesystem offers.
+var _ config.FS = (*MemFS)(nil)
 
 // MemFS is an in-memory FS for tests. It implements only the operations
 // gplay actually uses (see internal/config.FS). Directories are tracked

@@ -21,7 +21,7 @@ func TestClassify_tracksUpdate404_addsCreateHint(t *testing.T) {
 	cause := &api.Error{Operation: "tracks.update", Package: "com.example.app", StatusCode: 404, Message: "Track not found."}
 
 	got := trackhint.Classify("qa-team", cause)
-	if got == error(cause) {
+	if got == error(cause) { //nolint:errorlint // identity, not errors.Is: a wrapper would also match Is
 		t.Fatal("expected a wrapped error carrying the hint, got the cause verbatim")
 	}
 	if !strings.Contains(got.Error(), "gplay tracks create qa-team") {
@@ -38,12 +38,12 @@ func TestClassify_tracksUpdate404_addsCreateHint(t *testing.T) {
 // untouched so no unrelated failure is mislabeled "create the track".
 func TestClassify_otherFailures_passThroughVerbatim(t *testing.T) {
 	pkgMiss := &api.Error{Operation: "edits.insert", StatusCode: 404}
-	if got := trackhint.Classify("qa-team", pkgMiss); got != error(pkgMiss) {
+	if got := trackhint.Classify("qa-team", pkgMiss); got != error(pkgMiss) { //nolint:errorlint // identity, not errors.Is: the test asserts the error is returned verbatim
 		t.Errorf("edits.insert 404 (package miss) must pass through verbatim, got %v", got)
 	}
 
 	auth := &api.Error{Operation: "tracks.update", StatusCode: 403}
-	if got := trackhint.Classify("qa-team", auth); got != error(auth) {
+	if got := trackhint.Classify("qa-team", auth); got != error(auth) { //nolint:errorlint // identity, not errors.Is: the test asserts the error is returned verbatim
 		t.Errorf("tracks.update 403 (auth) must pass through verbatim, got %v", got)
 	}
 

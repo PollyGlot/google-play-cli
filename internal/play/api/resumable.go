@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -149,7 +150,8 @@ func ResumableUploadWithInitiateBody(
 		case putErr != nil:
 			release()
 			// A local read failure is terminal (exit 20): no point resuming.
-			if _, ok := putErr.(*LocalIOError); ok {
+			var localErr *LocalIOError
+			if errors.As(putErr, &localErr) {
 				return nil, 0, putErr
 			}
 			// A canceled ctx is not a network blip: every probe would fail the
@@ -393,8 +395,8 @@ func validOffset(offset, size int64, op, pkg string) *Error {
 // retrying under the stall bound: a transport error (no status) or an upstream
 // 5xx. Terminal 4xx responses stay immediate.
 func probeErrIsTransient(err error) bool {
-	apiErr, ok := err.(*Error)
-	return ok && (apiErr.StatusCode == 0 || apiErr.StatusCode >= 500)
+	var apiErr *Error
+	return errors.As(err, &apiErr) && (apiErr.StatusCode == 0 || apiErr.StatusCode >= 500)
 }
 
 // errorFromResponse builds an *Error from a non-success response, parsing the

@@ -88,10 +88,8 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 		t.Errorf("exit = %d, want 3; err=%v", got, err)
 	}
 	var sf interface{ ExitCode() int }
-	if errors.As(err, &sf) {
-		if fe, ok := err.(interface{ Error() string }); ok && !strings.Contains(fe.Error(), "--confirm") {
-			t.Errorf("error %q should name --confirm", fe.Error())
-		}
+	if errors.As(err, &sf) && !strings.Contains(err.Error(), "--confirm") {
+		t.Errorf("error %q should name --confirm", err.Error())
 	}
 	if len(r.calls) != 0 {
 		t.Errorf("must not reach the network without --confirm; calls=%v", r.calls)

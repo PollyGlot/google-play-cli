@@ -12,7 +12,7 @@ import (
 // FileReader is the slice of config.FS this package needs. Declared
 // here as a tiny interface so internal/auth/serviceaccount stays
 // import-free of internal/config; production callers pass config.OSFS{}
-// and tests pass config.MemFS or any other matching implementation.
+// and tests pass configtest.MemFS or any other matching implementation.
 type FileReader interface {
 	ReadFile(name string) ([]byte, error)
 }

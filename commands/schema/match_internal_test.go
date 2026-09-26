@@ -45,6 +45,7 @@ func TestMatch_projections(t *testing.T) {
 			in:         Input{Query: "tracks/{track}"},
 			wantMethod: "androidpublisher.edits.tracks.update",
 			check: func(t *testing.T, r result) {
+				t.Helper()
 				for id, m := range r.Methods {
 					if !strings.Contains(strings.ToLower(id), "tracks/{track}") &&
 						!strings.Contains(strings.ToLower(m.Path), "tracks/{track}") {
@@ -67,6 +68,7 @@ func TestMatch_projections(t *testing.T) {
 			name: "method filter narrows to the verb",
 			in:   Input{Query: "edits.tracks", Method: "GET"},
 			check: func(t *testing.T, r result) {
+				t.Helper()
 				if len(r.Methods) == 0 {
 					t.Fatal("expected some GET edits.tracks methods")
 				}
@@ -81,6 +83,7 @@ func TestMatch_projections(t *testing.T) {
 			name: "method filter alone (no query) browses the verb",
 			in:   Input{Method: "DELETE"},
 			check: func(t *testing.T, r result) {
+				t.Helper()
 				if len(r.Methods) < 5 {
 					t.Errorf("DELETE-only browse returned %d methods, want the full DELETE set", len(r.Methods))
 				}
@@ -98,6 +101,7 @@ func TestMatch_projections(t *testing.T) {
 			name: "list returns the full method surface",
 			in:   Input{List: true},
 			check: func(t *testing.T, r result) {
+				t.Helper()
 				if len(r.Methods) < methodFloorTest {
 					t.Errorf("--list returned %d methods, want the full surface", len(r.Methods))
 				}
@@ -110,6 +114,7 @@ func TestMatch_projections(t *testing.T) {
 			name: "list combined with method filter",
 			in:   Input{List: true, Method: "PUT"},
 			check: func(t *testing.T, r result) {
+				t.Helper()
 				if len(r.Methods) == 0 {
 					t.Fatal("--list --method PUT returned nothing; PUT methods exist")
 				}

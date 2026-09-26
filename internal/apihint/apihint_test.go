@@ -47,7 +47,7 @@ func TestForPackage(t *testing.T) {
 	})
 	t.Run("passthrough", func(t *testing.T) {
 		for _, err := range []error{apiErr(500), errors.New("local"), nil} {
-			if got := apihint.ForPackage("com.x", err); got != err {
+			if got := apihint.ForPackage("com.x", err); got != err { //nolint:errorlint // identity, not errors.Is: the test asserts the error is returned verbatim
 				t.Errorf("ForPackage(%v) = %v, want it untouched", err, got)
 			}
 		}
@@ -59,7 +59,7 @@ func TestForbidden_onlyWraps403(t *testing.T) {
 	if err := apihint.Forbidden("com.x", apiErr(403)); !errors.As(err, &fe) {
 		t.Errorf("403: error = %T, want *ForbiddenError", err)
 	}
-	if in := apiErr(404); apihint.Forbidden("com.x", in) != in {
+	if in := apiErr(404); apihint.Forbidden("com.x", in) != in { //nolint:errorlint // identity, not errors.Is: the test asserts the error is returned verbatim
 		t.Error("404 must pass through Forbidden untouched")
 	}
 }

@@ -61,6 +61,7 @@ func TestResolve_cascade(t *testing.T) {
 		{
 			name: "layer1-flag-path",
 			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				t.Helper()
 				p := filepath.Join(t.TempDir(), "sa.json")
 				mustWrite(t, p, fakeSAJSON)
 				return resolver.Inputs{ServiceAccountFlag: p}
@@ -71,6 +72,7 @@ func TestResolve_cascade(t *testing.T) {
 		{
 			name: "layer2-account-flag",
 			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, be keystore.Backend) resolver.Inputs {
+				t.Helper()
 				mustSave(t, be, "other", fakeSAJSON)
 				return resolver.Inputs{AccountFlag: "other"}
 			},
@@ -88,6 +90,7 @@ func TestResolve_cascade(t *testing.T) {
 		{
 			name: "layer3-env-service-account-path",
 			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, _ keystore.Backend) resolver.Inputs {
+				t.Helper()
 				p := filepath.Join(t.TempDir(), "sa.json")
 				mustWrite(t, p, fakeSAJSON)
 				return resolver.Inputs{EnvServiceAccount: p}
@@ -106,6 +109,7 @@ func TestResolve_cascade(t *testing.T) {
 		{
 			name: "layer4-env-account",
 			setup: func(t *testing.T, _ *resolver.Deps, _ *config.Resolved, be keystore.Backend) resolver.Inputs {
+				t.Helper()
 				mustSave(t, be, "envchosen", fakeSAJSON)
 				return resolver.Inputs{EnvAccount: "envchosen"}
 			},
@@ -115,6 +119,7 @@ func TestResolve_cascade(t *testing.T) {
 		{
 			name: "layer5-config-active",
 			setup: func(t *testing.T, _ *resolver.Deps, resolved *config.Resolved, be keystore.Backend) resolver.Inputs {
+				t.Helper()
 				mustSave(t, be, "ci", fakeSAJSON)
 				resolved.ConfigAccount = "ci"
 				return resolver.Inputs{}
