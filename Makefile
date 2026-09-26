@@ -1,5 +1,5 @@
 .PHONY: help build test check lint verb-gate ratchets dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats \
-	lint-version fmt-check vet shellcheck required-files build-check test-race
+	lint-version fmt-check vet shellcheck required-files build-check test-race worker-test
 
 # Project metadata
 BINARY := gplay
@@ -23,7 +23,7 @@ test: ## Run tests (fast, no race detector; `make check` adds -race)
 # lint, test" and "Docs sanity" in .github/workflows/ci.yml), cheapest first so
 # a failure surfaces early. Generated-file freshness is asserted by Go tests, so
 # `test-race` covers it. Keep this list in step with ci.yml.
-check: lint-version fmt-check verb-gate dash-gate shellcheck install-test required-files vet lint build-check test-race ## Run every required CI check locally (the pre-PR gate)
+check: lint-version fmt-check verb-gate dash-gate shellcheck install-test worker-test required-files vet lint build-check test-race ## Run every required CI check locally (the pre-PR gate)
 	@echo "check: OK"
 
 lint-version:
@@ -69,6 +69,9 @@ dash-gate: ## Fail if an em dash reappears in Go source (help text and errors re
 
 install-test: ## Exercise install.sh offline (fail-closed sha256 gate)
 	@bash scripts/install-test.sh
+
+worker-test: ## Test the gplay.sh Worker offline: routing, headers and the /install tag resolution (never main)
+	node --test deploy/gplay.sh/worker.test.mjs deploy/gplay.sh/install.test.mjs
 
 format: ## Run gofmt + goimports on the whole tree (the formatters lint enforces)
 	golangci-lint fmt

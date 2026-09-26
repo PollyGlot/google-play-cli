@@ -1,26 +1,47 @@
-// Cloudflare Worker for gplay.sh — serves the gplay website and the install
+// Cloudflare Worker for gplay.sh: serves the gplay website and the install
 // script from one deployable.
 //
-//   GET /install (or /install.sh)  -> proxies install.sh from the repo's `main`
-//                                      branch as text/plain (the `curl … | sh`
-//                                      entry point)
+//   GET /install (or /install.sh)  -> install.sh as of the latest release tag,
+//                                      as text/plain (the `curl … | sh` entry
+//                                      point)
 //   docs.gplay.sh/<path>           -> 301 to https://gplay.sh/docs/<path>
 //   www.gplay.sh/<path>            -> 301 to https://gplay.sh/<path>
 //   everything else                -> the static Astro site (env.ASSETS)
 //
-// The install script is proxied from `main` (not a tag) on purpose: install.sh
-// resolves the latest release itself, so `main` always serves the newest
-// installer with the repo as the single source of truth — no static copy to
-// drift. The website is built into website/dist and uploaded as Worker static
-// assets on each deploy. `run_worker_first` is set so this handler runs ahead
-// of asset serving, which is what lets it intercept the docs/www hostnames and
-// the /install path. See docs/adr/0009-install-distribution-vanity-domain.md
-// and docs/adr/0025-website-served-from-install-worker.md.
+// The install script comes from the latest release tag, never from `main`
+// (ADR-0009 amendment, issue #601): a commit on `main`, bot-merged ones
+// included, must not reach every `curl … | sh` within minutes. An installer
+// change now ships through the same reviewed release path as the binary it
+// downloads. The website is built into website/dist and uploaded as Worker
+// static assets on each deploy. `run_worker_first` is set so this handler runs
+// ahead of asset serving, which is what lets it intercept the docs/www
+// hostnames and the /install path. See
+// docs/adr/0009-install-distribution-vanity-domain.md and
+// docs/adr/0025-website-served-from-install-worker.md.
 
-const RAW_INSTALL_URL =
-  "https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh";
-const REPO_URL = "https://github.com/PollyGlot/google-play-cli";
+const REPO = "PollyGlot/google-play-cli";
+const REPO_URL = `https://github.com/${REPO}`;
+const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+// The release page answers with a redirect to /releases/tag/<tag> and is not
+// subject to the REST API's unauthenticated rate limit, which Worker egress IPs
+// share with every other tenant. It asks the same question a second way; it is
+// not a fallback to a moving branch.
+const LATEST_RELEASE_PAGE = `${REPO_URL}/releases/latest`;
+const USER_AGENT = "gplay-site-worker";
+// The tag is spliced into a URL, so only a release-please shaped tag passes.
+const TAG_PATTERN = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 const CACHE_SECONDS = 300;
+// A new release reaches /install within CACHE_SECONDS. Errors are never
+// cached: a rate-limited lookup is retried on the next request instead of
+// pinning a failure at the edge for five minutes.
+const EDGE_CACHE = {
+  cacheEverything: true,
+  cacheTtlByStatus: { "200-399": CACHE_SECONDS, "400-599": 0 },
+};
+
+function rawInstallUrl(tag) {
+  return `https://raw.githubusercontent.com/${REPO}/${tag}/install.sh`;
+}
 
 const APEX = "gplay.sh";
 const DOCS_HOST = "docs.gplay.sh";
@@ -98,8 +119,8 @@ async function handle(request, env) {
     return Response.redirect(target.toString(), 301);
   }
 
-  // The install endpoint is dynamic (proxied live from `main`); everything
-  // else is served from the static-asset bundle below.
+  // The install endpoint is dynamic (install.sh at the latest release tag);
+  // everything else is served from the static-asset bundle below.
   if (pathname === "/install" || pathname === "/install.sh") {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("method not allowed\n", {
@@ -126,13 +147,40 @@ async function handle(request, env) {
       asOrganization: request.cf?.asOrganization || "",
     });
 
-    const upstream = await fetch(RAW_INSTALL_URL, {
+    const resolved = await resolveLatestTag();
+    if (!resolved.tag) {
+      // Fail closed: without a release tag there is nothing reviewed to serve,
+      // and `main` is exactly what this endpoint no longer trusts.
+      console.warn({ event: "install_unresolved", errors: resolved.errors });
+      return new Response(
+        "could not resolve the latest gplay release; refusing to serve an unreleased installer.\n" +
+          `Retry in a minute, or download a release from ${REPO_URL}/releases/latest\n`,
+        {
+          status: 503,
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "cache-control": "no-store",
+            "retry-after": "60",
+          },
+        },
+      );
+    }
+    if (resolved.source !== "api") {
+      console.warn({
+        event: "install_ref_fallback",
+        tag: resolved.tag,
+        source: resolved.source,
+        errors: resolved.errors,
+      });
+    }
+
+    const upstream = await fetch(rawInstallUrl(resolved.tag), {
       method: request.method,
-      cf: { cacheTtl: CACHE_SECONDS, cacheEverything: true },
+      cf: EDGE_CACHE,
     });
     if (!upstream.ok) {
       return new Response(
-        `could not fetch installer (upstream ${upstream.status}). See ${REPO_URL}\n`,
+        `could not fetch the ${resolved.tag} installer (upstream ${upstream.status}). See ${REPO_URL}\n`,
         {
           status: 502,
           headers: { "content-type": "text/plain; charset=utf-8" },
@@ -144,6 +192,8 @@ async function handle(request, env) {
       headers: {
         "content-type": "text/plain; charset=utf-8",
         "cache-control": `public, max-age=${CACHE_SECONDS}`,
+        // The release the script came from, readable with `curl -sI`.
+        "x-gplay-installer-ref": resolved.tag,
       },
     });
   }
@@ -172,6 +222,49 @@ async function handle(request, env) {
   }
 
   return decorateDocument(response);
+}
+
+// Resolve the latest published release tag: the REST API first, then the
+// release page's redirect. Never throws, so the outer handler's asset fallback
+// cannot turn a lookup error into a 404 page. Returns { tag, source, errors },
+// tag null when both lookups fail, so the caller can fail closed.
+async function resolveLatestTag() {
+  const errors = [];
+  try {
+    const res = await fetch(LATEST_RELEASE_API, {
+      headers: {
+        accept: "application/vnd.github+json",
+        // The GitHub API rejects requests without a User-Agent.
+        "user-agent": USER_AGENT,
+      },
+      cf: EDGE_CACHE,
+    });
+    if (!res.ok) throw new Error(`api: status ${res.status}`);
+    const tag = (await res.json())?.tag_name;
+    if (typeof tag !== "string" || !TAG_PATTERN.test(tag)) {
+      throw new Error(`api: unexpected tag_name ${JSON.stringify(tag)}`);
+    }
+    return { tag, source: "api", errors };
+  } catch (err) {
+    errors.push(String(err?.message ?? err));
+  }
+  try {
+    const res = await fetch(LATEST_RELEASE_PAGE, {
+      method: "HEAD",
+      redirect: "manual",
+      headers: { "user-agent": USER_AGENT },
+      cf: EDGE_CACHE,
+    });
+    const location = res.headers.get("location") ?? "";
+    const tag = location.match(/\/releases\/tag\/([^/?#]+)$/)?.[1] ?? "";
+    if (!TAG_PATTERN.test(tag)) {
+      throw new Error(`release page: status ${res.status}, location ${JSON.stringify(location)}`);
+    }
+    return { tag, source: "release-page", errors };
+  } catch (err) {
+    errors.push(String(err?.message ?? err));
+  }
+  return { tag: null, source: null, errors };
 }
 
 // True when the client lists text/markdown (or text/x-markdown) and ranks it at

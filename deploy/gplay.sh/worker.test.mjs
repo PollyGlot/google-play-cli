@@ -1,6 +1,7 @@
 // Routing tests for worker.js, driven through its real `fetch` entry point
 // with a fake static-asset binding (env.ASSETS) and a stubbed global fetch for
-// the /install upstream: no network, no wrangler, no Cloudflare runtime.
+// the /install upstream: no network, no wrangler, no Cloudflare runtime. The
+// tag resolution of /install (#601) has its own suite, install.test.mjs.
 //
 //   node --test deploy/gplay.sh/worker.test.mjs
 //
@@ -13,8 +14,27 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import worker from './worker.js';
 
-const RAW_INSTALL_URL =
-  'https://raw.githubusercontent.com/PollyGlot/google-play-cli/main/install.sh';
+const RELEASES_API = 'https://api.github.com/repos/PollyGlot/google-play-cli/releases/latest';
+const TAGGED_INSTALL_URL =
+  'https://raw.githubusercontent.com/PollyGlot/google-play-cli/v9.9.9/install.sh';
+
+// Upstream stub for /install: the releases API names v9.9.9, the tagged
+// install.sh answers with a script. Anything else is a test bug.
+function installUpstream() {
+  return mock.method(globalThis, 'fetch', async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (url === RELEASES_API) {
+      return new Response(JSON.stringify({ tag_name: 'v9.9.9' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url === TAGGED_INSTALL_URL) {
+      return new Response(init.method === 'HEAD' ? null : '#!/bin/sh\necho hi\n', { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
 
 const SECURITY_HEADERS = [
   'x-content-type-options',
@@ -124,47 +144,37 @@ describe('/install proxy', () => {
   });
 
   for (const path of ['/install', '/install.sh']) {
-    it(`GET ${path} proxies install.sh from main as text/plain`, async () => {
-      const upstream = mock.method(globalThis, 'fetch', async () =>
-        new Response('#!/bin/sh\necho hi\n', { status: 200 }),
-      );
+    it(`GET ${path} serves install.sh from the release tag as text/plain`, async () => {
+      const upstream = installUpstream();
       const res = await get(`https://gplay.sh${path}`, { 'user-agent': 'curl/8.7.1' });
       assert.equal(res.status, 200);
       assert.equal(res.headers.get('content-type'), 'text/plain; charset=utf-8');
-      assert.equal(res.headers.get('cache-control'), 'public, max-age=300');
+      assert.equal(res.headers.get('x-gplay-installer-ref'), 'v9.9.9');
       assert.equal(await res.text(), '#!/bin/sh\necho hi\n');
       assertHardened(res);
 
-      assert.equal(upstream.mock.callCount(), 1);
-      const [url, init] = upstream.mock.calls[0].arguments;
-      assert.equal(url, RAW_INSTALL_URL);
-      assert.equal(init.method, 'GET');
+      const urls = upstream.mock.calls.map((c) => c.arguments[0]);
+      assert.deepEqual(urls, [RELEASES_API, TAGGED_INSTALL_URL]);
+      assert.ok(urls.every((u) => !u.includes('/main/')), `fetched a branch URL: ${urls}`);
       assert.equal(env.ASSETS.requests.length, 0);
     });
   }
 
-  it('forwards HEAD upstream', async () => {
-    const upstream = mock.method(globalThis, 'fetch', async () => new Response(null));
-    const res = await get('https://gplay.sh/install', {}, 'HEAD');
-    assert.equal(res.status, 200);
-    assert.equal(upstream.mock.calls[0].arguments[1].method, 'HEAD');
-  });
-
   it('logs an install_hit without the client IP', async () => {
-    mock.method(globalThis, 'fetch', async () => new Response('x'));
+    installUpstream();
     await get('https://gplay.sh/install', {
       'user-agent': 'curl/8.7.1',
       'cf-connecting-ip': '203.0.113.9',
     });
-    assert.equal(logs.length, 1);
-    assert.equal(logs[0].event, 'install_hit');
-    assert.equal(logs[0].userAgent, 'curl/8.7.1');
-    assert.ok(!JSON.stringify(logs[0]).includes('203.0.113.9'));
+    const hits = logs.filter((l) => l.event === 'install_hit');
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].userAgent, 'curl/8.7.1');
+    assert.ok(!JSON.stringify(logs).includes('203.0.113.9'));
   });
 
   for (const method of ['POST', 'PUT', 'DELETE']) {
     it(`${method} /install -> 405 with Allow`, async () => {
-      const upstream = mock.method(globalThis, 'fetch', async () => new Response('x'));
+      const upstream = installUpstream();
       const res = await get('https://gplay.sh/install', {}, method);
       assert.equal(res.status, 405);
       assert.equal(res.headers.get('allow'), 'GET, HEAD');
@@ -172,14 +182,6 @@ describe('/install proxy', () => {
       assert.equal(upstream.mock.callCount(), 0);
     });
   }
-
-  it('upstream failure -> 502 naming the upstream status', async () => {
-    mock.method(globalThis, 'fetch', async () => new Response('oops', { status: 503 }));
-    const res = await get('https://gplay.sh/install');
-    assert.equal(res.status, 502);
-    assert.match(await res.text(), /upstream 503/);
-    assertHardened(res);
-  });
 });
 
 describe('Markdown negotiation', () => {

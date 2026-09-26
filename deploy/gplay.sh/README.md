@@ -8,10 +8,11 @@ curl -fsSL https://gplay.sh/install | sh
 ```
 
 The website ([`website/`](../../website/)) is built to `website/dist` and
-uploaded as Worker **static assets**; the `/install` endpoint is dynamic —
-[`worker.js`](worker.js) proxies [`install.sh`](../../install.sh) from the repo's
-`main` branch as `text/plain`, so the repo stays the single source of truth with
-no static copy to drift. Rationale:
+uploaded as Worker **static assets**; the `/install` endpoint is dynamic:
+[`worker.js`](worker.js) resolves the latest release tag and proxies
+[`install.sh`](../../install.sh) as of that tag, as `text/plain`. The repo stays
+the single source of truth with no static copy to drift, and an installer change
+reaches users only through a release, never straight from `main`. Rationale:
 [ADR-0009](../../docs/adr/0009-install-distribution-vanity-domain.md) (install
 endpoint) and
 [ADR-0025](../../docs/adr/0025-website-served-from-install-worker.md) (serving
@@ -21,7 +22,7 @@ the site from the same Worker).
 
 | Request | Behaviour |
 | --- | --- |
-| `GET`/`HEAD` `/install` (or `/install.sh`) | proxies `install.sh` from `main`, `text/plain`, 5 min cache |
+| `GET`/`HEAD` `/install` (or `/install.sh`) | proxies `install.sh` at the latest release tag, `text/plain`, 5 min cache, tag in `x-gplay-installer-ref`; `503` if no tag resolves (see below) |
 | `docs.gplay.sh/<path>` | 301 → `https://gplay.sh/docs/<path>` |
 | `www.gplay.sh/<path>` | 301 → `https://gplay.sh/<path>` |
 | `GET` any page with `Accept: text/markdown` | the page's Markdown twin (docs `*.md`, or `llms.txt` for `/`), `text/markdown` |
@@ -38,19 +39,40 @@ reasoned through in
 handler intercept `/install`, the docs/www hostnames, and Markdown negotiation
 before falling through to asset serving.
 
+### Which installer `/install` serves
+
+The tag comes from the GitHub REST API (`releases/latest`), cached at the edge
+for 5 minutes, so a new release reaches `/install` within minutes. If the API
+fails (the unauthenticated rate limit is shared by every Worker egress IP), the
+Worker reads the tag from the `github.com/<repo>/releases/latest` redirect
+instead and logs an `install_ref_fallback` event. If neither yields a tag it
+answers `503` and logs `install_unresolved`: it never falls back to `main`.
+Failed lookups are not cached. An `install.sh` change on `main` therefore reaches
+users at the next release, not before.
+
+Tests: [`install.test.mjs`](install.test.mjs) (`node --test`, offline, a fake
+`fetch` stands in for GitHub).
+
+```bash
+curl -sI https://gplay.sh/install | grep -i x-gplay-installer-ref   # which tag is live
+```
+
 ## Tests
 
 [`worker.test.mjs`](worker.test.mjs) drives the Worker's `fetch` entry point
 with a fake `env.ASSETS` binding and a stubbed upstream `fetch`: hostname
-redirects (the `/docs2` lookalike included), the `/install` proxy with its 405
-and 502 branches, `Accept` q-value negotiation, Markdown twin lookup with 304
-passthrough, and the `Link`/`Vary`/security headers. No network, no wrangler:
+redirects (the `/docs2` lookalike included), the `/install` route's headers,
+logging and 405 branch, `Accept` q-value negotiation, Markdown twin lookup with
+304 passthrough, and the `Link`/`Vary`/security headers. The `/install` tag
+resolution and its fail-closed answers live in
+[`install.test.mjs`](install.test.mjs). No network, no wrangler:
 
 ```bash
-node --test deploy/gplay.sh/worker.test.mjs
+make worker-test   # node --test on both files
 ```
 
-`.github/workflows/site.yml` runs it on every pull request touching `deploy/**`.
+The "Docs sanity" required check runs both on every PR, and
+`.github/workflows/site.yml` runs them on pull requests touching `deploy/**`.
 
 ## Deploy
 

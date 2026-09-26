@@ -80,4 +80,4 @@ jobs:
           package-manager-cache: false
 
       - name: Run the Worker tests
-        run: node --test deploy/gplay.sh/worker.test.mjs
+        run: node --test deploy/gplay.sh/worker.test.mjs deploy/gplay.sh/install.test.mjs
