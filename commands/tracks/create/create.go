@@ -82,17 +82,19 @@ func renderTable(w io.Writer, p Payload) error {
 // pass-through) on the live path. The dry-run path has no API body, so it
 // emits a small gplay-shaped preview of the TrackConfig instead: empty
 // bytes would silently break the contract (every Payload field is
-// json:"-").
+// json:"-"). The preview leads with the dryRun marker every other mutating
+// command's preview carries, so an agent tells it from a created track.
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) > 0 {
 		_, err := w.Write(p.Raw)
 		return err
 	}
 	return output.WriteJSON(w, struct {
+		DryRun     bool   `json:"dryRun,omitempty"`
 		Track      string `json:"track"`
 		Type       string `json:"type"`
 		FormFactor string `json:"formFactor"`
-	}{Track: p.Name, Type: p.Type, FormFactor: p.FormFactor})
+	}{DryRun: p.DryRun, Track: p.Name, Type: p.Type, FormFactor: p.FormFactor})
 }
 
 // renderMarkdown writes the same fields as a Markdown bullet list, with

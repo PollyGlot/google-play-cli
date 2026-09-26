@@ -133,7 +133,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Merge the pages back into one ListSubscriptionsResponse envelope so the
 	// json view stays an API-shaped pass-through (the fully-consumed
 	// nextPageToken is the only field dropped): the team users list precedent.
-	merged, err := json.Marshal(struct {
+	merged, err := output.Marshal(struct {
 		Subscriptions []json.RawMessage `json:"subscriptions"`
 	}{Subscriptions: rawSubs})
 	if err != nil {

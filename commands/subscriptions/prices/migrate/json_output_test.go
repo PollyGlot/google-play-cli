@@ -1,6 +1,7 @@
 package migrate_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -21,6 +22,15 @@ func TestRenderJSON_dryRun_golden(t *testing.T) {
 		DryRun:   true,
 	}
 	outputtest.GoldenJSON(t, "dry_run.json.golden", p)
+}
+
+// TestRenderJSON_dryRun_requiresNeverNull pins `requires` to [] when the
+// payload carries no gate: a consumer iterates it without a null guard (#622).
+func TestRenderJSON_dryRun_requiresNeverNull(t *testing.T) {
+	got := outputtest.RenderJSON(t, migrate.Payload{Product: "premium_monthly", BasePlan: "monthly-autorenew", Regions: []string{"FR"}, DryRun: true})
+	if !bytes.Contains(got, []byte(`"requires": []`)) {
+		t.Errorf("requires must encode as [], got %s", got)
+	}
 }
 
 // TestRenderJSON_emptyBody_golden freezes the success object gplay prints when

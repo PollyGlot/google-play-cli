@@ -1,6 +1,7 @@
 package refund_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/commands/orders/refund"
@@ -12,6 +13,15 @@ import (
 func TestRenderJSON_dryRun_golden(t *testing.T) {
 	p := refund.Payload{OrderID: "GPA.1234-5678-9012-34567", Revoke: true, Requires: []string{"confirm"}, DryRun: true}
 	outputtest.GoldenJSON(t, "dry_run.json.golden", p)
+}
+
+// TestRenderJSON_dryRun_requiresNeverNull pins `requires` to [] when the
+// payload carries no gate: a consumer iterates it without a null guard (#622).
+func TestRenderJSON_dryRun_requiresNeverNull(t *testing.T) {
+	got := outputtest.RenderJSON(t, refund.Payload{OrderID: "GPA.1234-5678-9012-34567", DryRun: true})
+	if !bytes.Contains(got, []byte(`"requires": []`)) {
+		t.Errorf("requires must encode as [], got %s", got)
+	}
 }
 
 // TestRenderJSON_emptyBody_golden freezes the success object that stands in

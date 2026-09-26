@@ -28,6 +28,18 @@ func TestRenderJSON_leaderboardWriteDryRun_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "leaderboard_write_dry_run.json.golden", p)
 }
 
+// TestRenderJSON_flagBuiltBodyDryRun_golden freezes the preview of a body gplay
+// marshals itself from field flags: the name's & and <> stay literal (#622),
+// where --from-json bytes above are merely kept.
+func TestRenderJSON_flagBuiltBodyDryRun_golden(t *testing.T) {
+	body, err := gamescmd.BuildLeaderboardBody(nil, gamescmd.LeaderboardWrite{Name: "Boss <Rush> & Co"}, true)
+	if err != nil {
+		t.Fatalf("BuildLeaderboardBody: %v", err)
+	}
+	p := gamescmd.LeaderboardWritePayload{Verb: "create leaderboard", Target: "application 123456789012", DryRun: true, Body: body}
+	outputtest.GoldenJSON(t, "leaderboard_flags_dry_run.json.golden", p)
+}
+
 // TestRenderJSON_deleteDryRun_golden freezes the delete preview: deleted is
 // omitted and requires names the --confirm gate.
 func TestRenderJSON_deleteDryRun_golden(t *testing.T) {

@@ -230,7 +230,12 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 func (p Payload) renderJSON(w io.Writer) error {
 	r := p.Result
 	if r.DryRun {
-		return output.WriteJSON(w, r.Diff)
+		// Led by the dryRun marker every other mutating command's preview
+		// carries; the diff schema itself is unchanged.
+		return output.WriteJSON(w, struct {
+			DryRun bool `json:"dryRun"`
+			diff.Result
+		}{DryRun: true, Result: r.Diff})
 	}
 	out := make(map[string]json.RawMessage, len(r.Patched)+len(r.Pruned))
 	for loc, body := range r.Patched {

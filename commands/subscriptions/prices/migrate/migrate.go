@@ -100,7 +100,7 @@ type dryRunView struct {
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions, Oldest: p.Oldest, Requires: p.Requires})
+		return output.WriteJSON(w, dryRunView{DryRun: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions, Oldest: p.Oldest, Requires: output.NonNil(p.Requires)})
 	}
 	// migratePrices returns an empty body on success; emit a gplay-shaped
 	// success object so --output json (the CI default) is always parseable

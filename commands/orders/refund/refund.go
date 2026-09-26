@@ -116,7 +116,7 @@ type dryRunView struct {
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, OrderID: p.OrderID, Revoke: p.Revoke, Requires: p.Requires})
+		return output.WriteJSON(w, dryRunView{DryRun: true, OrderID: p.OrderID, Revoke: p.Revoke, Requires: output.NonNil(p.Requires)})
 	}
 	// orders.refund returns an empty body on success; emit a gplay-shaped
 	// success object so --output json (the CI default) is always parseable

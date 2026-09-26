@@ -65,15 +65,18 @@ func (p Payload) renderTable(w io.Writer) error {
 	return output.RenderTable(w, p.Cols, []devicetierscmd.Row{p.Row})
 }
 
+// dryRunView carries the ADR-0017 `requires` array like the other dry-run
+// previews: empty, because create is the ROUTINE tier (no --confirm).
 type dryRunView struct {
-	DryRun  bool   `json:"dryRun"`
-	Package string `json:"package"`
-	Bytes   int    `json:"bytes"`
+	DryRun   bool     `json:"dryRun"`
+	Package  string   `json:"package"`
+	Bytes    int      `json:"bytes"`
+	Requires []string `json:"requires"`
 }
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package, Bytes: p.Bytes})
+		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package, Bytes: p.Bytes, Requires: []string{}})
 	}
 	_, err := w.Write(p.Raw)
 	return err

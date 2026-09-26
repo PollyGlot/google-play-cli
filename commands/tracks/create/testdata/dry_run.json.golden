@@ -1,4 +1,5 @@
 {
+  "dryRun": true,
   "track": "qa-team",
   "type": "CLOSED_TESTING",
   "formFactor": "DEFAULT"

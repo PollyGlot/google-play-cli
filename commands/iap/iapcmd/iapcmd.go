@@ -15,6 +15,7 @@ import (
 	"sort"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 )
@@ -137,7 +138,7 @@ func EmbedOffers(items []iap.Item, offers []iap.OfferItem) (map[string]json.RawM
 			}
 		}
 		delete(byProduct, it.ProductID)
-		b, err := json.Marshal(product)
+		b, err := output.Marshal(product)
 		if err != nil {
 			return nil, fmt.Errorf("encode one-time product %q: %w", it.ProductID, err)
 		}
@@ -176,7 +177,7 @@ func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessa
 				if offerID == "" || optionID == "" {
 					return nil, exit.Usagef("catalog file %s.json: an offer under purchase option %q has no offerId (or the purchase option has no purchaseOptionId): the IDs are the reconciliation keys", productID, optionID)
 				}
-				b, err := json.Marshal(offer)
+				b, err := output.Marshal(offer)
 				if err != nil {
 					return nil, fmt.Errorf("encode declared offer %s/%s/%s: %w", productID, optionID, offerID, err)
 				}
@@ -204,7 +205,7 @@ func StripOffersFromProduct(raw json.RawMessage) (json.RawMessage, error) {
 			delete(option, "offers")
 		}
 	}
-	b, err := json.Marshal(product)
+	b, err := output.Marshal(product)
 	if err != nil {
 		return nil, fmt.Errorf("encode declared one-time product: %w", err)
 	}

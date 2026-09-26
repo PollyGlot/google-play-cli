@@ -76,9 +76,19 @@ type Payload struct {
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return p.renderTable(w) },
-		JSON:     func(w io.Writer) error { return output.WriteJSON(w, p.Result.Diff) },
+		JSON:     func(w io.Writer) error { return p.renderJSON(w) },
 		Markdown: func(w io.Writer) error { return p.renderMarkdown(w) },
 	}
+}
+
+// renderJSON emits the ADR-0013 diff, the same schema whichever mode ran, led
+// under --dry-run by the dryRun marker every other mutating command's preview
+// carries (omitted on a real apply, whose output is unchanged).
+func (p Payload) renderJSON(w io.Writer) error {
+	return output.WriteJSON(w, struct {
+		DryRun bool `json:"dryRun,omitempty"`
+		imagediff.Result
+	}{DryRun: p.Result.DryRun, Result: p.Result.Diff})
 }
 
 var diffHeaders = []string{"LOCALE", "IMAGE_TYPE", "OP", "SHA256", "POS"}
