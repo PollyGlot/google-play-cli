@@ -1,7 +1,7 @@
 name: Question
 description: Ask how to do something with gplay, or discuss a design before proposing it
 title: "question: "
-labels: ["question", "triage"]
+labels: ["question", "needs-triage"]
 body:
   - type: markdown
     attributes:

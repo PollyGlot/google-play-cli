@@ -68,9 +68,7 @@ LABELS=(
   "priority:medium|d93f0b|Next release window"
   "priority:low|fef2c0|Eventually"
 
-  # Triage state and community. `triage` is what the feature request and
-  # question forms apply; the bug form applies `needs-triage`.
-  "triage|ededed|Filed through the feature request or question form, awaiting triage"
+  # Triage state and community. Every issue form applies `needs-triage`.
   "needs-triage|ededed|Newly filed, awaiting label review"
   "needs-info|e4ad17|Author follow-up needed before triage can complete"
   "needs-decision|d93f0b|Needs a product, contract or design decision before code"
