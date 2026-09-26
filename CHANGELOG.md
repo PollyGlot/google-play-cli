@@ -5,6 +5,14 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1](https://github.com/PollyGlot/google-play-cli/compare/v1.7.0...v1.7.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* move the remaining modules onto the executor, one paginator, listings that say where the next page is ([#643](https://github.com/PollyGlot/google-play-cli/issues/643)) ([6d3d6a7](https://github.com/PollyGlot/google-play-cli/commit/6d3d6a7940ea4fa8cc60e97acf1ae4f199873b81))
+* **play:** Edit-scoped modules on the api executor and the test kit ([#641](https://github.com/PollyGlot/google-play-cli/issues/641)) ([0cf6e0a](https://github.com/PollyGlot/google-play-cli/commit/0cf6e0aedc6448829d44a21ff95d2ad918a7a6a4))
+
 ## [1.7.0](https://github.com/PollyGlot/google-play-cli/compare/v1.6.2...v1.7.0) (2026-09-26)
 
 
