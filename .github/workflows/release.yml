@@ -50,6 +50,13 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.ref || github.ref }}
 
+      # go.mod is the single source of the Go version: setup-go installs the
+      # exact patch named by its `toolchain` line (the `go` line is only the
+      # floor for `go install` users). Every workflow reads the same file, so
+      # CI, govulncheck and the shipped binary use one toolchain. Setting
+      # GOTOOLCHAIN=local before this step would make setup-go fall back to
+      # the `go` line (1.26.0, unpatched): don't.
+      #
       # cache: false on purpose. This job signs (cosign keyless) and attests
       # what it builds, and setup-go's cache is main-scoped, i.e. writable by
       # any workflow that runs on main. Restoring it here would let a poisoned
@@ -57,7 +64,7 @@ jobs:
       # GoReleaser step takes the same time either way.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.25'
+          go-version-file: go.mod
           cache: false
 
       - name: Install cosign
@@ -70,7 +77,7 @@ jobs:
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
-          version: '~> v2'
+          version: v2.18.2
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
