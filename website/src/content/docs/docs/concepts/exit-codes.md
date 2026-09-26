@@ -15,7 +15,7 @@ agent whether retrying can help, without parsing error messages.
 | `2` | CLI misuse: unknown flag, bad value, wrong number of positional arguments | No |
 | `3` | Safety flag required: the command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the error names it | Deterministic: re-run with the named flag |
 | `4` | Denied by environment policy: a mutating command was refused because `GPLAY_READONLY` is set; the message names the env var | No, and **not** fixable by a flag; change the environment |
-| `10` | Authentication failure: service account invalid, token refused, scope missing | No |
+| `10` | Authentication failure: service account invalid, token refused (by the token endpoint, or by the API as an HTTP 401), scope missing | No |
 | `11` | Authorization: HTTP 403, e.g. the service account was never invited on the app | No |
 | `20` | Client-side validation: malformed AAB, unknown locale, oversized listing text | No |
 | `30` | API 4xx other than auth/permissions: not found, conflict, gone | No |

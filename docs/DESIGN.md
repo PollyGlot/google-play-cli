@@ -649,7 +649,7 @@ pointing at a shared translation):
 | `2` | CLI misuse (unknown flag, bad value, repeated single-value flag, wrong number of positional args) | No |
 | `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
 | `4` | Denied by environment policy (`GPLAY_READONLY`) — a mutating command was refused; the message names the env var | No — **not** resolvable by adding a flag; change the environment |
-| `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
+| `10` | Authentication failure (SA invalid, token refused by the token endpoint or by the API as a `401`, scope missing) | No |
 | `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
 | `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
