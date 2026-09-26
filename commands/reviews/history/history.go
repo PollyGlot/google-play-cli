@@ -330,7 +330,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Read the full review history for a package from the monthly CSV reports",
 		Long: `Read the full review history for --package from Google's monthly CSV
 reports in the developer's Reporting bucket: the only channel beyond
-` + "`reviews list`" + `'s 7-day API window (ADR-0037).
+` + "`reviews list`" + `'s 7-day API window.
 
 The report is read from the Reporting bucket over the Cloud Storage API
 with a distinct read-only scope (devstorage.read_only); the service
@@ -348,9 +348,16 @@ winning; a month with no report is skipped with a WARN). --month and
 locale, version, title, summary: override with --columns device,reply,...
 
 --output json emits the parsed rows as {"reviews":[...]} with stable
-lowerCamel field names (the documented ADR-0037 deviation: the upstream is
-a CSV file, not a JSON API response); --output markdown renders a Markdown
-table.`,
+lowerCamel field names (a deliberate exception to the verbatim rule: the
+upstream is a CSV file, not a JSON API response); --output markdown renders
+a Markdown table.`,
+		Example: `  # The latest month present in the Reporting bucket
+  gplay reviews history
+
+  gplay reviews history --month 2026-08
+
+  # Half a year merged into one result set, as JSON
+  gplay reviews history --from 2026-01 --to 2026-06 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

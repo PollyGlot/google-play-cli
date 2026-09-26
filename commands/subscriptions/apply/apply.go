@@ -670,6 +670,13 @@ a separate, gated command.
 --regions-version pins the regions version sent with creates and patches
 (default ` + subscriptionscmd.DefaultRegionsVersion + `, the latest Google has
 published). GPLAY_READONLY refuses the command (exit 4).`,
+		Example: `  # Show the plan against live Play (online, nothing changes)
+  gplay subscriptions apply --dry-run
+
+  # Run it, deletes included
+  gplay subscriptions apply --confirm
+
+  gplay subscriptions apply --dir store/subscriptions --dry-run --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

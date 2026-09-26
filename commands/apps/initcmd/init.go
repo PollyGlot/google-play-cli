@@ -37,6 +37,8 @@ via walk-up. Also creates .gplay/.gitignore so per-developer overrides
 (config.local.json) and transient edit-ID files stay out of git.
 
 Run from the repo root.`,
+		Example: `  # Pin the package once; every gplay command below this directory uses it
+  gplay init --package com.example.app`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return run(cmd, opts, pkg)
 		},

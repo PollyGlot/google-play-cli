@@ -353,6 +353,14 @@ collapsed. A single-package invocation behaves exactly as before.
 
 Pass --no-verify to skip the API round-trip for every package (useful for
 offline or preparatory registration).`,
+		Example: `  # Register an app, checking access with a throwaway Edit
+  gplay apps add com.example.app
+
+  # Register several at once (each succeeds or fails on its own)
+  gplay apps add com.example.app com.example.lite com.example.wear
+
+  # Record without any API call, e.g. before the credential has access
+  gplay apps add com.example.app --no-verify`,
 		Args:          cobra.MinimumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

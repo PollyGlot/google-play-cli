@@ -209,9 +209,13 @@ gplay does not cache the icon: each run is a faithful live read.
 
 --output json returns the gplay envelope
 {"details":..,"listing":..,"icon"?:..}: each sub-object is the upstream
-API body verbatim. (Explicit exception to ADR-0003: multiple endpoints
+API body verbatim. (An exception to the verbatim rule: multiple endpoints
 are merged here, so the JSON shape is gplay-defined rather than a single
 API pass-through. The icon key is omitted when the icon slot is empty.)`,
+		Example: `  # Confirm you are pointed at the right app
+  gplay apps view
+
+  gplay apps view --package com.example.app --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

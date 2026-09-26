@@ -106,17 +106,22 @@ Signing, a key rotation request must be initiated through the Google Play
 Console UI. See
 ` + appsigning.HelpCenterURL + `
 
-The proof-of-rotation lineage is produced by apksigner, not by gplay:
-
-  apksigner rotate --out lineage.bin --old-signer ... --new-signer ...
-  gplay signing rotate --kms-key <resource> --kms-cert new-cert.pem \
-    --lineage lineage.bin --reason routine-key-upgrade --confirm
+The proof-of-rotation lineage (--lineage) is produced by apksigner rotate,
+not by gplay: gplay only carries its bytes.
 
 --reason is required and takes one of: ` + reasons + `.
 
 Prints the rotated key's certificate hashes (SHA256/SHA1/MD5); --output json
 mirrors the API response verbatim. Requires --confirm (missing → exit 3);
 rehearse first with --dry-run. GPLAY_READONLY refuses it (exit 4).`,
+		Example: `  # 1. apksigner (not gplay) produces the proof-of-rotation lineage
+  apksigner rotate --out lineage.bin --old-signer ... --new-signer ...
+
+  # 2. Rehearse, then rotate to the new Cloud KMS key
+  gplay signing rotate --kms-key "$NEW_KMS_KEY" --kms-cert new-cert.pem \
+    --lineage lineage.bin --reason routine-key-upgrade --dry-run
+  gplay signing rotate --kms-key "$NEW_KMS_KEY" --kms-cert new-cert.pem \
+    --lineage lineage.bin --reason routine-key-upgrade --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

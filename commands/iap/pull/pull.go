@@ -191,6 +191,10 @@ mirrors Play; non-.json files are never touched.
 
 --output json is a composite of the two verbatim list envelopes
 ({"oneTimeProducts":[...],"inappproduct":[...]}).`,
+		Example: `  # Write the live catalog to ./monetization/iap, then commit it
+  gplay iap pull
+
+  gplay iap pull --dir store/iap --package com.example.app`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

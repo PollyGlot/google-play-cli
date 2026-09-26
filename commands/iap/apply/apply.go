@@ -776,6 +776,14 @@ the API has no insert); a plan containing any delete, or any offer cancel
 --regions-version pins the regions version sent with writes (default
 ` + iapcmd.DefaultRegionsVersion + `). GPLAY_READONLY refuses the command
 (exit 4).`,
+		Example: `  # Show the plan against live Play (online, nothing changes)
+  gplay iap apply --dry-run
+
+  # Run it, deletes and offer cancels included
+  gplay iap apply --confirm
+
+  # Promote legacy products redeclared in the v2 schema (one-way)
+  gplay iap apply --migrate --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

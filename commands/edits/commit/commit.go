@@ -81,6 +81,10 @@ left in place: fix the cause and re-run, or ` + "`gplay edits discard`" + `.
 
 The package defaults to the repo's .gplay/config.json pin when --package is
 omitted.`,
+		Example: `  # Publish everything batched since gplay edits begin
+  gplay edits commit
+
+  gplay edits commit --package com.example.app --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

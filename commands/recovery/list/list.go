@@ -77,6 +77,8 @@ status, and creation time. --version-code is required (recoveries are keyed by
 version); --output json passes the ListAppRecoveriesResponse through verbatim.
 
 There is no ` + "`recovery view`" + `: the API exposes only list.`,
+		Example: `  gplay recovery list --version-code 1042
+  gplay recovery list --version-code 1042 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

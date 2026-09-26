@@ -125,7 +125,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run ordered diagnostic checks on the active credential",
-		Long: `Run the doctor sequence from docs/DESIGN.md §1:
+		Long: `Run the credential checks in order
+(https://gplay.sh/docs/concepts/authentication/):
 
 1. Service account JSON is valid
 2. OAuth2 access token can be minted
@@ -137,6 +138,14 @@ Checks 1–4 run once. Check 5 runs once per --package value passed (in
 order). Checks run in order and the chain stops on the first failure;
 subsequent checks are reported as skipped. Use --output json to get a
 structured []CheckResult for scripting.`,
+		Example: `  # Check the active credential, stopping at the first failing step
+  gplay auth doctor
+
+  # Also prove write access to two apps
+  gplay auth doctor --package com.example.app --package com.example.lite
+
+  # Diagnose a key file before registering it, as JSON for a script
+  gplay auth doctor --service-account ./play-sa.json --output json`,
 		// A failing doctor is a normal exit path, not a usage error;
 		// silence cobra's usage banner so it does not collide with the
 		// rendered checklist on stdout.

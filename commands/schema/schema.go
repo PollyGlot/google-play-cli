@@ -465,6 +465,14 @@ rendered directly.
                      API index; ignores the query and the other flags
 
 A query that matches nothing prints a note on stderr and exits 0.`,
+		Example: `  # What does edits.tracks.update send and return?
+  gplay schema edits.tracks.update
+
+  # Every DELETE method of the API
+  gplay schema --list --method DELETE
+
+  # The diagnostic codes a failure can carry, for a machine
+  gplay schema --codes --output json`,
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

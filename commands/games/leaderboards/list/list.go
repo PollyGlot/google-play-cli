@@ -75,10 +75,12 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `List the leaderboard configurations for a Play Games Services application.
 
 Addressing rides the numeric Play Games application ID (--application-id): a
-distinct ID space from the Android package (ADR-0033). Use --max-results and
+distinct ID space from the Android package. Use --max-results and
 --page-token to page; --output json passes the
-LeaderboardConfigurationListResponse through verbatim, including nextPageToken
-(ADR-0003).`,
+LeaderboardConfigurationListResponse through verbatim, including
+nextPageToken.`,
+		Example: `  gplay games leaderboards list --application-id 123456789012
+  gplay games leaderboards list --application-id 123456789012 --max-results 50 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -90,7 +90,9 @@ uploaded file, or referencesVersion if it points at another APK's) for a given
 versionCode and type. Opens a read-only Edit (insert → get → discard).
 
 LEGACY (OBB). --type is main or patch. --output json passes the ExpansionFile
-through verbatim (ADR-0003).`,
+through verbatim.`,
+		Example: `  gplay releases expansion-files view --version-code 1042
+  gplay releases expansion-files view --version-code 1042 --type patch --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -188,6 +188,11 @@ The passthrough flags of the former installer (--agent, --project, --global,
 --yes) are deprecated: they are accepted for compatibility, ignored, and warned
 about on stderr. The pack is always installed whole, for every agent reading
 the target directory.`,
+		Example: `  # Install the pinned skill pack into ~/.claude/skills
+  gplay install-skills
+
+  # Install it into a project's own skills directory instead
+  gplay install-skills --dir .claude/skills`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

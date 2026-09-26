@@ -225,7 +225,7 @@ conversation thread: the review body followed by any developer replies with
 their last-modified date.
 
 The reviewId comes from the REVIEW_ID column of ` + "`gplay reviews list`" + ` and is
-the same id ` + "`gplay reviews reply <reviewId>`" + ` takes. The package defaults to the
+the same id ` + "`gplay reviews reply --review-id`" + ` takes. The package defaults to the
 repo's .gplay/config.json pin when --package is omitted.
 
 The reviews API only exposes the LAST 7 DAYS, so an unknown OR expired
@@ -234,8 +234,11 @@ ages out of the window). There is no --translate flag: ` + "`reviews.get`" + ` e
 translationLanguage param, but ` + "`reviews list`" + ` does not wire it either, so it is
 omitted here for symmetry (deferred: may be added later if requested).
 
---output json is the Review object verbatim (ADR-0003 pass-through); --output
+--output json is the Review object verbatim; --output
 markdown renders a record plus the thread as blockquotes.`,
+		Example: `  gplay reviews view gp:AOqpTOGx1bY2kLm
+  gplay reviews view gp:AOqpTOGx1bY2kLm --output markdown
+  gplay reviews view gp:AOqpTOGx1bY2kLm --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

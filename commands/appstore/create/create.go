@@ -192,7 +192,7 @@ Two identifiers meet here, and mixing them up is the common mistake:
 
   --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
-                   falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
+                   falling back to $` + appstorecmd.EnvStorePackage + `
   --package        the hosted app's package name (the subject), defaulting to
                    the repo's .gplay/config.json pin when omitted
 
@@ -204,10 +204,16 @@ retry but not to re-run blindly.
 
 The response carries no fields (the acknowledgement IS the result), so the
 human views echo the two identifiers; --output json passes the API response
-through verbatim (ADR-0003), falling back to a gplay-shaped success object only
+through verbatim, falling back to a gplay-shaped success object only
 when the API answers with no body at all. Use --dry-run to preview the resolved
 target with no HTTP call. GPLAY_READONLY refuses the write (exit 4) but lets
 --dry-run run. A 403 names the app store enrollment the call requires.`,
+		Example: `  # Create the record for a hosted app (the first call, once per app)
+  gplay appstore create --store-package com.example.store --package com.example.game
+
+  # With the store set once for the shell, preview without any HTTP call
+  export GPLAY_APP_STORE_PACKAGE=com.example.store
+  gplay appstore create --package com.example.game --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

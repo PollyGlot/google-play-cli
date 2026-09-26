@@ -159,6 +159,8 @@ catalog files in bulk, then rehearse with "gplay subscriptions apply --dry-run".
 
 --output json is the ConvertRegionPricesResponse verbatim: the regional Money
 objects can be pasted into a catalog file's regionalConfigs.`,
+		Example: `  gplay subscriptions prices convert --price 4.99 --currency USD
+  gplay subscriptions prices convert --price 49.99 --currency EUR --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

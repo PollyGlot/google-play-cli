@@ -111,6 +111,11 @@ for piping. This command has no --output flag: its payload is raw bytes, not a
 Renderable. On success a ✓ line on stderr names the byte count and destination.
 
 This is a direct application-scoped read: it opens no Edit and moves no money.`,
+		Example: `  # Save the universal APK Play generated from versionCode 1042
+  gplay releases generated download 5f3c9a1e7b2d --version-code 1042 --dest app-universal.apk
+
+  # Stream the bytes to another tool instead of a file
+  gplay releases generated download 5f3c9a1e7b2d --version-code 1042 --dest - | sha256sum`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

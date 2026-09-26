@@ -233,11 +233,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reply",
 		Short: "Post a developer reply to a review (single or --batch)",
-		Long: `Post developer responses to user reviews.
-
-Single:  gplay reviews reply --package P --review-id ID --reply "Thanks!"
-Batch:   gplay reviews reply --package P --batch replies.tsv
-         gplay reviews reply --package P --batch -   (read TSV from stdin)
+		Long: `Post developer responses to user reviews, one at a time (--review-id
+with --reply) or in a batch (--batch with a TSV file, or - for stdin).
 
 The batch stream is TSV: one <review-id>\t<reply text> line per reply. Blank
 lines and lines starting with # are skipped; a reply containing tabs or
@@ -248,6 +245,14 @@ rest. The process exits non-zero with the highest exit code seen across rows.
 --review-id/--reply and --batch are mutually exclusive. --dry-run parses the
 input and prints the planned actions without calling the API. --output json
 echoes the API response (single) or a {"results":[...]} envelope (batch).`,
+		Example: `  # Reply to one review
+  gplay reviews reply --review-id gp:AOqpTOGx1bY2kLm --reply "Thanks! Fixed in 2.4."
+
+  # Rehearse a batch: one <review-id><TAB><reply> line per reply
+  gplay reviews reply --batch replies.tsv --dry-run
+
+  # Post the batch from stdin
+  gplay reviews reply --batch - < replies.tsv`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

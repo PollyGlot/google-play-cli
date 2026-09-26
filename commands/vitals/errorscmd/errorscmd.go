@@ -31,7 +31,7 @@ import (
 
 // mappingsNote documents the obfuscation degradation (#250) on the views that
 // carry stack frames.
-const mappingsNote = "NOTE: stack frames are obfuscated until you upload ProGuard/R8 mappings (gplay releases mappings upload, #250); until then frames are not symbolicated."
+const mappingsNote = "NOTE: stack frames are obfuscated until you upload ProGuard/R8 mappings (gplay releases mappings upload); until then frames are not symbolicated."
 
 // NewCommand returns the `gplay vitals errors` group. Every leaf is wrapped with
 // kernel.WithScope so it mints a least-privilege playdeveloperreporting token,
@@ -132,14 +132,13 @@ func newCountsCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Query the errorCount metric set (errorReportCount / distinctUsers) as a
 timeline, the count side of vitals errors.
 
-  gplay vitals errors counts --package com.example.app
-  gplay vitals errors counts --by versionCode --version 123 --since 7d
-  gplay vitals errors counts --describe
-
 --by slices the timeline (` + vitalscmd.ByChoices() + `); --version filters to
 one versionCode. Read-only; --output json mirrors the API response verbatim.
 --describe fetches the metric set's descriptor instead (latest available end
 time per aggregation period); the window flags do not apply and are rejected.`,
+		Example: `  gplay vitals errors counts --package com.example.app
+  gplay vitals errors counts --by versionCode --since 7d
+  gplay vitals errors counts --describe`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -232,12 +231,14 @@ func newIssuesCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Search the clustered error issues: crashes and ANRs grouped by cause and
 location: over a window.
 
-  gplay vitals errors issues --package com.example.app
-  gplay vitals errors issues --filter "errorIssueType = CRASH" --since 7d --limit 20
-
 ` + mappingsNote + `
 
 Read-only; --output json mirrors the API response verbatim.`,
+		Example: `  gplay vitals errors issues --package com.example.app
+
+  # The 20 most frequent crash clusters of the last week
+  gplay vitals errors issues --filter "errorIssueType = CRASH" --order-by "errorReportCount desc" \
+    --since 7d --limit 20`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -327,13 +328,14 @@ func newReportsCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Search individual error reports (the platform-produced stack traces) over a
 window.
 
-  gplay vitals errors reports --package com.example.app
-  gplay vitals errors reports --filter "versionCode = 123" --since 7d --limit 10
-
 ` + mappingsNote + `
 
 The full report text is in --output json; the table shows the first line.
 Read-only; --output json mirrors the API response verbatim.`,
+		Example: `  gplay vitals errors reports --package com.example.app
+
+  # Full stack traces of one versionCode, as JSON
+  gplay vitals errors reports --filter "versionCode = 1042" --since 7d --limit 10 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

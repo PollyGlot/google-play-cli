@@ -64,7 +64,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "update <leaderboardId>",
 		Short: "Update a leaderboard configuration (draft)",
 		Long: `Update a leaderboard configuration by its ID. The write affects the editable
-draft; the published copy is read-only and there is no publish method (ADR-0033).
+draft; the published copy is read-only and there is no publish method.
 
 This is a full PUT replace: the body REPLACES the draft. For a partial edit,
 fetch the current config with 'gplay games leaderboards view <id> --output json',
@@ -74,6 +74,9 @@ edit it, and resend it with --from-json. The field flags (--name, --score-order,
 
 Routine write (no --confirm); rehearse with --dry-run (no HTTP: --output json
 shows the request body). GPLAY_READONLY refuses the live write (exit 4).`,
+		Example: `  # Partial edit: fetch, change the JSON, send the whole body back
+  gplay games leaderboards update CgkI4ZqN0pMUEAIQAg --from-json leaderboard.json --dry-run
+  gplay games leaderboards update CgkI4ZqN0pMUEAIQAg --from-json leaderboard.json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

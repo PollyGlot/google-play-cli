@@ -218,9 +218,11 @@ func renderMarkdown(w io.Writer, rows []AppRow) error {
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var outputFlag string
 	cmd := &cobra.Command{
-		Use:           "list",
-		Short:         "List packages registered under the active Account",
-		Long:          `List every Android package registered under the active Account in gplay's local registry. In table and markdown output the row matching the current repo's .gplay/config.json pin (if any) is marked with a ✓ in the Pinned column; in JSON output the same row carries "pinned": true. Pass no positional arguments: listing scope is always the active Account.`,
+		Use:   "list",
+		Short: "List packages registered under the active Account",
+		Long:  `List every Android package registered under the active Account in gplay's local registry. In table and markdown output the row matching the current repo's .gplay/config.json pin (if any) is marked with a ✓ in the Pinned column; in JSON output the same row carries "pinned": true. Pass no positional arguments: listing scope is always the active Account.`,
+		Example: `  gplay apps list
+  gplay apps list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -215,6 +215,9 @@ nothing is committed. Cross-track listing is the job of ` + "`gplay tracks list`
 Default table columns: name, status, userFraction, versionCodes, notes.
 Override with --columns name,status,...  (--output json is the raw
 tracks.get payload; --output markdown renders a Markdown table.)`,
+		Example: `  gplay releases list --track production
+  gplay releases list --track beta --columns name,status,userFraction
+  gplay releases list --track internal --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

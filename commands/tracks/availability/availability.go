@@ -251,7 +251,9 @@ countryavailability.get → discard); nothing is committed. To CHANGE where
 an app is available, use the Play Console.
 
 --output json returns the edits.countryavailability.get body verbatim (a
-clean ADR-0003 pass-through: a single endpoint is read).`,
+clean pass-through: a single endpoint is read).`,
+		Example: `  gplay tracks availability view --track production
+  gplay tracks availability view --track beta --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

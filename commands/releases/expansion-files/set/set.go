@@ -130,6 +130,11 @@ Wraps edits.expansionfiles.update (PUT) inside the Edit lifecycle.
 LEGACY (OBB). --type is main or patch; --references-version is the APK
 versionCode whose expansion file to point at. --dry-run validates inputs
 without any HTTP call. GPLAY_READONLY refuses it.`,
+		Example: `  # Point versionCode 1043 at the main expansion file already uploaded for 1042
+  gplay releases expansion-files set --version-code 1043 --references-version 1042
+
+  # Same for the patch file, validated without any HTTP call
+  gplay releases expansion-files set --version-code 1043 --references-version 1042 --type patch --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

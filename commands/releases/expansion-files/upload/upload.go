@@ -142,6 +142,11 @@ the local file and inputs without any HTTP call. GPLAY_READONLY refuses it.
 Before any byte is uploaded the file is checked locally: passing an AAB or an
 APK where an expansion file belongs fails offline. Pass --skip-preflight to
 upload it as-is.`,
+		Example: `  # Attach the main expansion file to versionCode 1042
+  gplay releases expansion-files upload main.1042.com.example.app.obb --version-code 1042
+
+  # Validate a patch file and the inputs without any HTTP call
+  gplay releases expansion-files upload patch.1042.com.example.app.obb --version-code 1042 --type patch --dry-run`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

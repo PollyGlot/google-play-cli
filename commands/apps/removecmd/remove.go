@@ -175,6 +175,8 @@ Idempotent: removing a package that isn't in the registry exits 0 with
 a stderr note. If the removed package is currently pinned by the
 repo's .gplay/config.json, a stderr warning is printed but the project
 config is left untouched (repinning is the caller's decision).`,
+		Example: `  # Stop tracking an app locally (Google Play is not touched)
+  gplay apps remove com.example.old`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -266,7 +267,11 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	apps.AddCommand(initcmd.NewCommand(initcmd.Options{}))
+	// Same command under a second path: its Example names the path it is
+	// read from, so `gplay apps init --help` shows `gplay apps init`.
+	appsInit := initcmd.NewCommand(initcmd.Options{})
+	appsInit.Example = strings.ReplaceAll(appsInit.Example, "gplay init", "gplay apps init")
+	apps.AddCommand(appsInit)
 	apps.AddCommand(addcmd.NewCommand(boot))
 	apps.AddCommand(listcmd.NewCommand(boot))
 	apps.AddCommand(accessiblecmd.NewCommand(boot))
@@ -909,8 +914,9 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	root.AddCommand(installskills.NewCommand(installskills.Options{}))
 
 	root.AddCommand(&cobra.Command{
-		Use:   "version",
-		Short: "Print gplay version",
+		Use:     "version",
+		Short:   "Print gplay version",
+		Example: "  gplay version",
 		Run: func(cmd *cobra.Command, _ []string) {
 			info, ok := debug.ReadBuildInfo()
 			v, c, d := resolveVersion(version, commit, date, info, ok)

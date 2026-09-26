@@ -80,9 +80,12 @@ given versionCode. Each artifact carries an opaque downloadId to feed
 
 --version-code is required (the resource is keyed by version). The human table
 flattens the grouped-by-signing-key response to one row per artifact; --output
-json passes the GeneratedApksListResponse through verbatim (ADR-0003).
+json passes the GeneratedApksListResponse through verbatim.
 
 This is a direct application-scoped read: it opens no Edit.`,
+		Example: `  gplay releases generated list --version-code 1042
+  gplay releases generated list --version-code 1042 --columns type,downloadId
+  gplay releases generated list --version-code 1042 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

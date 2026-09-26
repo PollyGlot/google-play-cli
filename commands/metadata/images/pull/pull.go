@@ -300,8 +300,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "Rapatriate the Store images live on Play into the local Metadata tree",
-		Long: `Rapatriate the Store images currently live on Google Play for --package
+		Short: "Download the Store images live on Play into the local Metadata tree",
+		Long: `Download the Store images currently live on Google Play for --package
 into the local Metadata tree under --dir (default ./metadata): singular
 slots as ` + "`<locale>/images/<type>.<ext>`" + ` and gallery slots as
 ` + "`<locale>/images/<type>/1.<ext>…N.<ext>`" + ` in display order.
@@ -309,10 +309,12 @@ slots as ` + "`<locale>/images/<type>.<ext>`" + ` and gallery slots as
 Reads inside a read-only Edit (open → list slots → download bytes →
 discard); nothing is committed. The write is additive: a slot with no
 images online writes nothing, so pull never emits an empty slot and a
-` + "`metadata images apply`" + ` immediately after a pull is a no-op
-(ADR-0013). Filenames are synthesized (the API carries none) and the
+` + "`metadata images apply`" + ` immediately after a pull is a no-op.
+Filenames are synthesized (the API carries none) and the
 extension is sniffed from the image bytes (PNG/JPEG), not the response
 header.`,
+		Example: `  gplay metadata images pull
+  gplay metadata images pull --dir store/metadata --package com.example.lite`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

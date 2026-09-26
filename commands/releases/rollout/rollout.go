@@ -254,6 +254,11 @@ Status becomes inProgress if it wasn't already.
 Targets the latest release on the track; when two releases coexist (e.g.
 inProgress + halted) pass --version-code N or --release-name <name> to pick
 one, otherwise the command refuses rather than guess.`,
+		Example: `  # Widen the production rollout to 20% of users
+  gplay releases rollout --track production --to 0.2 --confirm
+
+  # Preview the change on one of two coexisting releases
+  gplay releases rollout --track production --to 0.5 --version-code 1042 --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

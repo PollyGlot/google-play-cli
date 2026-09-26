@@ -103,6 +103,10 @@ With no open Edit, validate fails with exit 60. The package defaults to the
 repo's .gplay/config.json pin when --package is omitted.
 
 --output json mirrors the API's AppEdit response verbatim.`,
+		Example: `  # Dry-run the commit: exit 0 means the pinned Edit would commit as it stands
+  gplay edits validate
+
+  gplay edits validate --package com.example.app --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

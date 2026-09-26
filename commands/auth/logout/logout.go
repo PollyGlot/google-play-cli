@@ -88,14 +88,16 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logout <name>",
 		Short: "Remove a registered Account from the config and the keystore",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Remove the Account named release-bot and delete its credential from the keystore
+  gplay auth logout release-bot --confirm`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{Name: args[0], Confirm: confirm})
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&confirm, "confirm", false, "confirm credential removal (required; see docs/DESIGN.md §9)")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "confirm credential removal (required: the credential is deleted from the keystore; without it logout exits 3)")
 	return cmd
 }
 

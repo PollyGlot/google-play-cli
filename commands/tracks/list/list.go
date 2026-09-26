@@ -330,6 +330,9 @@ the job of ` + "`gplay releases list --track <T>`" + `.
 Default table columns: track, kind, release, status, userFraction,
 versionCodes. Override with --columns track,status,...  (--output json is
 the raw tracks.list payload; --output markdown renders a Markdown table.)`,
+		Example: `  gplay tracks list
+  gplay tracks list --columns track,status,versionCodes
+  gplay tracks list --output json | jq -r '.tracks[].track'`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

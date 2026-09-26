@@ -357,6 +357,14 @@ low-stakes and reversible.
 Writes inside an implicit Edit (open → testers.update → commit). Use
 --dry-run to validate and preview the payload without any HTTP call, and
 --keep-edit-on-failure to skip the auto-discard cleanup for debugging.`,
+		Example: `  # Open the alpha track to two Google Groups (replaces the whole list)
+  gplay testers set --track alpha --group qa@example.com,beta-testers@googlegroups.com
+
+  # Preview the new audience without any HTTP call
+  gplay testers set --track qa-team --group qa@example.com --dry-run
+
+  # Close the test: empty the audience on purpose
+  gplay testers set --track qa-team --clear`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -94,6 +94,11 @@ omitted.
 
 --output json emits {"package","editId","open"}; with --live it adds
 "live": true and, for an Edit the server still knows, "expiryTimeSeconds".`,
+		Example: `  # Is an explicit Edit pinned here? (offline)
+  gplay edits status
+
+  # Also ask Google whether it is still alive, and when it expires
+  gplay edits status --live --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

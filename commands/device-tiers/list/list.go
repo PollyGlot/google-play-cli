@@ -74,7 +74,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "List the app's device tier configs (newest first)",
 		Long: `List the app's device tier configs, newest first. Use --page-size and
 --page-token to page; --output json passes the ListDeviceTierConfigsResponse
-through verbatim, including nextPageToken (ADR-0003).`,
+through verbatim, including nextPageToken.`,
+		Example: `  gplay device-tiers list
+  gplay device-tiers list --page-size 20 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

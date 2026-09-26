@@ -144,7 +144,7 @@ func TestRunIssues_searchesAndWarnsAboutMappings(t *testing.T) {
 	if len(p.Issues) != 1 || p.Issues[0].Cause != "NullPointerException" {
 		t.Errorf("issues = %+v", p.Issues)
 	}
-	if !strings.Contains(stderr.String(), "#250") {
+	if !strings.Contains(stderr.String(), "gplay releases mappings upload") {
 		t.Errorf("issues with frames must note mappings (#250); stderr = %q", stderr.String())
 	}
 }
@@ -182,7 +182,7 @@ func TestRunReports_searchesAndKeepsFrames(t *testing.T) {
 	if !strings.Contains(buf.String(), "NullPointerException") {
 		t.Errorf("report table lost the frame: %s", buf.String())
 	}
-	if !strings.Contains(stderr.String(), "#250") {
+	if !strings.Contains(stderr.String(), "gplay releases mappings upload") {
 		t.Errorf("reports must note mappings (#250); stderr = %q", stderr.String())
 	}
 }

@@ -263,6 +263,12 @@ CAN_CREATE_MANAGED_PLAY_APPS capability; a 403 names both.
 
 --output json passes the created CustomApp through verbatim (including the
 output-only packageName). GPLAY_READONLY refuses the live write (exit 4).`,
+		Example: `  # Rehearse: validate the inputs and the artifact, no HTTP call
+  gplay customapps create app-release.aab --title "Example Field Kit" --default-language en-US --dry-run
+
+  # Create it for one organization (irreversible: the API has no delete)
+  gplay customapps create app-release.aab --title "Example Field Kit" --default-language en-US \
+    --organization 0a1b2c3d4e --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
