@@ -6,6 +6,7 @@ import logoMark from '../assets/logo-mark.svg';
 import logoMarkLight from '../assets/logo-mark-light.svg';
 import surface from '../data/cli-surface.json';
 import releaseManifest from '../../../.release-please-manifest.json';
+import { THEME_COLOR } from '../theme-color.mjs';
 
 // Current CLI version, from the release-please manifest (single source of
 // truth for the released version, no network call at build time).
@@ -31,6 +32,14 @@ const stats = [
   { value: '1', label: 'static binary' },
   { value: '0', label: 'runtime deps' },
 ];
+
+// Split prose into plain runs and CLI flags. Each flag renders as one
+// nowrap <code>, so a line never breaks after its leading hyphens (a reader
+// copying "--" + newline + "dry-run" gets a broken flag). The data stays
+// plain strings: the FAQ answers also feed the JSON-LD below.
+const FLAG = /(--[a-z][a-z0-9-]*)/;
+const flagRuns = (text: string) =>
+  text.split(FLAG).map((run, i) => ({ run, flag: i % 2 === 1 }));
 
 const features = [
   {
@@ -148,7 +157,7 @@ const demoSession = [
     <!-- First-paint theme resolution: read the shared Starlight preference,
          else the OS, and set data-theme before paint so there is no flash.
          Same storage key the docs use, so a choice carries across the site. -->
-    <script is:inline>
+    <script is:inline define:vars={{ themeColor: THEME_COLOR }}>
       (() => {
         const stored = (() => {
           try {
@@ -170,7 +179,7 @@ const demoSession = [
         // even an explicit override opposite the OS gets the right chrome.
         const tc = document.createElement('meta');
         tc.name = 'theme-color';
-        tc.setAttribute('content', theme === 'light' ? '#ffffff' : '#050507');
+        tc.setAttribute('content', themeColor[theme]);
         document.head.appendChild(tc);
       })();
     </script>
@@ -185,8 +194,8 @@ const demoSession = [
     <!-- No-JS fallback: follow the OS (the page also follows the OS without JS).
          With JS, the media-less meta injected above wins and tracks the
          resolved theme, including an explicit override opposite the OS. -->
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#050507" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content={THEME_COLOR.dark} />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content={THEME_COLOR.light} />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -377,7 +386,11 @@ const demoSession = [
           {features.map((f) => (
             <article class="rounded-lg border border-border bg-surface-panel p-5">
               <h3 class="m-0 text-base font-semibold text-fg">{f.title}</h3>
-              <p class="mb-0 mt-2 text-sm leading-relaxed text-fg-muted">{f.body}</p>
+              <p class="mb-0 mt-2 text-sm leading-relaxed text-fg-muted">
+                {flagRuns(f.body).map(({ run, flag }) =>
+                  flag ? <code class="whitespace-nowrap font-mono text-fg-body">{run}</code> : run
+                )}
+              </p>
             </article>
           ))}
         </div>
@@ -504,7 +517,11 @@ const demoSession = [
                   ><path d="m6 9 6 6 6-6" /></svg
                 >
               </summary>
-              <p class="mb-0 mt-3 leading-relaxed text-fg-muted">{f.a}</p>
+              <p class="mb-0 mt-3 leading-relaxed text-fg-muted">
+                {flagRuns(f.a).map(({ run, flag }) =>
+                  flag ? <code class="whitespace-nowrap font-mono text-fg-body">{run}</code> : run
+                )}
+              </p>
             </details>
           ))}
         </div>
@@ -540,7 +557,7 @@ const demoSession = [
          same `starlight-theme` key the docs use (empty string = System, the
          Starlight storage contract), so one choice carries across the site.
          Applies instantly, persists, and follows the OS while in System. -->
-    <script is:inline>
+    <script is:inline define:vars={{ themeColor: THEME_COLOR }}>
       (() => {
         const KEY = 'starlight-theme';
         const radios = Array.from(
@@ -567,7 +584,7 @@ const demoSession = [
           document.documentElement.dataset.theme = t;
           // Keep the mobile chrome in sync with the resolved theme.
           const tc = document.querySelector('meta[name="theme-color"]:not([media])');
-          if (tc) tc.setAttribute('content', t === 'light' ? '#ffffff' : '#050507');
+          if (tc) tc.setAttribute('content', themeColor[t]);
         };
         const reflect = (pref) => {
           radios.forEach((r) => {

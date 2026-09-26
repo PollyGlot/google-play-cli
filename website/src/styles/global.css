@@ -8,19 +8,20 @@
 @import 'tailwindcss/utilities.css' layer(utilities);
 
 @theme {
-  /* gplay brand palette (docs/marketing visual system) */
-  --color-brand: #3ddc84;
-  --color-brand-dim: #2bb46b;
-  --color-ink: #050507;
+  /* gplay iridescent accents (docs/marketing visual system) */
   --color-iris-blue: #82afff;
   --color-iris-cyan: #96e1f0;
   --color-iris-pink: #ff6ec3;
 }
 
-/* Semantic theme tokens (ADR-0035) — values live in theme.css per data-theme.
+/* Brand greens and ink alias the primitives in theme.css (one value each), and
+   the semantic theme tokens (ADR-0035) resolve per data-theme there too.
    `inline` makes the utilities reference var(--…) directly so they re-resolve
    when the theme attribute flips. Drives the landing's light/dark palette. */
 @theme inline {
+  --color-brand: var(--gplay-neon);
+  --color-brand-dim: var(--gplay-neon-dim);
+  --color-ink: var(--gplay-ink);
   --color-surface: var(--surface);
   --color-surface-panel: var(--surface-panel);
   --color-fg: var(--fg);
