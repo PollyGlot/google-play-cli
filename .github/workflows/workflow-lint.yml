@@ -1,0 +1,76 @@
+name: Workflow lint
+
+# Lints the CI definitions themselves whenever anything under .github/ changes:
+#   - actionlint: syntax, expression types, and shellcheck over every `run:`.
+#   - zizmor: security audit (unpinned actions, cache poisoning in publishing
+#     jobs, over-broad token permissions, persisted credentials, template
+#     injection). Accepted findings live in .github/zizmor.yml, with a reason.
+#
+# Its own file rather than a job in ci.yml: path-triggered on .github/** only,
+# so ordinary code and docs PRs never pay it. Not a required check, for the
+# same reason as release-rehearsal.yml: a check that skips on most PRs would
+# block their merge if required.
+#
+# Both tools are pinned. Dependabot bumps the zizmor-action SHA, but the zizmor
+# and actionlint versions below are bumped by hand (with actionlint's checksum,
+# from the release's actionlint_<version>_checksums.txt).
+on:
+  pull_request:
+    paths:
+      - '.github/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/**'
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A release binary verified against a checksum pinned here, rather than
+      # the upstream download script fetched from a moving branch.
+      - name: Install actionlint
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          archive="actionlint_${VERSION}_linux_amd64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/${archive}"
+          echo "${SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
+
+      # shellcheck is preinstalled on the runner; actionlint picks it up from
+      # PATH and checks every `run:` script with it.
+      - name: Run actionlint
+        run: '"$RUNNER_TEMP/actionlint" -color'
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Runs the digest-pinned zizmor image for `version`. Findings are printed
+      # as annotations on the PR rather than uploaded to code scanning, so the
+      # job needs no security-events grant. Online audits (impostor commits,
+      # known-vulnerable actions) read the API with the read-only GITHUB_TOKEN.
+      - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          version: 1.30.1
+          persona: regular
+          min-severity: medium
+          config: .github/zizmor.yml
+          advanced-security: false
+          annotations: true
