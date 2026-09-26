@@ -40,7 +40,9 @@ gplay releases upload app.aab --track internal --retry 3 --timeout 2m
 
 `--retry` defaults to `0` (no retry). It **never** retries non-transient 4xx
 (auth, validation) or `edits.commit`, where a duplicate commit could
-double-publish, so it is safe to leave on. `--timeout` defaults to 60s for
+double-publish, and it replays a non-idempotent write (an upload, a create, a
+refund) only when the request provably never reached Google, so it is safe to
+leave on. `Retry-After` is honoured up to the 30s maximum backoff. `--timeout` defaults to 60s for
 control-plane calls and is unbounded for uploads; with `--retry` it becomes
 a per-attempt bound. A deadline-exceeded failure maps to exit `50`, so the
 same wrapper that retries a network blip retries a timeout.

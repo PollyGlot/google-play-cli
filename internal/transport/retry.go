@@ -5,11 +5,13 @@ import (
 	"errors"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 )
 
@@ -33,13 +35,18 @@ type RetryOptions struct {
 }
 
 // WithRetry wraps inner so transport-level failures, HTTP 5xx, and HTTP 429
-// (honoring Retry-After) are retried up to opts.MaxRetries times with
-// exponential backoff plus jitter. Other 4xx (auth, validation) are never
-// retried: retrying them just wastes time. `edits.commit` is never retried:
-// it is the one operation where a duplicate could double-publish (its exit-60
-// conflict classification already guides the caller). Request bodies are
-// recreated per attempt via Request.GetBody, so a retried upload re-sends from a
-// fresh reader. MaxRetries == 0 returns inner unchanged.
+// (honoring Retry-After, capped at MaxDelay) are retried up to opts.MaxRetries
+// times with exponential backoff plus jitter. Other 4xx (auth, validation) are
+// never retried: retrying them just wastes time.
+//
+// Only an idempotent request is replayed after an attempt that may have
+// reached the server (a 5xx, a reset, a per-attempt timeout). Idempotency is
+// the method's declared bit in internal/apiregistry, so a create, an append or
+// a money-moving action is retried only on an outcome that proves it was never
+// applied: a dial or DNS failure, or a 429. `edits.commit` is never retried at
+// all (its exit-60 conflict classification already guides the caller).
+// Request bodies are recreated per attempt via Request.GetBody, so a retried
+// upload re-sends from a fresh reader. MaxRetries == 0 returns inner unchanged.
 func WithRetry(inner http.RoundTripper, opts RetryOptions) http.RoundTripper {
 	if inner == nil {
 		inner = http.DefaultTransport
@@ -97,6 +104,9 @@ func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if excluded || attempt >= rt.maxRetries || !retryable(resp, err) {
 			return resp, err
 		}
+		if !apiregistry.IdempotentRequest(req) && !neverApplied(resp, err) {
+			return resp, err
+		}
 		// Drain + close the discarded response so the connection can be reused.
 		if resp != nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
@@ -121,6 +131,23 @@ func retryable(resp *http.Response, err error) bool {
 		return false
 	}
 	return resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+}
+
+// neverApplied reports whether a failed attempt provably did not reach the
+// server's write path, the only case where a non-idempotent request may be
+// sent again: the connection was never opened (dial or DNS failure), or the
+// server refused it up front with a 429. A 5xx, a reset or a timeout after the
+// request left the machine proves nothing: the write may have landed.
+func neverApplied(resp *http.Response, err error) bool {
+	if err == nil {
+		return resp != nil && resp.StatusCode == http.StatusTooManyRequests
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(err, &opErr) && opErr.Op == "dial"
 }
 
 // isAuthRefusal reports whether a transport error is a refused OAuth2 token
@@ -183,11 +210,13 @@ func cloneWithFreshBody(req *http.Request) (*http.Request, error) {
 }
 
 // backoff returns the delay before the next attempt. A 429 with a Retry-After
-// header is honored verbatim; otherwise it is exponential (base * 2^attempt,
-// capped at MaxDelay) with jitter.
+// header is honored up to MaxDelay: a server asking for an hour would otherwise
+// park a CI job that long, and --timeout bounds each attempt, not the sleep in
+// between. Otherwise the delay is exponential (base * 2^attempt, capped at
+// MaxDelay) with jitter.
 func (rt *retryTransport) backoff(attempt int, resp *http.Response) time.Duration {
 	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
-		if d, ok := parseRetryAfter(resp.Header.Get("Retry-After")); ok {
+		if d, ok := parseRetryAfter(resp.Header.Get("Retry-After"), rt.maxDelay); ok {
 			return d
 		}
 	}
@@ -202,24 +231,26 @@ func (rt *retryTransport) backoff(attempt int, resp *http.Response) time.Duratio
 	return rt.jitter(d)
 }
 
-// parseRetryAfter parses a Retry-After header value: either delay-seconds (a
-// non-negative integer) or an HTTP-date.
-func parseRetryAfter(v string) (time.Duration, bool) {
+// parseRetryAfter parses a Retry-After header value, either delay-seconds (a
+// non-negative integer) or an HTTP-date, and clamps the result to [0, maxDelay].
+// The seconds are compared to the cap BEFORE the multiplication: a huge value
+// would overflow time.Duration into a negative delay and retry at once.
+func parseRetryAfter(v string, maxDelay time.Duration) (time.Duration, bool) {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return 0, false
 	}
-	if secs, err := strconv.Atoi(v); err == nil {
+	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
 		if secs < 0 {
 			return 0, false
+		}
+		if secs > int64(maxDelay/time.Second) {
+			return maxDelay, true
 		}
 		return time.Duration(secs) * time.Second, true
 	}
 	if t, err := http.ParseTime(v); err == nil {
-		if d := time.Until(t); d > 0 {
-			return d, true
-		}
-		return 0, true
+		return min(max(time.Until(t), 0), maxDelay), true
 	}
 	return 0, false
 }

@@ -65,6 +65,9 @@ func (e *Error) ExitCode() int {
 	if e == nil {
 		return 0
 	}
+	if isBodyRead(e.Cause) {
+		return StatusToExitCode(0) // a 2xx cut mid-body: the network failed, not the API
+	}
 	if e.StatusCode == 0 {
 		// Local mirror of exit.Coder: package exit imports api, so api
 		// cannot import it back.
