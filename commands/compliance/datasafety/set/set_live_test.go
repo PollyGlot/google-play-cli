@@ -10,8 +10,6 @@ package set_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -28,6 +26,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 	"golang.org/x/oauth2"
 )
 
@@ -89,10 +88,7 @@ func liveJSONResp(status int, body string) *http.Response {
 
 func liveSAJSON(t *testing.T) []byte {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("rsa.GenerateKey: %v", err)
-	}
+	key := testkit.RSAKey(t)
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)

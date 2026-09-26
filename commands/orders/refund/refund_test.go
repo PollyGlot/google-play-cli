@@ -3,8 +3,6 @@ package refund_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -22,6 +20,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // refundRT answers the /token exchange and the orders.refund POST, recording
@@ -58,7 +57,7 @@ func jsonResp(status int, body string) *http.Response {
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	key := testkit.RSAKey(t)
 	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
 	raw, _ := json.Marshal(map[string]any{"type": "service_account", "project_id": "p", "private_key": string(pemBytes), "client_email": "ci@p.iam.gserviceaccount.com", "token_uri": "https://oauth2.googleapis.com/token"})

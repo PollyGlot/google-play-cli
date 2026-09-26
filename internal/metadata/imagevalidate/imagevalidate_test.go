@@ -5,30 +5,13 @@
 package imagevalidate_test
 
 import (
-	"bytes"
-	"image"
-	"image/jpeg"
-	"image/png"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagevalidate"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-// pngOf / jpgOf produce a real (decodable) image of exactly w×h so
-// image.DecodeConfig reports those dimensions and the format.
-func pngOf(w, h int) []byte {
-	var b bytes.Buffer
-	_ = png.Encode(&b, image.NewRGBA(image.Rect(0, 0, w, h)))
-	return b.Bytes()
-}
-
-func jpgOf(w, h int) []byte {
-	var b bytes.Buffer
-	_ = jpeg.Encode(&b, image.NewRGBA(image.Rect(0, 0, w, h)), nil)
-	return b.Bytes()
-}
 
 func slot(data ...[]byte) [][]byte { return data }
 
@@ -47,10 +30,10 @@ func hasProblem(ps []imagevalidate.Problem, ty images.Type, rule string) bool {
 func TestValidate_validTree_noProblems(t *testing.T) {
 	tr := imagetree.Tree{
 		"en-US": {
-			images.Icon:             slot(pngOf(512, 512)),
-			images.FeatureGraphic:   slot(jpgOf(1024, 500)),
-			images.TvBanner:         slot(pngOf(1280, 720)),
-			images.PhoneScreenshots: slot(pngOf(1080, 1920), jpgOf(1080, 1920)),
+			images.Icon:             slot(testkit.PNG(512, 512)),
+			images.FeatureGraphic:   slot(testkit.JPEG(1024, 500)),
+			images.TvBanner:         slot(testkit.PNG(1280, 720)),
+			images.PhoneScreenshots: slot(testkit.PNG(1080, 1920), testkit.JPEG(1080, 1920)),
 		},
 	}
 	if ps := imagevalidate.Validate(tr); len(ps) != 0 {
@@ -61,7 +44,7 @@ func TestValidate_validTree_noProblems(t *testing.T) {
 // TestValidate_exactDimensions asserts a singular slot off its required exact
 // size is a dimensions violation (icon must be 512×512).
 func TestValidate_exactDimensions(t *testing.T) {
-	tr := imagetree.Tree{"en-US": {images.Icon: slot(pngOf(500, 500))}}
+	tr := imagetree.Tree{"en-US": {images.Icon: slot(testkit.PNG(500, 500))}}
 	ps := imagevalidate.Validate(tr)
 	if !hasProblem(ps, images.Icon, "dimensions") {
 		t.Errorf("500×500 icon should violate exact dimensions: %+v", ps)
@@ -71,7 +54,7 @@ func TestValidate_exactDimensions(t *testing.T) {
 // TestValidate_screenshotSideRange asserts a screenshot with a side outside
 // [320,3840] is a side violation.
 func TestValidate_screenshotSideRange(t *testing.T) {
-	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: slot(pngOf(200, 400))}}
+	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: slot(testkit.PNG(200, 400))}}
 	ps := imagevalidate.Validate(tr)
 	if !hasProblem(ps, images.PhoneScreenshots, "side") {
 		t.Errorf("200px side should violate the screenshot side range: %+v", ps)
@@ -81,7 +64,7 @@ func TestValidate_screenshotSideRange(t *testing.T) {
 // TestValidate_screenshotAspectRatio asserts a screenshot whose long side
 // exceeds 2× the short side is a ratio violation.
 func TestValidate_screenshotAspectRatio(t *testing.T) {
-	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: slot(pngOf(400, 1600))}} // 4:1
+	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: slot(testkit.PNG(400, 1600))}} // 4:1
 	ps := imagevalidate.Validate(tr)
 	if !hasProblem(ps, images.PhoneScreenshots, "ratio") {
 		t.Errorf("4:1 screenshot should violate the aspect ratio bound: %+v", ps)
@@ -103,7 +86,7 @@ func TestValidate_format(t *testing.T) {
 func TestValidate_perSlotCount(t *testing.T) {
 	imgs := make([][]byte, 9)
 	for i := range imgs {
-		imgs[i] = pngOf(1080, 1920)
+		imgs[i] = testkit.PNG(1080, 1920)
 	}
 	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: imgs}}
 	ps := imagevalidate.Validate(tr)
@@ -116,7 +99,7 @@ func TestValidate_perSlotCount(t *testing.T) {
 // per-type cap is a bytes violation. A valid header followed by filler keeps
 // the format/dimensions valid so only the bytes rule fires.
 func TestValidate_perImageByteCap(t *testing.T) {
-	icon := pngOf(512, 512)
+	icon := testkit.PNG(512, 512)
 	oversized := append(icon, make([]byte, imagevalidate.MaxBytesFor(images.Icon)+1)...)
 	tr := imagetree.Tree{"en-US": {images.Icon: slot(oversized)}}
 	ps := imagevalidate.Validate(tr)

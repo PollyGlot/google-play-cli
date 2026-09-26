@@ -23,7 +23,15 @@ func Zip(t *testing.T, dir, name string, members map[string][]byte) string {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for n, b := range members {
-		w, err := zw.Create(n)
+		// Empty members (FillerMembers, marker files) are stored: a Deflate
+		// writer per member made the 65k-member cap fixtures the slowest tests
+		// in the suite. Members with content stay deflated so the
+		// decompression limits are still exercised.
+		hdr := &zip.FileHeader{Name: n, Method: zip.Deflate}
+		if len(b) == 0 {
+			hdr.Method = zip.Store
+		}
+		w, err := zw.CreateHeader(hdr)
 		if err != nil {
 			t.Fatalf("zip.Create(%q): %v", n, err)
 		}

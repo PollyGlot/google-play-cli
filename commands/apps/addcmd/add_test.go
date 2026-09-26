@@ -7,8 +7,6 @@ package addcmd_test
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -30,6 +28,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // validateRT terminates the OAuth2 /token exchange so token.Source
@@ -84,14 +83,11 @@ func jsonResp(status int, body string) *http.Response {
 }
 
 // signedSAJSON generates a service-account JSON whose private_key is a
-// fresh RSA key so the oauth2 library can sign the exchange JWT in
+// real RSA key so the oauth2 library can sign the exchange JWT in
 // tests. Mirrors the helper in commands/releases/upload_test.go.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("rsa.GenerateKey: %v", err)
-	}
+	key := testkit.RSAKey(t)
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)

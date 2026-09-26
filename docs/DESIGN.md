@@ -142,6 +142,16 @@ In order, first match wins:
 If nothing resolves: exit code `10` with a message pointing at `gplay auth login`
 and the env var docs.
 
+**Path or inline JSON.** A `--service-account` or `GPLAY_SERVICE_ACCOUNT` value
+is inline JSON when its first non-whitespace character is `{`, and a file path
+otherwise. A value that is neither JSON nor a readable file fails with exit `10`.
+The value is echoed back only when it cannot be a credential (one line, at most
+255 bytes, no PEM marker, no `{`, not base64 of JSON), so a mistyped path stays
+diagnosable. Anything else is **never echoed**: the message names the source,
+the value's length and the OS reason, plus a hint when the value looks
+base64-encoded, wrapped in quotes or prefixed with a byte-order mark. gplay
+diagnoses those shapes but does not decode them (#583).
+
 **Absent vs. invalid.** Resolution has two distinct failure modes, and gplay
 keeps them apart ([ADR-0020](adr/0020-resolution-error-surfacing.md)):
 
@@ -578,10 +588,17 @@ blip retries a timeout.
 ### Opt-in retry (`--retry`)
 
 The global **`--retry N`** flag (default `0` = no retry) layers a transport
-middleware on the authed client that retries the transient classes — transport
-errors, HTTP 5xx, and 429 (honoring `Retry-After`) — with exponential backoff
-plus jitter. Non-transient 4xx (auth, validation) and `edits.commit` (a
-duplicate could double-publish) are never retried, so it is safe to leave on.
+middleware on the authed client that retries the transient classes (transport
+errors, HTTP 5xx, and 429 honoring `Retry-After`, capped at the 30s maximum
+backoff) with exponential backoff plus jitter. Non-transient 4xx (auth,
+validation) and `edits.commit` (a duplicate could double-publish) are never
+retried. A write is replayed only when its API method is declared idempotent in
+`internal/apiregistry` (GET, PUT, PATCH, DELETE, plus an allowlist of
+read-shaped POSTs such as the vitals queries and `edits.validate`); any other
+POST (an image upload, a create, a refund) is retried only when the failure
+proves it never reached the server (a dial or DNS error, or a 429), so a 5xx
+after the write may have landed is returned instead of duplicated. It is safe to
+leave on.
 When `--retry` is set, `--timeout` becomes a **per-attempt** bound rather than a
 single per-request one; request bodies are recreated per attempt (uploads
 re-send from a fresh reader). Details and CI examples: [`CI_CD.md`](CI_CD.md#4-exit-codes--retry-vs-fail).

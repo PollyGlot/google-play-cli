@@ -20,14 +20,15 @@ Canonical terms live in `CONTEXT.md`; use them verbatim, no synonyms. The core f
 
 ## Vérifier
 
-- Gate before every PR: `make format lint test verb-gate` (verb-gate blocks pre-rename verbs, ADR-0019).
+- Gate before every PR: `make check`, the required CI checks run locally (`make format` fixes what its format step rejects; `make install-hooks` runs it on pre-push).
 - Tests stay offline: mock with a `testRoundTripper` (`http.RoundTripper`) injected as `&http.Client{Transport: ...}`; a test that reaches the network is wrong.
 - New leaf command: classify it. Unlabelled means frozen Public contract (ADR-0010/0042); mark `kernel.Experimental(...)` at registration if its flags may still change. The registry test in `cmd/gplay` fails on unclassified leaves.
-- To prove a command **behaves** as advertised, use the project skill `verify`:
-  build, then drive the offline path (`schema`, `auth list`, `--help`). It records
-  the two traps found by running: `--version` does not exist (it is the `version`
-  subcommand), and a pipe masks the exit code (`gplay tracks list` returns 2 alone,
-  0 when piped into `head`).
+- To prove a command **behaves** as advertised, build this worktree and drive the
+  offline path: `b=$(mktemp -d)/gplay && go build -o "$b" ./cmd/gplay && "$b" schema --list`
+  (then `auth list`, `<cmd> --help`). Two traps: `--version` does not exist (it is
+  the `version` subcommand), and a pipe masks the exit code (`gplay tracks list`
+  returns 2 alone, 0 when piped into `head`). The local `verify` skill, when
+  present, adds evidence capture.
 
 ## Les pièges de ce repo
 
@@ -35,7 +36,7 @@ Canonical terms live in `CONTEXT.md`; use them verbatim, no synonyms. The core f
 - Hand-roll every Developer API call in `internal/play/api/` over raw HTTP; the interface stays `google.golang.org/api/androidpublisher`-free (ADR-0007). Auth uses `golang.org/x/oauth2/google`.
 - `--output json` mirrors the API response verbatim (ADR-0003); stdout carries data, stderr carries logs. Keep it that way in every command.
 - release-please bumps the CLI version from the commit **type** alone, blind to paths: reserve `feat`/`fix` for changes to the shipped binary, and type `website/`, `docs/`, `.github/` work as `docs`/`chore`/`ci` (the site deploys on path triggers regardless).
-- Docs-only PRs (only `*.md` and doc assets, matching the inverse of the `code` filter in `.github/workflows/ci.yml`, `docs/discovery/**` counts as code) may be squash-merged solo via `gh pr merge <n> --admin --squash`, after confirming every CI check is green; anything touching code needs a normal reviewed merge.
+- Solo maintainer, so no approving review can exist: code PRs merge through `scripts/merge-pr.sh <n>` (refuses a head behind `origin/main` or a required check not green, then `gh pr merge --admin --squash`); docs-only PRs (only `*.md` and doc assets, the inverse of the `code` filter in `.github/workflows/ci.yml`, `docs/discovery/**` and the generated `docs/COVERAGE.md` count as code) may skip it once every check is green.
 - `internal/` and `commands/` count as code whatever the extension: the binary embeds JSON and CSV via `go:embed`.
 
 ## Goût

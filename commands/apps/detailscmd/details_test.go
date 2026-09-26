@@ -10,8 +10,6 @@ package detailscmd_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -30,6 +28,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // readRT terminates the OAuth2 /token exchange and routes the
@@ -87,10 +86,7 @@ func jsonResp(status int, body string) *http.Response {
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("rsa.GenerateKey: %v", err)
-	}
+	key := testkit.RSAKey(t)
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
