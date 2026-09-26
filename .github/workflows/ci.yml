@@ -6,14 +6,15 @@ on:
     branches: [main]
 
 # A newer push to a PR supersedes the older run, so a PR keeps one group per
-# ref and cancels. Pushes to main get one group per sha and never cancel: two
-# merges landing seconds apart must both get a verdict (a cancelled main run hid
-# whether #547 alone was sound) and both save the living Go cache. Turning
-# cancel-in-progress off on a shared group would not be enough: GitHub still
-# cancels the pending run when a third one queues. See docs/CI_CD.md
+# ref and cancels. A push to main gets a group of its own (the run id) and never
+# cancels: two merges landing seconds apart must both get a verdict (a
+# cancelled main run hid whether #547 alone was sound) and both save the living
+# Go cache. Turning cancel-in-progress off on a shared group would not be
+# enough: GitHub still cancels the pending run when a third one queues, which
+# is also why the group is per run and not per sha. See docs/CI_CD.md
 # § "Concurrency: PRs cancel, main never does".
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

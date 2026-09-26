@@ -475,18 +475,20 @@ the Actions tab.
 `ci.yml` and `codeql.yml` share one concurrency rule:
 
 ```yaml
-group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
 cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 ```
 
 On a pull request a new push supersedes the old head, so the old run is
-cancelled. On `main` every commit gets its own group and runs to the end. The
-group used to be keyed on the ref for pushes too, and back-to-back merges
-cancelled each other: over 60 days 28% of `main` CI runs never gave a verdict
-nor saved the living cache, and when #547 and #548 landed 25 s apart the
-cancelled run hid whether #547 alone was sound. Keying on the sha matters on
-its own: with a shared group and `cancel-in-progress: false`, GitHub still
-cancels the *pending* run when a third one queues.
+cancelled. Every other run (a push to `main`, the CodeQL schedule) gets a group
+of its own and runs to the end. The group used to be keyed on the ref for pushes
+too, and back-to-back merges cancelled each other: over 60 days 28% of `main`
+CI runs never gave a verdict nor saved the living cache, and when #547 and #548
+landed 25 s apart the cancelled run hid whether #547 alone was sound. The
+per-run group matters on its own: with a shared group and
+`cancel-in-progress: false`, GitHub still cancels the *pending* run when a third
+one queues, so even a per-sha group could drop a run when a push and the
+schedule share a commit.
 
 A cancelled PR run skips the aggregator (`!cancelled()`) rather than failing
 it, so a superseded head no longer shows a red "Build, lint, test". This stays
