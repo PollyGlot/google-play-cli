@@ -2,12 +2,15 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 )
 
 const (
@@ -108,16 +111,25 @@ func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // retryable reports whether a (resp, err) outcome warrants another attempt:
-// any transport error, an HTTP 429, or any 5xx. A 2xx or a non-429 4xx is
-// terminal.
+// any transport error other than a refused token exchange, an HTTP 429, or
+// any 5xx. A 2xx or a non-429 4xx is terminal.
 func retryable(resp *http.Response, err error) bool {
 	if err != nil {
-		return true
+		return !isAuthRefusal(err)
 	}
 	if resp == nil {
 		return false
 	}
 	return resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+}
+
+// isAuthRefusal reports whether a transport error is a refused OAuth2 token
+// exchange. oauth2.Transport mints the token inside RoundTrip, so a revoked or
+// invalid key surfaces here as a plain transport error; replaying it only
+// re-sends a dead credential N times before failing the same way.
+func isAuthRefusal(err error) bool {
+	var authErr *token.AuthError
+	return errors.As(err, &authErr)
 }
 
 // isNonRetryable excludes the operations that must never auto-retry:

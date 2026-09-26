@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -55,9 +56,22 @@ func (e *Error) Unwrap() error { return e.Cause }
 // 20 (not the generic 30). Auth (403), conflict (409), 5xx and
 // transport-level failures still win over the operation hint: a 403 on
 // bundles.upload is still an auth problem.
+//
+// With no HTTP status, a cause that already carries an exit code wins over
+// the network bucket: oauth2.Transport fails the request before it leaves
+// when the /token exchange is refused, so a *token.AuthError (exit 10) arrives
+// here as a transport error and must not surface as a retry-safe exit 50.
 func (e *Error) ExitCode() int {
 	if e == nil {
 		return 0
+	}
+	if e.StatusCode == 0 {
+		// Local mirror of exit.Coder: package exit imports api, so api
+		// cannot import it back.
+		var coder interface{ ExitCode() int }
+		if errors.As(e.Cause, &coder) {
+			return coder.ExitCode()
+		}
 	}
 	if e.Operation == "bundles.upload" || e.Operation == "apks.upload" {
 		switch e.StatusCode {
