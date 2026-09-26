@@ -41,6 +41,11 @@ type Input struct {
 	Confirm           bool
 	DryRun            bool
 	SkipPreflight     bool
+	// DeviceTierConfig is --device-tier-config: a deviceTierConfigId or
+	// LATEST, forwarded verbatim to edits.bundles.upload. A 1:1 mirror of the
+	// Google parameter, so it is part of the frozen contract like the rest of
+	// the command.
+	DeviceTierConfig string
 }
 
 // resolveFormat classifies the artifact as an APK or an AAB, from an
@@ -211,6 +216,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A device tier config drives how Google splits an App Bundle; an APK is
+	// already the deliverable, and edits.apks.upload has no such parameter.
+	// Refused here so it is never silently dropped.
+	if in.DeviceTierConfig != "" && format == orchestrator.FormatAPK {
+		return nil, &exit.UsageError{Msg: "--device-tier-config applies to an App Bundle (.aab) only, not an APK"}
+	}
 
 	// Artifact preflight (PRD #448): the artifact's container and declared
 	// package are checked against what this invocation promised BEFORE any
@@ -267,6 +278,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		AABPath:           in.AABPath,
 		Format:            format,
 		MappingPath:       in.Mapping,
+		DeviceTierConfig:  in.DeviceTierConfig,
 		Status:            status,
 		UserFraction:      in.StagedFraction,
 		ReleaseNotes:      in.ReleaseNotes,
@@ -340,7 +352,12 @@ work. See https://gplay.sh/docs/concepts/tracks-and-releases/
 [experimental] APK upload: Google has required the AAB for new apps
 since August 2021, so .apk uploads only serve existing apps still
 distributed as APKs; if the app requires an App Bundle, Google's rejection
-of the APK passes through verbatim.`,
+of the APK passes through verbatim.
+
+Pass --device-tier-config to attach a device tier config to the
+uploaded bundle, so Google generates its deliverables for the device tiers
+it defines. Pass an id from gplay device-tiers list, or LATEST for the last
+one created. AAB only.`,
 		Example: `  # Ship a build to internal testing, with its R8 mapping
   gplay releases upload app-release.aab --track internal --mapping mapping.txt
 
@@ -381,5 +398,6 @@ of the APK passes through verbatim.`,
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")
+	cmd.Flags().StringVar(&in.DeviceTierConfig, "device-tier-config", "", "device tier config id, or LATEST, applied to the uploaded bundle (AAB only)")
 	return cmd
 }

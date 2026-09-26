@@ -223,6 +223,14 @@ the same reason.
   loader rejects it with an error naming the offending file path.
 - `account` may appear in `config.local.json`, as `GPLAY_ACCOUNT`, or as
   `--account`.
+- **An Account name is one plain path component** (#603): no `/`, no `..`.
+  The loader refuses a path-like `account` in `config.local.json` (exit 2,
+  naming the file), and the file keystore refuses one from any source, since
+  the name becomes `<keystore>/<name>.json`.
+- **A git-tracked `config.local.json` draws a warning** on stderr at every
+  command (#603): it picks the Account for everyone who clones the repo.
+  gplay asks `git ls-files` and stays silent when git is absent or the file
+  is untracked.
 
 ### `.gplay/` contents
 

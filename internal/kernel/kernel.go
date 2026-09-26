@@ -623,7 +623,7 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 	// whether a failing command already wrote its own output (ADR-0023).
 	cw := &countingWriter{w: stdout}
 
-	return &RunContext{
+	rc := &RunContext{
 		Ctx:            ctx,
 		AccountName:    accountName,
 		Format:         format,
@@ -642,7 +642,27 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 		lazy:           true,
 		keyring:        kr,
 		resolverInputs: in.Resolver,
-	}, nil
+	}
+	warnTrackedLocalConfig(rc)
+	return rc, nil
+}
+
+// warnTrackedLocalConfig warns when the repo's .gplay/config.local.json is
+// committed. The file overrides the active Account and developer-id (ADR-0004,
+// ADR-0015), and only the .gitignore gplay writes keeps it local: once tracked,
+// every clone runs with the Account the repo names, among those the operator
+// has registered, and nothing on stderr says so (#603). A warning rather than a
+// refusal: the operator may be the one who committed it, and untracking the
+// file is theirs to do.
+func warnTrackedLocalConfig(rc *RunContext) {
+	if rc.Resolved == nil || rc.Resolved.ProjectLocalPath == "" {
+		return
+	}
+	if !config.GitTracked(rc.Ctx, rc.Resolved.ProjectLocalPath) {
+		return
+	}
+	rc.Warnf("%s is tracked by git, and it picks the Account gplay runs with: anyone who clones the repo runs with the Account it names. Untrack it: git rm --cached %s",
+		rc.Resolved.ProjectLocalPath, rc.Resolved.ProjectLocalPath)
 }
 
 // Backend lazily selects the credential keystore backend, running the OS

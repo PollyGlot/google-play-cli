@@ -53,6 +53,13 @@ would break every teammate, so the loader **rejects** it with an error
 naming the offending file. Put it in `config.local.json`, the
 `GPLAY_ACCOUNT` env var, or the `--account` flag instead.
 
+`config.local.json` stays out of git for the same reason. If a repository
+commits it anyway, every command run inside that repository prints a warning
+on stderr: the file picks the Account for whoever clones it. Untrack it with
+`git rm --cached .gplay/config.local.json`. The `account` it names must be a
+plain name: a value such as `../other` is refused, with an error naming the
+file.
+
 ## Environment variables
 
 | Variable | Purpose |
