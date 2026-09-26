@@ -1,5 +1,5 @@
 // Package list_test exercises `gplay tracks list` at the kernel level: a
-// RunContext built by hand, a RoundTripper injected via the
+// RunContext built by hand, a testkit Fake injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // `releases list` harness, but routes edits.tracks.list (the cross-track
 // read) instead of tracks.get. The transport FAILS on any PUT or :commit
@@ -10,15 +10,10 @@ package list_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -40,92 +35,69 @@ func rowByTrack(rows []list.TrackRow) map[string]list.TrackRow {
 	return m
 }
 
-// listRT terminates the OAuth2 /token exchange and routes the read-only
-// tracks-list sequence: edits.insert, tracks.list (GET .../tracks),
-// edits.delete. It deliberately has NO PUT or :commit branch: reaching
-// one means the command tried to mutate or commit, which a read-only
-// list must never do, so the transport fails the test.
-type listRT struct {
-	t          *testing.T
+// listAPI is the Play API the read-only tracks listing sees, served by a
+// testkit Fake: edits.insert, tracks.list (GET .../tracks), edits.delete. It
+// deliberately has NO PUT or :commit route: reaching one means the command
+// tried to mutate or commit, which a read-only list must never do, so the
+// test fails.
+type listAPI struct {
 	editID     string
 	tracksResp string
 	insertCode int // 0 -> 200
 	tracksCode int // 0 -> 200
 	insertBody string
 
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
+	fake *testkit.Fake
 }
 
-func (r *listRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		code := r.insertCode
-		if code == 0 {
-			code = 200
-		}
-		body := r.insertBody
-		if body == "" {
-			body = fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)
-		}
-		return jsonResp(code, body), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/tracks"):
-		code := r.tracksCode
-		if code == 0 {
-			code = 200
-		}
-		return jsonResp(code, r.tracksResp), nil
-	}
-	r.t.Fatalf("unexpected request (read-only list must not write/commit): %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-func signedSAJSON(t *testing.T) []byte {
+func (a *listAPI) serve(t *testing.T) *testkit.Fake {
 	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	a.fake = testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			body := a.insertBody
+			if body == "" {
+				body = fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID)
+			}
+			return a.insertCode, body, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return 204, "", true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/tracks"):
+			return a.tracksCode, a.tracksResp, true
+		}
+		return 0, "", false
+	}, refuse(t, " (read-only list must not write/commit)"))
+	return a.fake
+}
+
+// calls lists the requests as "METHOD path", the token exchanges first: the
+// oauth2 transport runs the exchange before the first API call and caches
+// the token, and the Fake counts exchanges without recording them.
+func (a *listAPI) calls() []string {
+	var out []string
+	for range a.fake.TokenExchanges() {
+		out = append(out, "POST /token")
 	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+	for _, c := range a.fake.Calls() {
+		out = append(out, c.Method+" "+c.Path)
 	}
-	return raw
+	return out
+}
+
+// refuse fails the test on any request the routes before it did not claim,
+// as the hand-rolled transport's t.Fatalf did: on an error path Run's error
+// alone would hide a stray request. The Fake still fails that round trip.
+func refuse(t *testing.T, why string) testkit.Responder {
+	t.Helper()
+	return func(c testkit.Call) (int, string, bool) {
+		t.Errorf("unexpected request%s: %s %s", why, c.Method, c.Path)
+		return 0, "", false
+	}
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -158,8 +130,8 @@ func TestRun_listsEveryTrack_happyPath(t *testing.T) {
 		`{"track":"production","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]},` +
 		`{"track":"qa-closed","releases":[{"name":"99","status":"completed","versionCodes":["99"]}]}` +
 		`]}`
-	rt := &listRT{t: t, editID: "edit-list", tracksResp: raw}
-	rc, _ := newRC(t, rt)
+	api := &listAPI{editID: "edit-list", tracksResp: raw}
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := list.Run(rc, list.Input{Package: "com.example.app"})
 	if err != nil {
@@ -169,8 +141,8 @@ func TestRun_listsEveryTrack_happyPath(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
 
-	if rt.tokenHits == 0 {
-		t.Errorf("RoundTripper saw no /token exchange; calls=%v", rt.calls)
+	if api.fake.TokenExchanges() == 0 {
+		t.Errorf("the fake saw no /token exchange; calls=%v", api.calls())
 	}
 	wantSequence := []string{
 		"POST /token",
@@ -178,12 +150,12 @@ func TestRun_listsEveryTrack_happyPath(t *testing.T) {
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-list/tracks",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-list",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(api.calls()) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(api.calls()), api.calls(), len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if api.calls()[i] != want {
+			t.Errorf("call %d = %q, want %q", i, api.calls()[i], want)
 		}
 	}
 
@@ -388,14 +360,14 @@ func TestRenderMarkdown_isGFMTable_respectsColumnsOverride(t *testing.T) {
 // TestRun_unknownColumn_exit2 asserts an unknown --columns value is a CLI
 // misuse caught before any HTTP call.
 func TestRun_unknownColumn_exit2(t *testing.T) {
-	rt := &listRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &listAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	_, err := list.Run(rc, list.Input{Package: "com.example.app", Columns: "track,bogus"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", api.calls())
 	}
 }
 
@@ -403,12 +375,11 @@ func TestRun_unknownColumn_exit2(t *testing.T) {
 // (edits.insert 404) maps to exit 30 with a hint pointing the operator at
 // `gplay apps list`.
 func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
-	rt := &listRT{
-		t:          t,
+	api := &listAPI{
 		insertCode: 404,
 		insertBody: `{"error":{"code":404,"message":"Application not found.","errors":[{"reason":"applicationNotFound"}]}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := list.Run(rc, list.Input{Package: "com.example.unknown"})
 	if code := exitCodeOf(t, err); code != 30 {
@@ -418,9 +389,9 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 		t.Errorf("error %q, want a hint mentioning `gplay apps list`", err.Error())
 	}
 	// edits.insert failed, so no Edit was opened: nothing to discard.
-	for _, c := range rt.calls {
+	for _, c := range api.calls() {
 		if strings.HasPrefix(c, "DELETE ") {
-			t.Errorf("unexpected DELETE after failed insert; calls = %v", rt.calls)
+			t.Errorf("unexpected DELETE after failed insert; calls = %v", api.calls())
 		}
 	}
 }
@@ -428,12 +399,11 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 // TestRun_forbidden_exit11WithHint asserts that a 403 (service account not
 // invited on the app) maps to exit 11 with the standard grant-access hint.
 func TestRun_forbidden_exit11WithHint(t *testing.T) {
-	rt := &listRT{
-		t:          t,
+	api := &listAPI{
 		insertCode: 403,
 		insertBody: `{"error":{"code":403,"message":"The caller does not have permission"}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := list.Run(rc, list.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 11 {
@@ -448,55 +418,54 @@ func TestRun_forbidden_exit11WithHint(t *testing.T) {
 // Edit is discarded even when the listing itself fails after the Edit was
 // opened, and the underlying status drives the exit code (5xx -> 40).
 func TestRun_tracksListError_discardsEditAndPropagates(t *testing.T) {
-	rt := &listRT{
-		t:          t,
+	api := &listAPI{
 		editID:     "edit-err",
 		tracksCode: 503,
 		tracksResp: `{"error":{"code":503,"message":"Backend error"}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := list.Run(rc, list.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 40 {
 		t.Errorf("ExitCode() = %d, want 40", code)
 	}
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range api.calls() {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-err") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("Edit not discarded after a failed listing; calls = %v", rt.calls)
+		t.Errorf("Edit not discarded after a failed listing; calls = %v", api.calls())
 	}
 }
 
 // TestRun_noAccount_exit10 asserts that with no resolved Account the
 // command fails auth (exit 10) before any HTTP call.
 func TestRun_noAccount_exit10(t *testing.T) {
-	rt := &listRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &listAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	rc.Account = nil
 	_, err := list.Run(rc, list.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 10 {
 		t.Errorf("ExitCode() = %d, want 10", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before auth error, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before auth error, saw: %v", api.calls())
 	}
 }
 
 // TestRun_missingPackage_exit2 asserts a missing package (no --package and
 // no pin) is a usage error before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
-	rt := &listRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &listAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	_, err := list.Run(rc, list.Input{})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", api.calls())
 	}
 }
 
