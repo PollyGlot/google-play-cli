@@ -19,6 +19,10 @@ export default defineConfig({
   site: SITE,
   base: BASE === '' ? '/' : BASE,
   trailingSlash: 'ignore',
+  // Astro 7 defaults to 'jsx', which drops whitespace between inline
+  // elements and shifts words in the landing and docs prose. `true` keeps the
+  // Astro 6 output.
+  compressHTML: true,
   markdown: {
     // Keep CLI flags verbatim in prose: smartypants would turn `--track`
     // into "–track" (en dash), silently corrupting copy-pasteable text. Set on
@@ -26,8 +30,9 @@ export default defineConfig({
     // removal): Starlight pushes its own plugins onto this same processor and
     // @astrojs/mdx reads `smartypants` from it, so .md and .mdx both follow.
     // scripts/check-dist.mjs fails the build check if a flag ever loses a dash.
-    // package.json pins @astrojs/markdown-remark to the exact version astro
-    // itself pins, so npm dedupes it to one copy: bump the two together.
+    // Since Astro 7, @astrojs/markdown-remark is an optional peer of astro,
+    // Starlight and @astrojs/mdx: the site's own dependency is the one copy
+    // they all share, so keep it within their peer range when bumping astro.
     processor: unified({
       smartypants: false,
       rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
