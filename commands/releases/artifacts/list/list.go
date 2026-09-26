@@ -228,7 +228,10 @@ is sent). Rows are ordered by versionCode.
 
 Default table columns: kind, versionCode, sha256. --output json is the raw
 API response: {"apks": ..., "bundles": ...} with both kinds, or the single
-list response verbatim with --kind (ADR-0003).`,
+list response verbatim with --kind.`,
+		Example: `  gplay releases artifacts list
+  gplay releases artifacts list --kind bundle
+  gplay releases artifacts list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

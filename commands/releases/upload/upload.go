@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
 	"github.com/PollyGlot/google-play-cli/internal/artifact"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -36,6 +37,7 @@ type Input struct {
 	StagedFraction    float64
 	StagedFractionSet bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 	SkipPreflight     bool
@@ -204,7 +206,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	if in.Track == "" {
-		return nil, &exit.UsageError{Msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
 	// Classify APK vs AAB up front (before any HTTP and even on --dry-run)
@@ -283,6 +285,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -341,9 +344,10 @@ deobfuscation file in the same Edit, so Play vitals can symbolicate
 obfuscated crash stacks. To attach a mapping to an already-published
 version, use gplay releases mappings upload instead.
 
-Targeting production defaults to a draft release (ADR-0002) unless
---complete or --staged is supplied. Any string is accepted as --track
-so closed-test tracks with custom names just work.
+Targeting production defaults to a draft release, which reaches no user,
+unless --complete or --staged is supplied (both require --confirm there).
+Any string is accepted as --track so Closed tracks with custom names just
+work. See https://gplay.sh/docs/concepts/tracks-and-releases/
 
 [experimental] APK upload: Google has required the AAB for new apps
 since August 2021, so .apk uploads only serve existing apps still
@@ -354,6 +358,15 @@ Pass --device-tier-config to attach a device tier config to the
 uploaded bundle, so Google generates its deliverables for the device tiers
 it defines. Pass an id from gplay device-tiers list, or LATEST for the last
 one created. AAB only.`,
+		Example: `  # Ship a build to internal testing, with its R8 mapping
+  gplay releases upload app-release.aab --track internal --mapping mapping.txt
+
+  # Start a 10% staged rollout on production, release notes per locale
+  gplay releases upload app-release.aab --track production --staged 0.1 \
+    --release-notes-dir distribution/whatsnew --confirm
+
+  # Preview the release payload without any HTTP call
+  gplay releases upload app-release.aab --track production --dry-run --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -372,7 +385,7 @@ one created. AAB only.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name) (required)")
 	cmd.Flags().StringVar(&in.Format, "format", "", "artifact type: apk or bundle (overrides extension auto-detect)")
 	cmd.Flags().StringVar(&in.Mapping, "mapping", "", "ProGuard/R8 deobfuscation file (mapping.txt) uploaded with the artifact so Play vitals can symbolicate obfuscated crash stacks")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "release notes text (applied to the app's default language)")
@@ -381,6 +394,7 @@ one created. AAB only.`,
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")

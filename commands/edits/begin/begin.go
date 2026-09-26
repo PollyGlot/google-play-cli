@@ -91,6 +91,11 @@ auto-discard in explicit mode: the lifecycle is yours.
 The package defaults to the repo's .gplay/config.json pin when --package is
 omitted; a project (gplay init) is required since the pin lives in .gplay/.
 Opening a second Edit while one is already pinned is refused (exit 60).`,
+		Example: `  # Open one Edit, run write commands (they join it), then gplay edits commit
+  gplay edits begin
+
+  # Name the package explicitly and keep the Edit id for a script
+  gplay edits begin --package com.example.app --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

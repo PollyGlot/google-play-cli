@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/expansionfilescmd"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -28,6 +29,7 @@ type Input struct {
 	Type              string
 	ReferencesVersion int
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	DryRun            bool
 }
 
@@ -103,7 +105,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	var raw json.RawMessage
-	err = edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
+	err = edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
 		r, e := expansionfiles.Update(rc.Ctx, httpClient, pkg, editID, in.VersionCode, ft, in.ReferencesVersion)
 		raw = r
 		return e
@@ -131,6 +133,11 @@ Wraps edits.expansionfiles.update (PUT) inside the Edit lifecycle.
 LEGACY (OBB). --type is main or patch; --references-version is the APK
 versionCode whose expansion file to point at. --dry-run validates inputs
 without any HTTP call. GPLAY_READONLY refuses it.`,
+		Example: `  # Point versionCode 1043 at the main expansion file already uploaded for 1042
+  gplay releases expansion-files set --version-code 1043 --references-version 1042
+
+  # Same for the patch file, validated without any HTTP call
+  gplay releases expansion-files set --version-code 1043 --references-version 1042 --type patch --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -146,6 +153,7 @@ without any HTTP call. GPLAY_READONLY refuses it.`,
 	cmd.Flags().StringVar(&in.Type, "type", "main", "expansion file type: main or patch")
 	cmd.Flags().IntVar(&in.ReferencesVersion, "references-version", 0, "the APK versionCode whose already-uploaded expansion file to reference (required)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs without any HTTP call")
 	return cmd
 }

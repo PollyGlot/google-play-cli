@@ -258,6 +258,14 @@ be that format, and its declared package name must match --package. Pass
 and the local artifact without any HTTP call. No --confirm is required (the
 link is private and creates no track or production release); GPLAY_READONLY
 still refuses it (exit 4).`,
+		Example: `  # Get a private install link for QA from a release build
+  gplay releases sharing upload app-release.aab
+
+  # Script it: keep only the link
+  gplay releases sharing upload app-debug.apk --output json | jq -r .downloadUrl
+
+  # Force the format when the extension says nothing, and validate offline
+  gplay releases sharing upload build/app.bin --format bundle --dry-run`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

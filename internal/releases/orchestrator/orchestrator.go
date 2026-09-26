@@ -162,6 +162,10 @@ type Opts struct {
 	// `gplay edits commit` (docs/DESIGN.md §4). Empty is the implicit default.
 	ExplicitEditID string
 
+	// Commit carries the opt-in edits.commit parameters; the zero value keeps
+	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
+	Commit edits.CommitOptions
+
 	// MappingPath, when set, uploads a ProGuard/R8 deobfuscation file (a
 	// Mapping) alongside the AAB in the SAME Edit, keyed by the versionCode
 	// the bundle upload returns. Empty means no mapping is uploaded. This
@@ -242,7 +246,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 
 	result := &Result{Track: opts.Track}
 
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
 		var localized []tracks.LocalizedText
 		if opts.ReleaseNotes != "" || opts.ReleaseNotesDir != "" {
 			// details.get is an extra round-trip; only do it when the

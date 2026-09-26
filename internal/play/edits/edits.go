@@ -12,12 +12,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/editpin"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -127,10 +130,178 @@ func explainStalePin(ctx context.Context, hc *http.Client, pkg, editID string, e
 // ExplicitEditID selects the explicit-mode (`gplay edits begin/commit/discard`)
 // contract: when it is non-empty, WithEdit runs fn against that already-open
 // Edit WITHOUT opening, committing, or discarding one: the caller owns the
-// lifecycle. KeepOnFailure is moot in that mode (nothing is auto-discarded).
+// lifecycle. KeepOnFailure is moot in that mode (nothing is auto-discarded),
+// and so is Commit: the pinned Edit is committed by `gplay edits commit`.
+//
+// Commit carries the opt-in edits.commit query parameters; its zero value
+// sends none, so Google's default behavior applies.
 type Options struct {
 	KeepOnFailure  bool
 	ExplicitEditID string
+	Commit         CommitOptions
+}
+
+// ChangesInReview selects how a commit treats changes that are already in
+// Google's review: the changesInReviewBehavior query parameter of edits.commit.
+// The values are the CLI spellings; the wire enum is derived in query.
+type ChangesInReview string
+
+const (
+	// ChangesInReviewUnset sends no parameter, so Google's default applies:
+	// CANCEL_IN_REVIEW_AND_SUBMIT, which cancels the pending review and submits
+	// everything again. Kept as the default because changing it would change
+	// what every existing CI pipeline publishes (#598).
+	ChangesInReviewUnset ChangesInReview = ""
+	// ChangesInReviewCancel asks for Google's default explicitly.
+	ChangesInReviewCancel ChangesInReview = "cancel"
+	// ChangesInReviewError makes the commit fail while changes are in review,
+	// leaving the review untouched (ERROR_IF_IN_REVIEW). Google does not
+	// invalidate the Edit on that refusal.
+	ChangesInReviewError ChangesInReview = "error"
+)
+
+// ParseChangesInReview validates a CLI spelling. The empty string is the unset
+// value, not an error, so a flag left alone maps to Google's default.
+func ParseChangesInReview(s string) (ChangesInReview, error) {
+	switch v := ChangesInReview(s); v {
+	case ChangesInReviewUnset, ChangesInReviewCancel, ChangesInReviewError:
+		return v, nil
+	}
+	return ChangesInReviewUnset, fmt.Errorf("must be %s or %s", ChangesInReviewCancel, ChangesInReviewError)
+}
+
+// CommitOptions are the optional query parameters of edits.commit. The zero
+// value sends none: the request is byte-identical to the one gplay has always
+// sent, which is what keeps these opt-ins additive.
+type CommitOptions struct {
+	ChangesInReview ChangesInReview
+	// ChangesNotSentForReview commits the Edit without sending its changes for
+	// review; they wait until someone sends them from the Play Console. Some
+	// apps (after a rejection, for instance) cannot commit any other way.
+	ChangesNotSentForReview bool
+}
+
+// IsZero reports whether o sends no parameter at all.
+func (o CommitOptions) IsZero() bool { return o == CommitOptions{} }
+
+// query renders o as the edits.commit query string. Parameter names and enum
+// values are Discovery's (androidpublisher.edits.commit).
+func (o CommitOptions) query() url.Values {
+	q := url.Values{}
+	switch o.ChangesInReview {
+	case ChangesInReviewCancel:
+		q.Set("changesInReviewBehavior", "CANCEL_IN_REVIEW_AND_SUBMIT")
+	case ChangesInReviewError:
+		q.Set("changesInReviewBehavior", "ERROR_IF_IN_REVIEW")
+	}
+	if o.ChangesNotSentForReview {
+		q.Set("changesNotSentForReview", "true")
+	}
+	return q
+}
+
+// CommitOutcomeUnknownError is an edits.commit that failed in a way that does
+// not tell whether Google applied it: the request left the machine and then
+// timed out, was reset, or came back 5xx. The commit may be live. Its exit code
+// stays the one the wrapped failure maps to (50 or 40), but it is NOT
+// retryable (COMMIT_OUTCOME_UNKNOWN): a blind re-run of an upload that did
+// publish fails on the already-used version code and reports a successful
+// release as an error, and a re-run of a metadata change can resubmit it for
+// review. The message says how to check instead.
+type CommitOutcomeUnknownError struct {
+	Package string
+	EditID  string
+	// Explicit is set for `gplay edits commit`, whose pin stays in place and
+	// whose Edit can therefore be probed with `edits status --live`.
+	Explicit bool
+	Err      error
+}
+
+func (e *CommitOutcomeUnknownError) Error() string {
+	check := "check the live state first (for example `gplay releases list --package " + e.Package + "`, or the Play Console)"
+	if e.Explicit {
+		check = "run `gplay edits status --live --package " + e.Package + "` first (an Edit that is gone was most likely committed) and check the live state before committing again"
+	}
+	return fmt.Sprintf("commit of edit %s on %s may have been applied before the failure; do not re-run blindly, %s: %v", e.EditID, e.Package, check, e.Err)
+}
+
+func (e *CommitOutcomeUnknownError) Unwrap() error { return e.Err }
+
+// ExitCode keeps the wrapped failure's code: the bucket (network, upstream) is
+// still true, only its retry-safety is not (#598 keeps the exit code).
+func (e *CommitOutcomeUnknownError) ExitCode() int {
+	var c interface{ ExitCode() int }
+	if errors.As(e.Err, &c) {
+		return c.ExitCode()
+	}
+	return 50
+}
+
+// DiagnosticCode refines the envelope's code, which is what flips `retryable`.
+func (e *CommitOutcomeUnknownError) DiagnosticCode() exit.Code {
+	return exit.CodeCommitOutcomeUnknown
+}
+
+// commitOutcomeUnknown wraps err when it leaves the commit's outcome open, and
+// returns it unchanged otherwise. Unknown means the request may have reached
+// Google's write path: a 5xx, or a transport failure after the connection was
+// made. A refused token exchange (the cause carries its own exit code) and a
+// dial or DNS failure never sent the commit, the same line the --retry
+// transport draws for non-idempotent writes (internal/transport.neverApplied),
+// so they keep their plain meaning. A request that failed to build locally
+// would also land here as unknown; registry URLs make that unreachable, and
+// erring toward "check first" is the safe side.
+func commitOutcomeUnknown(err error, pkg, editID string, explicit bool) error {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	switch {
+	case apiErr.StatusCode >= 500:
+	case apiErr.StatusCode == 0 && !neverSent(apiErr.Cause):
+	default:
+		return err
+	}
+	return &CommitOutcomeUnknownError{Package: pkg, EditID: editID, Explicit: explicit, Err: err}
+}
+
+// neverSent reports whether a transport-level cause proves the commit never
+// left the machine.
+func neverSent(cause error) bool {
+	var coder interface{ ExitCode() int }
+	if errors.As(cause, &coder) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(cause, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(cause, &opErr) && opErr.Op == "dial"
+}
+
+// Discard bounds. The cleanup DELETE never runs on the caller's ctx (a canceled
+// or timed-out ctx must not also kill it: a dangling Edit blocks the next
+// publish for up to 24h), so it gets its own deadline.
+const (
+	// discardTimeout leaves room for --retry to replay a 5xx on the DELETE.
+	discardTimeout = 10 * time.Second
+	// interruptedDiscardTimeout applies once the caller's ctx is done, which
+	// in the binary means SIGINT or SIGTERM: a CI runner that cancels a job
+	// sends SIGINT, then SIGTERM 7.5s later and SIGKILL 2.5s after that
+	// (GitHub Actions), so the discard has to fit well inside the first gap.
+	interruptedDiscardTimeout = 5 * time.Second
+)
+
+// discardContext returns the fresh context the cleanup DELETE runs on, bounded
+// by discardTimeout, or by interruptedDiscardTimeout when parent is already
+// done.
+func discardContext(parent context.Context) (context.Context, context.CancelFunc) {
+	d := discardTimeout
+	if parent.Err() != nil {
+		d = interruptedDiscardTimeout
+	}
+	return context.WithTimeout(context.Background(), d)
 }
 
 // WithEdit opens an Edit on pkg, invokes fn with the new Edit ID, and
@@ -164,7 +335,7 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 			// publish for up to 24h. `defer cancel()` rather than an
 			// inline call guarantees the timer goroutine is released
 			// even if deleteEdit panics on a misbehaving transport.
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			cleanupCtx, cancel := discardContext(ctx)
 			defer cancel()
 			_ = deleteEdit(cleanupCtx, hc, pkg, editID)
 			return failureErr
@@ -186,7 +357,7 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	defer func() {
 		if r := recover(); r != nil {
 			if !opts.KeepOnFailure {
-				cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				cleanupCtx, cancel := discardContext(ctx)
 				defer cancel()
 				_ = deleteEdit(cleanupCtx, hc, pkg, editID)
 			}
@@ -197,8 +368,11 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	if fnErr := fn(editID); fnErr != nil {
 		return handleFailure(fnErr)
 	}
-	if commitErr := commitEdit(ctx, hc, pkg, editID); commitErr != nil {
-		return handleFailure(commitErr)
+	if commitErr := commitEdit(ctx, hc, pkg, editID, opts.Commit); commitErr != nil {
+		// The discard still runs on an unknown outcome: if the commit landed the
+		// Edit is gone and the delete is a harmless 404; if it did not, the
+		// delete frees the package for the next run.
+		return handleFailure(commitOutcomeUnknown(commitErr, pkg, editID, false))
 	}
 	return nil
 }
@@ -225,7 +399,7 @@ func WithReadOnlyEdit(ctx context.Context, hc *http.Client, pkg string, fn func(
 		return err
 	}
 	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		cleanupCtx, cancel := discardContext(ctx)
 		defer cancel()
 		_ = deleteEdit(cleanupCtx, hc, pkg, editID)
 	}()
@@ -302,7 +476,7 @@ func Validate(ctx context.Context, hc *http.Client, pkg string) error {
 	// timed-out parent ctx does not prevent cleanup. We still propagate
 	// any cleanup failure as a DanglingEditError so the operator knows
 	// they have an Edit to release manually.
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	cleanupCtx, cancel := discardContext(ctx)
 	defer cancel()
 	if delErr := deleteEdit(cleanupCtx, hc, pkg, editID); delErr != nil {
 		return &DanglingEditError{EditID: editID, Err: delErr}
@@ -331,9 +505,11 @@ func OpenExplicit(ctx context.Context, hc *http.Client, pkg string) (string, err
 // CommitExplicit commits an already-open Edit (the `gplay edits commit` verb).
 // On failure the Edit stays open (no discard), so the operator can re-attempt
 // the commit or discard it: the caller leaves .gplay/edit-<pkg>.json in place
-// until a commit succeeds.
-func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	return commitEdit(ctx, hc, pkg, editID)
+// until a commit succeeds. A failure that leaves the outcome open is a
+// *CommitOutcomeUnknownError: re-attempting a commit that did land hits a
+// vanished Edit.
+func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string, opts CommitOptions) error {
+	return commitOutcomeUnknown(commitEdit(ctx, hc, pkg, editID, opts), pkg, editID, true)
 }
 
 // DiscardExplicit discards an already-open Edit (the `gplay edits discard`
@@ -511,30 +687,19 @@ func deleteEdit(ctx context.Context, hc *http.Client, pkg, editID string) error 
 	return nil
 }
 
-func commitEdit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	u, err := methodCommit.URL(map[string]string{"packageName": pkg, "editId": editID})
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
+// commitEdit sends edits.commit through the executor. A 2xx is success
+// whatever happens to its body: the AppEdit it carries is never used, and a
+// response cut mid-body must not report a live publish as a failure.
+func commitEdit(ctx context.Context, hc *http.Client, pkg, editID string, opts CommitOptions) error {
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: methodCommit,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
+		Query:  opts.query(),
+		Target: pkg,
+	})
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) && apiErr.StatusCode >= 200 && apiErr.StatusCode < 300 {
+		return nil
 	}
-	req, err := http.NewRequestWithContext(ctx, methodCommit.Verb, u, http.NoBody)
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return &api.Error{
-			Operation:  "edits.commit",
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	return nil
+	return err
 }

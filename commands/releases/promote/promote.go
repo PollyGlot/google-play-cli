@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -33,6 +34,7 @@ type Input struct {
 	StagedFraction    float64
 	StagedFractionSet bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 }
@@ -153,10 +155,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
 	}
 	if in.FromTrack == "" {
-		return nil, &exit.UsageError{Msg: "missing --from"}
+		return nil, exit.Usagef("missing --from: pass --from <track> (the track holding the release to promote)")
 	}
 	if in.ToTrack == "" {
-		return nil, &exit.UsageError{Msg: "missing --to"}
+		return nil, exit.Usagef("missing --to: pass --to <track> (the destination track)")
 	}
 
 	pkg, err := rc.Package(in.Package)
@@ -210,6 +212,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -244,12 +247,22 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Promote a release from one track to another (no AAB re-upload)",
 		Long: `Copy the latest release on --from to --to, keeping the same versionCode.
 
-Targeting production defaults to a draft release (ADR-0002) unless --complete
-or --staged is supplied. Release notes carry over from the source unless
---release-notes / --release-notes-dir is passed.
+Targeting production defaults to a draft release, which reaches no user,
+unless --complete or --staged is supplied (both require --confirm there).
+Release notes carry over from the source unless --release-notes /
+--release-notes-dir is passed.
 
 When the source track has multiple coexisting releases (e.g. inProgress +
 halted), pass --version-code N or --release-name <name> to pick one.`,
+		Example: `  # Promote the latest beta release to production as a draft (the default)
+  gplay releases promote --from beta --to production
+
+  # Promote straight into a 5% staged rollout, with new release notes
+  gplay releases promote --from beta --to production --staged 0.05 \
+    --release-notes-dir distribution/whatsnew --confirm
+
+  # Preview promoting one of two coexisting releases
+  gplay releases promote --from alpha --to beta --version-code 1042 --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -266,8 +279,8 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.FromTrack, "from", "", "source track to promote from")
-	cmd.Flags().StringVar(&in.ToTrack, "to", "", "destination track to promote to")
+	cmd.Flags().StringVar(&in.FromTrack, "from", "", "source track to promote from (required)")
+	cmd.Flags().StringVar(&in.ToTrack, "to", "", "destination track to promote to (required)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the source release with this versionCode (disambiguator)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the source release with this name (disambiguator)")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "override carry-over with this text (applied to the app's default language)")
@@ -276,6 +289,7 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required when promoting to production with --complete / --staged")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	return cmd

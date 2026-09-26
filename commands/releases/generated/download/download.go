@@ -63,7 +63,11 @@ func Run(rc *kernel.RunContext, in Input) error {
 	if err != nil {
 		return err
 	}
-	httpClient, err := rc.AuthedClient()
+	// UploadClient, not AuthedClient: a universal APK can weigh 100+ MB, and the
+	// 60s control-plane deadline also bounds reading the body, so a slow runner
+	// link used to fail mid-stream. The alt=media download is a media transfer,
+	// bounded only by an explicit --timeout (docs/DESIGN.md §8).
+	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return err
 	}
@@ -112,6 +116,11 @@ for piping. This command has no --output flag: its payload is raw bytes, not a
 Renderable. On success a ✓ line on stderr names the byte count and destination.
 
 This is a direct application-scoped read: it opens no Edit and moves no money.`,
+		Example: `  # Save the universal APK Play generated from versionCode 1042
+  gplay releases generated download 5f3c9a1e7b2d --version-code 1042 --dest app-universal.apk
+
+  # Stream the bytes to another tool instead of a file
+  gplay releases generated download 5f3c9a1e7b2d --version-code 1042 --dest - | sha256sum`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

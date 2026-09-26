@@ -32,6 +32,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/diff"
@@ -52,6 +53,7 @@ type Input struct {
 	DryRun      bool
 	Confirm     bool
 	Prune       bool
+	Commit      commitflags.Flags
 	AllowLocale []string
 }
 
@@ -281,6 +283,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Prune:          in.Prune,
 		AllowLocale:    in.AllowLocale,
 		ExplicitEditID: explicitEditID,
+		Commit:         in.Commit.For(rc, explicitEditID),
 	})
 	if err != nil {
 		return nil, classifyApplyError(pkg, err)
@@ -332,6 +335,14 @@ store immediately); without it apply refuses and points here. CI=true does
 NOT auto-confirm. The publish is atomic: all locales are written inside one
 Edit committed once (a locale new to Play is created, a live one patched),
 and any per-locale failure discards the Edit (0 published).`,
+		Example: `  # Show what would change on Play, per locale (online, nothing committed)
+  gplay metadata apply --dry-run
+
+  # Publish every locale on disk in one Edit
+  gplay metadata apply --confirm
+
+  # Also delete the locales that exist only on Play
+  gplay metadata apply --prune --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -346,6 +357,7 @@ and any per-locale failure discards the Edit (0 published).`,
 	cmd.Flags().StringVar(&in.Dir, "dir", DefaultDir, "metadata tree root directory")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the delta without committing (online)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the real publish (Listings go live immediately)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Prune, "prune", false, "also delete locales live on Play but absent on disk (refuses defaultLanguage)")
 	cmd.Flags().StringArrayVar(&in.AllowLocale, "allow-locale", nil, "whitelist a locale code outside the embedded registry (repeatable)")
 	return cmd

@@ -315,7 +315,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Push the canonical Data Safety CSV (--file, default
 ./compliance/data-safety.csv) to Google as the app's Data Safety declaration.
 The declaration is write-only and replaces the whole document: a direct POST
-outside the Edits model (ADR-0014). gplay cannot read it back; only this POST
+outside the Edits model. gplay cannot read it back; only this POST
 validates the contents.
 
 set runs ` + "`validate`" + ` implicitly first, so a structurally invalid CSV
@@ -329,6 +329,11 @@ releases or misstate your data practices); without it set refuses, exits 3
 (safety flag required), and points here. CI=true does NOT auto-confirm.
 --output json passes the API response through verbatim (or, when the API
 returns an empty body, a gplay-shaped success object).`,
+		Example: `  # Rehearse: validate the CSV and resolve the target, no HTTP call
+  gplay compliance datasafety set --dry-run
+
+  # Replace the live Data Safety declaration
+  gplay compliance datasafety set --file compliance/data-safety.csv --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

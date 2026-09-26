@@ -115,13 +115,9 @@ Prerequisite: an active Cloud KMS key whose IAM policy grants Google Play the
 Decrypt and Sign permissions. See
 ` + appsigning.HelpCenterURL + `
 
-Two shapes, one per kind of app:
-
-  # an app that has already published to Open testing or Production
-  gplay signing enroll --kms-key projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1 --confirm
-
-  # a brand-new app (never published to Open testing or Production)
-  gplay signing enroll --new-app --kms-key <resource> --kms-cert cert.pem --confirm
+Two shapes, one per kind of app: an app that has already published to Open
+testing or Production passes --kms-key alone; a brand-new app adds --new-app
+and the key's certificate with --kms-cert.
 
 Pass --upload-cert <file.pem> to register your CI upload certificate in the same
 call. Certificates are read from files: never paste base64 on a command line.
@@ -129,6 +125,15 @@ call. Certificates are read from files: never paste base64 on a command line.
 Prints the returned certificate hashes (SHA256/SHA1/MD5); --output json mirrors
 the API response verbatim. Requires --confirm (missing → exit 3); rehearse first
 with --dry-run. GPLAY_READONLY refuses it (exit 4).`,
+		Example: `  KMS_KEY=projects/example/locations/global/keyRings/play/cryptoKeys/app-signing/cryptoKeyVersions/1
+
+  # An app already published to Open testing or Production: rehearse, then enroll
+  gplay signing enroll --kms-key "$KMS_KEY" --dry-run
+  gplay signing enroll --kms-key "$KMS_KEY" --confirm
+
+  # A brand-new app, registering the CI upload certificate in the same call
+  gplay signing enroll --new-app --kms-key "$KMS_KEY" --kms-cert kms-cert.pem \
+    --upload-cert upload-cert.pem --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

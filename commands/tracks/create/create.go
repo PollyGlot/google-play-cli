@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -30,6 +31,7 @@ type Input struct {
 	Name              string
 	DryRun            bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 }
 
 // Payload satisfies output.Renderable. Raw carries the tracks.create
@@ -154,7 +156,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		created *tracks.Track
 		raw     json.RawMessage
 	)
-	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
+	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
 		t, r, e := tracks.Create(rc.Ctx, httpClient, pkg, editID, in.Name, tracks.FormFactorDefault)
 		if e != nil {
 			return e
@@ -200,6 +202,11 @@ Runs inside an implicit Edit (open → tracks.create → commit). --dry-run
 previews the TrackConfig without any HTTP; --keep-edit-on-failure skips
 the auto-discard cleanup on failure (debug). No --confirm: a closed test
 track is low-stakes and reversible.`,
+		Example: `  # Create a Closed track for an internal QA group
+  gplay tracks create qa-team
+
+  # Preview the TrackConfig without any HTTP call
+  gplay tracks create qa-team --dry-run --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -217,5 +224,6 @@ track is low-stakes and reversible.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the TrackConfig without any HTTP call")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	return cmd
 }

@@ -127,6 +127,11 @@ remote in-app update by default (--remote-in-app-update).
 
 A draft is harmless, so create needs no --confirm; use --dry-run to validate
 inputs without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
+		Example: `  # Validate a draft Recovery for every user of the bad versionCode
+  gplay recovery create --version-code 1042 --all-users --dry-run
+
+  # Stage a draft for users in two regions only
+  gplay recovery create --version-code 1042 --regions US,FR`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

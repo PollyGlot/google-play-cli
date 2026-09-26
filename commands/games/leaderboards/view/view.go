@@ -70,8 +70,12 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Read one leaderboard configuration by id",
 		Long: `Read a single leaderboard configuration by its ID. The config carries an
 editable draft and a read-only published detail (there is no publish method:
-publishing to players is Console-only, ADR-0033). --output json passes the
-LeaderboardConfiguration through verbatim (ADR-0003).`,
+publishing to players is Console-only). --output json passes the
+LeaderboardConfiguration through verbatim.`,
+		Example: `  gplay games leaderboards view CgkI4ZqN0pMUEAIQAg
+
+  # Save the body to edit it and send it back with update --from-json
+  gplay games leaderboards view CgkI4ZqN0pMUEAIQAg --output json > leaderboard.json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

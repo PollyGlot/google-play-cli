@@ -252,6 +252,9 @@ live Listings against an on-disk metadata tree is the job of ` +
 
 (--output json is the raw edits.listings.list payload; --output markdown
 renders a Markdown table.)`,
+		Example: `  gplay metadata list
+  gplay metadata list --package com.example.app --output markdown
+  gplay metadata list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

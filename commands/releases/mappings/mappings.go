@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -27,6 +28,7 @@ type Input struct {
 	VersionCode       int
 	Type              string
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	DryRun            bool
 }
 
@@ -122,6 +124,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		FileType:          in.Type,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		DryRun:            in.DryRun,
 	})
 	if err != nil {
@@ -153,6 +156,14 @@ Performs the full Edit lifecycle in one call:
 
 To upload a mapping at the same time as the AAB (the common case), pass
 --mapping to gplay releases upload instead.`,
+		Example: `  # Symbolicate the crash stacks of versionCode 1042 in Play vitals
+  gplay releases mappings upload app/build/outputs/mapping/release/mapping.txt --version-code 1042
+
+  # Upload native debug symbols instead of an R8 mapping
+  gplay releases mappings upload native-debug-symbols.zip --version-code 1042 --type nativeCode
+
+  # Validate the inputs without any HTTP call
+  gplay releases mappings upload mapping.txt --version-code 1042 --dry-run`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -171,6 +182,7 @@ To upload a mapping at the same time as the AAB (the common case), pass
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "APK versionCode the mapping belongs to (required)")
 	cmd.Flags().StringVar(&in.Type, "type", "proguard", "deobfuscation file type: proguard or nativeCode")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs without any HTTP call")
 	return cmd
 }

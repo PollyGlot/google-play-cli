@@ -254,8 +254,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "Rapatriate the Store front Listings live on Play into the local Metadata tree",
-		Long: `Rapatriate the Store front Listings currently live on Google Play for
+		Short: "Download the Store front Listings live on Play into the local Metadata tree",
+		Long: `Download the Store front Listings currently live on Google Play for
 --package into the local Metadata tree under --dir (default ./metadata):
 one ` + "`<locale>/<field>.txt`" + ` file per managed field a locale holds
 non-empty online (title, short_description, full_description, video).
@@ -268,7 +268,12 @@ Removing locales/fields no longer online is the opt-in job of ` +
 
 Because pull writes only non-empty online values and the tree codec is a
 value-level inverse, a ` + "`metadata apply`" + ` immediately after a pull
-is a guaranteed no-op (ADR-0011).`,
+is a guaranteed no-op.`,
+		Example: `  # Seed the Metadata tree from what is live on Play, then commit it
+  gplay metadata pull
+
+  # Write it somewhere else, for another app
+  gplay metadata pull --dir store/metadata --package com.example.lite`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
