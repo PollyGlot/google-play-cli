@@ -28,7 +28,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/apihint"
-	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -116,12 +115,9 @@ func renderMarkdown(w io.Writer, p Payload) error {
 // Run resolves inputs, opens a read-only Edit, lists every (locale, imageType)
 // slot, downloads the bytes, and writes the resulting tree additively.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	dir := in.Dir
 	if dir == "" {

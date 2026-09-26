@@ -30,7 +30,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/apihint"
-	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/tree"
@@ -211,12 +210,9 @@ func renderMarkdown(w io.Writer, p Payload) error {
 // lists every locale's Listing, projects them onto the managed-field model
 // (non-empty values only), and writes the resulting Tree to disk additively.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	dir := in.Dir

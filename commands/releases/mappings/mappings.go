@@ -91,12 +91,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	// Resolve package: --package flag → project pin.
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the

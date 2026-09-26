@@ -57,12 +57,9 @@ func Run(rc *kernel.RunContext, in Input) error {
 		}
 	}
 
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return err
 	}
 
 	// --dry-run never touches the network, so a missing Account is fine.

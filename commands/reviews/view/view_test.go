@@ -269,6 +269,20 @@ func TestRun_emptyReviewID_exit2_noNetwork(t *testing.T) {
 	}
 }
 
+// TestRun_packageFlagTrimmed pins the shared resolver (rc.Package): a padded
+// --package reaches the wire trimmed. This copy used to send it verbatim.
+func TestRun_packageFlagTrimmed(t *testing.T) {
+	rt := &getRT{t: t, body: oneReviewBody}
+	rc, _, _ := newRC(t, rt, output.FormatJSON)
+
+	if _, err := Run(rc, Input{Package: "  com.example.app\t", ReviewID: "r1"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if want := "/androidpublisher/v3/applications/com.example.app/reviews/r1"; rt.gotPath != want {
+		t.Errorf("path = %q, want %q", rt.gotPath, want)
+	}
+}
+
 func TestRun_noPackage_exit2_noNetwork(t *testing.T) {
 	rt := &getRT{t: t, body: oneReviewBody}
 	rc, _, _ := newRC(t, rt, output.FormatJSON)

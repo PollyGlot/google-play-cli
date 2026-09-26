@@ -117,12 +117,9 @@ type stateFunc func(ctx context.Context, hc *http.Client, opts orchestrator.Stat
 // action is the past-tense transition word ("set" / "halted" / "resumed" /
 // "completed") for the ✓ confirmation line.
 func runState(rc *kernel.RunContext, in Input, userFraction float64, action string, call stateFunc) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	if in.Track == "" {
 		return nil, &exit.UsageError{Msg: "missing --track"}
