@@ -100,7 +100,7 @@ type dryRunView struct {
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions, Oldest: p.Oldest, Requires: p.Requires})
+		return output.WriteJSON(w, dryRunView{DryRun: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions, Oldest: p.Oldest, Requires: output.NonNil(p.Requires)})
 	}
 	// migratePrices returns an empty body on success; emit a gplay-shaped
 	// success object so --output json (the CI default) is always parseable
@@ -223,6 +223,13 @@ there is deliberately no bulk migration.
 
 --price-increase-type opt-in requires subscribers to accept the new price or
 churn; opt-out (where Google allows it) applies it automatically with notice.`,
+		Example: `  # Preview: US and Canadian subscribers of premium/monthly priced before 2026
+  gplay subscriptions prices migrate --product premium --base-plan monthly \
+    --region US --region CA --oldest 2026-01-01T00:00:00Z --dry-run
+
+  # Migrate them, asking each subscriber to accept the new price
+  gplay subscriptions prices migrate --product premium --base-plan monthly \
+    --region US --region CA --oldest 2026-01-01T00:00:00Z --price-increase-type opt-in --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

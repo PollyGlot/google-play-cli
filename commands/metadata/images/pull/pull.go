@@ -28,6 +28,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/apihint"
+	"github.com/PollyGlot/google-play-cli/internal/fanout"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -129,36 +130,17 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// tr is the staging tree: every byte lands here first and nothing touches
+	// dir until the last download succeeded. Pull stays all-or-nothing under
+	// concurrency: a failed or interrupted pull leaves no half-written tree
+	// that a later `images apply --prune` would read as deletions.
 	tr := make(imagetree.Tree)
 	if err := edits.WithReadOnlyEdit(rc.Ctx, httpClient, pkg, func(editID string) error {
 		locales, err := appLocales(rc, httpClient, pkg, editID)
 		if err != nil {
 			return err
 		}
-		for _, loc := range locales {
-			for _, ty := range images.Types() {
-				imgs, _, e := images.List(rc.Ctx, httpClient, pkg, editID, loc, ty)
-				if e != nil {
-					return e
-				}
-				if len(imgs) == 0 {
-					continue // empty slot writes nothing (missing == empty)
-				}
-				seq := make([][]byte, 0, len(imgs))
-				for _, img := range imgs {
-					b, e := download(rc.Ctx, httpClient, img.URL)
-					if e != nil {
-						return e
-					}
-					seq = append(seq, b)
-				}
-				if tr[loc] == nil {
-					tr[loc] = make(map[images.Type][][]byte)
-				}
-				tr[loc][ty] = seq
-			}
-		}
-		return nil
+		return fetchSlots(rc, httpClient, pkg, editID, locales, tr)
 	}); err != nil {
 		return nil, apihint.ForPackage(pkg, err)
 	}
@@ -168,6 +150,55 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	return newPayload(pkg, dir, tr), nil
+}
+
+// fetchSlots fills tr with every non-empty (locale, type) slot, in two
+// fanout.Limit-wide passes: list every slot, then download every image of
+// every slot. Two passes rather than one task per slot keep the pool busy when
+// one gallery holds eight screenshots and the other slots hold none. Every
+// result is written at its own index, so tr is identical to a serial walk's.
+// Any failure aborts before tr is touched; within a pass the error reported is
+// the lowest-index one, so the same responses always yield the same error.
+func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, locales []string, tr imagetree.Tree) error {
+	types := images.Types()
+	listed := make([][]images.Image, len(locales)*len(types))
+	if err := fanout.Each(len(listed), func(i int) error {
+		imgs, _, err := images.List(rc.Ctx, hc, pkg, editID, locales[i/len(types)], types[i%len(types)])
+		listed[i] = imgs
+		return err
+	}); err != nil {
+		return err
+	}
+
+	type job struct{ slot, pos int }
+	var jobs []job
+	blobs := make([][][]byte, len(listed))
+	for s, imgs := range listed {
+		blobs[s] = make([][]byte, len(imgs))
+		for p := range imgs {
+			jobs = append(jobs, job{slot: s, pos: p})
+		}
+	}
+	if err := fanout.Each(len(jobs), func(i int) error {
+		j := jobs[i]
+		b, err := download(rc.Ctx, hc, listed[j.slot][j.pos].URL)
+		blobs[j.slot][j.pos] = b
+		return err
+	}); err != nil {
+		return err
+	}
+
+	for s, seq := range blobs {
+		if len(seq) == 0 {
+			continue // empty slot writes nothing (missing == empty)
+		}
+		loc, ty := locales[s/len(types)], types[s%len(types)]
+		if tr[loc] == nil {
+			tr[loc] = make(map[images.Type][][]byte)
+		}
+		tr[loc][ty] = seq
+	}
+	return nil
 }
 
 // download GETs the image bytes at url (the API gives no original filename, so
@@ -259,8 +290,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "Rapatriate the Store images live on Play into the local Metadata tree",
-		Long: `Rapatriate the Store images currently live on Google Play for --package
+		Short: "Download the Store images live on Play into the local Metadata tree",
+		Long: `Download the Store images currently live on Google Play for --package
 into the local Metadata tree under --dir (default ./metadata): singular
 slots as ` + "`<locale>/images/<type>.<ext>`" + ` and gallery slots as
 ` + "`<locale>/images/<type>/1.<ext>…N.<ext>`" + ` in display order.
@@ -268,10 +299,12 @@ slots as ` + "`<locale>/images/<type>.<ext>`" + ` and gallery slots as
 Reads inside a read-only Edit (open → list slots → download bytes →
 discard); nothing is committed. The write is additive: a slot with no
 images online writes nothing, so pull never emits an empty slot and a
-` + "`metadata images apply`" + ` immediately after a pull is a no-op
-(ADR-0013). Filenames are synthesized (the API carries none) and the
+` + "`metadata images apply`" + ` immediately after a pull is a no-op.
+Filenames are synthesized (the API carries none) and the
 extension is sniffed from the image bytes (PNG/JPEG), not the response
 header.`,
+		Example: `  gplay metadata images pull
+  gplay metadata images pull --dir store/metadata --package com.example.lite`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

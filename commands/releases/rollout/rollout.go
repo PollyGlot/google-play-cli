@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -34,6 +35,7 @@ type Input struct {
 	To                string
 	ToSet             bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 }
@@ -119,7 +121,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		return nil, err
 	}
 	if in.Track == "" {
-		return nil, &exit.UsageError{Msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a missing
@@ -152,6 +154,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		UserFraction:      userFraction,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -176,7 +179,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 // orchestrator.Rollout.
 func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.ToSet {
-		return nil, &exit.UsageError{Msg: "missing --to: gplay releases rollout --to <fraction> (0 < f ≤ 1.0)"}
+		return nil, exit.Usagef("missing --to: pass --to <fraction> (0 < f ≤ 1.0, e.g. 0.05)")
 	}
 	fraction, err := strconv.ParseFloat(strings.TrimSpace(in.To), 64)
 	if err != nil {
@@ -189,14 +192,16 @@ func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 }
 
 // bindCommonFlags registers the flags every verb shares (output, package,
-// track, the two disambiguators, keep-edit-on-failure, dry-run).
+// track, the two disambiguators, keep-edit-on-failure, the commit opt-ins,
+// dry-run).
 func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	output.RegisterFlag(cmd, outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name) (required)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the release with this versionCode (disambiguator when the track holds more than one)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the release with this name (disambiguator)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "required to roll out / resume / complete a release on production (reaches real users)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the transition without any HTTP call")
 }
@@ -243,6 +248,11 @@ Status becomes inProgress if it wasn't already.
 Targets the latest release on the track; when two releases coexist (e.g.
 inProgress + halted) pass --version-code N or --release-name <name> to pick
 one, otherwise the command refuses rather than guess.`,
+		Example: `  # Widen the production rollout to 20% of users
+  gplay releases rollout --track production --to 0.2 --confirm
+
+  # Preview the change on one of two coexisting releases
+  gplay releases rollout --track production --to 0.5 --version-code 1042 --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -257,6 +267,6 @@ one, otherwise the command refuses rather than guess.`,
 		},
 	}
 	bindCommonFlags(cmd, &in, &outputFlag)
-	cmd.Flags().StringVar(&in.To, "to", "", "target rollout fraction (0 < f ≤ 1.0), e.g. 0.05")
+	cmd.Flags().StringVar(&in.To, "to", "", "target rollout fraction (0 < f ≤ 1.0), e.g. 0.05 (required)")
 	return cmd
 }

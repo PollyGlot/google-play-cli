@@ -273,12 +273,13 @@ func TestLeafContract(t *testing.T) {
 	})
 
 	t.Run("Example", func(t *testing.T) {
-		subjects := map[string]bool{}
+		// No allowlist: every leaf has one (#592). What the Example says is
+		// checked against the leaf's real flags by TestLeafExamples_parse.
 		for _, c := range leaves {
-			subjects[leafKey(c)] = strings.Contains(c.Example, "gplay ")
+			if !strings.Contains(c.Example, "gplay ") {
+				t.Errorf(`leaf %q has no Example: set cobra.Command.Example to 2 or 3 realistic "gplay ..." invocations (one --dry-run or --output json variant when the leaf has one)`, leafKey(c))
+			}
 		}
-		leavesWithoutExample.enforce(t, subjects,
-			`leaf "{}" has no Example: set cobra.Command.Example to 2 or 3 realistic "gplay ..." invocations (one --dry-run or --output json variant when the leaf has one); a new leaf never goes in leavesWithoutExample`)
 	})
 
 	t.Run("OutputJSON", func(t *testing.T) {

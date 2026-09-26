@@ -65,15 +65,18 @@ func (p Payload) renderTable(w io.Writer) error {
 	return output.RenderTable(w, p.Cols, []devicetierscmd.Row{p.Row})
 }
 
+// dryRunView carries the ADR-0017 `requires` array like the other dry-run
+// previews: empty, because create is the ROUTINE tier (no --confirm).
 type dryRunView struct {
-	DryRun  bool   `json:"dryRun"`
-	Package string `json:"package"`
-	Bytes   int    `json:"bytes"`
+	DryRun   bool     `json:"dryRun"`
+	Package  string   `json:"package"`
+	Bytes    int      `json:"bytes"`
+	Requires []string `json:"requires"`
 }
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package, Bytes: p.Bytes})
+		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package, Bytes: p.Bytes, Requires: []string{}})
 	}
 	_, err := w.Write(p.Raw)
 	return err
@@ -169,6 +172,11 @@ Device tier configs are immutable: the API has create/get/list only, no
 update or delete, so create needs no --confirm (it can never overwrite or
 destroy an existing config); use --dry-run to validate the body and resolve the
 target without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
+		Example: `  # Validate the body and resolve the target, no HTTP call
+  gplay device-tiers create --file device-tiers.json --dry-run
+
+  # Create it (configs are immutable: a change is a new config)
+  gplay device-tiers create --file device-tiers.json --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

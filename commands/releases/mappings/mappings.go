@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -27,12 +28,15 @@ type Input struct {
 	VersionCode       int
 	Type              string
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	DryRun            bool
 }
 
-// Payload satisfies output.Renderable for the MappingResult.
+// Payload satisfies output.Renderable for the MappingResult. DryRun marks
+// the --dry-run preview, the path with no API body to pass through.
 type Payload struct {
 	Result *orchestrator.MappingResult
+	DryRun bool
 }
 
 // Renderers returns the per-Format renderers. The JSON form is API
@@ -41,7 +45,7 @@ type Payload struct {
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p.Result) },
-		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result) },
+		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result, p.DryRun) },
 		Markdown: func(w io.Writer) error { return renderMarkdown(w, p.Result) },
 	}
 }
@@ -58,15 +62,19 @@ func renderTable(w io.Writer, r *orchestrator.MappingResult) error {
 	return err
 }
 
-func renderJSON(w io.Writer, r *orchestrator.MappingResult) error {
+func renderJSON(w io.Writer, r *orchestrator.MappingResult, dryRun bool) error {
 	// API pass-through: emit the raw deobfuscationfiles.upload body (ADR-0003).
 	if len(r.Raw) > 0 {
 		_, err := w.Write(r.Raw)
 		return err
 	}
 	// Fallback to the gplay MappingResult shape (e.g. on --dry-run, where
-	// no upload happened).
-	return output.WriteJSON(w, r)
+	// no upload happened), led by the dryRun marker every other mutating
+	// command's preview carries.
+	return output.WriteJSON(w, struct {
+		DryRun bool `json:"dryRun,omitempty"`
+		*orchestrator.MappingResult
+	}{DryRun: dryRun, MappingResult: r})
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.MappingResult) error {
@@ -122,6 +130,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		FileType:          in.Type,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		DryRun:            in.DryRun,
 	})
 	if err != nil {
@@ -132,7 +141,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.DryRun {
 		rc.ConfirmMutation(explicitEditID, "uploaded %s mapping for versionCode %d", result.FileType, result.VersionCode)
 	}
-	return Payload{Result: result}, nil
+	return Payload{Result: result, DryRun: in.DryRun}, nil
 }
 
 // NewCommand returns the cobra command for `gplay releases mappings upload`.
@@ -153,6 +162,14 @@ Performs the full Edit lifecycle in one call:
 
 To upload a mapping at the same time as the AAB (the common case), pass
 --mapping to gplay releases upload instead.`,
+		Example: `  # Symbolicate the crash stacks of versionCode 1042 in Play vitals
+  gplay releases mappings upload app/build/outputs/mapping/release/mapping.txt --version-code 1042
+
+  # Upload native debug symbols instead of an R8 mapping
+  gplay releases mappings upload native-debug-symbols.zip --version-code 1042 --type nativeCode
+
+  # Validate the inputs without any HTTP call
+  gplay releases mappings upload mapping.txt --version-code 1042 --dry-run`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -171,6 +188,7 @@ To upload a mapping at the same time as the AAB (the common case), pass
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "APK versionCode the mapping belongs to (required)")
 	cmd.Flags().StringVar(&in.Type, "type", "proguard", "deobfuscation file type: proguard or nativeCode")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs without any HTTP call")
 	return cmd
 }

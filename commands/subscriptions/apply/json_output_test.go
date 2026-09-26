@@ -10,15 +10,15 @@ import (
 
 // fullPlan touches every plan slice, so the golden pins the flat change order
 // (creates, patches, offers, states, then deletes innermost-first) and how the
-// composite display keys split into productId/basePlanId/offerId.
+// typed identities render as productId/basePlanId/offerId.
 func fullPlan() reconcile.Plan {
 	return reconcile.Plan{
 		Creates:         []reconcile.Change{{ProductID: "premium_yearly"}},
 		Patches:         []reconcile.Change{{ProductID: "premium_monthly", Fields: []string{"basePlans", "listings"}}},
-		OfferCreates:    []reconcile.Change{{ProductID: "premium_monthly/monthly-autorenew/intro-7d"}},
-		OfferPatches:    []reconcile.Change{{ProductID: "premium_monthly/monthly-autorenew/winback", Fields: []string{"phases"}}},
-		OfferDeletes:    []reconcile.Change{{ProductID: "premium_monthly/monthly-autorenew/legacy-promo"}},
-		BasePlanDeletes: []reconcile.Change{{ProductID: "premium_monthly/monthly-prepaid"}},
+		OfferCreates:    []reconcile.Change{{ProductID: "premium_monthly", ParentID: "monthly-autorenew", OfferID: "intro-7d"}},
+		OfferPatches:    []reconcile.Change{{ProductID: "premium_monthly", ParentID: "monthly-autorenew", OfferID: "winback", Fields: []string{"phases"}}},
+		OfferDeletes:    []reconcile.Change{{ProductID: "premium_monthly", ParentID: "monthly-autorenew", OfferID: "legacy-promo"}},
+		BasePlanDeletes: []reconcile.Change{{ProductID: "premium_monthly", ParentID: "monthly-prepaid"}},
 		Deletes:         []reconcile.Change{{ProductID: "pro_legacy"}},
 		StateChanges: []reconcile.StateChange{
 			{Kind: "basePlan", ProductID: "premium_yearly", BasePlanID: "yearly-autorenew", From: "DRAFT", To: "ACTIVE"},

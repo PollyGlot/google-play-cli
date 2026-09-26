@@ -116,7 +116,7 @@ type dryRunView struct {
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, OrderID: p.OrderID, Revoke: p.Revoke, Requires: p.Requires})
+		return output.WriteJSON(w, dryRunView{DryRun: true, OrderID: p.OrderID, Revoke: p.Revoke, Requires: output.NonNil(p.Requires)})
 	}
 	// orders.refund returns an empty body on success; emit a gplay-shaped
 	// success object so --output json (the CI default) is always parseable
@@ -198,6 +198,11 @@ Refunding requires the service account to hold the CAN_MANAGE_ORDERS permission
 (never part of a Role bundle); a 403 names it. Google does not allow refunding
 orders older than 3 years: that surfaces as a specific refusal, not a generic
 error.`,
+		Example: `  # Preview the refund, no HTTP call
+  gplay orders refund GPA.1234-5678-9012-34567 --dry-run
+
+  # Refund and also revoke what the buyer bought
+  gplay orders refund GPA.1234-5678-9012-34567 --revoke --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -159,12 +159,22 @@ type Opts struct {
 	// `gplay edits commit` (docs/DESIGN.md §4). Empty is the implicit default.
 	ExplicitEditID string
 
+	// Commit carries the opt-in edits.commit parameters; the zero value keeps
+	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
+	Commit edits.CommitOptions
+
 	// MappingPath, when set, uploads a ProGuard/R8 deobfuscation file (a
 	// Mapping) alongside the AAB in the SAME Edit, keyed by the versionCode
 	// the bundle upload returns. Empty means no mapping is uploaded. This
 	// is the `releases upload --mapping` common case (#250); symbolicating
 	// obfuscated crash stacks in Play vitals depends on it.
 	MappingPath string
+
+	// DeviceTierConfig, when set, is forwarded as the deviceTierConfigId
+	// of edits.bundles.upload: the device tier config (an id, or "LATEST")
+	// Google generates the bundle's deliverables with. AAB only: the command
+	// layer refuses it for an APK before anything is opened.
+	DeviceTierConfig string
 
 	// Confirm gates production-impacting writes. Required when Track is
 	// "production" AND Status would publish to real users (Completed or
@@ -233,7 +243,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 
 	result := &Result{Track: opts.Track}
 
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
 		var localized []tracks.LocalizedText
 		if opts.ReleaseNotes != "" || opts.ReleaseNotesDir != "" {
 			// details.get is an extra round-trip; only do it when the
@@ -276,7 +286,8 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		if opts.Format == FormatAPK {
 			versionCode, err = apks.Upload(ctx, hc, opts.Package, editID, opts.AABPath)
 		} else {
-			versionCode, err = bundles.Upload(ctx, hc, opts.Package, editID, opts.AABPath)
+			versionCode, err = bundles.UploadWith(ctx, hc, opts.Package, editID, opts.AABPath,
+				bundles.Options{DeviceTierConfigID: opts.DeviceTierConfig})
 		}
 		if err != nil {
 			return err

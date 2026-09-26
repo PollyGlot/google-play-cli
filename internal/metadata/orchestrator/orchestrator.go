@@ -67,6 +67,10 @@ type Opts struct {
 	// listings are patched into the pinned Edit and left for the user to
 	// `gplay edits commit`. Empty is the implicit default.
 	ExplicitEditID string
+
+	// Commit carries the opt-in edits.commit parameters; the zero value keeps
+	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
+	Commit edits.CommitOptions
 }
 
 // Result is what Apply returns. Diff is always populated (the computed
@@ -224,7 +228,7 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	// for the user to `gplay edits commit`/`discard`.
 	patched := make(map[string]json.RawMessage)
 	var created, pruned []string
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
 		d, online, err := plan(ctx, hc, opts, editID, local)
 		if err != nil {
 			return err

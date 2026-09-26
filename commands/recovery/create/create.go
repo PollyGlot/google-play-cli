@@ -55,14 +55,17 @@ func (p Payload) renderTable(w io.Writer) error {
 	return output.RenderTable(w, p.Cols, []recoverycmd.Row{p.Row})
 }
 
+// dryRunView carries the ADR-0017 `requires` array like its lifecycle
+// siblings: empty, because creating a draft needs no --confirm.
 type dryRunView struct {
-	DryRun  bool   `json:"dryRun"`
-	Package string `json:"package"`
+	DryRun   bool     `json:"dryRun"`
+	Package  string   `json:"package"`
+	Requires []string `json:"requires"`
 }
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package})
+		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package, Requires: []string{}})
 	}
 	_, err := w.Write(p.Raw)
 	return err
@@ -127,6 +130,11 @@ remote in-app update by default (--remote-in-app-update).
 
 A draft is harmless, so create needs no --confirm; use --dry-run to validate
 inputs without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
+		Example: `  # Validate a draft Recovery for every user of the bad versionCode
+  gplay recovery create --version-code 1042 --all-users --dry-run
+
+  # Stage a draft for users in two regions only
+  gplay recovery create --version-code 1042 --regions US,FR`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

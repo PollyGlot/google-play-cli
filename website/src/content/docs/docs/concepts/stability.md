@@ -55,21 +55,31 @@ control is a broken promise waiting to happen.
 
 ## What ships experimental today
 
-As of 1.0:
+Generated from the binary's own command registry, so it matches what
+`--help` labels:
 
-- `gplay schema`
-- `gplay orders`
-- `gplay subscriptions`, `gplay iap`, the declarative monetization catalog
-- `gplay games`
-- `gplay recovery`, `gplay device-tiers`, `gplay customapps`
-- `gplay appstore`, the alternative-app-store surface
-- `gplay signing`, the self-hosted Cloud KMS key-custody surface
-- `gplay releases sharing`, `gplay releases expansion-files`, `gplay releases generated`
-- `gplay reviews history`
+<!-- BEGIN GENERATED experimental-commands (make docs-update) -->
+- `gplay apps audit`: Sweep apps for consistency drift (read-only)
+- `gplay appstore`: Alternative app store operations (catalog export, hosted app review)
+- `gplay customapps`: Create managed Google Play private apps (organisation-scoped)
+- `gplay device-tiers`: Manage device tier configs (device-targeting for tiered delivery)
+- `gplay games`: Configure a game's Play Games Services resources (achievements, leaderboards)
+- `gplay iap`: Pull and apply the app's one-time-product catalog as files (declarative)
+- `gplay orders`: Look up and refund Google Play orders by order ID (admin commerce surface)
+- `gplay recovery`: Manage app recovery actions (incident-response remediation for a bad release)
+- `gplay releases artifacts`: List the APKs and App Bundles attached to an app
+- `gplay releases expansion-files`: Manage legacy OBB expansion files (superseded by Play Asset Delivery)
+- `gplay releases generated`: List and download the APKs Play generates from an AAB
+- `gplay releases sharing`: Upload builds to Internal App Sharing (private shareable links)
+- `gplay reviews history`: Read the full review history for a package from the monthly CSV reports
+- `gplay schema`: Introspect the Android Publisher API surface offline
+- `gplay signing`: Manage Play App Signing with a self-hosted Cloud KMS key (enterprise key custody)
+- `gplay subscriptions`: Pull and apply the app's subscription catalog as files (declarative)
 
-Everything else is frozen: auth, apps, the core release loop, tracks, testers,
-team, edits, metadata, compliance, vitals, and `reviews list` / `view` /
-`reply`.
+Every other command is frozen, across `apps`, `auth`, `compliance`, `edits`,
+`exit-codes`, `init`, `install-skills`, `metadata`, `releases`, `reviews`,
+`team`, `testers`, `tracks`, `version`, `vitals`.
+<!-- END GENERATED experimental-commands -->
 
 A few **sub-features** of otherwise frozen commands are also marked
 experimental in prose, where a whole-command label would be too blunt: APK

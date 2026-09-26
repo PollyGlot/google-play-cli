@@ -65,6 +65,8 @@ via remote in-app update.
 
 Requires --confirm (missing → exit 3); rehearse first with --dry-run.
 GPLAY_READONLY refuses it (exit 4).`,
+		Example: `  gplay recovery deploy 4567890123 --dry-run
+  gplay recovery deploy 4567890123 --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

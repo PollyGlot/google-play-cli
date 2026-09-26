@@ -55,6 +55,9 @@ type uploadRT struct {
 	calls          []string
 	tokenHits      int
 	trackUpdateReq []byte
+	// bundlesInitQuery is the raw query of the bundles.upload resumable
+	// initiate: where the method's query parameters travel.
+	bundlesInitQuery string
 }
 
 func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -88,6 +91,7 @@ func (r *uploadRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/bundles"):
 		// Resumable initiate: return the session URI (same /bundles path) in
 		// Location; the PUT below carries the single chunk and the versionCode.
+		r.bundlesInitQuery = req.URL.RawQuery
 		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-" + r.editID
 		return &http.Response{
 			StatusCode: 200,

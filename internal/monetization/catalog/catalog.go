@@ -8,12 +8,15 @@
 package catalog
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
 // Entry is one product to write: its ID (the filename stem) and the verbatim
@@ -86,12 +89,15 @@ func Write(dir string, entries []Entry) ([]string, error) {
 		}
 		delete(m, "packageName")
 		delete(m, "archived")
-		b, err := json.MarshalIndent(m, "", "  ")
-		if err != nil {
+		// output.WriteJSON, not json.MarshalIndent: the file is the verbatim
+		// wire resource a human reviews in a diff, and MarshalIndent would
+		// rewrite every <, > and & of the listing copy as \u003c, \u003e, \u0026.
+		var b bytes.Buffer
+		if err := output.WriteJSON(&b, m); err != nil {
 			return nil, fmt.Errorf("encode subscription %q: %w", e.ProductID, err)
 		}
 		name := e.ProductID + ".json"
-		if err := writeNoFollow(dir, name, append(b, '\n')); err != nil {
+		if err := writeNoFollow(dir, name, b.Bytes()); err != nil {
 			return nil, err
 		}
 		keep[name] = struct{}{}

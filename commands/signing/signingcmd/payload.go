@@ -104,7 +104,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 			DryRun:   true,
 			Action:   p.Verb,
 			Package:  p.Package,
-			Requires: p.Requires,
+			Requires: output.NonNil(p.Requires),
 		})
 	}
 	// Live: verbatim API pass-through (ADR-0003).

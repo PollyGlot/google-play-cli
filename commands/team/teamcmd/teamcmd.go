@@ -4,8 +4,6 @@
 package teamcmd
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
@@ -23,7 +21,7 @@ import (
 // Account record, never the committed project config, and a hiccup is reported
 // to stderr rather than failing the command (resolution already succeeded).
 func DeveloperID(rc *kernel.RunContext, flag string) (string, error) {
-	id, err := addressing.Resolve(flag, os.Getenv(addressing.EnvDeveloperID), rc.Resolved)
+	id, err := addressing.ForRun(rc, flag)
 	if err != nil {
 		return "", err
 	}
@@ -53,10 +51,10 @@ func captureTypeOnce(rc *kernel.RunContext, id string) {
 		}
 		g.Accounts[i].DeveloperID = id
 		if err := g.Save(rc.Ctx, fsOrDefault(rc), rc.ConfigPath); err != nil {
-			_, _ = fmt.Fprintf(rc.Stderr, "gplay: warning: could not persist developer-id to Account %q: %v\n", rc.AccountName, err)
+			rc.Warnf("could not persist developer-id to Account %q: %v", rc.AccountName, err)
 			return
 		}
-		_, _ = fmt.Fprintf(rc.Stderr, "✓ developer-id %s saved to Account %q\n", id, rc.AccountName)
+		rc.Confirmf("developer-id %s saved to Account %q", id, rc.AccountName)
 		return
 	}
 }

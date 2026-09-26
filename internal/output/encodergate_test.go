@@ -5,6 +5,10 @@ package output_test
 //
 //   - under commands/ and cmd/, any json.NewEncoder fails: a command's JSON
 //     goes through output.WriteJSON, which owns the indent and the escaping;
+//   - under commands/ and cmd/, any json.Marshal or json.MarshalIndent fails
+//     too (#622): both escape, even inside a json.RawMessage, and WriteJSON
+//     cannot undo an escape baked into the bytes, so a command marshals
+//     through output.Marshal (a request body included: one rule, no triage);
 //   - elsewhere, a function that builds a json.NewEncoder must also call
 //     SetEscapeHTML(false) (the Discovery and schema-index writers do), so the
 //     \u0026 form cannot come back through a file gplay writes either.
@@ -37,7 +41,10 @@ func TestNoJSONEncoderBypassesWriteJSON(t *testing.T) {
 				if !ok || fn.Body == nil {
 					continue
 				}
-				encoders, unescaped := scanEncoders(fn.Body)
+				encoders, marshals, unescaped := scanEncoders(fn.Body)
+				if marshals > 0 && commandTree {
+					t.Errorf("%s: %s calls json.Marshal/MarshalIndent; use output.Marshal (or output.WriteJSON) instead", path, fn.Name.Name)
+				}
 				switch {
 				case encoders > 0 && commandTree:
 					t.Errorf("%s: %s builds a json.NewEncoder; render through output.WriteJSON instead", path, fn.Name.Name)
@@ -53,9 +60,9 @@ func TestNoJSONEncoderBypassesWriteJSON(t *testing.T) {
 	}
 }
 
-// scanEncoders counts json.NewEncoder calls in body and reports whether it
-// also calls SetEscapeHTML(false).
-func scanEncoders(body *ast.BlockStmt) (encoders int, unescaped bool) {
+// scanEncoders counts the json.NewEncoder and json.Marshal/MarshalIndent calls
+// in body and reports whether it also calls SetEscapeHTML(false).
+func scanEncoders(body *ast.BlockStmt) (encoders, marshals int, unescaped bool) {
 	ast.Inspect(body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
@@ -65,8 +72,13 @@ func scanEncoders(body *ast.BlockStmt) (encoders int, unescaped bool) {
 		if !ok {
 			return true
 		}
-		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "json" && sel.Sel.Name == "NewEncoder" {
-			encoders++
+		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "json" {
+			switch sel.Sel.Name {
+			case "NewEncoder":
+				encoders++
+			case "Marshal", "MarshalIndent":
+				marshals++
+			}
 		}
 		if sel.Sel.Name == "SetEscapeHTML" && len(call.Args) == 1 {
 			if arg, ok := call.Args[0].(*ast.Ident); ok && arg.Name == "false" {
@@ -75,5 +87,5 @@ func scanEncoders(body *ast.BlockStmt) (encoders int, unescaped bool) {
 		}
 		return true
 	})
-	return encoders, unescaped
+	return encoders, marshals, unescaped
 }

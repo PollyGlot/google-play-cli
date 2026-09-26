@@ -239,7 +239,7 @@ func buildBody(metrics, dimensions []string, period, filter string, since time.D
 	if filter != "" {
 		body["filter"] = filter
 	}
-	return json.Marshal(body)
+	return output.Marshal(body)
 }
 
 func toDateTime(t time.Time, hourly bool) dateTime {
@@ -256,12 +256,8 @@ func toDateTime(t time.Time, hourly bool) dateTime {
 // datapoint in the window (dates are zero-padded, so the lexical max is the
 // chronological max).
 func warnFreshness(rc *kernel.RunContext, set vitals.MetricSet, tl vitals.Timeline) {
-	if rc.Stderr == nil {
-		return
-	}
 	if tl.Empty() {
-		_, _ = fmt.Fprintf(rc.Stderr,
-			"WARN: no %s datapoints in the requested window; vitals metrics are reported with a delay, so an empty window is not the same as zero.\n",
+		rc.Warnf("no %s datapoints in the requested window; vitals metrics are reported with a delay, so an empty window is not the same as zero.",
 			set.Name)
 		return
 	}
@@ -271,7 +267,6 @@ func warnFreshness(rc *kernel.RunContext, set vitals.MetricSet, tl vitals.Timeli
 			latest = r.Date
 		}
 	}
-	_, _ = fmt.Fprintf(rc.Stderr,
-		"NOTE: %s vitals are reported with a delay; freshest datapoint in this window: %s.\n",
+	rc.Notef("%s vitals are reported with a delay; freshest datapoint in this window: %s.",
 		set.Name, latest)
 }

@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -172,7 +171,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &exit.UsageError{Msg: "missing --default-language: the default listing language (BCP 47, e.g. en-US) is required"}
 	}
 
-	account, err := addressing.Resolve(in.DeveloperID, os.Getenv(addressing.EnvDeveloperID), rc.Resolved)
+	account, err := addressing.ForRun(rc, in.DeveloperID)
 	if err != nil {
 		return nil, err
 	}
@@ -257,6 +256,12 @@ CAN_CREATE_MANAGED_PLAY_APPS capability; a 403 names both.
 
 --output json passes the created CustomApp through verbatim (including the
 output-only packageName). GPLAY_READONLY refuses the live write (exit 4).`,
+		Example: `  # Rehearse: validate the inputs and the artifact, no HTTP call
+  gplay customapps create app-release.aab --title "Example Field Kit" --default-language en-US --dry-run
+
+  # Create it for one organization (irreversible: the API has no delete)
+  gplay customapps create app-release.aab --title "Example Field Kit" --default-language en-US \
+    --organization 0a1b2c3d4e --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

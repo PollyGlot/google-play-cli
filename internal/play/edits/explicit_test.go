@@ -102,7 +102,7 @@ func TestOpenExplicit_editAlreadyExists_isConflict(t *testing.T) {
 
 func TestCommitExplicit_postsCommitOnly(t *testing.T) {
 	rt := &callRecorderRT{t: t, editID: "edit-9"}
-	if err := edits.CommitExplicit(context.Background(), &http.Client{Transport: rt}, "com.example.app", "edit-9"); err != nil {
+	if err := edits.CommitExplicit(context.Background(), &http.Client{Transport: rt}, "com.example.app", "edit-9", edits.CommitOptions{}); err != nil {
 		t.Fatalf("CommitExplicit: %v", err)
 	}
 	if len(rt.calls) != 1 || rt.calls[0] != "POST /androidpublisher/v3/applications/com.example.app/edits/edit-9:commit" {

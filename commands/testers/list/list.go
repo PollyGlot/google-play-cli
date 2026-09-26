@@ -163,7 +163,7 @@ func classifyTrackError(pkg string, err error) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
-		return nil, &exit.UsageError{Msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (any closed-track name, e.g. alpha)")
 	}
 
 	pkg, err := rc.Package(in.Package)
@@ -218,8 +218,10 @@ exclusively.
 Reads the audience inside a read-only Edit (open → testers.get → discard);
 nothing is committed. Replacing the audience is the job of ` + "`gplay testers set`" + `.
 
---output json is the raw testers.get payload (ADR-0003); --output markdown
+--output json is the raw testers.get payload; --output markdown
 renders a Markdown table.`,
+		Example: `  gplay testers list --track alpha
+  gplay testers list --track qa-team --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -231,6 +233,6 @@ renders a Markdown table.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "track whose testers to list (any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "track whose testers to list (any closed-track name) (required)")
 	return cmd
 }

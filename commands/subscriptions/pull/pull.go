@@ -133,7 +133,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Merge the pages back into one ListSubscriptionsResponse envelope so the
 	// json view stays an API-shaped pass-through (the fully-consumed
 	// nextPageToken is the only field dropped): the team users list precedent.
-	merged, err := json.Marshal(struct {
+	merged, err := output.Marshal(struct {
 		Subscriptions []json.RawMessage `json:"subscriptions"`
 	}{Subscriptions: rawSubs})
 	if err != nil {
@@ -161,6 +161,10 @@ removed so the directory mirrors Play; non-.json files are never touched.
 Commit the directory, edit the files, then rehearse with
 "gplay subscriptions apply --dry-run". --output json stays the merged
 ListSubscriptionsResponse (offers travel in the files).`,
+		Example: `  # Write the live catalog to ./monetization/subscriptions, then commit it
+  gplay subscriptions pull
+
+  gplay subscriptions pull --dir store/subscriptions --package com.example.app`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

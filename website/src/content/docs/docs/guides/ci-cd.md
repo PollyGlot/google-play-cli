@@ -139,7 +139,7 @@ archive and verify it before running anything:
       - name: Install and verify gplay
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: v0.5.0
+          VERSION: v1.6.1 # x-release-please-version
         run: |
           set -euo pipefail
           base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"
