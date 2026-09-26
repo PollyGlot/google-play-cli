@@ -105,17 +105,22 @@ inventory, not gplay's local registry.
 This is distinct from ` + "`gplay apps list`" + `, which prints the packages you
 have run ` + "`gplay apps add`" + ` on (your chosen working set). The two sets do
 not necessarily coincide: a credential may be able to add an App it cannot
-see here, or see org Apps it does not drive (ADR-0039). Use this to
+see here, or see org Apps it does not drive. Use this to
 bootstrap: discover package names, then ` + "`gplay apps add`" + ` the ones you
 want to work on.
 
 Pagination is one page per invocation: use --page-size and --page-token,
 and --output json passes the SearchAccessibleAppsResponse through verbatim,
-nextPageToken included (ADR-0003). In table/markdown output a note on stderr
+nextPageToken included. In table/markdown output a note on stderr
 carries the next --page-token when more Apps are available.
 
 Reads on the Play Developer Reporting service with the least-privilege
 reporting scope; needs a resolved credential (no local-registry fallback).`,
+		Example: `  # Discover the package names the active credential can see
+  gplay apps accessible list
+
+  # Page through a large Developer account, 200 Apps at a time
+  gplay apps accessible list --page-size 200 --output json | jq -r '.apps[].packageName'`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -148,7 +153,7 @@ credential can access; the bare ` + "`apps accessible`" + ` command prints this
 help.
 
 Distinct from ` + "`apps list`" + ` (gplay's local registry): see
-` + "`apps accessible list --help`" + ` and ADR-0039.`,
+` + "`apps accessible list --help`" + `.`,
 		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,

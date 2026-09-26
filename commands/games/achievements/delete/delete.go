@@ -57,6 +57,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 
 Requires --confirm (missing → exit 3); CI=true never auto-confirms. Rehearse
 first with --dry-run. GPLAY_READONLY refuses the live delete (exit 4).`,
+		Example: `  gplay games achievements delete CgkI4ZqN0pMUEAIQAQ --dry-run
+  gplay games achievements delete CgkI4ZqN0pMUEAIQAQ --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

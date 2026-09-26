@@ -254,6 +254,13 @@ control is never silent.
 Use --dry-run to preview the resolved payload with no HTTP; with --output json
 it emits a ` + "`requires`" + ` array naming the safety flags the live write needs, so
 an agent can discover the gate before running it.`,
+		Example: `  # Invite a release manager
+  gplay team users add dev@example.com --role release-manager
+
+  # Preview an admin invite: the JSON names the --grant-admin gate
+  gplay team users add lead@example.com --role admin --dry-run --output json
+
+  gplay team users add lead@example.com --role admin --grant-admin`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

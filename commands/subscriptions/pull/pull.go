@@ -161,6 +161,10 @@ removed so the directory mirrors Play; non-.json files are never touched.
 Commit the directory, edit the files, then rehearse with
 "gplay subscriptions apply --dry-run". --output json stays the merged
 ListSubscriptionsResponse (offers travel in the files).`,
+		Example: `  # Write the live catalog to ./monetization/subscriptions, then commit it
+  gplay subscriptions pull
+
+  gplay subscriptions pull --dir store/subscriptions --package com.example.app`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

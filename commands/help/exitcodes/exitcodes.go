@@ -30,14 +30,15 @@ func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "exit-codes",
 		Short: "Explain gplay's semantic exit codes",
-		Long: "gplay returns a semantic exit code so scripts and agents can branch on the\noutcome without parsing output (docs/DESIGN.md §9):\n\n" +
+		Long: "gplay returns a semantic exit code so scripts and agents can branch on the\noutcome without parsing output\n(https://gplay.sh/docs/concepts/exit-codes/):\n\n" +
 			table() +
 			"\nUnder --output json a failure also carries a stable diagnostic CODE, which\n" +
-			"discriminates failures that share an exit code, plus a RETRYABLE bit\n" +
-			"(ADR-0044). The vocabulary is append-only; `gplay schema --codes --output json`\n" +
+			"discriminates failures that share an exit code, plus a RETRYABLE bit.\n" +
+			"The vocabulary is append-only; `gplay schema --codes --output json`\n" +
 			"prints this same catalog for a machine to consume:\n\n" +
 			exit.CodeTableString(),
-		Args: cobra.NoArgs,
+		Example: `  gplay exit-codes`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},

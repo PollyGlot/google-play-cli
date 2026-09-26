@@ -74,7 +74,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "view <deviceTierConfigId>",
 		Short: "Read one device tier config by id",
 		Long: `Read a single device tier config by its server-assigned id.
---output json passes the DeviceTierConfig through verbatim (ADR-0003).`,
+--output json passes the DeviceTierConfig through verbatim.`,
+		Example: `  gplay device-tiers view 1234567890
+  gplay device-tiers view 1234567890 --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

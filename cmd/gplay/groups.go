@@ -7,6 +7,8 @@ package main
 // registries in main_test.go, which stay the completeness guard.
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/accessiblecmd"
@@ -126,8 +128,12 @@ func newAuthGroup(boot kernel.Boot) *cobra.Command {
 // `gplay apps init` duplicates the top-level `gplay init` (see newRootCmd) so
 // both forms are discoverable.
 func newAppsGroup(boot kernel.Boot) *cobra.Command {
+	// Same command under a second path: its Example names the path it is
+	// read from, so `gplay apps init --help` shows `gplay apps init`.
+	appsInit := initcmd.NewCommand(initcmd.Options{})
+	appsInit.Example = strings.ReplaceAll(appsInit.Example, "gplay init", "gplay apps init")
 	return kernel.Group("apps", "Manage Android packages registered with gplay",
-		initcmd.NewCommand(initcmd.Options{}),
+		appsInit,
 		addcmd.NewCommand(boot),
 		listcmd.NewCommand(boot),
 		accessiblecmd.NewCommand(boot),

@@ -335,6 +335,14 @@ store immediately); without it apply refuses and points here. CI=true does
 NOT auto-confirm. The publish is atomic: all locales are written inside one
 Edit committed once (a locale new to Play is created, a live one patched),
 and any per-locale failure discards the Edit (0 published).`,
+		Example: `  # Show what would change on Play, per locale (online, nothing committed)
+  gplay metadata apply --dry-run
+
+  # Publish every locale on disk in one Edit
+  gplay metadata apply --confirm
+
+  # Also delete the locales that exist only on Play
+  gplay metadata apply --prune --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

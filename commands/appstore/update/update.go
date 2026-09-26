@@ -329,7 +329,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "update",
 		Short: "Submit a hosted app's assembled details to Google review (immediate, irrevocable)",
 		Long: `Assemble a hosted app's details: developer identity, active APK sets,
-per-locale store listings, policy questionnaire answers, and SUBMIT it to
+per-locale Listings, policy questionnaire answers, and SUBMIT it to
 Google for review, on behalf of a third-party Android app store.
 
 The submission is IMMEDIATE and IRREVOCABLE: Google reviews what this call
@@ -391,7 +391,7 @@ Addressing uses two identifiers, and mixing them up is the common mistake:
 
   --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
-                   falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
+                   falling back to $` + appstorecmd.EnvStorePackage + `
   --package        the hosted app's package name (the subject), defaulting to
                    the repo's .gplay/config.json pin when omitted
 
@@ -402,10 +402,15 @@ inherits the resolved one.
 ` + "`gplay appstore create`" + ` must have run for this hosted app first. The call is
 Edit-free: it opens no Edit and joins none. The response carries no fields (the
 acknowledgement IS the result), so --output json passes the API response
-through verbatim (ADR-0003), falling back to a gplay-shaped success object only
+through verbatim, falling back to a gplay-shaped success object only
 when the API answers with no body at all. GPLAY_READONLY refuses the write
 (exit 4) but lets --dry-run run. A 403 names the app store enrollment the call
 requires.`,
+		Example: `  # Rehearse: validate the file and resolve the target, no HTTP call
+  gplay appstore update --file hosted-app.json --store-package com.example.store --dry-run
+
+  # Submit to Google review (immediate and irrevocable)
+  gplay appstore update --file hosted-app.json --store-package com.example.store --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

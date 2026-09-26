@@ -257,9 +257,10 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "version",
-		Short: "Print gplay version",
-		Args:  cobra.NoArgs,
+		Use:     "version",
+		Short:   "Print gplay version",
+		Example: "  gplay version",
+		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
 			info, ok := debug.ReadBuildInfo()
 			v, c, d := resolveVersion(version, commit, date, info, ok)

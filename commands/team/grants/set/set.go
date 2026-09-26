@@ -333,6 +333,12 @@ Use --dry-run to rehearse: it reads the current state (an idempotent read, no
 write) and, with --output json, reports the resolved verb (create/update), the
 permission diff (current → desired, with add/remove), and the ` + "`requires`" + ` array.
 An admin-conferring grant requires the named --grant-admin (exit 3).`,
+		Example: `  # Let QA manage testers on one app
+  gplay team grants set qa@example.com --package com.example.app --role tester-manager
+
+  # Preview a hand-picked permission set: verb, diff and required flags
+  gplay team grants set dev@example.com --package com.example.app \
+    --permissions release-testing,reply-reviews --dry-run --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

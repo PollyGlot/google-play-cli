@@ -291,6 +291,9 @@ mutating verbs (promote, rollout, halt, resume) live under ` + "`gplay releases`
 Default table columns: name, status, userFraction, versionCodes, notes.
 Override with --columns name,status,...  (--output json is the raw
 tracks.get payload; --output markdown renders a Markdown table.)`,
+		Example: `  gplay tracks view --track production
+  gplay tracks view --track qa-team --output markdown
+  gplay tracks view --track beta --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

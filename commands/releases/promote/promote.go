@@ -247,12 +247,22 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Promote a release from one track to another (no AAB re-upload)",
 		Long: `Copy the latest release on --from to --to, keeping the same versionCode.
 
-Targeting production defaults to a draft release (ADR-0002) unless --complete
-or --staged is supplied. Release notes carry over from the source unless
---release-notes / --release-notes-dir is passed.
+Targeting production defaults to a draft release, which reaches no user,
+unless --complete or --staged is supplied (both require --confirm there).
+Release notes carry over from the source unless --release-notes /
+--release-notes-dir is passed.
 
 When the source track has multiple coexisting releases (e.g. inProgress +
 halted), pass --version-code N or --release-name <name> to pick one.`,
+		Example: `  # Promote the latest beta release to production as a draft (the default)
+  gplay releases promote --from beta --to production
+
+  # Promote straight into a 5% staged rollout, with new release notes
+  gplay releases promote --from beta --to production --staged 0.05 \
+    --release-notes-dir distribution/whatsnew --confirm
+
+  # Preview promoting one of two coexisting releases
+  gplay releases promote --from alpha --to beta --version-code 1042 --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -103,6 +103,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Print the active Account, the keystore backend, and where the credential lives",
+		Example: `  gplay auth status
+  gplay auth status --output json`,
 		// Now that status has a real error path (a corrupt active credential
 		// returns exit 10, #178), silence cobra's usage banner and error echo
 		// so a runtime failure surfaces as main.go's single `gplay: ...` line

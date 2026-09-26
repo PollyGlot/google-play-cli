@@ -109,15 +109,16 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 package (unexpected spikes in crash rate, ANR rate, and the other vitals) over
 a window.
 
-  gplay vitals anomalies --package com.example.app
-  gplay vitals anomalies --since 90d
-  gplay vitals anomalies --filter 'activeBetween("2026-01-01T00:00:00Z", UNBOUNDED)'
-
 --since builds an activeBetween(...) window for you; --filter passes a raw
 AIP-160 predicate (e.g. an open-ended window) and overrides --since.
 
 Read-only; --output json mirrors the API response verbatim; table/markdown show
 the metric set, anomalous metric and value, period, and dimensions.`,
+		Example: `  gplay vitals anomalies --package com.example.app
+  gplay vitals anomalies --since 90d --output json
+
+  # An open-ended window through a raw filter
+  gplay vitals anomalies --filter 'activeBetween("2026-01-01T00:00:00Z", UNBOUNDED)'`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -332,14 +332,24 @@ deobfuscation file in the same Edit, so Play vitals can symbolicate
 obfuscated crash stacks. To attach a mapping to an already-published
 version, use gplay releases mappings upload instead.
 
-Targeting production defaults to a draft release (ADR-0002) unless
---complete or --staged is supplied. Any string is accepted as --track
-so closed-test tracks with custom names just work.
+Targeting production defaults to a draft release, which reaches no user,
+unless --complete or --staged is supplied (both require --confirm there).
+Any string is accepted as --track so Closed tracks with custom names just
+work. See https://gplay.sh/docs/concepts/tracks-and-releases/
 
 [experimental] APK upload: Google has required the AAB for new apps
 since August 2021, so .apk uploads only serve existing apps still
 distributed as APKs; if the app requires an App Bundle, Google's rejection
 of the APK passes through verbatim.`,
+		Example: `  # Ship a build to internal testing, with its R8 mapping
+  gplay releases upload app-release.aab --track internal --mapping mapping.txt
+
+  # Start a 10% staged rollout on production, release notes per locale
+  gplay releases upload app-release.aab --track production --staged 0.1 \
+    --release-notes-dir distribution/whatsnew --confirm
+
+  # Preview the release payload without any HTTP call
+  gplay releases upload app-release.aab --track production --dry-run --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

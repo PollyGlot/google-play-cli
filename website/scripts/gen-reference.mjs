@@ -71,7 +71,9 @@ function parseHelp(text) {
       sections[current] = [];
       continue;
     }
-    if (line.startsWith('Use "')) break; // trailing cobra hint
+    // The trailing cobra hint, matched whole: a Long line that merely starts
+    // with `Use "` (subscriptions apply has one) must not end the parse.
+    if (/^Use ".*" for more information about a command\.$/.test(line)) break;
     sections[current].push(line);
   }
   const trim = (arr) => (arr ?? []).join('\n').replace(/^\n+|\s+$/g, '');
@@ -88,7 +90,9 @@ function parseHelp(text) {
 function parseCommandList(lines) {
   const out = [];
   for (const line of lines) {
-    const m = line.match(/^ {2}(\S+)\s{2,}(.*)$/);
+    // cobra pads names to the longest one, so the longest is followed by a
+    // single space (games: achievements, leaderboards): one or more, not two.
+    const m = line.match(/^ {2}(\S+)\s+(.*)$/);
     if (m && !SKIP.has(m[1])) out.push({ name: m[1], short: m[2].trim() });
   }
   return out;

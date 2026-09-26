@@ -272,6 +272,9 @@ appear.
 
 (--output json carries each slot's images verbatim: the edits.images.list
 objects, id/url/sha1/sha256; --output markdown renders a Markdown table.)`,
+		Example: `  gplay metadata images list
+  gplay metadata images list --type phoneScreenshots
+  gplay metadata images list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

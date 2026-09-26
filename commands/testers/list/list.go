@@ -218,8 +218,10 @@ exclusively.
 Reads the audience inside a read-only Edit (open → testers.get → discard);
 nothing is committed. Replacing the audience is the job of ` + "`gplay testers set`" + `.
 
---output json is the raw testers.get payload (ADR-0003); --output markdown
+--output json is the raw testers.get payload; --output markdown
 renders a Markdown table.`,
+		Example: `  gplay testers list --track alpha
+  gplay testers list --track qa-team --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -225,6 +225,12 @@ Default table columns: date, stars, locale, reviewId, summary. Override with
 --columns stars,reviewId,...  (--output json is the {"reviews":[...]}
 pass-through reflecting the filtered set; --output markdown renders a
 Markdown table.)`,
+		Example: `  gplay reviews list
+
+  # The worst reviews of the week, capped at 20
+  gplay reviews list --stars 1-2 --limit 20
+
+  gplay reviews list --stars 1,2,3 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
