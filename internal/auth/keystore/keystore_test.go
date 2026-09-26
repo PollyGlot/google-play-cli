@@ -155,8 +155,11 @@ func TestFileBackend_pathLikeName_refusedWithoutTouchingDisk(t *testing.T) {
 	} else if errors.Is(err, keystore.ErrNotFound) {
 		t.Error("Load returned ErrNotFound, want a refusal: not-found lets the resolver fall through silently")
 	}
-	if err := be.Delete(ctx, name); err == nil {
-		t.Error("Delete accepted a path-like name")
+	// Delete answers "nothing stored here": Save never stores such a name, and
+	// logout sweeps the file backend after the keyring, so a refusal would
+	// fail the logout of a keyring Account whose name has a slash.
+	if err := be.Delete(ctx, name); !errors.Is(err, keystore.ErrNotFound) {
+		t.Errorf("Delete(%q) = %v, want ErrNotFound", name, err)
 	}
 	if got, err := os.ReadFile(outside); err != nil || string(got) != victim {
 		t.Errorf("file outside the keystore changed: %q, %v", got, err)

@@ -81,9 +81,14 @@ func (b *FileBackend) Load(_ context.Context, name string) ([]byte, error) {
 }
 
 // Delete removes the credential. Returns ErrNotFound if absent.
+//
+// A name validName refuses is reported as ErrNotFound, not as an error: Save
+// never stores one, so there is nothing under it to delete, and a caller that
+// sweeps every store (logout deletes from the keyring AND the file backend)
+// must be able to finish for a keyring-held Account whose name has a slash.
 func (b *FileBackend) Delete(_ context.Context, name string) error {
-	if err := validName(name); err != nil {
-		return err
+	if validName(name) != nil {
+		return ErrNotFound
 	}
 	err := os.Remove(b.path(name))
 	if errors.Is(err, os.ErrNotExist) {
