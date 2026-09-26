@@ -395,7 +395,9 @@ the subtle part:**
   level on docs-only PRs too.
 - **`build`** ("Build, lint, test") *is* required. GitHub treats a **skipped**
   required job as unsatisfied: it would block merge forever. So `build` runs
-  with `if: always()`: it never skips, whatever happened upstream, and derives
+  with `if: ${{ !cancelled() }}`: it runs whatever happened upstream, failures
+  included, and skips only when the run itself is cancelled (see
+  [Concurrency](#concurrency-prs-cancel-main-never-does)). It derives
   its verdict from `needs.*.result` (see the next section). On a docs-only PR it
   finds `code` false and goes green in seconds, leaving the required check
   satisfied without running any Go tooling.
@@ -432,7 +434,7 @@ the length of the `matrix.shard` list; the script reads it back from
 nothing.
 
 **The aggregator keeps the required name.** The job named "Build, lint, test"
-now only aggregates: `needs: [changes, lint, test]`, `if: always()`, one step
+now only aggregates: `needs: [changes, lint, test]`, `if: ${{ !cancelled() }}`, one step
 that reads the results. It is red when:
 
 - `changes` did not succeed (an empty `code` output must not read as
@@ -467,6 +469,47 @@ within a day even when no PR touches its package. Like the other scheduled
 workflows (CodeQL, govulncheck, Discovery Watch) it is not a check on any PR; a
 failure is reported by GitHub's scheduled-workflow notification and shows in
 the Actions tab.
+
+### Concurrency: PRs cancel, main never does
+
+`ci.yml` and `codeql.yml` share one concurrency rule:
+
+```yaml
+group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+On a pull request a new push supersedes the old head, so the old run is
+cancelled. Every other run (a push to `main`, the CodeQL schedule) gets a group
+of its own and runs to the end. The group used to be keyed on the ref for pushes
+too, and back-to-back merges cancelled each other: over 60 days 28% of `main`
+CI runs never gave a verdict nor saved the living cache, and when #547 and #548
+landed 25 s apart the cancelled run hid whether #547 alone was sound. The
+per-run group matters on its own: with a shared group and
+`cancel-in-progress: false`, GitHub still cancels the *pending* run when a third
+one queues, so even a per-sha group could drop a run when a push and the
+schedule share a commit.
+
+A cancelled PR run skips the aggregator (`!cancelled()`) rather than failing
+it, so a superseded head no longer shows a red "Build, lint, test". This stays
+fail-closed: the newer run reports the check, and a head whose only run was
+cancelled has no required check at all, which blocks merge.
+
+### Merging: `scripts/merge-pr.sh`
+
+The ruleset asks for an approving review and up-to-date required checks. With a
+single maintainer no approval can exist, so PRs merge with
+`gh pr merge --admin`, and `--admin` skips the up-to-date rule too: #547 and
+#548 each passed CI against an older `main`, and their squashes together broke
+`TestCoverageDocMatchesSources`. The repo is owned by a user account, so GitHub's
+merge queue is not available. `scripts/merge-pr.sh <n>` puts the rule back in
+front of the admin merge: it refuses when the PR head does not contain the
+current `origin/main`, or when a required check (read from the branch rules) is
+missing, pending, or red, and otherwise runs
+`gh pr merge <n> --admin --squash --match-head-commit <sha>`. `--dry-run` runs
+every gate without merging. A branch that is behind is brought up to date with
+`git merge origin/main` (or `gh pr update-branch <n>`), never a rebase: the
+squash makes the merge commit free.
 
 
 ### Release rehearsal
