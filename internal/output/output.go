@@ -8,6 +8,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -120,6 +121,21 @@ func WriteJSON(w io.Writer, v any) error {
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
+}
+
+// Marshal is json.Marshal without HTML escaping, for the compact JSON gplay
+// assembles from API bytes before it reaches WriteJSON: a merged page
+// envelope, a composite view. json.Marshal escapes <, > and & even inside a
+// json.RawMessage, and WriteJSON cannot undo an escape already baked into
+// the bytes, so such an envelope must be built here to stay verbatim.
+func Marshal(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 // RegisterFlag binds the standard --output flag to dest on cmd. Every

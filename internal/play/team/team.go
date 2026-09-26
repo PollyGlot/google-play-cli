@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -130,7 +131,7 @@ func ListUsers(ctx context.Context, hc *http.Client, developerID string) ([]User
 	if rawAll == nil {
 		rawAll = []json.RawMessage{}
 	}
-	merged, err := json.Marshal(struct {
+	merged, err := output.Marshal(struct {
 		Users []json.RawMessage `json:"users"`
 	}{Users: rawAll})
 	if err != nil {

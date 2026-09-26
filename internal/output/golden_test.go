@@ -61,3 +61,19 @@ func TestWriteErrorEnvelope_golden(t *testing.T) {
 		})
 	}
 }
+
+// TestMarshal_keepsRawMessageVerbatim covers the envelope builders (merged
+// vitals pages, team users, the apps view composite): json.Marshal would bake
+// an escaped ampersand into the bytes before WriteJSON ever sees them.
+func TestMarshal_keepsRawMessageVerbatim(t *testing.T) {
+	got, err := output.Marshal(struct {
+		Items []json.RawMessage `json:"items"`
+	}{Items: []json.RawMessage{json.RawMessage(`{"cause":"NPE at <init> & onCreate"}`)}})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	want := `{"items":[{"cause":"NPE at <init> & onCreate"}]}`
+	if string(got) != want {
+		t.Errorf("Marshal = %s, want %s (compact, unescaped, no trailing newline)", got, want)
+	}
+}
