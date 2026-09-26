@@ -52,8 +52,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Surface unknown-name errors before touching the keystore.
 	if err := cfg.RemoveAccount(in.Name); err != nil {
 		if errors.Is(err, config.ErrUnknownAccount) {
-			_, _ = fmt.Fprintf(rc.Stderr,
-				"unknown account %q. Known accounts: %s\n", in.Name, listAccountNames(cfg))
+			rc.Failf("unknown account %q. Known accounts: %s", in.Name, listAccountNames(cfg))
 		}
 		return nil, err
 	}
@@ -83,12 +82,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		// Both stores were reachable and neither holds the key: it is
 		// provably gone (a half-finished earlier logout, a keychain wiped by
 		// hand). Stay idempotent: succeed, but do not claim a deletion.
-		_, _ = fmt.Fprintf(rc.Stderr, "warning: no stored credential found, nothing to delete (Account %q)\n", in.Name)
-		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q removed from the registry\n", in.Name)
+		rc.Warnf("no stored credential found, nothing to delete (Account %q)", in.Name)
+		rc.Confirmf("Account %q removed from the registry", in.Name)
 		return nil, nil
 	}
 
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q removed (credential deleted from %s)\n", in.Name, strings.Join(removed, " and "))
+	rc.Confirmf("Account %q removed (credential deleted from %s)", in.Name, strings.Join(removed, " and "))
 	return nil, nil
 }
 
