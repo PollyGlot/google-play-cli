@@ -22,6 +22,7 @@ const SECURITY_HEADERS = [
   'referrer-policy',
   'permissions-policy',
   'strict-transport-security',
+  'cross-origin-opener-policy',
 ];
 
 // A static-asset binding serving a fixed map of path -> response init.
@@ -352,6 +353,13 @@ describe('static assets', () => {
     const res = await get('https://gplay.sh/_astro/gone.js');
     assert.equal(res.status, 404);
     assert.notEqual(res.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  });
+
+  it('isolates the browsing context with Cross-Origin-Opener-Policy: same-origin', async () => {
+    for (const url of ['https://gplay.sh/', 'https://gplay.sh/docs/quickstart/', 'https://gplay.sh/nope']) {
+      const res = await get(url);
+      assert.equal(res.headers.get('cross-origin-opener-policy'), 'same-origin', url);
+    }
   });
 
   it('passes the 404 page through', async () => {
