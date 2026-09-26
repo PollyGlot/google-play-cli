@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2/jwt"
 
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
@@ -77,14 +77,25 @@ func TestServiceAccountJSON_fields(t *testing.T) {
 }
 
 // The fixture is only useful if the real oauth2 JWT flow signs with it and
-// lands on the fake: this drives golang.org/x/oauth2/google end to end.
+// lands on the fake: this drives golang.org/x/oauth2/jwt end to end, the
+// flow internal/auth/token builds from the same key-file fields.
 func TestFake_servesTheJWTExchangeOfTheFixture(t *testing.T) {
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		return 200, `{"ok":true}`, c.Method == http.MethodGet && c.Path == "/v1/things"
 	})
-	cfg, err := google.JWTConfigFromJSON(testkit.ServiceAccountJSON(t), "https://www.googleapis.com/auth/androidpublisher")
-	if err != nil {
-		t.Fatalf("JWTConfigFromJSON: %v", err)
+	var key struct {
+		ClientEmail string `json:"client_email"`
+		PrivateKey  string `json:"private_key"`
+		TokenURI    string `json:"token_uri"`
+	}
+	if err := json.Unmarshal(testkit.ServiceAccountJSON(t), &key); err != nil {
+		t.Fatalf("unmarshal fixture: %v", err)
+	}
+	cfg := &jwt.Config{
+		Email:      key.ClientEmail,
+		PrivateKey: []byte(key.PrivateKey),
+		Scopes:     []string{"https://www.googleapis.com/auth/androidpublisher"},
+		TokenURL:   key.TokenURI,
 	}
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fake})
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://androidpublisher.googleapis.com/v1/things", nil)

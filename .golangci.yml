@@ -21,6 +21,8 @@ linters:
     # near-zero noise on this tree; none of them is a style rule.
     - canonicalheader
     - copyloopvar
+    # depguard: bars imports that bloat the static binary for no use (#646).
+    - depguard
     - durationcheck
     # errorlint: a type assertion or == on an error breaks the day someone
     # wraps it. A deliberate %v (breaking the chain so exit.For does not pick a
@@ -47,6 +49,14 @@ linters:
     # (mostly unlambda), contextcheck (false positives on the deliberately
     # detached cleanup context), bodyclose (test fakes only).
   settings:
+    depguard:
+      rules:
+        binary-size:
+          deny:
+            - pkg: golang.org/x/oauth2/google
+              desc: "links the GCE metadata client and log/slog into the binary; build a golang.org/x/oauth2/jwt Config from the parsed key (internal/auth/token)"
+            - pkg: cloud.google.com/go/compute/metadata
+              desc: "gplay authenticates with a key file, never the GCE metadata server"
     exhaustive:
       default-signifies-exhaustive: true
     thelper:
