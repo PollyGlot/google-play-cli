@@ -1,0 +1,47 @@
+name: Contract
+
+# A PR that changes the frozen command surface (a `frozen` line of
+# cmd/gplay/testdata/surface.golden) must say so: a breaking marker in the title
+# or an ADR reference in the body. See scripts/contract-gate.sh.
+#
+# Its own workflow rather than a job in ci.yml because the verdict depends on
+# the PR title and body: `edited` re-runs this cheap check when the author fixes
+# the title, without re-running the whole build and test matrix. The freshness
+# of the golden itself is a Go test (TestSurfaceGolden_isFresh) in ci.yml.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  frozen-surface:
+    name: Frozen surface needs a breaking marker or an ADR
+    runs-on: ubuntu-latest
+    steps:
+      # The pull_request checkout is the merge commit; depth 2 brings its first
+      # parent, the base it merges into, so the diff is exactly what would land.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: shellcheck the gate
+        run: shellcheck scripts/contract-gate.sh scripts/contract-gate-test.sh
+
+      - name: Self-test the gate (offline)
+        run: bash scripts/contract-gate-test.sh
+
+      # Title and body are attacker-controlled: they reach the script through
+      # env only, never through an expression inside `run:`.
+      - name: Check the golden diff
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          BASE_SHA="$(git rev-parse HEAD^1)" HEAD_SHA="$(git rev-parse HEAD)" bash scripts/contract-gate.sh
