@@ -1,0 +1,7 @@
+{
+  "dryRun": true,
+  "patch": {
+    "contactEmail": "dev@example.com",
+    "contactWebsite": "https://example.com/support?lang=en&ref=<play>"
+  }
+}

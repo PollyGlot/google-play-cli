@@ -1,0 +1,70 @@
+{
+  "methods": {
+    "androidpublisher.edits.tracks.get": {
+      "httpMethod": "GET",
+      "path": "androidpublisher/v3/applications/{packageName}/edits/{editId}/tracks/{track}",
+      "response": "Track"
+    },
+    "androidpublisher.edits.tracks.update": {
+      "httpMethod": "PUT",
+      "path": "androidpublisher/v3/applications/{packageName}/edits/{editId}/tracks/{track}",
+      "description": "Updates a track & its releases.",
+      "parameters": [
+        {
+          "name": "editId",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Identifier of the edit."
+        },
+        {
+          "name": "packageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Package name of the app."
+        },
+        {
+          "name": "track",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Identifier of the track."
+        }
+      ],
+      "request": "Track",
+      "response": "Track"
+    }
+  },
+  "schemas": {
+    "Track": {
+      "description": "A track configuration. The maximum number of releases is <= 2.",
+      "properties": {
+        "releases": {
+          "$ref": "TrackRelease",
+          "repeated": true,
+          "description": "In a read request, represents all active releases in the track."
+        },
+        "track": {
+          "type": "string",
+          "description": "Identifier of the track."
+        }
+      }
+    },
+    "TrackRelease": {
+      "description": "A release within a track.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "statusUnspecified",
+            "draft",
+            "inProgress",
+            "halted",
+            "completed"
+          ]
+        }
+      }
+    }
+  }
+}
