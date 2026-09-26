@@ -17,6 +17,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/apps/registry"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
@@ -50,13 +51,6 @@ type authError struct{ msg string }
 func (e *authError) Error() string { return e.msg }
 func (e *authError) ExitCode() int { return 10 }
 
-// usageError signals CLI misuse (an inline credential cannot scope the
-// registry); ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // Run resolves the Account to list (per the precedence rules below),
 // reads its packages from the registry, marks the row matching
 // rc.Resolved.Pin (if any), and returns a Renderable payload.
@@ -78,7 +72,7 @@ func (e *usageError) ExitCode() int { return 2 }
 //  3. rc.Account != nil with rc.AccountName == "": the inline-credential
 //     case (--service-account / GPLAY_SERVICE_ACCOUNT). Inline creds have
 //     no local Account name so the registry cannot be scoped to them; we
-//     return a usageError (exit 2) telling the user this limitation.
+//     return a usage error (exit 2) telling the user this limitation.
 //  4. Neither name nor credential resolved: authError (exit 10).
 //
 // Once Account is chosen, we also assert it exists in
@@ -112,7 +106,7 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 			// has no local name so the per-Account registry cannot be
 			// scoped to it. Mirror addcmd.go:85-87's clearer message
 			// rather than misdirecting the user to `auth login`.
-			return nil, &usageError{msg: "apps list: cannot list under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
+			return nil, &exit.UsageError{Msg: "apps list: cannot list under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
 		// Fall back to the cascade name when no resolver layer chose one.
 		// Listing is read-only so a credentialless cascade Account is

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -36,11 +37,6 @@ type Input struct {
 	Confirm           bool
 	DryRun            bool
 }
-
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // Payload satisfies output.Renderable for the resulting promote Result.
 // Reuses the orchestrator's Result so JSON pass-through (ADR-0003) and
@@ -141,7 +137,7 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 // client from the active Account, then hands off to the orchestrator.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ReleaseNotes != "" && in.ReleaseNotesDir != "" {
-		return nil, &usageError{msg: "--release-notes and --release-notes-dir are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
 	statusFlags := 0
 	if in.Draft {
@@ -154,16 +150,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		statusFlags++
 	}
 	if statusFlags > 1 {
-		return nil, &usageError{msg: "--draft, --complete, and --staged are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--draft, --complete, and --staged are mutually exclusive"}
 	}
 	if in.StagedFractionSet && (in.StagedFraction <= 0 || in.StagedFraction > 1.0) {
-		return nil, &usageError{msg: "--staged fraction must be in (0, 1]"}
+		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
 	}
 	if in.FromTrack == "" {
-		return nil, &usageError{msg: "missing --from"}
+		return nil, &exit.UsageError{Msg: "missing --from"}
 	}
 	if in.ToTrack == "" {
-		return nil, &usageError{msg: "missing --to"}
+		return nil, &exit.UsageError{Msg: "missing --to"}
 	}
 
 	pkg := in.Package
@@ -171,7 +167,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+		return nil, &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a

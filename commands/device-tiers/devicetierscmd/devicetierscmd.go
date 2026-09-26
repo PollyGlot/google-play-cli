@@ -1,6 +1,6 @@
 // Package devicetierscmd holds the wiring shared by the three `gplay
-// device-tiers` leaves (create/view/list): package resolution, the ADR-0018
-// shared table machinery, and 404/403 hint classification. Keeping it in one
+// device-tiers` leaves (create/view/list): the ADR-0018 shared table
+// machinery and 404/403 hint classification. Keeping it in one
 // place mirrors commands/team/teamcmd and keeps the leaves thin.
 package devicetierscmd
 
@@ -11,33 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/devicetiers"
 )
-
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
-// ResolvePackage resolves the target package: --package wins, else the project
-// pin. An empty result is a usage error (exit 2).
-func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
-	pkg := strings.TrimSpace(flag)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
-	}
-	return pkg, nil
-}
-
-// Usagef builds a usage error (exit 2) for the leaves to share.
-func Usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf(format, a...)} }
 
 // Row is the synthesized one-line-per-config view rendered by table/markdown.
 // It is NOT the API shape; the JSON view bypasses it for the raw pass-through.

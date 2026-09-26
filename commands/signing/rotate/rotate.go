@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/signing/signingcmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appsigning"
@@ -36,20 +37,20 @@ type Input struct {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.KmsKey == "" {
-		return nil, signingcmd.Usagef("missing --kms-key: pass the Cloud KMS crypto key VERSION resource of the NEW signing key")
+		return nil, exit.Usagef("missing --kms-key: pass the Cloud KMS crypto key VERSION resource of the NEW signing key")
 	}
 	if in.KmsCert == "" {
-		return nil, signingcmd.Usagef("missing --kms-cert <file.pem>: the new key's certificate travels with the key")
+		return nil, exit.Usagef("missing --kms-cert <file.pem>: the new key's certificate travels with the key")
 	}
 	if in.Lineage == "" {
-		return nil, signingcmd.Usagef("missing --lineage <file>: the API requires the apksigner proof-of-rotation lineage (apksigner rotate)")
+		return nil, exit.Usagef("missing --lineage <file>: the API requires the apksigner proof-of-rotation lineage (apksigner rotate)")
 	}
 	reason, ok := appsigning.RotationReason(in.Reason)
 	if !ok {
-		return nil, signingcmd.Usagef("invalid --reason %q (valid: %s)", in.Reason, strings.Join(appsigning.RotationReasons(), ", "))
+		return nil, exit.Usagef("invalid --reason %q (valid: %s)", in.Reason, strings.Join(appsigning.RotationReasons(), ", "))
 	}
 
-	pkg, err := signingcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
@@ -29,13 +30,6 @@ import (
 type Input struct {
 	Package string
 }
-
-// usageError is a CLI-misuse error (missing --package and no pin);
-// ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // validationError is a client-side package-name format failure with
 // ExitCode()=20 per docs/DESIGN.md §9 (client-side validation). Same
@@ -154,7 +148,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+		return nil, &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 	if err := validatePackage(pkg); err != nil {
 		return nil, err

@@ -39,13 +39,6 @@ type Input struct {
 	DryRun   bool
 }
 
-// usageError is a CLI-misuse error (no mode, both modes, missing reply);
-// ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // Run validates the flag combination, resolves the package, and dispatches
 // to single- or batch-reply. It writes all user-facing output itself and
 // returns only an error (nil on full success).
@@ -53,14 +46,14 @@ func Run(rc *kernel.RunContext, in Input) error {
 	// Mode selection is pure CLI misuse: validate before any resolution or
 	// network so a bad invocation fails fast with exit 2.
 	if in.BatchSet && (in.ReviewID != "" || in.Reply != "") {
-		return &usageError{msg: "--batch is mutually exclusive with --review-id / --reply"}
+		return &exit.UsageError{Msg: "--batch is mutually exclusive with --review-id / --reply"}
 	}
 	if !in.BatchSet {
 		if in.ReviewID == "" {
-			return &usageError{msg: "nothing to reply to: pass --review-id <id> --reply <text>, or --batch <file>"}
+			return &exit.UsageError{Msg: "nothing to reply to: pass --review-id <id> --reply <text>, or --batch <file>"}
 		}
 		if in.Reply == "" {
-			return &usageError{msg: "--review-id requires --reply <text>"}
+			return &exit.UsageError{Msg: "--review-id requires --reply <text>"}
 		}
 	}
 
@@ -69,7 +62,7 @@ func Run(rc *kernel.RunContext, in Input) error {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+		return &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	// --dry-run never touches the network, so a missing Account is fine.
@@ -143,7 +136,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 
 	lines := batch.Parse(src)
 	if len(lines) == 0 {
-		return &usageError{msg: "batch is empty: no <review-id>\\t<reply> rows found"}
+		return &exit.UsageError{Msg: "batch is empty: no <review-id>\\t<reply> rows found"}
 	}
 
 	worst := 0
@@ -197,13 +190,13 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 func batchSource(rc *kernel.RunContext, path string) (io.Reader, func(), error) {
 	if path == "-" {
 		if rc.Stdin == nil {
-			return nil, func() {}, &usageError{msg: "--batch - reads the TSV from stdin, but stdin is not available"}
+			return nil, func() {}, &exit.UsageError{Msg: "--batch - reads the TSV from stdin, but stdin is not available"}
 		}
 		return rc.Stdin, func() {}, nil
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, func() {}, &usageError{msg: "cannot read --batch file: " + err.Error()}
+		return nil, func() {}, &exit.UsageError{Msg: "cannot read --batch file: " + err.Error()}
 	}
 	return f, func() { _ = f.Close() }, nil
 }

@@ -1,6 +1,5 @@
 // Package recoverycmd holds the wiring shared by the `gplay recovery` leaves:
-// package resolution, the ADR-0018 list-table machinery, and 404/403 hint
-// classification. Mirrors commands/team/teamcmd.
+// the ADR-0018 list-table machinery and 404/403 hint classification. Mirrors commands/team/teamcmd.
 package recoverycmd
 
 import (
@@ -9,31 +8,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
-
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
-// Usagef builds a usage error (exit 2).
-func Usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf(format, a...)} }
-
-// ResolvePackage resolves the target package: --package wins, else the project pin.
-func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
-	pkg := strings.TrimSpace(flag)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
-	}
-	return pkg, nil
-}
 
 // Row is the synthesized one-line-per-recovery view.
 type Row struct {

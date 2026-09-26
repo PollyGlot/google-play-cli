@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -29,12 +30,6 @@ type Input struct {
 	KeepEditOnFailure bool
 	DryRun            bool
 }
-
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // Payload satisfies output.Renderable for the MappingResult.
 type Payload struct {
@@ -89,10 +84,10 @@ func renderMarkdown(w io.Writer, r *orchestrator.MappingResult) error {
 // HTTP client, then hands off to orchestrator.UploadMapping.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.MappingPath == "" {
-		return nil, &usageError{msg: "missing mapping path: gplay releases mappings upload <mapping.txt> --version-code N"}
+		return nil, &exit.UsageError{Msg: "missing mapping path: gplay releases mappings upload <mapping.txt> --version-code N"}
 	}
 	if in.VersionCode <= 0 {
-		return nil, &usageError{msg: "missing or invalid --version-code (the APK versionCode to attach the mapping to)"}
+		return nil, &exit.UsageError{Msg: "missing or invalid --version-code (the APK versionCode to attach the mapping to)"}
 	}
 
 	// Resolve package: --package flag → project pin.
@@ -101,7 +96,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		pkg = rc.Resolved.Pin
 	}
 	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+		return nil, &exit.UsageError{Msg: "no package: pass --package <pkg> or run gplay init in your repo"}
 	}
 
 	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the

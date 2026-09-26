@@ -13,19 +13,17 @@ package list
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 )
@@ -34,54 +32,6 @@ import (
 type Input struct {
 	Package string
 	Columns string
-}
-
-// packageNotFoundError wraps an edits.insert 404 with a hint pointing at
-// `gplay apps list`. Like trackNotFoundError in `releases list`, it
-// carries no ExitCode of its own so the wrapped *api.Error (404 -> exit
-// 30) stays authoritative through the Coder chain: an unknown package is
-// an API 4xx, not a CLI misuse.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
-
-// forbiddenError wraps a 403 (service account not invited on the app)
-// with the standard grant-access hint. It carries no ExitCode of its own
-// so the wrapped *api.Error (403 -> exit 11) stays authoritative.
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// classifyEditError adds an actionable hint to the two operator-facing
-// failures of a read-only tracks listing: an unknown package (404) and a
-// service account that has not been invited on the app (403), while
-// leaving the wrapped *api.Error to drive the exit code. Every other
-// failure (5xx, network, edit conflict) propagates verbatim.
-func classifyEditError(pkg string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
-	}
-	return err
 }
 
 // StandardTracks are the four well-known tracks Google Play provisions
@@ -302,7 +252,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		parsed, raw = ts, r
 		return nil
 	}); err != nil {
-		return nil, classifyEditError(pkg, err)
+		return nil, apihint.ForPackage(pkg, err)
 	}
 
 	return Payload{Raw: raw, Rows: BuildRows(parsed), Columns: cols}, nil
