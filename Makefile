@@ -48,6 +48,10 @@ schema-index-update: ## Derive the embedded Schema index from the committed Disc
 coverage-update: ## Render docs/COVERAGE.md from the Discovery index and the API method registry (offline)
 	go run ./internal/discovery/cmd/coverage-update
 
+.PHONY: contract-update
+contract-update: ## Regenerate cmd/gplay/testdata/surface.golden (every leaf, flag and exit code) from the cobra tree (offline)
+	go test ./cmd/gplay -run '^TestSurfaceGolden_isFresh$$' -count=1 -update-contract
+
 release-snapshot: ## Local GoReleaser snapshot (no publish) — sanity-check the config
 	goreleaser release --snapshot --clean --skip=publish,sign,sbom
 
