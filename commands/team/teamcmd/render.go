@@ -1,7 +1,6 @@
 package teamcmd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -11,7 +10,7 @@ import (
 // used) to stderr so they surface regardless of --output format.
 func EmitWarnings(rc *kernel.RunContext, warnings []string) {
 	for _, w := range warnings {
-		_, _ = fmt.Fprintf(rc.Stderr, "warning: %s\n", w)
+		rc.Warnf("%s", w)
 	}
 }
 

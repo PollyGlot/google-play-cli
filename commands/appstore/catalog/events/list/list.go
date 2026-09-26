@@ -98,8 +98,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, appstorecmd.ClassifyStoreRead(storePkg, err)
 	}
-	if resp.NextPageToken != "" && rc.Stderr != nil {
-		_, _ = io.WriteString(rc.Stderr, "NOTE: more update events available, re-run with --page-token "+resp.NextPageToken+" (keeping the same --start-time/--end-time/--page-size: the API rejects a page token when any other parameter changes) for the next page.\n")
+	if resp.NextPageToken != "" {
+		rc.Notef("more update events available, re-run with --page-token %s (keeping the same --start-time/--end-time/--page-size: the API rejects a page token when any other parameter changes) for the next page.", resp.NextPageToken)
 	}
 	return Payload{Events: resp.RecentUpdateEvents, Raw: raw}, nil
 }

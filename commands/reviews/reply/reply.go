@@ -83,14 +83,14 @@ func Run(rc *kernel.RunContext, in Input) error {
 // stderr.
 func runSingle(rc *kernel.RunContext, pkg, reviewID, text string, dryRun bool, hc *http.Client) error {
 	if dryRun {
-		_, _ = fmt.Fprintf(rc.Stderr, "DRY-RUN would reply on %s\n", reviewID)
+		rc.Logf("DRY-RUN would reply on %s", reviewID)
 		return nil
 	}
 	raw, err := reviews.Reply(rc.Ctx, hc, pkg, reviewID, text)
 	if err != nil {
 		return reviewerr.ClassifyReply(pkg, reviewID, err)
 	}
-	_, _ = fmt.Fprintf(rc.Stderr, "Reply posted on %s\n", reviewID)
+	rc.Logf("Reply posted on %s", reviewID)
 	if rc.Format == output.FormatJSON {
 		return writeRaw(rc.Stdout, raw)
 	}
@@ -142,7 +142,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 
 	for _, ln := range lines {
 		if ln.Err != nil {
-			_, _ = fmt.Fprintf(rc.Stderr, "ERR line %d: %v\n", ln.Num, ln.Err)
+			rc.Failf("ERR line %d: %v", ln.Num, ln.Err)
 			results = append(results, rowResult{Status: "error", Error: ln.Err.Error()})
 			worst = max(worst, 2) // malformed input is CLI misuse (exit 2)
 			failed++
@@ -150,19 +150,19 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 		}
 		id := ln.Record.ReviewID
 		if in.DryRun {
-			_, _ = fmt.Fprintf(rc.Stderr, "DRY-RUN would reply on %s\n", id)
+			rc.Logf("DRY-RUN would reply on %s", id)
 			results = append(results, rowResult{ReviewID: id, Status: "planned"})
 			continue
 		}
 		if _, err := reviews.Reply(rc.Ctx, hc, pkg, id, ln.Record.Reply); err != nil {
 			cerr := reviewerr.ClassifyReply(pkg, id, err)
-			_, _ = fmt.Fprintf(rc.Stderr, "ERR %s %s\n", id, cerr.Error())
+			rc.Failf("ERR %s %s", id, cerr.Error())
 			results = append(results, rowResult{ReviewID: id, Status: "error", Error: cerr.Error()})
 			worst = max(worst, exit.For(cerr))
 			failed++
 			continue
 		}
-		_, _ = fmt.Fprintf(rc.Stderr, "OK %s\n", id)
+		rc.Logf("OK %s", id)
 		results = append(results, rowResult{ReviewID: id, Status: "ok"})
 	}
 
