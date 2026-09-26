@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -46,7 +47,7 @@ func decodePage(raw []byte, itemsKey string) (items []json.RawMessage, next stri
 // rebuildEnvelope re-serialises accumulated items under itemsKey, the shape the
 // Parse* projectors and the JSON pass-through both consume.
 func rebuildEnvelope(itemsKey string, items []json.RawMessage) (json.RawMessage, error) {
-	return json.Marshal(map[string][]json.RawMessage{itemsKey: items})
+	return output.Marshal(map[string][]json.RawMessage{itemsKey: items})
 }
 
 // tokenLoopError is the api.Error a non-progressing pagination token raises:

@@ -1,0 +1,9 @@
+{
+  "dryRun": true,
+  "action": "deploy",
+  "recoveryId": "4711",
+  "package": "com.example.app",
+  "requires": [
+    "confirm"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "appStorePackageName": "com.example.store",
+  "packageName": "com.example.app",
+  "reviewSubmitted": true,
+  "developerName": "Example <Games> & Co",
+  "locales": 2,
+  "apkSets": 1,
+  "policyDeclarations": 3
+}

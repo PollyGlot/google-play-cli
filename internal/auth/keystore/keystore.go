@@ -7,6 +7,8 @@ package keystore
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,6 +56,13 @@ func validName(name string) error {
 
 func (b *FileBackend) path(name string) string {
 	return filepath.Join(b.root, name+fileSuffix)
+}
+
+// Path returns the file that holds (or would hold) the credential stored
+// under name. Callers print it so a user always knows where a plaintext
+// key sits on disk.
+func (b *FileBackend) Path(name string) string {
+	return b.path(name)
 }
 
 // Save writes data to <root>/<name>.json with mode 0600, creating the parent
@@ -118,4 +127,27 @@ func (b *FileBackend) List(_ context.Context) ([]string, error) {
 		names = append(names, strings.TrimSuffix(n, fileSuffix))
 	}
 	return names, nil
+}
+
+// WarnFileFallback writes the one line login prints when the credential
+// lands in the file backend. It is not gated on -v: a service-account
+// private key written to disk in plaintext (a locked keychain over SSH,
+// a headless box) is something the user must learn at write time, not
+// discover during an offboarding audit.
+func WarnFileFallback(w io.Writer, path string) {
+	_, _ = fmt.Fprintf(w, "warning: OS keyring unavailable; credential stored in plaintext file %s (mode 0600)\n", path)
+}
+
+// WarnStrayFiles warns when credentials sit in the file backend under root
+// while the keyring backend is the active one. Those files were written by
+// an earlier process that could not reach the keyring; gplay no longer
+// reads them, so nothing else would ever point at them. Listing failures
+// are ignored: this is advice, never a reason to fail the command.
+func WarnStrayFiles(ctx context.Context, w io.Writer, root string) {
+	names, err := NewFileBackend(root).List(ctx)
+	if err != nil || len(names) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "warning: keyring is active but %d plaintext credential file(s) remain in %s (%s); they are not read while the keyring is reachable, delete them once unneeded\n",
+		len(names), root, strings.Join(names, ", "))
 }
