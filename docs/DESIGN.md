@@ -282,6 +282,12 @@ Each transition is its own verb:
 failure after `begin`, the Edit is **auto-discarded** before the error
 propagates. Pass `--keep-edit-on-failure` to bypass cleanup when debugging.
 
+`SIGINT` and `SIGTERM` count as a failure: the in-flight request is canceled,
+the Edit is discarded under a 5-second bound (inside the CI kill margin: GitHub
+Actions sends `SIGTERM` 7.5s after `SIGINT`), and gplay exits `50`. A second
+signal is not caught and kills gplay at once. Only a hard kill (`SIGKILL`, OOM,
+runner eviction) can still leave an Edit open.
+
 ### Explicit edits
 
 `gplay edits begin / commit / discard`. The Edit ID is persisted to
@@ -659,6 +665,11 @@ pointing at a shared translation):
 | `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
+
+**An interrupted command exits 50.** A command stopped by `SIGINT` or `SIGTERM`
+before it succeeded exits `50` whatever step it was on, after discarding its
+implicit Edit (§4), so re-running it is safe. A command that completed before
+the signal was handled keeps its `0`.
 
 **Exit 3 has no exceptions.** *Every* refusal for a missing safety-acknowledgment
 flag exits `3` — never `2` — whatever the command and however destructive the
