@@ -43,6 +43,11 @@ type Call struct {
 	// Target is what the call addresses, carried as Error.Package: the package
 	// name, or the developer / application id of an account-scoped surface.
 	Target string
+	// URL, when set, is requested with GET instead of Method's template (Params
+	// and Media are then ignored): an absolute URL an API response handed back,
+	// such as the Store image url images.list returns. Never a URL built by
+	// hand, which the archgate test forbids; Op must name the call.
+	URL string
 }
 
 // Stream is a request body read from its source rather than held in memory
@@ -58,22 +63,11 @@ type Stream struct {
 // docs/DESIGN.md §9 taxonomy; see the package comment for the full contract.
 func Do(ctx context.Context, hc *http.Client, c Call) (json.RawMessage, error) {
 	op := c.op()
-	req, err := c.request(ctx, op)
+	resp, err := send(ctx, hc, c, op)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &Error{Operation: op, Package: c.Target, Message: err.Error(), Cause: err}
-	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// An error envelope is a few hundred bytes: the cap only bounds a hostile
-		// server, and a truncated envelope still yields its HTTP status.
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAPIErrorBodyRead))
-		msg, reasons := ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &Error{Operation: op, Package: c.Target, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
 	// Read one byte past the cap: reaching it proves the body was cut, and a
 	// cut JSON document must never reach --output json as if it were whole.
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead+1))
@@ -91,6 +85,74 @@ func Do(ctx context.Context, hc *http.Client, c Call) (json.RawMessage, error) {
 		}
 	}
 	return json.RawMessage(raw), nil
+}
+
+// Download sends c and streams the 2xx body into w, with no size cap: the
+// executor for a media payload (a generated APK, a Store image) that is not
+// JSON and may be far larger than MaxAPISuccessBodyRead. It returns the number
+// of bytes written. A refusal is the *Error Do returns. A body cut mid-stream
+// is tagged like Do's (exit 50, the network failed); a failing w keeps the
+// answer's status and carries the writer's error as Cause, so the caller can
+// still tell its own refusal (a size cap, a full disk) apart with errors.Is.
+func Download(ctx context.Context, hc *http.Client, c Call, w io.Writer) (int64, error) {
+	op := c.op()
+	resp, err := send(ctx, hc, c, op)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	src := &readTracker{r: resp.Body}
+	n, err := io.Copy(w, src)
+	if err != nil {
+		cause := err
+		if src.err != nil {
+			cause = &bodyReadError{err: err}
+		}
+		return n, &Error{
+			Operation: op, Package: c.Target, StatusCode: resp.StatusCode,
+			Message: "stream response body: " + err.Error(),
+			Cause:   cause,
+		}
+	}
+	return n, nil
+}
+
+// send builds c and sends it. A non-2xx answer is read, closed and returned as
+// an *Error carrying Google's envelope, so a nil error hands the caller an
+// open 2xx response to consume and close.
+func send(ctx context.Context, hc *http.Client, c Call, op string) (*http.Response, error) {
+	req, err := c.request(ctx, op)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, &Error{Operation: op, Package: c.Target, Message: err.Error(), Cause: err}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer func() { _ = resp.Body.Close() }()
+		// An error envelope is a few hundred bytes: the cap only bounds a hostile
+		// server, and a truncated envelope still yields its HTTP status.
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAPIErrorBodyRead))
+		msg, reasons := ParseErrorEnvelope(b, resp.StatusCode)
+		return nil, &Error{Operation: op, Package: c.Target, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
+	}
+	return resp, nil
+}
+
+// readTracker remembers the error its reader failed with, so Download can tell
+// a body cut by the network from a writer that refused the bytes.
+type readTracker struct {
+	r   io.Reader
+	err error
+}
+
+func (t *readTracker) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		t.err = err
+	}
+	return n, err
 }
 
 // DoJSON is Do followed by decoding the body into out (a pointer). It returns
@@ -125,21 +187,25 @@ func (c Call) request(ctx context.Context, op string) (*http.Request, error) {
 	fail := func(msg string, err error) error {
 		return &Error{Operation: op, Package: c.Target, Message: msg, Cause: err}
 	}
-	build := c.Method.URL
-	if c.Media {
-		build = c.Method.UploadURL
-	}
-	u, err := build(c.Params)
-	if err != nil {
-		return nil, fail(err.Error(), err)
-	}
-	q := c.Query
-	if c.Media {
-		q = url.Values{}
-		for k, v := range c.Query {
-			q[k] = v
+	// A handed-back URL is sent verbatim with GET, its own query included.
+	verb, u, q := http.MethodGet, c.URL, url.Values(nil)
+	if u == "" {
+		build := c.Method.URL
+		if c.Media {
+			build = c.Method.UploadURL
 		}
-		q.Set("uploadType", "media")
+		var err error
+		if u, err = build(c.Params); err != nil {
+			return nil, fail(err.Error(), err)
+		}
+		verb, q = c.Method.Verb, c.Query
+		if c.Media {
+			q = url.Values{}
+			for k, v := range c.Query {
+				q[k] = v
+			}
+			q.Set("uploadType", "media")
+		}
 	}
 	if len(q) > 0 {
 		u += "?" + q.Encode()
@@ -165,7 +231,7 @@ func (c Call) request(ctx context.Context, op string) (*http.Request, error) {
 		}
 		body = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, c.Method.Verb, u, body)
+	req, err := http.NewRequestWithContext(ctx, verb, u, body)
 	if err != nil {
 		if rc, ok := body.(io.Closer); ok {
 			_ = rc.Close()

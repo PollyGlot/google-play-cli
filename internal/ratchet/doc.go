@@ -23,7 +23,7 @@
 //   - http-client: an http.Client constructed by shipped code outside
 //     internal/transport. Take the client the RunContext builds
 //     (rc.AuthedClient / rc.UploadClient) and wrap transports in
-//     internal/transport.
+//     internal/transport, whose NewClient is the one constructor.
 //   - usage-error-type: a local usage-error type. Return exit.UsageError
 //     (exit.Usagef).
 //

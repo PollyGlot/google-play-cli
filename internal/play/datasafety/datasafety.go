@@ -10,10 +10,8 @@
 package datasafety
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -46,58 +44,9 @@ type request struct {
 // the gplay exit-code taxonomy maps transparently: 403→11, 404→30, 5xx→40,
 // network→50.
 func Post(ctx context.Context, hc *http.Client, pkg string, csv []byte) (json.RawMessage, error) {
-	payload, err := json.Marshal(request{SafetyLabels: string(csv)})
-	if err != nil {
-		return nil, &api.Error{Operation: opDataSafety, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
-	}
-
-	u, err := method.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return nil, &api.Error{Operation: opDataSafety, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method.Verb, u, bytes.NewReader(payload))
-	if err != nil {
-		return nil, &api.Error{Operation: opDataSafety, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: opDataSafety, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		if readErr != nil {
-			return nil, &api.Error{
-				Operation:  opDataSafety,
-				Package:    pkg,
-				StatusCode: resp.StatusCode,
-				Message:    "read error response body: " + readErr.Error(),
-				Cause:      readErr,
-			}
-		}
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{
-			Operation:  opDataSafety,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{
-			Operation:  opDataSafety,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response body: " + readErr.Error(),
-			Cause:      readErr,
-		}
-	}
-	return json.RawMessage(raw), nil
+	return api.Do(ctx, hc, api.Call{
+		Method: method, Op: opDataSafety, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Body:   request{SafetyLabels: string(csv)},
+	})
 }

@@ -10,13 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func resp(status int, body string) *http.Response {
 	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
@@ -29,9 +27,9 @@ const draftBody = `{"appRecoveryId":"555","status":"RECOVERY_STATUS_DRAFT","crea
 func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 	var gotURL string
 	var gotBody []byte
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
-		gotBody, _ = io.ReadAll(r.Body)
+		gotBody = testkit.ReadBody(r)
 		return resp(200, draftBody), nil
 	})
 	hc := &http.Client{Transport: rt}
@@ -93,8 +91,8 @@ func TestCreate_buildsTargeting_noEdit(t *testing.T) {
 // drop or rename the key and no create test would notice.
 func TestCreate_allUsersTargeting_onWire(t *testing.T) {
 	var gotBody []byte
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
-		gotBody, _ = io.ReadAll(r.Body)
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		gotBody = testkit.ReadBody(r)
 		return resp(200, draftBody), nil
 	})
 	hc := &http.Client{Transport: rt}
@@ -127,7 +125,7 @@ func TestCreate_allUsersTargeting_onWire(t *testing.T) {
 // parsed actions.
 func TestList_sendsVersionCode(t *testing.T) {
 	var gotURL string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return resp(200, `{"recoveryActions":[{"appRecoveryId":"1","status":"RECOVERY_STATUS_ACTIVE"}]}`), nil
 	})
@@ -151,7 +149,7 @@ func TestList_sendsVersionCode(t *testing.T) {
 // TestErrors_mapExitCodes asserts api.Error exit mapping.
 func TestErrors_mapExitCodes(t *testing.T) {
 	for _, tc := range []struct{ status, want int }{{403, 11}, {404, 30}, {500, 40}} {
-		rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return resp(tc.status, `{"error":{"message":"nope"}}`), nil
 		})
 		hc := &http.Client{Transport: rt}

@@ -25,5 +25,5 @@ GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?prefix=
 content-length=0 replayable=true
 GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?pageToken=again&prefix=reviews%2Freviews_com.example.app
 content-length=0 replayable=true
-=> error (exit 50): storage.objects.list on pubsite_prod_rev_01234: pagination token loop detected in storage.objects.list (server repeated a pageToken)
+=> error (exit 50): storage.objects.list on pubsite_prod_rev_01234: pagination token loop detected in storage.objects.list (server repeated a nextPageToken)
 

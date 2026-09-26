@@ -3,10 +3,11 @@ package recovery_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
@@ -15,10 +16,10 @@ import (
 func TestDeploy_postsDeployVerb(t *testing.T) {
 	var gotURL, gotMethod string
 	var bodyLen int
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
-		b, _ := io.ReadAll(r.Body)
+		b := testkit.ReadBody(r)
 		bodyLen = len(b)
 		return resp(200, `{}`), nil
 	})
@@ -41,7 +42,7 @@ func TestDeploy_postsDeployVerb(t *testing.T) {
 // TestCancel_postsCancelVerb asserts the :cancel custom verb path.
 func TestCancel_postsCancelVerb(t *testing.T) {
 	var gotURL, gotMethod string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
 		return resp(200, `{}`), nil
@@ -66,9 +67,9 @@ func TestCancel_postsCancelVerb(t *testing.T) {
 func TestAddTargeting_postsTargetingUpdate(t *testing.T) {
 	var gotURL string
 	var gotBody []byte
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
-		gotBody, _ = io.ReadAll(r.Body)
+		gotBody = testkit.ReadBody(r)
 		return resp(200, `{}`), nil
 	})
 	hc := &http.Client{Transport: rt}
@@ -94,8 +95,8 @@ func TestAddTargeting_postsTargetingUpdate(t *testing.T) {
 // dimension of the append-only selector, previously unasserted on add-targeting.
 func TestAddTargeting_allUsersOnWire(t *testing.T) {
 	var gotBody []byte
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
-		gotBody, _ = io.ReadAll(r.Body)
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		gotBody = testkit.ReadBody(r)
 		return resp(200, `{}`), nil
 	})
 	hc := &http.Client{Transport: rt}

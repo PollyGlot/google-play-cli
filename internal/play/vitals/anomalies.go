@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 const (
@@ -53,13 +52,7 @@ func ListAnomalies(ctx context.Context, hc *http.Client, pkg string, opts Anomal
 	if opts.Filter != "" {
 		base.Set("filter", opts.Filter)
 	}
-	// Discovery names the path parameter after the collection, hence appsId
-	// for what gplay calls the package.
-	baseURL, err := mListAnomalies.URL(map[string]string{"appsId": pkg})
-	if err != nil {
-		return nil, false, &api.Error{Operation: opListAnomalies, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return paginateGET(ctx, hc, mListAnomalies.Verb, opListAnomalies, pkg, baseURL, base, "anomalies", pageMaxAnomalies, opts.Limit)
+	return paginateGET(ctx, hc, mListAnomalies, opListAnomalies, pkg, base, "anomalies", pageMaxAnomalies, opts.Limit)
 }
 
 // Anomaly is the render-ready subset of a Play-detected metric anomaly: which

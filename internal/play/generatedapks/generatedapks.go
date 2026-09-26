@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -99,24 +100,13 @@ type RecoveryApk struct {
 // the verbatim body for the ADR-0003 --output json pass-through. No Edit: the
 // GET is application-scoped (not under /edits/).
 func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (ListResponse, json.RawMessage, error) {
-	u, err := mList.URL(map[string]string{
-		"packageName": pkg,
-		"versionCode": strconv.FormatInt(versionCode, 10),
-	})
-	if err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mList.Verb, u, nil)
-	if err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, opList, pkg, req)
+	var lr ListResponse
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: mList, Op: opList, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "versionCode": strconv.FormatInt(versionCode, 10)},
+	}, &lr)
 	if err != nil {
 		return ListResponse{}, nil, err
-	}
-	var lr ListResponse
-	if err := json.Unmarshal(raw, &lr); err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return lr, raw, nil
 }
@@ -124,56 +114,19 @@ func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (
 // Download streams the raw signed bytes of one generated APK: addressed by its
 // opaque downloadID under versionCode: to w, via generatedapks.download with
 // alt=media (supportsMediaDownload + useMediaDownloadService). It streams
-// (io.Copy) rather than buffering, so a large universal APK never lands wholly
-// in memory; it never JSON-unmarshals the success body. Returns the number of
-// bytes written. No Edit (the endpoint is application-scoped). A non-2xx body is
-// still small JSON, parsed for the error envelope.
+// rather than buffering (api.Download has no size cap), so a large universal
+// APK never lands wholly in memory; it never JSON-unmarshals the success body.
+// Returns the number of bytes written. No Edit (the endpoint is
+// application-scoped). A non-2xx body is still small JSON, parsed for the error
+// envelope.
 func Download(ctx context.Context, hc *http.Client, pkg string, versionCode int64, downloadID string, w io.Writer) (int64, error) {
-	u, err := mDownload.URL(map[string]string{
-		"packageName": pkg,
-		"versionCode": strconv.FormatInt(versionCode, 10),
-		"downloadId":  downloadID,
-	})
-	if err != nil {
-		return 0, &api.Error{Operation: opDownload, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mDownload.Verb, u+"?alt=media", nil)
-	if err != nil {
-		return 0, &api.Error{Operation: opDownload, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return 0, &api.Error{Operation: opDownload, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return 0, &api.Error{Operation: opDownload, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	n, err := io.Copy(w, resp.Body)
-	if err != nil {
-		return n, &api.Error{Operation: opDownload, Package: pkg, StatusCode: resp.StatusCode, Message: "stream response body: " + err.Error(), Cause: err}
-	}
-	return n, nil
-}
-
-// do runs req and maps the JSON response to (raw body, *api.Error). Used by the
-// metadata read (List); Download streams its own (non-JSON) body separately.
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
+	return api.Download(ctx, hc, api.Call{
+		Method: mDownload, Op: opDownload, Target: pkg,
+		Params: map[string]string{
+			"packageName": pkg,
+			"versionCode": strconv.FormatInt(versionCode, 10),
+			"downloadId":  downloadID,
+		},
+		Query: url.Values{"alt": {"media"}},
+	}, w)
 }

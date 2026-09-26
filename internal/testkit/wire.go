@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -19,6 +20,17 @@ type RoundTripFunc func(*http.Request) (*http.Response, error)
 
 // RoundTrip implements http.RoundTripper.
 func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// ReadBody returns the request body, or nil when the request has none: a
+// bodiless POST reaches a transport with a nil Body, which io.ReadAll cannot
+// read.
+func ReadBody(r *http.Request) []byte {
+	if r.Body == nil {
+		return nil
+	}
+	b, _ := io.ReadAll(r.Body)
+	return b
+}
 
 // Wire renders calls in a stable text form for a golden file: the method, the
 // full URL as sent (escaping included), every header in sorted order, the

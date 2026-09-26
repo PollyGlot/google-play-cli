@@ -3,27 +3,15 @@
 # a new offender fails the gate, and so does a line whose offender is gone.
 # Replacement: the executor, api.Do / api.DoJSON in internal/play/api.
 
-commands/metadata/images/pull/pull.go download
-internal/auth/doctor/checks.go deleteEdit
-internal/auth/doctor/checks.go insertEdit
-internal/play/accessibleapps/accessibleapps.go do
-internal/play/appsigning/appsigning.go post
-internal/play/appstore/appstore.go do
-internal/play/appstorecatalog/appstorecatalog.go do
 internal/play/artifacts/artifacts.go get
 internal/play/countryavailability/countryavailability.go Get
-internal/play/datasafety/datasafety.go Post
 internal/play/details/details.go GetDefaultLanguage
 internal/play/details/details.go Patch
 internal/play/details/details.go getJSON
-internal/play/devicetiers/devicetiers.go do
 internal/play/edits/edits.go callEdit
 internal/play/edits/edits.go deleteEdit
 internal/play/edits/edits.go insertEdit
 internal/play/expansionfiles/expansionfiles.go do
-internal/play/games/games.go do
-internal/play/generatedapks/generatedapks.go Download
-internal/play/generatedapks/generatedapks.go do
 internal/play/images/images.go Delete
 internal/play/images/images.go DeleteAll
 internal/play/images/images.go List
@@ -32,19 +20,9 @@ internal/play/listings/listings.go Delete
 internal/play/listings/listings.go Get
 internal/play/listings/listings.go List
 internal/play/listings/listings.go write
-internal/play/orders/orders.go do
-internal/play/recovery/recovery.go do
-internal/play/reviews/reviews.go Get
-internal/play/reviews/reviews.go Reply
-internal/play/reviews/reviews.go listPage
-internal/play/sharing/sharing.go upload
-internal/play/subscriptions/subscriptions.go do
-internal/play/team/team.go doRequest
 internal/play/testers/testers.go Get
 internal/play/testers/testers.go Update
 internal/play/tracks/tracks.go Create
 internal/play/tracks/tracks.go Get
 internal/play/tracks/tracks.go List
 internal/play/tracks/tracks.go UpdateRaw
-internal/play/vitals/pagination.go getRaw
-internal/play/vitals/vitals.go queryPage

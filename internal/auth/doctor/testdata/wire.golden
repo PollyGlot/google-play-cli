@@ -58,7 +58,10 @@ POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/co
 Authorization: Bearer a.b.c
 Content-Type: application/json
 content-length=0 replayable=true
-=> ok [{"name":"Service account can edit com.example.app","passed":false,"skipped":false,"exit_code":30,"hint":"{\"id\":\"e1\"} (HTTP 202 from edits.insert on com.example.app)"}]
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1
+Authorization: Bearer a.b.c
+content-length=0 replayable=true
+=> ok [{"name":"Service account can edit com.example.app","passed":true,"skipped":false,"exit_code":0}]
 
 ## CheckPackageAccess / malformed
 POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits

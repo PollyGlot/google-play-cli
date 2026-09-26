@@ -15,10 +15,8 @@
 package appsigning
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"sort"
 
@@ -222,36 +220,14 @@ func Rotate(ctx context.Context, hc *http.Client, name string, opts RotateOpts) 
 // returning the verbatim bytes. A non-2xx surfaces as *api.Error so the
 // exit-code taxonomy maps transparently.
 func post(ctx context.Context, hc *http.Client, m apiregistry.Method, op, name string, body any, out any) (json.RawMessage, error) {
-	b, err := json.Marshal(body)
+	raw, err := api.Do(ctx, hc, api.Call{Method: m, Op: op, Target: name, Params: map[string]string{"name": name}, Body: body})
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: name, Message: "marshal request: " + err.Error(), Cause: err}
-	}
-	u, err := m.URL(map[string]string{"name": name})
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: name, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, bytes.NewReader(b))
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: name, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: name, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		eb, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(eb, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: name, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: name, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
+		return nil, err
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return nil, &api.Error{Operation: op, Package: name, StatusCode: resp.StatusCode, Message: "decode response: " + err.Error(), Cause: err}
+		// A 2xx that does not decode keeps the status tag (exit 30) this
+		// module always gave it, unlike api.DoJSON's status-less decode error.
+		return nil, &api.Error{Operation: op, Package: name, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
 	}
-	return json.RawMessage(raw), nil
+	return raw, nil
 }

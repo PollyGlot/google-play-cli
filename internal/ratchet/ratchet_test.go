@@ -125,10 +125,9 @@ var rules = []rule{
 		detect:   detectRSAKeygen,
 	},
 	{
-		id:           "http-client",
-		hasAllowlist: true,
-		what:         "http.Client constructed",
-		fix:          "take the client the RunContext builds (rc.AuthedClient / rc.UploadClient) and wrap transports in internal/transport",
+		id:   "http-client",
+		what: "http.Client constructed",
+		fix:  "take the client the RunContext builds (rc.AuthedClient / rc.UploadClient), wrap transports in internal/transport, and build any new client with transport.NewClient",
 		exempt: []string{
 			"internal/transport/",
 			"internal/discovery/", // dev tool, see request-helper

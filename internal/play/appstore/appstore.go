@@ -20,10 +20,8 @@
 package appstore
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -68,41 +66,13 @@ type CreateHostedAppRequest struct {
 // the app package name are path/body values supplied by the caller, so the
 // store package is path-escaped rather than interpolated raw.
 func CreateHostedApp(ctx context.Context, hc *http.Client, storePackage, pkg string) (json.RawMessage, error) {
-	body, err := json.Marshal(CreateHostedAppRequest{PackageName: pkg})
-	if err != nil {
-		return nil, &api.Error{Operation: opCreateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
-	}
-
-	u, err := mCreateHostedApp.URL(map[string]string{"appStorePackageName": storePackage})
-	if err != nil {
-		return nil, &api.Error{Operation: opCreateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mCreateHostedApp.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, &api.Error{Operation: opCreateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-
-	return do(hc, opCreateHostedApp, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mCreateHostedApp, Op: opCreateHostedApp, Target: pkg,
+		Params:      map[string]string{"appStorePackageName": storePackage},
+		Body:        CreateHostedAppRequest{PackageName: pkg},
+		ContentType: jsonUTF8,
+	})
 }
 
-// do runs req and maps the response to (raw body, *api.Error): a non-2xx body is
-// parsed for the error envelope, a 2xx body is returned verbatim for the
-// ADR-0003 pass-through.
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
-}
+// jsonUTF8 is the content type every appstoreappsreview JSON body is sent with.
+const jsonUTF8 = "application/json; charset=UTF-8"

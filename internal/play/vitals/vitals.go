@@ -19,11 +19,9 @@
 package vitals
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -126,45 +124,6 @@ func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body
 			return nil, &api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
 		}
 	}
-
-	rows := make([]json.RawMessage, 0)
-	seen := map[string]struct{}{}
-	token := ""
-	for {
-		if token != "" {
-			tok, _ := json.Marshal(token)
-			req["pageToken"] = tok
-		} else {
-			delete(req, "pageToken")
-		}
-		pageBody, err := json.Marshal(req)
-		if err != nil {
-			return nil, &api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
-		}
-		raw, err := queryPage(ctx, hc, set, pkg, pageBody)
-		if err != nil {
-			return nil, err
-		}
-		pageRows, next, derr := decodePage(raw, "rows")
-		if derr != nil {
-			return nil, &api.Error{Operation: opQuery, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
-		}
-		rows = append(rows, pageRows...)
-		if next == "" {
-			break
-		}
-		if _, dup := seen[next]; dup {
-			return nil, tokenLoopError(opQuery, pkg, "vitals :query")
-		}
-		seen[next] = struct{}{}
-		token = next
-	}
-	return rebuildEnvelope("rows", rows)
-}
-
-// queryPage issues a single `:query` POST and returns the verbatim 2xx page
-// body or an *api.Error.
-func queryPage(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body []byte) (json.RawMessage, error) {
 	// Resolved per call rather than at init: the set is a value the caller
 	// supplies (ErrorCountsMetricSet lives outside metricSets), so the id is
 	// only known here. Resolve memoises the index and the registry index, so
@@ -173,43 +132,34 @@ func queryPage(ctx context.Context, hc *http.Client, set MetricSet, pkg string, 
 	if err != nil {
 		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
 	}
-	u, err := m.URL(map[string]string{"appsId": pkg})
+	// The `:query` POST carries its continuation token in the body, not the
+	// query string: the paginator only sees the token.
+	rows, _, err := api.Paginate(api.Pager{Op: opQuery, Target: pkg, What: "vitals :query"},
+		func(token string, _ int) ([]json.RawMessage, string, error) {
+			if token != "" {
+				tok, _ := json.Marshal(token)
+				req["pageToken"] = tok
+			} else {
+				delete(req, "pageToken")
+			}
+			pageBody, err := json.Marshal(req)
+			if err != nil {
+				return nil, "", &api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
+			}
+			raw, err := api.Do(ctx, hc, api.Call{Method: m, Op: opQuery, Target: pkg, Params: map[string]string{"appsId": pkg}, Body: pageBody})
+			if err != nil {
+				return nil, "", err
+			}
+			page, next, derr := decodePage(raw, "rows")
+			if derr != nil {
+				return nil, "", &api.Error{Operation: opQuery, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
+			}
+			return page, next, nil
+		})
 	if err != nil {
-		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(errBody, resp.StatusCode)
-		return nil, &api.Error{
-			Operation:  opQuery,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{
-			Operation:  opQuery,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
-		}
-	}
-	return raw, nil
+	return rebuildEnvelope("rows", rows)
 }
 
 const opDescribe = "playdeveloperreporting.vitals.get"
@@ -225,11 +175,7 @@ func Describe(ctx context.Context, hc *http.Client, set MetricSet, pkg string) (
 	if err != nil {
 		return nil, &api.Error{Operation: opDescribe, Package: pkg, Message: err.Error(), Cause: err}
 	}
-	u, err := m.URL(map[string]string{"appsId": pkg})
-	if err != nil {
-		return nil, &api.Error{Operation: opDescribe, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return getRaw(ctx, hc, m.Verb, opDescribe, pkg, u)
+	return api.Do(ctx, hc, api.Call{Method: m, Op: opDescribe, Target: pkg, Params: map[string]string{"appsId": pkg}})
 }
 
 // Freshness is the render-ready view of one FreshnessInfo entry: the

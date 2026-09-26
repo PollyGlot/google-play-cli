@@ -16,7 +16,9 @@
 package imagespull
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -201,42 +203,58 @@ func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, loca
 	return nil
 }
 
+// opImagesDownload tags the errors of an image-bytes download.
+const opImagesDownload = "images.download"
+
 // download GETs the image bytes at url (the API gives no original filename, so
-// the bytes are downloaded from the url images.list returns). It uses the
-// authenticated client: Play's image urls are Google-owned hosts, so carrying
-// the androidpublisher token is harmless, and caps the read at maxImageBytes.
+// the bytes are downloaded from the url images.list returns) through the
+// executor's streaming download. It uses the authenticated client: Play's image
+// urls are Google-owned hosts, so carrying the androidpublisher token is
+// harmless, and caps the body at maxImageBytes.
 func download(ctx context.Context, hc *http.Client, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, &api.Error{Operation: "images.download", Message: err.Error(), Cause: err}
+	dst := &cappedBuffer{max: maxImageBytes}
+	_, err := api.Download(ctx, hc, api.Call{URL: url, Op: opImagesDownload}, dst)
+	if err == nil {
+		return dst.buf.Bytes(), nil
 	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: "images.download", Message: err.Error(), Cause: err}
+	var ae *api.Error
+	if !errors.As(err, &ae) || ae.StatusCode == 0 {
+		return nil, err // no answer came back: the transport error as tagged
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &api.Error{Operation: "images.download", StatusCode: resp.StatusCode, Message: fmt.Sprintf("downloading %s: HTTP %d", url, resp.StatusCode)}
+	if ae.StatusCode < 200 || ae.StatusCode >= 300 {
+		// An image host does not answer with Google's error envelope: the
+		// status is the whole signal.
+		return nil, &api.Error{Operation: opImagesDownload, StatusCode: ae.StatusCode, Message: fmt.Sprintf("downloading %s: HTTP %d", url, ae.StatusCode)}
 	}
-	b, err := readCapped(resp.Body, maxImageBytes)
-	if err != nil {
-		return nil, &api.Error{Operation: "images.download", Message: fmt.Sprintf("downloading %s: %v", url, err), Cause: err}
+	// A 2xx that never arrived whole: cut mid-body, or past the cap. Neither is
+	// the API's answer, so neither carries its status (exit 50).
+	var tooBig *imageTooLargeError
+	if errors.As(ae.Cause, &tooBig) {
+		return nil, &api.Error{Operation: opImagesDownload, Message: fmt.Sprintf("downloading %s: %v", url, tooBig), Cause: ae.Cause}
 	}
-	return b, nil
+	return nil, &api.Error{Operation: opImagesDownload, Message: fmt.Sprintf("downloading %s: read image: %v", url, ae.Cause), Cause: ae.Cause}
 }
 
-// readCapped reads up to max bytes from r and FAILS if the source has more,
-// rather than silently truncating: a truncated image would be written to disk
-// as a corrupt file. It reads one extra byte to detect the overflow.
-func readCapped(r io.Reader, max int64) ([]byte, error) {
-	b, err := io.ReadAll(io.LimitReader(r, max+1))
-	if err != nil {
-		return nil, fmt.Errorf("read image: %w", err)
+// cappedBuffer collects a download and refuses the first byte past max rather
+// than silently truncating: a truncated image would be written to disk as a
+// corrupt file.
+type cappedBuffer struct {
+	buf bytes.Buffer
+	max int64
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	if int64(c.buf.Len())+int64(len(p)) > c.max {
+		return 0, &imageTooLargeError{max: c.max}
 	}
-	if int64(len(b)) > max {
-		return nil, fmt.Errorf("image exceeds the %d-byte cap", max)
-	}
-	return b, nil
+	return c.buf.Write(p)
+}
+
+// imageTooLargeError is the cap refusing an image.
+type imageTooLargeError struct{ max int64 }
+
+func (e *imageTooLargeError) Error() string {
+	return fmt.Sprintf("image exceeds the %d-byte cap", e.max)
 }
 
 // appLocales returns the app's locale codes (those carrying a Listing), sorted,

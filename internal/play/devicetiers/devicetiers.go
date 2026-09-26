@@ -12,10 +12,8 @@
 package devicetiers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -72,42 +70,30 @@ type ListResponse struct {
 // server-assigned deviceTierConfigId) plus the verbatim response. allowUnknownDevices
 // adds the query param only when true (the API default is the strict false).
 func Create(ctx context.Context, hc *http.Client, pkg string, body []byte, allowUnknownDevices bool) (Config, json.RawMessage, error) {
-	u, err := methodCreate.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return Config{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
+	var q url.Values
 	if allowUnknownDevices {
-		u += "?allowUnknownDevices=true"
+		q = url.Values{"allowUnknownDevices": {"true"}}
 	}
-	req, err := http.NewRequestWithContext(ctx, methodCreate.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return Config{}, nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return doConfig(hc, opCreate, pkg, req)
+	return doConfig(ctx, hc, api.Call{
+		Method: methodCreate, Op: opCreate, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Query:  q,
+		Body:   body,
+	})
 }
 
 // Get reads a single config by its int64 id.
 func Get(ctx context.Context, hc *http.Client, pkg, id string) (Config, json.RawMessage, error) {
-	u, err := methodGet.URL(map[string]string{"packageName": pkg, "deviceTierConfigId": id})
-	if err != nil {
-		return Config{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
-	if err != nil {
-		return Config{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return doConfig(hc, opGet, pkg, req)
+	return doConfig(ctx, hc, api.Call{
+		Method: methodGet, Op: opGet, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "deviceTierConfigId": id},
+	})
 }
 
 // List reads the app's configs (newest first). pageSize<=0 omits the param
 // (API default); pageToken paginates. The nextPageToken is preserved in both
 // the typed result and the verbatim raw body so a caller can follow pages.
 func List(ctx context.Context, hc *http.Client, pkg string, pageSize int, pageToken string) (ListResponse, json.RawMessage, error) {
-	u, err := methodList.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-	}
 	q := url.Values{}
 	if pageSize > 0 {
 		q.Set("pageSize", strconv.Itoa(pageSize))
@@ -115,53 +101,25 @@ func List(ctx context.Context, hc *http.Client, pkg string, pageSize int, pageTo
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)
 	}
-	if enc := q.Encode(); enc != "" {
-		u += "?" + enc
-	}
-	req, err := http.NewRequestWithContext(ctx, methodList.Verb, u, nil)
-	if err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, opList, pkg, req)
+	var lr ListResponse
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: methodList, Op: opList, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Query:  q,
+	}, &lr)
 	if err != nil {
 		return ListResponse{}, nil, err
-	}
-	var lr ListResponse
-	if err := json.Unmarshal(raw, &lr); err != nil {
-		return ListResponse{}, nil, &api.Error{Operation: opList, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return lr, raw, nil
 }
 
-// doConfig executes req, parses the 2xx body as a Config, and returns it with
-// the verbatim raw body.
-func doConfig(hc *http.Client, op, pkg string, req *http.Request) (Config, json.RawMessage, error) {
-	raw, err := do(hc, op, pkg, req)
+// doConfig sends c, parses the 2xx body as a Config, and returns it with the
+// verbatim raw body.
+func doConfig(ctx context.Context, hc *http.Client, c api.Call) (Config, json.RawMessage, error) {
+	var cfg Config
+	raw, err := api.DoJSON(ctx, hc, c, &cfg)
 	if err != nil {
 		return Config{}, nil, err
 	}
-	var c Config
-	if err := json.Unmarshal(raw, &c); err != nil {
-		return Config{}, nil, &api.Error{Operation: op, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
-	}
-	return c, raw, nil
-}
-
-// do runs req and maps the response to (raw body, *api.Error).
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
+	return cfg, raw, nil
 }
