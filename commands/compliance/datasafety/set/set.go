@@ -18,21 +18,19 @@ package set
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/compliance/datasafety"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	playds "github.com/PollyGlot/google-play-cli/internal/play/datasafety"
 )
 
@@ -48,12 +46,6 @@ type Input struct {
 	Confirm bool
 }
 
-// usageError is a CLI-misuse error (no package); ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // confirmRequired builds the refusal returned when a real write is invoked
 // without --confirm. It is an *exit.SafetyFlagError, so it exits 3 (safety
 // flag required, docs/DESIGN.md §9) and names the missing flag in the
@@ -64,45 +56,6 @@ func (e *usageError) ExitCode() int { return 2 }
 // format, not mutation.
 func confirmRequired() error {
 	return exit.SafetyFlag("confirm", "compliance datasafety set replaces the app's live Data Safety declaration (a stale or wrong declaration can block releases); pass --confirm to proceed (preview first with --dry-run)")
-}
-
-// packageNotFoundError / forbiddenError attach actionable hints to a 404 /
-// 403 on the POST, leaving the wrapped *api.Error to drive the exit code
-// (404→30, 403→11): mirroring `testers set` / `metadata apply`.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
-
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// classifyError adds the 404/403 hints to a dataSafety POST failure, leaving
-// the wrapped *api.Error to drive the exit code. Every other failure (5xx,
-// network) propagates verbatim.
-func classifyError(pkg string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
-	}
-	return err
 }
 
 // fileError signals the CSV could not be read; ExitCode()=20 (client-side
@@ -269,19 +222,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return nil
 }
 
-// resolvePackage resolves the target package: --package wins, else the
-// project pin. An empty result is a usage error.
-func resolvePackage(rc *kernel.RunContext, in Input) (string, error) {
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
-	}
-	return pkg, nil
-}
-
 // loadAndValidate reads the CSV off disk and runs the implicit structural
 // validate. A read failure is exit 20 (fileError); structural problems are
 // exit 20 (ValidationError). On success it returns the validator Report
@@ -315,7 +255,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	pkg, err := resolvePackage(rc, in)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +287,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	raw, err := playds.Post(rc.Ctx, httpClient, pkg, rep.Payload)
 	if err != nil {
-		return nil, classifyError(pkg, err)
+		return nil, apihint.ForPackage(pkg, err)
 	}
 
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The

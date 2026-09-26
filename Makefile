@@ -1,4 +1,4 @@
-.PHONY: help build test check lint verb-gate dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats \
+.PHONY: help build test check lint verb-gate ratchets dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats \
 	lint-version fmt-check vet shellcheck required-files build-check test-race
 
 # Project metadata
@@ -56,6 +56,11 @@ lint: dash-gate ## Run golangci-lint, the go.mod tidiness check and the em dash 
 	golangci-lint run ./...
 	go mod tidy -diff
 
+ratchets: ## Print the allowlist size of every ratchet rule (internal/ratchet), the before/after count of the paved-road migration
+	@mkdir -p bin
+	@go test -c -o bin/ratchet.test ./internal/ratchet
+	@cd internal/ratchet && ../../bin/ratchet.test -ratchet.report
+
 verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
 	@bash scripts/verb-gate.sh
 
@@ -86,6 +91,10 @@ coverage-update: ## Render docs/COVERAGE.md from the Discovery index and the API
 .PHONY: contract-update
 contract-update: ## Regenerate cmd/gplay/testdata/surface.golden (every leaf, flag and exit code) from the cobra tree (offline)
 	go test ./cmd/gplay -run '^TestSurfaceGolden_isFresh$$' -count=1 -update-contract
+
+.PHONY: docs-update
+docs-update: ## Regenerate the generated blocks of README.md and the website pages (exit codes, experimental commands) from the binary (offline)
+	go test ./cmd/gplay -run '^TestGeneratedDocs_areFresh$$' -count=1 -update-docs
 
 release-snapshot: ## Local GoReleaser snapshot (no publish): sanity-check the config
 	goreleaser release --snapshot --clean --skip=publish,sign,sbom

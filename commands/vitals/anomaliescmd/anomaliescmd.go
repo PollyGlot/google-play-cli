@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
-	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
@@ -51,12 +50,9 @@ func (p Payload) Renderers() output.Renderers {
 // Run resolves the package, lists anomalies bounded by --filter (or a
 // --since-derived activeBetween window), and renders them.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	filter := in.Filter

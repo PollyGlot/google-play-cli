@@ -82,7 +82,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 // Run is the business function the kernel invokes: list the live catalog to
 // completion, mirror it into --dir, report what changed on disk.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg, err := subscriptionscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

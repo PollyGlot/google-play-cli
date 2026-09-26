@@ -142,12 +142,9 @@ func renderJSON(w io.Writer, p Payload) error {
 // builds an authenticated client, lists every review (auto-paginated), and
 // always warns about the 7-day window.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	sel, err := filter.Parse(in.Stars)

@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstorecatalog"
@@ -83,7 +84,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	if in.PageSize < 0 {
-		return nil, appstorecmd.Usagef("invalid --page-size: must be >= 0 (0 lets the server apply its default of %d)", appstorecatalog.DefaultPageSize)
+		return nil, exit.Usagef("invalid --page-size: must be >= 0 (0 lets the server apply its default of %d)", appstorecatalog.DefaultPageSize)
 	}
 	storePkg, err := appstorecmd.ResolveStorePackage(in.StorePackage)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/apps/registry"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
@@ -20,14 +21,6 @@ import (
 type Input struct {
 	Package string
 }
-
-// usageError is CLI misuse (exit code 2 per docs/DESIGN.md §9). Used
-// for the inline-credential branch: mirrors addcmd/listcmd so
-// exit.For dispatches all three the same way.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // authError signals "no Account resolved" or "Account name not in
 // global config" (exit code 10 per docs/DESIGN.md §9). Mirrors
@@ -75,7 +68,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, err
 		}
 		if rc.Account != nil {
-			return nil, &usageError{msg: "apps remove: cannot remove under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
+			return nil, &exit.UsageError{Msg: "apps remove: cannot remove under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
 		return nil, &authError{msg: "no Account resolved; run `gplay auth login`, set GPLAY_ACCOUNT, or pass --account"}
 	}
@@ -130,7 +123,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 // needs to be threaded through both call sites.
 func validatePackage(pkg string) error {
 	if pkg == "" {
-		return &usageError{msg: "apps remove: <package> argument is required"}
+		return &exit.UsageError{Msg: "apps remove: <package> argument is required"}
 	}
 	if !strings.Contains(pkg, ".") {
 		return &validationError{msg: fmt.Sprintf("apps remove: %q is not a valid Android package name (must contain a dot, e.g. com.example.myapp)", pkg)}

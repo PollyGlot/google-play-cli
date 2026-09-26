@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
@@ -26,6 +27,23 @@ const ResumableChunkSize = 8 * 1024 * 1024
 // the connection while never accepting more bytes. A single failure that is
 // followed by progress resets the counter, so a genuine resume is unaffected.
 const maxResumeStalls = 8
+
+// Resume pacing and the chunk stall bound. They are variables only so the
+// package's tests can shrink them; production never reassigns them.
+var (
+	// resumeChunkTimeout bounds one chunk PUT, response included. A connection
+	// that stops moving bytes without a reset never errors on its own, so
+	// without it the resume logic never triggered. It is deliberately
+	// generous: 8 MiB in 5 minutes is a floor of about 28 KB/s, so a slow but
+	// progressing link is never cut, while a dead one turns into a probe and a
+	// resume on the same order as a TCP keepalive would.
+	resumeChunkTimeout = 5 * time.Minute
+	// resumeBackoff and resumeSleep pace the attempts that follow a failure on
+	// the --retry curve, so a 10-second network blip no longer burns the whole
+	// stall budget in milliseconds.
+	resumeBackoff = transport.Backoff
+	resumeSleep   = transport.Sleep
+)
 
 // LocalIOError is returned when the upload source cannot be read locally
 // (a mid-upload ReadAt failure on the artifact). It is distinct from *Error so
@@ -64,6 +82,11 @@ func (e *LocalIOError) ExitCode() int { return 20 }
 //     PUTs Content-Range: bytes *\/{total} with an empty body to ask the server
 //     which byte it last committed (another 308 + Range), then continues from
 //     that offset. No bytes are ever re-sent past the acknowledged offset.
+//     Each attempt that follows a failure first waits on the --retry backoff
+//     curve, and a chunk that stops moving for resumeChunkTimeout counts as a
+//     transport failure, so a stalled connection resumes instead of hanging.
+//     A probe that finds the upload complete (the final chunk landed, its
+//     response was lost) returns that resource without a further PUT.
 //
 // r must provide random access to exactly size bytes. Chunk PUTs and the
 // resume probe run under transport.WithoutRetry so the shared --retry
@@ -109,50 +132,38 @@ func ResumableUploadWithInitiateBody(
 
 	offset := int64(0)
 	stalls := 0
+	// backOff waits before an attempt that follows a failure, on the --retry
+	// curve restarted whenever the server's offset advances (it follows
+	// stalls). It returns false once ctx is done: an interrupted upload stops
+	// at once instead of spinning through its remaining resume attempts.
+	backOff := func() bool { return resumeSleep(ctx, resumeBackoff(stalls)) }
 	for {
 		// A zero-length artifact still needs one PUT to finalize the session;
 		// beyond that, offset == size means the server already has everything.
-		resp, putErr := resumablePutChunk(noRetryCtx, hc, sessionURI, contentType, r, offset, size, op)
-		if putErr != nil {
+		resp, release, putErr := resumablePutChunk(noRetryCtx, hc, sessionURI, contentType, r, offset, size, op)
+
+		// stalled is the failure to report if the resume budget runs out on
+		// this outcome; every case that reaches the probe below sets it.
+		var stalled *Error
+		switch {
+		case putErr != nil:
+			release()
 			// A local read failure is terminal (exit 20): no point resuming.
 			if _, ok := putErr.(*LocalIOError); ok {
 				return nil, 0, putErr
 			}
-			// Transport failure: probe the committed offset and resume.
-			newOffset, done, doneBody, doneStatus, perr := resumableProbe(noRetryCtx, hc, sessionURI, size, op, pkg)
-			if perr != nil {
-				if !probeErrIsTransient(perr) {
-					return nil, 0, perr
-				}
-				// The probe itself failed transiently; count it against the
-				// same stall bound and try again from the last known offset.
-				if stalls++; stalls >= maxResumeStalls {
-					return nil, 0, perr
-				}
-				continue
+			// A canceled ctx is not a network blip: every probe would fail the
+			// same way until the stall budget ran out.
+			if ctx.Err() != nil {
+				return nil, 0, putErr
 			}
-			if done {
-				return doneBody, doneStatus, nil
-			}
-			if verr := validOffset(newOffset, size, op, pkg); verr != nil {
-				return nil, 0, verr
-			}
-			if newOffset <= offset {
-				if stalls++; stalls >= maxResumeStalls {
-					return nil, 0, &Error{Operation: op, Package: pkg, Message: "resumable upload stalled: server accepted no further bytes after " + strconv.Itoa(maxResumeStalls) + " resume attempts", Cause: putErr}
-				}
-			} else {
-				stalls = 0
-			}
-			offset = newOffset
-			continue
-		}
+			stalled = &Error{Operation: op, Package: pkg, Message: "resumable upload stalled: server accepted no further bytes after " + strconv.Itoa(maxResumeStalls) + " resume attempts", Cause: putErr}
 
-		switch {
 		case resp.StatusCode == 308:
 			// Resume Incomplete: advance to the server's acknowledged offset.
 			newOffset := committedOffset(resp, offset)
 			drain(resp)
+			release()
 			if verr := validOffset(newOffset, size, op, pkg); verr != nil {
 				return nil, 0, verr
 			}
@@ -160,46 +171,75 @@ func ResumableUploadWithInitiateBody(
 				if stalls++; stalls >= maxResumeStalls {
 					return nil, 0, &Error{Operation: op, Package: pkg, StatusCode: 308, Message: "resumable upload stalled: server acknowledged no progress after " + strconv.Itoa(maxResumeStalls) + " chunks"}
 				}
+				if !backOff() {
+					return nil, 0, &Error{Operation: op, Package: pkg, Message: ctx.Err().Error(), Cause: ctx.Err()}
+				}
 			} else {
 				stalls = 0
 			}
 			offset = newOffset
+			continue
+
 		case resp.StatusCode >= 200 && resp.StatusCode < 300:
 			// Final chunk accepted: the body is the resource (pass-through).
-			out, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead))
+			out, rerr := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead))
 			drain(resp)
-			return out, resp.StatusCode, nil
+			release()
+			if rerr == nil {
+				return out, resp.StatusCode, nil
+			}
+			// The upload landed but its answer was cut mid-body: the probe
+			// below returns the resource without re-sending a byte.
+			stalled = &Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + rerr.Error(), Cause: &bodyReadError{err: rerr}}
+			if ctx.Err() != nil {
+				return nil, 0, stalled
+			}
+
 		case resp.StatusCode >= 500:
 			// Transient upstream error mid-upload: probe + resume.
 			drain(resp)
-			newOffset, done, doneBody, doneStatus, perr := resumableProbe(noRetryCtx, hc, sessionURI, size, op, pkg)
-			if perr != nil {
-				if !probeErrIsTransient(perr) {
-					return nil, 0, perr
-				}
-				if stalls++; stalls >= maxResumeStalls {
-					return nil, 0, perr
-				}
-				continue
-			}
-			if done {
-				return doneBody, doneStatus, nil
-			}
-			if verr := validOffset(newOffset, size, op, pkg); verr != nil {
-				return nil, 0, verr
-			}
-			if newOffset <= offset {
-				if stalls++; stalls >= maxResumeStalls {
-					return nil, 0, &Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "resumable upload stalled: upstream 5xx and no progress after " + strconv.Itoa(maxResumeStalls) + " resume attempts"}
-				}
-			} else {
-				stalls = 0
-			}
-			offset = newOffset
+			release()
+			stalled = &Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "resumable upload stalled: upstream 5xx and no progress after " + strconv.Itoa(maxResumeStalls) + " resume attempts"}
+
 		default:
 			// Terminal 4xx (bad artifact, auth, conflict, gone): surface it.
-			return nil, 0, errorFromResponse(resp, op, pkg)
+			err := errorFromResponse(resp, op, pkg)
+			release()
+			return nil, 0, err
 		}
+
+		// Recovery: wait, then ask the server which byte it last committed.
+		if !backOff() {
+			return nil, 0, &Error{Operation: op, Package: pkg, Message: ctx.Err().Error(), Cause: ctx.Err()}
+		}
+		newOffset, done, doneBody, doneStatus, perr := resumableProbe(noRetryCtx, hc, sessionURI, size, op, pkg)
+		if perr != nil {
+			if !probeErrIsTransient(perr) || ctx.Err() != nil {
+				return nil, 0, perr
+			}
+			// The probe itself failed transiently; count it against the same
+			// stall bound and try again from the last known offset.
+			if stalls++; stalls >= maxResumeStalls {
+				return nil, 0, perr
+			}
+			continue
+		}
+		if done {
+			// The server already holds every byte: typically a final chunk
+			// that landed while its response was lost. Nothing is re-sent.
+			return doneBody, doneStatus, nil
+		}
+		if verr := validOffset(newOffset, size, op, pkg); verr != nil {
+			return nil, 0, verr
+		}
+		if newOffset <= offset {
+			if stalls++; stalls >= maxResumeStalls {
+				return nil, 0, stalled
+			}
+		} else {
+			stalls = 0
+		}
+		offset = newOffset
 	}
 }
 
@@ -240,7 +280,17 @@ func resumableInitiate(ctx context.Context, hc *http.Client, op, pkg, initiateUR
 // resumablePutChunk sends the [offset, min(offset+chunk, size)) slice of r to
 // the session URI. It returns the raw response for the caller to classify. A
 // read failure on r yields a *LocalIOError.
-func resumablePutChunk(ctx context.Context, hc *http.Client, sessionURI, contentType string, r io.ReaderAt, offset, size int64, op string) (*http.Response, error) {
+//
+// The PUT runs under resumeChunkTimeout, which also bounds reading the
+// response, so the caller must call release (always non-nil) once it is done
+// with resp, and not before.
+func resumablePutChunk(ctx context.Context, hc *http.Client, sessionURI, contentType string, r io.ReaderAt, offset, size int64, op string) (resp *http.Response, release context.CancelFunc, err error) {
+	ctx, release = context.WithTimeout(ctx, resumeChunkTimeout)
+	resp, err = putChunk(ctx, hc, sessionURI, contentType, r, offset, size, op)
+	return resp, release, err
+}
+
+func putChunk(ctx context.Context, hc *http.Client, sessionURI, contentType string, r io.ReaderAt, offset, size int64, op string) (*http.Response, error) {
 	end := offset + ResumableChunkSize
 	if end > size {
 		end = size
