@@ -194,3 +194,18 @@ and the no-JS OS fallback stay two blocks on purpose: folding them under the
 visitor whose OS is dark. Decision 8's theme-color pair lives in
 `website/src/theme-color.mjs`, read by both the Starlight head config and the
 landing scripts.
+
+The same change adds a Content-Security-Policy to every page (#600), and the
+policy has to fit this theming, so its shape is recorded here. It is a `<meta>`
+stamped after the build by `website/scripts/csp.mjs`, which hashes each page's
+inline scripts. Astro's own `security.csp` was tried first and dropped. It does
+not hash `is:inline` scripts, so it blocked the first-paint theme scripts this
+ADR depends on (the landing's and Starlight's), plus Starlight's search and
+sidebar scripts. Its `style-src` also always carries hashes, which makes
+browsers ignore `'unsafe-inline'`. That blocked the `style=""` attributes
+Starlight and Expressive Code emit (syntax colours for both themes, icon sizes,
+sidebar depth), around 200 per docs page. So `style-src` keeps
+`'unsafe-inline'` and carries no hashes, and only `script-src` is strict,
+because script injection is what a CSP exists to stop. Pagefind's WebAssembly
+needs `'wasm-unsafe-eval'`, and the Cloudflare Web Analytics origins stay
+allowed.
