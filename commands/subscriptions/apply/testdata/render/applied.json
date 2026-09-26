@@ -1,0 +1,97 @@
+{
+  "package": "com.example.app",
+  "dryRun": false,
+  "changes": [
+    {
+      "op": "create",
+      "productId": "premium"
+    },
+    {
+      "op": "patch",
+      "productId": "basic",
+      "fields": [
+        "listings",
+        "basePlans"
+      ]
+    },
+    {
+      "op": "create",
+      "kind": "offer",
+      "productId": "premium",
+      "basePlanId": "monthly",
+      "offerId": "intro"
+    },
+    {
+      "op": "patch",
+      "kind": "offer",
+      "productId": "basic",
+      "basePlanId": "yearly",
+      "offerId": "winback",
+      "fields": [
+        "phases"
+      ]
+    },
+    {
+      "op": "activate",
+      "kind": "basePlan",
+      "productId": "premium",
+      "basePlanId": "monthly",
+      "from": "DRAFT",
+      "to": "ACTIVE"
+    },
+    {
+      "op": "activate",
+      "kind": "offer",
+      "productId": "premium",
+      "basePlanId": "monthly",
+      "offerId": "intro",
+      "from": "DRAFT",
+      "to": "ACTIVE"
+    },
+    {
+      "op": "deactivate",
+      "kind": "basePlan",
+      "productId": "basic",
+      "basePlanId": "yearly",
+      "from": "ACTIVE",
+      "to": "INACTIVE"
+    },
+    {
+      "op": "deactivate",
+      "kind": "offer",
+      "productId": "basic",
+      "basePlanId": "yearly",
+      "offerId": "winback",
+      "from": "ACTIVE",
+      "to": "INACTIVE"
+    },
+    {
+      "op": "delete",
+      "kind": "offer",
+      "productId": "basic",
+      "basePlanId": "yearly",
+      "offerId": "stale"
+    },
+    {
+      "op": "delete",
+      "kind": "basePlan",
+      "productId": "basic",
+      "basePlanId": "old-monthly"
+    },
+    {
+      "op": "delete",
+      "productId": "legacy"
+    }
+  ],
+  "summary": {
+    "basePlanDelete": 1,
+    "create": 1,
+    "delete": 1,
+    "offerCreate": 1,
+    "offerDelete": 1,
+    "offerPatch": 1,
+    "patch": 1,
+    "state": 4,
+    "unchanged": 1
+  }
+}

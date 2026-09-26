@@ -1,0 +1,16 @@
+## subscriptions apply: com.example.app
+
+plan for com.example.app (11 change(s)):
+  create premium
+  patch basic (listings, basePlans)
+  create offer premium/monthly/intro
+  patch offer basic/yearly/winback (phases)
+  activate base plan premium/monthly (DRAFT → ACTIVE)
+  activate offer premium/monthly/intro (DRAFT → ACTIVE)
+  deactivate base plan basic/yearly (ACTIVE → INACTIVE)
+  deactivate offer basic/yearly/winback (ACTIVE → INACTIVE)
+  delete offer basic/yearly/stale
+  delete base plan basic/old-monthly
+  delete legacy
+summary: create=1 patch=1 delete=1 basePlanDelete=1 offerCreate=1 offerPatch=1 offerDelete=1 state=4 unchanged=1
+requires: confirm
