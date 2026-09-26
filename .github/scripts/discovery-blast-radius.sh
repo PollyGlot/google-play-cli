@@ -6,7 +6,13 @@
 # whatever produced the label, because the two are computed at different times
 # against a force-pushed branch.
 #
-# Usage: discovery-blast-radius.sh <pr> [extra-allowed-regex]
+# Usage: discovery-blast-radius.sh <pr> <head-sha> [extra-allowed-regex]
+#
+# <head-sha> is the commit the caller is about to merge (it passes the same sha
+# to `gh pr merge --match-head-commit`). `gh pr diff` can only read the live
+# head, so the guard reads the head before and after the diff and refuses when
+# either differs from <head-sha>: the file list it approves is then the file
+# list of that exact commit, and the merge refuses any other.
 #
 # The baseline allow-list is the generated files only: the snapshot directory
 # and the schema index derived from it. A caller that legitimately expects one
@@ -15,18 +21,35 @@
 # GH_TOKEN must be in the environment.
 set -euo pipefail
 
-PR="${1:?usage: discovery-blast-radius.sh <pr> [extra-allowed-regex]}"
-EXTRA="${2:-}"
+usage='usage: discovery-blast-radius.sh <pr> <head-sha> [extra-allowed-regex]'
+PR="${1:?$usage}"
+HEAD_SHA="${2:?$usage}"
+EXTRA="${3:-}"
 
 allowed='docs/discovery/|internal/schemaindex/schema_index\.json$'
 if [ -n "$EXTRA" ]; then
   allowed="$allowed|$EXTRA"
 fi
 
-stray=$(gh pr diff "$PR" --name-only | grep -vE "^($allowed)" || true)
+assert_head() {
+  local now
+  now=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
+  if [ "$now" != "$HEAD_SHA" ]; then
+    echo "::error::Refusing to auto-merge: the PR head is $now, not the pinned $HEAD_SHA (the branch moved)."
+    exit 1
+  fi
+}
+
+assert_head
+# Captured on its own line, not piped into grep: a failed `gh pr diff` must fail
+# the guard, never read as an empty (hence clean) file list.
+files=$(gh pr diff "$PR" --name-only)
+assert_head
+
+stray=$(printf '%s\n' "$files" | grep -vE "^($allowed)" | grep -v '^$' || true)
 if [ -n "$stray" ]; then
   echo "::error::Refusing to auto-merge: the diff touches files outside the Discovery snapshot."
   printf '%s\n' "$stray"
   exit 1
 fi
-echo "Blast radius clean: only the expected generated files are in the diff."
+echo "Blast radius clean: only the expected generated files are in the diff of $HEAD_SHA."

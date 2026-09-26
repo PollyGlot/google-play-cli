@@ -10,6 +10,11 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # Wait a week before proposing a freshly published release: a hijacked or
+    # broken action version is usually yanked within days, before the pin moves
+    # to it. Security updates are not delayed by a cooldown.
+    cooldown:
+      default-days: 7
     labels:
       - dependencies
     commit-message:

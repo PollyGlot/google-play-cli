@@ -9,9 +9,11 @@ on:
     branches:
       - main
 
+# Read-only by default: the release-please job writes through the gplay App
+# token, never through GITHUB_TOKEN, so it needs no write grant of its own. The
+# `release` job below declares the grants the reusable release.yml needs.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   release-please:

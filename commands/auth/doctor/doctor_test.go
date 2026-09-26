@@ -3,8 +3,6 @@ package doctor_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -27,6 +25,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // TestRun_pureBusiness drives doctor.Run with a hand-built RunContext.
@@ -139,14 +138,11 @@ func newBoot(t *testing.T) kernel.Boot {
 }
 
 // signedSAJSON produces a service-account JSON whose private_key is a
-// freshly generated RSA key so the OAuth2 library can sign the
+// real RSA key so the OAuth2 library can sign the
 // exchange JWT in tests.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("rsa.GenerateKey: %v", err)
-	}
+	key := testkit.RSAKey(t)
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)

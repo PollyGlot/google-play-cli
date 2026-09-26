@@ -64,13 +64,16 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ github.event.pull_request.number }}
+          # The head the routine labelled: the guard, the checks and the merge
+          # all pin this commit, so a later push is never merged unchecked.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           # Same allow-list as the revision-only auto-merge, plus COVERAGE.md:
           # step 5 of docs/agents/discovery-triage.md has the routine commit the
           # newly surfaced methods there, on this very branch. Nothing else may
           # ride along, whatever the verdict comment claims.
-          if ! .github/scripts/discovery-blast-radius.sh "$PR" 'docs/COVERAGE\.md$'; then
+          if ! .github/scripts/discovery-blast-radius.sh "$PR" "$HEAD_SHA" 'docs/COVERAGE\.md$'; then
             gh pr edit "$PR" --remove-label discovery:verdict-merge --add-label discovery:needs-decision
             gh pr comment "$PR" --body "The blast-radius guard refused this verdict: the diff reaches beyond \`docs/discovery/\`, \`internal/schemaindex/schema_index.json\` and \`docs/COVERAGE.md\`. Relabelled \`discovery:needs-decision\`."
             exit 1
@@ -82,6 +85,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           # --required, not the full check list: this job is itself a check run
@@ -94,8 +98,14 @@ jobs:
           gh pr checks "$PR" --required --watch --fail-fast --interval 30
           # --squash because the repo is squash-only; --admin because a bot
           # cannot approve its own PR and the review requirement would otherwise
-          # deadlock the merge.
-          gh pr merge "$PR" --squash --admin --delete-branch
+          # deadlock the merge. --match-head-commit because this step can wait
+          # minutes after the guard: a push landing in between moves the
+          # head, the merge refuses, and the PR goes back to a human.
+          if ! gh pr merge "$PR" --squash --admin --delete-branch --match-head-commit "$HEAD_SHA"; then
+            gh pr edit "$PR" --remove-label discovery:verdict-merge --add-label discovery:needs-decision
+            gh pr comment "$PR" --body "The merge refused: the branch head moved past \`$HEAD_SHA\`, the commit the verdict and the blast-radius guard were about, or the merge itself failed. Relabelled \`discovery:needs-decision\`."
+            exit 1
+          fi
           echo "merged=true" >> "$GITHUB_OUTPUT"
 
       - name: Job summary

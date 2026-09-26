@@ -56,10 +56,16 @@ jobs:
       # CI, govulncheck and the shipped binary use one toolchain. Setting
       # GOTOOLCHAIN=local before this step would make setup-go fall back to
       # the `go` line (1.26.0, unpatched): don't.
+      #
+      # cache: false on purpose. This job signs (cosign keyless) and attests
+      # what it builds, and setup-go's cache is main-scoped, i.e. writable by
+      # any workflow that runs on main. Restoring it here would let a poisoned
+      # entry flow into signed release binaries; the entry is ~5 MB and the
+      # GoReleaser step takes the same time either way.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2

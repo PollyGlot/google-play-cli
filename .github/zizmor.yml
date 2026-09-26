@@ -1,0 +1,13 @@
+# zizmor configuration, read by .github/workflows/workflow-lint.yml (and by a
+# local `zizmor --config .github/zizmor.yml .`). Every entry here is an
+# accepted finding: say why, and prefer fixing the workflow over growing this
+# list.
+rules:
+  cache-poisoning:
+    ignore:
+      # zizmor sees goreleaser-action after a cached setup-go. The rehearsal is
+      # non-publishing by construction (--snapshot, publish and sign skipped,
+      # contents: read, no secret), so a poisoned cache it restores feeds
+      # nothing that ships. The workflows that do ship (release.yml,
+      # deploy-site.yml) restore no cache at all.
+      - release-rehearsal.yml

@@ -3,8 +3,6 @@ package kernel_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -25,6 +23,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // TestGroupRunE_bareInvocationPrintsHelp asserts the bare-group contract: with
@@ -898,15 +897,12 @@ func TestAuthedClient_invalidCredential_propagatesCauseAndExit10(t *testing.T) {
 	}
 }
 
-// signedAccount returns a ServiceAccount backed by a freshly generated RSA key,
+// signedAccount returns a ServiceAccount backed by a real RSA key,
 // so AuthedClient / UploadClient can build a real OAuth2 token source (lazily:
 // no network) and the returned client's deadline can be inspected.
 func signedAccount(t *testing.T) *serviceaccount.ServiceAccount {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("rsa.GenerateKey: %v", err)
-	}
+	key := testkit.RSAKey(t)
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)

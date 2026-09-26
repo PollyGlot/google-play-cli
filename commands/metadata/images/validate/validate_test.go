@@ -8,8 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"image"
-	"image/png"
 	"strings"
 	"testing"
 
@@ -18,13 +16,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-func pngOf(w, h int) []byte {
-	var b bytes.Buffer
-	_ = png.Encode(&b, image.NewRGBA(image.Rect(0, 0, w, h)))
-	return b.Bytes()
-}
 
 func newRC(t *testing.T) *kernel.RunContext {
 	t.Helper()
@@ -58,8 +51,8 @@ func exitCodeOf(t *testing.T, err error) int {
 func TestRun_validTree_passesOffline(t *testing.T) {
 	dir := writeTree(t, imagetree.Tree{
 		"en-US": {
-			images.Icon:             {pngOf(512, 512)},
-			images.PhoneScreenshots: {pngOf(1080, 1920), pngOf(1080, 1920)},
+			images.Icon:             {testkit.PNG(512, 512)},
+			images.PhoneScreenshots: {testkit.PNG(1080, 1920), testkit.PNG(1080, 1920)},
 		},
 	})
 	r, err := imagesvalidate.Run(newRC(t), imagesvalidate.Input{Dir: dir})
@@ -78,7 +71,7 @@ func TestRun_validTree_passesOffline(t *testing.T) {
 // TestRun_badImage_isValidationError_exit20 asserts a rule violation (a
 // 500×500 icon) fails with exit 20 and names the problem.
 func TestRun_badImage_isValidationError_exit20(t *testing.T) {
-	dir := writeTree(t, imagetree.Tree{"en-US": {images.Icon: {pngOf(500, 500)}}})
+	dir := writeTree(t, imagetree.Tree{"en-US": {images.Icon: {testkit.PNG(500, 500)}}})
 	_, err := imagesvalidate.Run(newRC(t), imagesvalidate.Input{Dir: dir})
 	if got := exitCodeOf(t, err); got != 20 {
 		t.Errorf("exit code = %d, want 20", got)

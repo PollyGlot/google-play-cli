@@ -132,7 +132,8 @@ func main() {
 	// byte gplay writes to stderr passes through it, so credential material
 	// cannot leak into a CI log a human or agent then pastes elsewhere. Stdout
 	// is deliberately NOT wrapped: it mirrors API responses verbatim (ADR-0003),
-	// and the API never returns gplay's own credentials.
+	// and the API never returns gplay's own credentials. gplay's own text on
+	// stdout (error envelope, doctor hints) is masked at its source (#583).
 	stderr := redact.Writer(os.Stderr)
 
 	// pathguard reports a path that left the tree under
@@ -233,11 +234,12 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 
 	// Global opt-in retry (docs/CI_CD.md §4). Default 0 = today's behavior (no
 	// retry). When > 0 the kernel layers a retry transport that retries
-	// transport errors / 5xx / 429 (honoring Retry-After) with exponential
-	// backoff + jitter; --timeout then bounds each attempt. The kernel reads it
-	// via FromCobra → Inputs.Retry.
+	// transport errors / 5xx / 429 (honoring Retry-After up to the max delay)
+	// with exponential backoff + jitter, replaying only idempotent requests
+	// (#575); --timeout then bounds each attempt. The kernel reads it via
+	// FromCobra → Inputs.Retry.
 	root.PersistentFlags().Int("retry", 0,
-		"retry transient failures (transport errors, 5xx, 429) up to N times with exponential backoff (default: 0, no retry)")
+		"retry transient failures (transport errors, 5xx, 429) up to N times with exponential backoff, replaying only idempotent requests; Retry-After is capped at the 30s max delay (default: 0, no retry)")
 
 	auth := &cobra.Command{
 		Use:           "auth",

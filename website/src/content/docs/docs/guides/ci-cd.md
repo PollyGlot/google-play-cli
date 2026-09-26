@@ -86,7 +86,9 @@ See [output formats](/docs/concepts/output-formats/).
 
 Prefer the built-in `--retry` over a hand-rolled loop. It retries the
 transient classes (transport errors, 5xx, 429 honouring `Retry-After`) with
-exponential backoff, and never retries non-transient 4xx or `edits.commit`:
+exponential backoff, never retries non-transient 4xx or `edits.commit`, and
+replays a non-idempotent write (an upload, a create, a refund) only when the
+request provably never reached Google:
 
 ```bash
 gplay releases upload app.aab --package com.example.myapp --track internal \
