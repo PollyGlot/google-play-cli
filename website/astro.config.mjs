@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
 import starlightLlmsTxt from 'starlight-llms-txt';
@@ -18,9 +19,17 @@ export default defineConfig({
   trailingSlash: 'ignore',
   markdown: {
     // Keep CLI flags verbatim in prose: smartypants would turn `--track`
-    // into "–track" (en dash), silently corrupting copy-pasteable text.
-    smartypants: false,
-    rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
+    // into "–track" (en dash), silently corrupting copy-pasteable text. Set on
+    // the processor, not as `markdown.smartypants` (deprecated, slated for
+    // removal): Starlight pushes its own plugins onto this same processor and
+    // @astrojs/mdx reads `smartypants` from it, so .md and .mdx both follow.
+    // scripts/check-dist.mjs fails the build check if a flag ever loses a dash.
+    // package.json pins @astrojs/markdown-remark to the exact version astro
+    // itself pins, so npm dedupes it to one copy: bump the two together.
+    processor: unified({
+      smartypants: false,
+      rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
+    }),
   },
   integrations: [
     starlight({

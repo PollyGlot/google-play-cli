@@ -1,8 +1,9 @@
 # gplay website
 
 The gplay landing page + documentation site ([issue #86](https://github.com/PollyGlot/google-play-cli/issues/86)),
-built with [Astro](https://astro.build) + [Starlight](https://starlight.astro.build),
-React islands, and Tailwind 4.
+built with [Astro](https://astro.build) + [Starlight](https://starlight.astro.build)
+and Tailwind 4. No UI framework: interactive bits are plain `.astro` components
+with a small inline script.
 
 ## Develop
 
@@ -10,12 +11,20 @@ React islands, and Tailwind 4.
 npm install
 npm run dev        # generates the CLI reference, then serves on :4321
 npm run build      # same generation, then a production build into dist/
+npm run check      # build, astro check, then scripts/check-dist.mjs over dist/
 ```
 
-Both `dev` and `build` first run `scripts/gen-reference.mjs`, which executes
-`bin/gplay … --help` recursively and writes one reference page per command
-into `src/content/docs/docs/reference/` (gitignored — never edit those by
-hand). If `bin/gplay` is missing, the script builds it with `go build`.
+Both `dev` and `build` first run `scripts/gen-reference.mjs`, which rebuilds
+`bin/gplay` with `go build` (incremental, so a cache hit when nothing changed),
+executes `bin/gplay … --help` recursively, and writes one reference page per
+command into `src/content/docs/docs/reference/`. That directory is ignored by
+version control: never edit those pages by hand, and they carry no "Edit page"
+link.
+
+`npm run check` is what `.github/workflows/site.yml` runs on pull requests. Its
+last step fails on a broken internal link or anchor, a link to an untracked
+repo path (a dead "Edit page" link, typically), or a CLI flag whose `--` was
+turned into a dash by smart punctuation.
 
 ## Hosting
 
