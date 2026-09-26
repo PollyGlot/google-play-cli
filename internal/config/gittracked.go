@@ -5,8 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
+
+	"github.com/PollyGlot/google-play-cli/internal/gitenv"
 )
 
 // gitTrackedTimeout bounds the one git call GitTracked makes. It runs on every
@@ -14,26 +15,6 @@ import (
 // stuck on a network filesystem or a lock must cost the command a short delay,
 // never a hang.
 const gitTrackedTimeout = 2 * time.Second
-
-// gitRedirectVars move git's idea of which repository or index it reads.
-// Inherited from a hook or an alias, GIT_DIR would make the check answer for
-// the caller's repository instead of the one around the file. The config
-// injection pair goes too: it is `-c` by another name and could re-enable the
-// fsmonitor hook GitTracked disables. Same list, same reason as install-skills'
-// gitSafeEnv.
-var gitRedirectVars = map[string]bool{
-	"GIT_DIR":                          true,
-	"GIT_WORK_TREE":                    true,
-	"GIT_COMMON_DIR":                   true,
-	"GIT_INDEX_FILE":                   true,
-	"GIT_OBJECT_DIRECTORY":             true,
-	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
-	"GIT_NAMESPACE":                    true,
-	"GIT_CEILING_DIRECTORIES":          true,
-	"GIT_CONFIG":                       true,
-	"GIT_CONFIG_COUNT":                 true,
-	"GIT_CONFIG_PARAMETERS":            true,
-}
 
 // GitTracked reports whether path is tracked by the git repository that
 // contains it. It answers false whenever it cannot tell: git not installed, the
@@ -47,7 +28,10 @@ var gitRedirectVars = map[string]bool{
 //
 // git runs inside a directory the repo controls, so the one config key that
 // makes a read-only git command execute a program, core.fsmonitor, is forced
-// off; ls-files runs no hooks, filters or pager.
+// off; ls-files runs no hooks, filters or pager. gitenv.Safe drops an
+// inherited GIT_DIR (set for every git hook), which would make the check
+// answer for the caller's repository, and the `-c` injection variables that
+// could turn fsmonitor back on.
 func GitTracked(ctx context.Context, path string) bool {
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -57,20 +41,8 @@ func GitTracked(ctx context.Context, path string) bool {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, git, "-c", "core.fsmonitor=false", "ls-files", "--error-unmatch", "--", filepath.Base(path)) // #nosec G204 -- git from PATH, fixed arguments, the file name passed after "--"
 	cmd.Dir = filepath.Dir(path)
-	cmd.Env = append(gitCleanEnv(os.Environ()), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(gitenv.Safe(os.Environ()), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
 	// Exit 0 means the index lists the file; 1 means untracked, and 128 means
 	// no repository (or no directory) at all. Only 0 is "tracked".
 	return cmd.Run() == nil
-}
-
-func gitCleanEnv(env []string) []string {
-	out := make([]string, 0, len(env))
-	for _, kv := range env {
-		name, _, _ := strings.Cut(kv, "=")
-		if gitRedirectVars[name] || strings.HasPrefix(name, "GIT_CONFIG_KEY_") || strings.HasPrefix(name, "GIT_CONFIG_VALUE_") {
-			continue
-		}
-		out = append(out, kv)
-	}
-	return out
 }

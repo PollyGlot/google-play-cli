@@ -24,6 +24,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/PollyGlot/google-play-cli/internal/gitenv"
 )
 
 // RunFunc executes name with args in dir and returns its combined output.
@@ -67,65 +69,12 @@ func defaultRun(ctx context.Context, name string, args []string, dir string) (st
 	c.Dir = dir
 	// Keep git non-interactive: a credential or SSH prompt on an agent's or a
 	// CI's stdin would hang forever instead of failing.
-	c.Env = append(gitSafeEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=")
+	// gitenv.Safe drops GIT_DIR and friends: from a hook or an alias they would
+	// point init/remote/checkout at the caller's repository, and the config
+	// injection pair could re-enable what hardenedGit disables.
+	c.Env = append(gitenv.Safe(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=")
 	out, err := c.CombinedOutput()
 	return string(out), err
-}
-
-// gitLocationVars are the inherited variables that move git's idea of *which*
-// repository it is operating on. Setting c.Dir is not enough: with GIT_DIR (or
-// GIT_WORK_TREE) in the environment, `git init`, `remote add origin` and
-// `checkout --detach` all land on the caller's repository instead of our
-// disposable directory, silently rewriting their HEAD, refs and remotes. That
-// environment is ordinary, not exotic: git sets GIT_DIR for every hook it runs,
-// so `gplay install-skills` from a pre-commit hook or a git alias would hit it.
-//
-// The environment's *config injection* channel (GIT_CONFIG_COUNT and its
-// numbered key/value pairs, GIT_CONFIG_PARAMETERS) goes for the same reason at
-// one remove: it is `-c` by another name, so an inherited pair could re-enable
-// what hardenedGit disables. The config *files* are left alone on purpose, so a
-// corporate proxy or CA bundle keeps working (see hardenedGit).
-var gitLocationVars = map[string]bool{
-	"GIT_DIR":                          true,
-	"GIT_WORK_TREE":                    true,
-	"GIT_COMMON_DIR":                   true,
-	"GIT_INDEX_FILE":                   true,
-	"GIT_OBJECT_DIRECTORY":             true,
-	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
-	"GIT_NAMESPACE":                    true,
-	"GIT_CEILING_DIRECTORIES":          true,
-	"GIT_TEMPLATE_DIR":                 true,
-	"GIT_CONFIG":                       true,
-	"GIT_CONFIG_COUNT":                 true,
-	"GIT_CONFIG_PARAMETERS":            true,
-}
-
-// gitConfigVarPrefixes cover the numbered GIT_CONFIG_KEY_<n> /
-// GIT_CONFIG_VALUE_<n> pairs, which are the environment form of `-c`.
-var gitConfigVarPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
-
-// gitSafeEnv returns env without the variables that would redirect git away
-// from the directory we hand it. Everything else is passed through: PATH, proxy
-// and TLS settings, and the user's own git configuration all still apply.
-func gitSafeEnv(env []string) []string {
-	out := make([]string, 0, len(env))
-	for _, kv := range env {
-		name, _, _ := strings.Cut(kv, "=")
-		if gitLocationVars[name] || hasAnyPrefix(name, gitConfigVarPrefixes) {
-			continue
-		}
-		out = append(out, kv)
-	}
-	return out
-}
-
-func hasAnyPrefix(s string, prefixes []string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return false
 }
 
 // errGitMissing is the concise one-liner main turns into `gplay: ...`; the
