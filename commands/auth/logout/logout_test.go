@@ -326,10 +326,11 @@ func TestLogout_bothStores_removesBothAndNamesThem(t *testing.T) {
 	}
 }
 
-// TestLogout_noStoredCredential_fails: when neither store held the key the
-// command must not print "removed" and exit 0; the registry entry still goes
-// (otherwise the Account could never be unregistered).
-func TestLogout_noStoredCredential_fails(t *testing.T) {
+// TestLogout_noStoredCredential_reachableKeyring_idempotent: with the keyring
+// reachable and neither store holding the key, the key is provably gone, so
+// logout stays idempotent (exit 0) but warns instead of claiming a deletion;
+// the registry entry still goes.
+func TestLogout_noStoredCredential_reachableKeyring_idempotent(t *testing.T) {
 	kr := newFakeKeyring(false)
 	boot := newBoot(t, kr)
 	seed(t, boot, "alpha", "beta")
@@ -338,12 +339,14 @@ func TestLogout_noStoredCredential_fails(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm")
-	if err == nil || !strings.Contains(err.Error(), "no stored credential was found") {
-		t.Fatalf("err = %v, want the not-stored failure", err)
+	if err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm"); err != nil {
+		t.Fatalf("Execute: %v, want success (idempotent logout)", err)
 	}
-	if strings.Contains(stderr.String(), "✓") {
-		t.Errorf("stderr claims success: %q", stderr.String())
+	if !strings.Contains(stderr.String(), "no stored credential found, nothing to delete") {
+		t.Errorf("stderr = %q, want the nothing-to-delete warning", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "credential deleted from") {
+		t.Errorf("stderr claims a deletion that did not happen: %q", stderr.String())
 	}
 	cfg, lerr := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if lerr != nil {

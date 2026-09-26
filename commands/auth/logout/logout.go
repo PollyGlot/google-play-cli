@@ -77,7 +77,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	if len(removed) == 0 {
-		return nil, notStoredError(in.Name, be)
+		if fb, ok := be.(*keystore.FileBackend); ok {
+			return nil, keyringUnreachableError(in.Name, fb)
+		}
+		// Both stores were reachable and neither holds the key: it is
+		// provably gone (a half-finished earlier logout, a keychain wiped by
+		// hand). Stay idempotent: succeed, but do not claim a deletion.
+		_, _ = fmt.Fprintf(rc.Stderr, "warning: no stored credential found, nothing to delete (Account %q)\n", in.Name)
+		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q removed from the registry\n", in.Name)
+		return nil, nil
 	}
 
 	_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q removed (credential deleted from %s)\n", in.Name, strings.Join(removed, " and "))
@@ -115,16 +123,13 @@ func deleteEverywhere(rc *kernel.RunContext, be keystore.Backend, name string) (
 	return removed, nil
 }
 
-// notStoredError reports a logout that removed the registry entry but found
-// no credential to delete. It fails rather than printing "removed" because
-// the user runs logout to know the key is gone. When the keyring was
-// unreachable (the file backend was selected), the key may still sit in the
-// keyring, and the message says so instead of implying it never existed.
-func notStoredError(name string, be keystore.Backend) error {
-	if fb, ok := be.(*keystore.FileBackend); ok {
-		return fmt.Errorf("logout: Account %q removed from the registry, but no credential was found at %s and the OS keyring is unavailable: if it was stored there it was NOT deleted; remove it from the OS keyring (service %q) by hand", name, fb.Path(name), keystore.KeyringService)
-	}
-	return fmt.Errorf("logout: Account %q removed from the registry, but no stored credential was found in the OS keyring or the file backend", name)
+// keyringUnreachableError reports a logout that removed the registry entry
+// but found no file credential while the keyring could not be reached: the
+// key may still sit in the keyring, so gplay cannot say it is gone. It fails
+// rather than printing "removed" because the user runs logout to know the key
+// is gone.
+func keyringUnreachableError(name string, fb *keystore.FileBackend) error {
+	return fmt.Errorf("logout: Account %q removed from the registry, but no credential was found at %s and the OS keyring is unavailable: if it was stored there it was NOT deleted; remove it from the OS keyring (service %q) by hand", name, fb.Path(name), keystore.KeyringService)
 }
 
 // NewCommand returns the cobra command for `gplay auth logout <name>`.
