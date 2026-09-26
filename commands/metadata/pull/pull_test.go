@@ -11,17 +11,13 @@ package pull_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -74,93 +70,52 @@ func listingsJSON(t *testing.T, ls []listings.Listing) string {
 	return string(b)
 }
 
-// pullRT terminates the OAuth2 /token exchange and routes the read-only
-// listings sequence: edits.insert, listings.list (GET .../listings),
-// edits.delete. It deliberately has NO PATCH/PUT/:commit branch and fails on a
-// DELETE that targets a /listings/ path: reaching one means pull tried to
-// mutate or commit Play, which it must never do. A DELETE on the bare
-// /edits/<id> path is the expected read-only Edit discard.
+// pullRT configures the testkit.Fake that routes the read-only listings
+// sequence: edits.insert, listings.list (GET .../listings), edits.delete. It
+// deliberately has NO PATCH/PUT/:commit branch and fails on a DELETE that
+// targets a /listings/ path: reaching one means the command tried to mutate
+// or commit, which pull must never do Play-side, so the fake fails the
+// test. A DELETE on the bare /edits/<id> path is the expected Edit discard.
 type pullRT struct {
-	t            *testing.T
 	editID       string
 	listingsResp string
 	insertCode   int // 0 -> 200
 	listingsCode int // 0 -> 200
 	insertBody   string
-
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
 }
 
-func (r *pullRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		code := r.insertCode
-		if code == 0 {
-			code = 200
-		}
-		body := r.insertBody
-		if body == "" {
-			body = fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)
-		}
-		return jsonResp(code, body), nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/listings"):
-		code := r.listingsCode
-		if code == 0 {
-			code = 200
-		}
-		return jsonResp(code, r.listingsResp), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/") && !strings.Contains(req.URL.Path, "/listings"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}
-	r.t.Fatalf("unexpected request (pull must not write/commit Play): %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-func signedSAJSON(t *testing.T) []byte {
+func newFake(t *testing.T, r pullRT) *testkit.Fake {
 	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
-	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			body := r.insertBody
+			if body == "" {
+				body = fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)
+			}
+			return r.insertCode, body, true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/listings"):
+			return r.listingsCode, r.listingsResp, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/") && !strings.Contains(c.Path, "/listings"):
+			return 204, "", true
+		}
+		t.Errorf("unexpected request (pull must not write/commit Play): %s %s", c.Method, c.Path)
+		return 0, "", false
 	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+}
+
+// calls lists the recorded API requests as "METHOD path" lines.
+func calls(f *testkit.Fake) []string {
+	var out []string
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
 	}
-	return raw
+	return out
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -216,7 +171,7 @@ func fileExists(t *testing.T, path string) bool {
 // online field writes no file.
 func TestRun_pullsEveryLocale_happyPath(t *testing.T) {
 	dir := t.TempDir()
-	rt := &pullRT{t: t, editID: "edit-pull", listingsResp: listingsJSON(t, testListings())}
+	rt := newFake(t, pullRT{editID: "edit-pull", listingsResp: listingsJSON(t, testListings())})
 	rc, _ := newRC(t, rt)
 
 	r, err := pull.Run(rc, pull.Input{Package: "com.example.app", Dir: dir})
@@ -227,21 +182,25 @@ func TestRun_pullsEveryLocale_happyPath(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
 
-	if rt.tokenHits == 0 {
-		t.Errorf("RoundTripper saw no /token exchange; calls=%v", rt.calls)
+	// One /token exchange, and edits.insert already carries its bearer: the
+	// exchange preceded the first API call.
+	if n := rt.TokenExchanges(); n != 1 {
+		t.Errorf("token exchanges = %d, want 1; calls=%v", n, calls(rt))
+	}
+	if got := rt.Calls(); len(got) > 0 && got[0].Header.Get("Authorization") != "Bearer a.b.c" {
+		t.Errorf("first API call Authorization = %q, want the exchanged bearer", got[0].Header.Get("Authorization"))
 	}
 	wantSequence := []string{
-		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-pull/listings",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-pull",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(rt.Calls()) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(rt.Calls()), calls(rt), len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if calls(rt)[i] != want {
+			t.Errorf("call %d = %q, want %q", i, calls(rt)[i], want)
 		}
 	}
 
@@ -270,7 +229,7 @@ func TestRun_pullsEveryLocale_happyPath(t *testing.T) {
 // on disk (not a 0-byte file), so a later apply leaves it untouched.
 func TestRun_emptyOnlineField_writesNoFile(t *testing.T) {
 	dir := t.TempDir()
-	rt := &pullRT{t: t, editID: "edit-empty", listingsResp: listingsJSON(t, testListings())}
+	rt := newFake(t, pullRT{editID: "edit-empty", listingsResp: listingsJSON(t, testListings())})
 	rc, _ := newRC(t, rt)
 
 	if _, err := pull.Run(rc, pull.Input{Package: "com.example.app", Dir: dir}); err != nil {
@@ -302,7 +261,7 @@ func TestRun_localLocaleAbsentOnline_isNotDeleted(t *testing.T) {
 		t.Fatalf("write zz-ZZ title: %v", err)
 	}
 
-	rt := &pullRT{t: t, editID: "edit-keep", listingsResp: listingsJSON(t, testListings())}
+	rt := newFake(t, pullRT{editID: "edit-keep", listingsResp: listingsJSON(t, testListings())})
 	rc, _ := newRC(t, rt)
 
 	if _, err := pull.Run(rc, pull.Input{Package: "com.example.app", Dir: dir}); err != nil {
@@ -324,7 +283,7 @@ func TestRun_localLocaleAbsentOnline_isNotDeleted(t *testing.T) {
 func TestRun_pullThenRead_isNoOpInvariant(t *testing.T) {
 	dir := t.TempDir()
 	fixture := testListings()
-	rt := &pullRT{t: t, editID: "edit-inv", listingsResp: listingsJSON(t, fixture)}
+	rt := newFake(t, pullRT{editID: "edit-inv", listingsResp: listingsJSON(t, fixture)})
 	rc, _ := newRC(t, rt)
 
 	if _, err := pull.Run(rc, pull.Input{Package: "com.example.app", Dir: dir}); err != nil {
@@ -419,7 +378,7 @@ func TestBuildTree_allFieldsEmpty_dropsLocale(t *testing.T) {
 // nothing.
 func TestRun_noListings_emptySummaryNotError(t *testing.T) {
 	dir := t.TempDir()
-	rt := &pullRT{t: t, editID: "edit-none", listingsResp: `{"listings":[],"kind":"androidpublisher#listingsListResponse"}`}
+	rt := newFake(t, pullRT{editID: "edit-none", listingsResp: `{"listings":[],"kind":"androidpublisher#listingsListResponse"}`})
 	rc, _ := newRC(t, rt)
 
 	r, err := pull.Run(rc, pull.Input{Package: "com.example.app", Dir: dir})
@@ -443,7 +402,7 @@ func TestRun_noListings_emptySummaryNotError(t *testing.T) {
 // pass-through.
 func TestRun_jsonSummaryShape(t *testing.T) {
 	dir := t.TempDir()
-	rt := &pullRT{t: t, editID: "edit-json", listingsResp: listingsJSON(t, testListings())}
+	rt := newFake(t, pullRT{editID: "edit-json", listingsResp: listingsJSON(t, testListings())})
 	rc, _ := newRC(t, rt)
 
 	r, err := pull.Run(rc, pull.Input{Package: "com.example.app", Dir: dir})
@@ -514,15 +473,15 @@ func equalStrings(a, b []string) bool {
 // fails auth (exit 10) before any HTTP call.
 func TestRun_noAccount_exit10(t *testing.T) {
 	dir := t.TempDir()
-	rt := &pullRT{t: t}
+	rt := newFake(t, pullRT{})
 	rc, _ := newRC(t, rt)
 	rc.Account = nil
 	_, err := pull.Run(rc, pull.Input{Package: "com.example.app", Dir: dir})
 	if code := exitCodeOf(t, err); code != 10 {
 		t.Errorf("ExitCode() = %d, want 10", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before auth error, saw: %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before auth error, saw: %v", calls(rt))
 	}
 }
 
@@ -530,14 +489,14 @@ func TestRun_noAccount_exit10(t *testing.T) {
 // pin) is a usage error before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	dir := t.TempDir()
-	rt := &pullRT{t: t}
+	rt := newFake(t, pullRT{})
 	rc, _ := newRC(t, rt)
 	_, err := pull.Run(rc, pull.Input{Dir: dir})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", calls(rt))
 	}
 }
 
@@ -546,11 +505,10 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 // `gplay apps list`, and that no Edit was opened (no DELETE).
 func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	dir := t.TempDir()
-	rt := &pullRT{
-		t:          t,
+	rt := newFake(t, pullRT{
 		insertCode: 404,
 		insertBody: `{"error":{"code":404,"message":"Application not found.","errors":[{"reason":"applicationNotFound"}]}}`,
-	}
+	})
 	rc, _ := newRC(t, rt)
 
 	_, err := pull.Run(rc, pull.Input{Package: "com.example.unknown", Dir: dir})
@@ -560,9 +518,9 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	if !strings.Contains(err.Error(), "apps list") {
 		t.Errorf("error %q, want a hint mentioning `gplay apps list`", err.Error())
 	}
-	for _, c := range rt.calls {
+	for _, c := range calls(rt) {
 		if strings.HasPrefix(c, "DELETE ") {
-			t.Errorf("unexpected DELETE after failed insert; calls = %v", rt.calls)
+			t.Errorf("unexpected DELETE after failed insert; calls = %v", calls(rt))
 		}
 	}
 }
@@ -571,11 +529,10 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 // invited on the app) maps to exit 11 with the standard grant-access hint.
 func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	dir := t.TempDir()
-	rt := &pullRT{
-		t:          t,
+	rt := newFake(t, pullRT{
 		insertCode: 403,
 		insertBody: `{"error":{"code":403,"message":"The caller does not have permission"}}`,
-	}
+	})
 	rc, _ := newRC(t, rt)
 
 	_, err := pull.Run(rc, pull.Input{Package: "com.example.app", Dir: dir})

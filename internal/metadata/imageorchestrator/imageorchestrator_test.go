@@ -1,7 +1,7 @@
 // Package imageorchestrator_test exercises the Edit-lifecycle guarantees of
 // `images apply`: the atomic single-Edit commit, auto-discard on a per-slot
 // failure (0 published), and the no-op discard (no empty commit). It drives
-// orchestrator.Apply directly with a fake transport: no kernel/auth needed.
+// orchestrator.Apply directly with a testkit.Fake: no kernel/auth needed.
 package imageorchestrator_test
 
 import (
@@ -9,88 +9,114 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imageorchestrator"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
-// orchRT is a fake transport with a per-slot live body and a toggle to fail
-// uploads. It records whether the Edit was committed or discarded.
+// orchRT configures a testkit.Fake with a per-slot live body and a toggle to
+// fail uploads. What the Edit went through (committed, discarded, uploads,
+// deletes) is read back from the recorded calls.
 type orchRT struct {
-	t          *testing.T
 	editID     string
 	liveBody   string // images.list body for every slot
 	failUpload bool
 	failCommit bool // Play rejects the commit (e.g. a required slot dropped)
-
-	mu            sync.Mutex
-	committed     bool
-	discarded     bool
-	uploads       int
-	deleteAll     int
-	singleDeletes int
 }
 
-func (r *orchRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return resp(200, fmt.Sprintf(`{"id":%q}`, r.editID)), nil
-	case strings.HasSuffix(req.URL.Path, ":commit"):
-		if r.failCommit {
-			return resp(400, `{"error":{"message":"app listing requires at least 2 phone screenshots"}}`), nil
+// orchFake is the Fake plus the one setting the call log cannot tell: whether
+// the commit it answered was accepted.
+type orchFake struct {
+	*testkit.Fake
+	failCommit bool
+}
+
+func newOrch(t *testing.T, r orchRT) orchFake {
+	t.Helper()
+	return orchFake{failCommit: r.failCommit, Fake: testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, fmt.Sprintf(`{"id":%q}`, r.editID), true
+		case strings.HasSuffix(c.Path, ":commit"):
+			if r.failCommit {
+				return 400, `{"error":{"message":"app listing requires at least 2 phone screenshots"}}`, true
+			}
+			return 200, `{}`, true
+		case c.Method == http.MethodPost && strings.HasPrefix(c.Path, "/upload/"):
+			if r.failUpload {
+				return 400, `{"error":{"message":"bad image"}}`, true
+			}
+			return 200, `{"image":{"id":"up","sha256":"s"}}`, true
+		case c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/"):
+			body := r.liveBody
+			if body == "" {
+				body = `{"images":[]}`
+			}
+			return 200, body, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/listings/"):
+			return 200, `{"deleted":[]}`, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return 204, ``, true
 		}
-		r.committed = true
-		return resp(200, `{}`), nil
-	case req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/upload/"):
-		r.uploads++
-		_, _ = io.Copy(io.Discard, req.Body)
-		if r.failUpload {
-			return resp(400, `{"error":{"message":"bad image"}}`), nil
+		t.Errorf("unexpected: %s %s", c.Method, c.Path)
+		return 0, "", false
+	})}
+}
+
+func (f orchFake) count(match func(testkit.Call) bool) int {
+	n := 0
+	for _, c := range f.Calls() {
+		if match(c) {
+			n++
 		}
-		return resp(200, `{"image":{"id":"up","sha256":"s"}}`), nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/listings/"):
-		body := r.liveBody
-		if body == "" {
-			body = `{"images":[]}`
-		}
-		return resp(200, body), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/listings/"):
-		// .../listings/<locale>/<type>      → deleteall (2 segments)
-		// .../listings/<locale>/<type>/<id> → single image delete (3 segments)
-		tail := req.URL.Path[strings.Index(req.URL.Path, "/listings/")+len("/listings/"):]
-		if strings.Count(tail, "/") >= 2 {
-			r.singleDeletes++
-		} else {
-			r.deleteAll++
-		}
-		return resp(200, `{"deleted":[]}`), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		r.discarded = true
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
 	}
-	r.t.Fatalf("unexpected: %s %s", req.Method, req.URL)
-	return nil, nil
+	return n
 }
 
-func resp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+func (f orchFake) committed() bool {
+	return !f.failCommit && f.count(func(c testkit.Call) bool { return strings.HasSuffix(c.Path, ":commit") }) > 0
 }
+
+func (f orchFake) discarded() bool {
+	return f.count(func(c testkit.Call) bool {
+		return c.Method == http.MethodDelete && !strings.Contains(c.Path, "/listings/") && strings.Contains(c.Path, "/edits/")
+	}) > 0
+}
+
+func (f orchFake) uploads() int {
+	return f.count(func(c testkit.Call) bool {
+		return c.Method == http.MethodPost && strings.HasPrefix(c.Path, "/upload/")
+	})
+}
+
+// listingDeletes counts the image DELETEs under /listings/ of one kind:
+// .../listings/<locale>/<type> is a deleteall,
+// .../listings/<locale>/<type>/<id> a single image delete.
+func (f orchFake) listingDeletes(single bool) int {
+	return f.count(func(c testkit.Call) bool {
+		i := strings.Index(c.Path, "/listings/")
+		if c.Method != http.MethodDelete || i < 0 {
+			return false
+		}
+		return (strings.Count(c.Path[i+len("/listings/"):], "/") >= 2) == single
+	})
+}
+
+func (f orchFake) deleteAll() int     { return f.listingDeletes(false) }
+func (f orchFake) singleDeletes() int { return f.listingDeletes(true) }
 
 // TestApply_perSlotFailure_discardsEdit asserts a failed upload aborts the
 // whole apply: the Edit is discarded (auto-rollback), never committed: 0 slots
 // published (atomic).
 func TestApply_perSlotFailure_discardsEdit(t *testing.T) {
-	rt := &orchRT{t: t, editID: "e", failUpload: true}
+	rt := newOrch(t, orchRT{editID: "e", failUpload: true})
 	hc := &http.Client{Transport: rt}
 	local := imagetree.Tree{"en-US": {images.Icon: {[]byte("icon-bytes")}}}
 
@@ -100,10 +126,10 @@ func TestApply_perSlotFailure_discardsEdit(t *testing.T) {
 	if err == nil {
 		t.Fatal("want error when an upload fails")
 	}
-	if rt.committed {
+	if rt.committed() {
 		t.Error("a failed apply must NOT commit (atomic rollback)")
 	}
-	if !rt.discarded {
+	if !rt.discarded() {
 		t.Error("a failed apply must discard the Edit")
 	}
 }
@@ -114,7 +140,7 @@ func TestApply_perSlotFailure_discardsEdit(t *testing.T) {
 func TestApply_noOp_discardsWithoutCommit(t *testing.T) {
 	iconBytes := []byte("icon-bytes")
 	live := fmt.Sprintf(`{"images":[{"id":"x","sha256":%q}]}`, sha(iconBytes))
-	rt := &orchRT{t: t, editID: "e", liveBody: live}
+	rt := newOrch(t, orchRT{editID: "e", liveBody: live})
 	hc := &http.Client{Transport: rt}
 	local := imagetree.Tree{"en-US": {images.Icon: {iconBytes}}}
 
@@ -124,11 +150,11 @@ func TestApply_noOp_discardsWithoutCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("no-op apply should not error: %v", err)
 	}
-	if rt.committed {
+	if rt.committed() {
 		t.Error("a no-op apply must NOT commit an empty Edit")
 	}
-	if rt.uploads != 0 {
-		t.Errorf("no-op apply uploaded %d, want 0", rt.uploads)
+	if rt.uploads() != 0 {
+		t.Errorf("no-op apply uploaded %d, want 0", rt.uploads())
 	}
 	if res.Diff.HasChanges() {
 		t.Errorf("no-op diff should report no changes: %+v", res.Diff.Summary)
@@ -140,7 +166,7 @@ func TestApply_noOp_discardsWithoutCommit(t *testing.T) {
 func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 	a := []byte("shot-a")
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))
-	rt := &orchRT{t: t, editID: "e", liveBody: live}
+	rt := newOrch(t, orchRT{editID: "e", liveBody: live})
 	hc := &http.Client{Transport: rt}
 	local := imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}} // keep only a; b is online-only
 
@@ -150,13 +176,13 @@ func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prune apply: %v", err)
 	}
-	if rt.singleDeletes != 1 {
-		t.Errorf("prune should delete the 1 online-only image by id, got %d single deletes", rt.singleDeletes)
+	if rt.singleDeletes() != 1 {
+		t.Errorf("prune should delete the 1 online-only image by id, got %d single deletes", rt.singleDeletes())
 	}
-	if rt.deleteAll != 0 {
-		t.Errorf("a pure prune-delete should not deleteall, got %d", rt.deleteAll)
+	if rt.deleteAll() != 0 {
+		t.Errorf("a pure prune-delete should not deleteall, got %d", rt.deleteAll())
 	}
-	if !rt.committed {
+	if !rt.committed() {
 		t.Error("prune apply should commit")
 	}
 	if res.Diff.Summary.Delete != 1 {
@@ -169,7 +195,7 @@ func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 func TestApply_prune_offWithoutFlag_keepsOnlineOnly(t *testing.T) {
 	a := []byte("shot-a")
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))
-	rt := &orchRT{t: t, editID: "e", liveBody: live}
+	rt := newOrch(t, orchRT{editID: "e", liveBody: live})
 	hc := &http.Client{Transport: rt}
 	local := imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}}
 
@@ -179,10 +205,10 @@ func TestApply_prune_offWithoutFlag_keepsOnlineOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("additive apply: %v", err)
 	}
-	if rt.singleDeletes != 0 || rt.deleteAll != 0 {
-		t.Errorf("additive (no --prune) must delete nothing, got %d single / %d deleteall", rt.singleDeletes, rt.deleteAll)
+	if rt.singleDeletes() != 0 || rt.deleteAll() != 0 {
+		t.Errorf("additive (no --prune) must delete nothing, got %d single / %d deleteall", rt.singleDeletes(), rt.deleteAll())
 	}
-	if rt.committed {
+	if rt.committed() {
 		t.Error("additive no-op (local ⊆ live) must not commit")
 	}
 }
@@ -193,7 +219,7 @@ func TestApply_prune_offWithoutFlag_keepsOnlineOnly(t *testing.T) {
 func TestApply_prune_belowRequiredMinimum_rejectedAtCommit(t *testing.T) {
 	a := []byte("shot-a")
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))
-	rt := &orchRT{t: t, editID: "e", liveBody: live, failCommit: true}
+	rt := newOrch(t, orchRT{editID: "e", liveBody: live, failCommit: true})
 	hc := &http.Client{Transport: rt}
 	local := imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}}
 
@@ -203,10 +229,10 @@ func TestApply_prune_belowRequiredMinimum_rejectedAtCommit(t *testing.T) {
 	if err == nil {
 		t.Fatal("want the commit rejection to surface as an error")
 	}
-	if rt.committed {
+	if rt.committed() {
 		t.Error("a rejected commit must not be recorded as committed")
 	}
-	if !rt.discarded {
+	if !rt.discarded() {
 		t.Error("a rejected commit must auto-discard the Edit (store untouched)")
 	}
 }
