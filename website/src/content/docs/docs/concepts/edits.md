@@ -72,6 +72,11 @@ refused, and committing or discarding with nothing pinned is refused. A
 project is required, since the pin lives in `.gplay/` (run `gplay init`
 first).
 
+Read commands (`releases list`, `tracks list`, `metadata pull`, ...) keep
+showing the **live** state while an Edit is pinned: what is published, not
+what is staged. `releases artifacts list` is the one exception and also shows
+artifacts uploaded into the pinned Edit.
+
 ## Committing while changes are in review
 
 If some changes are already in Google's review when an Edit is committed,

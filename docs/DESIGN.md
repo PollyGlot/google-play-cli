@@ -343,6 +343,26 @@ committed). A failure that proves the commit never left (a DNS or dial error, a
 refused token exchange) keeps its ordinary code. `--retry` never replays
 `edits.commit` in any case.
 
+### Reads and the pinned Edit
+
+Read commands show the **live, committed** state. An Edit-scoped read
+(`releases list`, `tracks list`, `tracks view`, `tracks availability view`,
+`testers list`, `metadata list`, `metadata pull`, `metadata images list`,
+`metadata images pull`, `releases expansion-files view`, `apps view`,
+`apps details view`, `apps audit`) opens its own read-only Edit and discards
+it, even while an explicit Edit is pinned: after `edits begin` and
+`releases upload`, `releases list` still shows what is published, not what is
+staged. Reading the staged state is an opt-in: a read joins the pinned Edit
+only when passed `--edit`. No read takes `--edit` yet; it earns its place
+command by command through an issue. The reason is predictability: a read
+whose source flips on the presence of a file in `.gplay/` answers the same
+command differently in two directories, and the frozen reads keep the
+semantics they shipped with (ADR-0042).
+
+`releases artifacts list` (`[experimental]`, #543) predates this rule and reads
+inside the pinned Edit without `--edit`, so that artifacts uploaded there are
+visible. It is the one known exception.
+
 ---
 
 ## 5. Reviews
