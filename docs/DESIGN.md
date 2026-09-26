@@ -143,8 +143,8 @@ If nothing resolves: exit code `10` with one message, the same on every command
 (`kernel.NoAccountError`), that names each way to fix it: `gplay auth login`,
 `--account` or `GPLAY_ACCOUNT`, `--service-account` or `GPLAY_SERVICE_ACCOUNT`.
 A command that also needs a developer-id (`team`, `customapps create`, `reviews
-history`) reports the missing Account first, since that is the gap to close
-first.
+history`) reports a missing Account before a missing developer-id: a
+developer-id set first would only lead to the no-Account error one step later.
 
 **Path or inline JSON.** A `--service-account` or `GPLAY_SERVICE_ACCOUNT` value
 is inline JSON when its first non-whitespace character is `{`, and a file path
