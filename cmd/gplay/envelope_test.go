@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -16,11 +17,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// runLikeMain drives the real command tree the way main does: Execute, then the
-// failure-envelope backstop. It returns stdout and the error main would print.
-// Every case fails before RunE (or before any credential is read), so nothing
-// here touches the keyring or the network.
-func runLikeMain(t *testing.T, args ...string) (string, error) {
+// runLikeMain drives the real command tree the way main does: execute with the
+// failure-envelope backstop as its hook. It returns stdout, the error main
+// prints and the exit code. Every case fails before RunE (or before any
+// credential is read), so nothing here touches the keyring or the network.
+func runLikeMain(t *testing.T, args ...string) (string, int, error) {
 	t.Helper()
 	dir := t.TempDir()
 	root := newRootCmd(kernel.Boot{
@@ -31,9 +32,12 @@ func runLikeMain(t *testing.T, args ...string) (string, error) {
 	root.SetArgs(args)
 	root.SetOut(&stdout)
 	root.SetErr(io.Discard)
-	err := root.Execute()
-	writeFailureEnvelope(&stdout, stdout.Len() > 0, args, err)
-	return stdout.String(), err
+	var failure error
+	code := execute(context.Background(), root, io.Discard, func(err error) {
+		failure = err
+		writeFailureEnvelope(&stdout, stdout.Len() > 0, args, err)
+	})
+	return stdout.String(), code, failure
 }
 
 // envelopeOf decodes stdout as exactly one error envelope, failing on anything
@@ -72,8 +76,8 @@ func TestFailureEnvelope_cliMisuseUnderJSON(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			stdout, err := runLikeMain(t, tc.args...)
-			if code := exit.For(err); code != 2 {
+			stdout, code, err := runLikeMain(t, tc.args...)
+			if code != 2 {
 				t.Fatalf("exit code = %d, want 2 (unchanged by the envelope); err=%v", code, err)
 			}
 			d := envelopeOf(t, stdout)
@@ -100,8 +104,8 @@ func TestFailureEnvelope_writtenOnceOrNotAtAll(t *testing.T) {
 	t.Run("kernel-already-emitted", func(t *testing.T) {
 		// A RunE usage error: the kernel writes the envelope, main must not
 		// append a second one.
-		stdout, err := runLikeMain(t, "releases", "list", "--package", "com.example.app", "--output", "json")
-		if code := exit.For(err); code != 2 {
+		stdout, code, err := runLikeMain(t, "releases", "list", "--package", "com.example.app", "--output", "json")
+		if code != 2 {
 			t.Fatalf("exit code = %d, want 2; err=%v", code, err)
 		}
 		if d := envelopeOf(t, stdout); !strings.Contains(d.Message, "missing --track: pass --track <name>") {
@@ -115,8 +119,8 @@ func TestFailureEnvelope_writtenOnceOrNotAtAll(t *testing.T) {
 		"invalid-output": {"tracks", "list", "--output", "yaml"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			stdout, err := runLikeMain(t, args...)
-			if code := exit.For(err); code != 2 {
+			stdout, code, err := runLikeMain(t, args...)
+			if code != 2 {
 				t.Fatalf("exit code = %d, want 2; err=%v", code, err)
 			}
 			if stdout != "" {
@@ -127,7 +131,7 @@ func TestFailureEnvelope_writtenOnceOrNotAtAll(t *testing.T) {
 
 	t.Run("env-default-table", func(t *testing.T) {
 		t.Setenv(output.EnvDefaultOutput, "table")
-		if stdout, _ := runLikeMain(t, "tracks", "list", "extra"); stdout != "" {
+		if stdout, _, _ := runLikeMain(t, "tracks", "list", "extra"); stdout != "" {
 			t.Errorf("stdout = %q, want empty under GPLAY_DEFAULT_OUTPUT=table", stdout)
 		}
 	})

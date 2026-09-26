@@ -315,6 +315,12 @@ Each transition is its own verb:
 failure after `begin`, the Edit is **auto-discarded** before the error
 propagates. Pass `--keep-edit-on-failure` to bypass cleanup when debugging.
 
+`SIGINT` and `SIGTERM` count as a failure: the in-flight request is canceled,
+the Edit is discarded under a 5-second bound (inside the CI kill margin: GitHub
+Actions sends `SIGTERM` 7.5s after `SIGINT`), and gplay exits `50`. A second
+signal is not caught and kills gplay at once. Only a hard kill (`SIGKILL`, OOM,
+runner eviction) can still leave an Edit open.
+
 ### Explicit edits
 
 `gplay edits begin / commit / discard`. The Edit ID is persisted to
@@ -649,10 +655,21 @@ seconds instead of stalling a CI job until the runner-level kill:
   **60s default** deadline, applied once where the kernel builds the
   authenticated HTTP client — every command inherits it, no per-command
   plumbing.
-- **Media uploads** (`releases upload`, `releases sharing upload`,
-  `releases expansion-files upload`, `metadata images apply`) are **exempt from
-  the default**: a multi-hundred-MB transfer is never killed by the short
-  control-plane bound.
+- **Media transfers** (the artifact bytes of `releases upload`,
+  `releases sharing upload`, `releases expansion-files upload`,
+  `releases mappings`, `metadata images apply`, the `appstore upload` and
+  `customapps create` surfaces, and the APK bytes of
+  `releases generated download`) are **exempt from the default**: a
+  multi-hundred-MB transfer is never killed by the short control-plane bound.
+  The exemption is decided per request, so the same commands' Edit calls
+  (`edits.insert`, `tracks.update`, `edits.commit`), the resumable initiate and
+  offset probe, and the token exchange keep the 60s bound.
+- Each **resumable chunk** (8 MiB) carries its own generous 5-minute bound: a
+  connection that stops moving bytes without a reset is cut, then the upload
+  probes the committed offset and resumes. After a failure the resume waits on
+  the same backoff curve as `--retry` (500ms doubling to 30s, with jitter),
+  restarting when the server's offset advances; eight attempts in a row
+  without progress end the upload.
 - The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
   `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
   Unset (`0`) means "60s for control-plane, unbounded for uploads".
@@ -764,6 +781,11 @@ pointing at a shared translation):
 | `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
+
+**An interrupted command exits 50.** A command stopped by `SIGINT` or `SIGTERM`
+before it succeeded exits `50` whatever step it was on, after discarding its
+implicit Edit (§4), so re-running it is safe. A command that completed before
+the signal was handled keeps its `0`.
 
 **Exit 3 has no exceptions.** *Every* refusal for a missing safety-acknowledgment
 flag exits `3` — never `2` — whatever the command and however destructive the

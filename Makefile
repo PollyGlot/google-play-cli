@@ -87,6 +87,10 @@ coverage-update: ## Render docs/COVERAGE.md from the Discovery index and the API
 contract-update: ## Regenerate cmd/gplay/testdata/surface.golden (every leaf, flag and exit code) from the cobra tree (offline)
 	go test ./cmd/gplay -run '^TestSurfaceGolden_isFresh$$' -count=1 -update-contract
 
+.PHONY: docs-update
+docs-update: ## Regenerate the generated blocks of README.md and the website pages (exit codes, experimental commands) from the binary (offline)
+	go test ./cmd/gplay -run '^TestGeneratedDocs_areFresh$$' -count=1 -update-docs
+
 release-snapshot: ## Local GoReleaser snapshot (no publish): sanity-check the config
 	goreleaser release --snapshot --clean --skip=publish,sign,sbom
 
