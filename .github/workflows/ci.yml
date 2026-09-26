@@ -115,10 +115,13 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # golangci-lint refuses to lint for a Go newer than the Go it was built
+      # with, and it targets go.mod's `toolchain` line: moving that line to a
+      # new minor needs a golangci-lint release built with it (v2.13.2: go1.27).
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: v2.13.2
 
       - name: build
         run: go build ./cmd/gplay

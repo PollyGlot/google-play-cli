@@ -366,8 +366,10 @@ third-party action is SHA-pinned (see
 `actions/setup-go` with `go-version-file: go.mod`. CI, CodeQL, govulncheck, the
 release rehearsal and the release itself therefore build and scan with the Go
 that ships. To move to a new patch or release, edit the `toolchain` line (and
-raise the `go` line when a Go release reaches end of support); no workflow
-changes. Do not set `GOTOOLCHAIN=local` before `setup-go`: it then ignores the
+raise the `go` line when a Go release reaches end of support). A patch needs
+no workflow change; a new minor also needs the golangci-lint pinned in
+`ci.yml` to be a release built with that Go, since golangci-lint refuses to
+lint for a newer Go than its own. Do not set `GOTOOLCHAIN=local` before `setup-go`: it then ignores the
 `toolchain` line and installs the unpatched `go` line.
 
 The released binary is built from the exact tagged tree: the GoReleaser
