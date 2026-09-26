@@ -132,7 +132,7 @@ func renderJSON(w io.Writer, p Payload) error {
 	for _, s := range p.Slots {
 		raw := s.RawImages
 		if len(raw) == 0 {
-			b, err := json.Marshal(s.Images)
+			b, err := output.Marshal(s.Images)
 			if err != nil {
 				return err
 			}

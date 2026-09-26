@@ -313,7 +313,7 @@ func localeOr(locale string) string {
 }
 
 func marshalBody(v any) ([]byte, error) {
-	b, err := json.Marshal(v)
+	b, err := output.Marshal(v)
 	if err != nil {
 		return nil, exit.Usagef("could not build request body: %v", err)
 	}

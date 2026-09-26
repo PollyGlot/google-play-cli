@@ -90,7 +90,7 @@ func TestRun_unionsV2AndLegacy(t *testing.T) {
 	dir := t.TempDir()
 	rt := &iapRT{
 		v2Body:     `{"oneTimeProducts":[{"productId":"coins100","packageName":"com.example.app","listings":[],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE"}]}]}`,
-		legacyBody: `{"inappproduct":[{"sku":"coins100","purchaseType":"managedUser"},{"sku":"old_gems","purchaseType":"managedUser","status":"active"}]}`,
+		legacyBody: `{"inappproduct":[{"sku":"coins100","purchaseType":"managedUser"},{"sku":"old_gems","purchaseType":"managedUser","status":"active","listings":{"en-US":{"title":"Gems & <more>"}}}]}`,
 		offersBody: `{"oneTimeProductOffers":[{"packageName":"com.example.app","productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE"}]}`,
 	}
 	rc := newRC(t, rt)
@@ -139,6 +139,13 @@ func TestRun_unionsV2AndLegacy(t *testing.T) {
 	}
 	if len(envelope.OneTimeProducts) != 1 || len(envelope.InAppProduct) != 2 {
 		t.Errorf("composite envelope = %s, want 1 v2 + 2 legacy verbatim", js.String())
+	}
+	// The composite envelope and the written file keep the API's & and <>
+	// literal (#622): neither may re-encode them as & or <.
+	for name, b := range map[string][]byte{"json output": js.Bytes(), "old_gems.json": lb} {
+		if !strings.Contains(string(b), "Gems & <more>") {
+			t.Errorf("%s must carry the title verbatim, got %s", name, b)
+		}
 	}
 	var tbl bytes.Buffer
 	if err := r.Renderers().Table(&tbl); err != nil {

@@ -16,7 +16,8 @@ const rawIcon = `[{"id":"img-icon-1","url":"https://play-lh.googleusercontent.co
 // TestRenderJSON_slots_golden freezes the gplay envelope around the verbatim
 // images arrays (ADR-0003): package, then one entry per non-empty slot with
 // its locale, type and count. The second slot lost its raw bytes, so it pins
-// the re-marshal fallback, which keeps the API field names.
+// the re-marshal fallback, which keeps the API field names and the URL's &
+// literal (#622).
 func TestRenderJSON_slots_golden(t *testing.T) {
 	p := imageslist.Payload{
 		Package: "com.example.app",
@@ -31,7 +32,7 @@ func TestRenderJSON_slots_golden(t *testing.T) {
 				Locale: "en-US",
 				Type:   images.PhoneScreenshots,
 				Images: []images.Image{
-					{ID: "img-shot-1", URL: "https://play-lh.googleusercontent.com/shot1", Sha1: "356a192b7913b04c54574d18c28d46e6395428ab", Sha256: "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"},
+					{ID: "img-shot-1", URL: "https://play-lh.googleusercontent.com/shot1?w=1080&h=1920", Sha1: "356a192b7913b04c54574d18c28d46e6395428ab", Sha256: "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"},
 					{ID: "img-shot-2", URL: "https://play-lh.googleusercontent.com/shot2", Sha1: "da4b9237bacccdf19c0760cab7aec4a8359010b0", Sha256: "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35"},
 				},
 			},

@@ -56,7 +56,7 @@ func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		return jsonResp(200, body), nil
 	}
 	if strings.Contains(req.URL.RawQuery, "pageToken=p2") {
-		return jsonResp(200, `{"subscriptions":[{"productId":"pro","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Pro"}]}]}`), nil
+		return jsonResp(200, `{"subscriptions":[{"productId":"pro","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Pro & <Plus>"}]}]}`), nil
 	}
 	return jsonResp(200, `{"subscriptions":[{"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}],"nextPageToken":"p2"}`), nil
 }
@@ -142,6 +142,17 @@ func TestRun_mirrorsLiveCatalogToDir(t *testing.T) {
 	}
 	if len(envelope.Subscriptions) != 2 {
 		t.Errorf("merged envelope has %d subscriptions, want 2", len(envelope.Subscriptions))
+	}
+	// Both the merged envelope and the written file keep the API's & and <>
+	// literal (#622): neither may re-encode them as & or <.
+	pro, err := os.ReadFile(filepath.Join(dir, "pro.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, b := range map[string][]byte{"json output": out.Bytes(), "pro.json": pro} {
+		if !strings.Contains(string(b), "Pro & <Plus>") {
+			t.Errorf("%s must carry the title verbatim, got %s", name, b)
+		}
 	}
 }
 

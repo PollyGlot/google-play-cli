@@ -241,7 +241,7 @@ func buildBody(metrics, dimensions []string, period, filter string, since time.D
 	if filter != "" {
 		body["filter"] = filter
 	}
-	return json.Marshal(body)
+	return output.Marshal(body)
 }
 
 func toDateTime(t time.Time, hourly bool) dateTime {

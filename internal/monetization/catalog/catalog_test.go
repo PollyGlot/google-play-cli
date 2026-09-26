@@ -149,3 +149,22 @@ func TestWrite_roundTrip(t *testing.T) {
 		t.Fatalf("round-trip lost the entry: %v", local)
 	}
 }
+
+// TestWrite_keepsHTMLCharactersLiteral asserts a pulled file carries <, > and &
+// as the API sent them, in the 2-space layout: the file is what a reviewer
+// diffs, and & in listing copy is noise pull must not introduce.
+func TestWrite_keepsHTMLCharactersLiteral(t *testing.T) {
+	dir := t.TempDir()
+	raw := json.RawMessage(`{"productId":"premium","listings":[{"title":"Tips & <tricks>"}]}`)
+	if _, err := catalog.Write(dir, []catalog.Entry{{ProductID: "premium", Raw: raw}}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "premium.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n  \"listings\": [\n    {\n      \"title\": \"Tips & <tricks>\"\n    }\n  ],\n  \"productId\": \"premium\"\n}\n"
+	if string(got) != want {
+		t.Errorf("premium.json =\n%s\nwant:\n%s", got, want)
+	}
+}

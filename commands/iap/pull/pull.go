@@ -160,7 +160,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// No single API response covers a two-surface union, so the json view is a
 	// composite of the two verbatim list envelopes (the `apps view` precedent:
 	// each sub-array is upstream bytes, key names mirror the API envelopes).
-	merged, err := json.Marshal(struct {
+	merged, err := output.Marshal(struct {
 		OneTimeProducts []json.RawMessage `json:"oneTimeProducts"`
 		InAppProduct    []json.RawMessage `json:"inappproduct"`
 	}{OneTimeProducts: rawV2, InAppProduct: rawLegacy})
