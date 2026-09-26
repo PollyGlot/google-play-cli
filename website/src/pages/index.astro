@@ -363,8 +363,10 @@ const demoSession = [
         <!-- Stats -->
         <div class="border-y border-border bg-surface-panel">
           <dl class="mx-auto grid max-w-5xl grid-cols-2 gap-6 px-5 py-8 text-center md:grid-cols-4">
+            <!-- <dt> stays first in the DOM (a <dl> names before it values);
+                 flex-col lets order-2 draw the number above its label. -->
             {stats.map((s) => (
-              <div>
+              <div class="flex flex-col">
                 <dt class="order-2 text-sm text-fg-muted">{s.label}</dt>
                 <dd class="m-0 font-mono text-3xl font-bold text-accent">{s.value}</dd>
               </div>
