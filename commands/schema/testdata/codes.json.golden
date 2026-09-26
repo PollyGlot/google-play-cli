@@ -79,6 +79,12 @@
       "meaning": "Network failure with no HTTP response: timeout, DNS, refused"
     },
     {
+      "code": "COMMIT_OUTCOME_UNKNOWN",
+      "exitCode": 50,
+      "retryable": false,
+      "meaning": "An Edit commit failed after it was sent (timeout, reset or 5xx, exit 50 or 40) and may be live; check the live state before re-running"
+    },
+    {
       "code": "STATE_CONFLICT",
       "exitCode": 60,
       "retryable": false,
