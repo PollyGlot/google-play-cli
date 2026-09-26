@@ -218,7 +218,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// already the deliverable, and edits.apks.upload has no such parameter.
 	// Refused here so it is never silently dropped.
 	if in.DeviceTierConfig != "" && format == orchestrator.FormatAPK {
-		return nil, &usageError{msg: "--device-tier-config applies to an App Bundle (.aab) only, not an APK"}
+		return nil, &exit.UsageError{Msg: "--device-tier-config applies to an App Bundle (.aab) only, not an APK"}
 	}
 
 	// Artifact preflight (PRD #448): the artifact's container and declared
