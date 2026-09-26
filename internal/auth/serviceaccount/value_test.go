@@ -101,22 +101,47 @@ func TestLoadValue_misshapenValue_neverEchoesIt(t *testing.T) {
 	}
 }
 
-// A genuinely missing path keeps its OS reason (the useful half of the old
-// message) but loses the path itself, like every other unreadable value.
-func TestLoadValue_missingPath_keepsReasonNotPath(t *testing.T) {
+// A short missing path cannot be a credential, so it is named back: a typo'd
+// path must stay diagnosable.
+func TestLoadValue_shortMissingPath_isShown(t *testing.T) {
 	path := t.TempDir() + "/missing-sa.json"
 	_, err := serviceaccount.LoadValue(osReader{}, "--service-account", path)
 	if err == nil {
 		t.Fatal("expected an error for a missing path")
 	}
 	msg := err.Error()
-	if strings.Contains(msg, "missing-sa.json") {
-		t.Errorf("error echoes the value: %s", msg)
-	}
-	for _, want := range []string{"--service-account", "no such file or directory", "starting with '{'"} {
+	for _, want := range []string{"--service-account", path, "no such file or directory", "starting with '{'"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("error %q missing %q", msg, want)
 		}
+	}
+	if strings.Contains(msg, "value not shown") {
+		t.Errorf("a short path should be shown: %s", msg)
+	}
+}
+
+// Anything that could carry key material stays hidden, whatever else it looks
+// like: too long, multi-line, holding a '{' or a PEM marker.
+func TestLoadValue_credentialLikeValue_isNeverShown(t *testing.T) {
+	for name, value := range map[string]string{
+		"long single line": "/tmp/" + strings.Repeat("LEAKEDSECRETBODY", 20),
+		"multi-line":       "/tmp/a\nLEAKEDSECRETBODY",
+		"brace":            "x{LEAKEDSECRETBODY",
+		"PEM marker":       "-----BEGIN PRIVATE KEY-----LEAKEDSECRETBODY",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := serviceaccount.LoadValue(osReader{}, "GPLAY_SERVICE_ACCOUNT", value)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			msg := err.Error()
+			if strings.Contains(msg, "LEAKEDSECRETBODY") {
+				t.Errorf("error echoes the value: %s", msg)
+			}
+			if !strings.Contains(msg, "value not shown") {
+				t.Errorf("error %q should say the value is not shown", msg)
+			}
+		})
 	}
 }
 

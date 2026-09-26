@@ -14,13 +14,14 @@ import (
 // first non-space rune is '{', a filesystem path read through fr otherwise.
 // source names where the value came from, for the error message.
 //
-// The value is NEVER echoed back. A value that is neither JSON nor a readable
-// path is, far more often than a typo'd path, a credential in the wrong shape
-// (base64, quoted JSON, a leading BOM), and os.ReadFile would quote all of it
-// in its *PathError ("open <value>: file name too long"). That message then
-// reaches stderr, the JSON error envelope and the doctor checklist, and a
-// base64 blob matches none of the redaction patterns. So a failed read reports
-// the length and the OS reason only.
+// A value that is neither JSON nor a readable path is often a credential in the
+// wrong shape (base64, quoted JSON, a leading BOM), and os.ReadFile would quote
+// all of it in its *PathError ("open <value>: file name too long"). That
+// message then reaches stderr, the JSON error envelope and the doctor
+// checklist, and a base64 blob matches none of the redaction patterns. So a
+// failed read reports the length and the OS reason, and echoes the value only
+// when it cannot be a credential (see displayablePath): a typo'd path stays
+// diagnosable, a misshapen key never shows.
 func LoadValue(fr FileReader, source, value string) (*ServiceAccount, error) {
 	if isInlineJSON(value) {
 		return Parse([]byte(value))
@@ -29,6 +30,7 @@ func LoadValue(fr FileReader, source, value string) (*ServiceAccount, error) {
 	if err != nil {
 		return nil, &UnreadableValueError{
 			Source: source,
+			Path:   displayablePath(value),
 			Len:    len(value),
 			Reason: pathErrorReason(err),
 			Hint:   shapeHint(value),
@@ -45,11 +47,13 @@ func isInlineJSON(value string) bool {
 }
 
 // UnreadableValueError is returned when a credential value is neither inline
-// JSON nor a readable file. It carries a description of the value, never the
-// value itself: see LoadValue for why.
+// JSON nor a readable file. It carries a description of the value, and the
+// value itself only when it cannot be a credential: see LoadValue for why.
 type UnreadableValueError struct {
 	// Source is the flag or env var the value came from.
 	Source string
+	// Path is the value when displayablePath allows it, empty otherwise.
+	Path string
 	// Len is the value's length in bytes: enough to tell a path from a blob.
 	Len int
 	// Reason is the OS-level cause without the path ("no such file or
@@ -60,7 +64,12 @@ type UnreadableValueError struct {
 }
 
 func (e *UnreadableValueError) Error() string {
-	msg := fmt.Sprintf("%s is neither inline JSON nor a readable file path (%d bytes, value not shown)", e.Source, e.Len)
+	var msg string
+	if e.Path != "" {
+		msg = fmt.Sprintf("%s is neither inline JSON nor a readable file path (%q)", e.Source, e.Path)
+	} else {
+		msg = fmt.Sprintf("%s is neither inline JSON nor a readable file path (%d bytes, value not shown)", e.Source, e.Len)
+	}
 	if e.Reason != "" {
 		msg += ": " + e.Reason
 	}
@@ -72,6 +81,26 @@ func (e *UnreadableValueError) Error() string {
 
 // ExitCode satisfies exit.Coder: an unusable credential is an auth failure.
 func (*UnreadableValueError) ExitCode() int { return 10 }
+
+// maxDisplayablePath bounds the values shown back. A service account is over a
+// kilobyte in any encoding, so a value this short cannot carry one, while a
+// real path (NAME_MAX is 255 on common filesystems) fits.
+const maxDisplayablePath = 255
+
+// displayablePath returns value when it cannot be a credential, so a typo'd
+// path is named in the error, and "" otherwise. Shown only if it is a single
+// line of at most maxDisplayablePath bytes with no PEM marker, no '{' and not
+// base64 of JSON: each condition alone rules out a service account or a piece
+// of one.
+func displayablePath(value string) string {
+	if len(value) > maxDisplayablePath ||
+		strings.ContainsAny(value, "\r\n{") ||
+		strings.Contains(value, "-----BEGIN") || strings.Contains(value, "PRIVATE KEY") ||
+		looksBase64JSON(strings.TrimSpace(value)) {
+		return ""
+	}
+	return value
+}
 
 // pathErrorReason keeps the OS cause of a failed read and drops the path. Only
 // a *fs.PathError is unwrapped, because its Err field is known not to hold the
