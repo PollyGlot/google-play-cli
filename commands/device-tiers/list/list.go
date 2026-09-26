@@ -61,6 +61,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, devicetierscmd.Classify(pkg, err)
 	}
+	// One page per invocation: without the note a first page in table or
+	// markdown reads as the whole list (--output json keeps the token).
+	if lr.NextPageToken != "" {
+		rc.Notef("more device tier configs available, re-run with --page-token %s for the next page.", lr.NextPageToken)
+	}
 	return Payload{Rows: devicetierscmd.BuildRows(lr.DeviceTierConfigs), Cols: cols, Raw: raw}, nil
 }
 
@@ -75,7 +80,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "List the app's device tier configs (newest first)",
 		Long: `List the app's device tier configs, newest first. Use --page-size and
 --page-token to page; --output json passes the ListDeviceTierConfigsResponse
-through verbatim, including nextPageToken.`,
+through verbatim, including nextPageToken. In table/markdown output a note on
+stderr carries the next --page-token when more configs are available.`,
 		Example: `  gplay device-tiers list
   gplay device-tiers list --page-size 20 --output json`,
 		Args:          cobra.NoArgs,

@@ -43,6 +43,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/accessibleapps"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/listings"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
@@ -267,31 +268,34 @@ func discoverPackages(rc *kernel.RunContext) ([]string, error) {
 		return nil, err
 	}
 
-	var (
-		pkgs      []string
-		pageToken string
-	)
 	// Bounded: a runaway or looping nextPageToken must not turn an audit into
-	// an unbounded quota burn. 1000 pages is far past any real account.
-	for page := 0; page < 1000; page++ {
-		sr, _, err := accessibleapps.Search(rc.Ctx, hc, 0, pageToken)
-		if err != nil {
-			return nil, &discoveryError{cause: err}
-		}
-		for _, a := range sr.Apps {
-			if a.PackageName != "" {
-				pkgs = append(pkgs, a.PackageName)
+	// an unbounded quota burn. A repeated token fails at once, and 1000 pages
+	// (far past any real account) with a token still set fails loudly rather
+	// than auditing a partial list as if it were the whole account.
+	pkgs, _, err := api.Paginate(api.Pager{Op: "apps.search", What: "apps.search", MaxPages: maxDiscoveryPages},
+		func(token string, _ int) ([]string, string, error) {
+			sr, _, err := accessibleapps.Search(rc.Ctx, hc, 0, token)
+			if err != nil {
+				return nil, "", err
 			}
-		}
-		if sr.NextPageToken == "" {
-			break
-		}
-		pageToken = sr.NextPageToken
+			page := make([]string, 0, len(sr.Apps))
+			for _, a := range sr.Apps {
+				if a.PackageName != "" {
+					page = append(page, a.PackageName)
+				}
+			}
+			return page, sr.NextPageToken, nil
+		})
+	if err != nil {
+		return nil, &discoveryError{cause: err}
 	}
 	pkgs = dedupe(pkgs)
 	sort.Strings(pkgs)
 	return pkgs, nil
 }
+
+// maxDiscoveryPages bounds the apps.search walk of discoverPackages.
+const maxDiscoveryPages = 1000
 
 // discoveryError points at the named-packages escape hatch when discovery fails.
 // A credential can hold androidpublisher rights without the Reporting access

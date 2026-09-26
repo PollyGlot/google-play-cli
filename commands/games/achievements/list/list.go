@@ -61,6 +61,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, gamescmd.Classify(appID, err)
 	}
+	// One page per invocation: without the note a first page in table or
+	// markdown reads as the whole list (--output json keeps the token).
+	if lr.NextPageToken != "" {
+		rc.Notef("more achievements available, re-run with --page-token %s for the next page.", lr.NextPageToken)
+	}
 	return Payload{Rows: gamescmd.BuildAchievementRows(lr.Items), Cols: cols, Raw: raw}, nil
 }
 
@@ -79,7 +84,8 @@ Addressing rides the numeric Play Games application ID (--application-id): a
 distinct ID space from the Android package. Use --max-results and
 --page-token to page; --output json passes the
 AchievementConfigurationListResponse through verbatim, including
-nextPageToken.`,
+nextPageToken. In table/markdown output a note on stderr carries the next
+--page-token when more achievements are available.`,
 		Example: `  gplay games achievements list --application-id 123456789012
   gplay games achievements list --application-id 123456789012 --max-results 50 --output json`,
 		Args:          cobra.NoArgs,
