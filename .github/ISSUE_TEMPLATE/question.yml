@@ -1,0 +1,32 @@
+name: Question
+description: Ask how to do something with gplay, or discuss a design before proposing it
+title: "question: "
+labels: ["question", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions live in Issues: the repository has no Discussions.
+
+        **Before asking:**
+        - Run `gplay <command> --help`: every command documents its flags and exit codes.
+        - Search [existing issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue), open and closed.
+        - For "it doesn't work", run `gplay auth doctor --package <your.package>` first.
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do?
+      description: The goal, the command you ran, and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Commands and output. Redact package names, emails and credentials you do not want public.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: gplay version
+      description: Output of `gplay version`
