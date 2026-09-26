@@ -3,7 +3,6 @@ package token_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // roundTripperFunc is the canonical pattern documented in CLAUDE.md: a
@@ -29,14 +29,11 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-// makeTestSA builds a valid *ServiceAccount with a freshly generated RSA
+// makeTestSA builds a valid *ServiceAccount with a real RSA
 // private key so JWTConfigFromJSON can actually sign the token-exchange JWT.
 func makeTestSA(t *testing.T) *serviceaccount.ServiceAccount {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("rsa.GenerateKey: %v", err)
-	}
+	key := testkit.RSAKey(t)
 	pemBytes := pem.EncodeToMemory(&pem.Block{
 		Type:  "PRIVATE KEY",
 		Bytes: x509Marshal(t, key),
