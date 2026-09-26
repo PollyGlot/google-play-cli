@@ -1,0 +1,9 @@
+{
+  "dir": "./R&D/metadata",
+  "locales": [
+    "de-DE",
+    "en-US",
+    "fr-FR"
+  ],
+  "ok": true
+}

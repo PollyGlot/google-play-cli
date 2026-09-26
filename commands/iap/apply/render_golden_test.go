@@ -10,10 +10,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// fullPlan exercises every entry the one-time-product plan can carry: a create
+// renderPlan exercises every entry the one-time-product plan can carry: a create
 // and a legacy→v2 migrate, a patch, a product delete, the three offer actions,
 // and every state verb (activate, deactivate, cancel) on both kinds.
-func fullPlan() reconcile.Plan {
+func renderPlan() reconcile.Plan {
 	return reconcile.Plan{
 		Creates:      []reconcile.Change{{ProductID: "coins"}, {ProductID: "legacy_gem"}},
 		Patches:      []reconcile.Change{{ProductID: "sword", Fields: []string{"listings", "purchaseOptions"}}},
@@ -41,8 +41,8 @@ func TestRender_golden(t *testing.T) {
 		name string
 		p    apply.Payload
 	}{
-		{"dryrun", apply.Payload{Package: "com.example.app", Plan: fullPlan(), Migrating: migrating, DryRun: true, Requires: []string{"confirm", "migrate"}}},
-		{"applied", apply.Payload{Package: "com.example.app", Plan: fullPlan(), Migrating: migrating}},
+		{"dryrun", apply.Payload{Package: "com.example.app", Plan: renderPlan(), Migrating: migrating, DryRun: true, Requires: []string{"confirm", "migrate"}}},
+		{"applied", apply.Payload{Package: "com.example.app", Plan: renderPlan(), Migrating: migrating}},
 		{"nochange", apply.Payload{Package: "com.example.app", Plan: reconcile.Plan{Unchanged: []string{"shield"}}}},
 	}
 	for _, tc := range cases {

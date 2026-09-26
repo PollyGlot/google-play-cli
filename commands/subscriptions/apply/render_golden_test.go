@@ -10,10 +10,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// fullPlan exercises every entry the subscription plan can carry: a create, a
+// renderPlan exercises every entry the subscription plan can carry: a create, a
 // patch, a subscription delete, a base-plan delete, the three offer actions,
 // and both state verbs on base plans and offers.
-func fullPlan() reconcile.Plan {
+func renderPlan() reconcile.Plan {
 	return reconcile.Plan{
 		Creates:         []reconcile.Change{{ProductID: "premium"}},
 		Patches:         []reconcile.Change{{ProductID: "basic", Fields: []string{"listings", "basePlans"}}},
@@ -40,8 +40,8 @@ func TestRender_golden(t *testing.T) {
 		name string
 		p    apply.Payload
 	}{
-		{"dryrun", apply.Payload{Package: "com.example.app", Plan: fullPlan(), DryRun: true, Requires: []string{"confirm"}}},
-		{"applied", apply.Payload{Package: "com.example.app", Plan: fullPlan()}},
+		{"dryrun", apply.Payload{Package: "com.example.app", Plan: renderPlan(), DryRun: true, Requires: []string{"confirm"}}},
+		{"applied", apply.Payload{Package: "com.example.app", Plan: renderPlan()}},
 		{"nochange", apply.Payload{Package: "com.example.app", Plan: reconcile.Plan{Unchanged: []string{"gold"}}}},
 	}
 	for _, tc := range cases {

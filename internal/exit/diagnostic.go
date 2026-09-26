@@ -125,7 +125,7 @@ var codeCatalog = []CodeDoc{
 	{CodeNetworkError, 50, true, "Network failure with no HTTP response: timeout, DNS, refused"},
 	{CodeStateConflict, 60, false, "Remote state conflicts with the request (409)"},
 	{CodeEditAlreadyExists, 60, false, "An Edit is already open on this package; commit or delete it first"},
-	{CodeEditExpired, 60, false, "The pinned Edit expired; begin a new Edit and replay the mutation"},
+	{CodeEditExpired, 60, false, "The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit and replay the mutation"},
 	{CodeRateLimitExceeded, 60, true, "Rate or quota limit exceeded; back off and retry"},
 	{CodeFindingsPresent, 70, false, "A read-only check command completed and reported findings; not a failure"},
 }

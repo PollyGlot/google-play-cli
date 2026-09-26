@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -62,6 +63,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := be.Save(rc.Ctx, name, sa.Raw); err != nil {
 		return nil, err
 	}
+	// Select falls back to the file backend silently (the label is only
+	// logged at -v), so say it here: otherwise a login over SSH to a Mac
+	// with a locked keychain leaves the private key on disk behind a bare
+	// "Account registered".
+	if fb, ok := be.(*keystore.FileBackend); ok {
+		keystore.WarnFileFallback(rc.Stderr, fb.Path(name))
+	}
 
 	cfg, err := config.LoadGlobalOrEmpty(rc.Ctx, rc.FS, rc.ConfigPath)
 	if err != nil {
@@ -115,9 +123,10 @@ without an explicit --account flag.
 
 The credential is stored in the OS keystore (macOS Keychain, Windows
 Credential Manager, or Linux Secret Service). On systems without a keystore
-daemon (headless Linux, CI containers), gplay transparently falls back to a
-0600 file under the config directory. The active backend is reported by
-` + "`gplay auth status`" + ` and logged once per process at -v.
+daemon (headless Linux, CI containers, a locked macOS keychain over SSH),
+gplay falls back to a plaintext 0600 file under the config directory and
+prints a warning naming that file. The active backend is reported by
+` + "`gplay auth status`" + `.
 
 Pass --activate=false to add a second Account without changing which one
 is active. (The very first registered Account becomes active regardless,
