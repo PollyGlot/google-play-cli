@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/tracks/create"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
@@ -299,5 +300,37 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}
+
+// TestRun_forwardsCommitOptIns: an implicit-mode write command hands the #598
+// opt-ins to its own edits.commit. The other tests here run with the flags
+// unset, which sends no query (pinned in internal/play/edits).
+func TestRun_forwardsCommitOptIns(t *testing.T) {
+	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return http.StatusOK, `{"id":"edit-1"}`, true
+		case strings.HasSuffix(c.Path, "/tracks"):
+			return http.StatusOK, `{"track":"qa-team"}`, true
+		case strings.HasSuffix(c.Path, ":commit"):
+			return http.StatusOK, `{"id":"edit-1"}`, true
+		}
+		return 0, "", false
+	})
+	rc, _ := newRC(t, fake)
+
+	in := create.Input{Package: "com.example.app", Name: "qa-team", Commit: commitflags.Flags{ChangesNotSentForReview: true}}
+	if _, err := create.Run(rc, in); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var commitQuery string
+	for _, c := range fake.Calls() {
+		if strings.HasSuffix(c.Path, ":commit") {
+			commitQuery = c.Query
+		}
+	}
+	if commitQuery != "changesNotSentForReview=true" {
+		t.Errorf("commit query = %q, want changesNotSentForReview=true", commitQuery)
 	}
 }

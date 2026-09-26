@@ -18,10 +18,8 @@
 package imagesapply
 
 import (
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,12 +27,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagediff"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imageorchestrator"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
@@ -48,15 +48,11 @@ type Input struct {
 	DryRun     bool
 	Confirm    bool
 	Prune      bool
+	Commit     commitflags.Flags
 	Locales    []string
 	Types      []string
 	NoValidate bool
 }
-
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // dirError signals an unreadable --dir. Exit 20 (client-side validation).
 type dirError struct {
@@ -69,39 +65,6 @@ func (e *dirError) Error() string {
 }
 func (e *dirError) Unwrap() error { return e.cause }
 func (e *dirError) ExitCode() int { return 20 }
-
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
-
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-func classifyEditError(pkg string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
-	}
-	return err
-}
 
 // Payload renders an imageorchestrator.Result. The shape switches on
 // Result.DryRun: a dry-run renders the diff schema; a real apply renders what
@@ -170,12 +133,9 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	dir := in.Dir
 	if dir == "" {
@@ -186,7 +146,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// silently applies nothing.
 	for _, t := range in.Types {
 		if _, ok := images.ParseType(t); !ok {
-			return nil, &usageError{msg: fmt.Sprintf("unknown --type %q (want one of: icon, featureGraphic, tvBanner, promoGraphic, phoneScreenshots, sevenInchScreenshots, tenInchScreenshots, tvScreenshots, wearScreenshots)", t)}
+			return nil, exit.Usagef("unknown --type %q (want one of: icon, featureGraphic, tvBanner, promoGraphic, phoneScreenshots, sevenInchScreenshots, tenInchScreenshots, tvScreenshots, wearScreenshots)", t)
 		}
 	}
 
@@ -200,7 +160,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// during reconciliation and the apply does nothing for it.
 	for _, loc := range in.Locales {
 		if _, ok := local[loc]; !ok {
-			return nil, &usageError{msg: fmt.Sprintf("unknown --locale %q (no managed images under %s; on disk: %s)", loc, dir, strings.Join(managedLocales(local), ", "))}
+			return nil, exit.Usagef("unknown --locale %q (no managed images under %s; on disk: %s)", loc, dir, strings.Join(managedLocales(local), ", "))
 		}
 	}
 
@@ -232,9 +192,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Types:          in.Types,
 		NoValidate:     in.NoValidate,
 		ExplicitEditID: explicitEditID,
+		Commit:         in.Commit.For(rc, explicitEditID),
 	})
 	if err != nil {
-		return nil, classifyEditError(pkg, err)
+		return nil, apihint.ForPackage(pkg, err)
 	}
 	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
 	// --dry-run), reporting the upload/delete/reorder tally.
@@ -303,6 +264,7 @@ the Edit (0 published).
 	cmd.Flags().StringVar(&in.Dir, "dir", DefaultDir, "metadata tree root directory")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the delta without committing (online)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the real publish (images go live immediately)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Prune, "prune", false, "also delete a managed slot's online-only images (destructive; requires --confirm)")
 	cmd.Flags().StringArrayVar(&in.Locales, "locale", nil, "restrict to these locale codes (repeatable)")
 	cmd.Flags().StringArrayVar(&in.Types, "type", nil, "restrict to these image types (repeatable)")

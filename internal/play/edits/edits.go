@@ -12,11 +12,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
+	"github.com/PollyGlot/google-play-cli/internal/editpin"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -61,16 +65,219 @@ func (e *DanglingEditError) ExitCode() int {
 	return 60
 }
 
+// StalePinError wraps a write that failed because the explicit Edit pinned in
+// .gplay/edit-<package>.json no longer exists server-side (it expired, or was
+// committed or discarded by another client). Without it the user sees a bare
+// 404 from, say, tracks.update, with nothing saying a local pin silently
+// redirected the command to a dead Edit. The message names the pin and the
+// verb that clears it; the exit code and diagnostic code stay those of the
+// wrapped API error, so the frozen exit-code contract does not move.
+type StalePinError struct {
+	Package string
+	EditID  string
+	Err     error
+}
+
+func (e *StalePinError) Error() string {
+	return fmt.Sprintf("%v: the command ran against explicit edit %s pinned in .gplay/%s, which no longer exists (expired, or committed or discarded elsewhere); run `gplay edits discard --package %s` to clear the pin, then retry",
+		e.Err, e.EditID, editpin.FileName(e.Package), e.Package)
+}
+
+func (e *StalePinError) Unwrap() error { return e.Err }
+
+// ExitCode forwards to the wrapped error, falling back to 30 (the 404 bucket
+// the wrapped failure comes from).
+func (e *StalePinError) ExitCode() int {
+	var c interface{ ExitCode() int }
+	if errors.As(e.Err, &c) {
+		return c.ExitCode()
+	}
+	return 30
+}
+
+// explainStalePin decides whether an explicit-mode failure is the pinned Edit
+// having vanished, and wraps it in a *StalePinError when it is. An editExpired
+// reason says so outright. A bare 404 is ambiguous (the Edit, or a resource
+// inside it such as a track not created yet, whose own hint must not be
+// drowned), so it is settled by one edits.get on the pinned id: the same probe
+// `gplay edits status --live` uses. Any other failure, or a probe that finds
+// the Edit alive or cannot tell, returns err untouched.
+func explainStalePin(ctx context.Context, hc *http.Client, pkg, editID string, err error) error {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	stale := &StalePinError{Package: pkg, EditID: editID, Err: err}
+	if hasReason(apiErr, "editExpired") {
+		return stale
+	}
+	if apiErr.StatusCode != http.StatusNotFound {
+		return err
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, _, probeErr := GetExplicit(probeCtx, hc, pkg, editID)
+	var probe *api.Error
+	if errors.As(probeErr, &probe) && (probe.StatusCode == http.StatusNotFound || hasReason(probe, "editExpired")) {
+		return stale
+	}
+	return err
+}
+
 // Options tunes the Edit lifecycle. KeepOnFailure suppresses the
 // auto-discard cleanup when the closure returns an error: see Block 2.
 //
 // ExplicitEditID selects the explicit-mode (`gplay edits begin/commit/discard`)
 // contract: when it is non-empty, WithEdit runs fn against that already-open
 // Edit WITHOUT opening, committing, or discarding one: the caller owns the
-// lifecycle. KeepOnFailure is moot in that mode (nothing is auto-discarded).
+// lifecycle. KeepOnFailure is moot in that mode (nothing is auto-discarded),
+// and so is Commit: the pinned Edit is committed by `gplay edits commit`.
+//
+// Commit carries the opt-in edits.commit query parameters; its zero value
+// sends none, so Google's default behavior applies.
 type Options struct {
 	KeepOnFailure  bool
 	ExplicitEditID string
+	Commit         CommitOptions
+}
+
+// ChangesInReview selects how a commit treats changes that are already in
+// Google's review: the changesInReviewBehavior query parameter of edits.commit.
+// The values are the CLI spellings; the wire enum is derived in query.
+type ChangesInReview string
+
+const (
+	// ChangesInReviewUnset sends no parameter, so Google's default applies:
+	// CANCEL_IN_REVIEW_AND_SUBMIT, which cancels the pending review and submits
+	// everything again. Kept as the default because changing it would change
+	// what every existing CI pipeline publishes (#598).
+	ChangesInReviewUnset ChangesInReview = ""
+	// ChangesInReviewCancel asks for Google's default explicitly.
+	ChangesInReviewCancel ChangesInReview = "cancel"
+	// ChangesInReviewError makes the commit fail while changes are in review,
+	// leaving the review untouched (ERROR_IF_IN_REVIEW). Google does not
+	// invalidate the Edit on that refusal.
+	ChangesInReviewError ChangesInReview = "error"
+)
+
+// ParseChangesInReview validates a CLI spelling. The empty string is the unset
+// value, not an error, so a flag left alone maps to Google's default.
+func ParseChangesInReview(s string) (ChangesInReview, error) {
+	switch v := ChangesInReview(s); v {
+	case ChangesInReviewUnset, ChangesInReviewCancel, ChangesInReviewError:
+		return v, nil
+	}
+	return ChangesInReviewUnset, fmt.Errorf("must be %s or %s", ChangesInReviewCancel, ChangesInReviewError)
+}
+
+// CommitOptions are the optional query parameters of edits.commit. The zero
+// value sends none: the request is byte-identical to the one gplay has always
+// sent, which is what keeps these opt-ins additive.
+type CommitOptions struct {
+	ChangesInReview ChangesInReview
+	// ChangesNotSentForReview commits the Edit without sending its changes for
+	// review; they wait until someone sends them from the Play Console. Some
+	// apps (after a rejection, for instance) cannot commit any other way.
+	ChangesNotSentForReview bool
+}
+
+// IsZero reports whether o sends no parameter at all.
+func (o CommitOptions) IsZero() bool { return o == CommitOptions{} }
+
+// query renders o as the edits.commit query string. Parameter names and enum
+// values are Discovery's (androidpublisher.edits.commit).
+func (o CommitOptions) query() url.Values {
+	q := url.Values{}
+	switch o.ChangesInReview {
+	case ChangesInReviewCancel:
+		q.Set("changesInReviewBehavior", "CANCEL_IN_REVIEW_AND_SUBMIT")
+	case ChangesInReviewError:
+		q.Set("changesInReviewBehavior", "ERROR_IF_IN_REVIEW")
+	}
+	if o.ChangesNotSentForReview {
+		q.Set("changesNotSentForReview", "true")
+	}
+	return q
+}
+
+// CommitOutcomeUnknownError is an edits.commit that failed in a way that does
+// not tell whether Google applied it: the request left the machine and then
+// timed out, was reset, or came back 5xx. The commit may be live. Its exit code
+// stays the one the wrapped failure maps to (50 or 40), but it is NOT
+// retryable (COMMIT_OUTCOME_UNKNOWN): a blind re-run of an upload that did
+// publish fails on the already-used version code and reports a successful
+// release as an error, and a re-run of a metadata change can resubmit it for
+// review. The message says how to check instead.
+type CommitOutcomeUnknownError struct {
+	Package string
+	EditID  string
+	// Explicit is set for `gplay edits commit`, whose pin stays in place and
+	// whose Edit can therefore be probed with `edits status --live`.
+	Explicit bool
+	Err      error
+}
+
+func (e *CommitOutcomeUnknownError) Error() string {
+	check := "check the live state first (for example `gplay releases list --package " + e.Package + "`, or the Play Console)"
+	if e.Explicit {
+		check = "run `gplay edits status --live --package " + e.Package + "` first (an Edit that is gone was most likely committed) and check the live state before committing again"
+	}
+	return fmt.Sprintf("commit of edit %s on %s may have been applied before the failure; do not re-run blindly, %s: %v", e.EditID, e.Package, check, e.Err)
+}
+
+func (e *CommitOutcomeUnknownError) Unwrap() error { return e.Err }
+
+// ExitCode keeps the wrapped failure's code: the bucket (network, upstream) is
+// still true, only its retry-safety is not (#598 keeps the exit code).
+func (e *CommitOutcomeUnknownError) ExitCode() int {
+	var c interface{ ExitCode() int }
+	if errors.As(e.Err, &c) {
+		return c.ExitCode()
+	}
+	return 50
+}
+
+// DiagnosticCode refines the envelope's code, which is what flips `retryable`.
+func (e *CommitOutcomeUnknownError) DiagnosticCode() exit.Code {
+	return exit.CodeCommitOutcomeUnknown
+}
+
+// commitOutcomeUnknown wraps err when it leaves the commit's outcome open, and
+// returns it unchanged otherwise. Unknown means the request may have reached
+// Google's write path: a 5xx, or a transport failure after the connection was
+// made. A refused token exchange (the cause carries its own exit code) and a
+// dial or DNS failure never sent the commit, the same line the --retry
+// transport draws for non-idempotent writes (internal/transport.neverApplied),
+// so they keep their plain meaning. A request that failed to build locally
+// would also land here as unknown; registry URLs make that unreachable, and
+// erring toward "check first" is the safe side.
+func commitOutcomeUnknown(err error, pkg, editID string, explicit bool) error {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	switch {
+	case apiErr.StatusCode >= 500:
+	case apiErr.StatusCode == 0 && !neverSent(apiErr.Cause):
+	default:
+		return err
+	}
+	return &CommitOutcomeUnknownError{Package: pkg, EditID: editID, Explicit: explicit, Err: err}
+}
+
+// neverSent reports whether a transport-level cause proves the commit never
+// left the machine.
+func neverSent(cause error) bool {
+	var coder interface{ ExitCode() int }
+	if errors.As(cause, &coder) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(cause, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(cause, &opErr) && opErr.Op == "dial"
 }
 
 // Discard bounds. The cleanup DELETE never runs on the caller's ctx (a canceled
@@ -111,7 +318,10 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	// drives those via `gplay edits commit`/`discard`, so a mid-batch failure
 	// leaves the Edit open for a retry or an explicit discard.
 	if opts.ExplicitEditID != "" {
-		return fn(opts.ExplicitEditID)
+		if err := fn(opts.ExplicitEditID); err != nil {
+			return explainStalePin(ctx, hc, pkg, opts.ExplicitEditID, err)
+		}
+		return nil
 	}
 	editID, err := insertEdit(ctx, hc, pkg)
 	if err != nil {
@@ -158,8 +368,11 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	if fnErr := fn(editID); fnErr != nil {
 		return handleFailure(fnErr)
 	}
-	if commitErr := commitEdit(ctx, hc, pkg, editID); commitErr != nil {
-		return handleFailure(commitErr)
+	if commitErr := commitEdit(ctx, hc, pkg, editID, opts.Commit); commitErr != nil {
+		// The discard still runs on an unknown outcome: if the commit landed the
+		// Edit is gone and the delete is a harmless 404; if it did not, the
+		// delete frees the package for the next run.
+		return handleFailure(commitOutcomeUnknown(commitErr, pkg, editID, false))
 	}
 	return nil
 }
@@ -292,9 +505,11 @@ func OpenExplicit(ctx context.Context, hc *http.Client, pkg string) (string, err
 // CommitExplicit commits an already-open Edit (the `gplay edits commit` verb).
 // On failure the Edit stays open (no discard), so the operator can re-attempt
 // the commit or discard it: the caller leaves .gplay/edit-<pkg>.json in place
-// until a commit succeeds.
-func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	return commitEdit(ctx, hc, pkg, editID)
+// until a commit succeeds. A failure that leaves the outcome open is a
+// *CommitOutcomeUnknownError: re-attempting a commit that did land hits a
+// vanished Edit.
+func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string, opts CommitOptions) error {
+	return commitOutcomeUnknown(commitEdit(ctx, hc, pkg, editID, opts), pkg, editID, true)
 }
 
 // DiscardExplicit discards an already-open Edit (the `gplay edits discard`
@@ -377,8 +592,14 @@ func isEditAlreadyExists(err error) bool {
 	if !errors.As(err, &apiErr) {
 		return false
 	}
-	for _, r := range apiErr.Reasons {
-		if strings.EqualFold(r, "editAlreadyExists") {
+	return hasReason(apiErr, "editAlreadyExists")
+}
+
+// hasReason reports whether e carries the Google error.errors[].reason want,
+// compared case-insensitively like the exit classifier does.
+func hasReason(e *api.Error, want string) bool {
+	for _, r := range e.Reasons {
+		if strings.EqualFold(strings.TrimSpace(r), want) {
 			return true
 		}
 	}
@@ -466,30 +687,19 @@ func deleteEdit(ctx context.Context, hc *http.Client, pkg, editID string) error 
 	return nil
 }
 
-func commitEdit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	u, err := methodCommit.URL(map[string]string{"packageName": pkg, "editId": editID})
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
+// commitEdit sends edits.commit through the executor. A 2xx is success
+// whatever happens to its body: the AppEdit it carries is never used, and a
+// response cut mid-body must not report a live publish as a failure.
+func commitEdit(ctx context.Context, hc *http.Client, pkg, editID string, opts CommitOptions) error {
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: methodCommit,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
+		Query:  opts.query(),
+		Target: pkg,
+	})
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) && apiErr.StatusCode >= 200 && apiErr.StatusCode < 300 {
+		return nil
 	}
-	req, err := http.NewRequestWithContext(ctx, methodCommit.Verb, u, http.NoBody)
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return &api.Error{
-			Operation:  "edits.commit",
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	return nil
+	return err
 }

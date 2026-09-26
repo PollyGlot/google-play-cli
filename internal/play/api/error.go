@@ -92,6 +92,7 @@ func (e *Error) ExitCode() int {
 // The full table is in docs/DESIGN.md §9; the cases that matter:
 //
 //	0           → 50 (transport: timeout, DNS, refused)
+//	401         → 10 (authentication: the API refused the bearer token)
 //	403         → 11 (authorization: SA not invited on app)
 //	409         → 60 (state conflict: stale Edit, ambiguous target)
 //	429         → 60 (rate-limited: same "transient state, sometimes retry" bucket)
@@ -101,6 +102,12 @@ func StatusToExitCode(status int) int {
 	switch {
 	case status == 0:
 		return 50
+	case status == http.StatusUnauthorized:
+		// DESIGN §9 files "token refused" under 10 wherever the refusal comes
+		// from: the token endpoint (internal/auth/token) or, as here, the API
+		// rejecting the bearer it was handed. Re-running with the same
+		// credential cannot fix either.
+		return 10
 	case status == http.StatusForbidden:
 		return 11
 	case status == http.StatusConflict, status == http.StatusTooManyRequests:

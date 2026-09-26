@@ -1,0 +1,7 @@
+{
+  "dryRun": true,
+  "email": "dev@example.com",
+  "requires": [
+    "confirm"
+  ]
+}

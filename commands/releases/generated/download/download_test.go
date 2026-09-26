@@ -18,6 +18,7 @@ import (
 	"golang.org/x/oauth2"
 
 	downloadcmd "github.com/PollyGlot/google-play-cli/commands/releases/generated/download"
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -139,12 +140,17 @@ func TestRun_404_exit30_noPartialFile(t *testing.T) {
 	}
 }
 
-// TestRun_403_exit11 covers the refusal path.
+// TestRun_403_exit11 covers the refusal path: exit 11 from the wrapped
+// *api.Error, and the canonical grant hint every package-axis group shares.
 func TestRun_403_exit11(t *testing.T) {
 	rt := &dlRT{status: 403}
 	rc, _, _ := newRC(t, rt)
 	err := downloadcmd.Run(rc, downloadcmd.Input{Package: "com.example.app", VersionCode: 142, DownloadID: "x", Dest: "-"})
 	assertExit(t, err, 11)
+	var fe *apihint.ForbiddenError
+	if !errors.As(err, &fe) {
+		t.Errorf("error = %T %v, want the canonical *apihint.ForbiddenError hint", err, err)
+	}
 }
 
 // TestRun_validation_exit2_noNetwork asserts the missing-argument guards fire

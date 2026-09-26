@@ -6,7 +6,6 @@
 package upload
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,8 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
 	"github.com/PollyGlot/google-play-cli/internal/artifact"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -36,16 +37,11 @@ type Input struct {
 	StagedFraction    float64
 	StagedFractionSet bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 	SkipPreflight     bool
 }
-
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // resolveFormat classifies the artifact as an APK or an AAB, from an
 // explicit --format override or the file extension (.apk / .aab). It
@@ -66,10 +62,10 @@ func resolveFormat(path, formatOverride string) (string, error) {
 		case ".aab":
 			return orchestrator.FormatBundle, nil
 		default:
-			return "", &usageError{msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
+			return "", &exit.UsageError{Msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
 		}
 	default:
-		return "", &usageError{msg: "--format must be apk or bundle"}
+		return "", &exit.UsageError{Msg: "--format must be apk or bundle"}
 	}
 }
 
@@ -152,9 +148,7 @@ func renderJSON(w io.Writer, r *orchestrator.Result) error {
 		return err
 	}
 	// Fallback to the gplay Result shape if we somehow lost the raw.
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(r)
+	return output.WriteJSON(w, r)
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
@@ -179,7 +173,7 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Mutual exclusion validation (ADR-0002 / DESIGN §3 / §9).
 	if in.ReleaseNotes != "" && in.ReleaseNotesDir != "" {
-		return nil, &usageError{msg: "--release-notes and --release-notes-dir are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
 	statusFlags := 0
 	if in.Draft {
@@ -192,25 +186,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		statusFlags++
 	}
 	if statusFlags > 1 {
-		return nil, &usageError{msg: "--draft, --complete, and --staged are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--draft, --complete, and --staged are mutually exclusive"}
 	}
 	if in.StagedFractionSet && (in.StagedFraction <= 0 || in.StagedFraction > 1.0) {
-		return nil, &usageError{msg: "--staged fraction must be in (0, 1]"}
+		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
 	}
 	if in.AABPath == "" {
-		return nil, &usageError{msg: "missing AAB path: gplay releases upload <aab> ..."}
+		return nil, &exit.UsageError{Msg: "missing AAB path: gplay releases upload <aab> ..."}
 	}
 
 	// Resolve package: --package flag → project pin.
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	if in.Track == "" {
-		return nil, &usageError{msg: "missing --track"}
+		return nil, &exit.UsageError{Msg: "missing --track"}
 	}
 
 	// Classify APK vs AAB up front (before any HTTP and even on --dry-run)
@@ -282,6 +273,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -375,6 +367,7 @@ of the APK passes through verbatim.`,
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")

@@ -1,0 +1,8 @@
+{
+  "kind": "achievement",
+  "id": "CgkI-example-ach",
+  "dryRun": true,
+  "requires": [
+    "confirm"
+  ]
+}

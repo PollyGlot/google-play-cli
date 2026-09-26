@@ -276,8 +276,9 @@ type RunContext struct {
 	// Format is the resolved output Format: never FormatAuto.
 	Format output.Format
 
-	// Resolved is the full cascade snapshot. Commands access the
-	// Project pin via rc.Resolved.Pin and the accounts list via
+	// Resolved is the full cascade snapshot. Package-axis commands resolve
+	// their target through rc.Package (flag, then the Project pin), never
+	// by reading rc.Resolved.Pin themselves; the accounts list is
 	// rc.Resolved.Accounts.
 	Resolved *config.Resolved
 
@@ -899,11 +900,15 @@ func (rc *RunContext) authedClientFor(timeout time.Duration, mediaExempt bool) (
 		// --retry: a transport middleware retries transport errors / 5xx / 429
 		// (honoring Retry-After) with exponential backoff + jitter. It owns the
 		// per-ATTEMPT deadline (so a retry sequence can outlast a single
-		// timeout), so the per-request client.Timeout stays unset here.
+		// timeout), so the per-request client.Timeout must stay unset here.
+		// oauth2.NewClient copies the context client's Timeout (timedBase's)
+		// onto the returned client, which would cap the whole retry sequence
+		// at one attempt's deadline: clear it explicitly.
 		client.Transport = transport.WithRetry(client.Transport, transport.RetryOptions{
 			MaxRetries: rc.Retry,
 			Timeout:    timeout,
 		})
+		client.Timeout = 0
 		return client, nil
 	}
 	// No retry: the per-request deadline lives on the client (the oauth2

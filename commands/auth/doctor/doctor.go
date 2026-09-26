@@ -16,6 +16,7 @@ import (
 	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
+	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/redact"
@@ -93,6 +94,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	} else {
 		results = authdoctor.Run(rc.Ctx, rc.Account, &hc, checks...)
 		worst = worstFailure(results)
+	}
+	// KeystoreLabel is set only when a stored Account was loaded, so an
+	// inline credential stays keyring-free. Plaintext keys left behind by an
+	// earlier keyring-less login are a finding doctor should surface.
+	if rc.KeystoreLabel == keystore.BackendKeyring {
+		keystore.WarnStrayFiles(rc.Ctx, rc.Stderr, rc.KeystoreRoot)
 	}
 
 	// Hints are gplay-authored text that quotes wrapped errors (a resolution
