@@ -153,9 +153,11 @@ details.get → discard); nothing is committed. The package defaults to the
 repo's .gplay/config.json pin when --package is omitted.
 
 --output json returns the edits.details.get body verbatim (a clean
-ADR-0003 pass-through: a single endpoint is read, so there is no gplay
+pass-through: a single endpoint is read, so there is no gplay
 envelope). This is distinct from ` + "`gplay apps view`" + `, the terse
 cross-resource identity card (package + title + default language).`,
+		Example: `  gplay apps details view
+  gplay apps details view --package com.example.app --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

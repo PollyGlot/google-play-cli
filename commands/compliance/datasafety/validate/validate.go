@@ -196,6 +196,10 @@ write-only), so a CSV that passes here can still be rejected by Google.
 ` + "`gplay compliance datasafety set`" + ` POST arbitrates that.
 
 Any structural failure exits 20.`,
+		Example: `  # Lint ./compliance/data-safety.csv offline, e.g. in a pre-commit hook
+  gplay compliance datasafety validate
+
+  gplay compliance datasafety validate --file store/data-safety.csv --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

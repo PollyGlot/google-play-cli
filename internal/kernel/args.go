@@ -17,6 +17,9 @@ package kernel
 
 import (
 	"errors"
+	"fmt"
+	"reflect"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -30,11 +33,20 @@ import (
 //	return kernel.WrapArgErrors(root)
 //
 // It replaces each non-nil Args validator with one that runs the original and
-// re-types its error as *exit.UsageError. Message text is passed through
-// verbatim: deliberately the same treatment the root's FlagErrorFunc gives a
-// flag-parse error, so the two misuse doors read identically to a user and to
-// anything grepping stderr. cobra's own wording already names the offending
-// command where it matters (`unknown command "x" for "gplay apps list"`).
+// re-types its error as *exit.UsageError. The message names the fix rather than
+// the count (#593): cobra's "accepts 1 arg(s), received 0" never says WHICH
+// argument is missing, and its NoArgs rejection reads `unknown command "x"` on
+// a leaf that has no subcommands at all. So:
+//
+//   - a missing argument names the first absent placeholder of cmd.Use
+//     (`missing <artifact>`);
+//   - a stray argument on a leaf that takes none says so (`unexpected
+//     argument "x": gplay tracks list takes no positional arguments`);
+//   - any other count keeps cobra's own text;
+//
+// and every form ends with the usage line (`; usage: gplay releases upload
+// <artifact> [flags]`), so the one stderr line, or the JSON envelope's message,
+// is enough to re-run correctly.
 //
 // Three things it does NOT do:
 //
@@ -66,8 +78,9 @@ func WrapArgErrors(cmd *cobra.Command) *cobra.Command {
 	}
 	if cmd.Args != nil {
 		inner := cmd.Args
+		takesNone := isNoArgs(inner)
 		cmd.Args = func(c *cobra.Command, args []string) error {
-			return asUsageError(inner(c, args))
+			return asUsageError(c, args, takesNone, inner(c, args))
 		}
 	}
 	for _, sub := range cmd.Commands() {
@@ -79,8 +92,8 @@ func WrapArgErrors(cmd *cobra.Command) *cobra.Command {
 // asUsageError re-types an argument-validation failure as CLI misuse: nil stays
 // nil, an error that already knows its exit code is returned untouched, and
 // anything else (cobra's plain "accepts 1 arg(s), received 2") becomes an
-// *exit.UsageError carrying the same message and ExitCode 2.
-func asUsageError(err error) error {
+// *exit.UsageError (ExitCode 2) whose message names the fix (see WrapArgErrors).
+func asUsageError(c *cobra.Command, args []string, takesNone bool, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -88,5 +101,42 @@ func asUsageError(err error) error {
 	if errors.As(err, &coder) {
 		return err
 	}
-	return exit.Usagef("%s", err)
+	what := err.Error()
+	placeholders := requiredPlaceholders(c.Use)
+	switch {
+	case takesNone && len(args) > 0 && !c.HasSubCommands():
+		what = fmt.Sprintf("unexpected argument %q: %s takes no positional arguments", args[0], c.CommandPath())
+	case len(args) < len(placeholders):
+		what = "missing " + placeholders[len(args)]
+	}
+	return exit.Usagef("%s; usage: %s", what, c.UseLine())
+}
+
+// isNoArgs reports whether v is cobra.NoArgs itself. Comparing code pointers is
+// the one way to recognise a top-level func value in Go, and it lets the NoArgs
+// rejection be reworded without matching cobra's message text.
+func isNoArgs(v cobra.PositionalArgs) bool {
+	return reflect.ValueOf(v).Pointer() == reflect.ValueOf(cobra.NoArgs).Pointer()
+}
+
+// requiredPlaceholders returns the required positional placeholders a Use line
+// declares, in order: `upload <artifact>` gives [<artifact>], `add <package>...`
+// gives [<package>]. The scan stops at the first flag (`set <email> --package
+// <pkg>` names only <email>) or optional group (`[<orderId>...]`): what follows
+// is not a positional the command requires.
+func requiredPlaceholders(use string) []string {
+	fields := strings.Fields(use)
+	if len(fields) < 2 {
+		return nil
+	}
+	var out []string
+	for _, f := range fields[1:] {
+		if strings.HasPrefix(f, "-") || strings.HasPrefix(f, "[") {
+			break
+		}
+		if strings.HasPrefix(f, "<") {
+			out = append(out, strings.TrimSuffix(f, "..."))
+		}
+	}
+	return out
 }

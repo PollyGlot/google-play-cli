@@ -16,7 +16,7 @@ func RunComplete(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // NewCompleteCommand returns the cobra command for `gplay releases complete`.
 func NewCompleteCommand(boot kernel.Boot) *cobra.Command {
-	return newStateCommand(boot, "complete",
+	cmd := newStateCommand(boot, "complete",
 		"Complete the rollout on the latest release of a track (ramp to 100%)",
 		`Ramp the latest release on --track to userFraction=1.0 and status=completed,
 ending the staged rollout.
@@ -24,4 +24,10 @@ ending the staged rollout.
 Targets the latest release on the track; when two releases coexist pass
 --version-code N or --release-name <name> to pick one.`,
 		RunComplete)
+	cmd.Example = `  # Ramp the production rollout to 100% of users
+  gplay releases complete --track production --confirm
+
+  # Complete one of two coexisting releases on a Closed track
+  gplay releases complete --track qa-team --release-name 2.4.0`
+	return cmd
 }

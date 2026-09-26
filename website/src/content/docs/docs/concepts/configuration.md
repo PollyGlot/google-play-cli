@@ -53,6 +53,13 @@ would break every teammate, so the loader **rejects** it with an error
 naming the offending file. Put it in `config.local.json`, the
 `GPLAY_ACCOUNT` env var, or the `--account` flag instead.
 
+`config.local.json` stays out of git for the same reason. If a repository
+commits it anyway, every command run inside that repository prints a warning
+on stderr: the file picks the Account for whoever clones it. Untrack it with
+`git rm --cached .gplay/config.local.json`. The `account` it names must be a
+plain name: a value such as `../other` is refused, with an error naming the
+file.
+
 ## Environment variables
 
 | Variable | Purpose |
@@ -63,7 +70,6 @@ naming the offending file. Put it in `config.local.json`, the
 | `GPLAY_ALLOW_EXTERNAL_SYMLINKS` | When truthy (`1`/`true`/`yes`/`on`), let a file gplay reads from your metadata, images or release-notes tree be a symlink pointing **outside** that tree, and print a `NOTE:` on stderr naming each path that does. Off by default: such a path is refused (exit `2`). See [shared trees in a monorepo](#shared-trees-in-a-monorepo). |
 | `GPLAY_INSTALL_NO_VERIFY` | Read by the install script only: bypass the SHA-256 checksum verification (air-gapped / mirrored installs). Prints a warning. See [installation](/docs/getting-started/installation/). |
 | `CI` | When `true`, output defaults to JSON. See [output formats](/docs/concepts/output-formats/). |
-| `NO_COLOR` | Disable colour in output. |
 
 ## Shared trees in a monorepo
 

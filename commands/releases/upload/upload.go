@@ -41,6 +41,11 @@ type Input struct {
 	Confirm           bool
 	DryRun            bool
 	SkipPreflight     bool
+	// DeviceTierConfig is --device-tier-config: a deviceTierConfigId or
+	// LATEST, forwarded verbatim to edits.bundles.upload. A 1:1 mirror of the
+	// Google parameter, so it is part of the frozen contract like the rest of
+	// the command.
+	DeviceTierConfig string
 }
 
 // resolveFormat classifies the artifact as an APK or an AAB, from an
@@ -201,7 +206,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	if in.Track == "" {
-		return nil, &exit.UsageError{Msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
 	// Classify APK vs AAB up front (before any HTTP and even on --dry-run)
@@ -210,6 +215,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	format, err := resolveFormat(in.AABPath, in.Format)
 	if err != nil {
 		return nil, err
+	}
+	// A device tier config drives how Google splits an App Bundle; an APK is
+	// already the deliverable, and edits.apks.upload has no such parameter.
+	// Refused here so it is never silently dropped.
+	if in.DeviceTierConfig != "" && format == orchestrator.FormatAPK {
+		return nil, &exit.UsageError{Msg: "--device-tier-config applies to an App Bundle (.aab) only, not an APK"}
 	}
 
 	// Artifact preflight (PRD #448): the artifact's container and declared
@@ -267,6 +278,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		AABPath:           in.AABPath,
 		Format:            format,
 		MappingPath:       in.Mapping,
+		DeviceTierConfig:  in.DeviceTierConfig,
 		Status:            status,
 		UserFraction:      in.StagedFraction,
 		ReleaseNotes:      in.ReleaseNotes,
@@ -332,14 +344,29 @@ deobfuscation file in the same Edit, so Play vitals can symbolicate
 obfuscated crash stacks. To attach a mapping to an already-published
 version, use gplay releases mappings upload instead.
 
-Targeting production defaults to a draft release (ADR-0002) unless
---complete or --staged is supplied. Any string is accepted as --track
-so closed-test tracks with custom names just work.
+Targeting production defaults to a draft release, which reaches no user,
+unless --complete or --staged is supplied (both require --confirm there).
+Any string is accepted as --track so Closed tracks with custom names just
+work. See https://gplay.sh/docs/concepts/tracks-and-releases/
 
 [experimental] APK upload: Google has required the AAB for new apps
 since August 2021, so .apk uploads only serve existing apps still
 distributed as APKs; if the app requires an App Bundle, Google's rejection
-of the APK passes through verbatim.`,
+of the APK passes through verbatim.
+
+Pass --device-tier-config to attach a device tier config to the
+uploaded bundle, so Google generates its deliverables for the device tiers
+it defines. Pass an id from gplay device-tiers list, or LATEST for the last
+one created. AAB only.`,
+		Example: `  # Ship a build to internal testing, with its R8 mapping
+  gplay releases upload app-release.aab --track internal --mapping mapping.txt
+
+  # Start a 10% staged rollout on production, release notes per locale
+  gplay releases upload app-release.aab --track production --staged 0.1 \
+    --release-notes-dir distribution/whatsnew --confirm
+
+  # Preview the release payload without any HTTP call
+  gplay releases upload app-release.aab --track production --dry-run --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -358,7 +385,7 @@ of the APK passes through verbatim.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name) (required)")
 	cmd.Flags().StringVar(&in.Format, "format", "", "artifact type: apk or bundle (overrides extension auto-detect)")
 	cmd.Flags().StringVar(&in.Mapping, "mapping", "", "ProGuard/R8 deobfuscation file (mapping.txt) uploaded with the artifact so Play vitals can symbolicate obfuscated crash stacks")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "release notes text (applied to the app's default language)")
@@ -371,5 +398,6 @@ of the APK passes through verbatim.`,
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")
+	cmd.Flags().StringVar(&in.DeviceTierConfig, "device-tier-config", "", "device tier config id, or LATEST, applied to the uploaded bundle (AAB only)")
 	return cmd
 }

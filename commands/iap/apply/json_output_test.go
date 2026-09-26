@@ -16,9 +16,9 @@ func TestRenderJSON_dryRunDestructive_golden(t *testing.T) {
 	plan := reconcile.Plan{
 		Creates:      []reconcile.Change{{ProductID: "coins_100"}, {ProductID: "remove_ads"}},
 		Patches:      []reconcile.Change{{ProductID: "coins_500", Fields: []string{"listings", "purchaseOptions"}}},
-		OfferCreates: []reconcile.Change{{ProductID: "coins_500/buy/launch-discount"}},
-		OfferPatches: []reconcile.Change{{ProductID: "coins_500/buy/weekend-sale", Fields: []string{"regionalPricingAndAvailabilityConfigs"}}},
-		OfferDeletes: []reconcile.Change{{ProductID: "coins_500/buy/expired-promo"}},
+		OfferCreates: []reconcile.Change{{ProductID: "coins_500", ParentID: "buy", OfferID: "launch-discount"}},
+		OfferPatches: []reconcile.Change{{ProductID: "coins_500", ParentID: "buy", OfferID: "weekend-sale", Fields: []string{"regionalPricingAndAvailabilityConfigs"}}},
+		OfferDeletes: []reconcile.Change{{ProductID: "coins_500", ParentID: "buy", OfferID: "expired-promo"}},
 		Deletes:      []reconcile.Change{{ProductID: "coins_legacy"}},
 		StateChanges: []reconcile.StateChange{
 			{Kind: "purchaseOption", ProductID: "coins_100", PurchaseOptionID: "buy", From: "DRAFT", To: "ACTIVE"},

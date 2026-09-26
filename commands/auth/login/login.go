@@ -3,7 +3,6 @@
 package login
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -96,12 +95,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	if in.Activate || wasEmpty {
-		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
+		rc.Confirmf("Account %q registered and set active (%s)", name, sa.ClientEmail)
 	} else {
-		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
+		rc.Confirmf("Account %q registered (%s); active Account unchanged", name, sa.ClientEmail)
 	}
 	if devID != "" {
-		_, _ = fmt.Fprintf(rc.Stderr, "  developer-id %s recorded for `gplay team`\n", devID)
+		rc.Logf("  developer-id %s recorded for `gplay team`", devID)
 	}
 	return nil, nil
 }
@@ -120,7 +119,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Register a service account as the active Account",
 		Long: `Register a Google Cloud service account JSON as a named Account
 in the local gplay registry and mark it active so subsequent commands use it
-without an explicit --account flag.
+without an explicit --account flag. The JSON comes from the global
+--service-account flag: a file path, or the JSON content itself. In CI, skip
+login: expose the JSON as GPLAY_SERVICE_ACCOUNT instead.
 
 The credential is stored in the OS keystore (macOS Keychain, Windows
 Credential Manager, or Linux Secret Service). On systems without a keystore
@@ -132,6 +133,16 @@ prints a warning naming that file. The active backend is reported by
 Pass --activate=false to add a second Account without changing which one
 is active. (The very first registered Account becomes active regardless,
 so the registry is never left without one when --activate=false is set.)`,
+		Example: `  # Register a service account key file and make it the active Account
+  gplay auth login --service-account ./play-sa.json
+
+  # Same, under a name of your choice
+  gplay auth login --service-account ./play-sa.json --name release-bot
+
+  # Add a second Account for the team commands without switching to it
+  gplay auth login --service-account ./admin-sa.json --name admin \
+    --developer-id 1234567890123456789 --activate=false`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			saPath, _ := cmd.Flags().GetString("service-account")
 			return kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
@@ -140,8 +151,8 @@ so the registry is never left without one when --activate=false is set.)`,
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "friendly Account name (default: derived from client_email)")
-	cmd.Flags().BoolVar(&activate, "activate", true, "mark the new Account active (default true)")
-	cmd.Flags().StringVar(&developerID, "developer-id", "", "Play Console Developer account id to record on this Account (for `gplay team`)")
+	cmd.Flags().BoolVar(&activate, "activate", true, "mark the new Account active")
+	cmd.Flags().StringVar(&developerID, "developer-id", "", "Play Console Developer account id to record on this Account (used by the team commands)")
 	return cmd
 }
 

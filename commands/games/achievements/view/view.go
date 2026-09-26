@@ -70,8 +70,12 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Read one achievement configuration by id",
 		Long: `Read a single achievement configuration by its ID. The config carries an
 editable draft and a read-only published detail (there is no publish method:
-publishing to players is Console-only, ADR-0033). --output json passes the
-AchievementConfiguration through verbatim (ADR-0003).`,
+publishing to players is Console-only). --output json passes the
+AchievementConfiguration through verbatim.`,
+		Example: `  gplay games achievements view CgkI4ZqN0pMUEAIQAQ
+
+  # Save the body to edit it and send it back with update --from-json
+  gplay games achievements view CgkI4ZqN0pMUEAIQAQ --output json > achievement.json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

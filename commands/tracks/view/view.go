@@ -225,7 +225,7 @@ func classifyTrackError(pkg string, err error) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
-		return nil, exit.Usagef("missing --track")
+		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
 	pkg, err := rc.Package(in.Package)
@@ -291,6 +291,9 @@ mutating verbs (promote, rollout, halt, resume) live under ` + "`gplay releases`
 Default table columns: name, status, userFraction, versionCodes, notes.
 Override with --columns name,status,...  (--output json is the raw
 tracks.get payload; --output markdown renders a Markdown table.)`,
+		Example: `  gplay tracks view --track production
+  gplay tracks view --track qa-team --output markdown
+  gplay tracks view --track beta --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -302,7 +305,7 @@ tracks.get payload; --output markdown renders a Markdown table.)`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "track to inspect (internal, alpha, beta, production, or any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "track to inspect (internal, alpha, beta, production, or any closed-track name) (required)")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: "+strings.Join(columns.DefaultKeys(), ",")+")")
 	return cmd
 }

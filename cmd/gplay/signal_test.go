@@ -85,7 +85,7 @@ func TestInterruptHelperProcess(t *testing.T) {
 		"releases", "upload", filepath.Join(dir, "app.aab"),
 		"--package", "com.example.app", "--track", "internal", "--skip-preflight",
 	})
-	code := execute(ctx, root, os.Stderr)
+	code := execute(ctx, root, os.Stderr, nil)
 
 	var log strings.Builder
 	for _, c := range fake.Calls() {

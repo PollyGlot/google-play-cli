@@ -456,7 +456,7 @@ nothing.
 
 Scope: with no arguments, the sweep covers every app the credential can see
 (the same server-authoritative inventory ` + "`gplay apps accessible list`" + `
-prints, ADR-0039). Name one or more packages to audit those only, which also
+prints). Name one or more packages to audit those only, which also
 skips the Play Developer Reporting call discovery needs. Each audited app
 costs one throwaway Edit and two reads, so scope a large account deliberately.
 
@@ -477,6 +477,13 @@ Exit 0 when every app was read and nothing was found, 70 when the report
 carries findings (a gate, not an error), and the ordinary API/network code
 whenever an app could not be read at all: a sweep with holes never reports
 clean.`,
+		Example: `  # Sweep every app the credential can see
+  gplay apps audit
+
+  # Gate CI on draft releases left behind on two apps (exit 70 on findings)
+  gplay apps audit com.example.app com.example.lite --check lingering-drafts
+
+  gplay apps audit --skip-check locale-drift --output json`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

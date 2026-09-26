@@ -199,6 +199,9 @@ an unresolved id fails with exit 10.
 Default table columns: email, access, admin, permissions, grants. Override
 with --columns email,admin,...  --output json is the verbatim users.list
 response (a single {"users":[…]} object across all pages).`,
+		Example: `  gplay team users list
+  gplay team users list --columns email,admin
+  gplay team users list --developer-id 1234567890123456789 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

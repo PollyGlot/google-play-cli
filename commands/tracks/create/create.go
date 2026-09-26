@@ -202,6 +202,11 @@ Runs inside an implicit Edit (open → tracks.create → commit). --dry-run
 previews the TrackConfig without any HTTP; --keep-edit-on-failure skips
 the auto-discard cleanup on failure (debug). No --confirm: a closed test
 track is low-stakes and reversible.`,
+		Example: `  # Create a Closed track for an internal QA group
+  gplay tracks create qa-team
+
+  # Preview the TrackConfig without any HTTP call
+  gplay tracks create qa-team --dry-run --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

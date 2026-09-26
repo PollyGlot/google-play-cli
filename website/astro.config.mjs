@@ -1,9 +1,12 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import rehypeBaseLinks from './scripts/rehype-base-links.mjs';
+import cspMeta from './scripts/csp.mjs';
+import { THEME_COLOR } from './src/theme-color.mjs';
 
 // The site is served from gplay.sh (a Cloudflare Worker with static assets,
 // see deploy/gplay.sh/ and ADR-0025). SITE_URL/SITE_BASE stay overridable so a
@@ -18,9 +21,17 @@ export default defineConfig({
   trailingSlash: 'ignore',
   markdown: {
     // Keep CLI flags verbatim in prose: smartypants would turn `--track`
-    // into "–track" (en dash), silently corrupting copy-pasteable text.
-    smartypants: false,
-    rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
+    // into "–track" (en dash), silently corrupting copy-pasteable text. Set on
+    // the processor, not as `markdown.smartypants` (deprecated, slated for
+    // removal): Starlight pushes its own plugins onto this same processor and
+    // @astrojs/mdx reads `smartypants` from it, so .md and .mdx both follow.
+    // scripts/check-dist.mjs fails the build check if a flag ever loses a dash.
+    // package.json pins @astrojs/markdown-remark to the exact version astro
+    // itself pins, so npm dedupes it to one copy: bump the two together.
+    processor: unified({
+      smartypants: false,
+      rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
+    }),
   },
   integrations: [
     starlight({
@@ -79,11 +90,11 @@ export default defineConfig({
         // Responsive browser chrome: match the active theme on mobile.
         {
           tag: 'meta',
-          attrs: { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: '#050507' },
+          attrs: { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: THEME_COLOR.dark },
         },
         {
           tag: 'meta',
-          attrs: { name: 'theme-color', media: '(prefers-color-scheme: light)', content: '#ffffff' },
+          attrs: { name: 'theme-color', media: '(prefers-color-scheme: light)', content: THEME_COLOR.light },
         },
       ],
       sidebar: [
@@ -134,6 +145,8 @@ export default defineConfig({
         }),
       ],
     }),
+    // Last, so it stamps the pages every other integration has finished.
+    cspMeta(),
   ],
   vite: {
     plugins: [tailwindcss()],

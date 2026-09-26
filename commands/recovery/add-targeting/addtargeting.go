@@ -74,6 +74,9 @@ shrink the blast radius, cancel the recovery and create a new one.
 Pass at least one of --all-users, --regions <CC,CC>, or --sdk-levels <N,N>.
 Requires --confirm (missing → exit 3); rehearse first with --dry-run.
 GPLAY_READONLY refuses it (exit 4).`,
+		Example: `  # Preview widening a region-targeted Recovery to two more regions
+  gplay recovery add-targeting 4567890123 --regions DE,CA --dry-run
+  gplay recovery add-targeting 4567890123 --regions DE,CA --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
