@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+accepted; decision 3 (verbs) amended below (2026-09-26)
 
 ## Context
 
@@ -83,3 +83,16 @@ this prep (declared in `discovery.Services`, regenerated with
   snapshot; `gplay schema` indexes its methods.
 - The bulk localization sweep is tracked in `docs/BACKLOG.md` as a deferred
   follow-up.
+
+## Amendment (2026-09-26): the write verbs are `set` and `remove`
+
+Decision 3 called `update` and `delete` the canonical
+[ADR-0019](./0019-canonical-verb-vocabulary.md) verbs. They are not: ADR-0019
+writes with `set` and deletes with `remove`, one verb per gesture. The leaves
+shipped as `update`/`delete` and were renamed in 2.0.0 without an alias
+([#597](https://github.com/PollyGlot/google-play-cli/issues/597),
+[ADR-0048](./0048-v2-release-train.md)): `games achievements|leaderboards set`
+(still a full PUT replace of the draft) and `games achievements|leaderboards
+remove` (still destructive, `--confirm`). The whole-body flag `--from-json`
+became `--file`, the name every other whole-body input uses, and the list page
+size `--max-results` became `--page-size`.

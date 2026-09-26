@@ -31,8 +31,8 @@ import (
 type Input struct {
 	Package     string
 	Month       string // --month YYYY-MM; "" = the latest month present in the bucket
-	From        string // --from YYYY-MM; range start (mutually exclusive with --month)
-	To          string // --to YYYY-MM; range end (mutually exclusive with --month)
+	Since       string // --since YYYY-MM; range start (mutually exclusive with --month)
+	Until       string // --until YYYY-MM; range end (mutually exclusive with --month)
 	Bucket      string // --bucket override; "" = derive from the developer-id
 	DeveloperID string // --developer-id (feeds the default bucket name only)
 	Columns     string // --columns override; "" = the default set
@@ -222,14 +222,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		bucket = "pubsite_prod_rev_" + devID
 	}
 
-	// --month (single) and --from/--to (range) are mutually exclusive addressing
+	// --month (single) and --since/--until (range) are mutually exclusive addressing
 	// axes: one names a month, the other a span. Both together is ambiguous.
-	rangeMode := in.From != "" || in.To != ""
+	rangeMode := in.Since != "" || in.Until != ""
 	if rangeMode && in.Month != "" {
-		return nil, exit.Usagef("--month and --from/--to are mutually exclusive")
+		return nil, exit.Usagef("--month and --since/--until are mutually exclusive")
 	}
-	if rangeMode && (in.From == "" || in.To == "") {
-		return nil, exit.Usagef("--from and --to must be given together")
+	if rangeMode && (in.Since == "" || in.Until == "") {
+		return nil, exit.Usagef("--since and --until must be given together")
 	}
 
 	// Resolve the months to read up front so a malformed flag fails before any
@@ -237,7 +237,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	var months []string
 	switch {
 	case rangeMode:
-		if months, err = history.MonthRange(in.From, in.To); err != nil {
+		if months, err = history.MonthRange(in.Since, in.Until); err != nil {
 			return nil, exit.Usagef("%s", err)
 		}
 	case in.Month != "":
@@ -303,7 +303,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Merge only when more than one report was actually read: multiple files can
 	// repeat a review across the month boundary, so they need cross-file dedup
 	// (latest update wins) and a submit-time order. A lone report (a single
-	// month, a degenerate --from X --to X, or a range where only one month
+	// month, a degenerate --since X --until X, or a range where only one month
 	// existed) is one coherent file, left verbatim exactly like --month so the
 	// two spellings of "one month" agree.
 	if read > 1 {
@@ -333,11 +333,11 @@ axis; override it with --bucket when the Console-issued URI differs (copy
 it with the Console's "Copy Cloud Storage URI" button).
 
 --month YYYY-MM selects one month; when omitted, the latest month present
-for the package is used. --from YYYY-MM --to YYYY-MM instead read every
+for the package is used. --since YYYY-MM --until YYYY-MM instead read every
 monthly report across the range and merge them into one result set (a
 review edited across the month boundary appears once, latest update
 winning; a month with no report is skipped with a warning). --month and
---from/--to are mutually exclusive. Default table columns: date, stars,
+--since/--until are mutually exclusive. Default table columns: date, stars,
 locale, version, title, summary: override with --columns device,reply,...
 
 --output json emits the parsed rows as {"reviews":[...]} with stable
@@ -350,7 +350,7 @@ a Markdown table.`,
   gplay reviews history --month 2026-08
 
   # Half a year merged into one result set, as JSON
-  gplay reviews history --from 2026-01 --to 2026-06 --output json`,
+  gplay reviews history --since 2026-01 --until 2026-06 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -363,8 +363,8 @@ a Markdown table.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Month, "month", "", "month to read as YYYY-MM (default: the latest month present in the bucket)")
-	cmd.Flags().StringVar(&in.From, "from", "", "range start as YYYY-MM (with --to; mutually exclusive with --month)")
-	cmd.Flags().StringVar(&in.To, "to", "", "range end as YYYY-MM (with --from; mutually exclusive with --month)")
+	cmd.Flags().StringVar(&in.Since, "since", "", "range start as YYYY-MM (with --until; mutually exclusive with --month)")
+	cmd.Flags().StringVar(&in.Until, "until", "", "range end as YYYY-MM (with --since; mutually exclusive with --month)")
 	cmd.Flags().StringVar(&in.Bucket, "bucket", "", "Reporting bucket name override (default: pubsite_prod_rev_<developerId>)")
 	cmd.Flags().StringVar(&in.DeveloperID, "developer-id", "", "Play Console Developer account id used to derive the bucket (overrides the active Account's, env, and project-local)")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: "+defaultColumns+")")

@@ -43,15 +43,15 @@ const DefaultDir = "./metadata"
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
-	Package    string
-	Dir        string
-	DryRun     bool
-	Confirm    bool
-	Prune      bool
-	Commit     commitflags.Flags
-	Locales    []string
-	Types      []string
-	NoValidate bool
+	Package       string
+	Dir           string
+	DryRun        bool
+	Confirm       bool
+	Prune         bool
+	Commit        commitflags.Flags
+	Locales       []string
+	Types         []string
+	SkipPreflight bool
 }
 
 // dirError signals an unreadable --dir. Exit 20 (client-side validation).
@@ -200,7 +200,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Prune:          in.Prune,
 		Locales:        in.Locales,
 		Types:          in.Types,
-		NoValidate:     in.NoValidate,
+		NoValidate:     in.SkipPreflight,
 		ExplicitEditID: explicitEditID,
 		Commit:         in.Commit.For(rc, explicitEditID),
 	})
@@ -258,7 +258,7 @@ reconcile inside one Edit committed once, and any per-slot failure discards
 the Edit (0 published).
 
 ` + "`metadata images validate`" + ` runs as a fail-fast pre-check;
---no-validate bypasses it (Play's commit stays the ultimate authority).
+--skip-preflight bypasses it (Play's commit stays the ultimate authority).
 --locale and --type restrict the reconciliation to a subset of slots.`,
 		Example: `  # Show what would change on Play, per slot (online, nothing committed)
   gplay metadata images apply --dry-run
@@ -286,6 +286,6 @@ the Edit (0 published).
 	cmd.Flags().BoolVar(&in.Prune, "prune", false, "also delete a managed slot's online-only images (destructive; requires --confirm)")
 	cmd.Flags().StringArrayVar(&in.Locales, "locale", nil, "restrict to these locale codes (repeatable)")
 	cmd.Flags().StringArrayVar(&in.Types, "type", nil, "restrict to these image types (repeatable)")
-	cmd.Flags().BoolVar(&in.NoValidate, "no-validate", false, "skip the offline image validation pre-check (Play's commit stays the authority)")
+	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the offline image validation pre-check (Play's commit stays the authority)")
 	return cmd
 }

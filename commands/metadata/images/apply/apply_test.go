@@ -234,7 +234,7 @@ func TestRun_typeFilter_isATracer(t *testing.T) {
 }
 
 // TestRun_validateFailFast asserts a bad image (500×500 icon) is rejected by
-// the offline pre-check (exit 20) before any network, and that --no-validate
+// the offline pre-check (exit 20) before any network, and that --skip-preflight
 // bypasses it.
 func TestRun_validateFailFast(t *testing.T) {
 	dir := t.TempDir()
@@ -251,14 +251,14 @@ func TestRun_validateFailFast(t *testing.T) {
 		t.Errorf("validate must fail before any network, saw %v", rt.calls)
 	}
 
-	// --no-validate bypasses the pre-check: the dry-run now reaches Play.
+	// --skip-preflight bypasses the pre-check: the dry-run now reaches Play.
 	rt2 := &applyRT{t: t, editID: "e"}
 	rc2 := newRC(t, rt2)
-	if _, err := imagesapply.Run(rc2, imagesapply.Input{Package: "com.example.app", Dir: dir, DryRun: true, Types: []string{"icon"}, NoValidate: true}); err != nil {
-		t.Fatalf("--no-validate dry-run should pass the pre-check: %v", err)
+	if _, err := imagesapply.Run(rc2, imagesapply.Input{Package: "com.example.app", Dir: dir, DryRun: true, Types: []string{"icon"}, SkipPreflight: true}); err != nil {
+		t.Fatalf("--skip-preflight dry-run should pass the pre-check: %v", err)
 	}
 	if len(rt2.calls) == 0 {
-		t.Error("--no-validate should let the dry-run reach Play")
+		t.Error("--skip-preflight should let the dry-run reach Play")
 	}
 }
 

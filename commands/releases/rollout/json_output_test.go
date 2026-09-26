@@ -37,7 +37,7 @@ func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
 	}
 	rc := newRC(t, rt)
 
-	r, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", To: "0.2", ToSet: true, Confirm: true})
+	r, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", StagedFraction: 0.2, StagedFractionSet: true, Confirm: true})
 	if err != nil {
 		t.Fatalf("RunRollout: %v", err)
 	}

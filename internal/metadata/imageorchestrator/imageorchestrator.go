@@ -2,7 +2,7 @@
 // images apply`. It wires auth → the Edit lifecycle → the pure imagediff
 // engine → images.upload / deleteall / delete, applying the ADR-0011 stance
 // with ADR-0013 mechanics: --confirm gates every real write, the offline
-// imagevalidate runs as a fail-fast pre-check (bypassable with --no-validate),
+// imagevalidate runs as a fail-fast pre-check (bypassable with --skip-preflight),
 // the sync is additive (online-only images are never deleted: that is
 // --prune, #135), and every slot is reconciled inside a single Edit committed
 // once. It is the image analogue of internal/metadata/orchestrator.

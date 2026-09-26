@@ -330,7 +330,7 @@ func TestPayload_JSON_emitsParsedRows(t *testing.T) {
 	}
 }
 
-// --- range mode (--from/--to) -----------------------------------------------
+// --- range mode (--since/--until) -----------------------------------------------
 
 // monthRT serves a per-month CSV for the range tests: a month present in bodies
 // returns its report; a month absent returns 404: a gap Play never published.
@@ -369,7 +369,7 @@ func oneReviewCSV(link, submitMillis, updateMillis, text string) string {
 }
 
 // TestRun_range_fetchesAllMonths_mergedSorted covers the primary range criteria:
-// every month in --from..--to is fetched, rows merge into one set sorted by
+// every month in --since..--until is fetched, rows merge into one set sorted by
 // submit time, and a review re-exported in a later month collapses to one row
 // with the latest update winning.
 func TestRun_range_fetchesAllMonths_mergedSorted(t *testing.T) {
@@ -382,7 +382,7 @@ func TestRun_range_fetchesAllMonths_mergedSorted(t *testing.T) {
 	}}
 	rc, _, _, _ := newRC(t, rt)
 
-	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
+	r, err := Run(rc, Input{Package: "com.example.app", Since: "2026-01", Until: "2026-03"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -447,7 +447,7 @@ func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 	}}
 	rc, _, _, stderr := newRC(t, rt)
 
-	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
+	r, err := Run(rc, Input{Package: "com.example.app", Since: "2026-01", Until: "2026-03"})
 	if err != nil {
 		t.Fatalf("a missing month must not fail the range: %v", err)
 	}
@@ -465,13 +465,13 @@ func TestRun_range_allMissing_exit30(t *testing.T) {
 	rt := &monthRT{bodies: map[string][]byte{}} // nothing published → every month 404
 	rc, _, _, _ := newRC(t, rt)
 
-	_, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
+	_, err := Run(rc, Input{Package: "com.example.app", Since: "2026-01", Until: "2026-03"})
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Fatalf("an all-missing range should be exit 30, got %d (err: %v)", code, err)
 	}
 }
 
-// TestRun_singleMonthRange_verbatimLikeMonth: --from X --to X reads exactly one
+// TestRun_singleMonthRange_verbatimLikeMonth: --since X --until X reads exactly one
 // file and must return it in file order, identical to --month X: the merge/sort
 // step only applies when more than one report is actually read.
 func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
@@ -483,7 +483,7 @@ func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
 	rt := &monthRT{bodies: map[string][]byte{"202601": utf16LE(csv)}}
 	rc, _, _, _ := newRC(t, rt)
 
-	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-01"})
+	r, err := Run(rc, Input{Package: "com.example.app", Since: "2026-01", Until: "2026-01"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -497,13 +497,13 @@ func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
 	}
 }
 
-// TestRun_monthAndRange_exit2_noNetwork: --month with --from/--to is a usage
+// TestRun_monthAndRange_exit2_noNetwork: --month with --since/--until is a usage
 // error (exit 2) caught before any network I/O.
 func TestRun_monthAndRange_exit2_noNetwork(t *testing.T) {
 	rt := &monthRT{}
 	rc, _, _, _ := newRC(t, rt)
 
-	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06", From: "2026-01", To: "2026-03"})
+	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06", Since: "2026-01", Until: "2026-03"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Fatalf("--month + range should be exit 2, got %d", code)
 	}
@@ -512,16 +512,16 @@ func TestRun_monthAndRange_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_halfRange_exit2: --from without --to (or vice versa) is a usage error.
+// TestRun_halfRange_exit2: --since without --until (or vice versa) is a usage error.
 func TestRun_halfRange_exit2(t *testing.T) {
 	rt := &monthRT{}
 	rc, _, _, _ := newRC(t, rt)
 
-	if _, err := Run(rc, Input{Package: "com.example.app", From: "2026-01"}); exitCodeOf(t, err) != 2 {
-		t.Errorf("--from without --to should be exit 2")
+	if _, err := Run(rc, Input{Package: "com.example.app", Since: "2026-01"}); exitCodeOf(t, err) != 2 {
+		t.Errorf("--since without --until should be exit 2")
 	}
-	if _, err := Run(rc, Input{Package: "com.example.app", To: "2026-03"}); exitCodeOf(t, err) != 2 {
-		t.Errorf("--to without --from should be exit 2")
+	if _, err := Run(rc, Input{Package: "com.example.app", Until: "2026-03"}); exitCodeOf(t, err) != 2 {
+		t.Errorf("--until without --since should be exit 2")
 	}
 }
 
@@ -531,7 +531,7 @@ func TestRun_badRange_exit2_noNetwork(t *testing.T) {
 	rt := &monthRT{}
 	rc, _, _, _ := newRC(t, rt)
 
-	_, err := Run(rc, Input{Package: "com.example.app", From: "2026-03", To: "2026-01"})
+	_, err := Run(rc, Input{Package: "com.example.app", Since: "2026-03", Until: "2026-01"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Fatalf("inverted range should be exit 2, got %d", code)
 	}

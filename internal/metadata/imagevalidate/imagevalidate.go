@@ -11,7 +11,7 @@
 //
 // The checks are deliberately strict ("respect the guidelines to the pixel"),
 // but Play stays the ultimate authority: `images apply` runs this as a
-// fail-fast pre-check that `--no-validate` bypasses, so a stale table can
+// fail-fast pre-check that `--skip-preflight` bypasses, so a stale table can
 // never permanently block an upload Play would accept (ADR-0013 §4).
 package imagevalidate
 

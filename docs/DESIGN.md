@@ -103,6 +103,11 @@ passes the same admission test:
 | `history` | `reviews history` | read the full review history from the monthly CSV reports, beyond the API's window |
 | `audit` | `apps audit` | sweep apps for consistency drift, read-only, reporting findings (exit `70`) |
 
+`submit` joined with the 2.0.0 renames (#597): `appstore submit` sends a hosted
+app's assembled details to Google review, immediately and irrevocably. `set`
+would state a declarative write you can overwrite back; this call starts a
+review each time and cannot be recalled (ADR-0043 gates it with `--confirm`).
+
 Two documented exceptions to the rules above: `edits status` is a second
 `status` (it reports the local Edit pin, `--live` adds a server check), frozen
 before the rule was enforced; and the `vitals` presets (`vitals crashes`,
@@ -121,9 +126,10 @@ wired as `apps init`).
 
 The vocabulary is enforced by `TestLeafContract` in `cmd/gplay`: a leaf whose
 last word is in none of these lists, and is not one of the documented
-exceptions, fails the build. The only other leaves admitted are the
-experimental ones awaiting a rename to these verbs (`games … update|delete`,
-`appstore update|publish-status|upload …`), held in a shrink-only allowlist.
+exceptions, fails the build. 2.0.0 renamed the last leaves that broke these
+rules (#597: `games … set|remove`, `appstore submit`,
+`appstore publish-status set`, `appstore apk|image|policy upload`), so the
+shrink-only allowlist that held them is empty.
 
 ---
 
@@ -284,7 +290,7 @@ Two flags, mutually exclusive:
 
 Each transition is its own verb:
 
-- `gplay releases rollout --to <fraction>` — set userFraction (status becomes
+- `gplay releases rollout --staged <fraction>` — set userFraction (status becomes
   `inProgress` if it wasn't already)
 - `gplay releases halt`
 - `gplay releases resume`
@@ -692,8 +698,9 @@ seconds instead of stalling a CI job until the runner-level kill:
   plumbing.
 - **Media transfers** (the artifact bytes of `releases upload`,
   `releases sharing upload`, `releases expansion-files upload`,
-  `releases mappings`, `metadata images apply`, the `appstore upload` and
-  `customapps create` surfaces, and the APK bytes of
+  `releases mappings`, `metadata images apply`, the
+  `appstore apk|image|policy upload` and `customapps create` surfaces, and
+  the APK bytes of
   `releases generated download`) are **exempt from the default**: a
   multi-hundred-MB transfer is never killed by the short control-plane bound.
   The exemption is decided per request, so the same commands' Edit calls
@@ -901,7 +908,7 @@ raise (`rc.WarnTruncated`); stdout stays a verbatim API mirror either way
 warning.
 
 *Cursor listings* expose the API's own paging (`--page-token`, plus
-`--page-size` or `--max-results`) and return exactly ONE page, with
+`--page-size`) and return exactly ONE page, with
 `nextPageToken` passed through verbatim in the body: a machine caller loses
 nothing, but the table and markdown views carry no token column, so a human
 reading them cannot tell a full listing from a first page. `apps accessible

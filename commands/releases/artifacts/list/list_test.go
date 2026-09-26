@@ -150,18 +150,18 @@ func TestRun_bothKinds_readOnlyEdit_rowsByVersionCode(t *testing.T) {
 	}
 }
 
-// TestRun_kindApk_sendsOnlyApksRequest asserts --kind apk skips bundles.list
+// TestRun_kindApk_sendsOnlyApksRequest asserts --format apk skips bundles.list
 // and passes the apks response through verbatim.
 func TestRun_kindApk_sendsOnlyApksRequest(t *testing.T) {
 	rt := &artRT{}
 	rc := newRC(t, rt)
-	r, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", Kind: "apk"})
+	r, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", Format: "apk"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	for _, c := range rt.calls {
 		if strings.HasSuffix(c, "/bundles") {
-			t.Errorf("--kind apk must not call bundles.list; calls=%v", rt.calls)
+			t.Errorf("--format apk must not call bundles.list; calls=%v", rt.calls)
 		}
 	}
 	sawApks := false
@@ -193,7 +193,7 @@ func TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete(t *testing.T) {
 	}
 	rc.FS = fsys
 	rc.Resolved = &config.Resolved{ProjectSharedPath: "/repo/.gplay/config.json"}
-	if _, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", Kind: "bundle"}); err != nil {
+	if _, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", Format: "bundle"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	want := []string{"GET /androidpublisher/v3/applications/com.example.app/edits/edit-pinned/bundles"}
@@ -202,11 +202,11 @@ func TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete(t *testing.T) {
 	}
 }
 
-// TestRun_badKind_exit2_noNetwork asserts --kind is validated before any HTTP.
+// TestRun_badKind_exit2_noNetwork asserts --format is validated before any HTTP.
 func TestRun_badKind_exit2_noNetwork(t *testing.T) {
 	rt := &artRT{}
 	rc := newRC(t, rt)
-	_, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", Kind: "aab"})
+	_, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", Format: "aab"})
 	var c interface{ ExitCode() int }
 	if !errors.As(err, &c) || c.ExitCode() != 2 {
 		t.Errorf("err = %v, want exit 2", err)

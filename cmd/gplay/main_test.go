@@ -173,7 +173,10 @@ var groupPaths = [][]string{
 	{"appstore"},
 	{"appstore", "catalog"},
 	{"appstore", "catalog", "events"},
-	{"appstore", "upload"},
+	{"appstore", "apk"},
+	{"appstore", "image"},
+	{"appstore", "policy"},
+	{"appstore", "publish-status"},
 }
 
 // TestGroupCommands_unknownSubcommandFailsLoudly asserts the UX contract for
@@ -658,15 +661,15 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"appstore", "catalog", "events", "list"}, false},
 
 		// appstore review path: every one of these writes to the hosted app.
-		// The uploads create server-side media artifacts, publish-status flips
-		// storefront visibility, and update submits to Google's review; a
+		// The uploads create server-side media artifacts, publish-status set flips
+		// storefront visibility, and submit sends to Google's review; a
 		// dropped MarkMutating would let any of them run under GPLAY_READONLY=1
 		// instead of exit 4.
-		{[]string{"appstore", "upload", "apk"}, true},
-		{[]string{"appstore", "upload", "image"}, true},
-		{[]string{"appstore", "upload", "policy"}, true},
-		{[]string{"appstore", "publish-status"}, true},
-		{[]string{"appstore", "update"}, true},
+		{[]string{"appstore", "apk", "upload"}, true},
+		{[]string{"appstore", "image", "upload"}, true},
+		{[]string{"appstore", "policy", "upload"}, true},
+		{[]string{"appstore", "publish-status", "set"}, true},
+		{[]string{"appstore", "submit"}, true},
 
 		// edits: begin/commit/discard mutate Play state (insert/commit/delete);
 		// status is a local-pin read (--live adds a GET) and validate is a
@@ -681,13 +684,13 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"games", "achievements", "list"}, false},
 		{[]string{"games", "achievements", "view"}, false},
 		{[]string{"games", "achievements", "create"}, true},
-		{[]string{"games", "achievements", "update"}, true},
-		{[]string{"games", "achievements", "delete"}, true},
+		{[]string{"games", "achievements", "set"}, true},
+		{[]string{"games", "achievements", "remove"}, true},
 		{[]string{"games", "leaderboards", "list"}, false},
 		{[]string{"games", "leaderboards", "view"}, false},
 		{[]string{"games", "leaderboards", "create"}, true},
-		{[]string{"games", "leaderboards", "update"}, true},
-		{[]string{"games", "leaderboards", "delete"}, true},
+		{[]string{"games", "leaderboards", "set"}, true},
+		{[]string{"games", "leaderboards", "remove"}, true},
 
 		// orders
 		{[]string{"orders", "view"}, false},
@@ -880,11 +883,11 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"appstore", "create"}, true},
 		{[]string{"appstore", "catalog", "view"}, true},
 		{[]string{"appstore", "catalog", "events", "list"}, true},
-		{[]string{"appstore", "upload", "apk"}, true},
-		{[]string{"appstore", "upload", "image"}, true},
-		{[]string{"appstore", "upload", "policy"}, true},
-		{[]string{"appstore", "publish-status"}, true},
-		{[]string{"appstore", "update"}, true},
+		{[]string{"appstore", "apk", "upload"}, true},
+		{[]string{"appstore", "image", "upload"}, true},
+		{[]string{"appstore", "policy", "upload"}, true},
+		{[]string{"appstore", "publish-status", "set"}, true},
+		{[]string{"appstore", "submit"}, true},
 
 		// team / edits: exercised on every real account and every write
 		// respectively, frozen.
@@ -907,13 +910,13 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"games", "achievements", "list"}, true},
 		{[]string{"games", "achievements", "view"}, true},
 		{[]string{"games", "achievements", "create"}, true},
-		{[]string{"games", "achievements", "update"}, true},
-		{[]string{"games", "achievements", "delete"}, true},
+		{[]string{"games", "achievements", "set"}, true},
+		{[]string{"games", "achievements", "remove"}, true},
 		{[]string{"games", "leaderboards", "list"}, true},
 		{[]string{"games", "leaderboards", "view"}, true},
 		{[]string{"games", "leaderboards", "create"}, true},
-		{[]string{"games", "leaderboards", "update"}, true},
-		{[]string{"games", "leaderboards", "delete"}, true},
+		{[]string{"games", "leaderboards", "set"}, true},
+		{[]string{"games", "leaderboards", "remove"}, true},
 
 		// orders / subscriptions / iap: the commerce continent. The declarative
 		// catalog (ADR-0041) shipped in v0.18.0, days before the 1.0 cut, and

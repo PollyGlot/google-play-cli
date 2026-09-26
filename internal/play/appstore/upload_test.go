@@ -211,7 +211,7 @@ func TestUpload_emptyFile_exit20(t *testing.T) {
 
 // TestUpload_responseWithoutID_errors: the tracking id is the whole product of
 // the call. Returning an empty string would push an opaque failure downstream
-// into `appstore update`.
+// into `appstore submit`.
 func TestUpload_responseWithoutID_errors(t *testing.T) {
 	rt := &uploadRT{respBody: `{}`}
 	_, _, err := appstore.UploadAPK(context.Background(), &http.Client{Transport: rt}, "s", "p", writeFile(t, "a.apk", []byte("x")))
