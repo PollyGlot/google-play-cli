@@ -4,6 +4,7 @@ import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import rehypeBaseLinks from './scripts/rehype-base-links.mjs';
+import cspMeta from './scripts/csp.mjs';
 import { THEME_COLOR } from './src/theme-color.mjs';
 
 // The site is served from gplay.sh (a Cloudflare Worker with static assets,
@@ -135,6 +136,8 @@ export default defineConfig({
         }),
       ],
     }),
+    // Last, so it stamps the pages every other integration has finished.
+    cspMeta(),
   ],
   vite: {
     plugins: [tailwindcss()],

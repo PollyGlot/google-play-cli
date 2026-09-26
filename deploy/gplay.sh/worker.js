@@ -38,9 +38,11 @@ const LINK_HEADER = [
   '</.well-known/agent-skills/index.json>; rel="https://schemas.agentskills.io/discovery"; type="application/json"',
 ].join(", ");
 
-// Applied to every response (static assets, /install, redirects). No
-// Content-Security-Policy here: Astro/Starlight inject inline scripts, so a
-// strict script-src would break the site — CSP needs its own tested change.
+// Applied to every response (static assets, /install, redirects). The
+// Content-Security-Policy is not set here: each built page carries its own
+// hash-based policy as a <meta> (website/scripts/csp.mjs), because only the
+// build knows the hashes of the inline scripts Astro and Starlight emit. A
+// meta cannot express frame-ancestors, so x-frame-options below keeps that job.
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
