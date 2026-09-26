@@ -8,7 +8,6 @@ package rollout
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -89,9 +88,7 @@ func renderJSON(w io.Writer, r *orchestrator.Result) error {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(r)
+	return output.WriteJSON(w, r)
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.Result) error {

@@ -108,9 +108,17 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 // "2-space indent, trailing newline" shape. Every command's JSON
 // renderer should call this: keeping the encoder configuration in one
 // place stops the SetIndent setting from drifting between commands.
+//
+// HTML escaping is off: the encoder's default rewrites <, > and & as
+// \u003c, \u003e and \u0026, which only helps JSON inlined in an HTML
+// page. Here it made API passthrough strings (review text, listing copy,
+// a json.RawMessage re-indented on the way out) differ byte-wise from what
+// the API returned (ADR-0003), and turned "--package <pkg>" in an error
+// envelope into text grep and humans cannot read.
 func WriteJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
 }
 
