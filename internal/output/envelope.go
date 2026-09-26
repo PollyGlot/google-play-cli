@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
 // ErrorEnvelope is the machine-readable failure payload gplay writes to stdout
@@ -67,15 +68,20 @@ type ErrorDetail struct {
 // no failure taxonomy of its own; only requires[] is read here, because it is a
 // recovery hint about flags rather than a diagnosis. Callers gate this on the
 // resolved Format being FormatJSON; it does not check the format itself.
+//
+// Message and Operation are masked with redact.String: they are gplay-authored
+// text that lands on stdout, outside the stderr filter (PRD #459), and a
+// wrapped error can quote a credential (#583). Reasons stay verbatim: they are
+// API passthrough (ADR-0003), and the API never returns gplay's credentials.
 func WriteErrorEnvelope(w io.Writer, err error) error {
 	diag := exit.Classify(err)
 	d := ErrorDetail{
 		Code:      string(diag.Code),
 		ExitCode:  diag.ExitCode,
 		Retryable: diag.Retryable,
-		Operation: diag.Operation,
+		Operation: redact.String(diag.Operation),
 		Package:   diag.Package,
-		Message:   diag.Message,
+		Message:   redact.String(diag.Message),
 		Reasons:   diag.Reasons,
 	}
 	var safety *exit.SafetyFlagError

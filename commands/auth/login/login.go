@@ -45,7 +45,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.SAPath == "" {
 		return nil, ErrMissingServiceAccount
 	}
-	sa, err := serviceaccount.LoadFromFS(rc.Ctx, rc.FS, in.SAPath)
+	// LoadValue, not LoadFromFS: the flag takes a path OR inline JSON (its help
+	// says so), and a failed read must not echo the value back (#583).
+	sa, err := serviceaccount.LoadValue(rc.FS, "--service-account", in.SAPath)
 	if err != nil {
 		return nil, err
 	}

@@ -132,7 +132,8 @@ func main() {
 	// byte gplay writes to stderr passes through it, so credential material
 	// cannot leak into a CI log a human or agent then pastes elsewhere. Stdout
 	// is deliberately NOT wrapped: it mirrors API responses verbatim (ADR-0003),
-	// and the API never returns gplay's own credentials.
+	// and the API never returns gplay's own credentials. gplay's own text on
+	// stdout (error envelope, doctor hints) is masked at its source (#583).
 	stderr := redact.Writer(os.Stderr)
 
 	// pathguard reports a path that left the tree under

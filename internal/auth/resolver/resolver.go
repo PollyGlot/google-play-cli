@@ -17,7 +17,6 @@ package resolver
 
 import (
 	"context"
-	"unicode"
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
@@ -97,7 +96,7 @@ func ResolveWithName(ctx context.Context, deps Deps, in Inputs) (*serviceaccount
 	// Layer 1: --service-account flag (inline JSON or path). Ad-hoc
 	// credential, no local Account name.
 	if in.ServiceAccountFlag != "" {
-		sa, err := loadServiceAccount(in.ServiceAccountFlag)
+		sa, err := loadServiceAccount("--service-account", in.ServiceAccountFlag)
 		return sa, "", err
 	}
 
@@ -112,7 +111,7 @@ func ResolveWithName(ctx context.Context, deps Deps, in Inputs) (*serviceaccount
 
 	// Layer 3: GPLAY_SERVICE_ACCOUNT env var. Ad-hoc credential.
 	if in.EnvServiceAccount != "" {
-		sa, err := loadServiceAccount(in.EnvServiceAccount)
+		sa, err := loadServiceAccount(EnvServiceAccount, in.EnvServiceAccount)
 		return sa, "", err
 	}
 
@@ -177,27 +176,10 @@ func loadStoredAccount(ctx context.Context, ks keystore.Backend, name string) (*
 	return serviceaccount.Parse(data)
 }
 
-// loadServiceAccount accepts either an inline JSON string (first
-// non-whitespace byte is `{`) or a filesystem path, and returns the
-// parsed service account. The detection rule is documented in
-// docs/DESIGN.md §1 and applies to both --service-account and
-// GPLAY_SERVICE_ACCOUNT.
-func loadServiceAccount(value string) (*serviceaccount.ServiceAccount, error) {
-	if isInlineJSON(value) {
-		return serviceaccount.Parse([]byte(value))
-	}
-	return serviceaccount.Load(value)
-}
-
-// isInlineJSON reports whether value should be treated as inline JSON
-// rather than a filesystem path. The rule (per docs/DESIGN.md §1):
-// strip leading whitespace; if the first byte is `{`, treat as JSON.
-func isInlineJSON(value string) bool {
-	for _, r := range value {
-		if unicode.IsSpace(r) {
-			continue
-		}
-		return r == '{'
-	}
-	return false
+// loadServiceAccount accepts either an inline JSON string or a filesystem
+// path (the rule in docs/DESIGN.md §1, for both --service-account and
+// GPLAY_SERVICE_ACCOUNT) and returns the parsed service account. source names
+// the layer so a failure says which input to fix without quoting it.
+func loadServiceAccount(source, value string) (*serviceaccount.ServiceAccount, error) {
+	return serviceaccount.LoadValue(config.OSFS{}, source, value)
 }
