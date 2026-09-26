@@ -9,15 +9,10 @@ package list_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -30,82 +25,51 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// listRT terminates the OAuth2 /token exchange and routes the read-only
-// list sequence: edits.insert, tracks.get, edits.delete. It deliberately
-// has NO PUT or :commit branch: reaching one means the command tried to
-// mutate or commit, which a read-only list must never do, so the
-// transport fails the test.
-type listRT struct {
-	t            *testing.T
-	editID       string
-	trackGetResp string
-	trackGetCode int // 0 → 200
-
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
-}
-
-func (r *listRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/tracks/"):
-		code := r.trackGetCode
-		if code == 0 {
-			code = 200
+// newListFake routes the read-only list sequence: edits.insert, tracks.get
+// (answered with getCode, 0 → 200, and getResp), edits.delete. It
+// deliberately claims NO PUT or :commit: reaching one fails the round trip,
+// and assertReadOnly names the offending call.
+func newListFake(editID string, getCode int, getResp string) *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return http.StatusNoContent, "", true
+		case c.Method == http.MethodGet && strings.Contains(c.Path, "/tracks/"):
+			return getCode, getResp, true
 		}
-		return jsonResp(code, r.trackGetResp), nil
-	}
-	r.t.Fatalf("unexpected request (read-only list must not write/commit): %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-func signedSAJSON(t *testing.T) []byte {
-	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
-	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
+		return 0, "", false
 	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	return raw
 }
+
+// apiCalls lists the recorded API calls as "METHOD path".
+func apiCalls(f *testkit.Fake) []string {
+	var out []string
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
+	}
+	return out
+}
+
+// assertReadOnly fails on any write or commit: a read-only list must never
+// mutate or commit the Edit it opened.
+func assertReadOnly(t *testing.T, f *testkit.Fake) {
+	t.Helper()
+	for _, c := range f.Calls() {
+		if c.Method == http.MethodPut || c.Method == http.MethodPatch || strings.HasSuffix(c.Path, ":commit") {
+			t.Errorf("read-only list must not write/commit: %s %s", c.Method, c.Path)
+		}
+	}
+}
+
+// touched reports whether anything reached the transport, token exchange
+// included.
+func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -141,7 +105,7 @@ func TestRun_listsAllReleases_happyPath(t *testing.T) {
 		`{"name":"141","status":"halted","versionCodes":["141"],"userFraction":0.5},` +
 		`{"name":"140","status":"completed","versionCodes":["140"],"userFraction":1.0,"releaseNotes":[{"language":"en-US","text":"x"},{"language":"fr-FR","text":"y"}]}` +
 		`]}`
-	rt := &listRT{t: t, editID: "edit-list", trackGetResp: raw}
+	rt := newListFake("edit-list", 0, raw)
 	rc, _ := newRC(t, rt)
 
 	r, err := list.Run(rc, list.Input{Package: "com.example.app", Track: "production"})
@@ -152,23 +116,24 @@ func TestRun_listsAllReleases_happyPath(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
 
-	if rt.tokenHits == 0 {
-		t.Errorf("RoundTripper saw no /token exchange; calls=%v", rt.calls)
+	if rt.TokenExchanges() == 0 {
+		t.Errorf("RoundTripper saw no /token exchange; calls=%v", apiCalls(rt))
 	}
 	wantSequence := []string{
-		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-list/tracks/production",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-list",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	calls := apiCalls(rt)
+	if len(calls) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(calls), calls, len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, calls[i], want)
 		}
 	}
+	assertReadOnly(t, rt)
 
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
@@ -183,12 +148,7 @@ func TestRun_listsAllReleases_happyPath(t *testing.T) {
 // (tracks.get 404) maps to exit 30 with a hint pointing the operator at
 // `gplay tracks list`, and the opened Edit is still discarded.
 func TestRun_unknownTrack_exit30WithHint(t *testing.T) {
-	rt := &listRT{
-		t:            t,
-		editID:       "edit-404",
-		trackGetCode: 404,
-		trackGetResp: `{"error":{"code":404,"message":"Track not found."}}`,
-	}
+	rt := newListFake("edit-404", 404, `{"error":{"code":404,"message":"Track not found."}}`)
 	rc, _ := newRC(t, rt)
 
 	_, err := list.Run(rc, list.Input{Package: "com.example.app", Track: "bogus"})
@@ -200,41 +160,42 @@ func TestRun_unknownTrack_exit30WithHint(t *testing.T) {
 	}
 	// The Edit must still be discarded even on the error path.
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-404") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("Edit not discarded after 404; calls = %v", rt.calls)
+		t.Errorf("Edit not discarded after 404; calls = %v", apiCalls(rt))
 	}
+	assertReadOnly(t, rt)
 }
 
 // TestRun_missingTrack_exit2 asserts --track is required and the command
 // short-circuits with a usage error before any HTTP call.
 func TestRun_missingTrack_exit2(t *testing.T) {
-	rt := &listRT{t: t}
+	rt := newListFake("", 0, "")
 	rc, _ := newRC(t, rt)
 	_, err := list.Run(rc, list.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
 	}
 }
 
 // TestRun_missingPackage_exit2 asserts a missing package (no --package
 // and no pin) is a usage error before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
-	rt := &listRT{t: t}
+	rt := newListFake("", 0, "")
 	rc, _ := newRC(t, rt)
 	_, err := list.Run(rc, list.Input{Track: "production"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
 	}
 }
 
@@ -242,29 +203,29 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 // command fails auth (exit 10) before any HTTP call: there is no
 // dry-run path for a read-only listing.
 func TestRun_noAccount_exit10(t *testing.T) {
-	rt := &listRT{t: t}
+	rt := newListFake("", 0, "")
 	rc, _ := newRC(t, rt)
 	rc.Account = nil
 	_, err := list.Run(rc, list.Input{Package: "com.example.app", Track: "production"})
 	if code := exitCodeOf(t, err); code != 10 {
 		t.Errorf("ExitCode() = %d, want 10", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before auth error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before auth error, saw: %v", apiCalls(rt))
 	}
 }
 
 // TestRun_unknownColumn_exit2 asserts an unknown --columns value is a CLI
 // misuse caught before any HTTP call.
 func TestRun_unknownColumn_exit2(t *testing.T) {
-	rt := &listRT{t: t}
+	rt := newListFake("", 0, "")
 	rc, _ := newRC(t, rt)
 	_, err := list.Run(rc, list.Input{Package: "com.example.app", Track: "production", Columns: "name,bogus"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
 	}
 }
 

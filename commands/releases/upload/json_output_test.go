@@ -28,8 +28,8 @@ const trackUpdateBody = `{
 // the fake API and asserts `--output json` prints the tracks.update body
 // byte for byte (ADR-0003): the contract agents and storedeck parse.
 func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
-	rt := &uploadRT{t: t, editID: "edit-xyz", versionCode: 142, trackUpdateRawResp: trackUpdateBody}
-	rc, _ := newRC(t, rt)
+	_, transport := newUploadTransport(uploadAPI{editID: "edit-xyz", versionCode: 142, trackUpdateRawResp: trackUpdateBody})
+	rc, _ := newRC(t, transport)
 
 	r, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t)})
 	if err != nil {
@@ -43,7 +43,8 @@ func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
 // TestRenderJSON_dryRun_golden freezes the gplay-authored shape --dry-run
 // prints: no request ran, so there is no API body to pass through.
 func TestRenderJSON_dryRun_golden(t *testing.T) {
-	rc, _ := newRC(t, &uploadRT{t: t})
+	_, transport := newUploadTransport(uploadAPI{})
+	rc, _ := newRC(t, transport)
 
 	r, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t), DryRun: true})
 	if err != nil {
