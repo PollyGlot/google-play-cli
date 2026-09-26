@@ -441,7 +441,9 @@ A leading **`changes`** job ([`dorny/paths-filter`](https://github.com/dorny/pat
 classifies each diff and exposes a `code` output. A change is `code: true` if it
 touches any of `cmd/**`, `commands/**`, `internal/**`, `**/*.go`, `go.mod`,
 `go.sum`, `Makefile`, `.github/**`, `scripts/**`, `install.sh`,
-`docs/discovery/**`, or `docs/COVERAGE.md`: the same "not docs-only" boundary as
+`docs/discovery/**`, `docs/COVERAGE.md`, or one of the three pages holding
+`make docs-update` blocks (`README.md` and the website `exit-codes` and
+`stability` concept pages): the same "not docs-only" boundary as
 [`AGENTS.md`](../AGENTS.md). Everything else (Markdown, the rest of `docs/**`,
 `website/**`, doc assets) is docs/site-only.
 
@@ -461,7 +463,11 @@ Three entries in that list are easy to get wrong, and all three were:
 - **`docs/COVERAGE.md` is code too.** It is generated (`make coverage-update`)
   and `internal/coveragedoc`'s freshness test fails on a hand edit, but that
   test only runs when `code` is true. Without this entry, a PR editing only
-  that file passed as docs-only and skipped the one test that guards it.
+  that file passed as docs-only and skipped the one test that guards it. The
+  same holds for `README.md` and the website `exit-codes` and `stability`
+  pages: their exit-code tables and experimental-command lists are generated
+  blocks (`make docs-update`), guarded by `TestGeneratedDocs_areFresh` in
+  `cmd/gplay`.
 
 The rule of thumb: `code` means *"can this change the built binary?"*, not
 *"does this end in `.go`?"*.
@@ -487,8 +493,8 @@ the subtle part:**
 
 Net effect: docs-only PRs get a fast green pipeline; any touch to a Go source
 directory, `go.mod`, `Makefile`, `.github`, `scripts`, the Discovery
-snapshots, or `docs/COVERAGE.md` flips `code` true and runs the full pipeline
-unchanged: gating is by changed path, never by trust, so there's no loss of
+snapshots, `docs/COVERAGE.md` or a page with generated blocks flips `code`
+true and runs the full pipeline unchanged: gating is by changed path, never by trust, so there's no loss of
 safety.
 
 When adding a path that the build consumes, add it to the filter in the same PR.
