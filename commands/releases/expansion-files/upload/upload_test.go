@@ -24,7 +24,7 @@ import (
 // the wrapper only adds the session URI (Location) to the initiate response,
 // which a responder cannot express.
 func newEFTransport() (*testkit.Fake, http.RoundTripper) {
-	f := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+	f := testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
 			return http.StatusOK, `{"id":"edit1","expiryTimeSeconds":"1700000000"}`, true
@@ -38,16 +38,14 @@ func newEFTransport() (*testkit.Fake, http.RoundTripper) {
 			return http.StatusNoContent, "", true
 		}
 		return 0, "", false
-	})
-	return f, testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		resp, err := f.RoundTrip(req)
-		if err == nil && req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/expansionFiles/") {
-			// Resumable initiate: session URI in Location; the PUT chunk
-			// carries the .obb bytes and returns the resource body.
-			resp.Header.Set("Location", req.URL.Scheme+"://"+req.URL.Host+req.URL.Path+"?upload_id=session-1")
+	}, "Location", func(c testkit.Call, status int) string {
+		// Resumable initiate: the session URI goes in Location.
+		if c.Method == http.MethodPost && strings.Contains(c.Path, "/expansionFiles/") {
+			return "https://" + c.Host + c.Path + "?upload_id=session-1"
 		}
-		return resp, err
-	})
+		return ""
+	}))
+	return f, f
 }
 
 // apiCalls lists the recorded API calls as "METHOD path".

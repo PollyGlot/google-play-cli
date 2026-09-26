@@ -51,7 +51,7 @@ func (a *availAPI) serve(t *testing.T) *testkit.Fake {
 			return a.code, a.body, true
 		}
 		return 0, "", false
-	}, refuse(t, " (tracks availability is read-only)"))
+	}, testkit.Refuse(t, " (tracks availability is read-only)"))
 	return a.fake
 }
 
@@ -67,17 +67,6 @@ func (a *availAPI) calls() []string {
 		out = append(out, c.Method+" "+c.Path)
 	}
 	return out
-}
-
-// refuse fails the test on any request the routes before it did not claim,
-// as the hand-rolled transport's t.Fatalf did: on an error path Run's error
-// alone would hide a stray request. The Fake still fails that round trip.
-func refuse(t *testing.T, why string) testkit.Responder {
-	t.Helper()
-	return func(c testkit.Call) (int, string, bool) {
-		t.Errorf("unexpected request%s: %s %s", why, c.Method, c.Path)
-		return 0, "", false
-	}
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {

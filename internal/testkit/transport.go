@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"testing"
 )
 
 // TokenURL is the OAuth2 token endpoint ServiceAccountJSON declares and the
@@ -50,6 +51,11 @@ type Call struct {
 	Query  string
 	Header http.Header
 	Body   []byte
+
+	// Reply holds the response headers a responder sets, for what a status
+	// and body cannot say (a resumable session's Location). The Fake and the
+	// Wire copy it onto the response they send.
+	Reply http.Header
 }
 
 // Responder decides the response for a Call. ok=false falls through to the
@@ -98,6 +104,7 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 		Query:  req.URL.RawQuery,
 		Header: req.Header.Clone(),
 		Body:   body,
+		Reply:  http.Header{},
 	}
 	f.mu.Lock()
 	f.calls = append(f.calls, c)
@@ -107,7 +114,11 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 			if status == 0 {
 				status = http.StatusOK
 			}
-			return Response(status, b), nil
+			resp := Response(status, b)
+			for k, v := range c.Reply {
+				resp.Header[k] = v
+			}
+			return resp, nil
 		}
 	}
 	return nil, fmt.Errorf("testkit: no responder for %s %s", req.Method, req.URL.Redacted())
@@ -143,4 +154,35 @@ func (f *Fake) Wrote() bool {
 // put last when unclaimed calls should succeed rather than fail.
 func Any(status int, body string) Responder {
 	return func(Call) (int, string, bool) { return status, body, true }
+}
+
+// ReplyHeader wraps r so every response it claims carries the header key set
+// to value(c, status), status being the one sent (0 already read as 200); an
+// empty value leaves the header unset. It is how a
+// fake answers a resumable-upload initiate with the session URI in Location.
+func ReplyHeader(r Responder, key string, value func(c Call, status int) string) Responder {
+	return func(c Call) (int, string, bool) {
+		status, body, ok := r(c)
+		if ok && c.Reply != nil {
+			sent := status
+			if sent == 0 {
+				sent = http.StatusOK
+			}
+			if v := value(c, sent); v != "" {
+				c.Reply.Set(key, v)
+			}
+		}
+		return status, body, ok
+	}
+}
+
+// Refuse claims no call but fails t with each one it sees: put it last to
+// state that no other request may reach the API (the round trip then fails
+// too). why, when set, is appended to the message (" in dry-run").
+func Refuse(t testing.TB, why string) Responder {
+	t.Helper()
+	return func(c Call) (int, string, bool) {
+		t.Errorf("unexpected request%s: %s %s", why, c.Method, c.Path)
+		return 0, "", false
+	}
 }

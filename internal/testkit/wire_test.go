@@ -63,6 +63,47 @@ func TestWire_recordsRequestsAsTheServerReadsThem(t *testing.T) {
 	}
 }
 
+func TestReplyHeader_setsTheHeaderOnTheResponsesItClaims(t *testing.T) {
+	loc := func(c testkit.Call, status int) string {
+		if status != http.StatusOK {
+			return ""
+		}
+		return "https://" + c.Host + c.Path + "?upload_id=s1"
+	}
+	f := testkit.NewFake(
+		testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
+			return 0, `{}`, c.Method == http.MethodPost
+		}, "Location", loc),
+		testkit.ReplyHeader(testkit.Any(http.StatusBadRequest, `{}`), "Location", loc),
+	)
+	hc := &http.Client{Transport: f}
+	for _, tc := range []struct{ method, want string }{
+		{http.MethodPost, "https://upload.example.com/u?upload_id=s1"},
+		{http.MethodGet, ""},
+	} {
+		req, _ := http.NewRequestWithContext(context.Background(), tc.method, "https://upload.example.com/u", nil)
+		resp, err := hc.Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.method, err)
+		}
+		_ = resp.Body.Close()
+		if got := resp.Header.Get("Location"); got != tc.want {
+			t.Errorf("%s Location = %q, want %q", tc.method, got, tc.want)
+		}
+	}
+}
+
+func TestRefuse_failsTheTestOnAnyCall(t *testing.T) {
+	probe := &testing.T{}
+	f := testkit.NewFake(testkit.Refuse(probe, " in dry-run"))
+	if _, _, err := send(t, &http.Client{Transport: f}, http.MethodGet, "https://androidpublisher.googleapis.com/x", "", nil); err == nil {
+		t.Error("a refused call must fail the round trip")
+	}
+	if !probe.Failed() {
+		t.Error("Refuse must fail the test it was given")
+	}
+}
+
 func TestRoundTripFunc_isATransport(t *testing.T) {
 	boom := errors.New("boom")
 	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {

@@ -53,7 +53,7 @@ func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 		status, body := h(c)
 		return status, body, true
 	}
-	f := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+	f := testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
 			if a.insertHandler != nil {
@@ -111,16 +111,15 @@ func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
 		}
 		return 0, "", false
-	})
-	return f, testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		resp, err := f.RoundTrip(req)
-		initiate := req.Method == http.MethodPost &&
-			(strings.Contains(req.URL.Path, "/bundles") || strings.Contains(req.URL.Path, "/deobfuscationFiles/"))
-		if err == nil && initiate && resp.StatusCode == http.StatusOK {
-			resp.Header.Set("Location", req.URL.Scheme+"://"+req.URL.Host+req.URL.Path+"?upload_id=session-"+a.editID)
+	}, "Location", func(c testkit.Call, status int) string {
+		// Resumable initiate: the session URI goes in Location.
+		if status == http.StatusOK && c.Method == http.MethodPost &&
+			(strings.Contains(c.Path, "/bundles") || strings.Contains(c.Path, "/deobfuscationFiles/")) {
+			return "https://" + c.Host + c.Path + "?upload_id=session-" + a.editID
 		}
-		return resp, err
-	})
+		return ""
+	}))
+	return f, f
 }
 
 // apiCalls lists the recorded calls as "METHOD path".

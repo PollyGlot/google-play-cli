@@ -48,7 +48,7 @@ type uploadAPI struct {
 // cannot express; the chunk PUT on the same path carries the bytes.
 func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
 	uploaded := fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, a.versionCode)
-	f := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+	f := testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
 			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
@@ -72,14 +72,14 @@ func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
 			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
 		}
 		return 0, "", false
-	})
-	return f, testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		resp, err := f.RoundTrip(req)
-		if err == nil && isResumableInitiate(req.Method, req.URL.Path) {
-			resp.Header.Set("Location", req.URL.Scheme+"://"+req.URL.Host+req.URL.Path+"?upload_id=session-"+a.editID)
+	}, "Location", func(c testkit.Call, status int) string {
+		// Resumable initiate: the session URI goes in Location.
+		if isResumableInitiate(c.Method, c.Path) {
+			return "https://" + c.Host + c.Path + "?upload_id=session-" + a.editID
 		}
-		return resp, err
-	})
+		return ""
+	}))
+	return f, f
 }
 
 // isResumableInitiate reports whether a request opens a resumable upload

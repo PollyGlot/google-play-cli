@@ -55,7 +55,7 @@ func (a *setAPI) serve(t *testing.T) *testkit.Fake {
 			return a.commitCode, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
 		}
 		return 0, "", false
-	}, refuse(t, ""))
+	}, testkit.Refuse(t, ""))
 	return a.fake
 }
 

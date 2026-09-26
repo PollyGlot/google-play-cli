@@ -104,11 +104,14 @@ func (w *Wire) serve(rw http.ResponseWriter, r *http.Request) {
 	w.lines = append(w.lines, b.String())
 	w.mu.Unlock()
 
-	c := Call{Method: r.Method, Host: r.Host, Path: r.URL.Path, Query: r.URL.RawQuery, Header: r.Header.Clone(), Body: body}
+	c := Call{Method: r.Method, Host: r.Host, Path: r.URL.Path, Query: r.URL.RawQuery, Header: r.Header.Clone(), Body: body, Reply: http.Header{}}
 	for _, resp := range w.responders {
 		if status, out, ok := resp(c); ok {
 			if status == 0 {
 				status = http.StatusOK
+			}
+			for k, v := range c.Reply {
+				rw.Header()[k] = v
 			}
 			rw.Header().Set("Content-Type", "application/json")
 			rw.WriteHeader(status)

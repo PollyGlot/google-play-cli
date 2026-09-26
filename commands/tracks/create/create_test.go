@@ -54,7 +54,7 @@ func (a *createAPI) serve(t *testing.T) *testkit.Fake {
 			return 200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
 		}
 		return 0, "", false
-	}, refuse(t, ""))
+	}, testkit.Refuse(t, ""))
 	return a.fake
 }
 
@@ -81,17 +81,6 @@ func (a *createAPI) trackCreateReq() []byte {
 		}
 	}
 	return body
-}
-
-// refuse fails the test on any request the routes before it did not claim,
-// as the hand-rolled transport's t.Fatalf did: on an error path Run's error
-// alone would hide a stray request. The Fake still fails that round trip.
-func refuse(t *testing.T, why string) testkit.Responder {
-	t.Helper()
-	return func(c testkit.Call) (int, string, bool) {
-		t.Errorf("unexpected request%s: %s %s", why, c.Method, c.Path)
-		return 0, "", false
-	}
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {

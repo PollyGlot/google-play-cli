@@ -30,7 +30,7 @@ import (
 // session URI (Location) to the resumable initiate, which a responder cannot
 // express.
 func newMappingTransport(editID string) (*testkit.Fake, http.RoundTripper) {
-	f := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+	f := testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
 			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, editID), true
@@ -44,15 +44,14 @@ func newMappingTransport(editID string) (*testkit.Fake, http.RoundTripper) {
 			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, editID), true
 		}
 		return 0, "", false
-	})
-	return f, testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		resp, err := f.RoundTrip(req)
-		if err == nil && req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/") {
-			// Resumable initiate: session URI in Location.
-			resp.Header.Set("Location", req.URL.Scheme+"://"+req.URL.Host+req.URL.Path+"?upload_id=session-"+editID)
+	}, "Location", func(c testkit.Call, status int) string {
+		// Resumable initiate: the session URI goes in Location.
+		if c.Method == http.MethodPost && strings.Contains(c.Path, "/deobfuscationFiles/") {
+			return "https://" + c.Host + c.Path + "?upload_id=session-" + editID
 		}
-		return resp, err
-	})
+		return ""
+	}))
+	return f, f
 }
 
 // apiCalls lists the recorded API calls as "METHOD path".
