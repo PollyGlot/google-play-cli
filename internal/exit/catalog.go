@@ -22,8 +22,8 @@ func Catalog() []Doc {
 		{11, "Authorization (403: SA not invited on the app/account)", "no"},
 		{20, "Client-side validation (malformed AAB, unknown locale, ...)", "no"},
 		{30, "API 4xx other than auth/perms (not found, conflict, gone, ...)", "no"},
-		{40, "API 5xx (upstream temporarily unhealthy)", "yes, unless COMMIT_OUTCOME_UNKNOWN"},
-		{50, "Network (timeout, DNS, refused)", "yes, unless COMMIT_OUTCOME_UNKNOWN"},
+		{40, "API 5xx (upstream temporarily unhealthy)", "yes"},
+		{50, "Network (timeout, DNS, refused)", "yes"},
 		{60, "State conflict (open edit, rate-limited, ambiguous target, ...)", "sometimes"},
 		{70, "Findings present (a read-only check command completed and reported drift; NOT an error)", "no"},
 	}
