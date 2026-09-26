@@ -66,20 +66,65 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// keystore-not-found is tolerated: a prior logout may have
-	// half-completed, or the user wiped the keychain by hand. The backend
-	// is selected here (not at boot) so a logout that fails the --confirm
-	// gate above never probes the keyring.
+	// The backend is selected here (not at boot) so a logout that fails
+	// the --confirm gate above never probes the keyring.
 	be, err := rc.Backend()
 	if err != nil {
 		return nil, err
 	}
-	if err := be.Delete(rc.Ctx, in.Name); err != nil && !errors.Is(err, keystore.ErrNotFound) {
+	removed, err := deleteEverywhere(rc, be, in.Name)
+	if err != nil {
 		return nil, err
 	}
+	if len(removed) == 0 {
+		return nil, notStoredError(in.Name, be)
+	}
 
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q removed\n", in.Name)
+	_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q removed (credential deleted from %s)\n", in.Name, strings.Join(removed, " and "))
 	return nil, nil
+}
+
+// deleteEverywhere removes name from the selected backend AND from the file
+// backend. Select picks the backend per process, so a key written to the
+// plaintext file by a login that could not reach the keyring (SSH to a Mac
+// with a locked keychain) is invisible to a later logout that can: deleting
+// only from the selected backend would report success and leave the private
+// key on disk. It returns the stores that actually held the credential;
+// ErrNotFound from either is not an error, anything else is.
+func deleteEverywhere(rc *kernel.RunContext, be keystore.Backend, name string) ([]string, error) {
+	var removed []string
+	selected, isFile := be.(*keystore.FileBackend)
+	if err := be.Delete(rc.Ctx, name); err == nil {
+		if isFile {
+			removed = append(removed, selected.Path(name))
+		} else {
+			removed = append(removed, "the OS keyring")
+		}
+	} else if !errors.Is(err, keystore.ErrNotFound) {
+		return nil, err
+	}
+	if isFile {
+		return removed, nil
+	}
+	file := keystore.NewFileBackend(rc.KeystoreRoot)
+	if err := file.Delete(rc.Ctx, name); err == nil {
+		removed = append(removed, file.Path(name))
+	} else if !errors.Is(err, keystore.ErrNotFound) {
+		return nil, err
+	}
+	return removed, nil
+}
+
+// notStoredError reports a logout that removed the registry entry but found
+// no credential to delete. It fails rather than printing "removed" because
+// the user runs logout to know the key is gone. When the keyring was
+// unreachable (the file backend was selected), the key may still sit in the
+// keyring, and the message says so instead of implying it never existed.
+func notStoredError(name string, be keystore.Backend) error {
+	if fb, ok := be.(*keystore.FileBackend); ok {
+		return fmt.Errorf("logout: Account %q removed from the registry, but no credential was found at %s and the OS keyring is unavailable: if it was stored there it was NOT deleted; remove it from the OS keyring (service %q) by hand", name, fb.Path(name), keystore.KeyringService)
+	}
+	return fmt.Errorf("logout: Account %q removed from the registry, but no stored credential was found in the OS keyring or the file backend", name)
 }
 
 // NewCommand returns the cobra command for `gplay auth logout <name>`.

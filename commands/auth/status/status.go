@@ -91,6 +91,8 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 		p.Name = "(env override)"
 	} else if rc.KeystoreLabel == keystore.BackendFile {
 		p.Path = filepath.Join(rc.KeystoreRoot, activeName+".json")
+	} else if rc.KeystoreLabel == keystore.BackendKeyring {
+		keystore.WarnStrayFiles(rc.Ctx, rc.Stderr, rc.KeystoreRoot)
 	}
 	return p, nil
 }
