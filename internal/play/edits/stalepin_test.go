@@ -93,7 +93,7 @@ func TestWithEdit_explicitMode_otherFailures_passThrough(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := testkit.NewFake(tc.probe...)
 			err := explicitWrite(fake, tc.cause)
-			if err != tc.cause {
+			if err != tc.cause { //nolint:errorlint // identity, not errors.Is: the test asserts the error is returned verbatim
 				t.Errorf("err = %v (%T), want the cause returned untouched", err, err)
 			}
 			if got := len(fake.Calls()); got != tc.probes {

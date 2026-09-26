@@ -29,7 +29,10 @@ const rotateBody = `{"rotatedKeyCertificate":{"certificateHashMd5":"AA:BB","cert
 const lineageBin = "\x00\x01lineage-bytes\xff"
 
 // certPEM is a real self-signed certificate: ReadPEM parses every block.
-func certPEM(t *testing.T) string { return string(testkit.CertificatePEM(t)) }
+func certPEM(t *testing.T) string {
+	t.Helper()
+	return string(testkit.CertificatePEM(t))
+}
 
 // rt is the offline transport: it answers the OAuth token exchange and the
 // single appsigning POST, recording the request for shape assertions.
