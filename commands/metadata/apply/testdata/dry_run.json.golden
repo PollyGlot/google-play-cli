@@ -1,0 +1,39 @@
+{
+  "package": "com.example.app",
+  "changes": [
+    {
+      "locale": "en-US",
+      "field": "shortDescription",
+      "op": "update",
+      "liveChars": 12,
+      "localChars": 26
+    },
+    {
+      "locale": "en-US",
+      "field": "video",
+      "op": "clear",
+      "liveChars": 39,
+      "localChars": 0
+    },
+    {
+      "locale": "fr-FR",
+      "field": "title",
+      "op": "create",
+      "liveChars": 0,
+      "localChars": 9
+    },
+    {
+      "locale": "de-DE",
+      "op": "untouchedLocale",
+      "reason": "on Play, absent locally"
+    }
+  ],
+  "summary": {
+    "create": 1,
+    "update": 1,
+    "clear": 1,
+    "unchanged": 1,
+    "untouchedLocales": 1,
+    "delete": 0
+  }
+}

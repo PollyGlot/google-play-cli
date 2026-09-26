@@ -1,7 +1,7 @@
 // Package appstorecmd holds the wiring shared by every `gplay appstore` leaf:
-// app store package name resolution, the exit-2 usage error, RFC 3339 time
-// validation, and the 403/404 hint classifications that turn a bare API
-// rejection into an agent-resolvable refusal. Mirrors commands/orders/orderscmd
+// app store package name resolution, RFC 3339 time validation, and the 403/404
+// hint classifications that turn a bare API rejection into an agent-resolvable
+// refusal. Mirrors commands/orders/orderscmd
 // and commands/games/gamescmd, and keeps the leaves thin.
 //
 // The namespace wraps two sibling surfaces sharing one addressing axis:
@@ -31,7 +31,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -43,15 +43,6 @@ const FlagStorePackage = "store-package"
 // (ADR-0043). It sits below the --store-package flag in the cascade so a CI job
 // can export it once and every `gplay appstore` command inherits it.
 const EnvStorePackage = "GPLAY_APP_STORE_PACKAGE"
-
-// usageError is a CLI-misuse error with ExitCode()=2 (docs/DESIGN.md §9).
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
-// Usagef builds a usage error (exit 2) for the leaves to share.
-func Usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf(format, a...)} }
 
 // RegisterStorePackageFlag declares --store-package on a leaf. Every `appstore`
 // leaf calls this rather than spelling the flag itself, so the name and usage
@@ -71,7 +62,7 @@ func ResolveStorePackage(flag string) (string, error) {
 	if v := strings.TrimSpace(os.Getenv(EnvStorePackage)); v != "" {
 		return v, nil
 	}
-	return "", &usageError{msg: "no app store package name: pass --" + FlagStorePackage + " <pkg> or export " + EnvStorePackage +
+	return "", &exit.UsageError{Msg: "no app store package name: pass --" + FlagStorePackage + " <pkg> or export " + EnvStorePackage +
 		" (the package name of the app store on whose behalf the request is made, not the app being read or acted on)"}
 }
 
@@ -79,21 +70,7 @@ func ResolveStorePackage(flag string) (string, error) {
 // usage error (exit 2) carrying usage when it is empty or whitespace-only.
 func RequirePlayPackage(pkg, usage string) (string, error) {
 	if pkg = strings.TrimSpace(pkg); pkg == "" {
-		return "", &usageError{msg: usage}
-	}
-	return pkg, nil
-}
-
-// ResolvePackage resolves the target app package: --package wins, else the
-// project pin. This is the app the store hosts, addressed the same way as
-// everywhere else in gplay.
-func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
-	pkg := strings.TrimSpace(flag)
-	if pkg == "" && rc != nil && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+		return "", &exit.UsageError{Msg: usage}
 	}
 	return pkg, nil
 }
@@ -107,11 +84,11 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 func ParseRFC3339(flag, value string) (time.Time, string, error) {
 	v := strings.TrimSpace(value)
 	if v == "" {
-		return time.Time{}, "", &usageError{msg: "missing --" + flag + ": an RFC 3339 timestamp is required, e.g. --" + flag + " 2026-07-01T00:00:00Z"}
+		return time.Time{}, "", &exit.UsageError{Msg: "missing --" + flag + ": an RFC 3339 timestamp is required, e.g. --" + flag + " 2026-07-01T00:00:00Z"}
 	}
 	t, err := time.Parse(time.RFC3339, v)
 	if err != nil {
-		return time.Time{}, "", &usageError{msg: fmt.Sprintf("invalid --%s %q: expected an RFC 3339 timestamp, e.g. 2026-07-01T00:00:00Z or 2026-07-01T02:00:00+02:00", flag, v)}
+		return time.Time{}, "", exit.Usagef("invalid --%s %q: expected an RFC 3339 timestamp, e.g. 2026-07-01T00:00:00Z or 2026-07-01T02:00:00+02:00", flag, v)
 	}
 	return t, v, nil
 }
@@ -130,7 +107,7 @@ func ValidateTimeRange(startFlag, endFlag string) (string, string, error) {
 		return "", "", err
 	}
 	if !end.After(start) {
-		return "", "", &usageError{msg: fmt.Sprintf("invalid time range: --end-time %q must be after --start-time %q (the range is [start, end), end exclusive)", endStr, startStr)}
+		return "", "", exit.Usagef("invalid time range: --end-time %q must be after --start-time %q (the range is [start, end), end exclusive)", endStr, startStr)
 	}
 	return startStr, endStr, nil
 }

@@ -1,0 +1,12 @@
+{
+  "accounts": [
+    {
+      "name": "ci",
+      "active": true
+    },
+    {
+      "name": "personal",
+      "active": false
+    }
+  ]
+}

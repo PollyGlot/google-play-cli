@@ -36,6 +36,12 @@ refresh the generated reference), and via *workflow dispatch*. The Worker, its
 config, and the docs/www redirects live in [`deploy/gplay.sh/`](../deploy/gplay.sh/).
 Rationale: [ADR-0025](../docs/adr/0025-website-served-from-install-worker.md).
 
+Every built page carries its own Content-Security-Policy `<meta>`, stamped at
+the end of the build by `scripts/csp.mjs` with the hash of each inline script
+on that page. A new inline script therefore needs no manual allowlisting; a new
+third-party origin (script, image, font, fetch) does, in that file's directive
+list. The Worker sets the other security headers.
+
 The site/base pair defaults to `https://gplay.sh` + `/`. Override it for a
 preview build on a different origin:
 

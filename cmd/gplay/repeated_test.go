@@ -165,6 +165,8 @@ func TestRepeatedFlags_everyRegisteredFlagRejects(t *testing.T) {
 		"float64": "0.5", "duration": "1s",
 		"stringSlice": "x", "stringArray": "x", "int64Slice": "1",
 		"stringToString": "k=v", "stringToInt": "k=1", "stringToInt64": "k=1",
+		// commitflags' validated enum (#598): only its listed values parse.
+		"cancel|error": "error",
 	}
 	// Flag types whose second occurrence is normal use, not misuse. pflag
 	// publishes an interface for its slice values and none for its map values,

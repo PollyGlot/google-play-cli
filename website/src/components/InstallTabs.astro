@@ -92,6 +92,9 @@ const TABS: Tab[] = [
       </div>
     ))
   }
+  <!-- Copy outcome for screen readers: the buttons' fixed aria-label would
+       mask their visible "Copied" text, so the result is announced here. -->
+  <p role="status" class="sr-only" data-copy-status></p>
 </div>
 
 <script is:inline>
@@ -139,18 +142,34 @@ const TABS: Tab[] = [
       });
     });
 
+    const status = root.querySelector('[data-copy-status]');
+    const announce = (message) => {
+      // Clear first so a repeated outcome ("Copied" twice) is announced again.
+      status.textContent = '';
+      requestAnimationFrame(() => {
+        status.textContent = message;
+      });
+    };
+
     root.querySelectorAll('button[data-copy]').forEach((button) => {
       let timer;
+      const flash = (label) => {
+        button.textContent = label;
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          button.textContent = 'Copy';
+        }, 1600);
+      };
       button.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(button.dataset.copy);
-          button.textContent = 'Copied ✓';
-          clearTimeout(timer);
-          timer = setTimeout(() => {
-            button.textContent = 'Copy';
-          }, 1600);
+          flash('Copied ✓');
+          announce('Copied');
         } catch {
-          // Clipboard unavailable (permissions / non-secure context): no-op.
+          // Clipboard unavailable (permissions, non-secure context): say so,
+          // the command stays on screen to select by hand.
+          flash('Copy failed');
+          announce('Copy failed');
         }
       });
     });

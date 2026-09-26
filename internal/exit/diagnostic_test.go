@@ -89,6 +89,12 @@ func TestClassify_apiFailures(t *testing.T) {
 			wantRetryable: true,
 		},
 		{
+			name:     "401 from the API is an authentication failure (token refused), exit 10",
+			err:      &api.Error{Operation: "tracks.list", Package: "com.example.app", StatusCode: 401, Message: "Request had invalid authentication credentials."},
+			wantCode: exit.CodeAuthFailed,
+			wantExit: 10,
+		},
+		{
 			name:     "403 is a permission denial, not retryable",
 			err:      &api.Error{Operation: "edits.insert", Package: "com.example.app", StatusCode: 403, Message: "caller does not have permission"},
 			wantCode: exit.CodePermissionDenied,

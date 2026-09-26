@@ -27,15 +27,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
 
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
-// Usagef builds a usage error (exit 2) for the leaves to share.
-func Usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf(format, a...)} }
-
 // localFileError is a client-side --from-json read failure (exit 20), matching
 // the convention bundles/customapps use for unreadable local inputs.
 type localFileError struct {
@@ -53,14 +44,14 @@ func (e *localFileError) ExitCode() int { return 20 }
 func ResolveApplicationID(flag string) (string, error) {
 	id := strings.TrimSpace(flag)
 	if id == "" {
-		return "", &usageError{msg: "missing --application-id: the numeric Play Games Services application ID is required"}
+		return "", &exit.UsageError{Msg: "missing --application-id: the numeric Play Games Services application ID is required"}
 	}
 	// The Play Games application ID is a numeric console ID. Rejecting a
 	// non-numeric value here (e.g. a package name pasted by mistake) turns a
 	// misleading upstream 404 into a local, agent-resolvable exit-2 usage error.
 	for _, r := range id {
 		if r < '0' || r > '9' {
-			return "", &usageError{msg: "invalid --application-id: expected the numeric Play Games Services application ID, got " + strconv.Quote(id)}
+			return "", &exit.UsageError{Msg: "invalid --application-id: expected the numeric Play Games Services application ID, got " + strconv.Quote(id)}
 		}
 	}
 	return id, nil
@@ -71,7 +62,7 @@ func ResolveApplicationID(flag string) (string, error) {
 func RequireID(id, usage string) (string, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "", &usageError{msg: usage}
+		return "", &exit.UsageError{Msg: usage}
 	}
 	return id, nil
 }
@@ -224,12 +215,12 @@ func (w AchievementWrite) hasFieldFlags() bool {
 func BuildAchievementBody(stdin io.Reader, w AchievementWrite, requireField bool) ([]byte, error) {
 	if w.FromJSON != "" {
 		if w.hasFieldFlags() {
-			return nil, Usagef("--from-json cannot be combined with field flags (--name, --description, --type, --initial-state, --point-value, --steps-to-unlock)")
+			return nil, exit.Usagef("--from-json cannot be combined with field flags (--name, --description, --type, --initial-state, --point-value, --steps-to-unlock)")
 		}
 		return readJSONSource(stdin, w.FromJSON)
 	}
 	if requireField && !w.hasFieldFlags() {
-		return nil, Usagef("nothing to send: pass --from-json <file> or at least one field flag (--name, --description, --type, --initial-state, --point-value, --steps-to-unlock)")
+		return nil, exit.Usagef("nothing to send: pass --from-json <file> or at least one field flag (--name, --description, --type, --initial-state, --point-value, --steps-to-unlock)")
 	}
 	cfg := games.AchievementConfiguration{
 		AchievementType: strings.TrimSpace(w.Type),
@@ -287,12 +278,12 @@ func (w LeaderboardWrite) hasFieldFlags() bool {
 func BuildLeaderboardBody(stdin io.Reader, w LeaderboardWrite, requireField bool) ([]byte, error) {
 	if w.FromJSON != "" {
 		if w.hasFieldFlags() {
-			return nil, Usagef("--from-json cannot be combined with field flags (--name, --score-order, --score-min, --score-max)")
+			return nil, exit.Usagef("--from-json cannot be combined with field flags (--name, --score-order, --score-min, --score-max)")
 		}
 		return readJSONSource(stdin, w.FromJSON)
 	}
 	if requireField && !w.hasFieldFlags() {
-		return nil, Usagef("nothing to send: pass --from-json <file> or at least one field flag (--name, --score-order, --score-min, --score-max)")
+		return nil, exit.Usagef("nothing to send: pass --from-json <file> or at least one field flag (--name, --score-order, --score-min, --score-max)")
 	}
 	cfg := games.LeaderboardConfiguration{ScoreOrder: strings.TrimSpace(w.ScoreOrder)}
 	if w.ScoreMinSet {
@@ -324,7 +315,7 @@ func localeOr(locale string) string {
 func marshalBody(v any) ([]byte, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return nil, Usagef("could not build request body: %v", err)
+		return nil, exit.Usagef("could not build request body: %v", err)
 	}
 	return b, nil
 }
@@ -340,7 +331,7 @@ func readJSONSource(stdin io.Reader, path string) ([]byte, error) {
 	)
 	if path == "-" {
 		if stdin == nil {
-			return nil, Usagef("--from-json -: no stdin available")
+			return nil, exit.Usagef("--from-json -: no stdin available")
 		}
 		raw, err = io.ReadAll(stdin)
 	} else {
@@ -350,7 +341,7 @@ func readJSONSource(stdin io.Reader, path string) ([]byte, error) {
 		return nil, &localFileError{path: path, cause: err}
 	}
 	if !json.Valid(raw) {
-		return nil, Usagef("--from-json %s: not valid JSON", path)
+		return nil, exit.Usagef("--from-json %s: not valid JSON", path)
 	}
 	return raw, nil
 }

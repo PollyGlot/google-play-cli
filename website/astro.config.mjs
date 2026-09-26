@@ -5,6 +5,8 @@ import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import rehypeBaseLinks from './scripts/rehype-base-links.mjs';
+import cspMeta from './scripts/csp.mjs';
+import { THEME_COLOR } from './src/theme-color.mjs';
 
 // The site is served from gplay.sh (a Cloudflare Worker with static assets,
 // see deploy/gplay.sh/ and ADR-0025). SITE_URL/SITE_BASE stay overridable so a
@@ -88,11 +90,11 @@ export default defineConfig({
         // Responsive browser chrome: match the active theme on mobile.
         {
           tag: 'meta',
-          attrs: { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: '#050507' },
+          attrs: { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: THEME_COLOR.dark },
         },
         {
           tag: 'meta',
-          attrs: { name: 'theme-color', media: '(prefers-color-scheme: light)', content: '#ffffff' },
+          attrs: { name: 'theme-color', media: '(prefers-color-scheme: light)', content: THEME_COLOR.light },
         },
       ],
       sidebar: [
@@ -143,6 +145,8 @@ export default defineConfig({
         }),
       ],
     }),
+    // Last, so it stamps the pages every other integration has finished.
+    cspMeta(),
   ],
   vite: {
     plugins: [tailwindcss()],

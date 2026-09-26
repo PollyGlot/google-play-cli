@@ -19,6 +19,7 @@ func TestStatusToExitCode(t *testing.T) {
 		want   int
 	}{
 		{"transport-level (no response)", 0, 50},
+		{"401 unauthorized → authentication (token refused by the API, #598)", 401, 10},
 		{"403 forbidden → authorization", 403, 11},
 		{"404 not found → generic 4xx", 404, 30},
 		{"400 bad request → generic 4xx", 400, 30},
