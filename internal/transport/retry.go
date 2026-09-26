@@ -220,16 +220,32 @@ func (rt *retryTransport) backoff(attempt int, resp *http.Response) time.Duratio
 			return d
 		}
 	}
-	d := rt.baseDelay
+	return rt.jitter(exponential(attempt, rt.baseDelay, rt.maxDelay))
+}
+
+// exponential is base * 2^attempt, capped at maxDelay, before jitter.
+func exponential(attempt int, base, maxDelay time.Duration) time.Duration {
+	d := base
 	for i := 0; i < attempt; i++ {
 		d *= 2
-		if d >= rt.maxDelay {
-			d = rt.maxDelay
-			break
+		if d >= maxDelay {
+			return maxDelay
 		}
 	}
-	return rt.jitter(d)
+	return d
 }
+
+// Backoff is the delay --retry waits before its attempt number attempt+1 (500ms
+// doubling to a 30s cap, with jitter), exported so a caller that owns its own
+// recovery loop (the resumable-upload helper, which --retry must not touch)
+// paces itself on the same curve instead of a second, drifting one.
+func Backoff(attempt int) time.Duration {
+	return fullJitter(exponential(attempt, defaultRetryBaseDelay, defaultRetryMaxDelay))
+}
+
+// Sleep waits d and reports true, or returns false as soon as ctx is done: a
+// Ctrl-C or a CI cancel must never sit out a 30s backoff.
+func Sleep(ctx context.Context, d time.Duration) bool { return ctxSleep(ctx, d) }
 
 // parseRetryAfter parses a Retry-After header value, either delay-seconds (a
 // non-negative integer) or an HTTP-date, and clamps the result to [0, maxDelay].

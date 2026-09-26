@@ -1,0 +1,49 @@
+{
+  "package": "com.example.app",
+  "slots": [
+    {
+      "locale": "de-DE",
+      "imageType": "phoneScreenshots",
+      "op": "reorder",
+      "position": -1
+    },
+    {
+      "locale": "en-US",
+      "imageType": "icon",
+      "op": "upload",
+      "sha256": "82f2e50794af80b95b35329b843159f65c72ac74a0e03cbcc2d8ff5575ad57a1",
+      "position": 0
+    },
+    {
+      "locale": "en-US",
+      "imageType": "featureGraphic",
+      "op": "unchanged",
+      "position": -1
+    },
+    {
+      "locale": "en-US",
+      "imageType": "phoneScreenshots",
+      "op": "upload",
+      "sha256": "60d7cd077c447aa2d1b95d6a8e91e3e050eb60200ae4bba8f6682c5ab9686857",
+      "position": 2
+    },
+    {
+      "locale": "en-US",
+      "imageType": "sevenInchScreenshots",
+      "op": "unchanged",
+      "position": -1
+    },
+    {
+      "locale": "fr-FR",
+      "imageType": "phoneScreenshots",
+      "op": "untouchedSlot",
+      "position": -1
+    }
+  ],
+  "summary": {
+    "upload": 2,
+    "delete": 0,
+    "reorder": 1,
+    "unchanged": 2
+  }
+}

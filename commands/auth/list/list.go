@@ -56,6 +56,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "List every registered Account",
 		Example: `  gplay auth list
   gplay auth list --output json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{})

@@ -87,12 +87,9 @@ func (p Payload) columns() []output.Column[vitals.Row] {
 // POST, projects the timeline, warns about freshness, and returns the Payload.
 // It is the single body both the generic command and the presets call.
 func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
-	pkg := p.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(p.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	idx, err := schemaindex.Embedded()
@@ -261,12 +258,8 @@ func toDateTime(t time.Time, hourly bool) dateTime {
 // datapoint in the window (dates are zero-padded, so the lexical max is the
 // chronological max).
 func warnFreshness(rc *kernel.RunContext, set vitals.MetricSet, tl vitals.Timeline) {
-	if rc.Stderr == nil {
-		return
-	}
 	if tl.Empty() {
-		_, _ = fmt.Fprintf(rc.Stderr,
-			"WARN: no %s datapoints in the requested window; vitals metrics are reported with a delay, so an empty window is not the same as zero.\n",
+		rc.Warnf("no %s datapoints in the requested window; vitals metrics are reported with a delay, so an empty window is not the same as zero.",
 			set.Name)
 		return
 	}
@@ -276,7 +269,6 @@ func warnFreshness(rc *kernel.RunContext, set vitals.MetricSet, tl vitals.Timeli
 			latest = r.Date
 		}
 	}
-	_, _ = fmt.Fprintf(rc.Stderr,
-		"NOTE: %s vitals are reported with a delay; freshest datapoint in this window: %s.\n",
+	rc.Notef("%s vitals are reported with a delay; freshest datapoint in this window: %s.",
 		set.Name, latest)
 }

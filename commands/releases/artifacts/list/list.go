@@ -153,12 +153,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	httpClient, err := rc.AuthedClient()
 	if err != nil {

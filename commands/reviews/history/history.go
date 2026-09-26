@@ -12,10 +12,8 @@ package history
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -186,7 +184,7 @@ func classify(bucket string, err error) error {
 }
 
 // isNotFound reports whether err is a 404 from the reporting bucket: a month
-// with no published report. In range mode that is a skipped WARN, not a failure.
+// with no published report. In range mode that is a skipped warning, not a failure.
 func isNotFound(err error) bool {
 	var apiErr *api.Error
 	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
@@ -196,12 +194,9 @@ func isNotFound(err error) bool {
 // the monthly reviews CSV report, parses it (UTF-16 → UTF-8, header-driven), and
 // returns the rendered rows.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	// Empty --columns yields the curated default subset, not every column: the
@@ -220,7 +215,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// cascade entirely.
 	bucket := strings.TrimSpace(in.Bucket)
 	if bucket == "" {
-		devID, err := addressing.Resolve(in.DeveloperID, os.Getenv(addressing.EnvDeveloperID), rc.Resolved)
+		devID, err := addressing.ForRun(rc, in.DeveloperID)
 		if err != nil {
 			return nil, err
 		}
@@ -285,9 +280,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		raw, err := gcs.FetchObject(rc.Ctx, hc, bucket, history.ObjectName(pkg, m))
 		if err != nil {
 			if rangeMode && isNotFound(err) {
-				if rc.Stderr != nil {
-					_, _ = fmt.Fprintf(rc.Stderr, "WARN: no reviews report for %s-%s: skipped\n", m[:4], m[4:])
-				}
+				rc.Warnf("no reviews report for %s-%s: skipped", m[:4], m[4:])
 				continue
 			}
 			return nil, classify(bucket, err)
@@ -343,7 +336,7 @@ it with the Console's "Copy Cloud Storage URI" button).
 for the package is used. --from YYYY-MM --to YYYY-MM instead read every
 monthly report across the range and merge them into one result set (a
 review edited across the month boundary appears once, latest update
-winning; a month with no report is skipped with a WARN). --month and
+winning; a month with no report is skipped with a warning). --month and
 --from/--to are mutually exclusive. Default table columns: date, stars,
 locale, version, title, summary: override with --columns device,reply,...
 

@@ -1,7 +1,7 @@
 // Package editscmd holds the wiring shared by the four `gplay edits` leaves
-// (begin/commit/discard/status): package resolution, locating the project's
-// .gplay/ pin directory, the operator-facing error shapes (CLI misuse → exit 2,
-// no-open-Edit / already-open state → exit 60), and the small renderable the
+// (begin/commit/discard/status): locating the project's .gplay/ pin
+// directory, the operator-facing state errors (no-open-Edit / already-open
+// → exit 60), and the small renderable the
 // leaves return. Keeping it here mirrors commands/device-tiers/devicetierscmd
 // and keeps the leaves thin glue over internal/play/edits + internal/editpin.
 package editscmd
@@ -10,22 +10,12 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
-
-// usageError is CLI misuse (exit 2): a missing package or an uninitialised
-// project.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
-// Usagef builds a CLI-misuse error (exit 2) for the leaves to share.
-func Usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf(format, a...)} }
 
 // NoOpenEditError is returned by `edits commit`/`discard` when there is no
 // pinned Edit to act on. It maps to exit 60 (state conflict, recoverable): the
@@ -50,19 +40,6 @@ func (e *AlreadyOpenError) Error() string {
 }
 func (e *AlreadyOpenError) ExitCode() int { return 60 }
 
-// ResolvePackage resolves the target package: --package wins, else the project
-// pin. An empty result is a usage error (exit 2).
-func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
-	pkg := strings.TrimSpace(flag)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", Usagef("no package: pass --package <pkg> or run gplay init in your repo")
-	}
-	return pkg, nil
-}
-
 // RequireGplayDir returns the project's .gplay/ directory, or a usage error
 // (exit 2) when no project was found. Explicit edits live in the project's
 // .gplay/ (gitignored for edit-*.json), so they require an initialised
@@ -70,7 +47,7 @@ func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
 func RequireGplayDir(rc *kernel.RunContext) (string, error) {
 	dir, ok := rc.GplayDir()
 	if !ok {
-		return "", Usagef("no project found: run `gplay init --package <pkg>` first (explicit edits are stored in the project's .gplay/)")
+		return "", exit.Usagef("no project found: run `gplay init --package <pkg>` first (explicit edits are stored in the project's .gplay/)")
 	}
 	return dir, nil
 }

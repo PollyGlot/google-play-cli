@@ -31,6 +31,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/accessibleapps"
@@ -43,13 +44,6 @@ type Input struct {
 	PageSize  int
 	PageToken string
 }
-
-// usageError is a CLI-misuse error (a negative --page-size); ExitCode()=2
-// per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // Payload renders one page of accessible Apps. Raw is the verbatim
 // apps.search body for the ADR-0003 JSON pass-through; Apps drives the
@@ -79,7 +73,7 @@ func (p Payload) Renderers() output.Renderers {
 // token in the body for a machine caller.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.PageSize < 0 {
-		return nil, &usageError{msg: "apps accessible list: invalid --page-size: must be >= 0"}
+		return nil, &exit.UsageError{Msg: "apps accessible list: invalid --page-size: must be >= 0"}
 	}
 	hc, err := rc.AuthedClient()
 	if err != nil {
@@ -89,8 +83,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	if sr.NextPageToken != "" && rc.Stderr != nil {
-		_, _ = io.WriteString(rc.Stderr, "NOTE: more Apps available, re-run with --page-token "+sr.NextPageToken+" for the next page.\n")
+	if sr.NextPageToken != "" {
+		rc.Notef("more Apps available, re-run with --page-token %s for the next page.", sr.NextPageToken)
 	}
 	return Payload{Apps: sr.Apps, Raw: raw}, nil
 }

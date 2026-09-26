@@ -75,6 +75,24 @@ func GroupRunE(cmd *cobra.Command, args []string) error {
 	return exit.Usagef("unknown command %q for %q%s", args[0], cmd.CommandPath(), suggestionsFor(cmd, args[0]))
 }
 
+// Group builds a grouping noun (`apps`, `releases`, `team users`, ...): a
+// command with no business logic of its own that carries GroupRunE plus the
+// SilenceUsage/SilenceErrors pair it needs, and adopts children in the order
+// given. It is the one place those defaults live, so a new group cannot forget
+// the RunE and silently print help (exit 0) on a mistyped subcommand. The root
+// is built by hand instead: it also needs Args: cobra.ArbitraryArgs and a Long.
+func Group(use, short string, children ...*cobra.Command) *cobra.Command {
+	g := &cobra.Command{
+		Use:           use,
+		Short:         short,
+		RunE:          GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	g.AddCommand(children...)
+	return g
+}
+
 // suggestionsFor renders the "Did you mean this?" block for a mistyped
 // subcommand, or "" when nothing is close enough. The matching is cobra's own
 // (SuggestionsFor: Levenshtein within SuggestionsMinimumDistance, plus prefix
@@ -276,8 +294,9 @@ type RunContext struct {
 	// Format is the resolved output Format: never FormatAuto.
 	Format output.Format
 
-	// Resolved is the full cascade snapshot. Commands access the
-	// Project pin via rc.Resolved.Pin and the accounts list via
+	// Resolved is the full cascade snapshot. Package-axis commands resolve
+	// their target through rc.Package (flag, then the Project pin), never
+	// by reading rc.Resolved.Pin themselves; the accounts list is
 	// rc.Resolved.Accounts.
 	Resolved *config.Resolved
 
@@ -432,10 +451,7 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 // authoritative signals) and a nil Stderr (possible on a hand-built
 // RunContext) is a no-op rather than a panic.
 func (rc *RunContext) Confirmf(format string, args ...any) {
-	if rc.Stderr == nil {
-		return
-	}
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ "+format+"\n", args...)
+	rc.log().Confirmf(format, args...)
 }
 
 // Warnf emits a single non-fatal advisory line on stderr, prefixed with
@@ -449,10 +465,7 @@ func (rc *RunContext) Confirmf(format string, args ...any) {
 // payload whether or not a warning fired (ADR-0003). Like Confirmf the write is
 // best-effort and a nil Stderr is a no-op rather than a panic.
 func (rc *RunContext) Warnf(format string, args ...any) {
-	if rc.Stderr == nil {
-		return
-	}
-	_, _ = fmt.Fprintf(rc.Stderr, "warning: "+format+"\n", args...)
+	rc.log().Warnf(format, args...)
 }
 
 // WarnTruncated emits the standard truncation advisory for a listing that was
@@ -463,7 +476,7 @@ func (rc *RunContext) Warnf(format string, args ...any) {
 //
 // It is not the note for a CURSOR listing (`--page-token`, one page per call):
 // there the remediation is a token to pass back, not a cap to raise, and those
-// commands write their own `NOTE:` carrying it (docs/DESIGN.md §9).
+// commands carry it in their own Notef line (docs/DESIGN.md §9).
 //
 // n is what was returned; flag is the flag to raise (normally "limit"), named
 // explicitly so the remediation is one step away.
@@ -486,11 +499,8 @@ func (rc *RunContext) ConfirmMutation(explicitEditID, format string, args ...any
 		rc.Confirmf(format, args...)
 		return
 	}
-	if rc.Stderr == nil {
-		return
-	}
 	prefix := fmt.Sprintf("• staged in open edit %s: run `gplay edits commit` to publish (not live yet): ", explicitEditID)
-	_, _ = fmt.Fprintf(rc.Stderr, prefix+format+"\n", args...)
+	rc.log().Logf(prefix+format, args...)
 }
 
 // GplayDir returns the project's .gplay/ directory: the one found via walk-up
@@ -806,15 +816,20 @@ func (rc *RunContext) AuthedClient() (*http.Client, error) {
 	return rc.authedClient(rc.controlPlaneTimeout())
 }
 
-// UploadClient is AuthedClient for media-upload commands (bundles, images):
-// a multi-hundred-MB transfer must not be killed by the short control-plane
-// default, so the returned client carries NO deadline, UNLESS the global
-// --timeout was set explicitly (rc.Timeout), which then bounds every request
-// including the upload. Same auth handshake and test seam as AuthedClient.
+// UploadClient is AuthedClient for commands that move media (bundles, APKs,
+// images, generated APK downloads): a multi-hundred-MB transfer must not be
+// killed by the short control-plane default, yet the same command's Edit calls
+// (edits.insert, tracks.update, edits.commit) and its token exchange still owe
+// the 60s bound of docs/DESIGN.md §8. The returned client therefore decides per
+// request: a media transfer (transport.IsMediaTransfer) runs without a
+// deadline, everything else gets defaultControlPlaneTimeout. An explicit global
+// --timeout (rc.Timeout) bounds every request, the transfer included. Same auth
+// handshake and test seam as AuthedClient.
 func (rc *RunContext) UploadClient() (*http.Client, error) {
-	// rc.Timeout is 0 (no deadline) unless --timeout was passed; uploads honor
-	// only the explicit override, never the 60s control-plane default.
-	return rc.authedClient(rc.Timeout)
+	if rc.Timeout > 0 {
+		return rc.authedClient(rc.Timeout)
+	}
+	return rc.authedClientFor(defaultControlPlaneTimeout, true)
 }
 
 // scopes returns the OAuth scope list to mint a token for: a one-element slice
@@ -841,15 +856,19 @@ func (rc *RunContext) controlPlaneTimeout() time.Duration {
 // yields a client with no deadline; timeout>0 bounds both the /token exchange
 // and the API request by it.
 func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) {
+	return rc.authedClientFor(timeout, false)
+}
+
+// authedClientFor is authedClient with the media exemption: when mediaExempt is
+// set, timeout bounds the token exchange and every control-plane request but
+// not a media transfer (see UploadClient).
+func (rc *RunContext) authedClientFor(timeout time.Duration, mediaExempt bool) (*http.Client, error) {
 	// First call that genuinely needs a credential: this is where the
 	// keyring probe + Load finally happen (see EnsureAccount), not at boot.
 	// A present-but-invalid credential surfaces its real cause here; an
-	// absent one falls through to the authError login hint below.
-	if err := rc.EnsureAccount(); err != nil {
+	// absent one becomes the one no-Account error (NoAccountError).
+	if err := rc.RequireAccount(); err != nil {
 		return nil, err
-	}
-	if rc.Account == nil {
-		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
 	}
 	// The /token exchange runs through the context's HTTP client (jwt.Config
 	// captures the context it is given), so bound it with the same deadline by
@@ -869,6 +888,20 @@ func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) 
 	// oauth2.NewClient sets the returned client's Base to the (unwrapped) base
 	// transport.
 	client := oauth2.NewClient(ctx, ts)
+	if mediaExempt {
+		// The deadline moves off the client onto a per-request middleware that
+		// skips media transfers. It sits under --retry so each attempt gets its
+		// own bound, as the retry middleware's per-attempt Timeout gives the
+		// other clients. WithRetry is a passthrough when --retry is unset.
+		// Recent oauth2 releases copy timedBase's Timeout onto the returned
+		// client, which would bound the media transfer after all: clear it.
+		client.Transport = transport.WithRetry(
+			transport.WithControlPlaneDeadline(client.Transport, timeout),
+			transport.RetryOptions{MaxRetries: rc.Retry},
+		)
+		client.Timeout = 0
+		return client, nil
+	}
 	if rc.Retry > 0 {
 		// --retry: a transport middleware retries transport errors / 5xx / 429
 		// (honoring Retry-After) with exponential backoff + jitter. It owns the
@@ -910,6 +943,32 @@ type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
 func (e *authError) ExitCode() int { return 10 }
+
+// noAccountMsg is the one wording for "no credential configured at all"
+// (#593). It names every precedence layer that can fix it (DESIGN §1), stored
+// Account first because that is what `auth login` produces; the registry
+// commands (`apps add/list/remove`) that cannot scope to an inline credential
+// say so in their own follow-up error, which beats four diverging hints.
+const noAccountMsg = "no Account resolved: run `gplay auth login`, pass --account <name> or set GPLAY_ACCOUNT, " +
+	"or supply a service-account key with --service-account or GPLAY_SERVICE_ACCOUNT"
+
+// NoAccountError is the failure every command returns when no Account resolves
+// (exit 10, AUTH_FAILED). Commands build it here rather than spelling their own
+// message, so the fix reads the same whichever command hit it.
+func NoAccountError() error { return &authError{msg: noAccountMsg} }
+
+// RequireAccount resolves the credential (EnsureAccount) and turns the benign
+// "absent" outcome into NoAccountError, for callers that cannot proceed without
+// one. An invalid credential keeps its own exit-10 cause.
+func (rc *RunContext) RequireAccount() error {
+	if err := rc.EnsureAccount(); err != nil {
+		return err
+	}
+	if rc.Account == nil {
+		return NoAccountError()
+	}
+	return nil
+}
 
 // FromCobra builds an Inputs from cmd's persistent flag values
 // (--verbose, --service-account, --account), the credential env vars,

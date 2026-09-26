@@ -7,7 +7,6 @@
 package doctor
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
+	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/redact"
@@ -89,10 +89,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := rc.EnsureAccount(); err != nil {
 		results, worst = synthFailure(err, checks)
 	} else if rc.Account == nil {
-		results, worst = synthFailure(errors.New("no active account; run `gplay auth login`"), checks)
+		results, worst = synthFailure(kernel.NoAccountError(), checks)
 	} else {
 		results = authdoctor.Run(rc.Ctx, rc.Account, &hc, checks...)
 		worst = worstFailure(results)
+	}
+	// KeystoreLabel is set only when a stored Account was loaded, so an
+	// inline credential stays keyring-free. Plaintext keys left behind by an
+	// earlier keyring-less login are a finding doctor should surface.
+	if rc.KeystoreLabel == keystore.BackendKeyring {
+		keystore.WarnStrayFiles(rc.Ctx, rc.Stderr, rc.KeystoreRoot)
 	}
 
 	// Hints are gplay-authored text that quotes wrapped errors (a resolution
@@ -151,6 +157,7 @@ structured []CheckResult for scripting.`,
 		// rendered checklist on stdout.
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			b := boot
 			b.Stdout = cmd.OutOrStdout()
@@ -204,7 +211,7 @@ func worstFailure(results []authdoctor.CheckResult) *authdoctor.CheckResult {
 }
 
 // synthFailure builds check #1 as failed + the rest as skipped when
-// resolution itself died (no active account).
+// resolution itself died (no Account, or an invalid credential).
 func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
 	failure := authdoctor.ResolutionFailure(err)[0]
 	results := make([]authdoctor.CheckResult, 0, len(checks))

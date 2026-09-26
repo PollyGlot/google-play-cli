@@ -14,10 +14,13 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"math/big"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Fixture identity of the service account ServiceAccountJSON mints.
@@ -47,6 +50,38 @@ var sharedPEM = sync.OnceValues(func() ([]byte, error) {
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}), nil
 })
+
+// sharedCert is a self-signed X.509 certificate for sharedKey, PEM-encoded:
+// the shape `signing enroll/rotate` expect in --kms-cert / --upload-cert,
+// which parse every block with x509.ParseCertificate.
+var sharedCert = sync.OnceValues(func() ([]byte, error) {
+	key, err := sharedKey()
+	if err != nil {
+		return nil, err
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "gplay test"},
+		NotBefore:    time.Unix(0, 0).UTC(),
+		NotAfter:     time.Unix(0, 0).UTC().AddDate(100, 0, 0),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		return nil, err
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), nil
+})
+
+// CertificatePEM returns a self-signed certificate for RSAKey as one
+// "CERTIFICATE" PEM block. The slice is a fresh copy.
+func CertificatePEM(t testing.TB) []byte {
+	t.Helper()
+	b, err := sharedCert()
+	if err != nil {
+		t.Fatalf("testkit: create certificate: %v", err)
+	}
+	return append([]byte(nil), b...)
+}
 
 // RSAKey returns the RSA-2048 key shared by every test in the binary. Callers
 // must not mutate it.

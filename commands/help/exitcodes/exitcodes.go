@@ -17,11 +17,17 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// NewCommand returns the `exit-codes` help-topic command. It has no Run: a bare
-// `gplay exit-codes` and `gplay help exit-codes` both print the taxonomy via
-// the Long text (cobra prints help for a runless, childless command).
+// NewCommand returns the `exit-codes` command. `gplay exit-codes` and `gplay
+// help exit-codes` both print the taxonomy via the Long text.
+//
+// It is runnable on purpose (#593): cobra never runs the Args validator of a
+// runless help topic, so `gplay exit-codes STRAY` used to print the table and
+// exit 0 where docs/DESIGN.md §9 promises exit 2 for a surplus argument. The
+// RunE only prints help, and the help template keeps the Long-only output of
+// the former help topic (no usage block), so the bytes a user sees are
+// unchanged.
 func NewCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "exit-codes",
 		Short: "Explain gplay's semantic exit codes",
 		Long: "gplay returns a semantic exit code so scripts and agents can branch on the\noutcome without parsing output\n(https://gplay.sh/docs/concepts/exit-codes/):\n\n" +
@@ -33,7 +39,14 @@ func NewCommand() *cobra.Command {
 			exit.CodeTableString(),
 		Example: `  gplay exit-codes`,
 		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
 	}
+	// cobra's default help template minus its usage block, which it prints
+	// only for runnable commands: the output stays that of a help topic.
+	cmd.SetHelpTemplate("{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}\n\n{{end}}")
+	return cmd
 }
 
 // table renders exit.Catalog as an aligned CODE/MEANING/RETRY-SAFE block.

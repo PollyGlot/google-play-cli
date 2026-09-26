@@ -138,7 +138,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	orderID := strings.TrimSpace(in.OrderID)
 	if orderID == "" {
-		return nil, orderscmd.Usagef("no order: pass an order ID: gplay orders refund <orderId> --confirm")
+		return nil, exit.Usagef("no order: pass an order ID: gplay orders refund <orderId> --confirm")
 	}
 
 	// refund is unconditionally destructive (money-moving, irreversible), so the
@@ -153,7 +153,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.SafetyFlag("confirm", "refunding order %q moves money and cannot be undone; pass --confirm to proceed (rehearse first with --dry-run)", orderID)
 	}
 
-	pkg, err := orderscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

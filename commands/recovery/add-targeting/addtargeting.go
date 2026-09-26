@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/recovery/recoverycmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
@@ -29,12 +30,12 @@ type Input struct {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ID == "" {
-		return nil, recoverycmd.Usagef("missing recovery id: gplay recovery add-targeting <appRecoveryId>")
+		return nil, exit.Usagef("missing recovery id: gplay recovery add-targeting <appRecoveryId>")
 	}
 	if !in.AllUsers && len(in.Regions) == 0 && len(in.SdkLevels) == 0 {
-		return nil, recoverycmd.Usagef("missing targeting to add: pass one of --all-users, --regions, or --sdk-levels")
+		return nil, exit.Usagef("missing targeting to add: pass one of --all-users, --regions, or --sdk-levels")
 	}
-	pkg, err := recoverycmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

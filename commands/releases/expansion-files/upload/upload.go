@@ -12,8 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/expansionfilescmd"
 	"github.com/PollyGlot/google-play-cli/internal/artifact"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -27,6 +29,7 @@ type Input struct {
 	Type              string
 	OBBPath           string
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	DryRun            bool
 	SkipPreflight     bool
 }
@@ -66,16 +69,16 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, expansionfilescmd.Usagef("missing or invalid --version-code: the APK versionCode the expansion file attaches to is required")
+		return nil, exit.Usagef("missing or invalid --version-code: the APK versionCode the expansion file attaches to is required")
 	}
 	if in.OBBPath == "" {
-		return nil, expansionfilescmd.Usagef("missing .obb path: gplay releases expansion-files upload <file.obb> ...")
+		return nil, exit.Usagef("missing .obb path: gplay releases expansion-files upload <file.obb> ...")
 	}
 	ft, err := expansionfilescmd.NormalizeType(in.Type)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := expansionfilescmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +111,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	var raw json.RawMessage
-	err = edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
+	err = edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
 		r, e := expansionfiles.Upload(rc.Ctx, httpClient, pkg, editID, in.VersionCode, ft, in.OBBPath)
 		raw = r
 		return e
@@ -162,6 +165,7 @@ upload it as-is.`,
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "the APK versionCode the expansion file attaches to (required)")
 	cmd.Flags().StringVar(&in.Type, "type", "main", "expansion file type: main or patch")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and the local file without any HTTP call")
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (that the file is an expansion file, not an AAB or APK) and upload it as-is")
 	return cmd

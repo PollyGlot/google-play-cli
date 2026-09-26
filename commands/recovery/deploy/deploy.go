@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/recovery/recoverycmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
@@ -25,9 +26,9 @@ type Input struct {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ID == "" {
-		return nil, recoverycmd.Usagef("missing recovery id: gplay recovery deploy <appRecoveryId>")
+		return nil, exit.Usagef("missing recovery id: gplay recovery deploy <appRecoveryId>")
 	}
-	pkg, err := recoverycmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

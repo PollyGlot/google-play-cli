@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/generated/generatedcmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/generatedapks"
@@ -50,19 +51,23 @@ func (e *localIOError) ExitCode() int { return 20 }
 // --output"), so the kernel renders nothing.
 func Run(rc *kernel.RunContext, in Input) error {
 	if strings.TrimSpace(in.DownloadID) == "" {
-		return generatedcmd.Usagef("missing <downloadId>: the artifact to download, from `gplay releases generated list`")
+		return exit.Usagef("missing <downloadId>: the artifact to download, from `gplay releases generated list`")
 	}
 	if in.VersionCode <= 0 {
-		return generatedcmd.Usagef("missing or invalid --version-code: the bundle versionCode the artifact was generated from is required")
+		return exit.Usagef("missing or invalid --version-code: the bundle versionCode the artifact was generated from is required")
 	}
 	if strings.TrimSpace(in.Dest) == "" {
-		return generatedcmd.Usagef("missing --dest: pass a file path, or --dest - to stream to stdout")
+		return exit.Usagef("missing --dest: pass a file path, or --dest - to stream to stdout")
 	}
-	pkg, err := generatedcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return err
 	}
-	httpClient, err := rc.AuthedClient()
+	// UploadClient, not AuthedClient: a universal APK can weigh 100+ MB, and the
+	// 60s control-plane deadline also bounds reading the body, so a slow runner
+	// link used to fail mid-stream. The alt=media download is a media transfer,
+	// bounded only by an explicit --timeout (docs/DESIGN.md §8).
+	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return err
 	}

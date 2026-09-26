@@ -154,7 +154,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("missing <email>: usage: gplay team grants remove <email> --package <pkg> --confirm")
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("missing --package <pkg> (the app whose access to remove)")
+		return nil, exit.Usagef("missing --package: pass --package <pkg> (the app whose access to remove)")
 	}
 
 	gate := teamcmd.Gate{Destructive: true}

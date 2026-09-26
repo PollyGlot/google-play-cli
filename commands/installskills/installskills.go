@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/spf13/cobra"
 )
 
@@ -202,8 +203,8 @@ the target directory.`,
 			// even when the install then fails for an unrelated reason.
 			for _, f := range legacyFlags {
 				if cmd.Flags().Changed(f.name) {
-					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-						"warning: --%s is deprecated and ignored: install-skills no longer forwards to the skills package runner (ADR-0045)\n", f.name)
+					kernel.LoggerFor(cmd).Warnf(
+						"--%s is deprecated and ignored: install-skills no longer forwards to the skills package runner (ADR-0045)", f.name)
 				}
 			}
 			return run(cmd, opts, dir)
@@ -244,7 +245,7 @@ func run(cmd *cobra.Command, opts Options, dir string) error {
 	// first. Failures here are reported, not fatal: a leftover directory must
 	// not be able to block an install.
 	for _, e := range sweepOrphans(target) {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", e)
+		kernel.LoggerFor(cmd).Warnf("%v", e)
 	}
 
 	// The checkout is disposable and lives in the OS temp dir; only the staging
@@ -322,7 +323,7 @@ func run(cmd *cobra.Command, opts Options, dir string) error {
 	for _, name := range pin.Skills {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), filepath.Join(target, name))
 	}
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "installed %d skills from %s@%s into %s\n",
+	kernel.LoggerFor(cmd).Logf("installed %d skills from %s@%s into %s",
 		len(pin.Skills), pin.Repo, pin.Commit[:12], target)
 	return nil
 }
@@ -378,11 +379,11 @@ func lookGit(cmd *cobra.Command, opts Options, pin Pin) (string, error) {
 	}
 	// Leave the agent with what to do, not a dead end. Best-effort write: the
 	// exit code is the load-bearing signal.
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+	kernel.LoggerFor(cmd).Failf(
 		"git was not found on PATH, and install-skills needs it to fetch the pinned skills.\n"+
 			"Install git, then run:\n"+
 			"    gplay install-skills\n"+
-			"Or browse the skills: https://github.com/%s/tree/%s\n",
+			"Or browse the skills: https://github.com/%s/tree/%s",
 		pin.Repo, pin.Commit)
 	return "", errGitMissing
 }

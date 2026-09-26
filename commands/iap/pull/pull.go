@@ -93,7 +93,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 // Run is the business function the kernel invokes: list both live surfaces to
 // completion, union them (v2 wins), mirror into --dir.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg, err := iapcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

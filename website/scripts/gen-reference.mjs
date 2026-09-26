@@ -22,13 +22,26 @@ const OUT = resolve(__dirname, '../src/content/docs/docs/reference');
 const DATA_OUT = resolve(__dirname, '../src/data/cli-surface.json');
 const SKIP = new Set(['help', 'completion']);
 
+// Always rebuild the default binary: reusing whatever bin/gplay a previous
+// checkout left behind would publish a stale reference from `npm run dev`.
+// `go build` is incremental, so an up-to-date binary costs a cache hit. An
+// explicit path is the caller's binary and is used as given.
 function ensureBinary() {
-  if (existsSync(BIN)) return;
-  console.log(`gen-reference: ${BIN} not found, building it with go build...`);
-  execFileSync('go', ['build', '-o', BIN, './cmd/gplay'], {
-    cwd: REPO_ROOT,
-    stdio: 'inherit',
-  });
+  if (process.argv[2]) {
+    if (!existsSync(BIN)) throw new Error(`gen-reference: ${BIN} does not exist`);
+    return;
+  }
+  try {
+    execFileSync('go', ['build', '-o', BIN, './cmd/gplay'], {
+      cwd: REPO_ROOT,
+      stdio: 'inherit',
+    });
+  } catch (err) {
+    // No Go toolchain: fall back to an existing binary rather than block the
+    // docs, but say it may not match the checked-out sources.
+    if (err.code !== 'ENOENT' || !existsSync(BIN)) throw err;
+    console.warn(`gen-reference: go not found, using existing ${BIN} (may be stale)`);
+  }
 }
 
 function helpText(cmdPath) {
@@ -159,6 +172,10 @@ function renderPage(cmdPath, parsed) {
     '---',
     `title: "${full}"`,
     `description: "${metaDescription(full, parsed.long).replace(/"/g, '\\"')}"`,
+    // The page is generated into a gitignored directory, so Starlight's
+    // "Edit page" link would 404 on GitHub. The text to fix is the command's
+    // --help in the Go sources, which a per-page link cannot point at cheaply.
+    'editUrl: false',
     'sidebar:',
     `  label: "${label}"`,
     ...(isGroup || cmdPath.length === 0 ? ['  order: 0'] : []),

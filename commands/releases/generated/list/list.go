@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/generated/generatedcmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/generatedapks"
@@ -43,13 +44,13 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, generatedcmd.Usagef("missing or invalid --version-code: the bundle versionCode whose generated APKs to list is required")
+		return nil, exit.Usagef("missing or invalid --version-code: the bundle versionCode whose generated APKs to list is required")
 	}
 	cols, err := generatedcmd.ResolveColumns(in.Columns)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := generatedcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

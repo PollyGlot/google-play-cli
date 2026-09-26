@@ -91,6 +91,8 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 		p.Name = "(env override)"
 	} else if rc.KeystoreLabel == keystore.BackendFile {
 		p.Path = filepath.Join(rc.KeystoreRoot, activeName+".json")
+	} else if rc.KeystoreLabel == keystore.BackendKeyring {
+		keystore.WarnStrayFiles(rc.Ctx, rc.Stderr, rc.KeystoreRoot)
 	}
 	return p, nil
 }
@@ -110,6 +112,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		// command (doctor, apps, ...).
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{})

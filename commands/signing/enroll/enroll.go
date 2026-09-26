@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/signing/signingcmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appsigning"
@@ -36,19 +37,19 @@ type Input struct {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.KmsKey == "" {
-		return nil, signingcmd.Usagef("missing --kms-key: pass the Cloud KMS crypto key VERSION resource (projects/*/locations/*/keyRings/*/cryptoKeys/*/cryptoKeyVersions/*)")
+		return nil, exit.Usagef("missing --kms-key: pass the Cloud KMS crypto key VERSION resource (projects/*/locations/*/keyRings/*/cryptoKeys/*/cryptoKeyVersions/*)")
 	}
 	// The API's request is a oneof: enrollNewApp carries the key AND its
 	// certificate, enrollExistingApp carries the key alone. Enforcing the pair
 	// here turns a silent wrong-branch request into a named flag error.
 	if in.NewApp && in.KmsCert == "" {
-		return nil, signingcmd.Usagef("--new-app requires --kms-cert <file.pem>: enrolling a new app registers the certificate of the KMS key at the same time")
+		return nil, exit.Usagef("--new-app requires --kms-cert <file.pem>: enrolling a new app registers the certificate of the KMS key at the same time")
 	}
 	if !in.NewApp && in.KmsCert != "" {
-		return nil, signingcmd.Usagef("--kms-cert is only valid with --new-app: enrolling an app that already ships uses the KMS key alone")
+		return nil, exit.Usagef("--kms-cert is only valid with --new-app: enrolling an app that already ships uses the KMS key alone")
 	}
 
-	pkg, err := signingcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

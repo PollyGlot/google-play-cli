@@ -6,14 +6,15 @@
 package promote
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -33,14 +34,10 @@ type Input struct {
 	StagedFraction    float64
 	StagedFractionSet bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 }
-
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // Payload satisfies output.Renderable for the resulting promote Result.
 // Reuses the orchestrator's Result so JSON pass-through (ADR-0003) and
@@ -103,9 +100,7 @@ func renderJSON(w io.Writer, r *orchestrator.Result) error {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(r)
+	return output.WriteJSON(w, r)
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
@@ -141,7 +136,7 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 // client from the active Account, then hands off to the orchestrator.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ReleaseNotes != "" && in.ReleaseNotesDir != "" {
-		return nil, &usageError{msg: "--release-notes and --release-notes-dir are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
 	statusFlags := 0
 	if in.Draft {
@@ -154,24 +149,21 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		statusFlags++
 	}
 	if statusFlags > 1 {
-		return nil, &usageError{msg: "--draft, --complete, and --staged are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--draft, --complete, and --staged are mutually exclusive"}
 	}
 	if in.StagedFractionSet && (in.StagedFraction <= 0 || in.StagedFraction > 1.0) {
-		return nil, &usageError{msg: "--staged fraction must be in (0, 1]"}
+		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
 	}
 	if in.FromTrack == "" {
-		return nil, &usageError{msg: "missing --from"}
+		return nil, exit.Usagef("missing --from: pass --from <track> (the track holding the release to promote)")
 	}
 	if in.ToTrack == "" {
-		return nil, &usageError{msg: "missing --to"}
+		return nil, exit.Usagef("missing --to: pass --to <track> (the destination track)")
 	}
 
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a
@@ -220,6 +212,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -286,8 +279,8 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.FromTrack, "from", "", "source track to promote from")
-	cmd.Flags().StringVar(&in.ToTrack, "to", "", "destination track to promote to")
+	cmd.Flags().StringVar(&in.FromTrack, "from", "", "source track to promote from (required)")
+	cmd.Flags().StringVar(&in.ToTrack, "to", "", "destination track to promote to (required)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the source release with this versionCode (disambiguator)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the source release with this name (disambiguator)")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "override carry-over with this text (applied to the app's default language)")
@@ -296,6 +289,7 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required when promoting to production with --complete / --staged")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	return cmd

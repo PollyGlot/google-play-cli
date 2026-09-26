@@ -33,6 +33,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
@@ -67,9 +68,9 @@ func resolveState(word string) (string, error) {
 	case stateUnpublished:
 		return appstore.PublishStateUnpublished, nil
 	case "":
-		return "", appstorecmd.Usagef("missing publish state: gplay appstore publish-status <%s|%s>", statePublished, stateUnpublished)
+		return "", exit.Usagef("missing publish state: gplay appstore publish-status <%s|%s>", statePublished, stateUnpublished)
 	default:
-		return "", appstorecmd.Usagef("invalid publish state %q: accepted values are %s and %s", strings.TrimSpace(word), statePublished, stateUnpublished)
+		return "", exit.Usagef("invalid publish state %q: accepted values are %s and %s", strings.TrimSpace(word), statePublished, stateUnpublished)
 	}
 }
 
@@ -202,7 +203,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := appstorecmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

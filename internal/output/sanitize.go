@@ -33,18 +33,44 @@ var (
 // the higher runes those scripts use. Stripping control characters also keeps
 // an embedded TAB or newline from breaking table column alignment.
 func sanitizeCell(s string) string {
+	return sanitize(s, false)
+}
+
+// SanitizeCell is sanitizeCell for renderers that print a single-line API
+// value by hand (a FIELD<TAB>VALUE header row) instead of going through the
+// Column machinery.
+func SanitizeCell(s string) string {
+	return sanitizeCell(s)
+}
+
+// SanitizeText is the multi-line variant for untrusted free text printed as a
+// body (a review, a developer reply): it strips the same escape sequences and
+// control runes but keeps \n and \t, so the body keeps its line breaks. \r is
+// still dropped: a bare carriage return lets a line overwrite what precedes it
+// on a terminal.
+func SanitizeText(s string) string {
+	return sanitize(s, true)
+}
+
+func sanitize(s string, keepLayout bool) string {
 	if s == "" {
 		return s
 	}
 	s = ansiOSC.ReplaceAllString(s, "")
 	s = ansiCSI.ReplaceAllString(s, "")
+	drop := func(r rune) bool {
+		if keepLayout && (r == '\n' || r == '\t') {
+			return false
+		}
+		return unicode.IsControl(r)
+	}
 	// Drop any remaining control runes: stray ESC/BEL/NUL, a leftover C1 CSI
 	// introducer (U+009B), etc. Fast-path the common all-printable case.
-	if strings.IndexFunc(s, unicode.IsControl) < 0 {
+	if strings.IndexFunc(s, drop) < 0 {
 		return s
 	}
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if drop(r) {
 			return -1
 		}
 		return r

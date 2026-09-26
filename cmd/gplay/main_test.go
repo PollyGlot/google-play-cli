@@ -346,7 +346,7 @@ func TestFlagErrors_areCliMisuse(t *testing.T) {
 		// not pflag.Set): typed as a UsageError at its source, so it lands on
 		// the same exit-2 path without the FlagErrorFunc seeing it.
 		{"bad-output-value", []string{"apps", "list", "--output", "xyz"}, "unsupported --output"},
-		{"missing-required-flag", []string{"apps", "init"}, "--package is required"},
+		{"missing-required-flag", []string{"apps", "init"}, "missing --package: pass --package"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -390,16 +390,26 @@ func TestPositionalArgErrors_areCliMisuse(t *testing.T) {
 		wantMsg string // substring the one-line error must contain
 	}{
 		// --- missing positional argument ---
-		{"missing-arg-minimum", []string{"orders", "view"}, "requires at least 1 arg"},
-		{"missing-arg-exact", []string{"appstore", "catalog", "view"}, "accepts 1 arg(s), received 0"},
-		{"missing-arg-nested-group", []string{"games", "achievements", "view"}, "accepts 1 arg(s), received 0"},
+		{"missing-arg-minimum", []string{"orders", "view"}, "missing <orderId>; usage: gplay orders view <orderId>"},
+		{"missing-arg-exact", []string{"appstore", "catalog", "view"}, "missing <play-package>; usage: gplay appstore catalog view <play-package>"},
+		{"missing-arg-nested-group", []string{"games", "achievements", "view"}, "missing <achievementId>"},
 		// --- surplus positional argument ---
 		{"surplus-arg-exact", []string{"tracks", "create", "qa-alpha", "surplus"}, "accepts 1 arg(s), received 2"},
-		{"surplus-arg-none-accepted", []string{"apps", "list", "surplus"}, `unknown command "surplus"`},
-		{"surplus-arg-nested-group", []string{"games", "achievements", "list", "surplus"}, `unknown command "surplus"`},
+		{"surplus-arg-none-accepted", []string{"apps", "list", "surplus"}, `unexpected argument "surplus": gplay apps list takes no positional arguments`},
+		{"surplus-arg-nested-group", []string{"games", "achievements", "list", "surplus"}, `unexpected argument "surplus"`},
 		// cobra's own scaffolding, materialised in newRootCmd before the wrap
 		// so it obeys the same contract (#426).
-		{"surplus-arg-cobra-completion", []string{"completion", "bash", "surplus"}, `unknown command "surplus"`},
+		{"surplus-arg-cobra-completion", []string{"completion", "bash", "surplus"}, `unexpected argument "surplus"`},
+		// Leaves that used to declare no validator at all, so cobra accepted
+		// any stray token and exited 0 (#593, COH-12).
+		{"surplus-arg-version", []string{"version", "surplus"}, `unexpected argument "surplus": gplay version takes no positional arguments`},
+		{"surplus-arg-exit-codes", []string{"exit-codes", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-auth-list", []string{"auth", "list", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-auth-status", []string{"auth", "status", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-auth-doctor", []string{"auth", "doctor", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-auth-login", []string{"auth", "login", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-init-names-the-flag", []string{"init", "com.example.app"}, "pass --package com.example.app"},
+		{"surplus-arg-apps-init", []string{"apps", "init", "surplus", "--package", "com.example.app"}, `unexpected argument "surplus": gplay apps init takes no positional arguments`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

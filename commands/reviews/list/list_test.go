@@ -597,8 +597,8 @@ func TestRun_emptyResult_isNotAnError_butStillWarns(t *testing.T) {
 	if got := ids(r.(Payload)); len(got) != 0 {
 		t.Errorf("expected zero reviews, got %v", got)
 	}
-	if !strings.Contains(stderr.String(), "WARN:") {
-		t.Errorf("empty result must still print the 7-day WARN; stderr=%q", stderr.String())
+	if !strings.Contains(stderr.String(), "warning: ") {
+		t.Errorf("empty result must still print the 7-day warning; stderr=%q", stderr.String())
 	}
 }
 

@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
@@ -152,13 +153,13 @@ func (p Payload) renderJSON(w io.Writer) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	path := strings.TrimSpace(in.Path)
 	if path == "" {
-		return nil, appstorecmd.Usagef("missing image path: gplay appstore upload image --%s <store-pkg> <file>", appstorecmd.FlagStorePackage)
+		return nil, exit.Usagef("missing image path: gplay appstore upload image --%s <store-pkg> <file>", appstorecmd.FlagStorePackage)
 	}
 	storePackage, err := appstorecmd.ResolveStorePackage(in.StorePackage)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := appstorecmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

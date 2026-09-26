@@ -51,14 +51,8 @@ type Input struct {
 	NoVerify bool
 }
 
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
-// authError signals "no account resolved"; ExitCode()=10 per
-// docs/DESIGN.md §9 and the resolver precedence rules.
+// authError signals an Account missing from the global config; ExitCode()=10
+// per docs/DESIGN.md §9. The no-Account case is kernel.NoAccountError.
 type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
@@ -94,7 +88,7 @@ func (e *validationError) ExitCode() int { return 20 }
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkgs := dedup(in.Packages)
 	if len(pkgs) == 0 {
-		return nil, &usageError{msg: "apps add: at least one <package> argument is required"}
+		return nil, &exit.UsageError{Msg: "apps add: at least one <package> argument is required"}
 	}
 
 	account, g, err := resolveAccount(rc)
@@ -210,9 +204,9 @@ func resolveAccount(rc *kernel.RunContext) (string, *config.Global, error) {
 			return "", nil, err
 		}
 		if rc.Account != nil {
-			return "", nil, &usageError{msg: "apps add: cannot register under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
+			return "", nil, &exit.UsageError{Msg: "apps add: cannot register under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
-		return "", nil, &authError{msg: "no Account resolved; run `gplay auth login`, set GPLAY_ACCOUNT, or pass --account"}
+		return "", nil, kernel.NoAccountError()
 	}
 	account := rc.AccountName
 
@@ -260,22 +254,22 @@ type pkgResult struct {
 	err error
 }
 
-// successLine formats the "✓ registered ..." stderr line shared by the
-// single-package path (printAdded) and the batch reporter (reportBatch),
-// so the wording and the "(unverified)" qualifier cannot drift between
-// them.
+// successLine formats the body of the "✓ registered ..." stderr line (the
+// funnel adds the marker) shared by the single-package path (printAdded) and
+// the batch reporter (reportBatch), so the wording and the "(unverified)"
+// qualifier cannot drift between them.
 func successLine(pkg, account string, noVerify bool) string {
 	verb := "registered"
 	if noVerify {
 		verb = "registered (unverified)"
 	}
-	return fmt.Sprintf("✓ %s %q under Account %q\n", verb, pkg, account)
+	return fmt.Sprintf("%s %q under Account %q", verb, pkg, account)
 }
 
 // printAdded writes the single-package success line: byte-for-byte the
 // pre-variadic stderr output.
 func printAdded(rc *kernel.RunContext, pkg, account string, noVerify bool) {
-	_, _ = fmt.Fprint(rc.Stderr, successLine(pkg, account, noVerify))
+	rc.Confirmf("%s", successLine(pkg, account, noVerify))
 }
 
 // reportBatch prints one line per package to stderr for a multi-package
@@ -285,20 +279,17 @@ func printAdded(rc *kernel.RunContext, pkg, account string, noVerify bool) {
 // side effect on the local registry, not an API body), so this is what an
 // operator or agent reads to see which packages landed.
 func reportBatch(rc *kernel.RunContext, results []pkgResult, account string, noVerify bool) {
-	if rc.Stderr == nil {
-		return
-	}
 	ok, failed := 0, 0
 	for _, r := range results {
 		if r.err == nil {
 			ok++
-			_, _ = fmt.Fprint(rc.Stderr, successLine(r.pkg, account, noVerify))
+			rc.Confirmf("%s", successLine(r.pkg, account, noVerify))
 			continue
 		}
 		failed++
-		_, _ = fmt.Fprintf(rc.Stderr, "✗ %s: %s (exit %d)\n", r.pkg, r.err.Error(), exit.For(r.err))
+		rc.Failf("✗ %s: %s (exit %d)", r.pkg, r.err.Error(), exit.For(r.err))
 	}
-	_, _ = fmt.Fprintf(rc.Stderr, "apps add: %d registered, %d failed\n", ok, failed)
+	rc.Logf("apps add: %d registered, %d failed", ok, failed)
 }
 
 // validatePackage applies the cheapest client-side checks before any
@@ -307,7 +298,7 @@ func reportBatch(rc *kernel.RunContext, results []pkgResult, account string, noV
 // package.
 func validatePackage(pkg string) error {
 	if pkg == "" {
-		return &usageError{msg: "apps add: <package> argument is required"}
+		return &exit.UsageError{Msg: "apps add: <package> argument is required"}
 	}
 	if !strings.Contains(pkg, ".") {
 		return &validationError{msg: fmt.Sprintf("apps add: %q is not a valid Android package name (must contain a dot, e.g. com.example.myapp)", pkg)}

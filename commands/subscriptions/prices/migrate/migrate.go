@@ -166,7 +166,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.SafetyFlag("confirm", "migrating existing subscribers of %s/%s changes what live purchasers pay and cannot be undone; pass --confirm to proceed (rehearse first with --dry-run)", product, basePlan)
 	}
 
-	pkg, err := subscriptionscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

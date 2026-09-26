@@ -72,20 +72,35 @@ the failure without scraping stderr:
 ```json
 {
   "error": {
+    "code": "EDIT_ALREADY_EXISTS",
     "exitCode": 60,
-    "message": "edits.commit on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
-    "reasons": ["editAlreadyExists"],
-    "requires": ["confirm"]
+    "retryable": false,
+    "operation": "edits.insert",
+    "package": "com.example.app",
+    "message": "edits.insert on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
+    "reasons": ["editAlreadyExists"]
   }
 }
 ```
 
-- `exitCode` and `message` are always present; `exitCode` mirrors the process
-  [exit code](/docs/concepts/exit-codes/).
+- `code`, `exitCode`, `retryable` and `message` are always present.
+- `code` is the stable diagnostic code, the field to branch on: it tells apart
+  failures that share an exit code (see
+  [Diagnostic codes](/docs/concepts/exit-codes/#diagnostic-codes)).
+- `exitCode` mirrors the process [exit code](/docs/concepts/exit-codes/).
+- `retryable` says whether replaying the same command unchanged can plausibly
+  succeed; it is written even when `false`.
+- `operation` and `package` name the API call that failed; they are omitted on
+  a local failure, which itself signals that no call was made.
 - `reasons` carries the upstream `error.errors[].reason` values when an API
   envelope was parsed; omitted otherwise.
 - `requires` names the missing safety flag on an exit-3 refusal; omitted
   otherwise.
+
+The envelope covers CLI misuse too (an unknown or repeated flag, a missing or
+stray argument, an unknown subcommand), with `"code": "USAGE_ERROR"` and exit
+`2`. The one failure without it is an invalid `--output` value itself: no
+format is known there.
 
 Under `table` / `markdown` a failure leaves stdout empty: the error goes to
 stderr only. The envelope shape is part of gplay's public contract.

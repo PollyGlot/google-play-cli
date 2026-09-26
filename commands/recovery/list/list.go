@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/recovery/recoverycmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
@@ -42,13 +43,13 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, recoverycmd.Usagef("missing or invalid --version-code: recovery actions are listed per versionCode")
+		return nil, exit.Usagef("missing or invalid --version-code: recovery actions are listed per versionCode")
 	}
 	cols, err := recoverycmd.ResolveColumns(in.Columns)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := recoverycmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

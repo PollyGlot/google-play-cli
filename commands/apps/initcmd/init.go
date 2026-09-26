@@ -8,13 +8,13 @@
 package initcmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
 // Options injects file-system roots so tests can run hermetically against a
@@ -39,12 +39,33 @@ via walk-up. Also creates .gplay/.gitignore so per-developer overrides
 Run from the repo root.`,
 		Example: `  # Pin the package once; every gplay command below this directory uses it
   gplay init --package com.example.app`,
+		Args: noPositionalPackage,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return run(cmd, opts, pkg)
 		},
 	}
-	cmd.Flags().StringVar(&pkg, "package", "", "Android package name (e.g. com.example.myapp). Required.")
+	cmd.Flags().StringVar(&pkg, "package", "", "Android package name, e.g. com.example.myapp (required)")
 	return cmd
+}
+
+// noPositionalPackage rejects any positional argument (#593): cobra's default
+// accepted them silently, so `gplay init STRAY --package com.example.alpha`
+// pinned the flag's value and exited 0. `gplay init com.example.app` is the
+// natural guess by analogy with `apps add <package>`, so the rejection points
+// at the flag instead of only saying the argument is unexpected.
+func noPositionalPackage(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	// Flags are parsed before cobra validates positionals, so Changed is
+	// reliable here: with --package already given, the stray token is not a
+	// misplaced package and the flag hint would only confuse.
+	if cmd.Flags().Changed("package") {
+		return exit.Usagef("unexpected argument %q: %s takes no positional arguments; usage: %s",
+			args[0], cmd.CommandPath(), cmd.UseLine())
+	}
+	return exit.Usagef("unexpected argument %q: %s takes the package as a flag, pass --package %s; usage: %s",
+		args[0], cmd.CommandPath(), args[0], cmd.UseLine())
 }
 
 func run(cmd *cobra.Command, opts Options, pkg string) error {
@@ -55,7 +76,7 @@ func run(cmd *cobra.Command, opts Options, pkg string) error {
 	// as exit 2. Returning exit.Usagef keeps us on that documented code and
 	// matches how every other command reports a missing required value.
 	if pkg == "" {
-		return exit.Usagef("--package is required (e.g. --package com.example.myapp)")
+		return exit.Usagef("missing --package: pass --package <name> (e.g. --package com.example.myapp)")
 	}
 	repoRoot, home, err := resolveRoots(opts)
 	if err != nil {
@@ -64,9 +85,9 @@ func run(cmd *cobra.Command, opts Options, pkg string) error {
 	if err := config.Init(cmd.Context(), config.OSFS{}, repoRoot, home, pkg); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Pinned package %q for this repo (.gplay/config.json)\n", pkg)
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-		"  hint: run `gplay apps add %s` to register this package under the active Account.\n", pkg)
+	log := kernel.LoggerFor(cmd)
+	log.Confirmf("Pinned package %q for this repo (.gplay/config.json)", pkg)
+	log.Logf("  hint: run `gplay apps add %s` to register this package under the active Account.", pkg)
 	return nil
 }
 

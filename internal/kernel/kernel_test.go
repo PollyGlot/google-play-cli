@@ -59,6 +59,35 @@ func TestGroupRunE_unknownSubcommandIsMisuse(t *testing.T) {
 	}
 }
 
+// TestGroup_carriesGroupingDefaults pins what kernel.Group owes every grouping
+// noun: the GroupRunE rejection path (a group without it prints help and exits
+// 0 on a typo), the silence pair that keeps the failure to main's one line, and
+// the children in registration order.
+func TestGroup_carriesGroupingDefaults(t *testing.T) {
+	a := &cobra.Command{Use: "a", Run: func(*cobra.Command, []string) {}}
+	b := &cobra.Command{Use: "b", Run: func(*cobra.Command, []string) {}}
+	g := kernel.Group("grp", "a grouping noun", a, b)
+
+	if g.Use != "grp" || g.Short != "a grouping noun" {
+		t.Errorf("Use/Short = %q/%q, want grp/a grouping noun", g.Use, g.Short)
+	}
+	if !g.SilenceUsage || !g.SilenceErrors {
+		t.Errorf("SilenceUsage/SilenceErrors = %v/%v, want true/true", g.SilenceUsage, g.SilenceErrors)
+	}
+	if g.RunE == nil {
+		t.Fatal("RunE is nil: a bare group would print help on an unknown subcommand")
+	}
+	if err := g.RunE(g, []string{"nonesuch"}); exit.For(err) != 2 {
+		t.Errorf("RunE(unknown) exit = %d, want 2 (GroupRunE); err=%v", exit.For(err), err)
+	}
+	if got := g.Commands(); len(got) != 2 || got[0] != a || got[1] != b {
+		t.Errorf("children = %v, want [a b]", got)
+	}
+	if a.Parent() != g {
+		t.Error("child not parented to the group")
+	}
+}
+
 const fakeSAJSON = `{
   "type": "service_account",
   "project_id": "p",
@@ -1019,9 +1048,29 @@ func TestAuthedClient_absent_keepsLoginHint(t *testing.T) {
 		if !strings.Contains(err.Error(), "auth login") {
 			t.Errorf("absent AuthedClient should keep the login hint; got %q", err.Error())
 		}
+		// One wording across the CLI (#593): the same text apps add/list/remove,
+		// auth doctor and the team commands return.
+		if err.Error() != kernel.NoAccountError().Error() {
+			t.Errorf("absent AuthedClient = %q, want the shared NoAccountError wording", err.Error())
+		}
 		return nil, nil
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+}
+
+// TestNoAccountError_namesEveryFix pins the content of the one no-Account
+// wording: each precedence layer that can resolve an Account (DESIGN §1) is
+// named, so whichever command hits it, the fix is on the same line.
+func TestNoAccountError_namesEveryFix(t *testing.T) {
+	err := kernel.NoAccountError()
+	if code := exit.For(err); code != 10 {
+		t.Errorf("exit.For = %d, want 10", code)
+	}
+	for _, want := range []string{"no Account resolved", "gplay auth login", "--account", "GPLAY_ACCOUNT", "--service-account", "GPLAY_SERVICE_ACCOUNT"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("NoAccountError() = %q, want it to name %q", err, want)
+		}
 	}
 }
 

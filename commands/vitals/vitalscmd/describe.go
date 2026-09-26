@@ -48,12 +48,10 @@ func (p DescribePayload) Renderers() output.Renderers {
 // DescribePayload. It is the `--describe` body shared by `vitals query`, the
 // presets and `vitals errors counts`, the way Execute is shared for `:query`.
 // No freshness note goes to stderr here: the freshness IS the output.
-func Describe(rc *kernel.RunContext, set vitals.MetricSet, pkg string) (output.Renderable, error) {
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+func Describe(rc *kernel.RunContext, set vitals.MetricSet, flag string) (output.Renderable, error) {
+	pkg, err := rc.Package(flag)
+	if err != nil {
+		return nil, err
 	}
 	httpClient, err := rc.AuthedClient()
 	if err != nil {
