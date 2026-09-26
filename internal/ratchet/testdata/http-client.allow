@@ -1,0 +1,7 @@
+# Ratchet allowlist for rule http-client (see internal/ratchet/doc.go).
+# Today's offenders, one `path symbol` per line. The list only shrinks:
+# a new offender fails the gate, and so does a line whose offender is gone.
+# Replacement: the RunContext client (rc.AuthedClient / rc.UploadClient), transports in internal/transport.
+
+commands/auth/doctor/doctor.go doctorBaseHTTP
+internal/kernel/kernel.go RunContext.authedClient
