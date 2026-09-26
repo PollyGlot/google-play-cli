@@ -242,7 +242,7 @@ Pin a verification step into the job that installs `gplay`:
       - name: Install and verify gplay
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: v1.6.1 # x-release-please-version
+          VERSION: v1.7.0 # x-release-please-version
         run: |
           set -euo pipefail
           base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"
