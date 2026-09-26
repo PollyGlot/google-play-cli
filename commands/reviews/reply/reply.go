@@ -39,13 +39,6 @@ type Input struct {
 	DryRun   bool
 }
 
-// usageError is a CLI-misuse error (no mode, both modes, missing reply);
-// ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // Run validates the flag combination, resolves the package, and dispatches
 // to single- or batch-reply. It writes all user-facing output itself and
 // returns only an error (nil on full success).
@@ -53,23 +46,20 @@ func Run(rc *kernel.RunContext, in Input) error {
 	// Mode selection is pure CLI misuse: validate before any resolution or
 	// network so a bad invocation fails fast with exit 2.
 	if in.BatchSet && (in.ReviewID != "" || in.Reply != "") {
-		return &usageError{msg: "--batch is mutually exclusive with --review-id / --reply"}
+		return &exit.UsageError{Msg: "--batch is mutually exclusive with --review-id / --reply"}
 	}
 	if !in.BatchSet {
 		if in.ReviewID == "" {
-			return &usageError{msg: "nothing to reply to: pass --review-id <id> --reply <text>, or --batch <file>"}
+			return &exit.UsageError{Msg: "nothing to reply to: pass --review-id <id> --reply <text>, or --batch <file>"}
 		}
 		if in.Reply == "" {
-			return &usageError{msg: "--review-id requires --reply <text>"}
+			return &exit.UsageError{Msg: "--review-id requires --reply <text>"}
 		}
 	}
 
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return err
 	}
 
 	// --dry-run never touches the network, so a missing Account is fine.
@@ -93,14 +83,14 @@ func Run(rc *kernel.RunContext, in Input) error {
 // stderr.
 func runSingle(rc *kernel.RunContext, pkg, reviewID, text string, dryRun bool, hc *http.Client) error {
 	if dryRun {
-		_, _ = fmt.Fprintf(rc.Stderr, "DRY-RUN would reply on %s\n", reviewID)
+		rc.Logf("DRY-RUN would reply on %s", reviewID)
 		return nil
 	}
 	raw, err := reviews.Reply(rc.Ctx, hc, pkg, reviewID, text)
 	if err != nil {
 		return reviewerr.ClassifyReply(pkg, reviewID, err)
 	}
-	_, _ = fmt.Fprintf(rc.Stderr, "Reply posted on %s\n", reviewID)
+	rc.Logf("Reply posted on %s", reviewID)
 	if rc.Format == output.FormatJSON {
 		return writeRaw(rc.Stdout, raw)
 	}
@@ -143,7 +133,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 
 	lines := batch.Parse(src)
 	if len(lines) == 0 {
-		return &usageError{msg: "batch is empty: no <review-id>\\t<reply> rows found"}
+		return &exit.UsageError{Msg: "batch is empty: no <review-id>\\t<reply> rows found"}
 	}
 
 	worst := 0
@@ -152,7 +142,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 
 	for _, ln := range lines {
 		if ln.Err != nil {
-			_, _ = fmt.Fprintf(rc.Stderr, "ERR line %d: %v\n", ln.Num, ln.Err)
+			rc.Failf("ERR line %d: %v", ln.Num, ln.Err)
 			results = append(results, rowResult{Status: "error", Error: ln.Err.Error()})
 			worst = max(worst, 2) // malformed input is CLI misuse (exit 2)
 			failed++
@@ -160,19 +150,19 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 		}
 		id := ln.Record.ReviewID
 		if in.DryRun {
-			_, _ = fmt.Fprintf(rc.Stderr, "DRY-RUN would reply on %s\n", id)
+			rc.Logf("DRY-RUN would reply on %s", id)
 			results = append(results, rowResult{ReviewID: id, Status: "planned"})
 			continue
 		}
 		if _, err := reviews.Reply(rc.Ctx, hc, pkg, id, ln.Record.Reply); err != nil {
 			cerr := reviewerr.ClassifyReply(pkg, id, err)
-			_, _ = fmt.Fprintf(rc.Stderr, "ERR %s %s\n", id, cerr.Error())
+			rc.Failf("ERR %s %s", id, cerr.Error())
 			results = append(results, rowResult{ReviewID: id, Status: "error", Error: cerr.Error()})
 			worst = max(worst, exit.For(cerr))
 			failed++
 			continue
 		}
-		_, _ = fmt.Fprintf(rc.Stderr, "OK %s\n", id)
+		rc.Logf("OK %s", id)
 		results = append(results, rowResult{ReviewID: id, Status: "ok"})
 	}
 
@@ -197,13 +187,13 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 func batchSource(rc *kernel.RunContext, path string) (io.Reader, func(), error) {
 	if path == "-" {
 		if rc.Stdin == nil {
-			return nil, func() {}, &usageError{msg: "--batch - reads the TSV from stdin, but stdin is not available"}
+			return nil, func() {}, &exit.UsageError{Msg: "--batch - reads the TSV from stdin, but stdin is not available"}
 		}
 		return rc.Stdin, func() {}, nil
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, func() {}, &usageError{msg: "cannot read --batch file: " + err.Error()}
+		return nil, func() {}, &exit.UsageError{Msg: "cannot read --batch file: " + err.Error()}
 	}
 	return f, func() { _ = f.Close() }, nil
 }
@@ -233,11 +223,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reply",
 		Short: "Post a developer reply to a review (single or --batch)",
-		Long: `Post developer responses to user reviews.
-
-Single:  gplay reviews reply --package P --review-id ID --reply "Thanks!"
-Batch:   gplay reviews reply --package P --batch replies.tsv
-         gplay reviews reply --package P --batch -   (read TSV from stdin)
+		Long: `Post developer responses to user reviews, one at a time (--review-id
+with --reply) or in a batch (--batch with a TSV file, or - for stdin).
 
 The batch stream is TSV: one <review-id>\t<reply text> line per reply. Blank
 lines and lines starting with # are skipped; a reply containing tabs or
@@ -248,6 +235,14 @@ rest. The process exits non-zero with the highest exit code seen across rows.
 --review-id/--reply and --batch are mutually exclusive. --dry-run parses the
 input and prints the planned actions without calling the API. --output json
 echoes the API response (single) or a {"results":[...]} envelope (batch).`,
+		Example: `  # Reply to one review
+  gplay reviews reply --review-id gp:AOqpTOGx1bY2kLm --reply "Thanks! Fixed in 2.4."
+
+  # Rehearse a batch: one <review-id><TAB><reply> line per reply
+  gplay reviews reply --batch replies.tsv --dry-run
+
+  # Post the batch from stdin
+  gplay reviews reply --batch - < replies.tsv`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

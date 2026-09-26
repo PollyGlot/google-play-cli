@@ -22,7 +22,6 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
-	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
@@ -31,7 +30,11 @@ import (
 
 // mappingsNote documents the obfuscation degradation (#250) on the views that
 // carry stack frames.
-const mappingsNote = "NOTE: stack frames are obfuscated until you upload ProGuard/R8 mappings (gplay releases mappings upload, #250); until then frames are not symbolicated."
+// The help text quotes the line as stderr shows it, hence the two constants.
+const (
+	mappingsNoteBody = "stack frames are obfuscated until you upload ProGuard/R8 mappings (gplay releases mappings upload); until then frames are not symbolicated."
+	mappingsNote     = "NOTE: " + mappingsNoteBody
+)
 
 // NewCommand returns the `gplay vitals errors` group. Every leaf is wrapped with
 // kernel.WithScope so it mints a least-privilege playdeveloperreporting token,
@@ -64,27 +67,14 @@ func window(since string) (time.Time, time.Time, error) {
 	return end.Add(-d), end, nil
 }
 
-func resolvePackage(rc *kernel.RunContext, pkg string) (string, error) {
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return "", exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
-	}
-	return pkg, nil
-}
-
 // emptyWarn is the stderr line for an empty result; for a non-empty one the
 // mappings note is emitted instead.
 func warnResult(rc *kernel.RunContext, kind string, n int) {
-	if rc.Stderr == nil {
-		return
-	}
 	if n == 0 {
-		_, _ = io.WriteString(rc.Stderr, "WARN: no error "+kind+" in the requested window; vitals are reported with a delay, so an empty window is not the same as zero.\n")
+		rc.Warnf("no error %s in the requested window; vitals are reported with a delay, so an empty window is not the same as zero.", kind)
 		return
 	}
-	_, _ = io.WriteString(rc.Stderr, mappingsNote+"\n")
+	rc.Notef("%s", mappingsNoteBody)
 }
 
 // --- counts ----------------------------------------------------------------
@@ -132,14 +122,13 @@ func newCountsCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Query the errorCount metric set (errorReportCount / distinctUsers) as a
 timeline, the count side of vitals errors.
 
-  gplay vitals errors counts --package com.example.app
-  gplay vitals errors counts --by versionCode --version 123 --since 7d
-  gplay vitals errors counts --describe
-
 --by slices the timeline (` + vitalscmd.ByChoices() + `); --version filters to
 one versionCode. Read-only; --output json mirrors the API response verbatim.
 --describe fetches the metric set's descriptor instead (latest available end
 time per aggregation period); the window flags do not apply and are rejected.`,
+		Example: `  gplay vitals errors counts --package com.example.app
+  gplay vitals errors counts --by versionCode --since 7d
+  gplay vitals errors counts --describe`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -192,7 +181,7 @@ func (p issuesPayload) Renderers() output.Renderers {
 }
 
 func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error) {
-	pkg, err := resolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -232,12 +221,14 @@ func newIssuesCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Search the clustered error issues: crashes and ANRs grouped by cause and
 location: over a window.
 
-  gplay vitals errors issues --package com.example.app
-  gplay vitals errors issues --filter "errorIssueType = CRASH" --since 7d --limit 20
-
 ` + mappingsNote + `
 
 Read-only; --output json mirrors the API response verbatim.`,
+		Example: `  gplay vitals errors issues --package com.example.app
+
+  # The 20 most frequent crash clusters of the last week
+  gplay vitals errors issues --filter "errorIssueType = CRASH" --order-by "errorReportCount desc" \
+    --since 7d --limit 20`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -287,7 +278,7 @@ func (p reportsPayload) Renderers() output.Renderers {
 }
 
 func runReports(rc *kernel.RunContext, in reportsInput) (output.Renderable, error) {
-	pkg, err := resolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -327,13 +318,14 @@ func newReportsCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Search individual error reports (the platform-produced stack traces) over a
 window.
 
-  gplay vitals errors reports --package com.example.app
-  gplay vitals errors reports --filter "versionCode = 123" --since 7d --limit 10
-
 ` + mappingsNote + `
 
 The full report text is in --output json; the table shows the first line.
 Read-only; --output json mirrors the API response verbatim.`,
+		Example: `  gplay vitals errors reports --package com.example.app
+
+  # Full stack traces of one versionCode, as JSON
+  gplay vitals errors reports --filter "versionCode = 1042" --since 7d --limit 10 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

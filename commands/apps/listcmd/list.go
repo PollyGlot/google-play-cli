@@ -17,6 +17,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/apps/registry"
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
@@ -42,20 +43,13 @@ type AppRow struct {
 	Pinned  bool   `json:"pinned"`
 }
 
-// authError signals "no Account active in the cascade"; ExitCode()=10
-// per docs/DESIGN.md §9 (no credential resolved). Mirrors the shape of
-// addcmd.authError so exit.For dispatches both the same way.
+// authError signals an Account that resolved by name but is unusable here
+// (not in the global config); ExitCode()=10 per docs/DESIGN.md §9. The
+// no-Account case is kernel.NoAccountError, the wording every command shares.
 type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
 func (e *authError) ExitCode() int { return 10 }
-
-// usageError signals CLI misuse (an inline credential cannot scope the
-// registry); ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // Run resolves the Account to list (per the precedence rules below),
 // reads its packages from the registry, marks the row matching
@@ -78,8 +72,8 @@ func (e *usageError) ExitCode() int { return 2 }
 //  3. rc.Account != nil with rc.AccountName == "": the inline-credential
 //     case (--service-account / GPLAY_SERVICE_ACCOUNT). Inline creds have
 //     no local Account name so the registry cannot be scoped to them; we
-//     return a usageError (exit 2) telling the user this limitation.
-//  4. Neither name nor credential resolved: authError (exit 10).
+//     return a usage error (exit 2) telling the user this limitation.
+//  4. Neither name nor credential resolved: kernel.NoAccountError (exit 10).
 //
 // Once Account is chosen, we also assert it exists in
 // rc.Resolved.Accounts: a stale local override or a logged-out Account
@@ -112,7 +106,7 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 			// has no local name so the per-Account registry cannot be
 			// scoped to it. Mirror addcmd.go:85-87's clearer message
 			// rather than misdirecting the user to `auth login`.
-			return nil, &usageError{msg: "apps list: cannot list under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
+			return nil, &exit.UsageError{Msg: "apps list: cannot list under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
 		// Fall back to the cascade name when no resolver layer chose one.
 		// Listing is read-only so a credentialless cascade Account is
@@ -120,7 +114,7 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 		account = rc.Resolved.ConfigAccount
 	}
 	if account == "" {
-		return nil, &authError{msg: "apps list: no active Account; run `gplay auth login` to register one, or pass --account"}
+		return nil, kernel.NoAccountError()
 	}
 	if !accountInResolved(rc.Resolved.Accounts, account) {
 		return nil, &authError{msg: fmt.Sprintf(
@@ -218,9 +212,11 @@ func renderMarkdown(w io.Writer, rows []AppRow) error {
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var outputFlag string
 	cmd := &cobra.Command{
-		Use:           "list",
-		Short:         "List packages registered under the active Account",
-		Long:          `List every Android package registered under the active Account in gplay's local registry. In table and markdown output the row matching the current repo's .gplay/config.json pin (if any) is marked with a ✓ in the Pinned column; in JSON output the same row carries "pinned": true. Pass no positional arguments: listing scope is always the active Account.`,
+		Use:   "list",
+		Short: "List packages registered under the active Account",
+		Long:  `List every Android package registered under the active Account in gplay's local registry. In table and markdown output the row matching the current repo's .gplay/config.json pin (if any) is marked with a ✓ in the Pinned column; in JSON output the same row carries "pinned": true. Pass no positional arguments: listing scope is always the active Account.`,
+		Example: `  gplay apps list
+  gplay apps list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

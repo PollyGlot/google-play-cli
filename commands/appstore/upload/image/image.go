@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
@@ -152,13 +153,13 @@ func (p Payload) renderJSON(w io.Writer) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	path := strings.TrimSpace(in.Path)
 	if path == "" {
-		return nil, appstorecmd.Usagef("missing image path: gplay appstore upload image --%s <store-pkg> <file>", appstorecmd.FlagStorePackage)
+		return nil, exit.Usagef("missing image path: gplay appstore upload image --%s <store-pkg> <file>", appstorecmd.FlagStorePackage)
 	}
 	storePackage, err := appstorecmd.ResolveStorePackage(in.StorePackage)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := appstorecmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +211,7 @@ Two identifiers address the call, and mixing them up is the common mistake:
 
   --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
-                   falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
+                   falling back to $` + appstorecmd.EnvStorePackage + `
   --package        the hosted app's package name (the subject), defaulting to
                    the repo's .gplay/config.json pin when omitted
 
@@ -223,14 +224,16 @@ The hosted app record must already exist: run ` + "`gplay appstore create`" + ` 
 The call is Edit-free: it opens no Edit and joins none.
 
 No --confirm is required: an upload is inert (it produces an id and changes
-nothing a user can see), so it fails the ADR-0043 gate criterion of being
+nothing a user can see): gplay gates only writes that are both
 irreversible AND externally visible. GPLAY_READONLY still refuses it (exit 4)
 but lets --dry-run run.
 
---output json passes the API response through verbatim (ADR-0003). --dry-run
+--output json passes the API response through verbatim. --dry-run
 previews the resolved target with no HTTP call and without opening the file. An
 unreadable path is a client-side failure (exit 20); a 403 names the app store
 enrollment the call requires.`,
+		Example: `  gplay appstore upload image icon-512.png --store-package com.example.store --package com.example.game
+  gplay appstore upload image screenshot-1.png --store-package com.example.store --package com.example.game --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

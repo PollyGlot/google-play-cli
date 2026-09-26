@@ -139,8 +139,12 @@ In order, first match wins:
 4. `GPLAY_ACCOUNT` env var (name of a stored Account)
 5. The Account marked **active** in `~/.gplay/config.json` (or `$XDG_CONFIG_HOME/gplay/config.json`)
 
-If nothing resolves: exit code `10` with a message pointing at `gplay auth login`
-and the env var docs.
+If nothing resolves: exit code `10` with one message, the same on every command
+(`kernel.NoAccountError`), that names each way to fix it: `gplay auth login`,
+`--account` or `GPLAY_ACCOUNT`, `--service-account` or `GPLAY_SERVICE_ACCOUNT`.
+A command that also needs a developer-id (`team`, `customapps create`, `reviews
+history`) reports a missing Account before a missing developer-id: a
+developer-id set first would only lead to the no-Account error one step later.
 
 **Path or inline JSON.** A `--service-account` or `GPLAY_SERVICE_ACCOUNT` value
 is inline JSON when its first non-whitespace character is `{`, and a file path
@@ -219,6 +223,14 @@ the same reason.
   loader rejects it with an error naming the offending file path.
 - `account` may appear in `config.local.json`, as `GPLAY_ACCOUNT`, or as
   `--account`.
+- **An Account name is one plain path component** (#603): no `/`, no `..`.
+  The loader refuses a path-like `account` in `config.local.json` (exit 2,
+  naming the file), and the file keystore refuses one from any source, since
+  the name becomes `<keystore>/<name>.json`.
+- **A git-tracked `config.local.json` draws a warning** on stderr at every
+  command (#603): it picks the Account for everyone who clones the repo.
+  gplay asks `git ls-files` and stays silent when git is absent or the file
+  is untracked.
 
 ### `.gplay/` contents
 
@@ -311,6 +323,12 @@ Each transition is its own verb:
 failure after `begin`, the Edit is **auto-discarded** before the error
 propagates. Pass `--keep-edit-on-failure` to bypass cleanup when debugging.
 
+`SIGINT` and `SIGTERM` count as a failure: the in-flight request is canceled,
+the Edit is discarded under a 5-second bound (inside the CI kill margin: GitHub
+Actions sends `SIGTERM` 7.5s after `SIGINT`), and gplay exits `50`. A second
+signal is not caught and kills gplay at once. Only a hard kill (`SIGKILL`, OOM,
+runner eviction) can still leave an Edit open.
+
 ### Explicit edits
 
 `gplay edits begin / commit / discard`. The Edit ID is persisted to
@@ -333,12 +351,98 @@ Two read-only checks complete the lifecycle (#544):
   cleared implicitly. Without `--live`, `status` stays a local read with no
   auth and no network; `--live` without a pin also stays offline.
 
+A write command that fails against a pinned Edit which no longer exists (an
+`editExpired` reason, or a `404` that the same `edits.get` probe confirms is
+the Edit itself rather than a resource inside it) names the pin file and
+`gplay edits discard --package <pkg>` in its error. The exit code and the
+diagnostic code stay those of the API failure; the pin is never cleared
+implicitly.
+
+### Committing while changes are in review (#598)
+
+Every command that commits an Edit (`gplay edits commit`, and each write
+command in implicit mode) takes two opt-ins, forwarded as `edits.commit` query
+parameters. They are frozen like the commands carrying them (no
+`[experimental]` label): each mirrors one Google parameter 1:1, so there is no
+shape left to settle.
+
+| Flag | Sent as | Effect |
+|---|---|---|
+| `--changes-in-review cancel` | `changesInReviewBehavior=CANCEL_IN_REVIEW_AND_SUBMIT` | Google's default, stated explicitly |
+| `--changes-in-review error` | `changesInReviewBehavior=ERROR_IF_IN_REVIEW` | The commit fails while changes are in review; the review is left alone and Google does not invalidate the Edit |
+| `--changes-not-sent-for-review` | `changesNotSentForReview=true` | Commit without sending the changes for review; they wait until someone sends them from the Play Console |
+
+**The default is Google's and stays so.** With neither flag gplay sends no
+parameter, and Google cancels any review in progress and submits everything
+again, which restarts the review. Changing that default would change what every
+existing pipeline publishes, so it is not on the table in `1.x`. A refusal in
+`error` mode is Google's error envelope, passed through with the exit code its
+status maps to (§9). A bad value is CLI misuse (exit `2`), rejected while flags
+are parsed.
+
+With an explicit Edit pinned, a write command stages into it and does not
+commit, so the flags cannot apply there: the command warns on stderr and names
+`gplay edits commit`, which is where they belong.
+
+### A commit whose outcome is unknown
+
+A commit that fails after the request left the machine (a timeout, a reset, a
+`5xx`) may have been applied. It keeps the exit code its failure maps to (`50`
+or `40`), but its diagnostic code is `COMMIT_OUTCOME_UNKNOWN`, **not
+retryable** (§9.1): re-running an upload that did publish fails on the
+already-used version code and reports a successful release as an error. The
+message says how to check instead: the live state (`gplay releases list`, or
+the Play Console) for an implicit Edit, `gplay edits status --live` for
+`gplay edits commit` (the pin stays; an Edit that is gone was most likely
+committed). A failure that proves the commit never left (a DNS or dial error, a
+refused token exchange) keeps its ordinary code. `--retry` never replays
+`edits.commit` in any case.
+
+### Reads and the pinned Edit
+
+Read commands show the **live, committed** state. An Edit-scoped read
+(`releases list`, `tracks list`, `tracks view`, `tracks availability view`,
+`testers list`, `metadata list`, `metadata pull`, `metadata images list`,
+`metadata images pull`, `releases expansion-files view`, `apps view`,
+`apps details view`, `apps audit`) opens its own read-only Edit and discards
+it, even while an explicit Edit is pinned: after `edits begin` and
+`releases upload`, `releases list` still shows what is published, not what is
+staged. Reading the staged state is an opt-in: a read joins the pinned Edit
+only when passed `--edit`. No read takes `--edit` yet; it earns its place
+command by command through an issue. The reason is predictability: a read
+whose source flips on the presence of a file in `.gplay/` answers the same
+command differently in two directories, and the frozen reads keep the
+semantics they shipped with (ADR-0042).
+
+`releases artifacts list` (`[experimental]`, #543) predates this rule and reads
+inside the pinned Edit without `--edit`, so that artifacts uploaded there are
+visible. It is the one known exception.
+
+### Concurrent reads (#602)
+
+A sweep that costs one round trip per slot or per app runs its reads **four at
+a time** (`internal/fanout`): `metadata images list` and `metadata images pull`
+(each `images.list` slot, then each image download) and `apps audit` (one
+read-only Edit per app). The limit is fixed, with no flag. Output order is the
+serial order (results land by index, never by completion), and a failure
+reports the error the serial walk would have hit first.
+
+- **Writes inside one Edit stay sequential** (`images apply`, `metadata apply`):
+  Google does not document concurrent writes to an Edit.
+- **`images pull` stays all-or-nothing**: every byte is staged in memory and
+  the tree on disk is written only after the last download succeeded, so a
+  failed or interrupted pull leaves nothing a later `apply --prune` would read
+  as deletions.
+- **Rate limits**: `--retry` stays opt-in. Without it, a `429` anywhere in the
+  burst fails the run (exit `60`) exactly as a serial `429` would; with it,
+  each request is replayed on its own ([Opt-in retry](#opt-in-retry---retry)).
+
 ---
 
 ## 5. Reviews
 
 - API hard limit: **only the last 7 days** are exposed. Surfaced in `--help`
-  and as a stderr `WARN:` line on **every** successful run — including an empty
+  and as a stderr `warning:` line on **every** successful run, including an empty
   result (a quiet empty result must not read as "this app has no reviews").
 - Auto-pagination is on by default; `--limit N` caps the result count, default
   is no cap.
@@ -516,6 +620,14 @@ branch on the failure without scraping stderr:
 - `requires` names the missing safety flag on an exit-3 refusal (extends the
   ADR-0017 dry-run `requires` to failure time); omitted otherwise.
 
+The envelope also covers the CLI misuse cobra rejects before a command runs: an
+unknown or repeated flag, a wrong number of positional arguments, an unknown
+subcommand. There `main` resolves the format itself (the raw `--output` in the
+argument list, because flag parsing may have stopped before reaching it, then
+`GPLAY_DEFAULT_OUTPUT`, `CI` and the TTY check) and writes the same envelope when
+nothing reached stdout yet. The one failure left without an envelope is an
+invalid `--output` or `GPLAY_DEFAULT_OUTPUT` value: no format is known there.
+
 Under `table` / `markdown` a failure leaves stdout empty (error → stderr only).
 Exit codes and stderr are unchanged by the envelope. The envelope shape is part
 of the public contract (ADR-0010); see
@@ -529,19 +641,24 @@ of the public contract (ADR-0010); see
 - **stdout** carries data only (the requested output).
 - **stderr** carries logs, progress, warnings, errors. Always.
 - `-v` / `--verbose` → info level on stderr (flow steps, edit ID, deduced
-  versionCode, ...).
-- `-vv` → debug level (HTTP method + URL, headers, truncated bodies).
-- `-q` / `--quiet` → only errors on stderr.
-- Progress bars (e.g. AAB upload) are active **only in TTY** and disabled by
-  `--quiet`.
-- Color is auto in TTY, disabled in pipes, disabled if `NO_COLOR` env or
-  `--no-color` is set.
+  versionCode, ...). It is the only verbosity flag: there is no debug level,
+  no quiet mode, no progress bar and no colour, so there is nothing for a
+  `-vv`, `--quiet` or `--no-color` to switch (#593). Adding one is a feature
+  of its own, tracked as an issue first.
+- Every stderr line a command writes goes through the kernel funnel, which
+  owns the prefix of each level: `rc.Confirmf` (`✓ `), `rc.Warnf`
+  (`warning: `, the only warning prefix), `rc.Notef` (`NOTE: `, e.g. a cursor
+  listing's next `--page-token`), `rc.Logf` (a plain progress or result line)
+  and `rc.Failf` (a per-item failure in a batch, the level a future `--quiet`
+  would keep). Commands without a RunContext use `kernel.LoggerFor(cmd)`. A
+  test fails on any direct stderr write under `commands/`, so a future
+  `--quiet` stays one switch.
 
 ### Success confirmation (`✓`)
 
 A command that **successfully mutates Google Play state** emits a single `✓`
 line on **stderr** once the change is committed — the success counterpart to the
-`WARN:` and progress lines above. It is emitted **in addition to** the command's
+`warning:` and progress lines above. It is emitted **in addition to** the command's
 stdout payload, so a human-legible success marker survives `--output json` and
 piping (where stdout is machine data and the table view is absent).
 
@@ -552,8 +669,8 @@ piping (where stdout is machine data and the table view is absent).
   `inProgress` (a partial rollout — the one case where the fraction informs).
 - `--dry-run` never emits it: `✓` means *committed*. A dry-run already prints
   its plan to stdout.
-- It is written through a single helper (`rc.Confirmf`) so `--quiet` can suppress
-  every `✓` in one place once that flag lands.
+- It is written through a single helper (`rc.Confirmf`), so a quiet mode, if
+  one is ever added, can suppress every `✓` in one place.
 - Wording is **not** part of the Public contract (§7) — it is free to evolve.
 
 `releases upload/promote/rollout/halt/resume/complete` are the first commands to
@@ -573,10 +690,21 @@ seconds instead of stalling a CI job until the runner-level kill:
   **60s default** deadline, applied once where the kernel builds the
   authenticated HTTP client — every command inherits it, no per-command
   plumbing.
-- **Media uploads** (`releases upload`, `releases sharing upload`,
-  `releases expansion-files upload`, `metadata images apply`) are **exempt from
-  the default**: a multi-hundred-MB transfer is never killed by the short
-  control-plane bound.
+- **Media transfers** (the artifact bytes of `releases upload`,
+  `releases sharing upload`, `releases expansion-files upload`,
+  `releases mappings`, `metadata images apply`, the `appstore upload` and
+  `customapps create` surfaces, and the APK bytes of
+  `releases generated download`) are **exempt from the default**: a
+  multi-hundred-MB transfer is never killed by the short control-plane bound.
+  The exemption is decided per request, so the same commands' Edit calls
+  (`edits.insert`, `tracks.update`, `edits.commit`), the resumable initiate and
+  offset probe, and the token exchange keep the 60s bound.
+- Each **resumable chunk** (8 MiB) carries its own generous 5-minute bound: a
+  connection that stops moving bytes without a reset is cut, then the upload
+  probes the committed offset and resumes. After a failure the resume waits on
+  the same backoff curve as `--retry` (500ms doubling to 30s, with jitter),
+  restarting when the server's offset advances; eight attempts in a row
+  without progress end the upload.
 - The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
   `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
   Unset (`0`) means "60s for control-plane, unbounded for uploads".
@@ -678,16 +806,21 @@ pointing at a shared translation):
 | `2` | CLI misuse (unknown flag, bad value, repeated single-value flag, wrong number of positional args) | No |
 | `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
 | `4` | Denied by environment policy (`GPLAY_READONLY`) — a mutating command was refused; the message names the env var | No — **not** resolvable by adding a flag; change the environment |
-| `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
+| `10` | Authentication failure (SA invalid, token refused by the token endpoint or by the API as a `401`, scope missing) | No |
 | `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
 | `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
-| `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
-| `50` | Network (timeout, DNS, refused) | **Yes** |
+| `40` | API 5xx (upstream temporarily unhealthy) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
+| `50` | Network (timeout, DNS, refused) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
 | `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
 | `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
+
+**An interrupted command exits 50.** A command stopped by `SIGINT` or `SIGTERM`
+before it succeeded exits `50` whatever step it was on, after discarding its
+implicit Edit (§4), so re-running it is safe. A command that completed before
+the signal was handled keeps its `0`.
 
 **Exit 3 has no exceptions.** *Every* refusal for a missing safety-acknowledgment
 flag exits `3` — never `2` — whatever the command and however destructive the
@@ -715,6 +848,22 @@ the exit-3 harmonisation above, the fix *restores* this documented table rather
 than changing the frozen contract (ADR-0010), which is why it shipped as a
 `fix`. Never hand-roll an argument-count check in a command — declare the cobra
 validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
+
+Every runnable leaf declares a validator, `cobra.NoArgs` when it takes no
+positional argument: cobra's default accepts any stray token and exits `0`
+(`gplay version STRAY` did, as did `init`, `exit-codes` and the `auth` reads,
+until #593), and a test in `cmd/gplay` walks the tree to keep it that way. The
+rejection names the fix instead of a count: the missing placeholder taken from
+the command's `Use` (`missing <artifact>`) or the stray token (`unexpected
+argument "extra": gplay tracks list takes no positional arguments`), then the
+usage line.
+
+**A required flag says so.** A flag a command cannot run without ends its help
+text with `(required)`, and its missing-value error names the flag and how to
+pass it, in one shape: `missing --track: pass --track <name> (internal, alpha,
+beta, production, or any closed-track name)`. The check stays in the command
+rather than cobra's `MarkFlagRequired`, whose error would skip the command's
+own wording.
 
 **Exit 70 is not an error.** A check command that sweeps and reports (today only
 `gplay apps audit`, PRD #449) exits `70` when its report carries at least one
@@ -789,9 +938,10 @@ rather than regexing the message for the word "already".
 | `API_ERROR` | 30 | No | Other API 4xx rejection |
 | `UPSTREAM_UNAVAILABLE` | 40 | **Yes** | The API is temporarily unhealthy (5xx) |
 | `NETWORK_ERROR` | 50 | **Yes** | Transport failure with no HTTP response |
+| `COMMIT_OUTCOME_UNKNOWN` | 50 | No | An Edit commit failed after it was sent (timeout, reset or 5xx, so exit `50` or `40`) and may be live; check before re-running (§4) |
 | `STATE_CONFLICT` | 60 | No | Remote state conflicts with the request (409) |
 | `EDIT_ALREADY_EXISTS` | 60 | No | An Edit is already open on this package |
-| `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; begin a new Edit |
+| `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit |
 | `RATE_LIMIT_EXCEEDED` | 60 | **Yes** | Rate or quota limit exceeded; back off |
 | `FINDINGS_PRESENT` | 70 | No | A check command completed and reported findings; not a failure |
 

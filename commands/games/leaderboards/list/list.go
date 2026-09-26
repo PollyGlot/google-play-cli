@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/games/gamescmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
@@ -42,7 +43,7 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.MaxResults < 0 {
-		return nil, gamescmd.Usagef("invalid --max-results: must be >= 0")
+		return nil, exit.Usagef("invalid --max-results: must be >= 0")
 	}
 	cols, err := gamescmd.ResolveLeaderboardColumns(in.Columns)
 	if err != nil {
@@ -75,10 +76,12 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `List the leaderboard configurations for a Play Games Services application.
 
 Addressing rides the numeric Play Games application ID (--application-id): a
-distinct ID space from the Android package (ADR-0033). Use --max-results and
+distinct ID space from the Android package. Use --max-results and
 --page-token to page; --output json passes the
-LeaderboardConfigurationListResponse through verbatim, including nextPageToken
-(ADR-0003).`,
+LeaderboardConfigurationListResponse through verbatim, including
+nextPageToken.`,
+		Example: `  gplay games leaderboards list --application-id 123456789012
+  gplay games leaderboards list --application-id 123456789012 --max-results 50 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

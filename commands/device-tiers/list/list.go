@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/device-tiers/devicetierscmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/devicetiers"
@@ -42,13 +43,13 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.PageSize < 0 {
-		return nil, devicetierscmd.Usagef("invalid --page-size: must be >= 0")
+		return nil, exit.Usagef("invalid --page-size: must be >= 0")
 	}
 	cols, err := devicetierscmd.ResolveColumns(in.Columns)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := devicetierscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +75,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "List the app's device tier configs (newest first)",
 		Long: `List the app's device tier configs, newest first. Use --page-size and
 --page-token to page; --output json passes the ListDeviceTierConfigsResponse
-through verbatim, including nextPageToken (ADR-0003).`,
+through verbatim, including nextPageToken.`,
+		Example: `  gplay device-tiers list
+  gplay device-tiers list --page-size 20 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

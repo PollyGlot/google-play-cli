@@ -153,12 +153,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	httpClient, err := rc.AuthedClient()
 	if err != nil {
@@ -231,7 +228,10 @@ is sent). Rows are ordered by versionCode.
 
 Default table columns: kind, versionCode, sha256. --output json is the raw
 API response: {"apks": ..., "bundles": ...} with both kinds, or the single
-list response verbatim with --kind (ADR-0003).`,
+list response verbatim with --kind.`,
+		Example: `  gplay releases artifacts list
+  gplay releases artifacts list --kind bundle
+  gplay releases artifacts list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

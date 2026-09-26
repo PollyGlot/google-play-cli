@@ -33,6 +33,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
@@ -67,9 +68,9 @@ func resolveState(word string) (string, error) {
 	case stateUnpublished:
 		return appstore.PublishStateUnpublished, nil
 	case "":
-		return "", appstorecmd.Usagef("missing publish state: gplay appstore publish-status <%s|%s>", statePublished, stateUnpublished)
+		return "", exit.Usagef("missing publish state: gplay appstore publish-status <%s|%s>", statePublished, stateUnpublished)
 	default:
-		return "", appstorecmd.Usagef("invalid publish state %q: accepted values are %s and %s", strings.TrimSpace(word), statePublished, stateUnpublished)
+		return "", exit.Usagef("invalid publish state %q: accepted values are %s and %s", strings.TrimSpace(word), statePublished, stateUnpublished)
 	}
 }
 
@@ -202,7 +203,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := appstorecmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +260,7 @@ Two identifiers meet here, as everywhere in this namespace:
 
   --store-package  the app store's OWN package name (the caller: the
                    third-party store enrolled for alternative distribution),
-                   falling back to $` + appstorecmd.EnvStorePackage + ` (ADR-0043)
+                   falling back to $` + appstorecmd.EnvStorePackage + `
   --package        the hosted app's package name (the subject), defaulting to
                    the repo's .gplay/config.json pin when omitted
 
@@ -268,10 +269,15 @@ rejected. The call is Edit-free: it opens no Edit and joins none.
 
 The response carries no fields (the acknowledgement IS the result), so the human
 views echo the identifiers and the applied state; --output json passes the API
-response through verbatim (ADR-0003), falling back to a gplay-shaped success
+response through verbatim, falling back to a gplay-shaped success
 object only when the API answers with no body at all. GPLAY_READONLY refuses the
 write (exit 4) but lets --dry-run run. A 403 names the app store enrollment the
 call requires.`,
+		Example: `  # Withdraw a hosted app from the store (reversible)
+  gplay appstore publish-status unpublished --store-package com.example.store --package com.example.game
+
+  # Preview putting it back, without any HTTP call
+  gplay appstore publish-status published --store-package com.example.store --package com.example.game --dry-run`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

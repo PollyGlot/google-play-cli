@@ -7,7 +7,6 @@
 package doctor
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
+	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/redact"
@@ -89,10 +89,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := rc.EnsureAccount(); err != nil {
 		results, worst = synthFailure(err, checks)
 	} else if rc.Account == nil {
-		results, worst = synthFailure(errors.New("no active account; run `gplay auth login`"), checks)
+		results, worst = synthFailure(kernel.NoAccountError(), checks)
 	} else {
 		results = authdoctor.Run(rc.Ctx, rc.Account, &hc, checks...)
 		worst = worstFailure(results)
+	}
+	// KeystoreLabel is set only when a stored Account was loaded, so an
+	// inline credential stays keyring-free. Plaintext keys left behind by an
+	// earlier keyring-less login are a finding doctor should surface.
+	if rc.KeystoreLabel == keystore.BackendKeyring {
+		keystore.WarnStrayFiles(rc.Ctx, rc.Stderr, rc.KeystoreRoot)
 	}
 
 	// Hints are gplay-authored text that quotes wrapped errors (a resolution
@@ -125,7 +131,8 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run ordered diagnostic checks on the active credential",
-		Long: `Run the doctor sequence from docs/DESIGN.md §1:
+		Long: `Run the credential checks in order
+(https://gplay.sh/docs/concepts/authentication/):
 
 1. Service account JSON is valid
 2. OAuth2 access token can be minted
@@ -137,11 +144,20 @@ Checks 1–4 run once. Check 5 runs once per --package value passed (in
 order). Checks run in order and the chain stops on the first failure;
 subsequent checks are reported as skipped. Use --output json to get a
 structured []CheckResult for scripting.`,
+		Example: `  # Check the active credential, stopping at the first failing step
+  gplay auth doctor
+
+  # Also prove write access to two apps
+  gplay auth doctor --package com.example.app --package com.example.lite
+
+  # Diagnose a key file before registering it, as JSON for a script
+  gplay auth doctor --service-account ./play-sa.json --output json`,
 		// A failing doctor is a normal exit path, not a usage error;
 		// silence cobra's usage banner so it does not collide with the
 		// rendered checklist on stdout.
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			b := boot
 			b.Stdout = cmd.OutOrStdout()
@@ -195,7 +211,7 @@ func worstFailure(results []authdoctor.CheckResult) *authdoctor.CheckResult {
 }
 
 // synthFailure builds check #1 as failed + the rest as skipped when
-// resolution itself died (no active account).
+// resolution itself died (no Account, or an invalid credential).
 func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
 	failure := authdoctor.ResolutionFailure(err)[0]
 	results := make([]authdoctor.CheckResult, 0, len(checks))

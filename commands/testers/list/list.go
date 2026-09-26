@@ -20,6 +20,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -32,14 +34,6 @@ type Input struct {
 	Package string
 	Track   string
 }
-
-// usageError is a CLI-misuse error (missing --track, no package);
-// ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-
-func (e *usageError) ExitCode() int { return 2 }
 
 // trackNotFoundError wraps a testers.get 404 with an actionable hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
@@ -58,41 +52,6 @@ func (e *trackNotFoundError) Error() string {
 // Unwrap exposes the underlying *api.Error so the Coder chain keeps
 // mapping the 404 to exit 30.
 func (e *trackNotFoundError) Unwrap() error { return e.cause }
-
-// forbiddenError wraps a 403 (service account not invited on the app)
-// with the standard grant-access hint. It carries no ExitCode of its own
-// so the wrapped *api.Error (403 → exit 11) stays authoritative.
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-// Error renders the forbidden message plus the Play Console grant hint.
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 403 to exit 11.
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// packageNotFoundError wraps an edits.insert 404 (the package is unknown
-// or not registered) with a hint pointing at `gplay apps list`. Like
-// trackNotFoundError, it carries no ExitCode of its own so the wrapped
-// *api.Error (404 → exit 30) stays authoritative through the Coder chain.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-// Error renders the not-found message plus the `gplay apps list` hint.
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 404 to exit 30.
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
 // Payload satisfies output.Renderable. Raw carries the testers.get body
 // for the ADR-0003 JSON pass-through; Track is gplay-derived context shown
@@ -180,7 +139,7 @@ func isStatus(err error, status int) bool {
 	return false
 }
 
-// classifyEditError attaches an actionable hint to the operator-facing
+// classifyTrackError attaches an actionable hint to the operator-facing
 // failures of a read-only testers read, while leaving the wrapped
 // *api.Error to drive the exit code. A testers.get 404 is already wrapped
 // as *trackNotFoundError inside the read closure (it carries the
@@ -190,21 +149,12 @@ func isStatus(err error, status int) bool {
 // (→ `gplay apps list` hint), a 403 means the service account was not
 // invited on the app. Every other failure (5xx, network, edit conflict)
 // propagates verbatim.
-func classifyEditError(pkg string, err error) error {
+func classifyTrackError(pkg string, err error) error {
 	var tnf *trackNotFoundError
 	if errors.As(err, &tnf) {
 		return err
 	}
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
-	}
-	return err
+	return apihint.ForPackage(pkg, err)
 }
 
 // Run is the business function the kernel invokes. It validates inputs,
@@ -213,15 +163,12 @@ func classifyEditError(pkg string, err error) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
-		return nil, &usageError{msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (any closed-track name, e.g. alpha)")
 	}
 
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -244,7 +191,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		parsed, raw = tt, r
 		return nil
 	}); err != nil {
-		return nil, classifyEditError(pkg, err)
+		return nil, classifyTrackError(pkg, err)
 	}
 
 	return Payload{
@@ -271,8 +218,10 @@ exclusively.
 Reads the audience inside a read-only Edit (open → testers.get → discard);
 nothing is committed. Replacing the audience is the job of ` + "`gplay testers set`" + `.
 
---output json is the raw testers.get payload (ADR-0003); --output markdown
+--output json is the raw testers.get payload; --output markdown
 renders a Markdown table.`,
+		Example: `  gplay testers list --track alpha
+  gplay testers list --track qa-team --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -284,6 +233,6 @@ renders a Markdown table.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "track whose testers to list (any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "track whose testers to list (any closed-track name) (required)")
 	return cmd
 }

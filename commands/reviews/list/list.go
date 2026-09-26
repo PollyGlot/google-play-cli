@@ -27,7 +27,7 @@ import (
 // sevenDayWarning is printed to stderr on every successful invocation: the
 // reviews API only exposes the last 7 days, so a quiet empty result would
 // otherwise read as "no reviews" when it really means "none in the window".
-const sevenDayWarning = "WARN: the Google Play reviews API only returns reviews from the last 7 days; older reviews are not available here: use `gplay reviews history` for the full history from the monthly CSV reports."
+const sevenDayWarning = "the Google Play reviews API only returns reviews from the last 7 days; older reviews are not available here: use `gplay reviews history` for the full history from the monthly CSV reports."
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
@@ -142,12 +142,9 @@ func renderJSON(w io.Writer, p Payload) error {
 // builds an authenticated client, lists every review (auto-paginated), and
 // always warns about the 7-day window.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	sel, err := filter.Parse(in.Stars)
@@ -202,9 +199,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // warn prints the 7-day window notice to stderr.
 func warn(rc *kernel.RunContext) {
-	if rc.Stderr != nil {
-		_, _ = io.WriteString(rc.Stderr, sevenDayWarning+"\n")
-	}
+	rc.Warnf("%s", sevenDayWarning)
 }
 
 // NewCommand returns the cobra command for `gplay reviews list`.
@@ -218,7 +213,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "List recent user reviews for a package (last 7 days)",
 		Long: `List the user reviews the Google Play API exposes for --package.
 
-The API only returns reviews from the LAST 7 DAYS; a WARN line to that
+The API only returns reviews from the LAST 7 DAYS; a warning line to that
 effect is always printed to stderr; for longer history use 'reviews history',
 which reads the GCS CSV reports. Results are auto-paginated until exhausted.
 
@@ -230,6 +225,12 @@ Default table columns: date, stars, locale, reviewId, summary. Override with
 --columns stars,reviewId,...  (--output json is the {"reviews":[...]}
 pass-through reflecting the filtered set; --output markdown renders a
 Markdown table.)`,
+		Example: `  gplay reviews list
+
+  # The worst reviews of the week, capped at 20
+  gplay reviews list --stars 1-2 --limit 20
+
+  gplay reviews list --stars 1,2,3 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

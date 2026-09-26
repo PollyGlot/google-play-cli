@@ -50,12 +50,29 @@ answers `503` and logs `install_unresolved`: it never falls back to `main`.
 Failed lookups are not cached. An `install.sh` change on `main` therefore reaches
 users at the next release, not before.
 
-Tests: `make worker-test` (`node --test`, offline, a fake `fetch` stands in for
-GitHub); the "Docs sanity" CI check runs them on every PR.
+Tests: [`install.test.mjs`](install.test.mjs) (`node --test`, offline, a fake
+`fetch` stands in for GitHub).
 
 ```bash
 curl -sI https://gplay.sh/install | grep -i x-gplay-installer-ref   # which tag is live
 ```
+
+## Tests
+
+[`worker.test.mjs`](worker.test.mjs) drives the Worker's `fetch` entry point
+with a fake `env.ASSETS` binding and a stubbed upstream `fetch`: hostname
+redirects (the `/docs2` lookalike included), the `/install` route's headers,
+logging and 405 branch, `Accept` q-value negotiation, Markdown twin lookup with
+304 passthrough, and the `Link`/`Vary`/security headers. The `/install` tag
+resolution and its fail-closed answers live in
+[`install.test.mjs`](install.test.mjs). No network, no wrangler:
+
+```bash
+make worker-test   # node --test on both files
+```
+
+The "Docs sanity" required check runs both on every PR, and
+`.github/workflows/site.yml` runs them on pull requests touching `deploy/**`.
 
 ## Deploy
 
@@ -138,7 +155,7 @@ to this Cloudflare account and the registrar's nameservers point at Cloudflare
 
    ```bash
    curl -fsSL https://gplay.sh/install | sh           # installer
-   curl -sI   https://docs.gplay.sh/ | grep -i location  # → https://gplay.sh/docs/
+   curl -sI   https://docs.gplay.sh/ | grep -i location  # → https://gplay.sh/docs
    curl -sI   https://www.gplay.sh/  | grep -i location  # → https://gplay.sh/
    open       https://gplay.sh/                        # landing
    open       https://gplay.sh/docs/                   # docs

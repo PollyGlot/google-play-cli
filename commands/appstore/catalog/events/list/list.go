@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/appstore/appstorecmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appstorecatalog"
@@ -83,7 +84,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 	if in.PageSize < 0 {
-		return nil, appstorecmd.Usagef("invalid --page-size: must be >= 0 (0 lets the server apply its default of %d)", appstorecatalog.DefaultPageSize)
+		return nil, exit.Usagef("invalid --page-size: must be >= 0 (0 lets the server apply its default of %d)", appstorecatalog.DefaultPageSize)
 	}
 	storePkg, err := appstorecmd.ResolveStorePackage(in.StorePackage)
 	if err != nil {
@@ -97,8 +98,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, appstorecmd.ClassifyStoreRead(storePkg, err)
 	}
-	if resp.NextPageToken != "" && rc.Stderr != nil {
-		_, _ = io.WriteString(rc.Stderr, "NOTE: more update events available, re-run with --page-token "+resp.NextPageToken+" (keeping the same --start-time/--end-time/--page-size: the API rejects a page token when any other parameter changes) for the next page.\n")
+	if resp.NextPageToken != "" {
+		rc.Notef("more update events available, re-run with --page-token %s (keeping the same --start-time/--end-time/--page-size: the API rejects a page token when any other parameter changes) for the next page.", resp.NextPageToken)
 	}
 	return Payload{Events: resp.RecentUpdateEvents, Raw: raw}, nil
 }
@@ -139,10 +140,18 @@ previous response's nextPageToken as --page-token, keeping the SAME
 --start-time/--end-time AND --page-size across pages (the API rejects a page
 token when any other parameter changes). In table/markdown output a note on stderr
 carries the next --page-token when more events are available; --output json
-passes the ListRecentUpdateEventsResponse through verbatim (ADR-0003),
+passes the ListRecentUpdateEventsResponse through verbatim,
 nextPageToken included. stdout carries the data, stderr the logs.
 
 This is a direct read outside the Edit model: it opens no Edit.`,
+		Example: `  # One week of catalog changes
+  gplay appstore catalog events list --store-package com.example.store \
+    --start-time 2026-07-01T00:00:00Z --end-time 2026-07-08T00:00:00Z
+
+  # Next page: same range and page size, plus the token from the last response
+  gplay appstore catalog events list --store-package com.example.store \
+    --start-time 2026-07-01T00:00:00Z --end-time 2026-07-08T00:00:00Z \
+    --page-size 500 --page-token "$NEXT_PAGE_TOKEN"`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -1,0 +1,8 @@
+{
+  "dryRun": true,
+  "versionCode": 0,
+  "track": "internal",
+  "releaseName": "(dry-run)",
+  "status": "completed",
+  "userFraction": 1
+}

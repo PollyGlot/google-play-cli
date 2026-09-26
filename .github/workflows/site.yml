@@ -1,0 +1,83 @@
+name: Site
+
+# Checks the gplay.sh website and its Worker on pull requests, before
+# deploy-site.yml ships them from main. Without it the site was only ever built
+# at deploy time, which is how dead "Edit page" links and drift reached
+# production unseen.
+#
+#   - site: builds gplay (the CLI reference is generated from its --help), then
+#     `npm run check` in website/: astro build, astro check, and
+#     scripts/check-dist.mjs over the built dist (internal links and anchors,
+#     links to untracked repo paths, flags whose `--` became a dash).
+#   - worker: the routing tests of deploy/gplay.sh/worker.js, on node:test
+#     with a fake asset binding and no network.
+#
+# The Go command sources are in the path filter because the reference pages
+# are rendered from their --help text: a help string can break a page as
+# surely as a Markdown edit can.
+#
+# Not a required check, for the same reason as workflow-lint.yml: it skips on
+# PRs outside its paths, and a required check that never reports blocks merge.
+# Nothing here publishes (contents: read, no secret), so the Go and npm caches
+# stay on; deploy-site.yml, which does publish, restores none.
+on:
+  pull_request:
+    paths:
+      - 'website/**'
+      - 'deploy/**'
+      - 'cmd/**'
+      - 'commands/**'
+      - '.github/workflows/site.yml'
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  site:
+    name: Build and check the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Build gplay (source of the generated CLI reference)
+        run: make build
+
+      - name: Install site dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build and check the site
+        working-directory: website
+        run: npm run check
+
+  worker:
+    name: Worker routing tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Run the Worker tests
+        run: node --test deploy/gplay.sh/worker.test.mjs deploy/gplay.sh/install.test.mjs

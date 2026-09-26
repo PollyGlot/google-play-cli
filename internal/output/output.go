@@ -8,6 +8,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,15 +40,21 @@ const (
 const EnvDefaultOutput = "GPLAY_DEFAULT_OUTPUT"
 
 // IsTerminalFn reports whether w is connected to a terminal. The default
-// implementation type-asserts w to *os.File and calls term.IsTerminal on
-// its fd; non-file writers are treated as non-TTY so JSON wins under any
-// test or pipe.
+// implementation asks w for its file descriptor (an *os.File, or a wrapper
+// that forwards Fd, like the stdout byte tally in cmd/gplay) and calls
+// term.IsTerminal on it; writers without one are treated as non-TTY so JSON
+// wins under any test or pipe.
 type IsTerminalFn func(w io.Writer) bool
 
 var isTTY IsTerminalFn = defaultIsTTY
 
+// fileDescriptor is the one method TTY detection needs. Asserting it rather
+// than *os.File lets main count stdout bytes (#593) without every command
+// suddenly seeing a pipe and switching its default format to JSON.
+type fileDescriptor interface{ Fd() uintptr }
+
 func defaultIsTTY(w io.Writer) bool {
-	f, ok := w.(*os.File)
+	f, ok := w.(fileDescriptor)
 	if !ok {
 		return false
 	}
@@ -108,10 +115,45 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 // "2-space indent, trailing newline" shape. Every command's JSON
 // renderer should call this: keeping the encoder configuration in one
 // place stops the SetIndent setting from drifting between commands.
+//
+// HTML escaping is off: the encoder's default rewrites <, > and & as
+// \u003c, \u003e and \u0026, which only helps JSON inlined in an HTML
+// page. Here it made API passthrough strings (review text, listing copy,
+// a json.RawMessage re-indented on the way out) differ byte-wise from what
+// the API returned (ADR-0003), and turned "--package <pkg>" in an error
+// envelope into text grep and humans cannot read.
 func WriteJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
+}
+
+// NonNil returns s, or an empty slice when s is nil, so a gplay-authored
+// array field encodes as [] and never as null: a consumer iterates it
+// without a guard (the `requires` array of every dry-run preview).
+func NonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+// Marshal is json.Marshal without HTML escaping, for the compact JSON gplay
+// assembles from API bytes before it reaches WriteJSON: a merged page
+// envelope, a composite view. json.Marshal escapes <, > and & even inside a
+// json.RawMessage, and WriteJSON cannot undo an escape already baked into
+// the bytes, so such an envelope must be built here to stay verbatim. It is
+// the only marshal commands/ may call (encodergate_test.go): a request body
+// or catalog fragment built there can end up on stdout (a --dry-run preview).
+func Marshal(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 // RegisterFlag binds the standard --output flag to dest on cmd. Every

@@ -52,8 +52,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Surface unknown-name errors before touching the keystore.
 	if err := cfg.RemoveAccount(in.Name); err != nil {
 		if errors.Is(err, config.ErrUnknownAccount) {
-			_, _ = fmt.Fprintf(rc.Stderr,
-				"unknown account %q. Known accounts: %s\n", in.Name, listAccountNames(cfg))
+			rc.Failf("unknown account %q. Known accounts: %s", in.Name, listAccountNames(cfg))
 		}
 		return nil, err
 	}
@@ -66,20 +65,70 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// keystore-not-found is tolerated: a prior logout may have
-	// half-completed, or the user wiped the keychain by hand. The backend
-	// is selected here (not at boot) so a logout that fails the --confirm
-	// gate above never probes the keyring.
+	// The backend is selected here (not at boot) so a logout that fails
+	// the --confirm gate above never probes the keyring.
 	be, err := rc.Backend()
 	if err != nil {
 		return nil, err
 	}
-	if err := be.Delete(rc.Ctx, in.Name); err != nil && !errors.Is(err, keystore.ErrNotFound) {
+	removed, err := deleteEverywhere(rc, be, in.Name)
+	if err != nil {
 		return nil, err
 	}
+	if len(removed) == 0 {
+		if fb, ok := be.(*keystore.FileBackend); ok {
+			return nil, keyringUnreachableError(in.Name, fb)
+		}
+		// Both stores were reachable and neither holds the key: it is
+		// provably gone (a half-finished earlier logout, a keychain wiped by
+		// hand). Stay idempotent: succeed, but do not claim a deletion.
+		rc.Warnf("no stored credential found, nothing to delete (Account %q)", in.Name)
+		rc.Confirmf("Account %q removed from the registry", in.Name)
+		return nil, nil
+	}
 
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q removed\n", in.Name)
+	rc.Confirmf("Account %q removed (credential deleted from %s)", in.Name, strings.Join(removed, " and "))
 	return nil, nil
+}
+
+// deleteEverywhere removes name from the selected backend AND from the file
+// backend. Select picks the backend per process, so a key written to the
+// plaintext file by a login that could not reach the keyring (SSH to a Mac
+// with a locked keychain) is invisible to a later logout that can: deleting
+// only from the selected backend would report success and leave the private
+// key on disk. It returns the stores that actually held the credential;
+// ErrNotFound from either is not an error, anything else is.
+func deleteEverywhere(rc *kernel.RunContext, be keystore.Backend, name string) ([]string, error) {
+	var removed []string
+	selected, isFile := be.(*keystore.FileBackend)
+	if err := be.Delete(rc.Ctx, name); err == nil {
+		if isFile {
+			removed = append(removed, selected.Path(name))
+		} else {
+			removed = append(removed, "the OS keyring")
+		}
+	} else if !errors.Is(err, keystore.ErrNotFound) {
+		return nil, err
+	}
+	if isFile {
+		return removed, nil
+	}
+	file := keystore.NewFileBackend(rc.KeystoreRoot)
+	if err := file.Delete(rc.Ctx, name); err == nil {
+		removed = append(removed, file.Path(name))
+	} else if !errors.Is(err, keystore.ErrNotFound) {
+		return nil, err
+	}
+	return removed, nil
+}
+
+// keyringUnreachableError reports a logout that removed the registry entry
+// but found no file credential while the keyring could not be reached: the
+// key may still sit in the keyring, so gplay cannot say it is gone. It fails
+// rather than printing "removed" because the user runs logout to know the key
+// is gone.
+func keyringUnreachableError(name string, fb *keystore.FileBackend) error {
+	return fmt.Errorf("logout: Account %q removed from the registry, but no credential was found at %s and the OS keyring is unavailable: if it was stored there it was NOT deleted; remove it from the OS keyring (service %q) by hand", name, fb.Path(name), keystore.KeyringService)
 }
 
 // NewCommand returns the cobra command for `gplay auth logout <name>`.
@@ -88,14 +137,16 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logout <name>",
 		Short: "Remove a registered Account from the config and the keystore",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Remove the Account named release-bot and delete its credential from the keystore
+  gplay auth logout release-bot --confirm`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{Name: args[0], Confirm: confirm})
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&confirm, "confirm", false, "confirm credential removal (required; see docs/DESIGN.md §9)")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "confirm credential removal (required: the credential is deleted from the keystore; without it logout exits 3)")
 	return cmd
 }
 

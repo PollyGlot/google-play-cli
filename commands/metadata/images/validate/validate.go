@@ -174,6 +174,10 @@ is the job of ` + "`gplay metadata images apply --dry-run`" + `.
 The rules are a versioned in-code table (Play's commit is the ultimate
 authority); ` + "`images apply --no-validate`" + ` bypasses this check.
 Any violation exits 20.`,
+		Example: `  # Check dimensions, format and counts offline, e.g. in CI
+  gplay metadata images validate
+
+  gplay metadata images validate --dir store/metadata --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

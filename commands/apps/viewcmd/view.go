@@ -30,13 +30,6 @@ type Input struct {
 	Package string
 }
 
-// usageError is a CLI-misuse error (missing --package and no pin);
-// ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
 // validationError is a client-side package-name format failure with
 // ExitCode()=20 per docs/DESIGN.md §9 (client-side validation). Same
 // gate as addcmd: the cheapest shape check (non-empty, reverse-DNS dot)
@@ -149,12 +142,9 @@ func renderMarkdown(w io.Writer, p Payload) error {
 // authenticated HTTP client, and calls details.Get, which itself
 // opens and discards the Edit, so there is no mutation path here.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	if err := validatePackage(pkg); err != nil {
 		return nil, err
@@ -209,9 +199,13 @@ gplay does not cache the icon: each run is a faithful live read.
 
 --output json returns the gplay envelope
 {"details":..,"listing":..,"icon"?:..}: each sub-object is the upstream
-API body verbatim. (Explicit exception to ADR-0003: multiple endpoints
+API body verbatim. (An exception to the verbatim rule: multiple endpoints
 are merged here, so the JSON shape is gplay-defined rather than a single
 API pass-through. The icon key is omitted when the icon slot is empty.)`,
+		Example: `  # Confirm you are pointed at the right app
+  gplay apps view
+
+  gplay apps view --package com.example.app --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
