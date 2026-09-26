@@ -142,7 +142,7 @@ func renderJSON(w io.Writer, p Payload) error {
 // must hit the API, so a resolved Account is always required.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.Track == "" {
-		return nil, exit.Usagef("missing --track")
+		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
 	pkg, err := rc.Package(in.Package)
@@ -223,7 +223,7 @@ tracks.get payload; --output markdown renders a Markdown table.)`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "track to list releases from (internal, alpha, beta, production, or any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "track to list releases from (internal, alpha, beta, production, or any closed-track name) (required)")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show (default: "+strings.Join(columns.DefaultKeys(), ",")+")")
 	return cmd
 }

@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -217,7 +216,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// cascade entirely.
 	bucket := strings.TrimSpace(in.Bucket)
 	if bucket == "" {
-		devID, err := addressing.Resolve(in.DeveloperID, os.Getenv(addressing.EnvDeveloperID), rc.Resolved)
+		devID, err := addressing.ForRun(rc, in.DeveloperID)
 		if err != nil {
 			return nil, err
 		}

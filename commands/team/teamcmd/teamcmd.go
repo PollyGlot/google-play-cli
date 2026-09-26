@@ -5,7 +5,6 @@ package teamcmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
@@ -23,7 +22,7 @@ import (
 // Account record, never the committed project config, and a hiccup is reported
 // to stderr rather than failing the command (resolution already succeeded).
 func DeveloperID(rc *kernel.RunContext, flag string) (string, error) {
-	id, err := addressing.Resolve(flag, os.Getenv(addressing.EnvDeveloperID), rc.Resolved)
+	id, err := addressing.ForRun(rc, flag)
 	if err != nil {
 		return "", err
 	}

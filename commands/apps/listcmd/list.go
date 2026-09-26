@@ -43,9 +43,9 @@ type AppRow struct {
 	Pinned  bool   `json:"pinned"`
 }
 
-// authError signals "no Account active in the cascade"; ExitCode()=10
-// per docs/DESIGN.md §9 (no credential resolved). Mirrors the shape of
-// addcmd.authError so exit.For dispatches both the same way.
+// authError signals an Account that resolved by name but is unusable here
+// (not in the global config); ExitCode()=10 per docs/DESIGN.md §9. The
+// no-Account case is kernel.NoAccountError, the wording every command shares.
 type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
@@ -73,7 +73,7 @@ func (e *authError) ExitCode() int { return 10 }
 //     case (--service-account / GPLAY_SERVICE_ACCOUNT). Inline creds have
 //     no local Account name so the registry cannot be scoped to them; we
 //     return a usage error (exit 2) telling the user this limitation.
-//  4. Neither name nor credential resolved: authError (exit 10).
+//  4. Neither name nor credential resolved: kernel.NoAccountError (exit 10).
 //
 // Once Account is chosen, we also assert it exists in
 // rc.Resolved.Accounts: a stale local override or a logged-out Account
@@ -114,7 +114,7 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 		account = rc.Resolved.ConfigAccount
 	}
 	if account == "" {
-		return nil, &authError{msg: "apps list: no active Account; run `gplay auth login` to register one, or pass --account"}
+		return nil, kernel.NoAccountError()
 	}
 	if !accountInResolved(rc.Resolved.Accounts, account) {
 		return nil, &authError{msg: fmt.Sprintf(

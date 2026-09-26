@@ -22,9 +22,9 @@ type Input struct {
 	Package string
 }
 
-// authError signals "no Account resolved" or "Account name not in
-// global config" (exit code 10 per docs/DESIGN.md §9). Mirrors
-// addcmd/listcmd's error shape for the same reason.
+// authError signals "Account name not in global config" (exit code 10 per
+// docs/DESIGN.md §9). The no-Account case is kernel.NoAccountError, the
+// wording every command shares.
 type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
@@ -70,7 +70,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if rc.Account != nil {
 			return nil, &exit.UsageError{Msg: "apps remove: cannot remove under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
-		return nil, &authError{msg: "no Account resolved; run `gplay auth login`, set GPLAY_ACCOUNT, or pass --account"}
+		return nil, kernel.NoAccountError()
 	}
 
 	g, err := config.LoadGlobalOrEmpty(rc.Ctx, fsOrDefault(rc), rc.ConfigPath)

@@ -146,8 +146,12 @@ func main() {
 		fmt.Fprintf(stderr, "gplay: %v\n", err)
 		os.Exit(1)
 	}
+	// Counted stdout: writeFailureEnvelope below needs to know whether a
+	// failing command already wrote to it. SetOut hands the same writer down
+	// the tree, like SetErr does for stderr.
+	stdout := &stdoutTally{f: os.Stdout}
 	boot := kernel.Boot{
-		Stdout:       os.Stdout,
+		Stdout:       stdout,
 		Stderr:       stderr,
 		Stdin:        os.Stdin,
 		ConfigPath:   filepath.Join(configDir, "config.json"),
@@ -161,8 +165,13 @@ func main() {
 	// before a sub-run. SetErr on the root makes the redacting writer the one
 	// cobra hands down the whole command tree, including leaves added later.
 	root.SetErr(stderr)
+	root.SetOut(stdout)
 
 	if err := root.Execute(); err != nil {
+		// A failure cobra raised before RunE (flag parse, argument count,
+		// unknown subcommand) never met the kernel's JSON envelope: write it
+		// here when nothing else reached stdout (ADR-0023, #593).
+		writeFailureEnvelope(stdout, stdout.n > 0, os.Args[1:], err)
 		// Subcommands set SilenceErrors:true on their cobra Command so the
 		// stack-trace-style "Error: ..." cobra would emit is suppressed,
 		// but we still owe the user a one-line message before exiting,
@@ -911,6 +920,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print gplay version",
+		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
 			info, ok := debug.ReadBuildInfo()
 			v, c, d := resolveVersion(version, commit, date, info, ok)

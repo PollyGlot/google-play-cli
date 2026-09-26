@@ -1019,9 +1019,29 @@ func TestAuthedClient_absent_keepsLoginHint(t *testing.T) {
 		if !strings.Contains(err.Error(), "auth login") {
 			t.Errorf("absent AuthedClient should keep the login hint; got %q", err.Error())
 		}
+		// One wording across the CLI (#593): the same text apps add/list/remove,
+		// auth doctor and the team commands return.
+		if err.Error() != kernel.NoAccountError().Error() {
+			t.Errorf("absent AuthedClient = %q, want the shared NoAccountError wording", err.Error())
+		}
 		return nil, nil
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+}
+
+// TestNoAccountError_namesEveryFix pins the content of the one no-Account
+// wording: each precedence layer that can resolve an Account (DESIGN §1) is
+// named, so whichever command hits it, the fix is on the same line.
+func TestNoAccountError_namesEveryFix(t *testing.T) {
+	err := kernel.NoAccountError()
+	if code := exit.For(err); code != 10 {
+		t.Errorf("exit.For = %d, want 10", code)
+	}
+	for _, want := range []string{"no Account resolved", "gplay auth login", "--account", "GPLAY_ACCOUNT", "--service-account", "GPLAY_SERVICE_ACCOUNT"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("NoAccountError() = %q, want it to name %q", err, want)
+		}
 	}
 }
 

@@ -241,7 +241,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("missing <email>: usage: gplay team grants set <email> --package <pkg> --role <bundle>|--permissions <alias,…>")
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("missing --package <pkg> (the app to grant access to)")
+		return nil, exit.Usagef("missing --package: pass --package <pkg> (the app to grant access to)")
 	}
 	if in.RoleSet && in.PermsSet {
 		return nil, exit.Usagef("--role and --permissions are mutually exclusive")
