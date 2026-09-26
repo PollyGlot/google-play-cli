@@ -886,10 +886,13 @@ func (rc *RunContext) authedClientFor(timeout time.Duration, mediaExempt bool) (
 		// skips media transfers. It sits under --retry so each attempt gets its
 		// own bound, as the retry middleware's per-attempt Timeout gives the
 		// other clients. WithRetry is a passthrough when --retry is unset.
+		// Recent oauth2 releases copy timedBase's Timeout onto the returned
+		// client, which would bound the media transfer after all: clear it.
 		client.Transport = transport.WithRetry(
 			transport.WithControlPlaneDeadline(client.Transport, timeout),
 			transport.RetryOptions{MaxRetries: rc.Retry},
 		)
+		client.Timeout = 0
 		return client, nil
 	}
 	if rc.Retry > 0 {
