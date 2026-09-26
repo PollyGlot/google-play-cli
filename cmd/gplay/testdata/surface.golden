@@ -8,9 +8,9 @@
 # Exit codes (docs/DESIGN.md section 9)
 frozen exit 0 meaning="Success" retry-safe="n/a"
 frozen exit 1 meaning="Generic error (fallback when nothing more specific fits)" retry-safe="no"
-frozen exit 2 meaning="CLI misuse (unknown flag, bad value, wrong number of positional args)" retry-safe="no"
+frozen exit 2 meaning="CLI misuse (unknown flag, bad value, repeated single-value flag, wrong number of positional args)" retry-safe="no"
 frozen exit 3 meaning="Safety flag required: well-formed, but a named --confirm/--grant-admin is missing; the message names it" retry-safe="re-run with the named flag"
-frozen exit 4 meaning="Denied by environment policy (GPLAY_READONLY) (a mutating command was refused; NOT resolvable by adding a flag" retry-safe="no) change the environment"
+frozen exit 4 meaning="Denied by environment policy (GPLAY_READONLY): a mutating command was refused" retry-safe="no; not resolvable by a flag, change the environment"
 frozen exit 10 meaning="Authentication failure (SA invalid, token refused, scope missing, no developer-id)" retry-safe="no"
 frozen exit 11 meaning="Authorization (403: SA not invited on the app/account)" retry-safe="no"
 frozen exit 20 meaning="Client-side validation (malformed AAB, unknown locale, ...)" retry-safe="no"
