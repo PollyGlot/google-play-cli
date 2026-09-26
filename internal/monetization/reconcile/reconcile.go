@@ -351,7 +351,7 @@ func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []Field
 // (and any error naming a resource) follows the productId/parentId/offerId
 // string, and the changes come back with their identity typed.
 func ComputeChildren(local, live map[Key]json.RawMessage, managed []Field) (creates, patches, deletes []Change, err error) {
-	byKey := make(map[string]Key, len(local)+len(live))
+	byKey := map[string]Key{}
 	flatten := func(in map[Key]json.RawMessage) map[string]json.RawMessage {
 		out := make(map[string]json.RawMessage, len(in))
 		for k, raw := range in {
