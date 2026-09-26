@@ -333,6 +333,25 @@ Two read-only checks complete the lifecycle (#544):
   cleared implicitly. Without `--live`, `status` stays a local read with no
   auth and no network; `--live` without a pin also stays offline.
 
+### Concurrent reads (#602)
+
+A sweep that costs one round trip per slot or per app runs its reads **four at
+a time** (`internal/fanout`): `metadata images list` and `metadata images pull`
+(each `images.list` slot, then each image download) and `apps audit` (one
+read-only Edit per app). The limit is fixed, with no flag. Output order is the
+serial order (results land by index, never by completion), and a failure
+reports the error the serial walk would have hit first.
+
+- **Writes inside one Edit stay sequential** (`images apply`, `metadata apply`):
+  Google does not document concurrent writes to an Edit.
+- **`images pull` stays all-or-nothing**: every byte is staged in memory and
+  the tree on disk is written only after the last download succeeded, so a
+  failed or interrupted pull leaves nothing a later `apply --prune` would read
+  as deletions.
+- **Rate limits**: `--retry` stays opt-in. Without it, a `429` anywhere in the
+  burst fails the run (exit `60`) exactly as a serial `429` would; with it,
+  each request is replayed on its own ([Opt-in retry](#opt-in-retry---retry)).
+
 ---
 
 ## 5. Reviews
