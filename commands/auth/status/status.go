@@ -110,6 +110,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		// command (doctor, apps, ...).
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, Input{})

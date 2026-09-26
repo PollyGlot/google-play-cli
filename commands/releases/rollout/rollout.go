@@ -121,7 +121,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		return nil, err
 	}
 	if in.Track == "" {
-		return nil, &exit.UsageError{Msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
 	// Dry-run skips auth entirely: nothing hits the network, so a missing
@@ -179,7 +179,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 // orchestrator.Rollout.
 func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.ToSet {
-		return nil, &exit.UsageError{Msg: "missing --to: gplay releases rollout --to <fraction> (0 < f ≤ 1.0)"}
+		return nil, exit.Usagef("missing --to: pass --to <fraction> (0 < f ≤ 1.0, e.g. 0.05)")
 	}
 	fraction, err := strconv.ParseFloat(strings.TrimSpace(in.To), 64)
 	if err != nil {
@@ -197,7 +197,7 @@ func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	output.RegisterFlag(cmd, outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name) (required)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the release with this versionCode (disambiguator when the track holds more than one)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the release with this name (disambiguator)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
@@ -262,6 +262,6 @@ one, otherwise the command refuses rather than guess.`,
 		},
 	}
 	bindCommonFlags(cmd, &in, &outputFlag)
-	cmd.Flags().StringVar(&in.To, "to", "", "target rollout fraction (0 < f ≤ 1.0), e.g. 0.05")
+	cmd.Flags().StringVar(&in.To, "to", "", "target rollout fraction (0 < f ≤ 1.0), e.g. 0.05 (required)")
 	return cmd
 }

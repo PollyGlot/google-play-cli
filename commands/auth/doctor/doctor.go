@@ -7,7 +7,6 @@
 package doctor
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -90,7 +89,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := rc.EnsureAccount(); err != nil {
 		results, worst = synthFailure(err, checks)
 	} else if rc.Account == nil {
-		results, worst = synthFailure(errors.New("no active account; run `gplay auth login`"), checks)
+		results, worst = synthFailure(kernel.NoAccountError(), checks)
 	} else {
 		results = authdoctor.Run(rc.Ctx, rc.Account, &hc, checks...)
 		worst = worstFailure(results)
@@ -149,6 +148,7 @@ structured []CheckResult for scripting.`,
 		// rendered checklist on stdout.
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			b := boot
 			b.Stdout = cmd.OutOrStdout()
@@ -202,7 +202,7 @@ func worstFailure(results []authdoctor.CheckResult) *authdoctor.CheckResult {
 }
 
 // synthFailure builds check #1 as failed + the rest as skipped when
-// resolution itself died (no active account).
+// resolution itself died (no Account, or an invalid credential).
 func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
 	failure := authdoctor.ResolutionFailure(err)[0]
 	results := make([]authdoctor.CheckResult, 0, len(checks))

@@ -163,7 +163,7 @@ func classifyTrackError(pkg string, err error) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
-		return nil, &exit.UsageError{Msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (any closed-track name, e.g. alpha)")
 	}
 
 	pkg, err := rc.Package(in.Package)
@@ -231,6 +231,6 @@ renders a Markdown table.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "track whose testers to list (any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "track whose testers to list (any closed-track name) (required)")
 	return cmd
 }

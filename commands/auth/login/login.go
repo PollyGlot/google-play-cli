@@ -131,6 +131,7 @@ prints a warning naming that file. The active backend is reported by
 Pass --activate=false to add a second Account without changing which one
 is active. (The very first registered Account becomes active regardless,
 so the registry is never left without one when --activate=false is set.)`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			saPath, _ := cmd.Flags().GetString("service-account")
 			return kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {

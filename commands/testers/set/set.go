@@ -205,7 +205,7 @@ func targetGroups(in Input) []string {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
-		return nil, &exit.UsageError{Msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (any closed-track name, e.g. alpha)")
 	}
 
 	// Footgun guard: a bare `set` with neither --group nor --clear must
@@ -320,7 +320,7 @@ Writes inside an implicit Edit (open → testers.update → commit). Use
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "track whose testers to replace (any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "track whose testers to replace (any closed-track name) (required)")
 	cmd.Flags().StringSliceVar(&in.Groups, "group", nil, "Google Group email(s) authorized to test (repeatable or comma-separated)")
 	cmd.Flags().BoolVar(&in.Clear, "clear", false, "replace the tester list with an empty set (close the closed test)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the tester list without any HTTP call")

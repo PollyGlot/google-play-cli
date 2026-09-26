@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -172,7 +171,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &exit.UsageError{Msg: "missing --default-language: the default listing language (BCP 47, e.g. en-US) is required"}
 	}
 
-	account, err := addressing.Resolve(in.DeveloperID, os.Getenv(addressing.EnvDeveloperID), rc.Resolved)
+	account, err := addressing.ForRun(rc, in.DeveloperID)
 	if err != nil {
 		return nil, err
 	}

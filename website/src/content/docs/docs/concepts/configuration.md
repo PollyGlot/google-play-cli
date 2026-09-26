@@ -63,7 +63,6 @@ naming the offending file. Put it in `config.local.json`, the
 | `GPLAY_ALLOW_EXTERNAL_SYMLINKS` | When truthy (`1`/`true`/`yes`/`on`), let a file gplay reads from your metadata, images or release-notes tree be a symlink pointing **outside** that tree, and print a `NOTE:` on stderr naming each path that does. Off by default: such a path is refused (exit `2`). See [shared trees in a monorepo](#shared-trees-in-a-monorepo). |
 | `GPLAY_INSTALL_NO_VERIFY` | Read by the install script only: bypass the SHA-256 checksum verification (air-gapped / mirrored installs). Prints a warning. See [installation](/docs/getting-started/installation/). |
 | `CI` | When `true`, output defaults to JSON. See [output formats](/docs/concepts/output-formats/). |
-| `NO_COLOR` | Disable colour in output. |
 
 ## Shared trees in a monorepo
 

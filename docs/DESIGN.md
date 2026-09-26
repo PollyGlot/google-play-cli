@@ -139,8 +139,12 @@ In order, first match wins:
 4. `GPLAY_ACCOUNT` env var (name of a stored Account)
 5. The Account marked **active** in `~/.gplay/config.json` (or `$XDG_CONFIG_HOME/gplay/config.json`)
 
-If nothing resolves: exit code `10` with a message pointing at `gplay auth login`
-and the env var docs.
+If nothing resolves: exit code `10` with one message, the same on every command
+(`kernel.NoAccountError`), that names each way to fix it: `gplay auth login`,
+`--account` or `GPLAY_ACCOUNT`, `--service-account` or `GPLAY_SERVICE_ACCOUNT`.
+A command that also needs a developer-id (`team`, `customapps create`, `reviews
+history`) reports a missing Account before a missing developer-id: a
+developer-id set first would only lead to the no-Account error one step later.
 
 **Path or inline JSON.** A `--service-account` or `GPLAY_SERVICE_ACCOUNT` value
 is inline JSON when its first non-whitespace character is `{`, and a file path
@@ -589,6 +593,14 @@ branch on the failure without scraping stderr:
 - `requires` names the missing safety flag on an exit-3 refusal (extends the
   ADR-0017 dry-run `requires` to failure time); omitted otherwise.
 
+The envelope also covers the CLI misuse cobra rejects before a command runs: an
+unknown or repeated flag, a wrong number of positional arguments, an unknown
+subcommand. There `main` resolves the format itself (the raw `--output` in the
+argument list, because flag parsing may have stopped before reaching it, then
+`GPLAY_DEFAULT_OUTPUT`, `CI` and the TTY check) and writes the same envelope when
+nothing reached stdout yet. The one failure left without an envelope is an
+invalid `--output` or `GPLAY_DEFAULT_OUTPUT` value: no format is known there.
+
 Under `table` / `markdown` a failure leaves stdout empty (error → stderr only).
 Exit codes and stderr are unchanged by the envelope. The envelope shape is part
 of the public contract (ADR-0010); see
@@ -602,20 +614,18 @@ of the public contract (ADR-0010); see
 - **stdout** carries data only (the requested output).
 - **stderr** carries logs, progress, warnings, errors. Always.
 - `-v` / `--verbose` → info level on stderr (flow steps, edit ID, deduced
-  versionCode, ...).
-- `-vv` → debug level (HTTP method + URL, headers, truncated bodies).
-- `-q` / `--quiet` → only errors on stderr.
-- Progress bars (e.g. AAB upload) are active **only in TTY** and disabled by
-  `--quiet`.
-- Color is auto in TTY, disabled in pipes, disabled if `NO_COLOR` env or
-  `--no-color` is set.
+  versionCode, ...). It is the only verbosity flag: there is no debug level,
+  no quiet mode, no progress bar and no colour, so there is nothing for a
+  `-vv`, `--quiet` or `--no-color` to switch (#593). Adding one is a feature
+  of its own, tracked as an issue first.
 - Every stderr line a command writes goes through the kernel funnel, which
   owns the prefix of each level: `rc.Confirmf` (`✓ `), `rc.Warnf`
   (`warning: `, the only warning prefix), `rc.Notef` (`NOTE: `, e.g. a cursor
   listing's next `--page-token`), `rc.Logf` (a plain progress or result line)
-  and `rc.Failf` (a per-item failure in a batch, the level `--quiet` keeps).
-  Commands without a RunContext use `kernel.LoggerFor(cmd)`. A test fails on
-  any direct stderr write under `commands/`, so `--quiet` stays one switch.
+  and `rc.Failf` (a per-item failure in a batch, the level a future `--quiet`
+  would keep). Commands without a RunContext use `kernel.LoggerFor(cmd)`. A
+  test fails on any direct stderr write under `commands/`, so a future
+  `--quiet` stays one switch.
 
 ### Success confirmation (`✓`)
 
@@ -632,8 +642,8 @@ piping (where stdout is machine data and the table view is absent).
   `inProgress` (a partial rollout — the one case where the fraction informs).
 - `--dry-run` never emits it: `✓` means *committed*. A dry-run already prints
   its plan to stdout.
-- It is written through a single helper (`rc.Confirmf`) so `--quiet` can suppress
-  every `✓` in one place once that flag lands.
+- It is written through a single helper (`rc.Confirmf`), so a quiet mode, if
+  one is ever added, can suppress every `✓` in one place.
 - Wording is **not** part of the Public contract (§7) — it is free to evolve.
 
 `releases upload/promote/rollout/halt/resume/complete` are the first commands to
@@ -811,6 +821,22 @@ the exit-3 harmonisation above, the fix *restores* this documented table rather
 than changing the frozen contract (ADR-0010), which is why it shipped as a
 `fix`. Never hand-roll an argument-count check in a command — declare the cobra
 validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
+
+Every runnable leaf declares a validator, `cobra.NoArgs` when it takes no
+positional argument: cobra's default accepts any stray token and exits `0`
+(`gplay version STRAY` did, as did `init`, `exit-codes` and the `auth` reads,
+until #593), and a test in `cmd/gplay` walks the tree to keep it that way. The
+rejection names the fix instead of a count: the missing placeholder taken from
+the command's `Use` (`missing <artifact>`) or the stray token (`unexpected
+argument "extra": gplay tracks list takes no positional arguments`), then the
+usage line.
+
+**A required flag says so.** A flag a command cannot run without ends its help
+text with `(required)`, and its missing-value error names the flag and how to
+pass it, in one shape: `missing --track: pass --track <name> (internal, alpha,
+beta, production, or any closed-track name)`. The check stays in the command
+rather than cobra's `MarkFlagRequired`, whose error would skip the command's
+own wording.
 
 **Exit 70 is not an error.** A check command that sweeps and reports (today only
 `gplay apps audit`, PRD #449) exits `70` when its report carries at least one

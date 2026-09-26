@@ -48,8 +48,12 @@ func main() {
 		fmt.Fprintf(stderr, "gplay: %v\n", err)
 		os.Exit(1)
 	}
+	// Counted stdout: writeFailureEnvelope below needs to know whether a
+	// failing command already wrote to it. SetOut hands the same writer down
+	// the tree, like SetErr does for stderr.
+	stdout := &stdoutTally{f: os.Stdout}
 	boot := kernel.Boot{
-		Stdout:       os.Stdout,
+		Stdout:       stdout,
 		Stderr:       stderr,
 		Stdin:        os.Stdin,
 		ConfigPath:   filepath.Join(configDir, "config.json"),
@@ -63,19 +67,26 @@ func main() {
 	// before a sub-run. SetErr on the root makes the redacting writer the one
 	// cobra hands down the whole command tree, including leaves added later.
 	root.SetErr(stderr)
+	root.SetOut(stdout)
 
-	os.Exit(execute(context.Background(), root, stderr))
+	// A failure cobra raised before RunE (flag parse, argument count, unknown
+	// subcommand) never met the kernel's JSON envelope: write it once Execute
+	// fails, when nothing else reached stdout (ADR-0023, #593).
+	envelope := func(err error) { writeFailureEnvelope(stdout, stdout.n > 0, os.Args[1:], err) }
+	os.Exit(execute(context.Background(), root, stderr, envelope))
 }
 
 // execute runs root under a context that SIGINT and SIGTERM cancel, and
-// returns the process exit code.
+// returns the process exit code. On a failure that was not an interrupt it
+// calls envelope (when non-nil) before the stderr line; an interrupt exits
+// 50 whatever the error, so an envelope there could only contradict it.
 //
 // Cancellation is what lets an interrupted command clean up: every request
 // fails fast on the canceled context and the Edit lifecycle discards the
 // implicit Edit on its own short bound (internal/play/edits), where a plain
 // kill used to leave it open server-side, blocking the next publish for up to
 // 24h. A second signal is not caught: it terminates gplay at once.
-func execute(parent context.Context, root *cobra.Command, stderr io.Writer) int {
+func execute(parent context.Context, root *cobra.Command, stderr io.Writer, envelope func(error)) int {
 	ctx, interrupted, stop := notifyInterrupt(parent)
 	defer stop()
 	err := root.ExecuteContext(ctx)
@@ -84,13 +95,17 @@ func execute(parent context.Context, root *cobra.Command, stderr io.Writer) int 
 		// success is the truth, and a retry would only redo it.
 		return 0
 	}
+	sig := interrupted()
+	if sig == nil && envelope != nil {
+		envelope(err)
+	}
 	// Subcommands set SilenceErrors:true on their cobra Command so the
 	// stack-trace-style "Error: ..." cobra would emit is suppressed, but we
 	// still owe the user a one-line message before exiting, otherwise the only
 	// signal is the exit code (which CI sees, but a human running gplay in a
 	// terminal does not).
 	fmt.Fprintln(stderr, "gplay:", err)
-	if sig := interrupted(); sig != nil {
+	if sig != nil {
 		fmt.Fprintf(stderr, "gplay: interrupted by %s\n", signalName(sig))
 		return exitInterrupted
 	}
@@ -244,6 +259,7 @@ func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print gplay version",
+		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
 			info, ok := debug.ReadBuildInfo()
 			v, c, d := resolveVersion(version, commit, date, info, ok)

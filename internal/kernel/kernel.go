@@ -866,12 +866,9 @@ func (rc *RunContext) authedClientFor(timeout time.Duration, mediaExempt bool) (
 	// First call that genuinely needs a credential: this is where the
 	// keyring probe + Load finally happen (see EnsureAccount), not at boot.
 	// A present-but-invalid credential surfaces its real cause here; an
-	// absent one falls through to the authError login hint below.
-	if err := rc.EnsureAccount(); err != nil {
+	// absent one becomes the one no-Account error (NoAccountError).
+	if err := rc.RequireAccount(); err != nil {
 		return nil, err
-	}
-	if rc.Account == nil {
-		return nil, &authError{msg: "no Account resolved; run gplay auth login or set GPLAY_SERVICE_ACCOUNT"}
 	}
 	// The /token exchange runs through the context's HTTP client (jwt.Config
 	// captures the context it is given), so bound it with the same deadline by
@@ -946,6 +943,32 @@ type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
 func (e *authError) ExitCode() int { return 10 }
+
+// noAccountMsg is the one wording for "no credential configured at all"
+// (#593). It names every precedence layer that can fix it (DESIGN §1), stored
+// Account first because that is what `auth login` produces; the registry
+// commands (`apps add/list/remove`) that cannot scope to an inline credential
+// say so in their own follow-up error, which beats four diverging hints.
+const noAccountMsg = "no Account resolved: run `gplay auth login`, pass --account <name> or set GPLAY_ACCOUNT, " +
+	"or supply a service-account key with --service-account or GPLAY_SERVICE_ACCOUNT"
+
+// NoAccountError is the failure every command returns when no Account resolves
+// (exit 10, AUTH_FAILED). Commands build it here rather than spelling their own
+// message, so the fix reads the same whichever command hit it.
+func NoAccountError() error { return &authError{msg: noAccountMsg} }
+
+// RequireAccount resolves the credential (EnsureAccount) and turns the benign
+// "absent" outcome into NoAccountError, for callers that cannot proceed without
+// one. An invalid credential keeps its own exit-10 cause.
+func (rc *RunContext) RequireAccount() error {
+	if err := rc.EnsureAccount(); err != nil {
+		return err
+	}
+	if rc.Account == nil {
+		return NoAccountError()
+	}
+	return nil
+}
 
 // FromCobra builds an Inputs from cmd's persistent flag values
 // (--verbose, --service-account, --account), the credential env vars,

@@ -155,10 +155,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
 	}
 	if in.FromTrack == "" {
-		return nil, &exit.UsageError{Msg: "missing --from"}
+		return nil, exit.Usagef("missing --from: pass --from <track> (the track holding the release to promote)")
 	}
 	if in.ToTrack == "" {
-		return nil, &exit.UsageError{Msg: "missing --to"}
+		return nil, exit.Usagef("missing --to: pass --to <track> (the destination track)")
 	}
 
 	pkg, err := rc.Package(in.Package)
@@ -269,8 +269,8 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.FromTrack, "from", "", "source track to promote from")
-	cmd.Flags().StringVar(&in.ToTrack, "to", "", "destination track to promote to")
+	cmd.Flags().StringVar(&in.FromTrack, "from", "", "source track to promote from (required)")
+	cmd.Flags().StringVar(&in.ToTrack, "to", "", "destination track to promote to (required)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the source release with this versionCode (disambiguator)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the source release with this name (disambiguator)")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "override carry-over with this text (applied to the app's default language)")

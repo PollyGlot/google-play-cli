@@ -51,8 +51,8 @@ type Input struct {
 	NoVerify bool
 }
 
-// authError signals "no account resolved"; ExitCode()=10 per
-// docs/DESIGN.md §9 and the resolver precedence rules.
+// authError signals an Account missing from the global config; ExitCode()=10
+// per docs/DESIGN.md §9. The no-Account case is kernel.NoAccountError.
 type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
@@ -206,7 +206,7 @@ func resolveAccount(rc *kernel.RunContext) (string, *config.Global, error) {
 		if rc.Account != nil {
 			return "", nil, &exit.UsageError{Msg: "apps add: cannot register under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
-		return "", nil, &authError{msg: "no Account resolved; run `gplay auth login`, set GPLAY_ACCOUNT, or pass --account"}
+		return "", nil, kernel.NoAccountError()
 	}
 	account := rc.AccountName
 
