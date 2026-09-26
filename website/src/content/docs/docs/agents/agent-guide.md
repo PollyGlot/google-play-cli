@@ -33,10 +33,13 @@ missing, and the error names it. An agent can surface the decision to a
 human, or re-run with the flag if its policy allows.
 
 Under `--output json`, a failure also writes a structured envelope to stdout
-(`{"error":{"exitCode","message","reasons","requires"}}`), so the failure is
-parseable without scraping stderr, and `requires` names the missing flag at
-failure time, not just in a dry-run. See
-[output formats](/docs/concepts/output-formats/).
+(`{"error":{"code","exitCode","retryable","message",...}}`), so the failure is
+parseable without scraping stderr. Branch on `code`, a stable diagnostic code
+such as `EDIT_ALREADY_EXISTS` that tells apart failures sharing an exit code;
+read `retryable` to decide whether replaying the same command can succeed; and
+`requires` names the missing flag at failure time, not just in a dry-run. See
+[output formats](/docs/concepts/output-formats/) and the
+[diagnostic codes](/docs/concepts/exit-codes/#diagnostic-codes).
 
 ## The read-only authority boundary: `GPLAY_READONLY`
 

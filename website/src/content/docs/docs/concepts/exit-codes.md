@@ -8,23 +8,65 @@ sidebar:
 gplay's exit codes are **semantic**: the code alone tells a script or an
 agent whether retrying can help, without parsing error messages.
 
+<!-- BEGIN GENERATED exit-codes (make docs-update) -->
 | Code | Meaning | Retry-safe? |
 | --- | --- | --- |
 | `0` | Success | n/a |
 | `1` | Generic error (fallback when nothing more specific fits) | No |
-| `2` | CLI misuse: unknown flag, bad value, wrong number of positional arguments | No |
-| `3` | Safety flag required: the command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the error names it | Deterministic: re-run with the named flag |
-| `4` | Denied by environment policy: a mutating command was refused because `GPLAY_READONLY` is set; the message names the env var | No, and **not** fixable by a flag; change the environment |
-| `10` | Authentication failure: service account invalid, token refused, scope missing | No |
-| `11` | Authorization: HTTP 403, e.g. the service account was never invited on the app | No |
-| `20` | Client-side validation: malformed AAB, unknown locale, oversized listing text | No |
-| `30` | API 4xx other than auth/permissions: not found, conflict, gone | No |
-| `40` | API 5xx: upstream temporarily unhealthy | **Yes** |
-| `50` | Network: timeout, DNS, connection refused | **Yes** |
-| `60` | State conflict: another Edit open, rate-limited, ambiguous release target | Sometimes |
+| `2` | CLI misuse (unknown flag, bad value, repeated single-value flag, wrong number of positional args) | No |
+| `3` | Safety flag required: well-formed, but a named --confirm/--grant-admin is missing; the message names it | Re-run with the named flag |
+| `4` | Denied by environment policy (GPLAY_READONLY): a mutating command was refused | No; not resolvable by a flag, change the environment |
+| `10` | Authentication failure (SA invalid, token refused, scope missing, no developer-id) | No |
+| `11` | Authorization (403: SA not invited on the app/account) | No |
+| `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
+| `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
+| `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
+| `50` | Network (timeout, DNS, refused) | **Yes** |
+| `60` | State conflict (open edit, rate-limited, ambiguous target, ...) | Sometimes |
+| `70` | Findings present (a read-only check command completed and reported drift; NOT an error) | No |
+<!-- END GENERATED exit-codes -->
 
-The same table ships inside the binary: `gplay help exit-codes` is generated
-from the same source the binary actually returns, so it can never drift.
+This table is generated from the catalog in the binary (`internal/exit`), the
+same one `gplay exit-codes` prints, and a test fails the build when the two
+disagree.
+
+## Diagnostic codes
+
+An exit code says which *bucket* a failure fell into; a **diagnostic code**
+says which failure it was. Under `--output json` every failure carries one in
+the error envelope's `code` field, next to a `retryable` bit, so an agent
+branches on `EDIT_ALREADY_EXISTS` instead of matching the word "already" in the
+message (see [Output formats](/docs/concepts/output-formats/)).
+
+<!-- BEGIN GENERATED diagnostic-codes (make docs-update) -->
+| Code | Exit | Retryable | Meaning |
+| --- | --- | --- | --- |
+| `GENERIC_ERROR` | `1` | No | Unclassified failure (no typed exit code); consult the message |
+| `USAGE_ERROR` | `2` | No | CLI misuse: unknown flag, bad value, wrong number of positional args |
+| `SAFETY_FLAG_REQUIRED` | `3` | No | A named safety flag is missing; re-run with the flag in `requires` |
+| `POLICY_READONLY` | `4` | No | Refused by the read-only environment policy; not resolvable by a flag |
+| `AUTH_FAILED` | `10` | No | Authentication failed: no Account, invalid credential, token refused |
+| `PERMISSION_DENIED` | `11` | No | Authorization failed (403): the Account is not invited on this app |
+| `VALIDATION_FAILED` | `20` | No | Client-side validation rejected the input before the API accepted it |
+| `INVALID_ARGUMENT` | `30` | No | The API rejected the request as malformed (400) |
+| `NOT_FOUND` | `30` | No | The API found no such package, track, Edit or resource (404) |
+| `BASE_PLAN_NOT_DRAFT` | `30` | No | The API only deletes a DRAFT base plan; deactivate it first (state: INACTIVE), apply, then remove it |
+| `API_ERROR` | `30` | No | Other API 4xx rejection |
+| `UPSTREAM_UNAVAILABLE` | `40` | **Yes** | The API is temporarily unhealthy (5xx); retry |
+| `NETWORK_ERROR` | `50` | **Yes** | Network failure with no HTTP response: timeout, DNS, refused |
+| `STATE_CONFLICT` | `60` | No | Remote state conflicts with the request (409) |
+| `EDIT_ALREADY_EXISTS` | `60` | No | An Edit is already open on this package; commit or delete it first |
+| `EDIT_EXPIRED` | `60` | No | The pinned Edit expired; begin a new Edit and replay the mutation |
+| `RATE_LIMIT_EXCEEDED` | `60` | **Yes** | Rate or quota limit exceeded; back off and retry |
+| `FINDINGS_PRESENT` | `70` | No | A read-only check command completed and reported findings; not a failure |
+<!-- END GENERATED diagnostic-codes -->
+
+The Exit column is the *canonical* bucket, not a promise of equality: a few
+wrapped errors keep a narrower exit code, and the envelope's own `exitCode` is
+authoritative for a given failure. Codes are append-only: a new failure mode
+earns a new code, an existing one is never renamed or repurposed. The same
+catalog is available offline, `gplay exit-codes` for a person and
+`gplay schema --codes --output json` for a program.
 
 ## Built-in retry with `--retry`
 
