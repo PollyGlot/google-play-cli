@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
@@ -34,6 +35,7 @@ type SetInput struct {
 
 	DryRun            bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 }
 
 // anyFieldSet reports whether at least one field flag was passed. A bare
@@ -227,7 +229,7 @@ func RunSet(rc *kernel.RunContext, in SetInput) (output.Renderable, error) {
 	}
 
 	var raw json.RawMessage
-	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
+	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
 		_, r, e := details.Patch(rc.Ctx, httpClient, pkg, editID, patch)
 		if e != nil {
 			return e
@@ -293,5 +295,6 @@ auto-discard cleanup for debugging.
 	cmd.Flags().StringVar(&in.ContactWebsite, "contact-website", "", "set the user-visible contact website (empty value clears it)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "preview the patch without any HTTP call (no auth needed)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	return cmd
 }

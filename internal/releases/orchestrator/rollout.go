@@ -100,6 +100,10 @@ type StateOpts struct {
 	// Empty is the implicit default.
 	ExplicitEditID string
 
+	// Commit carries the opt-in edits.commit parameters; the zero value keeps
+	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
+	Commit edits.CommitOptions
+
 	// Confirm gates production-impacting transitions. Required (else an
 	// *exit.SafetyFlagError naming --confirm, exit 3) when Track is
 	// "production" AND the
@@ -177,7 +181,7 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 	}
 
 	result := &Result{Track: opts.Track}
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
 		cur, rawTrack, err := tracks.Get(ctx, hc, opts.Package, editID, opts.Track)
 		if err != nil {
 			return err

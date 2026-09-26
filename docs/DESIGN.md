@@ -304,6 +304,31 @@ Two read-only checks complete the lifecycle (#544):
   cleared implicitly. Without `--live`, `status` stays a local read with no
   auth and no network; `--live` without a pin also stays offline.
 
+### Committing while changes are in review (#598)
+
+Every command that commits an Edit (`gplay edits commit`, and each write
+command in implicit mode) takes two opt-ins, forwarded as `edits.commit` query
+parameters. They are `[experimental]` sub-features of frozen commands (§11),
+labelled in their help text:
+
+| Flag | Sent as | Effect |
+|---|---|---|
+| `--changes-in-review cancel` | `changesInReviewBehavior=CANCEL_IN_REVIEW_AND_SUBMIT` | Google's default, stated explicitly |
+| `--changes-in-review error` | `changesInReviewBehavior=ERROR_IF_IN_REVIEW` | The commit fails while changes are in review; the review is left alone and Google does not invalidate the Edit |
+| `--changes-not-sent-for-review` | `changesNotSentForReview=true` | Commit without sending the changes for review; they wait until someone sends them from the Play Console |
+
+**The default is Google's and stays so.** With neither flag gplay sends no
+parameter, and Google cancels any review in progress and submits everything
+again, which restarts the review. Changing that default would change what every
+existing pipeline publishes, so it is not on the table in `1.x`. A refusal in
+`error` mode is Google's error envelope, passed through with the exit code its
+status maps to (§9). A bad value is CLI misuse (exit `2`), rejected while flags
+are parsed.
+
+With an explicit Edit pinned, a write command stages into it and does not
+commit, so the flags cannot apply there: the command warns on stderr and names
+`gplay edits commit`, which is where they belong.
+
 ---
 
 ## 5. Reviews

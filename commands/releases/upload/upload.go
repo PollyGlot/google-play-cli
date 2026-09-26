@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
 	"github.com/PollyGlot/google-play-cli/internal/artifact"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -36,6 +37,7 @@ type Input struct {
 	StagedFraction    float64
 	StagedFractionSet bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 	SkipPreflight     bool
@@ -282,6 +284,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -375,6 +378,7 @@ of the APK passes through verbatim.`,
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")

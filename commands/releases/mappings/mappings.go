@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -27,6 +28,7 @@ type Input struct {
 	VersionCode       int
 	Type              string
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	DryRun            bool
 }
 
@@ -133,6 +135,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		FileType:          in.Type,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		DryRun:            in.DryRun,
 	})
 	if err != nil {
@@ -182,6 +185,7 @@ To upload a mapping at the same time as the AAB (the common case), pass
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "APK versionCode the mapping belongs to (required)")
 	cmd.Flags().StringVar(&in.Type, "type", "proguard", "deobfuscation file type: proguard or nativeCode")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs without any HTTP call")
 	return cmd
 }

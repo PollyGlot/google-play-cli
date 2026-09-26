@@ -23,6 +23,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -41,6 +42,7 @@ type Input struct {
 	Clear             bool
 	DryRun            bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 }
 
 // usageError is a CLI-misuse error (missing --track, no package, the
@@ -310,7 +312,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		parsed *testers.Testers
 		raw    json.RawMessage
 	)
-	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
+	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
 		tt, r, e := testers.Update(rc.Ctx, httpClient, pkg, editID, in.Track, groups)
 		if e != nil {
 			if isStatus(e, http.StatusNotFound) {
@@ -377,5 +379,6 @@ Writes inside an implicit Edit (open → testers.update → commit). Use
 	cmd.Flags().BoolVar(&in.Clear, "clear", false, "replace the tester list with an empty set (close the closed test)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the tester list without any HTTP call")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	return cmd
 }

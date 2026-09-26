@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -34,6 +35,7 @@ type Input struct {
 	To                string
 	ToSet             bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 }
@@ -163,6 +165,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		UserFraction:      userFraction,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -200,7 +203,8 @@ func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 }
 
 // bindCommonFlags registers the flags every verb shares (output, package,
-// track, the two disambiguators, keep-edit-on-failure, dry-run).
+// track, the two disambiguators, keep-edit-on-failure, the commit opt-ins,
+// dry-run).
 func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	output.RegisterFlag(cmd, outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
@@ -208,6 +212,7 @@ func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "pick the release with this versionCode (disambiguator when the track holds more than one)")
 	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "pick the release with this name (disambiguator)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "required to roll out / resume / complete a release on production (reaches real users)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the transition without any HTTP call")
 }

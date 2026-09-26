@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -67,10 +68,74 @@ func (e *DanglingEditError) ExitCode() int {
 // ExplicitEditID selects the explicit-mode (`gplay edits begin/commit/discard`)
 // contract: when it is non-empty, WithEdit runs fn against that already-open
 // Edit WITHOUT opening, committing, or discarding one: the caller owns the
-// lifecycle. KeepOnFailure is moot in that mode (nothing is auto-discarded).
+// lifecycle. KeepOnFailure is moot in that mode (nothing is auto-discarded),
+// and so is Commit: the pinned Edit is committed by `gplay edits commit`.
+//
+// Commit carries the opt-in edits.commit query parameters; its zero value
+// sends none, so Google's default behavior applies.
 type Options struct {
 	KeepOnFailure  bool
 	ExplicitEditID string
+	Commit         CommitOptions
+}
+
+// ChangesInReview selects how a commit treats changes that are already in
+// Google's review: the changesInReviewBehavior query parameter of edits.commit.
+// The values are the CLI spellings; the wire enum is derived in query.
+type ChangesInReview string
+
+const (
+	// ChangesInReviewUnset sends no parameter, so Google's default applies:
+	// CANCEL_IN_REVIEW_AND_SUBMIT, which cancels the pending review and submits
+	// everything again. Kept as the default because changing it would change
+	// what every existing CI pipeline publishes (#598).
+	ChangesInReviewUnset ChangesInReview = ""
+	// ChangesInReviewCancel asks for Google's default explicitly.
+	ChangesInReviewCancel ChangesInReview = "cancel"
+	// ChangesInReviewError makes the commit fail while changes are in review,
+	// leaving the review untouched (ERROR_IF_IN_REVIEW). Google does not
+	// invalidate the Edit on that refusal.
+	ChangesInReviewError ChangesInReview = "error"
+)
+
+// ParseChangesInReview validates a CLI spelling. The empty string is the unset
+// value, not an error, so a flag left alone maps to Google's default.
+func ParseChangesInReview(s string) (ChangesInReview, error) {
+	switch v := ChangesInReview(s); v {
+	case ChangesInReviewUnset, ChangesInReviewCancel, ChangesInReviewError:
+		return v, nil
+	}
+	return ChangesInReviewUnset, fmt.Errorf("must be %s or %s", ChangesInReviewCancel, ChangesInReviewError)
+}
+
+// CommitOptions are the optional query parameters of edits.commit. The zero
+// value sends none: the request is byte-identical to the one gplay has always
+// sent, which is what keeps these opt-ins additive.
+type CommitOptions struct {
+	ChangesInReview ChangesInReview
+	// ChangesNotSentForReview commits the Edit without sending its changes for
+	// review; they wait until someone sends them from the Play Console. Some
+	// apps (after a rejection, for instance) cannot commit any other way.
+	ChangesNotSentForReview bool
+}
+
+// IsZero reports whether o sends no parameter at all.
+func (o CommitOptions) IsZero() bool { return o == CommitOptions{} }
+
+// query renders o as the edits.commit query string. Parameter names and enum
+// values are Discovery's (androidpublisher.edits.commit).
+func (o CommitOptions) query() url.Values {
+	q := url.Values{}
+	switch o.ChangesInReview {
+	case ChangesInReviewCancel:
+		q.Set("changesInReviewBehavior", "CANCEL_IN_REVIEW_AND_SUBMIT")
+	case ChangesInReviewError:
+		q.Set("changesInReviewBehavior", "ERROR_IF_IN_REVIEW")
+	}
+	if o.ChangesNotSentForReview {
+		q.Set("changesNotSentForReview", "true")
+	}
+	return q
 }
 
 // WithEdit opens an Edit on pkg, invokes fn with the new Edit ID, and
@@ -134,7 +199,7 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	if fnErr := fn(editID); fnErr != nil {
 		return handleFailure(fnErr)
 	}
-	if commitErr := commitEdit(ctx, hc, pkg, editID); commitErr != nil {
+	if commitErr := commitEdit(ctx, hc, pkg, editID, opts.Commit); commitErr != nil {
 		return handleFailure(commitErr)
 	}
 	return nil
@@ -269,8 +334,8 @@ func OpenExplicit(ctx context.Context, hc *http.Client, pkg string) (string, err
 // On failure the Edit stays open (no discard), so the operator can re-attempt
 // the commit or discard it: the caller leaves .gplay/edit-<pkg>.json in place
 // until a commit succeeds.
-func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	return commitEdit(ctx, hc, pkg, editID)
+func CommitExplicit(ctx context.Context, hc *http.Client, pkg, editID string, opts CommitOptions) error {
+	return commitEdit(ctx, hc, pkg, editID, opts)
 }
 
 // DiscardExplicit discards an already-open Edit (the `gplay edits discard`
@@ -442,30 +507,19 @@ func deleteEdit(ctx context.Context, hc *http.Client, pkg, editID string) error 
 	return nil
 }
 
-func commitEdit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	u, err := methodCommit.URL(map[string]string{"packageName": pkg, "editId": editID})
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
+// commitEdit sends edits.commit through the executor. A 2xx is success
+// whatever happens to its body: the AppEdit it carries is never used, and a
+// response cut mid-body must not report a live publish as a failure.
+func commitEdit(ctx context.Context, hc *http.Client, pkg, editID string, opts CommitOptions) error {
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: methodCommit,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
+		Query:  opts.query(),
+		Target: pkg,
+	})
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) && apiErr.StatusCode >= 200 && apiErr.StatusCode < 300 {
+		return nil
 	}
-	req, err := http.NewRequestWithContext(ctx, methodCommit.Verb, u, http.NoBody)
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return &api.Error{Operation: "edits.commit", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return &api.Error{
-			Operation:  "edits.commit",
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	return nil
+	return err
 }

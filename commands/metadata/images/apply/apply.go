@@ -29,6 +29,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagediff"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imageorchestrator"
@@ -48,6 +49,7 @@ type Input struct {
 	DryRun     bool
 	Confirm    bool
 	Prune      bool
+	Commit     commitflags.Flags
 	Locales    []string
 	Types      []string
 	NoValidate bool
@@ -232,6 +234,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Types:          in.Types,
 		NoValidate:     in.NoValidate,
 		ExplicitEditID: explicitEditID,
+		Commit:         in.Commit.For(rc, explicitEditID),
 	})
 	if err != nil {
 		return nil, classifyEditError(pkg, err)
@@ -303,6 +306,7 @@ the Edit (0 published).
 	cmd.Flags().StringVar(&in.Dir, "dir", DefaultDir, "metadata tree root directory")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the delta without committing (online)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize the real publish (images go live immediately)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Prune, "prune", false, "also delete a managed slot's online-only images (destructive; requires --confirm)")
 	cmd.Flags().StringArrayVar(&in.Locales, "locale", nil, "restrict to these locale codes (repeatable)")
 	cmd.Flags().StringArrayVar(&in.Types, "type", nil, "restrict to these image types (repeatable)")

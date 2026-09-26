@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -31,6 +32,7 @@ type Input struct {
 	Name              string
 	DryRun            bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 }
 
 // usageError is a CLI-misuse error (missing track name, no package);
@@ -225,7 +227,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		created *tracks.Track
 		raw     json.RawMessage
 	)
-	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID}, func(editID string) error {
+	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
 		t, r, e := tracks.Create(rc.Ctx, httpClient, pkg, editID, in.Name, tracks.FormFactorDefault)
 		if e != nil {
 			return e
@@ -286,5 +288,6 @@ track is low-stakes and reversible.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the TrackConfig without any HTTP call")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	return cmd
 }
