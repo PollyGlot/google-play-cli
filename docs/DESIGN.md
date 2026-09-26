@@ -340,6 +340,66 @@ the Edit itself rather than a resource inside it) names the pin file and
 diagnostic code stay those of the API failure; the pin is never cleared
 implicitly.
 
+### Committing while changes are in review (#598)
+
+Every command that commits an Edit (`gplay edits commit`, and each write
+command in implicit mode) takes two opt-ins, forwarded as `edits.commit` query
+parameters. They are frozen like the commands carrying them (no
+`[experimental]` label): each mirrors one Google parameter 1:1, so there is no
+shape left to settle.
+
+| Flag | Sent as | Effect |
+|---|---|---|
+| `--changes-in-review cancel` | `changesInReviewBehavior=CANCEL_IN_REVIEW_AND_SUBMIT` | Google's default, stated explicitly |
+| `--changes-in-review error` | `changesInReviewBehavior=ERROR_IF_IN_REVIEW` | The commit fails while changes are in review; the review is left alone and Google does not invalidate the Edit |
+| `--changes-not-sent-for-review` | `changesNotSentForReview=true` | Commit without sending the changes for review; they wait until someone sends them from the Play Console |
+
+**The default is Google's and stays so.** With neither flag gplay sends no
+parameter, and Google cancels any review in progress and submits everything
+again, which restarts the review. Changing that default would change what every
+existing pipeline publishes, so it is not on the table in `1.x`. A refusal in
+`error` mode is Google's error envelope, passed through with the exit code its
+status maps to (§9). A bad value is CLI misuse (exit `2`), rejected while flags
+are parsed.
+
+With an explicit Edit pinned, a write command stages into it and does not
+commit, so the flags cannot apply there: the command warns on stderr and names
+`gplay edits commit`, which is where they belong.
+
+### A commit whose outcome is unknown
+
+A commit that fails after the request left the machine (a timeout, a reset, a
+`5xx`) may have been applied. It keeps the exit code its failure maps to (`50`
+or `40`), but its diagnostic code is `COMMIT_OUTCOME_UNKNOWN`, **not
+retryable** (§9.1): re-running an upload that did publish fails on the
+already-used version code and reports a successful release as an error. The
+message says how to check instead: the live state (`gplay releases list`, or
+the Play Console) for an implicit Edit, `gplay edits status --live` for
+`gplay edits commit` (the pin stays; an Edit that is gone was most likely
+committed). A failure that proves the commit never left (a DNS or dial error, a
+refused token exchange) keeps its ordinary code. `--retry` never replays
+`edits.commit` in any case.
+
+### Reads and the pinned Edit
+
+Read commands show the **live, committed** state. An Edit-scoped read
+(`releases list`, `tracks list`, `tracks view`, `tracks availability view`,
+`testers list`, `metadata list`, `metadata pull`, `metadata images list`,
+`metadata images pull`, `releases expansion-files view`, `apps view`,
+`apps details view`, `apps audit`) opens its own read-only Edit and discards
+it, even while an explicit Edit is pinned: after `edits begin` and
+`releases upload`, `releases list` still shows what is published, not what is
+staged. Reading the staged state is an opt-in: a read joins the pinned Edit
+only when passed `--edit`. No read takes `--edit` yet; it earns its place
+command by command through an issue. The reason is predictability: a read
+whose source flips on the presence of a file in `.gplay/` answers the same
+command differently in two directories, and the frozen reads keep the
+semantics they shipped with (ADR-0042).
+
+`releases artifacts list` (`[experimental]`, #543) predates this rule and reads
+inside the pinned Edit without `--edit`, so that artifacts uploaded there are
+visible. It is the one known exception.
+
 ---
 
 ## 5. Reviews
@@ -685,12 +745,12 @@ pointing at a shared translation):
 | `2` | CLI misuse (unknown flag, bad value, repeated single-value flag, wrong number of positional args) | No |
 | `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
 | `4` | Denied by environment policy (`GPLAY_READONLY`) — a mutating command was refused; the message names the env var | No — **not** resolvable by adding a flag; change the environment |
-| `10` | Authentication failure (SA invalid, token refused, scope missing) | No |
+| `10` | Authentication failure (SA invalid, token refused by the token endpoint or by the API as a `401`, scope missing) | No |
 | `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
 | `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
-| `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
-| `50` | Network (timeout, DNS, refused) | **Yes** |
+| `40` | API 5xx (upstream temporarily unhealthy) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
+| `50` | Network (timeout, DNS, refused) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
 | `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
 | `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
 
@@ -796,6 +856,7 @@ rather than regexing the message for the word "already".
 | `API_ERROR` | 30 | No | Other API 4xx rejection |
 | `UPSTREAM_UNAVAILABLE` | 40 | **Yes** | The API is temporarily unhealthy (5xx) |
 | `NETWORK_ERROR` | 50 | **Yes** | Transport failure with no HTTP response |
+| `COMMIT_OUTCOME_UNKNOWN` | 50 | No | An Edit commit failed after it was sent (timeout, reset or 5xx, so exit `50` or `40`) and may be live; check before re-running (§4) |
 | `STATE_CONFLICT` | 60 | No | Remote state conflicts with the request (409) |
 | `EDIT_ALREADY_EXISTS` | 60 | No | An Edit is already open on this package |
 | `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit |

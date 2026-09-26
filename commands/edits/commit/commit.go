@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/edits/editscmd"
 	"github.com/PollyGlot/google-play-cli/internal/editpin"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -20,6 +21,7 @@ import (
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
+	Commit  commitflags.Flags
 }
 
 // Run is the business function the kernel invokes.
@@ -46,9 +48,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	if err := edits.CommitExplicit(rc.Ctx, httpClient, pkg, pin.EditID); err != nil {
+	if err := edits.CommitExplicit(rc.Ctx, httpClient, pkg, pin.EditID, in.Commit.Options()); err != nil {
 		// Leave the pin in place: the Edit is still open, so a re-run can retry
-		// the commit (or `gplay edits discard` can abandon it).
+		// the commit (or `gplay edits discard` can abandon it). On an unknown
+		// outcome the Edit may be gone instead; the error says how to check.
 		return nil, err
 	}
 	if err := editpin.Clear(rc.FS, gplayDir, pkg); err != nil {
@@ -78,6 +81,16 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 With no open Edit, commit fails with exit 60. If the commit itself fails (for
 example a validation error from Google), the Edit stays open and the pin is
 left in place: fix the cause and re-run, or ` + "`gplay edits discard`" + `.
+A commit that times out or gets a 5xx may still have been applied: it keeps
+its exit code (50 or 40) but is reported as not retryable
+(COMMIT_OUTCOME_UNKNOWN); run ` + "`gplay edits status --live`" + ` before
+committing again.
+
+If changes are already in Google's review, Google's default is to cancel that
+review and submit everything again. Pass --changes-in-review error to fail
+instead and leave the review untouched, or --changes-not-sent-for-review to
+commit without sending the changes for review (send them later from the Play
+Console).
 
 The package defaults to the repo's .gplay/config.json pin when --package is
 omitted.`,
@@ -92,5 +105,6 @@ omitted.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
+	commitflags.Register(cmd, &in.Commit)
 	return cmd
 }

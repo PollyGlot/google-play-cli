@@ -15,12 +15,12 @@ agent whether retrying can help, without parsing error messages.
 | `2` | CLI misuse: unknown flag, bad value, wrong number of positional arguments | No |
 | `3` | Safety flag required: the command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the error names it | Deterministic: re-run with the named flag |
 | `4` | Denied by environment policy: a mutating command was refused because `GPLAY_READONLY` is set; the message names the env var | No, and **not** fixable by a flag; change the environment |
-| `10` | Authentication failure: service account invalid, token refused, scope missing | No |
+| `10` | Authentication failure: service account invalid, token refused (by the token endpoint, or by the API as an HTTP 401), scope missing | No |
 | `11` | Authorization: HTTP 403, e.g. the service account was never invited on the app | No |
 | `20` | Client-side validation: malformed AAB, unknown locale, oversized listing text | No |
 | `30` | API 4xx other than auth/permissions: not found, conflict, gone | No |
-| `40` | API 5xx: upstream temporarily unhealthy | **Yes** |
-| `50` | Network: timeout, DNS, connection refused | **Yes** |
+| `40` | API 5xx: upstream temporarily unhealthy | **Yes**, except an Edit commit whose outcome is unknown (below) |
+| `50` | Network: timeout, DNS, connection refused | **Yes**, except an Edit commit whose outcome is unknown (below) |
 | `60` | State conflict: another Edit open, rate-limited, ambiguous release target | Sometimes |
 
 The same table ships inside the binary: `gplay help exit-codes` is generated
@@ -64,6 +64,20 @@ for attempt in 1 2 3; do
 done
 exit 1
 ```
+
+## An Edit commit whose outcome is unknown
+
+Committing an Edit is the one step where "retry-safe" does not hold. When the
+commit fails after the request was sent (a timeout, a reset, a 5xx), Google
+may have applied it. gplay keeps the exit code (`50` or `40`) but tells you
+it is not a blind retry: the error says the commit may be live, and the
+`--output json` envelope carries `"code": "COMMIT_OUTCOME_UNKNOWN"` with
+`"retryable": false`. Check the live state before re-running:
+`gplay releases list` (or the Play Console) after a write command, or
+`gplay edits status --live` after `gplay edits commit` (an Edit that is gone
+was most likely committed). Re-running an upload that did publish fails on
+the already-used version code, which the loop above would report as a failed
+release.
 
 ## Exit 3: machine-resolvable refusals
 

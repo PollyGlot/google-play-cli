@@ -84,9 +84,12 @@ var flagVocabulary = map[string]string{
 	"confirm":              "consent to an irreversible or production-impacting write",
 	"grant-admin":          "consent to granting admin permissions",
 	"keep-edit-on-failure": "keep the Edit open on failure for debugging",
-	"skip-preflight":       "skip the local check before an upload or write",
-	"no-verify":            "skip the remote access probe",
-	"live":                 "also check server-side state",
+	// Edit commit opt-ins (#598): Discovery's edits.commit query parameters.
+	"changes-in-review":           "what an Edit commit does with changes already in review: cancel or error",
+	"changes-not-sent-for-review": "commit an Edit without sending its changes for review",
+	"skip-preflight":              "skip the local check before an upload or write",
+	"no-verify":                   "skip the remote access probe",
+	"live":                        "also check server-side state",
 
 	// Release state.
 	"staged":   "rollout user fraction of a staged release",

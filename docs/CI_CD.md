@@ -168,7 +168,10 @@ In CI scripts, decide whether to retry based on the exit code. The full
 table is in [`DESIGN.md`](DESIGN.md#9-exit-codes); the short version:
 
 - `0` → success
-- `40`, `50` → upstream/network blip, **safe to retry**
+- `40`, `50` → upstream/network blip, **safe to retry**, except when the
+  `--output json` envelope says `COMMIT_OUTCOME_UNKNOWN` (`retryable: false`):
+  the Edit commit failed after it was sent and may be live, so check first
+  (`gplay releases list`, or `gplay edits status --live` after `edits commit`)
 - `10`, `11`, `20`, `30`, `60` → won't get better by retrying; surface the
   error
 - `2` → CLI usage bug in your workflow
@@ -216,6 +219,11 @@ for attempt in 1 2 3; do
 done
 exit 1
 ```
+
+A loop keyed on the exit code alone also re-runs a commit whose outcome is
+unknown (same `40`/`50`, but `COMMIT_OUTCOME_UNKNOWN` in the error). If the
+first attempt did publish, the re-run fails on the already-used version code:
+check the live state before reading that failure as a failed release.
 
 ## 5. Verify a release before trusting it
 
