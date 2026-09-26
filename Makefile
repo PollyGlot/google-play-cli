@@ -52,8 +52,9 @@ build-check:
 test-race:
 	go test -race ./...
 
-lint: dash-gate ## Run golangci-lint + the em dash gate
+lint: dash-gate ## Run golangci-lint, the go.mod tidiness check and the em dash gate
 	golangci-lint run ./...
+	go mod tidy -diff
 
 verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
 	@bash scripts/verb-gate.sh

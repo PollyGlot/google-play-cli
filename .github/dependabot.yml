@@ -1,7 +1,8 @@
-# Dependabot keeps the SHA-pinned GitHub Actions from rotting: every workflow
-# action is pinned to a full commit SHA (with a trailing version comment) so a
-# hijacked or force-moved tag cannot compromise CI or the release pipeline.
-# Dependabot proposes updates (new SHA + refreshed comment) on a weekly cadence.
+# Dependabot keeps the SHA-pinned GitHub Actions (and, below, the Go modules)
+# from rotting: every workflow action is pinned to a full commit SHA (with a
+# trailing version comment) so a hijacked or force-moved tag cannot compromise
+# CI or the release pipeline. Dependabot proposes updates (new SHA + refreshed
+# comment) on a weekly cadence.
 # See PRD #206 / .github/workflows/* and the CONTRIBUTING pinning note.
 version: 2
 updates:
@@ -25,3 +26,24 @@ updates:
       codeql-action:
         patterns:
           - "github/codeql-action*"
+
+  # Go modules: without this entry nothing proposed module bumps, and go.mod
+  # sat on oauth2 v0.27.0 / x/sys v0.28.0 for months. The golang.org/x/* repos
+  # release in lockstep and share a dependency graph, so they land as one PR.
+  # Prefix is `chore(deps)`: a routine weekly bump must not cut a release on
+  # its own (release-please reads the commit type). When a bump fixes a
+  # vulnerability that reaches the binary, retitle the PR `fix(deps): ...`
+  # before squash-merging so it ships.
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      golang-x:
+        patterns:
+          - "golang.org/x/*"
