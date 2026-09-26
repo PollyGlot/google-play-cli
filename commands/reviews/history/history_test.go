@@ -438,7 +438,7 @@ func fetchedMonth(calls []string, yyyymm string) bool {
 }
 
 // TestRun_range_missingMonth_warnsNotFatal: a month with no report inside the
-// range is skipped with a stderr WARN, not a failure.
+// range is skipped with a stderr warning, not a failure.
 func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 	rt := &monthRT{bodies: map[string][]byte{
 		"202601": utf16LE(oneReviewCSV("https://play.google.com/r/1", "1000", "1000", "jan")),
@@ -454,8 +454,8 @@ func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 	if got := len(r.(Payload).Rows); got != 2 {
 		t.Fatalf("want 2 rows (jan+mar, feb skipped), got %d", got)
 	}
-	if w := stderr.String(); !strings.Contains(w, "WARN") || !strings.Contains(w, "2026-02") {
-		t.Errorf("missing month should WARN on stderr naming 2026-02; got %q", w)
+	if w := stderr.String(); !strings.Contains(w, "warning: ") || !strings.Contains(w, "2026-02") {
+		t.Errorf("missing month should warn on stderr naming 2026-02; got %q", w)
 	}
 }
 

@@ -411,7 +411,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	if res.empty() {
 		// Best-effort note; a stderr write failure must not fail the command.
-		_, _ = fmt.Fprintln(rc.Stderr, zeroMatchNote(in))
+		rc.Logf("%s", zeroMatchNote(in))
 	}
 	return Payload{Index: idx, Result: res, Compact: compact}, nil
 }

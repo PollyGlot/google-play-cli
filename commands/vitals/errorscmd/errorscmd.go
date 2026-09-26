@@ -31,7 +31,11 @@ import (
 
 // mappingsNote documents the obfuscation degradation (#250) on the views that
 // carry stack frames.
-const mappingsNote = "NOTE: stack frames are obfuscated until you upload ProGuard/R8 mappings (gplay releases mappings upload, #250); until then frames are not symbolicated."
+// The help text quotes the line as stderr shows it, hence the two constants.
+const (
+	mappingsNoteBody = "stack frames are obfuscated until you upload ProGuard/R8 mappings (gplay releases mappings upload, #250); until then frames are not symbolicated."
+	mappingsNote     = "NOTE: " + mappingsNoteBody
+)
 
 // NewCommand returns the `gplay vitals errors` group. Every leaf is wrapped with
 // kernel.WithScope so it mints a least-privilege playdeveloperreporting token,
@@ -77,14 +81,11 @@ func resolvePackage(rc *kernel.RunContext, pkg string) (string, error) {
 // emptyWarn is the stderr line for an empty result; for a non-empty one the
 // mappings note is emitted instead.
 func warnResult(rc *kernel.RunContext, kind string, n int) {
-	if rc.Stderr == nil {
-		return
-	}
 	if n == 0 {
-		_, _ = io.WriteString(rc.Stderr, "WARN: no error "+kind+" in the requested window; vitals are reported with a delay, so an empty window is not the same as zero.\n")
+		rc.Warnf("no error %s in the requested window; vitals are reported with a delay, so an empty window is not the same as zero.", kind)
 		return
 	}
-	_, _ = io.WriteString(rc.Stderr, mappingsNote+"\n")
+	rc.Notef("%s", mappingsNoteBody)
 }
 
 // --- counts ----------------------------------------------------------------

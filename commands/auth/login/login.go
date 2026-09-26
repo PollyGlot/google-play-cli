@@ -3,7 +3,6 @@
 package login
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -88,12 +87,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	if in.Activate || wasEmpty {
-		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q registered and set active (%s)\n", name, sa.ClientEmail)
+		rc.Confirmf("Account %q registered and set active (%s)", name, sa.ClientEmail)
 	} else {
-		_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q registered (%s); active Account unchanged\n", name, sa.ClientEmail)
+		rc.Confirmf("Account %q registered (%s); active Account unchanged", name, sa.ClientEmail)
 	}
 	if devID != "" {
-		_, _ = fmt.Fprintf(rc.Stderr, "  developer-id %s recorded for `gplay team`\n", devID)
+		rc.Logf("  developer-id %s recorded for `gplay team`", devID)
 	}
 	return nil, nil
 }

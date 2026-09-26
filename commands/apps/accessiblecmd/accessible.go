@@ -89,8 +89,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	if sr.NextPageToken != "" && rc.Stderr != nil {
-		_, _ = io.WriteString(rc.Stderr, "NOTE: more Apps available, re-run with --page-token "+sr.NextPageToken+" for the next page.\n")
+	if sr.NextPageToken != "" {
+		rc.Notef("more Apps available, re-run with --page-token %s for the next page.", sr.NextPageToken)
 	}
 	return Payload{Apps: sr.Apps, Raw: raw}, nil
 }

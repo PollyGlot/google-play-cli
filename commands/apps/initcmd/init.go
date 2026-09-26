@@ -8,13 +8,13 @@
 package initcmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
 // Options injects file-system roots so tests can run hermetically against a
@@ -62,9 +62,9 @@ func run(cmd *cobra.Command, opts Options, pkg string) error {
 	if err := config.Init(cmd.Context(), config.OSFS{}, repoRoot, home, pkg); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Pinned package %q for this repo (.gplay/config.json)\n", pkg)
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-		"  hint: run `gplay apps add %s` to register this package under the active Account.\n", pkg)
+	log := kernel.LoggerFor(cmd)
+	log.Confirmf("Pinned package %q for this repo (.gplay/config.json)", pkg)
+	log.Logf("  hint: run `gplay apps add %s` to register this package under the active Account.", pkg)
 	return nil
 }
 

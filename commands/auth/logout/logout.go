@@ -4,7 +4,6 @@ package logout
 
 import (
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -52,8 +51,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Surface unknown-name errors before touching the keystore.
 	if err := cfg.RemoveAccount(in.Name); err != nil {
 		if errors.Is(err, config.ErrUnknownAccount) {
-			_, _ = fmt.Fprintf(rc.Stderr,
-				"unknown account %q. Known accounts: %s\n", in.Name, listAccountNames(cfg))
+			rc.Failf("unknown account %q. Known accounts: %s", in.Name, listAccountNames(cfg))
 		}
 		return nil, err
 	}
@@ -78,7 +76,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ Account %q removed\n", in.Name)
+	rc.Confirmf("Account %q removed", in.Name)
 	return nil, nil
 }
 

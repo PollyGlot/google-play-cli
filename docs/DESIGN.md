@@ -338,7 +338,7 @@ Two read-only checks complete the lifecycle (#544):
 ## 5. Reviews
 
 - API hard limit: **only the last 7 days** are exposed. Surfaced in `--help`
-  and as a stderr `WARN:` line on **every** successful run — including an empty
+  and as a stderr `warning:` line on **every** successful run — including an empty
   result (a quiet empty result must not read as "this app has no reviews").
 - Auto-pagination is on by default; `--limit N` caps the result count, default
   is no cap.
@@ -536,12 +536,19 @@ of the public contract (ADR-0010); see
   `--quiet`.
 - Color is auto in TTY, disabled in pipes, disabled if `NO_COLOR` env or
   `--no-color` is set.
+- Every stderr line a command writes goes through the kernel funnel, which
+  owns the prefix of each level: `rc.Confirmf` (`✓ `), `rc.Warnf`
+  (`warning: `, the only warning prefix), `rc.Notef` (`NOTE: `, e.g. a cursor
+  listing's next `--page-token`), `rc.Logf` (a plain progress or result line)
+  and `rc.Failf` (a per-item failure in a batch, the level `--quiet` keeps).
+  Commands without a RunContext use `kernel.LoggerFor(cmd)`. A test fails on
+  any direct stderr write under `commands/`, so `--quiet` stays one switch.
 
 ### Success confirmation (`✓`)
 
 A command that **successfully mutates Google Play state** emits a single `✓`
 line on **stderr** once the change is committed — the success counterpart to the
-`WARN:` and progress lines above. It is emitted **in addition to** the command's
+`warning:` and progress lines above. It is emitted **in addition to** the command's
 stdout payload, so a human-legible success marker survives `--output json` and
 piping (where stdout is machine data and the table view is absent).
 

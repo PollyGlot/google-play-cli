@@ -12,7 +12,6 @@ package history
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -186,7 +185,7 @@ func classify(bucket string, err error) error {
 }
 
 // isNotFound reports whether err is a 404 from the reporting bucket: a month
-// with no published report. In range mode that is a skipped WARN, not a failure.
+// with no published report. In range mode that is a skipped warning, not a failure.
 func isNotFound(err error) bool {
 	var apiErr *api.Error
 	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
@@ -285,9 +284,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		raw, err := gcs.FetchObject(rc.Ctx, hc, bucket, history.ObjectName(pkg, m))
 		if err != nil {
 			if rangeMode && isNotFound(err) {
-				if rc.Stderr != nil {
-					_, _ = fmt.Fprintf(rc.Stderr, "WARN: no reviews report for %s-%s: skipped\n", m[:4], m[4:])
-				}
+				rc.Warnf("no reviews report for %s-%s: skipped", m[:4], m[4:])
 				continue
 			}
 			return nil, classify(bucket, err)
@@ -343,7 +340,7 @@ it with the Console's "Copy Cloud Storage URI" button).
 for the package is used. --from YYYY-MM --to YYYY-MM instead read every
 monthly report across the range and merge them into one result set (a
 review edited across the month boundary appears once, latest update
-winning; a month with no report is skipped with a WARN). --month and
+winning; a month with no report is skipped with a warning). --month and
 --from/--to are mutually exclusive. Default table columns: date, stars,
 locale, version, title, summary: override with --columns device,reply,...
 

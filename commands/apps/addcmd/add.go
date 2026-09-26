@@ -260,22 +260,22 @@ type pkgResult struct {
 	err error
 }
 
-// successLine formats the "✓ registered ..." stderr line shared by the
-// single-package path (printAdded) and the batch reporter (reportBatch),
-// so the wording and the "(unverified)" qualifier cannot drift between
-// them.
+// successLine formats the body of the "✓ registered ..." stderr line (the
+// funnel adds the marker) shared by the single-package path (printAdded) and
+// the batch reporter (reportBatch), so the wording and the "(unverified)"
+// qualifier cannot drift between them.
 func successLine(pkg, account string, noVerify bool) string {
 	verb := "registered"
 	if noVerify {
 		verb = "registered (unverified)"
 	}
-	return fmt.Sprintf("✓ %s %q under Account %q\n", verb, pkg, account)
+	return fmt.Sprintf("%s %q under Account %q", verb, pkg, account)
 }
 
 // printAdded writes the single-package success line: byte-for-byte the
 // pre-variadic stderr output.
 func printAdded(rc *kernel.RunContext, pkg, account string, noVerify bool) {
-	_, _ = fmt.Fprint(rc.Stderr, successLine(pkg, account, noVerify))
+	rc.Confirmf("%s", successLine(pkg, account, noVerify))
 }
 
 // reportBatch prints one line per package to stderr for a multi-package
@@ -285,20 +285,17 @@ func printAdded(rc *kernel.RunContext, pkg, account string, noVerify bool) {
 // side effect on the local registry, not an API body), so this is what an
 // operator or agent reads to see which packages landed.
 func reportBatch(rc *kernel.RunContext, results []pkgResult, account string, noVerify bool) {
-	if rc.Stderr == nil {
-		return
-	}
 	ok, failed := 0, 0
 	for _, r := range results {
 		if r.err == nil {
 			ok++
-			_, _ = fmt.Fprint(rc.Stderr, successLine(r.pkg, account, noVerify))
+			rc.Confirmf("%s", successLine(r.pkg, account, noVerify))
 			continue
 		}
 		failed++
-		_, _ = fmt.Fprintf(rc.Stderr, "✗ %s: %s (exit %d)\n", r.pkg, r.err.Error(), exit.For(r.err))
+		rc.Failf("✗ %s: %s (exit %d)", r.pkg, r.err.Error(), exit.For(r.err))
 	}
-	_, _ = fmt.Fprintf(rc.Stderr, "apps add: %d registered, %d failed\n", ok, failed)
+	rc.Logf("apps add: %d registered, %d failed", ok, failed)
 }
 
 // validatePackage applies the cheapest client-side checks before any

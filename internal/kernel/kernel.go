@@ -450,10 +450,7 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 // authoritative signals) and a nil Stderr (possible on a hand-built
 // RunContext) is a no-op rather than a panic.
 func (rc *RunContext) Confirmf(format string, args ...any) {
-	if rc.Stderr == nil {
-		return
-	}
-	_, _ = fmt.Fprintf(rc.Stderr, "✓ "+format+"\n", args...)
+	rc.log().Confirmf(format, args...)
 }
 
 // Warnf emits a single non-fatal advisory line on stderr, prefixed with
@@ -467,10 +464,7 @@ func (rc *RunContext) Confirmf(format string, args ...any) {
 // payload whether or not a warning fired (ADR-0003). Like Confirmf the write is
 // best-effort and a nil Stderr is a no-op rather than a panic.
 func (rc *RunContext) Warnf(format string, args ...any) {
-	if rc.Stderr == nil {
-		return
-	}
-	_, _ = fmt.Fprintf(rc.Stderr, "warning: "+format+"\n", args...)
+	rc.log().Warnf(format, args...)
 }
 
 // WarnTruncated emits the standard truncation advisory for a listing that was
@@ -481,7 +475,7 @@ func (rc *RunContext) Warnf(format string, args ...any) {
 //
 // It is not the note for a CURSOR listing (`--page-token`, one page per call):
 // there the remediation is a token to pass back, not a cap to raise, and those
-// commands write their own `NOTE:` carrying it (docs/DESIGN.md §9).
+// commands carry it in their own Notef line (docs/DESIGN.md §9).
 //
 // n is what was returned; flag is the flag to raise (normally "limit"), named
 // explicitly so the remediation is one step away.
@@ -504,11 +498,8 @@ func (rc *RunContext) ConfirmMutation(explicitEditID, format string, args ...any
 		rc.Confirmf(format, args...)
 		return
 	}
-	if rc.Stderr == nil {
-		return
-	}
 	prefix := fmt.Sprintf("• staged in open edit %s: run `gplay edits commit` to publish (not live yet): ", explicitEditID)
-	_, _ = fmt.Fprintf(rc.Stderr, prefix+format+"\n", args...)
+	rc.log().Logf(prefix+format, args...)
 }
 
 // GplayDir returns the project's .gplay/ directory: the one found via walk-up
