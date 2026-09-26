@@ -8,14 +8,10 @@ package apply_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -30,74 +26,56 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// applyRT terminates the /token exchange and routes the apply sequence,
-// recording every request line and each PATCH / PUT body. notFoundLoc makes
-// either Listing write on that locale answer 404.
+// applyRT configures the testkit.Fake that routes the apply sequence; the
+// Fake records every request line and each PATCH / PUT body. notFoundLoc
+// makes either Listing write on that locale answer 404.
 type applyRT struct {
-	t            *testing.T
 	editID       string
 	listingsBody string
 	detailsLang  string
 	notFoundLoc  string
-
-	mu        sync.Mutex
-	calls     []string
-	patchBody map[string]string
-	putBody   map[string]string
-	tokenHits int
 }
 
-func (r *applyRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.patchBody == nil {
-		r.patchBody = map[string]string{}
-	}
-	if r.putBody == nil {
-		r.putBody = map[string]string{}
-	}
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	path := req.URL.Path
-	r.calls = append(r.calls, req.Method+" "+path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(path, ":commit"):
-		return jsonResp(200, `{}`), nil
-	case req.Method == http.MethodPost && strings.HasSuffix(path, "/edits"):
-		return jsonResp(200, `{"id":"`+r.editID+`","expiryTimeSeconds":"1700000000"}`), nil
-	case req.Method == http.MethodGet && strings.HasSuffix(path, "/listings"):
-		return jsonResp(200, r.listingsBody), nil
-	case req.Method == http.MethodGet && strings.HasSuffix(path, "/details"):
-		return jsonResp(200, `{"defaultLanguage":"`+r.detailsLang+`","contactEmail":"x@y.z"}`), nil
-	case (req.Method == http.MethodPatch || req.Method == http.MethodPut) && strings.Contains(path, "/listings/"):
-		loc := path[strings.LastIndex(path, "/")+1:]
-		b, _ := io.ReadAll(req.Body)
-		if req.Method == http.MethodPut {
-			r.putBody[loc] = string(b)
-		} else {
-			r.patchBody[loc] = string(b)
+func newFake(t *testing.T, r applyRT) *testkit.Fake {
+	t.Helper()
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		path := c.Path
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(path, ":commit"):
+			return 200, `{}`, true
+		case c.Method == http.MethodPost && strings.HasSuffix(path, "/edits"):
+			return 200, `{"id":"` + r.editID + `","expiryTimeSeconds":"1700000000"}`, true
+		case c.Method == http.MethodGet && strings.HasSuffix(path, "/listings"):
+			return 200, r.listingsBody, true
+		case c.Method == http.MethodGet && strings.HasSuffix(path, "/details"):
+			return 200, `{"defaultLanguage":"` + r.detailsLang + `","contactEmail":"x@y.z"}`, true
+		case (c.Method == http.MethodPatch || c.Method == http.MethodPut) && strings.Contains(path, "/listings/"):
+			loc := path[strings.LastIndex(path, "/")+1:]
+			if loc == r.notFoundLoc {
+				return 404, `{"error":{"code":404,"message":"Listing for language '` + loc + `' not found."}}`, true
+			}
+			return 200, `{"language":"` + loc + `","title":"echo"}`, true
+		case c.Method == http.MethodDelete && strings.Contains(path, "/listings/"):
+			return 204, "", true
+		case c.Method == http.MethodDelete && strings.Contains(path, "/edits/"):
+			return 204, "", true
 		}
-		if loc == r.notFoundLoc {
-			return jsonResp(404, `{"error":{"code":404,"message":"Listing for language '`+loc+`' not found."}}`), nil
-		}
-		return jsonResp(200, `{"language":"`+loc+`","title":"echo"}`), nil
-	case req.Method == http.MethodDelete && strings.Contains(path, "/listings/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodDelete && strings.Contains(path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, path)
-	return nil, nil
+		t.Errorf("unexpected request: %s %s", c.Method, path)
+		return 0, "", false
+	})
 }
 
-func (r *applyRT) saw(method, substr string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, c := range r.calls {
+// calls lists the recorded API requests as "METHOD path" lines.
+func calls(f *testkit.Fake) []string {
+	var out []string
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
+	}
+	return out
+}
+
+func saw(f *testkit.Fake, method, substr string) bool {
+	for _, c := range calls(f) {
 		if strings.HasPrefix(c, method+" ") && strings.Contains(c, substr) {
 			return true
 		}
@@ -105,38 +83,20 @@ func (r *applyRT) saw(method, substr string) bool {
 	return false
 }
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
+// sentBody returns the raw body of the last method write on locale's Listing.
+func sentBody(f *testkit.Fake, method, locale string) string {
+	var body string
+	for _, c := range f.Calls() {
+		if c.Method == method && strings.HasSuffix(c.Path, "/listings/"+locale) {
+			body = string(c.Body)
+		}
 	}
-}
-
-func signedSAJSON(t *testing.T) []byte {
-	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
-	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	return raw
+	return body
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -184,8 +144,8 @@ func ml(code string, fv ...string) listing.Listing {
 // {package, changes[], summary} and never commits or patches.
 func TestRun_dryRun_jsonDiffSchema(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "New", "full", "Body")})
-	rt := &applyRT{t: t, editID: "e1",
-		listingsBody: `{"listings":[{"language":"en-US","fullDescription":"Body"}]}`} // title create, full unchanged
+	rt := newFake(t, applyRT{editID: "e1",
+		listingsBody: `{"listings":[{"language":"en-US","fullDescription":"Body"}]}`}) // title create, full unchanged
 	rc := newRC(t, rt)
 
 	r, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, DryRun: true})
@@ -209,8 +169,8 @@ func TestRun_dryRun_jsonDiffSchema(t *testing.T) {
 	if got.Package != "com.x" || got.Summary.Create != 1 {
 		t.Errorf("diff = %+v, want package com.x, summary.create 1", got)
 	}
-	if rt.saw("POST", ":commit") || rt.saw("PATCH", "/listings/") {
-		t.Errorf("dry-run mutated Play; calls=%v", rt.calls)
+	if saw(rt, "POST", ":commit") || saw(rt, "PATCH", "/listings/") {
+		t.Errorf("dry-run mutated Play; calls=%v", calls(rt))
 	}
 }
 
@@ -219,7 +179,7 @@ func TestRun_dryRun_jsonDiffSchema(t *testing.T) {
 // docs/DESIGN.md §9, NOT the generic usage exit 2, #408).
 func TestRun_applyWithoutConfirm_exit3(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
-	rt := &applyRT{t: t, editID: "e1"}
+	rt := newFake(t, applyRT{editID: "e1"})
 	rc := newRC(t, rt)
 
 	_, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir})
@@ -233,9 +193,9 @@ func TestRun_applyWithoutConfirm_exit3(t *testing.T) {
 	if !strings.Contains(err.Error(), "--dry-run") {
 		t.Errorf("error %q should point at --dry-run", err.Error())
 	}
-	for _, c := range rt.calls {
+	for _, c := range calls(rt) {
 		if strings.HasPrefix(c, "POST /androidpublisher") {
-			t.Errorf("opened an Edit despite missing --confirm; calls=%v", rt.calls)
+			t.Errorf("opened an Edit despite missing --confirm; calls=%v", calls(rt))
 		}
 	}
 }
@@ -245,20 +205,20 @@ func TestRun_applyWithoutConfirm_exit3(t *testing.T) {
 // patch body.
 func TestRun_applyConfirm_patchesAndCommits(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"fr-FR": ml("fr-FR", "title", "Bonjour", "full", "Desc")})
-	rt := &applyRT{t: t, editID: "e7",
-		listingsBody: `{"listings":[{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`} // title update
+	rt := newFake(t, applyRT{editID: "e7",
+		listingsBody: `{"listings":[{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`}) // title update
 	rc := newRC(t, rt)
 
 	r, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !rt.saw("PATCH", "/listings/fr-FR") || !rt.saw("POST", ":commit") {
-		t.Errorf("expected PATCH fr-FR + commit; calls=%v", rt.calls)
+	if !saw(rt, "PATCH", "/listings/fr-FR") || !saw(rt, "POST", ":commit") {
+		t.Errorf("expected PATCH fr-FR + commit; calls=%v", calls(rt))
 	}
 	// PATCH body carries only the changed title + language (missing≠empty).
 	var body map[string]string
-	_ = json.Unmarshal([]byte(rt.patchBody["fr-FR"]), &body)
+	_ = json.Unmarshal([]byte(sentBody(rt, http.MethodPatch, "fr-FR")), &body)
 	if body["title"] != "Bonjour" {
 		t.Errorf("patch body = %v, want title=Bonjour", body)
 	}
@@ -279,18 +239,18 @@ func TestRun_applyConfirm_patchesAndCommits(t *testing.T) {
 // online-only locale and reports it.
 func TestRun_pruneConfirm_deletesOnlineOnly(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
-	rt := &applyRT{t: t, editID: "ep", detailsLang: "en-US",
+	rt := newFake(t, applyRT{editID: "ep", detailsLang: "en-US",
 		listingsBody: `{"listings":[` +
 			`{"language":"en-US","title":"T","fullDescription":"F"},` +
-			`{"language":"it-IT","title":"Ciao","fullDescription":"Lunga"}]}`}
+			`{"language":"it-IT","title":"Ciao","fullDescription":"Lunga"}]}`})
 	rc := newRC(t, rt)
 
 	r, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true, Prune: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !rt.saw("DELETE", "/listings/it-IT") || !rt.saw("POST", ":commit") {
-		t.Errorf("expected DELETE it-IT + commit; calls=%v", rt.calls)
+	if !saw(rt, "DELETE", "/listings/it-IT") || !saw(rt, "POST", ":commit") {
+		t.Errorf("expected DELETE it-IT + commit; calls=%v", calls(rt))
 	}
 	var buf bytes.Buffer
 	if err := r.Renderers().JSON(&buf); err != nil {
@@ -304,21 +264,21 @@ func TestRun_pruneConfirm_deletesOnlineOnly(t *testing.T) {
 // TestRun_dirMissing_exit20 asserts an unreadable --dir is exit 20 before
 // any network.
 func TestRun_dirMissing_exit20(t *testing.T) {
-	rt := &applyRT{t: t}
+	rt := newFake(t, applyRT{})
 	rc := newRC(t, rt)
 	_, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: "/nonexistent/metadata/xyz", DryRun: true})
 	if code := exitCodeOf(t, err); code != 20 {
 		t.Errorf("exit = %d, want 20", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected 0 HTTP calls on dir error, saw %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("expected 0 HTTP calls on dir error, saw %v", calls(rt))
 	}
 }
 
 // TestRun_noPackage_exit2 and TestRun_noAccount_exit10 guard the pre-HTTP
 // usage/auth gates.
 func TestRun_noPackage_exit2(t *testing.T) {
-	rt := &applyRT{t: t}
+	rt := newFake(t, applyRT{})
 	rc := newRC(t, rt)
 	_, err := apply.Run(rc, apply.Input{DryRun: true})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -328,15 +288,15 @@ func TestRun_noPackage_exit2(t *testing.T) {
 
 func TestRun_noAccount_exit10(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
-	rt := &applyRT{t: t}
+	rt := newFake(t, applyRT{})
 	rc := newRC(t, rt)
 	rc.Account = nil
 	_, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, DryRun: true})
 	if code := exitCodeOf(t, err); code != 10 {
 		t.Errorf("exit = %d, want 10", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected 0 HTTP calls before auth, saw %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("expected 0 HTTP calls before auth, saw %v", calls(rt))
 	}
 }
 
@@ -345,8 +305,8 @@ func TestRun_noAccount_exit10(t *testing.T) {
 // the stdout payload.
 func TestRun_applyConfirm_emitsConfirmationOnStderr(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"fr-FR": ml("fr-FR", "title", "Bonjour", "full", "Desc")})
-	rt := &applyRT{t: t, editID: "e7",
-		listingsBody: `{"listings":[{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`}
+	rt := newFake(t, applyRT{editID: "e7",
+		listingsBody: `{"listings":[{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`})
 	rc := newRC(t, rt)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
@@ -363,8 +323,8 @@ func TestRun_applyConfirm_emitsConfirmationOnStderr(t *testing.T) {
 // TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "New", "full", "Body")})
-	rt := &applyRT{t: t, editID: "e1",
-		listingsBody: `{"listings":[]}`}
+	rt := newFake(t, applyRT{editID: "e1",
+		listingsBody: `{"listings":[]}`})
 	rc := newRC(t, rt)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
@@ -386,8 +346,8 @@ func TestRun_applyConfirm_createsNewLocaleWithPUT(t *testing.T) {
 		"en-US": ml("en-US", "title", "T", "full", "F"),
 		"de-DE": ml("de-DE", "title", "Meine App", "short", "Kurz", "full", "Lang"),
 	})
-	rt := &applyRT{t: t, editID: "e561",
-		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`}
+	rt := newFake(t, applyRT{editID: "e561",
+		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`})
 	rc := newRC(t, rt)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
@@ -396,11 +356,11 @@ func TestRun_applyConfirm_createsNewLocaleWithPUT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !rt.saw("PUT", "/applications/com.x/edits/e561/listings/de-DE") || rt.saw("PATCH", "/listings/de-DE") {
-		t.Errorf("expected PUT (not PATCH) on de-DE; calls=%v", rt.calls)
+	if !saw(rt, "PUT", "/applications/com.x/edits/e561/listings/de-DE") || saw(rt, "PATCH", "/listings/de-DE") {
+		t.Errorf("expected PUT (not PATCH) on de-DE; calls=%v", calls(rt))
 	}
 	var body map[string]string
-	_ = json.Unmarshal([]byte(rt.putBody["de-DE"]), &body)
+	_ = json.Unmarshal([]byte(sentBody(rt, http.MethodPut, "de-DE")), &body)
 	if body["title"] != "Meine App" || body["shortDescription"] != "Kurz" || body["fullDescription"] != "Lang" || body["language"] != "de-DE" {
 		t.Errorf("de-DE PUT body = %v, want the complete Listing", body)
 	}
@@ -433,8 +393,8 @@ func TestRun_applyConfirm_createsNewLocaleWithPUT(t *testing.T) {
 // list` (#561). The exit code stays 30 (the wrapped *api.Error).
 func TestRun_listing404_namesLanguageNotPackage(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"de-DE": ml("de-DE", "title", "Meine App", "full", "Lang")})
-	rt := &applyRT{t: t, editID: "e404", notFoundLoc: "de-DE",
-		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`}
+	rt := newFake(t, applyRT{editID: "e404", notFoundLoc: "de-DE",
+		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`})
 	rc := newRC(t, rt)
 
 	_, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true})
@@ -454,12 +414,7 @@ func TestRun_listing404_namesLanguageNotPackage(t *testing.T) {
 // per-locale call (here the Edit insert) keeps the package hint.
 func TestRun_edit404_stillNamesPackage(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
-	rc := newRC(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-			return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-		}
-		return jsonResp(404, `{"error":{"code":404,"message":"Package not found: com.x."}}`), nil
-	}))
+	rc := newRC(t, testkit.NewFake(testkit.Any(404, `{"error":{"code":404,"message":"Package not found: com.x."}}`)))
 
 	_, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true})
 	if code := exitCodeOf(t, err); code != 30 {
@@ -469,7 +424,3 @@ func TestRun_edit404_stillNamesPackage(t *testing.T) {
 		t.Errorf("an Edit-level 404 should keep the package hint: %s", err)
 	}
 }
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }

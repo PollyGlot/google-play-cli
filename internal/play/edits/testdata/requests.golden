@@ -1,0 +1,54 @@
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Accept-Encoding: gzip
+Content-Length: 0
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1:commit
+Accept-Encoding: gzip
+Content-Length: 0
+User-Agent: Go-http-client/1.1
+
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Accept-Encoding: gzip
+Content-Length: 0
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Accept-Encoding: gzip
+Content-Length: 0
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits
+Accept-Encoding: gzip
+Content-Length: 0
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1:commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW&changesNotSentForReview=true
+Accept-Encoding: gzip
+Content-Length: 0
+User-Agent: Go-http-client/1.1
+
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1:validate
+Accept-Encoding: gzip
+Content-Length: 0
+User-Agent: Go-http-client/1.1
+
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1

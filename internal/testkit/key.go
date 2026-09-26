@@ -1,7 +1,9 @@
 // Package testkit is the shared test harness for gplay's offline suites: a
 // throwaway service-account fixture whose RSA key is generated once per test
 // binary, a fake Play transport that answers the OAuth2 token exchange only
-// at its exact URL, and a golden-file helper.
+// at its exact URL (NewFake, or RoundTripFunc for what a responder cannot
+// express), a wire recorder that pins requests byte for byte (NewWire), and
+// a golden-file helper.
 //
 // It imports nothing from this module, so any package (internal/kernel and
 // internal/auth included) can use it from its own tests without an import

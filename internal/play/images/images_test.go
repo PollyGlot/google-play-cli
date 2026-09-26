@@ -14,44 +14,28 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// rt is a minimal RoundTripper that returns a canned response and records
-// the request line (method + path), query, and body for assertion.
-type rt struct {
-	status int
-	body   string
-
-	gotPath   string
-	gotMethod string
-	gotQuery  string
-	gotBody   []byte
-	gotType   string
+// fakeWith answers every request with status and body.
+func fakeWith(status int, body string) *testkit.Fake {
+	return testkit.NewFake(testkit.Any(status, body))
 }
 
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.gotPath = req.URL.Path
-	r.gotMethod = req.Method
-	r.gotQuery = req.URL.RawQuery
-	r.gotType = req.Header.Get("Content-Type")
-	if req.Body != nil {
-		r.gotBody, _ = io.ReadAll(req.Body)
+// onlyCall returns the single request the Fake served, failing the test on
+// any other count.
+func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := f.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("want exactly one request, got %d: %+v", len(calls), calls)
 	}
-	status := r.status
-	if status == 0 {
-		status = 200
-	}
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(r.body)),
-	}, nil
+	return calls[0]
 }
 
 // TestTypes_modelsTheNineApiTypes asserts the package models exactly the 9
@@ -91,7 +75,7 @@ func TestList_parsesImages_andReturnsRawBody(t *testing.T) {
 		`{"id":"a1","url":"https://play/img/a1","sha1":"deadbeef","sha256":"aaaa"},` +
 		`{"id":"b2","url":"https://play/img/b2","sha1":"feedface","sha256":"bbbb"}` +
 		`],"kind":"androidpublisher#imagesListResponse"}`
-	transport := &rt{body: raw}
+	transport := fakeWith(200, raw)
 	hc := &http.Client{Transport: transport}
 
 	got, gotRaw, err := images.List(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.PhoneScreenshots)
@@ -99,8 +83,9 @@ func TestList_parsesImages_andReturnsRawBody(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-1/listings/en-US/phoneScreenshots"
-	if transport.gotMethod != http.MethodGet || transport.gotPath != wantPath {
-		t.Errorf("request = %s %s, want GET %s", transport.gotMethod, transport.gotPath, wantPath)
+	c := onlyCall(t, transport)
+	if c.Method != http.MethodGet || c.Path != wantPath {
+		t.Errorf("request = %s %s, want GET %s", c.Method, c.Path, wantPath)
 	}
 	if len(got) != 2 || got[0].ID != "a1" || got[1].Sha256 != "bbbb" {
 		t.Fatalf("images = %+v, want [a1, b2 with sha256 bbbb]", got)
@@ -114,7 +99,7 @@ func TestList_parsesImages_andReturnsRawBody(t *testing.T) {
 // returns no `images` key, or an empty list) parses to a zero-length slice
 // and no error: the "missing == empty" precondition on the read side.
 func TestList_absentSlotIsEmpty(t *testing.T) {
-	transport := &rt{body: `{"kind":"androidpublisher#imagesListResponse"}`}
+	transport := fakeWith(200, `{"kind":"androidpublisher#imagesListResponse"}`)
 	hc := &http.Client{Transport: transport}
 	got, _, err := images.List(context.Background(), hc, "com.example.app", "e", "fr-FR", images.Icon)
 	if err != nil {
@@ -129,7 +114,7 @@ func TestList_absentSlotIsEmpty(t *testing.T) {
 // to the upload sub-host with uploadType=media, and parses the
 // {"image":{...}} envelope.
 func TestUpload_usesMediaProtocol_andParsesImage(t *testing.T) {
-	transport := &rt{body: `{"image":{"id":"new1","url":"https://play/img/new1","sha1":"s1","sha256":"s256"}}`}
+	transport := fakeWith(200, `{"image":{"id":"new1","url":"https://play/img/new1","sha1":"s1","sha256":"s256"}}`)
 	hc := &http.Client{Transport: transport}
 	data := []byte("\x89PNG\r\n\x1a\nfake-bytes")
 
@@ -137,21 +122,22 @@ func TestUpload_usesMediaProtocol_andParsesImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
-	if !strings.HasPrefix(transport.gotPath, "/upload/androidpublisher/v3/") {
-		t.Errorf("upload path = %q, want /upload sub-host", transport.gotPath)
+	c := onlyCall(t, transport)
+	if !strings.HasPrefix(c.Path, "/upload/androidpublisher/v3/") {
+		t.Errorf("upload path = %q, want /upload sub-host", c.Path)
 	}
 	wantTail := "/applications/com.example.app/edits/edit-1/listings/en-US/icon"
-	if !strings.HasSuffix(transport.gotPath, wantTail) {
-		t.Errorf("upload path = %q, want suffix %q", transport.gotPath, wantTail)
+	if !strings.HasSuffix(c.Path, wantTail) {
+		t.Errorf("upload path = %q, want suffix %q", c.Path, wantTail)
 	}
-	if transport.gotMethod != http.MethodPost {
-		t.Errorf("method = %s, want POST", transport.gotMethod)
+	if c.Method != http.MethodPost {
+		t.Errorf("method = %s, want POST", c.Method)
 	}
-	if !strings.Contains(transport.gotQuery, "uploadType=media") {
-		t.Errorf("query = %q, want uploadType=media", transport.gotQuery)
+	if !strings.Contains(c.Query, "uploadType=media") {
+		t.Errorf("query = %q, want uploadType=media", c.Query)
 	}
-	if !bytes.Equal(transport.gotBody, data) {
-		t.Errorf("uploaded body = %q, want the image bytes verbatim", transport.gotBody)
+	if !bytes.Equal(c.Body, data) {
+		t.Errorf("uploaded body = %q, want the image bytes verbatim", c.Body)
 	}
 	if img.ID != "new1" || img.Sha256 != "s256" {
 		t.Errorf("image = %+v, want id=new1 sha256=s256", img)
@@ -184,13 +170,13 @@ func TestUpload_announcesSniffedMediaType(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			transport := &rt{body: `{"image":{"id":"new1","sha256":"s256"}}`}
+			transport := fakeWith(200, `{"image":{"id":"new1","sha256":"s256"}}`)
 			hc := &http.Client{Transport: transport}
 			if _, err := images.Upload(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.FeatureGraphic, tc.data); err != nil {
 				t.Fatalf("Upload: %v", err)
 			}
-			if transport.gotType != tc.want {
-				t.Errorf("Content-Type = %q, want %q", transport.gotType, tc.want)
+			if got := onlyCall(t, transport).Header.Get("Content-Type"); got != tc.want {
+				t.Errorf("Content-Type = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -199,28 +185,30 @@ func TestUpload_announcesSniffedMediaType(t *testing.T) {
 // TestDelete_targetsOneImage asserts Delete DELETEs the per-image path
 // (.../{imageType}/{imageId}).
 func TestDelete_targetsOneImage(t *testing.T) {
-	transport := &rt{status: 204}
+	transport := fakeWith(204, ``)
 	hc := &http.Client{Transport: transport}
 	if err := images.Delete(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.PhoneScreenshots, "img-9"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-1/listings/en-US/phoneScreenshots/img-9"
-	if transport.gotMethod != http.MethodDelete || transport.gotPath != wantPath {
-		t.Errorf("request = %s %s, want DELETE %s", transport.gotMethod, transport.gotPath, wantPath)
+	c := onlyCall(t, transport)
+	if c.Method != http.MethodDelete || c.Path != wantPath {
+		t.Errorf("request = %s %s, want DELETE %s", c.Method, c.Path, wantPath)
 	}
 }
 
 // TestDeleteAll_clearsTheSlot asserts DeleteAll DELETEs the slot path (no
 // imageId): the only way to reorder a gallery per ADR-0013.
 func TestDeleteAll_clearsTheSlot(t *testing.T) {
-	transport := &rt{body: `{"deleted":[{"id":"a1"},{"id":"b2"}]}`}
+	transport := fakeWith(200, `{"deleted":[{"id":"a1"},{"id":"b2"}]}`)
 	hc := &http.Client{Transport: transport}
 	if err := images.DeleteAll(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.PhoneScreenshots); err != nil {
 		t.Fatalf("DeleteAll: %v", err)
 	}
 	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-1/listings/en-US/phoneScreenshots"
-	if transport.gotMethod != http.MethodDelete || transport.gotPath != wantPath {
-		t.Errorf("request = %s %s, want DELETE %s", transport.gotMethod, transport.gotPath, wantPath)
+	c := onlyCall(t, transport)
+	if c.Method != http.MethodDelete || c.Path != wantPath {
+		t.Errorf("request = %s %s, want DELETE %s", c.Method, c.Path, wantPath)
 	}
 }
 
@@ -228,7 +216,7 @@ func TestDeleteAll_clearsTheSlot(t *testing.T) {
 // *api.Error carrying the operation and status, like the rest of the play
 // layer.
 func TestList_non2xx_returnsApiError(t *testing.T) {
-	transport := &rt{status: 403, body: `{"error":{"message":"no access","errors":[{"reason":"forbidden"}]}}`}
+	transport := fakeWith(403, `{"error":{"message":"no access","errors":[{"reason":"forbidden"}]}}`)
 	hc := &http.Client{Transport: transport}
 	_, _, err := images.List(context.Background(), hc, "com.example.app", "e", "en-US", images.Icon)
 	if err == nil {
@@ -239,42 +227,28 @@ func TestList_non2xx_returnsApiError(t *testing.T) {
 	}
 }
 
-// playStore is a fake transport that models Google Play's image store the
-// way ADR-0013's soundness assumption requires: it keeps uploaded bytes
-// verbatim and reports each image's sha256 = sha256(bytes). It is the
-// in-test stand-in for the live integration the assumption ultimately needs.
-type playStore struct {
-	images []images.Image
-	bytes  map[string][]byte
-}
-
-func (s *playStore) RoundTrip(req *http.Request) (*http.Response, error) {
-	switch {
-	case req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/upload/"):
-		body, _ := io.ReadAll(req.Body)
-		sum := sha256.Sum256(body)
-		id := hex.EncodeToString(sum[:])[:8]
-		img := images.Image{ID: id, URL: "https://play/img/" + id, Sha256: hex.EncodeToString(sum[:])}
-		if s.bytes == nil {
-			s.bytes = map[string][]byte{}
+// playStore is a fake that models Google Play's image store the way
+// ADR-0013's soundness assumption requires: it hashes the uploaded bytes
+// exactly as received and reports each image's sha256 = sha256(bytes). It is
+// the in-test stand-in for the live integration the assumption ultimately
+// needs.
+func playStore() *testkit.Fake {
+	var stored []images.Image
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasPrefix(c.Path, "/upload/"):
+			sum := sha256.Sum256(c.Body)
+			id := hex.EncodeToString(sum[:])[:8]
+			img := images.Image{ID: id, URL: "https://play/img/" + id, Sha256: hex.EncodeToString(sum[:])}
+			stored = append(stored, img)
+			out, _ := json.Marshal(map[string]images.Image{"image": img})
+			return http.StatusOK, string(out), true
+		case c.Method == http.MethodGet:
+			out, _ := json.Marshal(map[string][]images.Image{"images": stored})
+			return http.StatusOK, string(out), true
 		}
-		s.bytes[id] = body
-		s.images = append(s.images, img)
-		out, _ := json.Marshal(map[string]images.Image{"image": img})
-		return jsonOK(out), nil
-	case req.Method == http.MethodGet:
-		out, _ := json.Marshal(map[string][]images.Image{"images": s.images})
-		return jsonOK(out), nil
-	}
-	return jsonOK([]byte(`{}`)), nil
-}
-
-func jsonOK(body []byte) *http.Response {
-	return &http.Response{
-		StatusCode: 200,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(bytes.NewReader(body)),
-	}
+		return http.StatusOK, `{}`, true
+	})
 }
 
 // TestSha256Soundness_uploadThenList is the ADR-0013 soundness gate: upload
@@ -289,8 +263,7 @@ func TestSha256Soundness_uploadThenList(t *testing.T) {
 	want := sha256.Sum256(local)
 	wantHex := hex.EncodeToString(want[:])
 
-	store := &playStore{}
-	hc := &http.Client{Transport: store}
+	hc := &http.Client{Transport: playStore()}
 
 	if _, err := images.Upload(context.Background(), hc, "com.example.app", "e", "en-US", images.Icon, local); err != nil {
 		t.Fatalf("Upload: %v", err)

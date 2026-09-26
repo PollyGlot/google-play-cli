@@ -1,0 +1,3 @@
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/countryAvailability/closed%20testing
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1

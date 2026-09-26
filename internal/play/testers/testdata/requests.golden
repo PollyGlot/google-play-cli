@@ -1,0 +1,19 @@
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/testers/beta
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+PUT https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/testers/beta
+Accept-Encoding: gzip
+Content-Length: 51
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+{"googleGroups":["qa@example.com","b@example.com"]}
+
+PUT https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/testers/beta
+Accept-Encoding: gzip
+Content-Length: 19
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+{"googleGroups":[]}

@@ -9,10 +9,8 @@
 package listings
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -57,55 +55,18 @@ type Listing struct {
 // the --output json pass-through (ADR-0003). Like the rest of the package
 // it runs inside an Edit the caller has already opened.
 func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Listing, json.RawMessage, error) {
-	u, err := methodList.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodList, Op: opListingsList, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opListingsList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, methodList.Verb, u, nil)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opListingsList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opListingsList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opListingsList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, nil, &api.Error{
-			Operation:  opListingsList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
-		}
+		return nil, nil, err
 	}
 	var parsed struct {
 		Listings []Listing `json:"listings"`
 	}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opListingsList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+	if err := decode(opListingsList, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return parsed.Listings, raw, nil
 }
@@ -115,54 +76,16 @@ func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Listing, 
 // (ADR-0003). A 404 here means "no Listing for this locale": the caller
 // maps it via the gplay exit-code taxonomy.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, language string) (*Listing, json.RawMessage, error) {
-	u, err := methodGet.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
-		"language":    language,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodGet, Op: opListingsGet, Target: pkg,
+		Params: localeParams(pkg, editID, language),
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opListingsGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opListingsGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opListingsGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opListingsGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, nil, &api.Error{
-			Operation:  opListingsGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
-		}
+		return nil, nil, err
 	}
 	var parsed Listing
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opListingsGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+	if err := decode(opListingsGet, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return &parsed, raw, nil
 }
@@ -191,43 +114,14 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 }
 
 // write is the shared body of Patch and Update: the two differ only by the
-// registry method (verb) and the operation name carried by *api.Error.
+// registry method (verb) and the operation name carried by *api.Error. The
+// body goes out verbatim; the answer is the ADR-0003 per-locale pass-through.
 func write(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, editID, language string, body []byte) (json.RawMessage, error) {
-	u, err := m.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
-		"language":    language,
+	return api.Do(ctx, hc, api.Call{
+		Method: m, Op: op, Target: pkg,
+		Params: localeParams(pkg, editID, language),
+		Body:   body,
 	})
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(errBody, resp.StatusCode)
-		return nil, &api.Error{
-			Operation:  op,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	// The success body is the ADR-0003 per-locale JSON pass-through; cap
-	// it at MaxAPISuccessBodyRead: a fullDescription alone can run to
-	// 4000 chars, comfortably past the error-body cap.
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	return raw, nil
 }
 
 // Delete drops a whole locale's Listing at edits.listings.delete: every
@@ -238,34 +132,23 @@ func write(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, 
 // that is what gplay calls. A 2xx/204 with no body is expected. Op
 // "listings.delete".
 func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string) error {
-	u, err := methodDelete.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
-		"language":    language,
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: methodDelete, Op: opListingsDelete, Target: pkg,
+		Params: localeParams(pkg, editID, language),
 	})
-	if err != nil {
-		return &api.Error{Operation: opListingsDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
+	return err
+}
 
-	req, err := http.NewRequestWithContext(ctx, methodDelete.Verb, u, nil)
-	if err != nil {
-		return &api.Error{Operation: opListingsDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return &api.Error{Operation: opListingsDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return &api.Error{
-			Operation:  opListingsDelete,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
+// localeParams addresses one locale's Listing inside an Edit.
+func localeParams(pkg, editID, language string) map[string]string {
+	return map[string]string{"packageName": pkg, "editId": editID, "language": language}
+}
+
+// decode unmarshals a 2xx body into out. A body that does not decode keeps
+// the 200 status tag it always had, so its exit code (30) is unchanged.
+func decode(op, pkg string, raw json.RawMessage, out any) error {
+	if err := json.Unmarshal(raw, out); err != nil {
+		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return nil
 }

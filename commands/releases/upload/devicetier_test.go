@@ -14,13 +14,12 @@ import (
 // --device-tier-config reaches edits.bundles.upload as deviceTierConfigId and
 // leaves the rest of the release unchanged (#603).
 func TestRun_deviceTierConfig_forwardedToBundlesUpload(t *testing.T) {
-	rt := &uploadRT{
-		t:                  t,
+	rt, transport := newUploadTransport(uploadAPI{
 		editID:             "edit-dtc",
 		versionCode:        7,
 		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"7","status":"completed","versionCodes":["7"]}]}`,
-	}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, transport)
 
 	if _, err := upload.Run(rc, upload.Input{
 		Package:          "com.example.app",
@@ -30,12 +29,13 @@ func TestRun_deviceTierConfig_forwardedToBundlesUpload(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	q, err := url.ParseQuery(rt.bundlesInitQuery)
+	query := bundlesInitQuery(rt)
+	q, err := url.ParseQuery(query)
 	if err != nil {
-		t.Fatalf("parse bundles initiate query %q: %v", rt.bundlesInitQuery, err)
+		t.Fatalf("parse bundles initiate query %q: %v", query, err)
 	}
 	if got := q.Get("deviceTierConfigId"); got != "1234567890" {
-		t.Errorf("deviceTierConfigId = %q, want 1234567890 (query %q)", got, rt.bundlesInitQuery)
+		t.Errorf("deviceTierConfigId = %q, want 1234567890 (query %q)", got, query)
 	}
 }
 
@@ -43,8 +43,8 @@ func TestRun_deviceTierConfig_forwardedToBundlesUpload(t *testing.T) {
 // for an APK, which has no device tier parameter, before any request: a
 // silently dropped flag would ship a release the operator did not ask for.
 func TestRun_deviceTierConfig_withAPK_exit2_noHTTP(t *testing.T) {
-	rt := &uploadRT{t: t}
-	rc, _ := newRC(t, rt)
+	rt, transport := newUploadTransport(uploadAPI{})
+	rc, _ := newRC(t, transport)
 
 	_, err := upload.Run(rc, upload.Input{
 		Package:          "com.example.app",
@@ -61,8 +61,8 @@ func TestRun_deviceTierConfig_withAPK_exit2_noHTTP(t *testing.T) {
 	if !strings.Contains(err.Error(), "--device-tier-config") {
 		t.Errorf("error %q does not name the flag", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("RoundTripper saw %d calls on a usage error: %v", len(rt.calls), rt.calls)
+	if touched(rt) {
+		t.Errorf("RoundTripper saw %d calls on a usage error: %v", len(apiCalls(rt)), apiCalls(rt))
 	}
 }
 

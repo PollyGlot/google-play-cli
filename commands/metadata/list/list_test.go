@@ -10,15 +10,10 @@ package list_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -51,94 +46,52 @@ func rowByLocale(rows []list.ListingRow) map[string]list.ListingRow {
 	return m
 }
 
-// listRT terminates the OAuth2 /token exchange and routes the read-only
-// listings sequence: edits.insert, listings.list (GET .../listings),
-// edits.delete. It deliberately has NO PATCH/PUT/:commit branch and fails
-// on a DELETE that targets a /listings/ path: reaching one means the
-// command tried to mutate or commit, which a read-only list must never do
-// , so the transport fails the test. A DELETE on the bare /edits/<id> path
-// is the expected Edit discard.
+// listRT configures the testkit.Fake that routes the read-only listings
+// sequence: edits.insert, listings.list (GET .../listings), edits.delete. It
+// deliberately has NO PATCH/PUT/:commit branch and fails on a DELETE that
+// targets a /listings/ path: reaching one means the command tried to mutate
+// or commit, which a read-only list must never do, so the fake fails the
+// test. A DELETE on the bare /edits/<id> path is the expected Edit discard.
 type listRT struct {
-	t            *testing.T
 	editID       string
 	listingsResp string
 	insertCode   int // 0 -> 200
 	listingsCode int // 0 -> 200
 	insertBody   string
-
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
 }
 
-func (r *listRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		code := r.insertCode
-		if code == 0 {
-			code = 200
-		}
-		body := r.insertBody
-		if body == "" {
-			body = fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)
-		}
-		return jsonResp(code, body), nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/listings"):
-		code := r.listingsCode
-		if code == 0 {
-			code = 200
-		}
-		return jsonResp(code, r.listingsResp), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/") && !strings.Contains(req.URL.Path, "/listings"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}
-	r.t.Fatalf("unexpected request (read-only list must not write/commit): %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-func signedSAJSON(t *testing.T) []byte {
+func newFake(t *testing.T, r listRT) *testkit.Fake {
 	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
-	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			body := r.insertBody
+			if body == "" {
+				body = fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)
+			}
+			return r.insertCode, body, true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/listings"):
+			return r.listingsCode, r.listingsResp, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/") && !strings.Contains(c.Path, "/listings"):
+			return 204, "", true
+		}
+		t.Errorf("unexpected request (read-only list must not write/commit): %s %s", c.Method, c.Path)
+		return 0, "", false
 	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+}
+
+// calls lists the recorded API requests as "METHOD path" lines.
+func calls(f *testkit.Fake) []string {
+	var out []string
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
 	}
-	return raw
+	return out
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -172,7 +125,7 @@ func TestRun_listsEveryLocale_happyPath(t *testing.T) {
 		`{"language":"en-US","title":"My App","shortDescription":"short","fullDescription":"long desc","video":""},` +
 		`{"language":"fr-FR","title":"Mon App","shortDescription":"","fullDescription":"desc longue","video":"https://youtu.be/x"}` +
 		`],"kind":"androidpublisher#listingsListResponse"}`
-	rt := &listRT{t: t, editID: "edit-list", listingsResp: raw}
+	rt := newFake(t, listRT{editID: "edit-list", listingsResp: raw})
 	rc, _ := newRC(t, rt)
 
 	r, err := list.Run(rc, list.Input{Package: "com.example.app"})
@@ -183,21 +136,25 @@ func TestRun_listsEveryLocale_happyPath(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
 
-	if rt.tokenHits == 0 {
-		t.Errorf("RoundTripper saw no /token exchange; calls=%v", rt.calls)
+	// One /token exchange, and edits.insert already carries its bearer: the
+	// exchange preceded the first API call.
+	if n := rt.TokenExchanges(); n != 1 {
+		t.Errorf("token exchanges = %d, want 1; calls=%v", n, calls(rt))
+	}
+	if got := rt.Calls(); len(got) > 0 && got[0].Header.Get("Authorization") != "Bearer a.b.c" {
+		t.Errorf("first API call Authorization = %q, want the exchanged bearer", got[0].Header.Get("Authorization"))
 	}
 	wantSequence := []string{
-		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-list/listings",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-list",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(rt.Calls()) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(rt.Calls()), calls(rt), len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if calls(rt)[i] != want {
+			t.Errorf("call %d = %q, want %q", i, calls(rt)[i], want)
 		}
 	}
 
@@ -311,29 +268,29 @@ func TestRenderMarkdown_isGFMTable(t *testing.T) {
 // TestRun_noAccount_exit10 asserts that with no resolved Account the
 // command fails auth (exit 10) before any HTTP call.
 func TestRun_noAccount_exit10(t *testing.T) {
-	rt := &listRT{t: t}
+	rt := newFake(t, listRT{})
 	rc, _ := newRC(t, rt)
 	rc.Account = nil
 	_, err := list.Run(rc, list.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 10 {
 		t.Errorf("ExitCode() = %d, want 10", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before auth error, saw: %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before auth error, saw: %v", calls(rt))
 	}
 }
 
 // TestRun_missingPackage_exit2 asserts a missing package (no --package and
 // no pin) is a usage error before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
-	rt := &listRT{t: t}
+	rt := newFake(t, listRT{})
 	rc, _ := newRC(t, rt)
 	_, err := list.Run(rc, list.Input{})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", calls(rt))
 	}
 }
 
@@ -341,11 +298,10 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 // (edits.insert 404) maps to exit 30 with a hint pointing the operator at
 // `gplay apps list`, and that no Edit was opened (no DELETE).
 func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
-	rt := &listRT{
-		t:          t,
+	rt := newFake(t, listRT{
 		insertCode: 404,
 		insertBody: `{"error":{"code":404,"message":"Application not found.","errors":[{"reason":"applicationNotFound"}]}}`,
-	}
+	})
 	rc, _ := newRC(t, rt)
 
 	_, err := list.Run(rc, list.Input{Package: "com.example.unknown"})
@@ -355,9 +311,9 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	if !strings.Contains(err.Error(), "apps list") {
 		t.Errorf("error %q, want a hint mentioning `gplay apps list`", err.Error())
 	}
-	for _, c := range rt.calls {
+	for _, c := range calls(rt) {
 		if strings.HasPrefix(c, "DELETE ") {
-			t.Errorf("unexpected DELETE after failed insert; calls = %v", rt.calls)
+			t.Errorf("unexpected DELETE after failed insert; calls = %v", calls(rt))
 		}
 	}
 }
@@ -365,11 +321,10 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 // TestRun_forbidden_exit11WithHint asserts that a 403 (service account not
 // invited on the app) maps to exit 11 with the standard grant-access hint.
 func TestRun_forbidden_exit11WithHint(t *testing.T) {
-	rt := &listRT{
-		t:          t,
+	rt := newFake(t, listRT{
 		insertCode: 403,
 		insertBody: `{"error":{"code":403,"message":"The caller does not have permission"}}`,
-	}
+	})
 	rc, _ := newRC(t, rt)
 
 	_, err := list.Run(rc, list.Input{Package: "com.example.app"})
@@ -386,12 +341,11 @@ func TestRun_forbidden_exit11WithHint(t *testing.T) {
 // after the Edit was opened, and the underlying status drives the exit
 // code (5xx -> 40).
 func TestRun_listingsListError_discardsEditAndPropagates(t *testing.T) {
-	rt := &listRT{
-		t:            t,
+	rt := newFake(t, listRT{
 		editID:       "edit-err",
 		listingsCode: 503,
 		listingsResp: `{"error":{"code":503,"message":"Backend error"}}`,
-	}
+	})
 	rc, _ := newRC(t, rt)
 
 	_, err := list.Run(rc, list.Input{Package: "com.example.app"})
@@ -399,12 +353,12 @@ func TestRun_listingsListError_discardsEditAndPropagates(t *testing.T) {
 		t.Errorf("ExitCode() = %d, want 40", code)
 	}
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range calls(rt) {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-err") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("Edit not discarded after a failed listing read; calls = %v", rt.calls)
+		t.Errorf("Edit not discarded after a failed listing read; calls = %v", calls(rt))
 	}
 }

@@ -1,5 +1,5 @@
 // Package create_test exercises `gplay tracks create` at the kernel
-// level: a RunContext built by hand, a RoundTripper injected via the
+// level: a RunContext built by hand, a testkit Fake injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // promote command's test harness so a single seam proves the auth +
 // Edit lifecycle wiring for tracks create too.
@@ -8,14 +8,9 @@ package create_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -29,93 +24,68 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// createRT terminates the OAuth2 /token exchange and routes every
-// androidpublisher call the create flow makes: edits.insert,
-// tracks.create, edits.commit, edits.delete. trackCreateStatus lets a
-// test force a non-2xx on the POST .../tracks (the "track already
+// createAPI is the Play API the create flow sees, served by a testkit Fake:
+// edits.insert, tracks.create, edits.commit, edits.delete. trackCreateStatus
+// lets a test force a non-2xx on the POST .../tracks (the "track already
 // exists" case).
-type createRT struct {
-	t                 *testing.T
+type createAPI struct {
 	editID            string
 	trackCreateStatus int
 	trackCreateResp   string
 
-	mu             sync.Mutex
-	calls          []string
-	tokenHits      int
-	trackCreateReq []byte
+	fake *testkit.Fake
 }
 
-func (r *createRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/tracks"):
-		body, _ := io.ReadAll(req.Body)
-		r.trackCreateReq = body
-		status := r.trackCreateStatus
-		if status == 0 {
-			status = 200
-		}
-		resp := r.trackCreateResp
-		if resp == "" {
-			resp = `{}`
-		}
-		return jsonResp(status, resp), nil
-	case strings.HasSuffix(req.URL.Path, ":commit"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, r.editID)), nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-// signedSAJSON returns a minimal but well-formed service-account JSON
-// with a real RSA key: enough for token.Source to mint a signed JWT.
-func signedSAJSON(t *testing.T) []byte {
+func (a *createAPI) serve(t *testing.T) *testkit.Fake {
 	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	a.fake = testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return 204, "", true
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/tracks"):
+			resp := a.trackCreateResp
+			if resp == "" {
+				resp = `{}`
+			}
+			return a.trackCreateStatus, resp, true
+		case strings.HasSuffix(c.Path, ":commit"):
+			return 200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
+		}
+		return 0, "", false
+	}, testkit.Refuse(t, ""))
+	return a.fake
+}
+
+// calls lists the requests as "METHOD path", the token exchanges first: the
+// oauth2 transport runs the exchange before the first API call and caches
+// the token, and the Fake counts exchanges without recording them.
+func (a *createAPI) calls() []string {
+	var out []string
+	for range a.fake.TokenExchanges() {
+		out = append(out, "POST /token")
 	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+	for _, c := range a.fake.Calls() {
+		out = append(out, c.Method+" "+c.Path)
 	}
-	return raw
+	return out
+}
+
+// trackCreateReq returns the body of the last tracks.create request.
+func (a *createAPI) trackCreateReq() []byte {
+	var body []byte
+	for _, c := range a.fake.Calls() {
+		if c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/tracks") {
+			body = c.Body
+		}
+	}
+	return body
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -131,8 +101,8 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 // without auth or any HTTP call, and the human renders mention the
 // hardcoded CLOSED_TESTING type.
 func TestRun_dryRun_noHTTP(t *testing.T) {
-	rt := &createRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &createAPI{}
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "qa-team", DryRun: true})
 	if err != nil {
@@ -141,8 +111,8 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 	if r == nil {
 		t.Fatal("Run returned nil Renderable on dry-run")
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", api.calls())
 	}
 
 	var table bytes.Buffer
@@ -159,12 +129,11 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 // create request carrying type=CLOSED_TESTING, and the --output json
 // render being the raw tracks.create response verbatim (ADR-0003).
 func TestRun_happyPath_createsClosedTrack(t *testing.T) {
-	rt := &createRT{
-		t:               t,
+	api := &createAPI{
 		editID:          "edit-create-cli",
 		trackCreateResp: `{"track":"qa-team","releases":[]}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "qa-team"})
 	if err != nil {
@@ -174,8 +143,8 @@ func TestRun_happyPath_createsClosedTrack(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
 
-	if rt.tokenHits == 0 {
-		t.Errorf("RoundTripper saw no /token exchange; calls=%v", rt.calls)
+	if api.fake.TokenExchanges() == 0 {
+		t.Errorf("the fake saw no /token exchange; calls=%v", api.calls())
 	}
 	wantSequence := []string{
 		"POST /token",
@@ -183,17 +152,17 @@ func TestRun_happyPath_createsClosedTrack(t *testing.T) {
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-create-cli/tracks",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-create-cli:commit",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(api.calls()) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(api.calls()), api.calls(), len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if api.calls()[i] != want {
+			t.Errorf("call %d = %q, want %q", i, api.calls()[i], want)
 		}
 	}
 
-	if !strings.Contains(string(rt.trackCreateReq), `"type":"CLOSED_TESTING"`) {
-		t.Errorf("create request body = %s, want type=CLOSED_TESTING", rt.trackCreateReq)
+	if !strings.Contains(string(api.trackCreateReq()), `"type":"CLOSED_TESTING"`) {
+		t.Errorf("create request body = %s, want type=CLOSED_TESTING", api.trackCreateReq())
 	}
 
 	// ADR-0003: --output json must be the raw tracks.create response.
@@ -201,8 +170,8 @@ func TestRun_happyPath_createsClosedTrack(t *testing.T) {
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
 	}
-	if got := strings.TrimSpace(jsonOut.String()); got != strings.TrimSpace(rt.trackCreateResp) {
-		t.Errorf("JSON output = %s\nwant raw tracks.create payload = %s", got, rt.trackCreateResp)
+	if got := strings.TrimSpace(jsonOut.String()); got != strings.TrimSpace(api.trackCreateResp) {
+		t.Errorf("JSON output = %s\nwant raw tracks.create payload = %s", got, api.trackCreateResp)
 	}
 }
 
@@ -212,13 +181,12 @@ func TestRun_happyPath_createsClosedTrack(t *testing.T) {
 // failed Edit is auto-discarded (DELETE) since keep-edit-on-failure is
 // off by default.
 func TestRun_createOnExistingTrack_exit30(t *testing.T) {
-	rt := &createRT{
-		t:                 t,
+	api := &createAPI{
 		editID:            "edit-create-cli",
 		trackCreateStatus: 400,
 		trackCreateResp:   `{"error":{"code":400,"message":"Track already exists.","errors":[{"reason":"badRequest"}]}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "qa-team"})
 	if err == nil {
@@ -230,13 +198,13 @@ func TestRun_createOnExistingTrack_exit30(t *testing.T) {
 
 	// The Edit must have been discarded after the failure.
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range api.calls() {
 		if strings.HasPrefix(c, "DELETE ") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("expected an edits.delete (auto-discard) after the failure, calls=%v", rt.calls)
+		t.Errorf("expected an edits.delete (auto-discard) after the failure, calls=%v", api.calls())
 	}
 }
 
@@ -270,12 +238,11 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 // prints a single ✓ line on stderr (DESIGN §8) naming the new track, alongside
 // the stdout payload.
 func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
-	rt := &createRT{
-		t:               t,
+	api := &createAPI{
 		editID:          "edit-create-cli",
 		trackCreateResp: `{"track":"qa-team","releases":[]}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -290,8 +257,8 @@ func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 
 // TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
-	rt := &createRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &createAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 

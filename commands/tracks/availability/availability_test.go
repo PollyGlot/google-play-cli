@@ -1,5 +1,5 @@
 // Package availability_test exercises `gplay tracks availability view` at
-// the kernel level: a RunContext built by hand, a RoundTripper injected via
+// the kernel level: a RunContext built by hand, a testkit Fake injected via
 // the oauth2.HTTPClient context key, and Run invoked directly. Mirrors
 // the tracks-view harness: the transport FAILS on any PUT/:commit,
 // because reading Country availability is read-only (open Edit →
@@ -10,15 +10,11 @@ package availability_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -31,81 +27,51 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// availRT terminates the OAuth2 /token exchange and routes the
-// availability read sequence: edits.insert, countryAvailability.get,
-// edits.delete. It has NO PUT/:commit branch: reaching one means the
-// command tried to mutate state, which a read-only command must never do
-// , so the transport fails the test.
-type availRT struct {
-	t      *testing.T
+// availAPI is the Play API the availability read sees, served by a testkit
+// Fake: edits.insert, countryAvailability.get, edits.delete. It has NO
+// PUT/:commit route: reaching one means the command tried to mutate state,
+// which a read-only command must never do, so the test fails.
+type availAPI struct {
 	editID string
 	body   string
 	code   int // 0 → 200 on countryAvailability.get
 
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
+	fake *testkit.Fake
 }
 
-func (r *availRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/countryAvailability/"):
-		code := r.code
-		if code == 0 {
-			code = 200
-		}
-		return jsonResp(code, r.body), nil
-	}
-	r.t.Fatalf("unexpected request (tracks availability is read-only): %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-func signedSAJSON(t *testing.T) []byte {
+func (a *availAPI) serve(t *testing.T) *testkit.Fake {
 	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	a.fake = testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return 204, "", true
+		case c.Method == http.MethodGet && strings.Contains(c.Path, "/countryAvailability/"):
+			return a.code, a.body, true
+		}
+		return 0, "", false
+	}, testkit.Refuse(t, " (tracks availability is read-only)"))
+	return a.fake
+}
+
+// calls lists the requests as "METHOD path", the token exchanges first: the
+// oauth2 transport runs the exchange before the first API call and caches
+// the token, and the Fake counts exchanges without recording them.
+func (a *availAPI) calls() []string {
+	var out []string
+	for range a.fake.TokenExchanges() {
+		out = append(out, "POST /token")
 	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+	for _, c := range a.fake.Calls() {
+		out = append(out, c.Method+" "+c.Path)
 	}
-	return raw
+	return out
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -137,8 +103,8 @@ func exitCodeOf(t *testing.T, err error) int {
 // verbatim (clean ADR-0003 pass-through: a single endpoint).
 func TestRun_happyPath(t *testing.T) {
 	body := `{"syncWithProduction":false,"restOfWorld":true,"countries":[{"countryCode":"US"},{"countryCode":"GB"}]}`
-	rt := &availRT{t: t, editID: "edit-avail", body: body}
-	rc, _ := newRC(t, rt)
+	api := &availAPI{editID: "edit-avail", body: body}
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := availability.Run(rc, availability.Input{Package: "com.example.app", Track: "production"})
 	if err != nil {
@@ -147,8 +113,8 @@ func TestRun_happyPath(t *testing.T) {
 	if r == nil {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
-	if rt.tokenHits == 0 {
-		t.Errorf("RoundTripper saw no /token exchange; calls=%v", rt.calls)
+	if api.fake.TokenExchanges() == 0 {
+		t.Errorf("the fake saw no /token exchange; calls=%v", api.calls())
 	}
 
 	wantSequence := []string{
@@ -157,12 +123,12 @@ func TestRun_happyPath(t *testing.T) {
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-avail/countryAvailability/production",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-avail",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(api.calls()) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(api.calls()), api.calls(), len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if api.calls()[i] != want {
+			t.Errorf("call %d = %q, want %q", i, api.calls()[i], want)
 		}
 	}
 
@@ -180,63 +146,61 @@ func TestRun_happyPath(t *testing.T) {
 // implicit production default): absence short-circuits with exit 2 before
 // any HTTP call.
 func TestRun_missingTrack_exit2_noHTTP(t *testing.T) {
-	rt := &availRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &availAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	_, err := availability.Run(rc, availability.Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2 (missing --track)", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", api.calls())
 	}
 }
 
 // TestRun_missingPackage_exit2 asserts that with neither --package nor a
 // pinned project, the command short-circuits with exit 2 before any HTTP.
 func TestRun_missingPackage_exit2(t *testing.T) {
-	rt := &availRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &availAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	_, err := availability.Run(rc, availability.Input{Track: "production"})
 	if code := exitCodeOf(t, err); code != 2 {
 		t.Errorf("ExitCode() = %d, want 2", code)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", api.calls())
 	}
 }
 
 // TestRun_usesPin_whenNoFlag asserts that without --package the command
 // falls back to rc.Resolved.Pin.
 func TestRun_usesPin_whenNoFlag(t *testing.T) {
-	rt := &availRT{
-		t:      t,
+	api := &availAPI{
 		editID: "edit-pin",
 		body:   `{"syncWithProduction":true,"restOfWorld":false,"countries":[]}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 	rc.Resolved.Pin = "com.pinned.app"
 
 	if _, err := availability.Run(rc, availability.Input{Track: "beta"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	for _, c := range rt.calls {
+	for _, c := range api.calls() {
 		if strings.Contains(c, "com.pinned.app") {
 			return
 		}
 	}
-	t.Errorf("expected calls scoped to com.pinned.app, got: %v", rt.calls)
+	t.Errorf("expected calls scoped to com.pinned.app, got: %v", api.calls())
 }
 
 // TestRun_get403_exit11 asserts a 403 on countryAvailability.get bubbles
 // up as exit 11 (authorization).
 func TestRun_get403_exit11(t *testing.T) {
-	rt := &availRT{
-		t:      t,
+	api := &availAPI{
 		editID: "edit-403",
 		code:   403,
 		body:   `{"error":{"code":403,"message":"insufficient permissions"}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 	_, err := availability.Run(rc, availability.Input{Package: "com.example.app", Track: "production"})
 	if code := exitCodeOf(t, err); code != 11 {
 		t.Errorf("ExitCode() = %d, want 11", code)
@@ -246,13 +210,12 @@ func TestRun_get403_exit11(t *testing.T) {
 // TestRun_get404_exit30_tracksListHint asserts a 404 (unknown track or
 // package) maps to exit 30 with a hint pointing at `gplay tracks list`.
 func TestRun_get404_exit30_tracksListHint(t *testing.T) {
-	rt := &availRT{
-		t:      t,
+	api := &availAPI{
 		editID: "edit-404",
 		code:   404,
 		body:   `{"error":{"code":404,"message":"track not found"}}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 	_, err := availability.Run(rc, availability.Input{Package: "com.example.app", Track: "no-such-track"})
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Errorf("ExitCode() = %d, want 30", code)

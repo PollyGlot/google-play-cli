@@ -8,16 +8,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -32,74 +29,73 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// applyRT routes the apply sequence. images.list returns empty for every slot
-// (so a local image is a fresh upload). It records uploads, deleteall calls,
-// and whether a commit happened, and fails on nothing it does not recognize.
+// applyRT configures the testkit.Fake that routes the apply sequence.
+// images.list returns empty for every slot (so a local image is a fresh
+// upload). The Fake records every call (uploads, deleteall, commit), and any
+// request the routes below do not recognize fails the test.
 type applyRT struct {
-	t        *testing.T
 	editID   string
 	liveBody string // images.list body for every slot (default: empty)
-
-	mu        sync.Mutex
-	uploads   int
-	deleteAll int
-	committed bool
-	calls     []string
 }
 
-func (r *applyRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"abc","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q}`, r.editID)), nil
-	case strings.HasSuffix(req.URL.Path, ":commit"):
-		r.committed = true
-		return jsonResp(200, `{}`), nil
-	case req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/upload/"):
-		r.uploads++
-		_, _ = io.Copy(io.Discard, req.Body)
-		return jsonResp(200, fmt.Sprintf(`{"image":{"id":"up%d","url":"u","sha256":"s"}}`, r.uploads)), nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/listings/"):
-		body := r.liveBody
-		if body == "" {
-			body = `{"images":[]}` // every slot empty live by default
-		}
-		return jsonResp(200, body), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/listings/"):
-		r.deleteAll++
-		return jsonResp(200, `{"deleted":[]}`), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
-
-func signedSAJSON(t *testing.T) []byte {
+func newFake(t *testing.T, r applyRT) *testkit.Fake {
 	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, _ := json.Marshal(map[string]any{
-		"type": "service_account", "project_id": "p",
-		"private_key": string(pemBytes), "client_email": "ci@p.iam.gserviceaccount.com",
-		"token_uri": "https://oauth2.googleapis.com/token",
+	var uploadSeq atomic.Int64 // numbers the uploaded image ids up1, up2, ...
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, fmt.Sprintf(`{"id":%q}`, r.editID), true
+		case strings.HasSuffix(c.Path, ":commit"):
+			return 200, `{}`, true
+		case c.Method == http.MethodPost && strings.HasPrefix(c.Path, "/upload/"):
+			return 200, fmt.Sprintf(`{"image":{"id":"up%d","url":"u","sha256":"s"}}`, uploadSeq.Add(1)), true
+		case c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/"):
+			body := r.liveBody
+			if body == "" {
+				body = `{"images":[]}` // every slot empty live by default
+			}
+			return 200, body, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/listings/"):
+			return 200, `{"deleted":[]}`, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return 204, "", true
+		}
+		t.Errorf("unexpected request: %s %s", c.Method, c.Path)
+		return 0, "", false
 	})
-	return raw
+}
+
+// calls lists the recorded API requests as "METHOD path" lines.
+func calls(f *testkit.Fake) []string {
+	var out []string
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
+	}
+	return out
+}
+
+func committed(f *testkit.Fake) bool {
+	for _, c := range f.Calls() {
+		if strings.HasSuffix(c.Path, ":commit") {
+			return true
+		}
+	}
+	return false
+}
+
+func uploads(f *testkit.Fake) int {
+	n := 0
+	for _, c := range f.Calls() {
+		if c.Method == http.MethodPost && strings.HasPrefix(c.Path, "/upload/") {
+			n++
+		}
+	}
+	return n
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -147,7 +143,7 @@ func exitCodeOf(t *testing.T, err error) int {
 // before any network, with exit 3 (safety flag required, docs/DESIGN.md §9,
 // NOT the generic usage exit 2, #408).
 func TestRun_realApply_withoutConfirm_refusesExit3(t *testing.T) {
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t)})
 	if got := exitCodeOf(t, err); got != 3 {
@@ -157,8 +153,8 @@ func TestRun_realApply_withoutConfirm_refusesExit3(t *testing.T) {
 	if !errors.As(err, &safety) || safety.Flag != "confirm" {
 		t.Errorf("err = %v (%T), want *exit.SafetyFlagError naming \"confirm\"", err, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("confirm gate must fire before any network, saw %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("confirm gate must fire before any network, saw %v", calls(rt))
 	}
 }
 
@@ -166,16 +162,16 @@ func TestRun_realApply_withoutConfirm_refusesExit3(t *testing.T) {
 // ADR-0013 diff schema (a fresh icon → summary.upload ≥ 1, the jq gate true)
 // without committing.
 func TestRun_dryRun_onlineDiffSchema(t *testing.T) {
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	r, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), DryRun: true, Types: []string{"icon"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.committed {
+	if committed(rt) {
 		t.Error("dry-run must not commit")
 	}
-	if rt.uploads != 0 {
+	if uploads(rt) != 0 {
 		t.Error("dry-run must not upload")
 	}
 	var buf bytes.Buffer
@@ -199,16 +195,16 @@ func TestRun_dryRun_onlineDiffSchema(t *testing.T) {
 // TestRun_realApply_uploadsAndCommits asserts a confirmed apply uploads the
 // local icon and commits once inside one Edit.
 func TestRun_realApply_uploadsAndCommits(t *testing.T) {
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), Confirm: true, Types: []string{"icon"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.uploads != 1 {
-		t.Errorf("uploads = %d, want 1", rt.uploads)
+	if uploads(rt) != 1 {
+		t.Errorf("uploads = %d, want 1", uploads(rt))
 	}
-	if !rt.committed {
+	if !committed(rt) {
 		t.Error("real apply must commit")
 	}
 }
@@ -216,20 +212,20 @@ func TestRun_realApply_uploadsAndCommits(t *testing.T) {
 // TestRun_typeFilter_isATracer asserts --type icon considers only the icon
 // slot (one images.list GET), the single-slot tracer.
 func TestRun_typeFilter_isATracer(t *testing.T) {
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), DryRun: true, Types: []string{"icon"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	listGETs := 0
-	for _, c := range rt.calls {
+	for _, c := range calls(rt) {
 		if strings.HasPrefix(c, "GET ") && strings.Contains(c, "/listings/") {
 			listGETs++
 		}
 	}
 	if listGETs != 1 {
-		t.Errorf("--type icon should read exactly 1 slot, got %d: %v", listGETs, rt.calls)
+		t.Errorf("--type icon should read exactly 1 slot, got %d: %v", listGETs, calls(rt))
 	}
 }
 
@@ -241,23 +237,23 @@ func TestRun_validateFailFast(t *testing.T) {
 	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.Icon: {testkit.PNG(500, 500)}}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: dir, DryRun: true, Types: []string{"icon"}})
 	if got := exitCodeOf(t, err); got != 20 {
 		t.Errorf("exit = %d, want 20 (validate fail-fast)", got)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("validate must fail before any network, saw %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("validate must fail before any network, saw %v", calls(rt))
 	}
 
 	// --no-validate bypasses the pre-check: the dry-run now reaches Play.
-	rt2 := &applyRT{t: t, editID: "e"}
+	rt2 := newFake(t, applyRT{editID: "e"})
 	rc2 := newRC(t, rt2)
 	if _, err := imagesapply.Run(rc2, imagesapply.Input{Package: "com.example.app", Dir: dir, DryRun: true, Types: []string{"icon"}, NoValidate: true}); err != nil {
 		t.Fatalf("--no-validate dry-run should pass the pre-check: %v", err)
 	}
-	if len(rt2.calls) == 0 {
+	if len(rt2.Calls()) == 0 {
 		t.Error("--no-validate should let the dry-run reach Play")
 	}
 }
@@ -275,7 +271,7 @@ func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 	// Live has the local shot plus an online-only one; --prune should delete it.
 	live := fmt.Sprintf(`{"images":[{"id":"keep","sha256":%q},{"id":"drop","sha256":%q}]}`,
 		hex.EncodeToString(shotSum[:]), "00deadbeef")
-	rt := &applyRT{t: t, editID: "e", liveBody: live}
+	rt := newFake(t, applyRT{editID: "e", liveBody: live})
 	rc := newRC(t, rt)
 
 	r, err := imagesapply.Run(rc, imagesapply.Input{
@@ -284,7 +280,7 @@ func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.committed {
+	if committed(rt) {
 		t.Error("dry-run must not commit")
 	}
 	var buf bytes.Buffer
@@ -320,7 +316,7 @@ func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 // upfront (exit 2) instead of silently reconciling nothing: the footgun the
 // --type guard already prevents.
 func TestRun_unknownLocale_isUsageError(t *testing.T) {
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	// seedIcon writes en-US; ask for en_US (underscore typo).
 	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), DryRun: true, Locales: []string{"en_US"}})
@@ -330,14 +326,14 @@ func TestRun_unknownLocale_isUsageError(t *testing.T) {
 	if !strings.Contains(err.Error(), "en_US") {
 		t.Errorf("error should name the bad locale: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("unknown --locale must be refused before any network, saw %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("unknown --locale must be refused before any network, saw %v", calls(rt))
 	}
 }
 
 // TestRun_unknownType_isUsageError asserts a typo'd --type is refused upfront.
 func TestRun_unknownType_isUsageError(t *testing.T) {
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), DryRun: true, Types: []string{"chromebookScreenshots"}})
 	if got := exitCodeOf(t, err); got != 2 {
@@ -349,7 +345,7 @@ func TestRun_unknownType_isUsageError(t *testing.T) {
 // prints a single ✓ line on stderr (DESIGN §8) naming the package and the
 // upload/delete tally, alongside the stdout payload.
 func TestRun_realApply_emitsConfirmationOnStderr(t *testing.T) {
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
@@ -365,7 +361,7 @@ func TestRun_realApply_emitsConfirmationOnStderr(t *testing.T) {
 
 // TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
-	rt := &applyRT{t: t, editID: "e"}
+	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr

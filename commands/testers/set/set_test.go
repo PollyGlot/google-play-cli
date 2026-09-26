@@ -1,5 +1,5 @@
 // Package set_test exercises `gplay testers set` at the kernel level: a
-// RunContext built by hand, a RoundTripper injected via the
+// RunContext built by hand, a testkit Fake injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // promote / upload write-command harness so a single seam proves the auth +
 // Edit lifecycle wiring (open → testers.update → commit) for testers set.
@@ -8,14 +8,9 @@ package set_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -28,87 +23,66 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// setRT terminates the OAuth2 /token exchange and routes every
-// androidpublisher call needed by a testers replacement:
-// edits.insert, testers.update (PUT, body captured), edits.commit, and
+// setAPI is the Play API a testers replacement sees, served by a testkit
+// Fake: edits.insert, testers.update (PUT, body recorded), edits.commit, and
 // edits.delete (the failure/discard path).
-type setRT struct {
-	t                 *testing.T
+type setAPI struct {
 	editID            string
 	testersUpdateResp string
 
-	mu               sync.Mutex
-	calls            []string
-	tokenHits        int
-	testersUpdateReq []byte
+	fake *testkit.Fake
 }
 
-func (r *setRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/testers/"):
-		body, _ := io.ReadAll(req.Body)
-		r.testersUpdateReq = body
-		resp := r.testersUpdateResp
-		if resp == "" {
-			resp = `{"googleGroups":[]}`
-		}
-		return jsonResp(200, resp), nil
-	case strings.HasSuffix(req.URL.Path, ":commit"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, r.editID)), nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-// signedSAJSON returns a minimal but well-formed service-account JSON with
-// a real RSA key: enough for token.Source to mint a signed JWT.
-func signedSAJSON(t *testing.T) []byte {
+func (a *setAPI) serve(t *testing.T) *testkit.Fake {
 	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	a.fake = testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return 204, "", true
+		case c.Method == http.MethodPut && strings.Contains(c.Path, "/testers/"):
+			resp := a.testersUpdateResp
+			if resp == "" {
+				resp = `{"googleGroups":[]}`
+			}
+			return 200, resp, true
+		case strings.HasSuffix(c.Path, ":commit"):
+			return 200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
+		}
+		return 0, "", false
+	}, testkit.Refuse(t, ""))
+	return a.fake
+}
+
+// calls lists the requests as "METHOD path", the token exchanges first: the
+// oauth2 transport runs the exchange before the first API call and caches
+// the token, and the Fake counts exchanges without recording them.
+func (a *setAPI) calls() []string {
+	var out []string
+	for range a.fake.TokenExchanges() {
+		out = append(out, "POST /token")
 	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+	for _, c := range a.fake.Calls() {
+		out = append(out, c.Method+" "+c.Path)
 	}
-	return raw
+	return out
+}
+
+// testersUpdateReq returns the body of the last testers.update request.
+func (a *setAPI) testersUpdateReq() []byte {
+	var body []byte
+	for _, c := range a.fake.Calls() {
+		if c.Method == http.MethodPut && strings.Contains(c.Path, "/testers/") {
+			body = c.Body
+		}
+	}
+	return body
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -125,8 +99,8 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 // exit 2 before any HTTP, so a forgotten --group can never silently wipe
 // the list.
 func TestRun_bareSet_exit2_noHTTP(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := set.Run(rc, set.Input{Package: "com.example.app", Track: "qa-team"})
 	if err == nil {
@@ -135,16 +109,16 @@ func TestRun_bareSet_exit2_noHTTP(t *testing.T) {
 	if got := exit.For(err); got != 2 {
 		t.Errorf("exit.For(err) = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", api.calls())
 	}
 }
 
 // TestRun_groupAndClear_exit2 asserts --group and --clear together is
 // contradictory: exit 2 before any HTTP.
 func TestRun_groupAndClear_exit2(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 
 	_, err := set.Run(rc, set.Input{
 		Package:   "com.example.app",
@@ -159,8 +133,8 @@ func TestRun_groupAndClear_exit2(t *testing.T) {
 	if got := exit.For(err); got != 2 {
 		t.Errorf("exit.For(err) = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", api.calls())
 	}
 }
 
@@ -168,12 +142,11 @@ func TestRun_groupAndClear_exit2(t *testing.T) {
 // the full open → PUT → commit sequence runs and the captured PUT body
 // carries an explicit empty array (NOT null).
 func TestRun_clear_putsEmptyArray(t *testing.T) {
-	rt := &setRT{
-		t:                 t,
+	api := &setAPI{
 		editID:            "edit-clear",
 		testersUpdateResp: `{"googleGroups":[]}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := set.Run(rc, set.Input{
 		Package: "com.example.app",
@@ -193,15 +166,15 @@ func TestRun_clear_putsEmptyArray(t *testing.T) {
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-clear/testers/qa-team",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-clear:commit",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(api.calls()) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(api.calls()), api.calls(), len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if api.calls()[i] != want {
+			t.Errorf("call %d = %q, want %q", i, api.calls()[i], want)
 		}
 	}
-	body := string(rt.testersUpdateReq)
+	body := string(api.testersUpdateReq())
 	if !strings.Contains(body, `"googleGroups":[]`) {
 		t.Errorf("testers.update body = %s, want it to contain \"googleGroups\":[]", body)
 	}
@@ -211,12 +184,11 @@ func TestRun_clear_putsEmptyArray(t *testing.T) {
 // body carries both groups and --output json is the raw testers.update
 // response (ADR-0003 pass-through).
 func TestRun_setGroups_putsList(t *testing.T) {
-	rt := &setRT{
-		t:                 t,
+	api := &setAPI{
 		editID:            "edit-set",
 		testersUpdateResp: `{"googleGroups":["a@googlegroups.com","b@googlegroups.com"]}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := set.Run(rc, set.Input{
 		Package:   "com.example.app",
@@ -231,7 +203,7 @@ func TestRun_setGroups_putsList(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on --group set")
 	}
 
-	body := string(rt.testersUpdateReq)
+	body := string(api.testersUpdateReq())
 	if !strings.Contains(body, "a@googlegroups.com") || !strings.Contains(body, "b@googlegroups.com") {
 		t.Errorf("testers.update body = %s, want both groups", body)
 	}
@@ -240,8 +212,8 @@ func TestRun_setGroups_putsList(t *testing.T) {
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
 	}
-	if got := strings.TrimSpace(jsonOut.String()); got != strings.TrimSpace(rt.testersUpdateResp) {
-		t.Errorf("JSON output = %s\nwant raw testers.update payload = %s", got, rt.testersUpdateResp)
+	if got := strings.TrimSpace(jsonOut.String()); got != strings.TrimSpace(api.testersUpdateResp) {
+		t.Errorf("JSON output = %s\nwant raw testers.update payload = %s", got, api.testersUpdateResp)
 	}
 }
 
@@ -249,8 +221,8 @@ func TestRun_setGroups_putsList(t *testing.T) {
 // without any HTTP call and still returns a non-nil Renderable whose view
 // shows the groups that would be written.
 func TestRun_dryRun_noHTTP(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 
 	r, err := set.Run(rc, set.Input{
 		Package:   "com.example.app",
@@ -265,8 +237,8 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 	if r == nil {
 		t.Fatal("Run returned nil Renderable on --dry-run")
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", rt.calls)
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", api.calls())
 	}
 
 	var tableOut bytes.Buffer
@@ -309,12 +281,11 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 // prints a single ✓ line on stderr (DESIGN §8) naming the track, alongside the
 // stdout payload.
 func TestRun_setGroups_emitsConfirmationOnStderr(t *testing.T) {
-	rt := &setRT{
-		t:                 t,
+	api := &setAPI{
 		editID:            "edit-set",
 		testersUpdateResp: `{"googleGroups":["a@googlegroups.com","b@googlegroups.com"]}`,
 	}
-	rc, _ := newRC(t, rt)
+	rc, _ := newRC(t, api.serve(t))
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -334,8 +305,8 @@ func TestRun_setGroups_emitsConfirmationOnStderr(t *testing.T) {
 
 // TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
-	rt := &setRT{t: t}
-	rc, _ := newRC(t, rt)
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
