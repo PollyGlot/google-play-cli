@@ -141,7 +141,7 @@ func TestRun_unionsV2AndLegacy(t *testing.T) {
 		t.Errorf("composite envelope = %s, want 1 v2 + 2 legacy verbatim", js.String())
 	}
 	// The composite envelope and the written file keep the API's & and <>
-	// literal (#622): neither may re-encode them as & or <.
+	// literal (#622): neither may re-encode them as \u0026 or \u003c.
 	for name, b := range map[string][]byte{"json output": js.Bytes(), "old_gems.json": lb} {
 		if !strings.Contains(string(b), "Gems & <more>") {
 			t.Errorf("%s must carry the title verbatim, got %s", name, b)

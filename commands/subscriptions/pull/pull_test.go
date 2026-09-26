@@ -144,7 +144,7 @@ func TestRun_mirrorsLiveCatalogToDir(t *testing.T) {
 		t.Errorf("merged envelope has %d subscriptions, want 2", len(envelope.Subscriptions))
 	}
 	// Both the merged envelope and the written file keep the API's & and <>
-	// literal (#622): neither may re-encode them as & or <.
+	// literal (#622): neither may re-encode them as \u0026 or \u003c.
 	pro, err := os.ReadFile(filepath.Join(dir, "pro.json"))
 	if err != nil {
 		t.Fatal(err)

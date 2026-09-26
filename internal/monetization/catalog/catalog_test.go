@@ -152,7 +152,7 @@ func TestWrite_roundTrip(t *testing.T) {
 
 // TestWrite_keepsHTMLCharactersLiteral asserts a pulled file carries <, > and &
 // as the API sent them, in the 2-space layout: the file is what a reviewer
-// diffs, and & in listing copy is noise pull must not introduce.
+// diffs, and \u0026 in listing copy is noise pull must not introduce.
 func TestWrite_keepsHTMLCharactersLiteral(t *testing.T) {
 	dir := t.TempDir()
 	raw := json.RawMessage(`{"productId":"premium","listings":[{"title":"Tips & <tricks>"}]}`)
