@@ -607,7 +607,7 @@ squash makes the merge commit free.
 A release config is otherwise only exercised once a tag exists, i.e. mid-release,
 when a mistake costs a half-published version. `release-rehearsal.yml` runs the
 same GoReleaser config in dry run on the PR that changes it: `goreleaser check`
-(advisory) then `release --snapshot --clean --skip=publish,sign,sbom,announce`,
+then `release --snapshot --clean --skip=publish,sign,sbom,announce`,
 the same flags as `make release-snapshot`. Nothing is published: `--snapshot`
 plus the skip list, `permissions: contents: read`, and no secret reaches the job
 (the tap token is a placeholder string, present only so the Homebrew template
@@ -618,10 +618,10 @@ It triggers on `.goreleaser.yaml`, the release workflows, `install.sh` and
 check for exactly that reason: a check that never runs on most PRs would block
 merge if required.
 
-`goreleaser check` is `continue-on-error` because it also exits non-zero on
-deprecations, and `brews:` is deprecated in favour of `homebrew_casks:`.
-Migrating changes how users install gplay, so it is a product decision rather
-than something CI should force; the snapshot build is the blocking gate.
+`goreleaser check` blocks, deprecations included. It was advisory while the
+config still used the deprecated `brews:`; since the move to `homebrew_casks:`
+(#601) the config is clean, so a new deprecation fails the PR that introduces or
+meets it rather than breaking a release when GoReleaser removes the field.
 
 ### CodeQL
 
