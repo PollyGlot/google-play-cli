@@ -50,7 +50,7 @@ func (e *LocalIOError) ExitCode() int { return 20 }
 // and returns the tracking id Google assigns it (`apkId`) plus the verbatim
 // response body for the ADR-0003 pass-through.
 //
-// The id is the whole point of the call: `appstore update` references it in
+// The id is the whole point of the call: `appstore submit` references it in
 // `activeApks.activeApkSets[].baseApkId` / `.splitApkId[]`, so an operator
 // uploads once and cites the id thereafter rather than re-sending the binary.
 func UploadAPK(ctx context.Context, hc *http.Client, storePackage, pkg, path string) (string, json.RawMessage, error) {
@@ -62,7 +62,7 @@ func UploadAPK(ctx context.Context, hc *http.Client, storePackage, pkg, path str
 }
 
 // UploadImage streams the image at path to the `images:upload` endpoint and
-// returns its tracking id (`imageId`), cited later by `appstore update` as a
+// returns its tracking id (`imageId`), cited later by `appstore submit` as a
 // listing's `appIconId` or one of its `screenshotId` entries.
 //
 // The endpoint declares `image/*` rather than a blanket octet-stream, so the
@@ -79,7 +79,7 @@ func UploadImage(ctx context.Context, hc *http.Client, storePackage, pkg, path s
 
 // UploadPolicyDeclarationFile streams the supporting document at path to the
 // `policyDeclarationFiles:upload` endpoint and returns its tracking id
-// (`fileId`), cited later inside an `appstore update` policy response.
+// (`fileId`), cited later inside an `appstore submit` policy response.
 //
 // Unlike the other two uploads this method carries a request body: `fileType`
 // is required. It therefore opens the resumable session with that JSON and
@@ -184,7 +184,7 @@ func sniffContentType(f *os.File, size int64) (string, error) {
 // trackingID pulls the single id field out of an upload response. The id is
 // what makes the call worth running, so a response without one is an error
 // rather than a silently empty result: the operator would otherwise carry an
-// empty string into `appstore update` and get an opaque rejection there.
+// empty string into `appstore submit` and get an opaque rejection there.
 func trackingID(op, pkg string, raw json.RawMessage, field string) (string, json.RawMessage, error) {
 	var parsed map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -197,7 +197,7 @@ func trackingID(op, pkg string, raw json.RawMessage, field string) (string, json
 		}
 	}
 	if id == "" {
-		return "", nil, &api.Error{Operation: op, Package: pkg, Message: "upload succeeded but the response carried no " + field + ": the id is required by `gplay appstore update`"}
+		return "", nil, &api.Error{Operation: op, Package: pkg, Message: "upload succeeded but the response carried no " + field + ": the id is required by `gplay appstore submit`"}
 	}
 	return id, raw, nil
 }

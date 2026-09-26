@@ -8,8 +8,8 @@ package main
 // flagVocabulary maps each canonical flag name to its concept: one concept,
 // one name. It was seeded from the flags shipped at 1.6.1; where one concept
 // had several names, the name used on frozen leaves (or on the most leaves)
-// became canonical and the others sit in flagNameDrift. The final names of
-// those groups are decision #597's to make; this table records today's state.
+// became canonical, and 2.0.0 removed the other names without an alias
+// (decision #597, ADR-0048). The groups still undecided sit in flagNameDrift.
 //
 // A new flag either reuses the canonical name of its concept or adds a new
 // concept here, in review, where the collision with an existing one is seen.
@@ -135,46 +135,22 @@ var flagVocabulary = map[string]string{
 
 // flagNameDrift lists today's flags that name a concept already in
 // flagVocabulary under another name (or reuse a canonical name for another
-// concept). Renames are decided in #597 (COH-04/05/06) and ship with a
-// deprecated alias; the alias is then skipped and the entry goes stale here.
+// concept). 2.0.0 settled every group #597 decided (--staged, --version-code,
+// --page-size, --file, --regions, --skip-preflight, --format) with no alias;
+// what is left waits on a name nobody has chosen yet.
 var flagNameDrift = ratchet{
 	name:    "flagNameDrift",
-	ceiling: 23,
+	ceiling: 5,
 	entries: []string{
-		// versionCode is --version-code on every other leaf (COH-05).
-		"vitals anr --version",
-		"vitals crashes --version",
-		"vitals errors counts --version",
-		"vitals excessivewakeup --version",
-		"vitals lmk --version",
-		"vitals slowrendering --version",
-		"vitals slowstart --version",
-		"vitals stuckbgwakelock --version",
-		// Page size is --page-size elsewhere (COH-06).
-		"games achievements list --max-results",
-		"games leaderboards list --max-results",
-		// A JSON body from a path or stdin is --file elsewhere (COH-06).
-		"games achievements create --from-json",
-		"games achievements update --from-json",
-		"games leaderboards create --from-json",
-		"games leaderboards update --from-json",
-		// The rollout fraction is --staged on upload and promote, where --to is
-		// the destination track (COH-04).
-		"releases rollout --to",
-		// Region codes are --regions elsewhere (COH-06).
-		"subscriptions prices migrate --region",
-		// Skipping the local pre-check is --skip-preflight elsewhere.
-		"metadata images apply --no-validate",
-		// Time windows start at --since elsewhere; no end-of-window name has
-		// been chosen yet, so both ends of both ranges wait on #597.
+		// Time windows start at --since elsewhere (a length back from now);
+		// these take absolute bounds and no end-of-window name has been chosen
+		// yet, so both ends of both ranges wait. `reviews history --from/--to`
+		// also reuse the promotion's track flags for months.
 		"appstore catalog events list --end-time",
 		"appstore catalog events list --start-time",
 		"reviews history --from",
 		"reviews history --month",
 		"reviews history --to",
-		// The artifact container (apk or bundle) is --format on uploads. Found
-		// while seeding this table; not listed in #597 yet.
-		"releases artifacts list --kind",
 	},
 }
 
@@ -220,6 +196,10 @@ var verbVocabulary = map[string]string{
 	"migrate": "domain",
 	"history": "domain",
 	"audit":   "domain",
+
+	// 2c. Admitted with the 2.0.0 verb renames (#597): `appstore submit` sends
+	// a hosted app to Google review, irrevocably, which `set` would hide.
+	"submit": "domain",
 }
 
 // verbPathExceptions are leaves outside the verb grammar for a documented
@@ -256,22 +236,12 @@ var verbPathExceptions = map[string]string{
 }
 
 // verbDrift lists experimental leaves whose verb contradicts ADR-0019 (`set`
-// not update, `remove` not delete, noun before verb). The renames are decision
-// #597 (COH-07); each entry goes stale when its leaf is renamed.
+// not update, `remove` not delete, noun before verb). 2.0.0 renamed every one
+// of them (#597), so it is empty and only stops a new one from being admitted.
 var verbDrift = ratchet{
 	name:    "verbDrift",
-	ceiling: 9,
-	entries: []string{
-		"games achievements update",
-		"games achievements delete",
-		"games leaderboards update",
-		"games leaderboards delete",
-		"appstore update",
-		"appstore publish-status",
-		"appstore upload apk",
-		"appstore upload image",
-		"appstore upload policy",
-	},
+	ceiling: 0,
+	entries: []string{},
 }
 
 // leavesWithoutOutputByDesign are the leaves docs/DESIGN.md section 7 exempts

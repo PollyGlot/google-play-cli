@@ -185,10 +185,11 @@ func ClassifyStoreRead(storePkg string, err error) error {
 }
 
 // ClassifyHostedApp is ClassifyReview for the calls that act on an app the
-// store has ALREADY created: upload, publish-status, update. It differs on
-// 404 only: there, a missing hosted app record is at least as likely as a
-// wrong store, so the hint names both. Use ClassifyReview for `appstore
-// create`, where the record cannot be the thing that is missing.
+// store has ALREADY created: the three uploads, publish-status set and
+// submit. It differs on 404 only: there, a missing hosted app record is at
+// least as likely as a wrong store, so the hint names both. Use
+// ClassifyReview for `appstore create`, where the record cannot be the thing
+// that is missing.
 func ClassifyHostedApp(storePkg, pkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
@@ -225,10 +226,10 @@ func (e *reviewStoreNotFoundError) Error() string {
 func (e *reviewStoreNotFoundError) Unwrap() error { return e.cause }
 
 // hostedAppNotFoundError wraps a 404 on a call that addresses an EXISTING
-// hosted app (upload, publish-status, update) rather than creating one. Two
-// things can be missing there, and only one of them is the store: Google's own
-// contract is that `createappstorehostedapp` "must be called before any other
-// RPCs for this hosted app", so a caller who skipped `appstore create` lands
+// hosted app (the three uploads, publish-status set, submit) rather than
+// creating one. Two things can be missing there, and only one of them is the
+// store: Google's own contract is that `createappstorehostedapp` "must be
+// called before any other RPCs for this hosted app", so a caller who skipped `appstore create` lands
 // here. Naming only the store would send them auditing a --store-package that
 // is very likely correct. The wrapped *api.Error drives the exit code
 // (404 → exit 30).

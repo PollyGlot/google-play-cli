@@ -52,7 +52,7 @@ func assertSequence(t *testing.T, got, want []string) {
 	}
 }
 
-// TestRollout_setsInProgressAtTargetFraction is AC1: rollout --to 0.05
+// TestRollout_setsInProgressAtTargetFraction is AC1: rollout --staged 0.05
 // ramps the latest release to userFraction 0.05 and status inProgress.
 func TestRollout_setsInProgressAtTargetFraction(t *testing.T) {
 	rt := &stateRT{
@@ -517,7 +517,7 @@ func TestState_trackGet404_returnsExit30(t *testing.T) {
 }
 
 // TestRollout_fractionOutOfRange_returnsExit2 asserts the CLI-misuse guard
-// from AC6: --to 0, > 1, or otherwise out of (0, 1] is rejected before any
+// from AC6: --staged 0, > 1, or otherwise out of (0, 1] is rejected before any
 // HTTP with exit 2 and a range hint.
 func TestRollout_fractionOutOfRange_returnsExit2(t *testing.T) {
 	cases := []struct {

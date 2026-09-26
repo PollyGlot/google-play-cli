@@ -171,7 +171,7 @@ gplay releases upload app.aab \
 gplay releases promote --package com.example.myapp --from internal --to beta
 
 # Stage a production rollout, then advance it.
-gplay releases rollout --package com.example.myapp --track production --to 0.10
+gplay releases rollout --package com.example.myapp --track production --staged 0.10
 
 # Read the most recent reviews (API exposes the last 7 days only) and reply.
 gplay reviews list --package com.example.myapp --stars 1-2

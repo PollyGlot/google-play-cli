@@ -84,17 +84,17 @@ func TestBuildAchievementBody_fromFlags_buildsLocalizedDraft(t *testing.T) {
 
 func TestBuildAchievementBody_fromJSONAndFlags_isExit2(t *testing.T) {
 	_, err := gamescmd.BuildAchievementBody(nil, gamescmd.AchievementWrite{
-		FromJSON: "-",
-		Name:     "x",
+		File: "-",
+		Name: "x",
 	}, true)
 	if err == nil || exitCode(t, err) != 2 {
-		t.Errorf("combining --from-json with flags should be exit 2, got %v", err)
+		t.Errorf("combining --file with flags should be exit 2, got %v", err)
 	}
 }
 
 func TestBuildAchievementBody_fromStdin_passthroughVerbatim(t *testing.T) {
 	src := `{"achievementType":"INCREMENTAL","stepsToUnlock":5}`
-	body, err := gamescmd.BuildAchievementBody(strings.NewReader(src), gamescmd.AchievementWrite{FromJSON: "-"}, true)
+	body, err := gamescmd.BuildAchievementBody(strings.NewReader(src), gamescmd.AchievementWrite{File: "-"}, true)
 	if err != nil {
 		t.Fatalf("BuildAchievementBody: %v", err)
 	}
@@ -104,9 +104,9 @@ func TestBuildAchievementBody_fromStdin_passthroughVerbatim(t *testing.T) {
 }
 
 func TestBuildAchievementBody_invalidJSON_isExit2(t *testing.T) {
-	_, err := gamescmd.BuildAchievementBody(strings.NewReader("{not json"), gamescmd.AchievementWrite{FromJSON: "-"}, true)
+	_, err := gamescmd.BuildAchievementBody(strings.NewReader("{not json"), gamescmd.AchievementWrite{File: "-"}, true)
 	if err == nil || exitCode(t, err) != 2 {
-		t.Errorf("invalid --from-json should be exit 2, got %v", err)
+		t.Errorf("invalid --file should be exit 2, got %v", err)
 	}
 }
 

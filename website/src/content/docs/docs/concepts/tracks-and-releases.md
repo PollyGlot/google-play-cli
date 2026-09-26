@@ -44,7 +44,7 @@ testing track.
 Each transition on a staged production rollout is its own verb:
 
 ```sh
-gplay releases rollout --track production --to 0.05   # set userFraction
+gplay releases rollout --track production --staged 0.05   # set userFraction
 gplay releases halt --track production                # pause on bad metrics
 gplay releases resume --track production              # continue
 gplay releases complete --track production            # → 100%, completed

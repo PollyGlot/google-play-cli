@@ -151,11 +151,11 @@ gplay releases promote --package com.example.myapp --from internal --to beta
 gplay releases promote --package com.example.myapp --from beta --to production
 
 # 4. Start a staged rollout when ready.
-gplay releases rollout --package com.example.myapp --track production --to 0.05
+gplay releases rollout --package com.example.myapp --track production --staged 0.05
 
 # 5. Ramp up over the next few days.
-gplay releases rollout --package com.example.myapp --track production --to 0.20
-gplay releases rollout --package com.example.myapp --track production --to 0.50
+gplay releases rollout --package com.example.myapp --track production --staged 0.20
+gplay releases rollout --package com.example.myapp --track production --staged 0.50
 gplay releases complete --package com.example.myapp --track production
 
 # Or halt if metrics go bad.

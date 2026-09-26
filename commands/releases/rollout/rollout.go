@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -24,16 +22,17 @@ import (
 )
 
 // Input is the request-shaped struct cobra builds from flags. All four
-// verbs share it; To / ToSet are read only by rollout. To is the raw
-// --to flag value (parsed by RunRollout) so a non-numeric value yields a
-// CLI-misuse exit 2 with a clear hint, rather than cobra's exit-1 parse error.
+// verbs share it; StagedFraction / StagedFractionSet are read only by rollout.
+// The fraction is --staged, the name `releases upload` and `releases promote`
+// give the same userFraction (#597); a non-numeric value fails flag parsing,
+// which is already a CLI-misuse exit 2.
 type Input struct {
 	Package           string
 	Track             string
 	VersionCode       int
 	ReleaseName       string
-	To                string
-	ToSet             bool
+	StagedFraction    float64
+	StagedFractionSet bool
 	KeepEditOnFailure bool
 	Commit            commitflags.Flags
 	Confirm           bool
@@ -112,7 +111,7 @@ type stateFunc func(ctx context.Context, hc *http.Client, opts orchestrator.Stat
 // a track, build the authenticated client (skipped in dry-run), and invoke
 // the chosen orchestrator function. userFraction is meaningful only for
 // rollout (0 for halt / resume / complete, which the orchestrator ignores).
-// Per-verb validation (rollout's --to) runs in the verb's own Run before this.
+// Per-verb validation (rollout's --staged) runs in the verb's own Run before this.
 // action is the past-tense transition word ("set" / "halted" / "resumed" /
 // "completed") for the ✓ confirmation line.
 func runState(rc *kernel.RunContext, in Input, userFraction float64, action string, call stateFunc) (output.Renderable, error) {
@@ -174,21 +173,16 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 	return Payload{Result: result}, nil
 }
 
-// RunRollout validates the --to fraction (AC6: required, numeric, in
-// (0, 1]: every misuse is exit 2 with a range hint) then drives
-// orchestrator.Rollout.
+// RunRollout validates the --staged fraction (AC6: required, in (0, 1]: every
+// misuse is exit 2 with a range hint) then drives orchestrator.Rollout.
 func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if !in.ToSet {
-		return nil, exit.Usagef("missing --to: pass --to <fraction> (0 < f ≤ 1.0, e.g. 0.05)")
+	if !in.StagedFractionSet {
+		return nil, exit.Usagef("missing --staged: pass --staged <fraction> (0 < f ≤ 1.0, e.g. 0.05)")
 	}
-	fraction, err := strconv.ParseFloat(strings.TrimSpace(in.To), 64)
-	if err != nil {
-		return nil, &exit.UsageError{Msg: "--to must be a number in (0, 1] (e.g. 0.05, 0.20)"}
+	if in.StagedFraction <= 0 || in.StagedFraction > 1.0 {
+		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1] (e.g. 0.05, 0.20)"}
 	}
-	if fraction <= 0 || fraction > 1.0 {
-		return nil, &exit.UsageError{Msg: "--to fraction must be in (0, 1] (e.g. 0.05, 0.20)"}
-	}
-	return runState(rc, in, fraction, "set", orchestrator.Rollout)
+	return runState(rc, in, in.StagedFraction, "set", orchestrator.Rollout)
 }
 
 // bindCommonFlags registers the flags every verb shares (output, package,
@@ -207,7 +201,7 @@ func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 }
 
 // newStateCommand builds a cobra command for a no-extra-flags verb (halt /
-// resume / complete). rollout has its own constructor because of --to.
+// resume / complete). rollout has its own constructor because of --staged.
 func newStateCommand(boot kernel.Boot, use, short, long string, run func(*kernel.RunContext, Input) (output.Renderable, error)) *cobra.Command {
 	var (
 		outputFlag string
@@ -242,17 +236,17 @@ func NewRolloutCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rollout",
 		Short: "Set the staged-rollout fraction on the latest release of a track",
-		Long: `Set the staged-rollout fraction (--to) on the latest release of --track.
+		Long: `Set the staged-rollout fraction (--staged) on the latest release of --track.
 Status becomes inProgress if it wasn't already.
 
 Targets the latest release on the track; when two releases coexist (e.g.
 inProgress + halted) pass --version-code N or --release-name <name> to pick
 one, otherwise the command refuses rather than guess.`,
 		Example: `  # Widen the production rollout to 20% of users
-  gplay releases rollout --track production --to 0.2 --confirm
+  gplay releases rollout --track production --staged 0.2 --confirm
 
   # Preview the change on one of two coexisting releases
-  gplay releases rollout --track production --to 0.5 --version-code 1042 --dry-run`,
+  gplay releases rollout --track production --staged 0.5 --version-code 1042 --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -260,13 +254,13 @@ one, otherwise the command refuses rather than guess.`,
 			b := boot
 			b.Stdout = cmd.OutOrStdout()
 			b.Stderr = cmd.ErrOrStderr()
-			in.ToSet = cmd.Flags().Changed("to")
+			in.StagedFractionSet = cmd.Flags().Changed("staged")
 			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
 				return RunRollout(rc, in)
 			})
 		},
 	}
 	bindCommonFlags(cmd, &in, &outputFlag)
-	cmd.Flags().StringVar(&in.To, "to", "", "target rollout fraction (0 < f ≤ 1.0), e.g. 0.05 (required)")
+	cmd.Flags().Float64Var(&in.StagedFraction, "staged", 0, "target rollout fraction (0 < f ≤ 1.0), e.g. 0.05 (required)")
 	return cmd
 }

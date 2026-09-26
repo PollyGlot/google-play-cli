@@ -62,7 +62,7 @@ gplay releases upload app.aab --track internal --release-notes-dir ./whatsnew
 gplay releases promote --from internal --to beta
 
 # Stage a production rollout at 10%, then advance it.
-gplay releases rollout --track production --to 0.10
+gplay releases rollout --track production --staged 0.10
 ```
 
 :::note[Safe by default]

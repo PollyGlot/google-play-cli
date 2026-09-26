@@ -11,7 +11,7 @@
 // side range + aspect ratio, format (png/jpeg), per-image byte size, and
 // per-slot count. A non-empty result is exit 20 (client-side validation). It
 // is the DEFAULT gate but never the ultimate authority: `images apply` runs it
-// as a fail-fast pre-check that `--no-validate` bypasses, so a stale rule table
+// as a fail-fast pre-check that `--skip-preflight` bypasses, so a stale rule table
 // can never permanently block an upload Play would accept.
 package imagesvalidate
 
@@ -172,7 +172,7 @@ pre-commit hook or a CI gate. Diffing the tree against what is live on Play
 is the job of ` + "`gplay metadata images apply --dry-run`" + `.
 
 The rules are a versioned in-code table (Play's commit is the ultimate
-authority); ` + "`images apply --no-validate`" + ` bypasses this check.
+authority); ` + "`images apply --skip-preflight`" + ` bypasses this check.
 Any violation exits 20.`,
 		Example: `  # Check dimensions, format and counts offline, e.g. in CI
   gplay metadata images validate
