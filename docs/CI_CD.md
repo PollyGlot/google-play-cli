@@ -287,9 +287,12 @@ migrators give feedback on the pitfalls.
 
 Every mutating Play command runs inside an **Edit** — a transaction gplay opens
 (`edits.insert`), changes, and commits implicitly. On any normal failure gplay
-auto-discards the open Edit before returning, so nothing is left behind. But a
-**hard kill** — `SIGKILL`, an OOM, a CI runner eviction or job-timeout — between
-insert and commit kills gplay *before* its cleanup can run, leaving an
+auto-discards the open Edit before returning, so nothing is left behind. A
+canceled or timed-out job is covered too: the runner sends `SIGINT` (then
+`SIGTERM` 7.5s later), and gplay treats either as a failure, discards the Edit
+within 5 seconds and exits `50`. But a **hard kill** (`SIGKILL`, an OOM, a
+runner eviction, or a second signal while the discard is still running) between
+insert and commit stops gplay *before* its cleanup can run, leaving an
 **orphaned Edit open on the Play side**. In-process cleanup cannot cover a hard
 kill, by definition.
 

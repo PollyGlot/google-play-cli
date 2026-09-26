@@ -63,7 +63,11 @@ func Run(rc *kernel.RunContext, in Input) error {
 	if err != nil {
 		return err
 	}
-	httpClient, err := rc.AuthedClient()
+	// UploadClient, not AuthedClient: a universal APK can weigh 100+ MB, and the
+	// 60s control-plane deadline also bounds reading the body, so a slow runner
+	// link used to fail mid-stream. The alt=media download is a media transfer,
+	// bounded only by an explicit --timeout (docs/DESIGN.md §8).
+	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return err
 	}

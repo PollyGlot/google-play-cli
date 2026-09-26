@@ -807,15 +807,20 @@ func (rc *RunContext) AuthedClient() (*http.Client, error) {
 	return rc.authedClient(rc.controlPlaneTimeout())
 }
 
-// UploadClient is AuthedClient for media-upload commands (bundles, images):
-// a multi-hundred-MB transfer must not be killed by the short control-plane
-// default, so the returned client carries NO deadline, UNLESS the global
-// --timeout was set explicitly (rc.Timeout), which then bounds every request
-// including the upload. Same auth handshake and test seam as AuthedClient.
+// UploadClient is AuthedClient for commands that move media (bundles, APKs,
+// images, generated APK downloads): a multi-hundred-MB transfer must not be
+// killed by the short control-plane default, yet the same command's Edit calls
+// (edits.insert, tracks.update, edits.commit) and its token exchange still owe
+// the 60s bound of docs/DESIGN.md §8. The returned client therefore decides per
+// request: a media transfer (transport.IsMediaTransfer) runs without a
+// deadline, everything else gets defaultControlPlaneTimeout. An explicit global
+// --timeout (rc.Timeout) bounds every request, the transfer included. Same auth
+// handshake and test seam as AuthedClient.
 func (rc *RunContext) UploadClient() (*http.Client, error) {
-	// rc.Timeout is 0 (no deadline) unless --timeout was passed; uploads honor
-	// only the explicit override, never the 60s control-plane default.
-	return rc.authedClient(rc.Timeout)
+	if rc.Timeout > 0 {
+		return rc.authedClient(rc.Timeout)
+	}
+	return rc.authedClientFor(defaultControlPlaneTimeout, true)
 }
 
 // scopes returns the OAuth scope list to mint a token for: a one-element slice
@@ -842,6 +847,13 @@ func (rc *RunContext) controlPlaneTimeout() time.Duration {
 // yields a client with no deadline; timeout>0 bounds both the /token exchange
 // and the API request by it.
 func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) {
+	return rc.authedClientFor(timeout, false)
+}
+
+// authedClientFor is authedClient with the media exemption: when mediaExempt is
+// set, timeout bounds the token exchange and every control-plane request but
+// not a media transfer (see UploadClient).
+func (rc *RunContext) authedClientFor(timeout time.Duration, mediaExempt bool) (*http.Client, error) {
 	// First call that genuinely needs a credential: this is where the
 	// keyring probe + Load finally happen (see EnsureAccount), not at boot.
 	// A present-but-invalid credential surfaces its real cause here; an
@@ -870,6 +882,20 @@ func (rc *RunContext) authedClient(timeout time.Duration) (*http.Client, error) 
 	// oauth2.NewClient sets the returned client's Base to the (unwrapped) base
 	// transport.
 	client := oauth2.NewClient(ctx, ts)
+	if mediaExempt {
+		// The deadline moves off the client onto a per-request middleware that
+		// skips media transfers. It sits under --retry so each attempt gets its
+		// own bound, as the retry middleware's per-attempt Timeout gives the
+		// other clients. WithRetry is a passthrough when --retry is unset.
+		// Recent oauth2 releases copy timedBase's Timeout onto the returned
+		// client, which would bound the media transfer after all: clear it.
+		client.Transport = transport.WithRetry(
+			transport.WithControlPlaneDeadline(client.Transport, timeout),
+			transport.RetryOptions{MaxRetries: rc.Retry},
+		)
+		client.Timeout = 0
+		return client, nil
+	}
 	if rc.Retry > 0 {
 		// --retry: a transport middleware retries transport errors / 5xx / 429
 		// (honoring Retry-After) with exponential backoff + jitter. It owns the
