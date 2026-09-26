@@ -162,3 +162,35 @@ hosting/shape) on the presentation layer; no change to hosting, the install
 Worker, the generated CLI reference, or the `llms.txt` surface. Per the project's
 release-type discipline, this ships as a `docs(site)`/`chore(site)` change — a
 presentation change that does not bump the CLI binary version.
+
+## Amendment (2026-09-26, #596 and #600)
+
+Decision 4 calls `#1d9457` "accessible" and the light-mode text/link green.
+That claim was false: `#1d9457` reaches 3.87:1 on white and 3.52:1 on the
+`#f4f4f5` panel, which only clears the 3:1 bar for large text. The 2026-09
+audit measured 28 Lighthouse color-contrast failures on the landing and 8 on
+the quickstart page, all of them this green used as normal-size text (links,
+the `gplay <ns>` codes of the command grid, the Starlight site title and every
+docs content link, since Starlight light renders `--sl-color-accent` as text).
+
+- The light text/link green is now **`#177a48`**, same hue, darker: 5.37:1 on
+  white, 4.88:1 on `#f4f4f5`, 4.62:1 on the `#d7f5e4` accent-low tint, so WCAG
+  AA for normal text everywhere the accent is read. Docs and landing still
+  share one green, as decision 4 intended.
+- The dark footer token `--fg-subtle` moves from `#71717a` (4.21:1 on
+  `#050507`) to **`#82828b`** (5.35:1): it sets `text-xs` legalese, which
+  needs 4.5:1.
+- Neon `#3ddc84` keeps its role (fills, dark islands, accent text on dark,
+  11.41:1). `logo-mark-light.svg` keeps `#1d9457` for its chevron: a graphic
+  needs 3:1, and the logo is exempt from the text criterion.
+
+Decision 7's "one source of truth" is also made literal: every raw colour the
+themes share is declared once as a primitive in `website/src/styles/theme.css`
+(`--gplay-neon`, `--gplay-green-text`, `--gplay-ink`, the `--light-*`
+palette), and Starlight's accent, the semantic tokens, the Tailwind brand
+utilities and the no-JS light fallback alias them. The explicit light theme
+and the no-JS OS fallback stay two blocks on purpose: folding them under the
+`prefers-color-scheme: light` query would drop an explicit light choice for a
+visitor whose OS is dark. Decision 8's theme-color pair lives in
+`website/src/theme-color.mjs`, read by both the Starlight head config and the
+landing scripts.
