@@ -4,4 +4,4 @@
 # Replacement: the RunContext client (rc.AuthedClient / rc.UploadClient), transports in internal/transport.
 
 commands/auth/doctor/doctor.go doctorBaseHTTP
-internal/kernel/kernel.go RunContext.authedClient
+internal/kernel/kernel.go RunContext.authedClientFor

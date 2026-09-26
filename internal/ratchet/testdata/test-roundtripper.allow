@@ -4,6 +4,7 @@
 # Replacement: internal/testkit (NewFake, TokenResponse, Response).
 
 cmd/gplay/repeated_test.go failingTransport
+cmd/gplay/signal_test.go hangingPlay
 commands/apps/accessiblecmd/accessible_test.go searchRT
 commands/apps/addcmd/add_test.go failOnCallRT
 commands/apps/addcmd/add_test.go validateRT
@@ -95,6 +96,7 @@ internal/auth/token/token_test.go roundTripperFunc
 internal/discovery/discovery_test.go schemeRewriter
 internal/exit/diagnostic_test.go testRoundTripper
 internal/kernel/token_refusal_test.go tokenScriptRT
+internal/kernel/uploadclient_test.go deadlineRecorder
 internal/metadata/imageorchestrator/imageorchestrator_test.go orchRT
 internal/metadata/orchestrator/orchestrator_test.go fakeRT
 internal/play/accessibleapps/accessibleapps_test.go roundTripperFunc
@@ -124,6 +126,7 @@ internal/play/edits/edits_test.go insertStatusRT
 internal/play/edits/edits_test.go validateInsertOKDeleteFailRT
 internal/play/edits/explicit_test.go callRecorderRT
 internal/play/edits/explicit_test.go noRequestRT
+internal/play/edits/interrupt_test.go deadlineProbe
 internal/play/expansionfiles/expansionfiles_test.go resumableRT
 internal/play/expansionfiles/expansionfiles_test.go rtFunc
 internal/play/games/games_test.go rtFunc
@@ -158,5 +161,6 @@ internal/play/vitals/vitals_test.go roundTripperFunc
 internal/releases/orchestrator/locale_gate_test.go countingRT
 internal/releases/orchestrator/orchestrator_test.go playRT
 internal/releases/orchestrator/promote_test.go promoteRT
+internal/transport/deadline_test.go hangOrAnswer
 internal/transport/retry_auth_test.go authRefusedRT
 internal/transport/retry_test.go scriptRT
