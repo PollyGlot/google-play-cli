@@ -550,10 +550,21 @@ seconds instead of stalling a CI job until the runner-level kill:
   **60s default** deadline, applied once where the kernel builds the
   authenticated HTTP client — every command inherits it, no per-command
   plumbing.
-- **Media uploads** (`releases upload`, `releases sharing upload`,
-  `releases expansion-files upload`, `metadata images apply`) are **exempt from
-  the default**: a multi-hundred-MB transfer is never killed by the short
-  control-plane bound.
+- **Media transfers** (the artifact bytes of `releases upload`,
+  `releases sharing upload`, `releases expansion-files upload`,
+  `releases mappings`, `metadata images apply`, the `appstore upload` and
+  `customapps create` surfaces, and the APK bytes of
+  `releases generated download`) are **exempt from the default**: a
+  multi-hundred-MB transfer is never killed by the short control-plane bound.
+  The exemption is decided per request, so the same commands' Edit calls
+  (`edits.insert`, `tracks.update`, `edits.commit`), the resumable initiate and
+  offset probe, and the token exchange keep the 60s bound.
+- Each **resumable chunk** (8 MiB) carries its own generous 5-minute bound: a
+  connection that stops moving bytes without a reset is cut, then the upload
+  probes the committed offset and resumes. After a failure the resume waits on
+  the same backoff curve as `--retry` (500ms doubling to 30s, with jitter),
+  restarting when the server's offset advances; eight attempts in a row
+  without progress end the upload.
 - The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
   `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
   Unset (`0`) means "60s for control-plane, unbounded for uploads".
