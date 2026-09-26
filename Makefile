@@ -14,8 +14,9 @@ build: ## Build the gplay binary into ./bin/
 test: ## Run tests
 	go test ./...
 
-lint: ## Run golangci-lint + the prose gates
+lint: ## Run golangci-lint, the go.mod tidiness check and the prose gates
 	golangci-lint run ./...
+	go mod tidy -diff
 	@bash scripts/dash-gate.sh
 
 verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
