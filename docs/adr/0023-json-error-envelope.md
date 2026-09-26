@@ -3,7 +3,9 @@
 ## Status
 
 accepted. Amended by #593: the envelope also covers CLI misuse raised before a
-command runs (see Consequences).
+command runs (see Consequences). Amended by #599 for 2.0.0: a `resource` field
+names the target of the failed call, and `package` carries only real package
+names (see the amendment at the end).
 
 ## Context
 
@@ -112,3 +114,39 @@ is emitted from `kernel.Run`.
 - **Per-command annotation to suppress the envelope on self-rendering commands.**
   Rejected in favor of the byte-counter: it needs no per-command wiring and
   covers any future self-rendering command for free.
+
+## Amendment (#599, 2.0.0): `resource` names the target, `package` means package
+
+By 1.6 the envelope had grown the ADR-0044 fields (`code`, `retryable`) and
+`operation` / `package`, the second copied from `api.Error.Package`. That field
+was the only slot for a call's target, so every module off the package axis
+filled it with its own identifier: `team` and `customapps` the developer
+account ID, `games` the Play Games application (or achievement, leaderboard)
+ID, `reviews history` the Cloud Storage bucket, `signing` a numeric app ID when
+given one. An agent reading `error.package` after `gplay team users list` got a
+developer ID labelled as an Android package (audit finding ARCH-06).
+
+Decision (2026-09-26):
+
+- The envelope gains `resource: {kind, id}`, the target of the failed call on
+  whichever axis it uses. `kind` is an append-only vocabulary
+  (`api.ResourceKind`): `package`, `app`, `developerAccount`,
+  `gamesApplication`, `achievement`, `leaderboard`, `bucket`. It is emitted for
+  every failure with a known target, package failures included, so a consumer
+  has one field to read whatever the command.
+- `package` is kept, but only ever holds a real Android package name: it is
+  present exactly when `resource.kind` is `package`, with the same value.
+- Removing a non-package id from `package` changes what a frozen field holds,
+  so it ships in the 2.0.0 major with no transition period, per
+  [ADR-0048](./0048-v2-release-train.md) decision 3. `resource` alone would have
+  been additive; keeping the old values in `package` alongside it would have
+  kept the mislabelling the change exists to remove.
+- Internally, `api.Error` keeps `Package` for the package axis and gains a
+  typed `Resource` for every other axis (the executor's `api.Call` likewise
+  gains `Resource` next to `Target`). `api.Error.Target` folds the two into one
+  value and `exit.Classify` derives the envelope's `package` from it, so the
+  two fields can never disagree. A module off the package axis must set
+  `Resource`; the existing ones are pinned by an end-to-end test that drives
+  each through a 403 and fails if its target comes out as a package.
+
+stderr is unchanged: the human line still reads `<operation> on <id>: ...`.

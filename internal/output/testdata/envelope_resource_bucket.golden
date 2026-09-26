@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "PERMISSION_DENIED",
+    "exitCode": 11,
+    "retryable": false,
+    "operation": "storage.objects.get",
+    "resource": {
+      "kind": "bucket",
+      "id": "pubsite_prod_rev_01234567890987654321"
+    },
+    "message": "storage.objects.get on pubsite_prod_rev_01234567890987654321: The caller does not have permission (HTTP 403)"
+  }
+}

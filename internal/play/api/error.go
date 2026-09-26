@@ -11,13 +11,20 @@ import (
 // Error is the canonical error type returned by every internal/play/*
 // module on an upstream failure. It carries the HTTP status (or 0 for
 // transport-level failures), the operation name (e.g. "edits.insert"),
-// the package the call targeted, and a human-readable message extracted
+// what the call targeted (see Target), and a human-readable message extracted
 // from the API error envelope. It implements gplay's Coder contract so
 // exit.For can map it to a semantic exit code without an explicit
 // dispatcher.
 type Error struct {
-	Operation  string // e.g. "edits.insert", "bundles.upload"
-	Package    string
+	Operation string // e.g. "edits.insert", "bundles.upload"
+	// Package is the Android package the call targeted. Only a real package
+	// name goes here: it becomes the envelope's `package` field, which
+	// consumers read as a package (#599).
+	Package string
+	// Resource is the target of a call on any other addressing axis (a
+	// developer account, a Play Games application, a bucket...). Leave it zero
+	// on the package axis; Target folds Package into it.
+	Resource   Resource
 	StatusCode int      // 0 = transport-level (no HTTP response)
 	Message    string   // extracted via APIErrorMessage when a body is available
 	Reasons    []string // error.errors[].reason values from the envelope (e.g. "editAlreadyExists")
@@ -38,10 +45,11 @@ func (e *Error) Error() string {
 		// keep the line compact when more than one reason is returned.
 		suffix = " [reason: " + strings.Join(e.Reasons, ",") + "]"
 	}
+	on := e.Target().ID
 	if e.StatusCode == 0 {
-		return fmt.Sprintf("%s on %s: %s%s", e.Operation, e.Package, e.Message, suffix)
+		return fmt.Sprintf("%s on %s: %s%s", e.Operation, on, e.Message, suffix)
 	}
-	return fmt.Sprintf("%s on %s: %s (HTTP %d)%s", e.Operation, e.Package, e.Message, e.StatusCode, suffix)
+	return fmt.Sprintf("%s on %s: %s (HTTP %d)%s", e.Operation, on, e.Message, e.StatusCode, suffix)
 }
 
 // Unwrap exposes the transport-level cause (if any) so errors.Is /
