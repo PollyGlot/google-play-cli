@@ -33,19 +33,21 @@ experimental_flag="$hunk_header"$'\n+experimental flag "games achievements list"
 
 expect pass "empty diff" "" "feat: x" ""
 expect pass "experimental-only change" "$experimental_flag" "feat(games): add --foo" ""
-expect fail "new flag on a frozen leaf, plain title" "$frozen_flag" "feat(releases): add --foo" "Adds a flag."
+# Additions are compatible (ADR-0010 promises not to break, not to add nothing):
+# a plain feat, no major bump.
+expect pass "new flag on a frozen leaf, plain title" "$frozen_flag" "feat(releases): add --foo" "Adds a flag."
 expect fail "changed default on a frozen leaf" "$frozen_default" "fix(releases): default to internal" ""
-expect fail "exit code change" "$frozen_exit" "fix: drop exit 4" ""
-expect pass "breaking marker" "$frozen_flag" "feat!: add --foo" ""
-expect pass "breaking marker with scope" "$frozen_flag" "feat(releases)!: add --foo" ""
-expect pass "ADR reference in the body" "$frozen_flag" "feat(releases): add --foo" $'Adds a flag.\n\nDecided in ADR-0048.'
-expect fail "bang outside the type position" "$frozen_flag" "feat(releases): add --foo!: now" ""
-expect fail "ADR reference in the title only" "$frozen_flag" "feat(releases): add --foo (ADR-0048)" ""
-expect fail "breaking marker on a second title line" "$frozen_flag" $'feat(releases): add --foo\nfeat!: x' ""
+expect fail "removed exit code" "$frozen_exit" "fix: drop exit 4" ""
+expect pass "breaking marker" "$frozen_default" "feat!: default to internal" ""
+expect pass "breaking marker with scope" "$frozen_default" "feat(releases)!: default to internal" ""
+expect pass "ADR reference in the body" "$frozen_default" "feat(releases): default to internal" $'Changes a default.\n\nDecided in ADR-0048.'
+expect fail "bang outside the type position" "$frozen_default" "feat(releases): default to internal!: now" ""
+expect fail "ADR reference in the title only" "$frozen_default" "feat(releases): default to internal (ADR-0048)" ""
+expect fail "breaking marker on a second title line" "$frozen_default" $'feat(releases): default to internal\nfeat!: x' ""
 
 # The title is data, never code: a hostile title must neither run nor pass.
 marker="$work/pwned"
-expect fail "hostile title" "$frozen_flag" "\$(touch $marker)\`touch $marker\`" ""
+expect fail "hostile title" "$frozen_default" "\$(touch $marker)\`touch $marker\`" ""
 if [ -e "$marker" ]; then
 	echo "FAIL: hostile title was executed" >&2
 	fail=1

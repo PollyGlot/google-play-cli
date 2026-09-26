@@ -1,8 +1,9 @@
 name: Contract
 
-# A PR that changes the frozen command surface (a `frozen` line of
-# cmd/gplay/testdata/surface.golden) must say so: a breaking marker in the title
-# or an ADR reference in the body. See scripts/contract-gate.sh.
+# A PR that removes or modifies frozen command surface (a `-frozen` line in the
+# diff of cmd/gplay/testdata/surface.golden) must say so: a breaking marker in
+# the title or an ADR reference in the body. Pure additions pass with a notice.
+# See scripts/contract-gate.sh.
 #
 # Its own workflow rather than a job in ci.yml because the verdict depends on
 # the PR title and body: `edited` re-runs this cheap check when the author fixes
