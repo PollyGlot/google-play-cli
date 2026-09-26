@@ -112,7 +112,7 @@ func startInterruptChild(t *testing.T, hang string) (cmd *exec.Cmd, dir string, 
 	if err := os.WriteFile(filepath.Join(dir, "app.aab"), make([]byte, 4096), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command(os.Args[0], "-test.run=^TestInterruptHelperProcess$")
+	cmd = exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestInterruptHelperProcess$")
 	cmd.Env = append(os.Environ(),
 		envInterruptChild+"=1",
 		envInterruptDir+"="+dir,

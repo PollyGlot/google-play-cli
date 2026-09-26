@@ -34,7 +34,7 @@ func repoWithLocalConfig(t *testing.T, track bool) string {
 	repo := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", args...)
+		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = repo
 		// Drop inherited GIT_* so a run from a git hook still targets repo.
 		for _, kv := range os.Environ() {

@@ -189,6 +189,8 @@ func (o CommitOptions) IsZero() bool { return o == CommitOptions{} }
 func (o CommitOptions) query() url.Values {
 	q := url.Values{}
 	switch o.ChangesInReview {
+	case ChangesInReviewUnset:
+		// No parameter: Google's default (cancel the review and resubmit).
 	case ChangesInReviewCancel:
 		q.Set("changesInReviewBehavior", "CANCEL_IN_REVIEW_AND_SUBMIT")
 	case ChangesInReviewError:

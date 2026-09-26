@@ -35,7 +35,7 @@ func gitRepoWithLocalConfig(t *testing.T) string {
 // dir and not in the repository the hook belongs to.
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, "GIT_") {
