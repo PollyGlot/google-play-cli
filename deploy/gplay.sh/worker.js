@@ -49,6 +49,9 @@ const SECURITY_HEADERS = {
   "referrer-policy": "strict-origin-when-cross-origin",
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
   "strict-transport-security": "max-age=31536000; includeSubDomains",
+  // Severs window.opener between gplay.sh and any cross-origin page it opens
+  // or is opened by. The site has no cross-origin popups to keep talking to.
+  "cross-origin-opener-policy": "same-origin",
 };
 
 // Responses from env.ASSETS.fetch and Response.redirect have immutable
