@@ -492,6 +492,38 @@ func TestArgsValidators_allRouteThroughUsageExit(t *testing.T) {
 	}
 }
 
+// runnableLeaves is the one leaf walk every registry and contract test shares:
+// the mutating and stability registries below, the surface golden and the leaf
+// contract test. Grouping nouns always have children, so a childless node is a
+// real leaf; cobra's injected help/completion helpers are skipped by name. The
+// order is cobra's (sorted by name at each level), hence deterministic.
+func runnableLeaves(root *cobra.Command) []*cobra.Command {
+	var leaves []*cobra.Command
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if name := c.Name(); name == "help" || name == "completion" || strings.HasPrefix(name, "__") {
+			return
+		}
+		if kids := c.Commands(); len(kids) > 0 {
+			for _, k := range kids {
+				walk(k)
+			}
+			return
+		}
+		leaves = append(leaves, c)
+	}
+	for _, c := range root.Commands() {
+		walk(c)
+	}
+	return leaves
+}
+
+// leafKey is a leaf's path without the root name ("releases upload"), the key
+// every registry and allowlist in this package is written in.
+func leafKey(c *cobra.Command) string {
+	return strings.TrimPrefix(c.CommandPath(), "gplay ")
+}
+
 // TestMutatingRegistry_pinsWriteCommands is the completeness guard for the
 // GPLAY_READONLY policy (#211 / ADR-0024): it pins exactly which leaf commands
 // carry the mutating annotation (kernel.MarkMutating). A new write command that
@@ -711,27 +743,15 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 
 	// Walk EVERY runnable leaf and assert it is classified with the matching
-	// annotation. Grouping nouns always have children, so a childless node is a
-	// real leaf; cobra's injected help/completion helpers are skipped by name.
+	// annotation.
 	seen := map[string]bool{}
-	var walk func(c *cobra.Command)
-	walk = func(c *cobra.Command) {
-		if name := c.Name(); name == "help" || name == "completion" || strings.HasPrefix(name, "__") {
-			return
-		}
-		if kids := c.Commands(); len(kids) > 0 {
-			for _, k := range kids {
-				walk(k)
-			}
-			return
-		}
-		// cmd.CommandPath() is "gplay <path>"; strip the root to get the key.
-		key := strings.TrimPrefix(c.CommandPath(), "gplay ")
+	for _, c := range runnableLeaves(root) {
+		key := leafKey(c)
 		seen[key] = true
 		wantMut, ok := want[key]
 		if !ok {
 			t.Errorf("leaf %q is not classified in the mutating registry: every leaf must be pinned as mutating or read-only (a new write command MUST be kernel.MarkMutating so GPLAY_READONLY refuses it, exit 4)", c.CommandPath())
-			return
+			continue
 		}
 		if got := kernel.IsMutating(c); got != wantMut {
 			if wantMut {
@@ -740,9 +760,6 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 				t.Errorf("%q is marked mutating but is a read/local command: GPLAY_READONLY would wrongly refuse it", key)
 			}
 		}
-	}
-	for _, c := range root.Commands() {
-		walk(c)
 	}
 
 	// Reverse guard: a classified path that matches no real leaf is a stale
@@ -946,24 +963,17 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 
+	// The same walk feeds the surface golden and the leaf contract test
+	// (contract_test.go): pinning WHICH leaves are frozen here and WHAT they
+	// freeze there only holds together if both see the same set of leaves.
 	seen := map[string]bool{}
-	var walk func(c *cobra.Command)
-	walk = func(c *cobra.Command) {
-		if name := c.Name(); name == "help" || name == "completion" || strings.HasPrefix(name, "__") {
-			return
-		}
-		if kids := c.Commands(); len(kids) > 0 {
-			for _, k := range kids {
-				walk(k)
-			}
-			return
-		}
-		key := strings.TrimPrefix(c.CommandPath(), "gplay ")
+	for _, c := range runnableLeaves(root) {
+		key := leafKey(c)
 		seen[key] = true
 		wantExp, ok := want[key]
 		if !ok {
 			t.Errorf("leaf %q is not classified in the stability registry: every leaf must be pinned as frozen or [experimental]; an unclassified NEW command would silently join the frozen v1.0 Public contract (ADR-0010)", c.CommandPath())
-			return
+			continue
 		}
 		if got := kernel.IsExperimental(c); got != wantExp {
 			if wantExp {
@@ -979,9 +989,6 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		if wantExp && !strings.Contains(c.Short, "[experimental]") {
 			t.Errorf("%q is experimental but its Short %q carries no visible marker", key, c.Short)
 		}
-	}
-	for _, c := range root.Commands() {
-		walk(c)
 	}
 
 	for key := range want {
