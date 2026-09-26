@@ -9,15 +9,10 @@ package rollout_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -30,89 +25,63 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// stateRT terminates the OAuth2 /token exchange and routes every
-// androidpublisher call the state machine makes: edits.insert, tracks.get,
-// tracks.update, edits.commit, edits.delete.
-type stateRT struct {
-	t                  *testing.T
+// stateAPI configures the fake androidpublisher calls the state machine
+// makes: edits.insert, tracks.get, tracks.update, edits.commit, edits.delete.
+type stateAPI struct {
 	editID             string
 	trackGetResp       string
 	trackUpdateRawResp string
-
-	mu             sync.Mutex
-	calls          []string
-	tokenHits      int
-	trackUpdateReq []byte
 }
 
-func (r *stateRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/tracks/"):
-		return jsonResp(200, r.trackGetResp), nil
-	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/tracks/"):
-		body, _ := io.ReadAll(req.Body)
-		r.trackUpdateReq = body
-		resp := r.trackUpdateRawResp
-		if resp == "" {
-			resp = `{}`
+func newStateFake(a stateAPI) *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return http.StatusNoContent, "", true
+		case c.Method == http.MethodGet && strings.Contains(c.Path, "/tracks/"):
+			return http.StatusOK, a.trackGetResp, true
+		case c.Method == http.MethodPut && strings.Contains(c.Path, "/tracks/"):
+			if a.trackUpdateRawResp == "" {
+				return http.StatusOK, `{}`, true
+			}
+			return http.StatusOK, a.trackUpdateRawResp, true
+		case strings.HasSuffix(c.Path, ":commit"):
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
 		}
-		return jsonResp(200, resp), nil
-	case strings.HasSuffix(req.URL.Path, ":commit"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, r.editID)), nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-// signedSAJSON returns a minimal but well-formed service-account JSON with
-// a real RSA key: enough for token.Source to mint a signed JWT.
-func signedSAJSON(t *testing.T) []byte {
-	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
-	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
+		return 0, "", false
 	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	return raw
 }
+
+// apiCalls lists the recorded API calls as "METHOD path".
+func apiCalls(f *testkit.Fake) []string {
+	var out []string
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
+	}
+	return out
+}
+
+// trackUpdateReq returns the body of the last tracks.update PUT, nil when
+// none was sent.
+func trackUpdateReq(f *testkit.Fake) []byte {
+	var body []byte
+	for _, c := range f.Calls() {
+		if c.Method == http.MethodPut && strings.Contains(c.Path, "/tracks/") {
+			body = c.Body
+		}
+	}
+	return body
+}
+
+// touched reports whether anything reached the transport, token exchange
+// included.
+func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
 func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -130,12 +99,12 @@ const oneInProgressRelease = `{"track":"production","releases":[{"name":"142","s
 // rollout: /token precedes the canonical four-call sequence, and the
 // tracks.update body carries the requested fraction + inProgress status.
 func TestRunRollout_happyPath_fullSequence(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	api := stateAPI{
 		editID:             "edit-rollout-cli",
 		trackGetResp:       `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.01}]}`,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.2}]}`,
 	}
+	rt := newStateFake(api)
 	rc := newRC(t, rt)
 
 	r, err := rollout.RunRollout(rc, rollout.Input{
@@ -151,27 +120,27 @@ func TestRunRollout_happyPath_fullSequence(t *testing.T) {
 	if r == nil {
 		t.Fatal("RunRollout returned nil Renderable on happy path")
 	}
-	if rt.tokenHits == 0 {
-		t.Errorf("RoundTripper saw no /token exchange; calls=%v", rt.calls)
+	if rt.TokenExchanges() == 0 {
+		t.Errorf("RoundTripper saw no /token exchange; calls=%v", apiCalls(rt))
 	}
 
 	wantSequence := []string{
-		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-rollout-cli/tracks/production",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-rollout-cli/tracks/production",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-rollout-cli:commit",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	calls := apiCalls(rt)
+	if len(calls) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(calls), calls, len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, calls[i], want)
 		}
 	}
 
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"status":"inProgress"`) || !strings.Contains(body, `"userFraction":0.2`) {
 		t.Errorf("tracks.update body = %s, want inProgress at 0.2", body)
 	}
@@ -181,20 +150,19 @@ func TestRunRollout_happyPath_fullSequence(t *testing.T) {
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
 	}
-	if got := strings.TrimSpace(jsonOut.String()); got != strings.TrimSpace(rt.trackUpdateRawResp) {
-		t.Errorf("JSON output = %s\nwant raw tracks.update payload = %s", got, rt.trackUpdateRawResp)
+	if got := strings.TrimSpace(jsonOut.String()); got != strings.TrimSpace(api.trackUpdateRawResp) {
+		t.Errorf("JSON output = %s\nwant raw tracks.update payload = %s", got, api.trackUpdateRawResp)
 	}
 }
 
 // TestRunHalt_happyPath asserts halt maps to orchestrator.Halt and the
 // wire payload carries status=halted.
 func TestRunHalt_happyPath(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	rt := newStateFake(stateAPI{
 		editID:             "edit-halt-cli",
 		trackGetResp:       oneInProgressRelease,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"halted","versionCodes":["142"],"userFraction":0.05}]}`,
-	}
+	})
 	rc := newRC(t, rt)
 
 	if _, err := rollout.RunHalt(rc, rollout.Input{
@@ -203,7 +171,7 @@ func TestRunHalt_happyPath(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("RunHalt: %v", err)
 	}
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"status":"halted"`) {
 		t.Errorf("tracks.update body = %s, want status=halted", body)
 	}
@@ -212,12 +180,11 @@ func TestRunHalt_happyPath(t *testing.T) {
 // TestRunResume_happyPath asserts resume flips a halted release to
 // inProgress with the fraction preserved.
 func TestRunResume_happyPath(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	rt := newStateFake(stateAPI{
 		editID:             "edit-resume-cli",
 		trackGetResp:       `{"track":"production","releases":[{"name":"142","status":"halted","versionCodes":["142"],"userFraction":0.05}]}`,
 		trackUpdateRawResp: `{}`,
-	}
+	})
 	rc := newRC(t, rt)
 
 	if _, err := rollout.RunResume(rc, rollout.Input{
@@ -227,7 +194,7 @@ func TestRunResume_happyPath(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("RunResume: %v", err)
 	}
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"status":"inProgress"`) || !strings.Contains(body, `"userFraction":0.05`) {
 		t.Errorf("tracks.update body = %s, want inProgress at preserved 0.05", body)
 	}
@@ -235,12 +202,11 @@ func TestRunResume_happyPath(t *testing.T) {
 
 // TestRunComplete_happyPath asserts complete ramps to completed/1.0.
 func TestRunComplete_happyPath(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	rt := newStateFake(stateAPI{
 		editID:             "edit-complete-cli",
 		trackGetResp:       oneInProgressRelease,
 		trackUpdateRawResp: `{}`,
-	}
+	})
 	rc := newRC(t, rt)
 
 	if _, err := rollout.RunComplete(rc, rollout.Input{
@@ -250,7 +216,7 @@ func TestRunComplete_happyPath(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("RunComplete: %v", err)
 	}
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"status":"completed"`) || !strings.Contains(body, `"userFraction":1`) {
 		t.Errorf("tracks.update body = %s, want completed at 1.0", body)
 	}
@@ -261,7 +227,7 @@ func TestRunComplete_happyPath(t *testing.T) {
 // with exit 3 (safety flag required, docs/DESIGN.md §9, NOT the generic
 // usage exit 2, #408) before any HTTP.
 func TestRun_productionWriteWithoutConfirm_returnsExit3(t *testing.T) {
-	rt := &stateRT{t: t}
+	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
 
 	_, err := rollout.RunComplete(rc, rollout.Input{
@@ -270,15 +236,15 @@ func TestRun_productionWriteWithoutConfirm_returnsExit3(t *testing.T) {
 		// Confirm omitted → must refuse before any HTTP.
 	})
 	assertExit(t, err, 3)
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before confirm guard, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before confirm guard, saw: %v", apiCalls(rt))
 	}
 }
 
 // TestRunRollout_missingTo_returnsExit2 asserts that omitting --to is a CLI
 // misuse caught before any HTTP, with a message naming the flag.
 func TestRunRollout_missingTo_returnsExit2(t *testing.T) {
-	rt := &stateRT{t: t}
+	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
 
 	_, err := rollout.RunRollout(rc, rollout.Input{
@@ -287,8 +253,8 @@ func TestRunRollout_missingTo_returnsExit2(t *testing.T) {
 		// ToSet false → --to not supplied.
 	})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
 	}
 	if !strings.Contains(err.Error(), "--to") {
 		t.Errorf("err = %q, want it to mention --to", err.Error())
@@ -298,7 +264,7 @@ func TestRunRollout_missingTo_returnsExit2(t *testing.T) {
 // TestRunRollout_nonNumericTo_returnsExit2 asserts AC6's non-numeric case:
 // --to abc is a CLI misuse (exit 2), not cobra's exit-1 parse error.
 func TestRunRollout_nonNumericTo_returnsExit2(t *testing.T) {
-	rt := &stateRT{t: t}
+	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
 
 	_, err := rollout.RunRollout(rc, rollout.Input{
@@ -308,15 +274,15 @@ func TestRunRollout_nonNumericTo_returnsExit2(t *testing.T) {
 		ToSet:   true,
 	})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
 	}
 }
 
 // TestRunRollout_outOfRangeTo_returnsExit2 asserts the range guard (AC6):
 // --to 1.5 is rejected with exit 2 and a range hint, before any HTTP.
 func TestRunRollout_outOfRangeTo_returnsExit2(t *testing.T) {
-	rt := &stateRT{t: t}
+	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
 
 	_, err := rollout.RunRollout(rc, rollout.Input{
@@ -326,38 +292,38 @@ func TestRunRollout_outOfRangeTo_returnsExit2(t *testing.T) {
 		ToSet:   true,
 	})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
 	}
 }
 
 // TestRun_missingTrack_returnsExit2 asserts --track is required across the
 // family (checked here via complete).
 func TestRun_missingTrack_returnsExit2(t *testing.T) {
-	rt := &stateRT{t: t}
+	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
 
 	_, err := rollout.RunComplete(rc, rollout.Input{
 		Package: "com.example.app",
 	})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
 	}
 }
 
 // TestRun_missingPackage_returnsExit2 asserts that with neither --package
 // nor a project pin, the command refuses before any HTTP.
 func TestRun_missingPackage_returnsExit2(t *testing.T) {
-	rt := &stateRT{t: t}
+	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
 
 	_, err := rollout.RunHalt(rc, rollout.Input{
 		Track: "production",
 	})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before usage error, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
 	}
 }
 
@@ -416,12 +382,11 @@ func confirmStderr(t *testing.T, rt http.RoundTripper, fn func(rc *kernel.RunCon
 // rollout prints a ✓ line on stderr (DESIGN §8) naming the track and rendering
 // the new userFraction as a percentage (status inProgress).
 func TestRunRollout_emitsConfirmationWithUserFractionPercent(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	rt := newStateFake(stateAPI{
 		editID:             "edit-rollout-cli",
 		trackGetResp:       `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.01}]}`,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.2}]}`,
-	}
+	})
 	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
 		_, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", To: "0.2", ToSet: true, Confirm: true})
 		return err
@@ -439,12 +404,11 @@ func TestRunRollout_emitsConfirmationWithUserFractionPercent(t *testing.T) {
 // TestRunHalt_emitsConfirmation asserts halt prints a ✓ line naming the track
 // and the halted status (no userFraction: only inProgress shows it).
 func TestRunHalt_emitsConfirmation(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	rt := newStateFake(stateAPI{
 		editID:             "edit-halt-cli",
 		trackGetResp:       oneInProgressRelease,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"halted","versionCodes":["142"],"userFraction":0.05}]}`,
-	}
+	})
 	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
 		_, err := rollout.RunHalt(rc, rollout.Input{Package: "com.example.app", Track: "production"})
 		return err
@@ -456,12 +420,11 @@ func TestRunHalt_emitsConfirmation(t *testing.T) {
 
 // TestRunResume_emitsConfirmation asserts resume prints a ✓ line.
 func TestRunResume_emitsConfirmation(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	rt := newStateFake(stateAPI{
 		editID:             "edit-resume-cli",
 		trackGetResp:       `{"track":"production","releases":[{"name":"142","status":"halted","versionCodes":["142"],"userFraction":0.05}]}`,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.05}]}`,
-	}
+	})
 	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
 		_, err := rollout.RunResume(rc, rollout.Input{Package: "com.example.app", Track: "production", Confirm: true})
 		return err
@@ -473,12 +436,11 @@ func TestRunResume_emitsConfirmation(t *testing.T) {
 
 // TestRunComplete_emitsConfirmation asserts complete prints a ✓ line.
 func TestRunComplete_emitsConfirmation(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	rt := newStateFake(stateAPI{
 		editID:             "edit-complete-cli",
 		trackGetResp:       oneInProgressRelease,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
-	}
+	})
 	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
 		_, err := rollout.RunComplete(rc, rollout.Input{Package: "com.example.app", Track: "production", Confirm: true})
 		return err
@@ -490,7 +452,7 @@ func TestRunComplete_emitsConfirmation(t *testing.T) {
 
 // TestRunRollout_dryRun_noConfirmation asserts --dry-run never emits a ✓.
 func TestRunRollout_dryRun_noConfirmation(t *testing.T) {
-	rt := &stateRT{t: t, editID: "edit-dry", trackGetResp: oneInProgressRelease}
+	rt := newStateFake(stateAPI{editID: "edit-dry", trackGetResp: oneInProgressRelease})
 	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
 		_, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", To: "0.2", ToSet: true, DryRun: true})
 		return err

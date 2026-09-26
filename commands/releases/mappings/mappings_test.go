@@ -8,16 +8,11 @@ package mappings_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -30,78 +25,48 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// mappingRT terminates the OAuth2 /token exchange and routes the Edit
-// lifecycle calls a standalone mapping upload makes.
-type mappingRT struct {
-	t      *testing.T
-	editID string
-
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
-}
-
-func (r *mappingRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
-		// Resumable initiate: session URI in Location.
-		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-" + r.editID
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Location": []string{loc}},
-			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
-	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/deobfuscationFiles/"):
-		return jsonResp(200, `{"deobfuscationFile":{"symbolType":"proguard"}}`), nil
-	case strings.HasSuffix(req.URL.Path, ":commit"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, r.editID)), nil
-	}
-	r.t.Fatalf("mappingRT: unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-func signedSAJSON(t *testing.T) []byte {
-	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
-	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
+// newMappingTransport routes the Edit lifecycle calls a standalone mapping
+// upload makes. The Fake records every call; the wrapper only adds the
+// session URI (Location) to the resumable initiate, which a responder cannot
+// express.
+func newMappingTransport(editID string) (*testkit.Fake, http.RoundTripper) {
+	f := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return http.StatusNoContent, "", true
+		case c.Method == http.MethodPost && strings.Contains(c.Path, "/deobfuscationFiles/"):
+			return http.StatusOK, "", true
+		case c.Method == http.MethodPut && strings.Contains(c.Path, "/deobfuscationFiles/"):
+			return http.StatusOK, `{"deobfuscationFile":{"symbolType":"proguard"}}`, true
+		case strings.HasSuffix(c.Path, ":commit"):
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, editID), true
+		}
+		return 0, "", false
 	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	return raw
+	return f, testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		resp, err := f.RoundTrip(req)
+		if err == nil && req.Method == http.MethodPost && strings.Contains(req.URL.Path, "/deobfuscationFiles/") {
+			// Resumable initiate: session URI in Location.
+			resp.Header.Set("Location", req.URL.Scheme+"://"+req.URL.Host+req.URL.Path+"?upload_id=session-"+editID)
+		}
+		return resp, err
+	})
 }
+
+// apiCalls lists the recorded API calls as "METHOD path".
+func apiCalls(f *testkit.Fake) []string {
+	var out []string
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
+	}
+	return out
+}
+
+// touched reports whether anything reached the transport, token exchange
+// included.
+func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
 func writeFakeMapping(t *testing.T) string {
 	t.Helper()
@@ -114,7 +79,7 @@ func writeFakeMapping(t *testing.T) string {
 
 func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -130,8 +95,8 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 // --version-code + proguard, commits, and prints a ✓ confirmation (#250).
 func TestRun_happyPath_beginUploadCommit_andConfirms(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &mappingRT{t: t, editID: "edit-map"}
-	rc := newRC(t, rt)
+	rt, transport := newMappingTransport("edit-map")
+	rc := newRC(t, transport)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -144,19 +109,22 @@ func TestRun_happyPath_beginUploadCommit_andConfirms(t *testing.T) {
 	}
 
 	wantSequence := []string{
-		"POST /token",
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-map/apks/142/deobfuscationFiles/proguard",
 		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-map/apks/142/deobfuscationFiles/proguard",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-map:commit",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	calls := apiCalls(rt)
+	if len(calls) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(calls), calls, len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, calls[i], want)
 		}
+	}
+	if n := rt.TokenExchanges(); n != 1 {
+		t.Errorf("token exchanges = %d, want 1", n)
 	}
 	if !strings.HasPrefix(stderr.String(), "✓ ") {
 		t.Errorf("missing ✓ confirmation; stderr=%q", stderr.String())
@@ -170,8 +138,8 @@ func TestRun_happyPath_beginUploadCommit_andConfirms(t *testing.T) {
 // required: omitting it is a CLI misuse (exit 2) before any HTTP.
 func TestRun_missingVersionCode_exit2_noHTTP(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &mappingRT{t: t}
-	rc := newRC(t, rt)
+	rt, transport := newMappingTransport("")
+	rc := newRC(t, transport)
 
 	_, err := mappings.Run(rc, mappings.Input{
 		Package:     "com.example.app",
@@ -183,8 +151,8 @@ func TestRun_missingVersionCode_exit2_noHTTP(t *testing.T) {
 	if got := exit.For(err); got != 2 {
 		t.Errorf("exit.For(err) = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("hit the network without --version-code: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("hit the network without --version-code: %v", apiCalls(rt))
 	}
 }
 
@@ -192,8 +160,8 @@ func TestRun_missingVersionCode_exit2_noHTTP(t *testing.T) {
 // in the deobfuscationFiles path segment.
 func TestRun_nativeCodeType_inPath(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &mappingRT{t: t, editID: "edit-map"}
-	rc := newRC(t, rt)
+	rt, transport := newMappingTransport("edit-map")
+	rc := newRC(t, transport)
 
 	if _, err := mappings.Run(rc, mappings.Input{
 		Package:     "com.example.app",
@@ -204,13 +172,13 @@ func TestRun_nativeCodeType_inPath(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	found := false
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasSuffix(c, "/apks/7/deobfuscationFiles/nativeCode") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("no deobfuscationFiles/nativeCode call in %v", rt.calls)
+		t.Errorf("no deobfuscationFiles/nativeCode call in %v", apiCalls(rt))
 	}
 }
 
@@ -218,8 +186,8 @@ func TestRun_nativeCodeType_inPath(t *testing.T) {
 // file and emits no ✓ and no network calls (not even the /token exchange).
 func TestRun_dryRun_noConfirmation_noHTTP(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &mappingRT{t: t}
-	rc := newRC(t, rt)
+	rt, transport := newMappingTransport("")
+	rc := newRC(t, transport)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -234,8 +202,8 @@ func TestRun_dryRun_noConfirmation_noHTTP(t *testing.T) {
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run emitted a ✓; stderr=%q", stderr.String())
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run hit the network: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("dry-run hit the network: %v", apiCalls(rt))
 	}
 }
 
