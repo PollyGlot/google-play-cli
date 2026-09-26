@@ -5,6 +5,7 @@ package api_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -143,6 +144,39 @@ func TestError_ExitCode(t *testing.T) {
 			if got := e.ExitCode(); got != tc.want {
 				t.Errorf("(&Error{Operation:%q,StatusCode:%d}).ExitCode() = %d, want %d",
 					tc.operation, tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
+// codedErr is a cause that already carries an exit code, the shape of a
+// *token.AuthError (exit 10) raised inside oauth2.Transport.
+type codedErr struct{ code int }
+
+func (c codedErr) Error() string { return "coded" }
+func (c codedErr) ExitCode() int { return c.code }
+
+// TestError_ExitCode_transportCauseCoderWins (#584): with no HTTP status, a
+// cause carrying its own exit code (a refused token exchange) wins over the
+// network bucket, while a plain transport cause still maps to 50. A real
+// HTTP status keeps precedence over any cause.
+func TestError_ExitCode_transportCauseCoderWins(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		cause  error
+		want   int
+	}{
+		{"wrapped auth refusal -> 10", 0, fmt.Errorf("Post: %w", codedErr{10}), 10},
+		{"plain transport cause -> 50", 0, errors.New("dial tcp: connection refused"), 50},
+		{"no cause -> 50", 0, nil, 50},
+		{"HTTP status wins over cause", 503, codedErr{10}, 40},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := &api.Error{Operation: "edits.insert", Package: "com.x", StatusCode: tc.status, Message: "x", Cause: tc.cause}
+			if got := e.ExitCode(); got != tc.want {
+				t.Errorf("ExitCode() = %d, want %d", got, tc.want)
 			}
 		})
 	}

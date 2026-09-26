@@ -18,6 +18,7 @@ import (
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/redact"
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
@@ -92,6 +93,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	} else {
 		results = authdoctor.Run(rc.Ctx, rc.Account, &hc, checks...)
 		worst = worstFailure(results)
+	}
+
+	// Hints are gplay-authored text that quotes wrapped errors (a resolution
+	// failure, an oauth2 token refusal) and go to stdout, outside the stderr
+	// filter. Mask them here, once, so the table, markdown and JSON renderers
+	// all inherit it (#583). worst points into results, so it is covered too.
+	for i := range results {
+		results[i].Hint = redact.String(results[i].Hint)
 	}
 
 	payload := Payload{Results: results}

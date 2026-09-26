@@ -1,12 +1,13 @@
 # Contributing to gplay
 
-Thanks for your interest. This project is pre-1.0 — the design is moving
-fast and contributions are very welcome.
+Thanks for your interest. gplay is past 1.0: every command not marked
+experimental is a frozen Public contract (ADR-0042), and contributions are
+very welcome.
 
 ## Before you start
 
-1. **Read [CLAUDE.md](CLAUDE.md) first.** It lists the docs to read in order
-   and the conventions used across every command. Most "should I do X or Y?"
+1. **Read [AGENTS.md](AGENTS.md) first.** It lists the conventions used
+   across every command and the traps of this repo. Most "should I do X or Y?"
    questions have an answer in `docs/DESIGN.md` or the ADRs.
 2. **Search the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking).** If the feature
    you want to add is already tracked there, comment on it *first* rather
@@ -15,6 +16,13 @@ fast and contributions are very welcome.
 3. **Open an issue for anything non-trivial.** A short discussion saves
    time when the design touches a CLI convention. Typos and pure refactors
    can go straight to PR.
+
+## Prerequisites
+
+- Go, at the version in `go.mod` or newer.
+- [golangci-lint](https://golangci-lint.run/) v2. CI pins the exact version in
+  `.github/workflows/ci.yml`; `make check` warns when yours differs.
+- [shellcheck](https://www.shellcheck.net/), `make` and `bash`.
 
 ## Workflow
 
@@ -26,29 +34,37 @@ git checkout -b feat/short-description
 
 # ... change code ...
 
-make format
-make lint
-make test
+make format   # gofmt + goimports, the formatters CI enforces
+make check    # the required CI checks, run locally: the one gate before a PR
 
 git commit -m "feat: short description"
 git push -u origin feat/short-description
 # Open a PR against main.
 ```
 
+`make check` runs everything the required CI checks run (formatting, `go vet`,
+golangci-lint, the prose gates, shellcheck, the install script test, the
+required files, the build and `go test -race`). `make test` stays the fast
+loop without the race detector. To run the gate automatically before every
+push, opt in once with `make install-hooks` (works from a git worktree too;
+skip a single push with `git push --no-verify`).
+
 Branch naming, loose convention:
 
-- `feat/<slug>` — new functionality
-- `fix/<slug>` — bug fix
-- `docs/<slug>` — documentation only
-- `chore/<slug>` — tooling, CI, deps
+- `feat/<slug>`: new functionality
+- `fix/<slug>`: bug fix
+- `docs/<slug>`: documentation only
+- `chore/<slug>`: tooling, CI, deps
 
 ## Commit messages
 
-[Conventional Commits](https://www.conventionalcommits.org/) style is
-**recommended but not enforced**. PR titles follow the same convention
-— GitHub squash-merges them onto `main`, so a clean title becomes a clean
-log entry and feeds the auto-generated release notes (`gh release ...
---generate-notes`).
+PR titles follow [Conventional Commits](https://www.conventionalcommits.org/).
+GitHub squash-merges them onto `main`, and
+[release-please](https://github.com/googleapis/release-please) reads the type
+of each commit there to cut the next release: `feat` bumps the minor version,
+`fix` the patch, a `!` the major, and the same titles become the
+`CHANGELOG.md` entries. Other types (`docs`, `chore`, `test`, ...) release
+nothing, so the type you pick decides whether users get a new version.
 
 Prefixes we use:
 
@@ -56,7 +72,7 @@ Prefixes we use:
 |---|---|
 | `feat:` | New user-facing functionality, command, or flag |
 | `fix:` | Bug fix that changes user-facing behavior |
-| `docs:` | README, ADRs, CLAUDE.md, glossary, comments-only changes |
+| `docs:` | README, ADRs, AGENTS.md, glossary, comments-only changes |
 | `refactor:` | Internal restructuring with no behavior change |
 | `test:` | Tests added or improved |
 | `chore:` | Tooling, CI, dependencies, release plumbing |
@@ -67,7 +83,7 @@ Optional scope in parentheses points at the affected area, matching the
 `area:*` labels: `feat(releases): ...`, `fix(auth): ...`.
 
 A `!` after the type (or a `BREAKING CHANGE:` footer) marks a
-backwards-incompatible change — those PRs also get the `breaking-change`
+backwards-incompatible change; those PRs also get the `breaking-change`
 label.
 
 Examples:
@@ -83,12 +99,12 @@ feat(tracks)!: rename --percentage to --rollout in releases promote
 ### Website / `gplay.sh` commits don't bump the CLI
 
 release-please derives the version bump from the commit **type** (`feat` →
-minor, `fix` → patch), **not** from the files touched — the scope is invisible
+minor, `fix` → patch), **not** from the files touched: the scope is invisible
 to it. So `feat(website): ...` is treated as a feature of the `gplay` binary:
 it bumps the version, writes a line into `CHANGELOG.md`, and the merged release
 PR tags a build that ships no CLI change.
 
-The site is decoupled by design — it deploys on its own pipeline
+The site is decoupled by design: it deploys on its own pipeline
 ([`deploy-site.yml`](.github/workflows/deploy-site.yml), triggered by
 `website/**` + `deploy/gplay.sh/**` and on `release: published`), so a
 site-only change is **not** a `feat`/`fix` of the binary. Type those commits:
@@ -116,13 +132,13 @@ None of those bump the version or land in the CLI `CHANGELOG.md`. Reserve
 - **New command taking positional arguments** → just declare the cobra
   validator (`Args: cobra.ExactArgs(1)`, …) and stop there. `kernel.WrapArgErrors`
   re-types every registered validator's rejection as CLI misuse (exit 2,
-  `docs/DESIGN.md` §9) from one call at the end of `newRootCmd` — the hidden
-  `__complete` shell plumbing is the one exception — so a hand-rolled
+  `docs/DESIGN.md` §9) from one call at the end of `newRootCmd` (the hidden
+  `__complete` shell plumbing is the one exception), so a hand-rolled
   per-command arg check is duplicated work that will drift (#426). The
   tree-walking guard test in `cmd/gplay` fails if any validator ever reports
   something else. This applies only through the assembled root: a per-package
   test that executes a bare `NewCommand(boot)` exercises the unwrapped
-  validator (exit 1) — assert exit codes through `newRootCmd`, not in leaf
+  validator (exit 1), so assert exit codes through `newRootCmd`, not in leaf
   harnesses.
 - **Any new command, full stop** → decide its stability. Since 1.0, an
   unlabelled command joins the frozen Public contract: its names, flags,
@@ -134,11 +150,14 @@ None of those bump the version or land in the CLI `CHANGELOG.md`. Reserve
 
 ## Code review
 
-Every PR needs at least one approval (admin can bypass in early bootstrap).
-The reviewer checks:
+The ruleset asks for one approval, which the solo maintainer cannot give to
+their own PR, so the maintainer merges with `scripts/merge-pr.sh <n>`: it
+refuses a PR that is behind `main` or has a required check that is not green,
+then squash-merges with `--admin`. An external reviewer on a PR still gets the
+last word. The reviewer checks:
 
 1. The change matches the docs (or updates them).
-2. Tests cover the new behavior (RoundTripper-mocked, see CLAUDE.md).
+2. Tests cover the new behavior (RoundTripper-mocked, see AGENTS.md).
 3. `--help` text and output for new flags follow `docs/DESIGN.md`.
 4. No accidental scope creep beyond the issue the PR closes.
 
@@ -154,7 +173,7 @@ pinned to a **full commit SHA** with a trailing version comment, e.g.:
 A moving tag (`@v6`) can be force-pushed or hijacked; a SHA cannot. When adding
 or editing a workflow, pin new actions the same way (resolve the tag with
 `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). Dependabot
-(`.github/dependabot.yml`, weekly) proposes SHA bumps with a refreshed comment —
+(`.github/dependabot.yml`, weekly) proposes SHA bumps with a refreshed comment:
 review and merge those rather than hand-editing pins. `workflow-lint.yml`
 (actionlint and zizmor) runs on every change to `.github/**` and fails on an
 unpinned action; run `zizmor --config .github/zizmor.yml .` locally before
