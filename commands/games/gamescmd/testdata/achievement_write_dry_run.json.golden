@@ -1,0 +1,20 @@
+{
+  "dryRun": true,
+  "verb": "create achievement",
+  "target": "application 123456789012",
+  "body": {
+    "achievementType": "STANDARD",
+    "initialState": "REVEALED",
+    "draft": {
+      "name": {
+        "translations": [
+          {
+            "locale": "en-US",
+            "value": "First <Boss> & Beyond"
+          }
+        ]
+      },
+      "pointValue": 10
+    }
+  }
+}

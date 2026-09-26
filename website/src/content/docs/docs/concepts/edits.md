@@ -72,6 +72,41 @@ refused, and committing or discarding with nothing pinned is refused. A
 project is required, since the pin lives in `.gplay/` (run `gplay init`
 first).
 
+Read commands (`releases list`, `tracks list`, `metadata pull`, ...) keep
+showing the **live** state while an Edit is pinned: what is published, not
+what is staged. `releases artifacts list` is the one exception and also shows
+artifacts uploaded into the pinned Edit.
+
+## Committing while changes are in review
+
+If some changes are already in Google's review when an Edit is committed,
+Google's default is to **cancel that review and submit everything again**,
+which restarts the review. gplay keeps that default: with no flag, it sends
+the commit exactly as before. Every command that commits an Edit
+(`gplay edits commit`, and each write command in implicit mode) accepts two
+opt-ins:
+
+- `--changes-in-review error` makes the commit fail instead, leaving the
+  review untouched (the Edit stays valid). `--changes-in-review cancel` asks
+  for Google's default explicitly.
+- `--changes-not-sent-for-review` commits without sending the changes for
+  review; they wait until someone sends them from the Play Console.
+
+```sh
+gplay metadata apply --confirm --changes-in-review error
+```
+
+In explicit mode the write commands do not commit, so pass these flags to
+`gplay edits commit`; a write command given them while an Edit is pinned
+warns and ignores them.
+
+## When a commit's outcome is unknown
+
+A commit that times out or gets a 5xx may still have gone through. gplay
+keeps the network or upstream exit code (`50` or `40`) but marks the failure
+`COMMIT_OUTCOME_UNKNOWN`, not retryable: check the live state before running
+the command again. See [Exit codes](/docs/concepts/exit-codes/).
+
 ## Related
 
 - [Tracks & releases](/docs/concepts/tracks-and-releases/)

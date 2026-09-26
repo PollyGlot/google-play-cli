@@ -52,8 +52,9 @@ build-check:
 test-race:
 	go test -race ./...
 
-lint: dash-gate ## Run golangci-lint + the em dash gate
+lint: dash-gate ## Run golangci-lint, the go.mod tidiness check and the em dash gate
 	golangci-lint run ./...
+	go mod tidy -diff
 
 verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
 	@bash scripts/verb-gate.sh
@@ -81,6 +82,14 @@ schema-index-update: ## Derive the embedded Schema index from the committed Disc
 
 coverage-update: ## Render docs/COVERAGE.md from the Discovery index and the API method registry (offline)
 	go run ./internal/discovery/cmd/coverage-update
+
+.PHONY: contract-update
+contract-update: ## Regenerate cmd/gplay/testdata/surface.golden (every leaf, flag and exit code) from the cobra tree (offline)
+	go test ./cmd/gplay -run '^TestSurfaceGolden_isFresh$$' -count=1 -update-contract
+
+.PHONY: docs-update
+docs-update: ## Regenerate the generated blocks of README.md and the website pages (exit codes, experimental commands) from the binary (offline)
+	go test ./cmd/gplay -run '^TestGeneratedDocs_areFresh$$' -count=1 -update-docs
 
 release-snapshot: ## Local GoReleaser snapshot (no publish): sanity-check the config
 	goreleaser release --snapshot --clean --skip=publish,sign,sbom

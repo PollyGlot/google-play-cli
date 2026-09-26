@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -162,15 +164,37 @@ func main() {
 	// cobra hands down the whole command tree, including leaves added later.
 	root.SetErr(stderr)
 
-	if err := root.Execute(); err != nil {
-		// Subcommands set SilenceErrors:true on their cobra Command so the
-		// stack-trace-style "Error: ..." cobra would emit is suppressed,
-		// but we still owe the user a one-line message before exiting,
-		// otherwise the only signal is the exit code (which CI sees, but
-		// a human running gplay in a terminal does not).
-		fmt.Fprintln(stderr, "gplay:", err)
-		os.Exit(exit.For(err))
+	os.Exit(execute(context.Background(), root, stderr))
+}
+
+// execute runs root under a context that SIGINT and SIGTERM cancel, and
+// returns the process exit code.
+//
+// Cancellation is what lets an interrupted command clean up: every request
+// fails fast on the canceled context and the Edit lifecycle discards the
+// implicit Edit on its own short bound (internal/play/edits), where a plain
+// kill used to leave it open server-side, blocking the next publish for up to
+// 24h. A second signal is not caught: it terminates gplay at once.
+func execute(parent context.Context, root *cobra.Command, stderr io.Writer) int {
+	ctx, interrupted, stop := notifyInterrupt(parent)
+	defer stop()
+	err := root.ExecuteContext(ctx)
+	if err == nil {
+		// A command that finished despite a late signal did its work: its
+		// success is the truth, and a retry would only redo it.
+		return 0
 	}
+	// Subcommands set SilenceErrors:true on their cobra Command so the
+	// stack-trace-style "Error: ..." cobra would emit is suppressed, but we
+	// still owe the user a one-line message before exiting, otherwise the only
+	// signal is the exit code (which CI sees, but a human running gplay in a
+	// terminal does not).
+	fmt.Fprintln(stderr, "gplay:", err)
+	if sig := interrupted(); sig != nil {
+		fmt.Fprintf(stderr, "gplay: interrupted by %s\n", signalName(sig))
+		return exitInterrupted
+	}
+	return exit.For(err)
 }
 
 func newRootCmd(boot kernel.Boot) *cobra.Command {

@@ -22,6 +22,7 @@ import (
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
@@ -165,7 +166,7 @@ func Get(ctx context.Context, hc *http.Client, pkg string) (*Details, json.RawMe
 		if err != nil {
 			return err
 		}
-		envelope, err := json.Marshal(struct {
+		envelope, err := output.Marshal(struct {
 			Details json.RawMessage `json:"details"`
 			Listing json.RawMessage `json:"listing"`
 			Icon    *Icon           `json:"icon,omitempty"`

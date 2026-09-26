@@ -38,6 +38,24 @@ func TestSanitizeCell(t *testing.T) {
 	}
 }
 
+// TestSanitizeText keeps \n and \t (a review body is multi-line) and strips
+// everything sanitizeCell strips, \r included: a bare carriage return would let
+// a line overwrite its own start on a terminal.
+func TestSanitizeText(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"line one\nline two\n\tindented", "line one\nline two\n\tindented"},
+		{"a\r\nb", "a\nb"},
+		{"\x1b]52;c;cGF5bG9hZA==\x07ok\n\x1b[31mred\x1b[0m", "ok\nred"},
+		{"\x1b]8;;http://evil.example\x1b\\link\x1b]8;;\x1b\\ 日本 🎉", "link 日本 🎉"},
+		{"a\x00b\x07c\u009bd", "abcd"},
+	}
+	for _, tc := range cases {
+		if got := SanitizeText(tc.in); got != tc.want {
+			t.Errorf("SanitizeText(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 // TestSanitizeCell_noEscapeBytesSurvive is a property check: whatever the input,
 // the output never contains an ESC (0x1b) or BEL (0x07) byte: the carriers of
 // an ANSI injection.

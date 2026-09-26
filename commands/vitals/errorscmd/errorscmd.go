@@ -22,7 +22,6 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
-	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
@@ -62,16 +61,6 @@ func window(since string) (time.Time, time.Time, error) {
 	now := time.Now().UTC()
 	end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	return end.Add(-d), end, nil
-}
-
-func resolvePackage(rc *kernel.RunContext, pkg string) (string, error) {
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return "", exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
-	}
-	return pkg, nil
 }
 
 // emptyWarn is the stderr line for an empty result; for a non-empty one the
@@ -192,7 +181,7 @@ func (p issuesPayload) Renderers() output.Renderers {
 }
 
 func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error) {
-	pkg, err := resolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +276,7 @@ func (p reportsPayload) Renderers() output.Renderers {
 }
 
 func runReports(rc *kernel.RunContext, in reportsInput) (output.Renderable, error) {
-	pkg, err := resolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}

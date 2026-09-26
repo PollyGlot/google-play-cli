@@ -5,6 +5,7 @@ import InstallTabs from '../components/InstallTabs.astro';
 import logoMark from '../assets/logo-mark.svg';
 import logoMarkLight from '../assets/logo-mark-light.svg';
 import surface from '../data/cli-surface.json';
+import agentSkills from '../../public/.well-known/agent-skills/index.json';
 import releaseManifest from '../../../.release-please-manifest.json';
 import { THEME_COLOR } from '../theme-color.mjs';
 
@@ -22,6 +23,16 @@ const SKILLS_REPO = 'https://github.com/PollyGlot/google-play-cli-skills';
 const title = 'gplay: the Google Play Developer CLI for CI and AI agents';
 const description =
   'gplay is a fast, single-binary CLI for the Google Play Developer API. Upload releases, run staged rollouts, sync store listings, reply to reviews, and manage your Play Console team, from your terminal, CI pipeline, or AI agent. Open source, MIT.';
+
+// Skills count, read from the committed Agent Skills Discovery index
+// (scripts/gen-agent-skills.mjs) so the landing copy follows the roster.
+const NUMBER_WORDS = [
+  'Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+  'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen',
+  'Nineteen', 'Twenty', 'Twenty-one', 'Twenty-two', 'Twenty-three', 'Twenty-four', 'Twenty-five',
+];
+const skillCount = agentSkills.skills.length;
+const skillCountLabel = NUMBER_WORDS[skillCount] ?? String(skillCount);
 
 // Command namespaces, taken from the generated CLI surface (gplay --help).
 const namespaces = surface.namespaces.filter((n) => n.name !== 'init');
@@ -465,7 +476,7 @@ const demoSession = [
               </code>
             </div>
             <p class="mt-3 text-sm leading-relaxed text-fg-muted">
-              Seventeen skills, one per workflow plus a conventions foundation, each documenting
+              {skillCountLabel} skills, one per workflow plus a conventions foundation, each documenting
               the safe command sequence it covers, for Claude Code and compatible tools. Fetched
               with git from a pinned commit, so no package runner and no Node.
               <a href={`${base}/docs/agents/skills/`} class="text-accent underline underline-offset-4"

@@ -31,11 +31,18 @@ means free to evolve. `--help` tells you which, per command.
 
 > **Generally available.** The Public contract is in force: for every command
 > *not* marked `[experimental]`, names, flags, semantics and exit codes will not
-> change without a major bump. That covers auth, apps, the core release loop,
-> tracks, testers, team, edits, metadata, compliance, vitals, and
-> `reviews list` / `view` / `reply`. Newer or less-exercised commands ship
-> `[experimental]` and stay free to evolve: monetization, `games`, `recovery`,
-> `orders`, `reviews history`, and the side namespaces under `releases`.
+> change without a major bump. Newer or less-exercised commands ship
+> `[experimental]` and stay free to evolve.
+> <!-- BEGIN GENERATED experimental-commands (make docs-update) -->
+> Experimental today: `apps audit`, `appstore`, `customapps`, `device-tiers`,
+> `games`, `iap`, `orders`, `recovery`, `releases artifacts`,
+> `releases expansion-files`, `releases generated`, `releases sharing`,
+> `reviews history`, `schema`, `signing`, `subscriptions`. Every other command
+> is frozen, across `apps`, `auth`, `compliance`, `edits`, `exit-codes`, `init`,
+> `install-skills`, `metadata`, `releases`, `reviews`, `team`, `testers`,
+> `tracks`, `version`, `vitals`.
+> <!-- END GENERATED experimental-commands -->
+>
 > **`--help` is the source of truth**: the label is on the command itself.
 > See [Stability and the Public contract](https://gplay.sh/docs/concepts/stability/),
 > [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/), and

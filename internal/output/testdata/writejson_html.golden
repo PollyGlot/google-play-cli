@@ -1,0 +1,7 @@
+{
+  "permission": "View app quality (Android vitals, crashes & ANRs)",
+  "hint": "pass --package <pkg>",
+  "raw": {
+    "text": "5 < 6 && 7 > 6"
+  }
+}
