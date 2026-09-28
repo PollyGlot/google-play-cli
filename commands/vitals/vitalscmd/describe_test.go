@@ -33,7 +33,7 @@ func TestRunPreset_describe_getsTheMetricSet(t *testing.T) {
 	}
 }
 
-// TestRunPreset_describe_rejectsWindowFlags: --by/--version/--since/--period
+// TestRunPreset_describe_rejectsWindowFlags: --by/--version-code/--since/--period
 // set alongside --describe is usage misuse, caught before any request.
 func TestRunPreset_describe_rejectsWindowFlags(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, describeBody))
@@ -74,11 +74,11 @@ func TestPresetCommand_describeFlagIsRegistered(t *testing.T) {
 			t.Errorf("preset %s: missing --%s", spec.Use, DescribeFlag)
 			continue
 		}
-		if err := cmd.ParseFlags([]string{"--describe", "--version", "12"}); err != nil {
+		if err := cmd.ParseFlags([]string{"--describe", "--version-code", "12"}); err != nil {
 			t.Fatalf("preset %s ParseFlags: %v", spec.Use, err)
 		}
-		if got := ChangedFlags(cmd, presetWindowFlags...); strings.Join(got, ",") != "version" {
-			t.Errorf("preset %s: changed window flags = %v, want [version]", spec.Use, got)
+		if got := ChangedFlags(cmd, presetWindowFlags...); strings.Join(got, ",") != "version-code" {
+			t.Errorf("preset %s: changed window flags = %v, want [version-code]", spec.Use, got)
 		}
 	}
 }

@@ -19,14 +19,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/apps/listcmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/removecmd"
 	"github.com/PollyGlot/google-play-cli/commands/apps/viewcmd"
+	appstoreapkupload "github.com/PollyGlot/google-play-cli/commands/appstore/apk/upload"
 	appstorecatalogeventslist "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/events/list"
 	appstorecatalogview "github.com/PollyGlot/google-play-cli/commands/appstore/catalog/view"
 	appstorecreate "github.com/PollyGlot/google-play-cli/commands/appstore/create"
-	appstorepublishstatus "github.com/PollyGlot/google-play-cli/commands/appstore/publishstatus"
-	appstoreupdate "github.com/PollyGlot/google-play-cli/commands/appstore/update"
-	appstoreuploadapk "github.com/PollyGlot/google-play-cli/commands/appstore/upload/apk"
-	appstoreuploadimage "github.com/PollyGlot/google-play-cli/commands/appstore/upload/image"
-	appstoreuploadpolicy "github.com/PollyGlot/google-play-cli/commands/appstore/upload/policy"
+	appstoreimageupload "github.com/PollyGlot/google-play-cli/commands/appstore/image/upload"
+	appstorepolicyupload "github.com/PollyGlot/google-play-cli/commands/appstore/policy/upload"
+	appstorepublishstatusset "github.com/PollyGlot/google-play-cli/commands/appstore/publishstatus/set"
+	appstoresubmit "github.com/PollyGlot/google-play-cli/commands/appstore/submit"
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/commands/auth/list"
 	"github.com/PollyGlot/google-play-cli/commands/auth/login"
@@ -44,14 +44,14 @@ import (
 	editsstatus "github.com/PollyGlot/google-play-cli/commands/edits/status"
 	editsvalidate "github.com/PollyGlot/google-play-cli/commands/edits/validate"
 	gamesachievementscreate "github.com/PollyGlot/google-play-cli/commands/games/achievements/create"
-	gamesachievementsdelete "github.com/PollyGlot/google-play-cli/commands/games/achievements/delete"
 	gamesachievementslist "github.com/PollyGlot/google-play-cli/commands/games/achievements/list"
-	gamesachievementsupdate "github.com/PollyGlot/google-play-cli/commands/games/achievements/update"
+	gamesachievementsremove "github.com/PollyGlot/google-play-cli/commands/games/achievements/remove"
+	gamesachievementsset "github.com/PollyGlot/google-play-cli/commands/games/achievements/set"
 	gamesachievementsview "github.com/PollyGlot/google-play-cli/commands/games/achievements/view"
 	gamesleaderboardscreate "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/create"
-	gamesleaderboardsdelete "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/delete"
 	gamesleaderboardslist "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/list"
-	gamesleaderboardsupdate "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/update"
+	gamesleaderboardsremove "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/remove"
+	gamesleaderboardsset "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/set"
 	gamesleaderboardsview "github.com/PollyGlot/google-play-cli/commands/games/leaderboards/view"
 	iapapply "github.com/PollyGlot/google-play-cli/commands/iap/apply"
 	iappull "github.com/PollyGlot/google-play-cli/commands/iap/pull"
@@ -380,27 +380,37 @@ func newAppStoreGroup(boot kernel.Boot) *cobra.Command {
 				appstorecatalogeventslist.NewCommand(boot),
 			),
 		),
-		// `upload` is a grouping noun over the three media endpoints (#379). Each
-		// leaf hands Google a file and gets back a tracking id; nothing is
-		// distributed until `appstore update` cites those ids, so the uploads are
-		// inert writes: MarkMutating (they do create server-side artifacts) but no
-		// confirmation gate, per the ADR-0043 criterion (irreversible AND
-		// externally visible gates; irreversible-but-inert does not).
-		kernel.Group("upload", "Upload hosted app media (APKs, listing images, policy documents)",
-			kernel.MarkMutating(appstoreuploadapk.NewCommand(boot)),
-			kernel.MarkMutating(appstoreuploadimage.NewCommand(boot)),
-			kernel.MarkMutating(appstoreuploadpolicy.NewCommand(boot)),
+		// The three media endpoints (#379) are one grouping noun each, noun
+		// before verb like `releases mappings upload` (ADR-0019; 2.0.0 retired
+		// the verb-first `upload` group, #597). Each leaf hands Google a file and
+		// gets back a tracking id; nothing is distributed until `appstore submit`
+		// cites those ids, so the uploads are inert writes: MarkMutating (they do
+		// create server-side artifacts) but no confirmation gate, per the
+		// ADR-0043 criterion (irreversible AND externally visible gates;
+		// irreversible-but-inert does not).
+		kernel.Group("apk", "Upload hosted app APKs",
+			kernel.MarkMutating(appstoreapkupload.NewCommand(boot)),
 		),
-		// `publish-status` (#380) flips the app in or out of the store: an
+		kernel.Group("image", "Upload hosted app listing images",
+			kernel.MarkMutating(appstoreimageupload.NewCommand(boot)),
+		),
+		kernel.Group("policy", "Upload hosted app policy declaration documents",
+			kernel.MarkMutating(appstorepolicyupload.NewCommand(boot)),
+		),
+		// `publish-status set` (#380) flips the app in or out of the store: an
 		// external effect, but a reversible one (the opposite call puts it back),
-		// so it takes the ordinary write safeguards and no gate.
-		kernel.MarkMutating(appstorepublishstatus.NewCommand(boot)),
-		// `update` (#381) is the one command in the namespace that submits to
+		// so it takes the ordinary write safeguards and no gate. `publish-status`
+		// is a grouping noun and the write is ADR-0019's `set`.
+		kernel.Group("publish-status", "Manage a hosted app's storefront visibility (published or unpublished)",
+			kernel.MarkMutating(appstorepublishstatusset.NewCommand(boot)),
+		),
+		// `submit` (#381) is the one command in the namespace that sends to
 		// Google's review, immediately and irrevocably: it carries the --confirm
 		// gate (exit 3). ADR-0043 §2 placed the gate here; it names the flag
 		// `--yes`, amended to `--confirm` for consistency with every other gate in
-		// the CLI.
-		kernel.MarkMutating(appstoreupdate.NewCommand(boot)),
+		// the CLI. A domain verb, not `set`: `set` would hide that each call
+		// starts an irrevocable review (DESIGN section 0).
+		kernel.MarkMutating(appstoresubmit.NewCommand(boot)),
 	))
 }
 
@@ -431,8 +441,9 @@ func newEditsGroup(boot kernel.Boot) *cobra.Command {
 // Android package (ADR-0033). `games`, `achievements`, and `leaderboards` are
 // grouping nouns (kernel.Group). Writes affect the editable draft (there is no
 // publish method: publishing to players is Console-only); list/view are reads,
-// create/update are routine writes, and delete is the destructive tier
-// (--confirm, exit 3 if missing). See PRD #241 / ADR-0033 / CONTEXT.md (Play
+// create/set are routine writes, and remove is the destructive tier
+// (--confirm, exit 3 if missing). The write verbs follow ADR-0019 (`set`, one
+// delete verb `remove`), renamed from update/delete in 2.0.0 (#597). See PRD #241 / ADR-0033 / CONTEXT.md (Play
 // Games Services Publishing API).
 //
 // [experimental] (ADR-0010/ADR-0042): a second Google service on its own ID
@@ -440,19 +451,19 @@ func newEditsGroup(boot kernel.Boot) *cobra.Command {
 // different command shape once someone runs a real game config through it.
 func newGamesGroup(boot kernel.Boot) *cobra.Command {
 	return kernel.Experimental(kernel.Group("games", "Configure a game's Play Games Services resources (achievements, leaderboards)",
-		kernel.Group("achievements", "Manage a game's achievement configurations (list/view/create/update/delete)",
+		kernel.Group("achievements", "Manage a game's achievement configurations (list/view/create/set/remove)",
 			gamesachievementslist.NewCommand(boot),
 			gamesachievementsview.NewCommand(boot),
 			kernel.MarkMutating(gamesachievementscreate.NewCommand(boot)),
-			kernel.MarkMutating(gamesachievementsupdate.NewCommand(boot)),
-			kernel.MarkMutating(gamesachievementsdelete.NewCommand(boot)),
+			kernel.MarkMutating(gamesachievementsset.NewCommand(boot)),
+			kernel.MarkMutating(gamesachievementsremove.NewCommand(boot)),
 		),
-		kernel.Group("leaderboards", "Manage a game's leaderboard configurations (list/view/create/update/delete)",
+		kernel.Group("leaderboards", "Manage a game's leaderboard configurations (list/view/create/set/remove)",
 			gamesleaderboardslist.NewCommand(boot),
 			gamesleaderboardsview.NewCommand(boot),
 			kernel.MarkMutating(gamesleaderboardscreate.NewCommand(boot)),
-			kernel.MarkMutating(gamesleaderboardsupdate.NewCommand(boot)),
-			kernel.MarkMutating(gamesleaderboardsdelete.NewCommand(boot)),
+			kernel.MarkMutating(gamesleaderboardsset.NewCommand(boot)),
+			kernel.MarkMutating(gamesleaderboardsremove.NewCommand(boot)),
 		),
 	))
 }

@@ -94,7 +94,7 @@ func TestRun_requestShape(t *testing.T) {
 	fake := newFake(0, "")
 	rc, _ := newRC(t, fake)
 
-	r, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end})
+	r, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", Since: start, Until: end})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestRun_table(t *testing.T) {
 	fake := newFake(0, "")
 	rc, _ := newRC(t, fake)
 
-	r, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end})
+	r, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", Since: start, Until: end})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestRun_pagingParamsPropagate(t *testing.T) {
 	fake := newFake(0, "")
 	rc, _ := newRC(t, fake)
 
-	if _, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end, PageSize: 250, PageToken: "tok-1"}); err != nil {
+	if _, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", Since: start, Until: end, PageSize: 250, PageToken: "tok-1"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	apiCall := last(t, fake)
@@ -179,7 +179,7 @@ func TestRun_nextPageTokenNoted(t *testing.T) {
 	fake := newFake(0, "")
 	rc, stderr := newRC(t, fake)
 
-	if _, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end}); err != nil {
+	if _, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", Since: start, Until: end}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if !strings.Contains(stderr.String(), "--page-token tok-2") {
@@ -195,8 +195,8 @@ func TestRun_timeFlagValidation(t *testing.T) {
 		start, end string
 		wantIn     string
 	}{
-		{"missing start", "", end, "--start-time"},
-		{"missing end", start, "", "--end-time"},
+		{"missing start", "", end, "--since"},
+		{"missing end", start, "", "--until"},
 		{"malformed start", "2026-07-01", end, "RFC 3339"},
 		{"malformed end", start, "next tuesday", "RFC 3339"},
 		{"end before start", end, start, "must be after"},
@@ -208,7 +208,7 @@ func TestRun_timeFlagValidation(t *testing.T) {
 			fake := newFake(0, "")
 			rc, _ := newRC(t, fake)
 
-			_, err := listcmd.Run(rc, listcmd.Input{StartTime: tc.start, EndTime: tc.end})
+			_, err := listcmd.Run(rc, listcmd.Input{Since: tc.start, Until: tc.end})
 			assertExit(t, err, 2)
 			if !strings.Contains(err.Error(), tc.wantIn) {
 				t.Errorf("error %q must mention %q", err.Error(), tc.wantIn)
@@ -228,7 +228,7 @@ func TestRun_acceptsOffsetTimestamps(t *testing.T) {
 	rc, _ := newRC(t, fake)
 
 	const offsetStart = "2026-07-01T02:00:00+02:00"
-	if _, err := listcmd.Run(rc, listcmd.Input{StartTime: offsetStart, EndTime: end}); err != nil {
+	if _, err := listcmd.Run(rc, listcmd.Input{Since: offsetStart, Until: end}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if got := query(t, last(t, fake).URL).Get("startTime"); got != offsetStart {
@@ -243,7 +243,7 @@ func TestRun_negativePageSize_exit2_noNetwork(t *testing.T) {
 	fake := newFake(0, "")
 	rc, _ := newRC(t, fake)
 
-	_, err := listcmd.Run(rc, listcmd.Input{StartTime: start, EndTime: end, PageSize: -1})
+	_, err := listcmd.Run(rc, listcmd.Input{Since: start, Until: end, PageSize: -1})
 	assertExit(t, err, 2)
 	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
 		t.Errorf("must not reach the network; calls=%v", fake.Calls())
@@ -257,7 +257,7 @@ func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 	fake := newFake(0, "")
 	rc, _ := newRC(t, fake)
 
-	_, err := listcmd.Run(rc, listcmd.Input{StartTime: start, EndTime: end})
+	_, err := listcmd.Run(rc, listcmd.Input{Since: start, Until: end})
 	assertExit(t, err, 2)
 	if !strings.Contains(err.Error(), "--store-package") {
 		t.Errorf("usage error %q must name --store-package", err.Error())
@@ -274,7 +274,7 @@ func TestRun_storePackageFromEnv(t *testing.T) {
 	fake := newFake(0, "")
 	rc, _ := newRC(t, fake)
 
-	if _, err := listcmd.Run(rc, listcmd.Input{StartTime: start, EndTime: end}); err != nil {
+	if _, err := listcmd.Run(rc, listcmd.Input{Since: start, Until: end}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	apiCall := last(t, fake)
@@ -290,7 +290,7 @@ func TestRun_403_exit11(t *testing.T) {
 	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
 	rc, _ := newRC(t, fake)
 
-	_, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", StartTime: start, EndTime: end})
+	_, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.alt", Since: start, Until: end})
 	assertExit(t, err, 11)
 	if !strings.Contains(err.Error(), "com.store.alt") {
 		t.Errorf("403 refusal %q must name the app store package", err.Error())
@@ -304,7 +304,7 @@ func TestRun_404_exit30(t *testing.T) {
 	fake := newFake(404, `{"error":{"message":"not found"}}`)
 	rc, _ := newRC(t, fake)
 
-	_, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.unknown", StartTime: start, EndTime: end})
+	_, err := listcmd.Run(rc, listcmd.Input{StorePackage: "com.store.unknown", Since: start, Until: end})
 	assertExit(t, err, 30)
 	if !strings.Contains(err.Error(), "Catalog Export") {
 		t.Errorf("404 hint %q should name the Catalog Export enrollment", err.Error())
