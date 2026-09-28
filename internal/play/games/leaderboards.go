@@ -59,28 +59,28 @@ type LeaderboardListResponse struct {
 
 // ListLeaderboards returns the leaderboard configurations for an application.
 func ListLeaderboards(ctx context.Context, hc *http.Client, appID string, maxResults int, pageToken string) (LeaderboardListResponse, json.RawMessage, error) {
-	return doJSON[LeaderboardListResponse](ctx, hc, call(mLbList, opLbList, appID, map[string]string{"applicationId": appID}, listQuery(maxResults, pageToken), nil))
+	return doJSON[LeaderboardListResponse](ctx, hc, call(mLbList, opLbList, gamesApp(appID), map[string]string{"applicationId": appID}, listQuery(maxResults, pageToken), nil))
 }
 
 // GetLeaderboard reads a single leaderboard configuration by its ID.
 func GetLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string) (LeaderboardConfiguration, json.RawMessage, error) {
-	return doJSON[LeaderboardConfiguration](ctx, hc, call(mLbGet, opLbGet, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, nil, nil))
+	return doJSON[LeaderboardConfiguration](ctx, hc, call(mLbGet, opLbGet, leaderboard(leaderboardID), map[string]string{"leaderboardId": leaderboardID}, nil, nil))
 }
 
 // CreateLeaderboard inserts a new leaderboard configuration in an application
 // from the JSON body (a LeaderboardConfiguration).
 func CreateLeaderboard(ctx context.Context, hc *http.Client, appID string, body []byte) (LeaderboardConfiguration, json.RawMessage, error) {
-	return doJSON[LeaderboardConfiguration](ctx, hc, call(mLbInsert, opLbInsert, appID, map[string]string{"applicationId": appID}, nil, body))
+	return doJSON[LeaderboardConfiguration](ctx, hc, call(mLbInsert, opLbInsert, gamesApp(appID), map[string]string{"applicationId": appID}, nil, body))
 }
 
 // UpdateLeaderboard replaces the leaderboard configuration's metadata (PUT)
 // from the JSON body.
 func UpdateLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string, body []byte) (LeaderboardConfiguration, json.RawMessage, error) {
-	return doJSON[LeaderboardConfiguration](ctx, hc, call(mLbUpdate, opLbUpdate, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, nil, body))
+	return doJSON[LeaderboardConfiguration](ctx, hc, call(mLbUpdate, opLbUpdate, leaderboard(leaderboardID), map[string]string{"leaderboardId": leaderboardID}, nil, body))
 }
 
 // DeleteLeaderboard deletes the leaderboard configuration with the given ID.
 func DeleteLeaderboard(ctx context.Context, hc *http.Client, leaderboardID string) error {
-	_, err := api.Do(ctx, hc, call(mLbDelete, opLbDelete, leaderboardID, map[string]string{"leaderboardId": leaderboardID}, nil, nil))
+	_, err := api.Do(ctx, hc, call(mLbDelete, opLbDelete, leaderboard(leaderboardID), map[string]string{"leaderboardId": leaderboardID}, nil, nil))
 	return err
 }

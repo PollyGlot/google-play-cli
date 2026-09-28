@@ -101,7 +101,7 @@ func ResumableUpload(
 	r io.ReaderAt,
 	size int64,
 ) (body []byte, status int, err error) {
-	return ResumableUploadWithInitiateBody(ctx, hc, op, pkg, initiateURL, contentType, r, size, nil, "")
+	return ResumableUploadWithInitiateBody(ctx, hc, op, PackageResource(pkg), initiateURL, contentType, r, size, nil, "")
 }
 
 // ResumableUploadWithInitiateBody is ResumableUpload with a non-empty initiate
@@ -112,17 +112,19 @@ func ResumableUpload(
 // initiateContentType its Content-Type (e.g. "application/json; charset=UTF-8");
 // a nil initiateBody reproduces the empty-body initiate ResumableUpload uses.
 // The media content type (contentType) still travels in X-Upload-Content-Type,
-// distinct from the initiate body's own type.
+// distinct from the initiate body's own type. target is what the upload
+// addresses, so a failure names it on its own axis: a custom app is created
+// under a developer account, not a package (#599).
 func ResumableUploadWithInitiateBody(
 	ctx context.Context,
 	hc *http.Client,
-	op, pkg, initiateURL, contentType string,
+	op string, target Resource, initiateURL, contentType string,
 	r io.ReaderAt,
 	size int64,
 	initiateBody []byte,
 	initiateContentType string,
 ) (body []byte, status int, err error) {
-	sessionURI, err := resumableInitiate(ctx, hc, op, pkg, initiateURL, contentType, size, initiateBody, initiateContentType)
+	sessionURI, err := resumableInitiate(ctx, hc, op, target, initiateURL, contentType, size, initiateBody, initiateContentType)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -159,22 +161,22 @@ func ResumableUploadWithInitiateBody(
 			if ctx.Err() != nil {
 				return nil, 0, putErr
 			}
-			stalled = &Error{Operation: op, Package: pkg, Message: "resumable upload stalled: server accepted no further bytes after " + strconv.Itoa(maxResumeStalls) + " resume attempts", Cause: putErr}
+			stalled = &Error{Operation: op, Resource: target, Message: "resumable upload stalled: server accepted no further bytes after " + strconv.Itoa(maxResumeStalls) + " resume attempts", Cause: putErr}
 
 		case resp.StatusCode == 308:
 			// Resume Incomplete: advance to the server's acknowledged offset.
 			newOffset := committedOffset(resp, offset)
 			drain(resp)
 			release()
-			if verr := validOffset(newOffset, size, op, pkg); verr != nil {
+			if verr := validOffset(newOffset, size, op, target); verr != nil {
 				return nil, 0, verr
 			}
 			if newOffset <= offset {
 				if stalls++; stalls >= maxResumeStalls {
-					return nil, 0, &Error{Operation: op, Package: pkg, StatusCode: 308, Message: "resumable upload stalled: server acknowledged no progress after " + strconv.Itoa(maxResumeStalls) + " chunks"}
+					return nil, 0, &Error{Operation: op, Resource: target, StatusCode: 308, Message: "resumable upload stalled: server acknowledged no progress after " + strconv.Itoa(maxResumeStalls) + " chunks"}
 				}
 				if !backOff() {
-					return nil, 0, &Error{Operation: op, Package: pkg, Message: ctx.Err().Error(), Cause: ctx.Err()}
+					return nil, 0, &Error{Operation: op, Resource: target, Message: ctx.Err().Error(), Cause: ctx.Err()}
 				}
 			} else {
 				stalls = 0
@@ -192,7 +194,7 @@ func ResumableUploadWithInitiateBody(
 			}
 			// The upload landed but its answer was cut mid-body: the probe
 			// below returns the resource without re-sending a byte.
-			stalled = &Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + rerr.Error(), Cause: &bodyReadError{err: rerr}}
+			stalled = &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "read response body: " + rerr.Error(), Cause: &bodyReadError{err: rerr}}
 			if ctx.Err() != nil {
 				return nil, 0, stalled
 			}
@@ -201,20 +203,20 @@ func ResumableUploadWithInitiateBody(
 			// Transient upstream error mid-upload: probe + resume.
 			drain(resp)
 			release()
-			stalled = &Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "resumable upload stalled: upstream 5xx and no progress after " + strconv.Itoa(maxResumeStalls) + " resume attempts"}
+			stalled = &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "resumable upload stalled: upstream 5xx and no progress after " + strconv.Itoa(maxResumeStalls) + " resume attempts"}
 
 		default:
 			// Terminal 4xx (bad artifact, auth, conflict, gone): surface it.
-			err := errorFromResponse(resp, op, pkg)
+			err := errorFromResponse(resp, op, target)
 			release()
 			return nil, 0, err
 		}
 
 		// Recovery: wait, then ask the server which byte it last committed.
 		if !backOff() {
-			return nil, 0, &Error{Operation: op, Package: pkg, Message: ctx.Err().Error(), Cause: ctx.Err()}
+			return nil, 0, &Error{Operation: op, Resource: target, Message: ctx.Err().Error(), Cause: ctx.Err()}
 		}
-		newOffset, done, doneBody, doneStatus, perr := resumableProbe(noRetryCtx, hc, sessionURI, size, op, pkg)
+		newOffset, done, doneBody, doneStatus, perr := resumableProbe(noRetryCtx, hc, sessionURI, size, op, target)
 		if perr != nil {
 			if !probeErrIsTransient(perr) || ctx.Err() != nil {
 				return nil, 0, perr
@@ -231,7 +233,7 @@ func ResumableUploadWithInitiateBody(
 			// that landed while its response was lost. Nothing is re-sent.
 			return doneBody, doneStatus, nil
 		}
-		if verr := validOffset(newOffset, size, op, pkg); verr != nil {
+		if verr := validOffset(newOffset, size, op, target); verr != nil {
 			return nil, 0, verr
 		}
 		if newOffset <= offset {
@@ -247,14 +249,14 @@ func ResumableUploadWithInitiateBody(
 
 // resumableInitiate does the POST that opens a resumable session and returns
 // the session URI (the Location header value).
-func resumableInitiate(ctx context.Context, hc *http.Client, op, pkg, initiateURL, contentType string, size int64, initiateBody []byte, initiateContentType string) (string, error) {
+func resumableInitiate(ctx context.Context, hc *http.Client, op string, target Resource, initiateURL, contentType string, size int64, initiateBody []byte, initiateContentType string) (string, error) {
 	var reqBody io.Reader = http.NoBody
 	if initiateBody != nil {
 		reqBody = bytes.NewReader(initiateBody)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, initiateURL, reqBody)
 	if err != nil {
-		return "", &Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+		return "", &Error{Operation: op, Resource: target, Message: err.Error(), Cause: err}
 	}
 	req.ContentLength = int64(len(initiateBody))
 	if initiateBody != nil && initiateContentType != "" {
@@ -266,15 +268,15 @@ func resumableInitiate(ctx context.Context, hc *http.Client, op, pkg, initiateUR
 	req.Header.Set("X-Upload-Content-Length", strconv.FormatInt(size, 10))
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", &Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+		return "", &Error{Operation: op, Resource: target, Message: err.Error(), Cause: err}
 	}
 	defer drain(resp)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", errorFromResponse(resp, op, pkg)
+		return "", errorFromResponse(resp, op, target)
 	}
 	uri := resp.Header.Get("Location")
 	if uri == "" {
-		return "", &Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "resumable initiate returned no session URI (missing Location header)"}
+		return "", &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "resumable initiate returned no session URI (missing Location header)"}
 	}
 	return uri, nil
 }
@@ -335,16 +337,16 @@ func putChunk(ctx context.Context, hc *http.Client, sessionURI, contentType stri
 // PUTting an empty body with Content-Range: bytes *\/{size}. It returns the new
 // offset, or done=true (with the resource body + status) if the server reports
 // the upload already complete (a 2xx to the probe).
-func resumableProbe(ctx context.Context, hc *http.Client, sessionURI string, size int64, op, pkg string) (offset int64, done bool, body []byte, status int, err error) {
+func resumableProbe(ctx context.Context, hc *http.Client, sessionURI string, size int64, op string, target Resource) (offset int64, done bool, body []byte, status int, err error) {
 	req, rerr := http.NewRequestWithContext(ctx, http.MethodPut, sessionURI, http.NoBody)
 	if rerr != nil {
-		return 0, false, nil, 0, &Error{Operation: op, Package: pkg, Message: rerr.Error(), Cause: rerr}
+		return 0, false, nil, 0, &Error{Operation: op, Resource: target, Message: rerr.Error(), Cause: rerr}
 	}
 	req.ContentLength = 0
 	req.Header.Set("Content-Range", fmt.Sprintf("bytes */%d", size))
 	resp, derr := hc.Do(req)
 	if derr != nil {
-		return 0, false, nil, 0, &Error{Operation: op, Package: pkg, Message: derr.Error(), Cause: derr}
+		return 0, false, nil, 0, &Error{Operation: op, Resource: target, Message: derr.Error(), Cause: derr}
 	}
 	switch {
 	case resp.StatusCode == 308:
@@ -356,7 +358,7 @@ func resumableProbe(ctx context.Context, hc *http.Client, sessionURI string, siz
 		drain(resp)
 		return 0, true, out, resp.StatusCode, nil
 	default:
-		return 0, false, nil, 0, errorFromResponse(resp, op, pkg)
+		return 0, false, nil, 0, errorFromResponse(resp, op, target)
 	}
 }
 
@@ -384,9 +386,9 @@ func committedOffset(resp *http.Response, fallback int64) int64 {
 // Range header is external data, and trusting a value past the artifact's end
 // would compute a negative chunk length downstream. Out of range is a protocol
 // error, not something to resume from.
-func validOffset(offset, size int64, op, pkg string) *Error {
+func validOffset(offset, size int64, op string, target Resource) *Error {
 	if offset < 0 || offset > size {
-		return &Error{Operation: op, Package: pkg, Message: fmt.Sprintf("resumable upload: server acknowledged offset %d outside artifact size %d", offset, size)}
+		return &Error{Operation: op, Resource: target, Message: fmt.Sprintf("resumable upload: server acknowledged offset %d outside artifact size %d", offset, size)}
 	}
 	return nil
 }
@@ -401,13 +403,13 @@ func probeErrIsTransient(err error) bool {
 
 // errorFromResponse builds an *Error from a non-success response, parsing the
 // Google error envelope for the message and reasons.
-func errorFromResponse(resp *http.Response, op, pkg string) *Error {
+func errorFromResponse(resp *http.Response, op string, target Resource) *Error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAPIErrorBodyRead))
 	drain(resp)
 	msg, reasons := ParseErrorEnvelope(b, resp.StatusCode)
 	return &Error{
 		Operation:  op,
-		Package:    pkg,
+		Resource:   target,
 		StatusCode: resp.StatusCode,
 		Message:    msg,
 		Reasons:    reasons,

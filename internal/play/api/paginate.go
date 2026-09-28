@@ -5,8 +5,10 @@ import "fmt"
 // Pager describes one auto-paginated listing for Paginate: how to tag the
 // error a misbehaving server raises, and where the walk stops.
 type Pager struct {
-	// Op and Target tag the *Error a repeated token raises, like Call's.
+	// Op, Target and Resource tag the *Error a repeated token raises, like
+	// Call's: Target for a package listing, Resource for any other axis.
 	Op, Target string
+	Resource   Resource
 	// What names the listing in that error ("users.list").
 	What string
 	// Limit stops the walk once this many items have accumulated; 0 reads
@@ -54,10 +56,10 @@ func Paginate[T any](p Pager, fetch func(token string, have int) (items []T, nex
 			return items, false, nil
 		}
 		if _, dup := seen[next]; dup {
-			return nil, false, &Error{Operation: p.Op, Package: p.Target, Message: "pagination token loop detected in " + p.What + " (server repeated a nextPageToken)"}
+			return nil, false, &Error{Operation: p.Op, Package: p.Target, Resource: p.Resource, Message: "pagination token loop detected in " + p.What + " (server repeated a nextPageToken)"}
 		}
 		if p.MaxPages > 0 && pages >= p.MaxPages {
-			return nil, false, &Error{Operation: p.Op, Package: p.Target, Message: fmt.Sprintf("%s still had pages after %d requests: refusing a partial list", p.What, p.MaxPages)}
+			return nil, false, &Error{Operation: p.Op, Package: p.Target, Resource: p.Resource, Message: fmt.Sprintf("%s still had pages after %d requests: refusing a partial list", p.What, p.MaxPages)}
 		}
 		seen[next] = struct{}{}
 		token = next

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -220,14 +221,26 @@ func Rotate(ctx context.Context, hc *http.Client, name string, opts RotateOpts) 
 // returning the verbatim bytes. A non-2xx surfaces as *api.Error so the
 // exit-code taxonomy maps transparently.
 func post(ctx context.Context, hc *http.Client, m apiregistry.Method, op, name string, body any, out any) (json.RawMessage, error) {
-	raw, err := api.Do(ctx, hc, api.Call{Method: m, Op: op, Target: name, Params: map[string]string{"name": name}, Body: body})
+	raw, err := api.Do(ctx, hc, api.Call{Method: m, Op: op, Resource: signingTarget(name), Params: map[string]string{"name": name}, Body: body})
 	if err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		// A 2xx that does not decode keeps the status tag (exit 30) this
 		// module always gave it, unlike api.DoJSON's status-less decode error.
-		return nil, &api.Error{Operation: op, Package: name, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: signingTarget(name), StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return raw, nil
+}
+
+// signingTarget is the error target of an app-signing call. The `name` path
+// parameter takes the package name or the numeric Play Console app ID; an app
+// ID is not a package, so it is reported as KindApp and the JSON error
+// envelope's `package` stays reserved for real package names (#599). A package
+// name always contains a dot and never is all digits, so the test is exact.
+func signingTarget(name string) api.Resource {
+	if name != "" && strings.Trim(name, "0123456789") == "" {
+		return api.Resource{Kind: api.KindApp, ID: name}
+	}
+	return api.PackageResource(name)
 }

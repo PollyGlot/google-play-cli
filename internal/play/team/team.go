@@ -133,7 +133,7 @@ func ListUsers(ctx context.Context, hc *http.Client, developerID string) ([]User
 		Users []json.RawMessage `json:"users"`
 	}{Users: rawAll})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opUsersList, Package: developerID, Message: "marshal merged response: " + err.Error(), Cause: err}
+		return nil, nil, &api.Error{Operation: opUsersList, Resource: account(developerID), Message: "marshal merged response: " + err.Error(), Cause: err}
 	}
 	return users, merged, nil
 }
@@ -149,7 +149,7 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 		user User
 		raw  json.RawMessage
 	}
-	all, _, err := api.Paginate(api.Pager{Op: opUsersList, Target: developerID, What: "users.list"},
+	all, _, err := api.Paginate(api.Pager{Op: opUsersList, Resource: account(developerID), What: "users.list"},
 		func(token string, _ int) ([]member, string, error) {
 			q := url.Values{}
 			q.Set("pageSize", strconv.Itoa(listPageSize))
@@ -158,7 +158,7 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 			}
 			var pg listPage
 			if _, err := api.DoJSON(ctx, hc, api.Call{
-				Method: mUsersList, Op: opUsersList, Target: developerID,
+				Method: mUsersList, Op: opUsersList, Resource: account(developerID),
 				Params: accountParams(developerID),
 				Query:  q,
 			}, &pg); err != nil {
@@ -168,7 +168,7 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 			for _, rawUser := range pg.Users {
 				var usr User
 				if err := json.Unmarshal(rawUser, &usr); err != nil {
-					return nil, "", &api.Error{Operation: opUsersList, Package: developerID, Message: "decode user: " + err.Error(), Cause: err}
+					return nil, "", &api.Error{Operation: opUsersList, Resource: account(developerID), Message: "decode user: " + err.Error(), Cause: err}
 				}
 				page = append(page, member{user: usr, raw: rawUser})
 			}
@@ -285,14 +285,19 @@ func DeleteGrant(ctx context.Context, hc *http.Client, developerID, email, pkg s
 }
 
 // send performs a write with m's verb and template. A nil body sends none (and
-// no Content-Type); any other value is JSON-encoded. The Package field of an
-// *api.Error carries the developerID for these account-scoped calls, so the
-// error string identifies the target. Returns the raw 2xx body (possibly
-// empty).
+// no Content-Type); any other value is JSON-encoded. The error carries the
+// developer account as its Resource, so the error string and the JSON
+// envelope identify the target. Returns the raw 2xx body (possibly empty).
 func send(ctx context.Context, hc *http.Client, m apiregistry.Method, op, developerID string, params map[string]string, q url.Values, body any) (json.RawMessage, error) {
-	c := api.Call{Method: m, Op: op, Target: developerID, Params: params, Query: q}
+	c := api.Call{Method: m, Op: op, Resource: account(developerID), Params: params, Query: q}
 	if body != nil {
 		c.Body = body
 	}
 	return api.Do(ctx, hc, c)
+}
+
+// account is the error target of these account-scoped calls: the developer
+// account ID, never labelled a package (#599).
+func account(developerID string) api.Resource {
+	return api.Resource{Kind: api.KindDeveloperAccount, ID: developerID}
 }

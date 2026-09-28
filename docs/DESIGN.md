@@ -606,6 +606,7 @@ branch on the failure without scraping stderr:
     "exitCode": 60,
     "retryable": false,
     "operation": "edits.insert",
+    "resource": { "kind": "package", "id": "com.example.app" },
     "package": "com.example.app",
     "message": "edits.insert on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
     "reasons": ["editAlreadyExists"]
@@ -619,8 +620,20 @@ branch on the failure without scraping stderr:
 - `exitCode` mirrors the process exit code (§9).
 - `retryable` says whether replaying the same command unchanged can plausibly
   succeed, so retry logic needs no per-cause table. Emitted even when `false`.
-- `operation` / `package` name the API call that failed; omitted on a local
-  failure, which is itself the signal that no call was made.
+- `operation` names the API call that failed; omitted on a local failure,
+  which is itself the signal that no call was made.
+- `resource` names what the failed call addressed, on whichever addressing
+  axis it uses: `kind` is one of `package`, `app` (a numeric Play Console app
+  ID, accepted by `signing`), `developerAccount` (`team`, `customapps`),
+  `gamesApplication`, `achievement`, `leaderboard` (`games`) or `bucket`
+  (`reviews history`), and `id` the identifier. Omitted when no target is known
+  (a local failure, an account-wide search). The kind vocabulary is
+  append-only.
+- `package` is present only when `resource.kind` is `package`, with the same
+  value: it always holds a real Android package name. Up to 1.x it also carried
+  the developer account, games application or bucket id of a non-package call;
+  2.0.0 moved those to `resource` (#599,
+  [ADR-0048](./adr/0048-v2-release-train.md)).
 - `reasons` carries the upstream `error.errors[].reason` values verbatim when an
   API envelope was parsed; omitted otherwise.
 - `requires` names the missing safety flag on an exit-3 refusal (extends the

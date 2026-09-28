@@ -40,9 +40,14 @@ type Call struct {
 	// without its service prefix (`androidpublisher.orders.get` → `orders.get`);
 	// set it where a module's historical tag differs.
 	Op string
-	// Target is what the call addresses, carried as Error.Package: the package
-	// name, or the developer / application id of an account-scoped surface.
+	// Target is the Android package the call addresses, carried as
+	// Error.Package. A call on another addressing axis leaves it empty and
+	// sets Resource instead, so the error envelope never labels a developer
+	// account or a bucket as a package (#599).
 	Target string
+	// Resource is the target of a call that is not package-scoped, carried as
+	// Error.Resource.
+	Resource Resource
 	// URL, when set, is requested with GET instead of Method's template (Params
 	// and Media are then ignored): an absolute URL an API response handed back,
 	// such as the Store image url images.list returns. Never a URL built by
@@ -73,14 +78,14 @@ func Do(ctx context.Context, hc *http.Client, c Call) (json.RawMessage, error) {
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead+1))
 	if err != nil {
 		return nil, &Error{
-			Operation: op, Package: c.Target, StatusCode: resp.StatusCode,
+			Operation: op, Package: c.Target, Resource: c.Resource, StatusCode: resp.StatusCode,
 			Message: "read response body: " + err.Error(),
 			Cause:   &bodyReadError{err: err},
 		}
 	}
 	if len(raw) > MaxAPISuccessBodyRead {
 		return nil, &Error{
-			Operation: op, Package: c.Target, StatusCode: resp.StatusCode,
+			Operation: op, Package: c.Target, Resource: c.Resource, StatusCode: resp.StatusCode,
 			Message: fmt.Sprintf("response body exceeds the %d-byte limit (%d MiB): refusing to truncate it", MaxAPISuccessBodyRead, MaxAPISuccessBodyRead>>20),
 		}
 	}
@@ -109,7 +114,7 @@ func Download(ctx context.Context, hc *http.Client, c Call, w io.Writer) (int64,
 			cause = &bodyReadError{err: err}
 		}
 		return n, &Error{
-			Operation: op, Package: c.Target, StatusCode: resp.StatusCode,
+			Operation: op, Package: c.Target, Resource: c.Resource, StatusCode: resp.StatusCode,
 			Message: "stream response body: " + err.Error(),
 			Cause:   cause,
 		}
@@ -127,7 +132,7 @@ func send(ctx context.Context, hc *http.Client, c Call, op string) (*http.Respon
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, &Error{Operation: op, Package: c.Target, Message: err.Error(), Cause: err}
+		return nil, &Error{Operation: op, Package: c.Target, Resource: c.Resource, Message: err.Error(), Cause: err}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer func() { _ = resp.Body.Close() }()
@@ -135,7 +140,7 @@ func send(ctx context.Context, hc *http.Client, c Call, op string) (*http.Respon
 		// server, and a truncated envelope still yields its HTTP status.
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAPIErrorBodyRead))
 		msg, reasons := ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &Error{Operation: op, Package: c.Target, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
+		return nil, &Error{Operation: op, Package: c.Target, Resource: c.Resource, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
 	}
 	return resp, nil
 }
@@ -165,7 +170,7 @@ func DoJSON(ctx context.Context, hc *http.Client, c Call, out any) (json.RawMess
 	if err := json.Unmarshal(raw, out); err != nil {
 		// No StatusCode: the tag every module used before the executor, so the
 		// exit code of a malformed body is unchanged by migrating onto it.
-		return nil, &Error{Operation: c.op(), Package: c.Target, Message: "decode response: " + err.Error(), Cause: err}
+		return nil, &Error{Operation: c.op(), Package: c.Target, Resource: c.Resource, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return raw, nil
 }
@@ -185,7 +190,7 @@ func (c Call) op() string {
 // anything is sent; it keeps the StatusCode-0 tag the modules always used.
 func (c Call) request(ctx context.Context, op string) (*http.Request, error) {
 	fail := func(msg string, err error) error {
-		return &Error{Operation: op, Package: c.Target, Message: msg, Cause: err}
+		return &Error{Operation: op, Package: c.Target, Resource: c.Resource, Message: msg, Cause: err}
 	}
 	// A handed-back URL is sent verbatim with GET, its own query included.
 	verb, u, q := http.MethodGet, c.URL, url.Values(nil)

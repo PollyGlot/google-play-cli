@@ -91,11 +91,12 @@ func listQuery(maxResults int, pageToken string) url.Values {
 
 // call describes one request: m supplies verb and URL template, so a call site
 // cannot pair one method's verb with another's path (#516). ref is the
-// addressing context (application ID or resource ID) carried in api.Error for
-// the human-readable message. body nil sends no body (GET/DELETE); anything
+// addressing context (the games application, or the achievement / leaderboard
+// the call names) carried as the error's Resource, for the human-readable
+// message and the JSON envelope's `resource`. body nil sends no body (GET/DELETE); anything
 // else is a JSON write sent verbatim.
-func call(m apiregistry.Method, op, ref string, params map[string]string, q url.Values, body []byte) api.Call {
-	c := api.Call{Method: m, Op: op, Target: ref, Params: params, Query: q}
+func call(m apiregistry.Method, op string, ref api.Resource, params map[string]string, q url.Values, body []byte) api.Call {
+	c := api.Call{Method: m, Op: op, Resource: ref, Params: params, Query: q}
 	if body != nil {
 		c.Body = body
 	}
@@ -112,4 +113,19 @@ func doJSON[T any](ctx context.Context, hc *http.Client, c api.Call) (T, json.Ra
 		return zero, nil, err
 	}
 	return out, raw, nil
+}
+
+// gamesApp, achievement and leaderboard name the target of a failed call on
+// the Play Games Services axis. None of them is an Android package, and the
+// JSON error envelope reports each under its own kind (#599).
+func gamesApp(appID string) api.Resource {
+	return api.Resource{Kind: api.KindGamesApplication, ID: appID}
+}
+
+func achievement(id string) api.Resource {
+	return api.Resource{Kind: api.KindAchievement, ID: id}
+}
+
+func leaderboard(id string) api.Resource {
+	return api.Resource{Kind: api.KindLeaderboard, ID: id}
 }
