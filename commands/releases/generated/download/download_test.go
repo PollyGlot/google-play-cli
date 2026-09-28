@@ -34,27 +34,25 @@ type dlRT struct {
 	status int
 }
 
-func (r *dlRT) RoundTrip(req *http.Request) (*http.Response, error) {
+// serve answers the artifact GET with raw octet-stream bytes, which the Fake's
+// JSON responses cannot express.
+func (r *dlRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 	r.getURL = req.URL.String()
 	if r.status != 0 {
-		return jsonResp(r.status, `{"error":{"message":"nope"}}`), nil
+		return testkit.Response(r.status, `{"error":{"message":"nope"}}`), nil
 	}
 	return &http.Response{
 		StatusCode: 200,
 		Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
 		Body:       io.NopCloser(strings.NewReader(apkBytes)),
 	}, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -84,7 +82,7 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 // data path).
 func TestRun_writesBytesToFile(t *testing.T) {
 	rt := &dlRT{}
-	rc, stdout, stderr := newRC(t, rt)
+	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 	dest := filepath.Join(t.TempDir(), "out.apk")
 
 	err := downloadcmd.Run(rc, downloadcmd.Input{Package: "com.example.app", VersionCode: 142, DownloadID: "dl-abc", Dest: dest})
@@ -112,7 +110,7 @@ func TestRun_writesBytesToFile(t *testing.T) {
 // TestRun_destDash_streamsToStdout asserts --dest - puts the raw bytes on stdout.
 func TestRun_destDash_streamsToStdout(t *testing.T) {
 	rt := &dlRT{}
-	rc, stdout, stderr := newRC(t, rt)
+	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	err := downloadcmd.Run(rc, downloadcmd.Input{Package: "com.example.app", VersionCode: 142, DownloadID: "dl-abc", Dest: "-"})
 	if err != nil {
@@ -130,7 +128,7 @@ func TestRun_destDash_streamsToStdout(t *testing.T) {
 // 30 and leaves no partial file behind.
 func TestRun_404_exit30_noPartialFile(t *testing.T) {
 	rt := &dlRT{status: 404}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 	dest := filepath.Join(t.TempDir(), "out.apk")
 
 	err := downloadcmd.Run(rc, downloadcmd.Input{Package: "com.example.app", VersionCode: 142, DownloadID: "bad", Dest: dest})
@@ -144,7 +142,7 @@ func TestRun_404_exit30_noPartialFile(t *testing.T) {
 // *api.Error, and the canonical grant hint every package-axis group shares.
 func TestRun_403_exit11(t *testing.T) {
 	rt := &dlRT{status: 403}
-	rc, _, _ := newRC(t, rt)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 	err := downloadcmd.Run(rc, downloadcmd.Input{Package: "com.example.app", VersionCode: 142, DownloadID: "x", Dest: "-"})
 	assertExit(t, err, 11)
 	var fe *apihint.ForbiddenError
@@ -167,7 +165,7 @@ func TestRun_validation_exit2_noNetwork(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			rt := &dlRT{}
-			rc, _, _ := newRC(t, rt)
+			rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 			err := downloadcmd.Run(rc, c.in)
 			assertExit(t, err, 2)
 			if len(rt.calls) != 0 {

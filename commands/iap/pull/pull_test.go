@@ -7,12 +7,10 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -24,30 +22,22 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// iapRT terminates /token and routes the three list surfaces (v2 products,
-// legacy inappproducts, wildcard offers) to configurable bodies.
-type iapRT struct {
-	mu         sync.Mutex
-	calls      []string
+// iapLive holds the bodies the three list surfaces (v2 products, legacy
+// inappproducts, wildcard offers) answer with; serve routes a call to them.
+type iapLive struct {
 	v2Body     string
 	legacyBody string
 	offersBody string
 }
 
-func (r *iapRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
+func (l *iapLive) serve(c testkit.Call) (int, string, bool) {
 	switch {
-	case strings.Contains(req.URL.Path, "/purchaseOptions/-/offers"):
-		return jsonResp(200, orBody(r.offersBody)), nil
-	case strings.Contains(req.URL.Path, "/inappproducts"):
-		return jsonResp(200, orBody(r.legacyBody)), nil
+	case strings.Contains(c.Path, "/purchaseOptions/-/offers"):
+		return http.StatusOK, orBody(l.offersBody), true
+	case strings.Contains(c.Path, "/inappproducts"):
+		return http.StatusOK, orBody(l.legacyBody), true
 	default:
-		return jsonResp(200, orBody(r.v2Body)), nil
+		return http.StatusOK, orBody(l.v2Body), true
 	}
 }
 
@@ -56,10 +46,6 @@ func orBody(b string) string {
 		return `{}`
 	}
 	return b
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -88,12 +74,12 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 // in favor of v2, and reports the composite json envelope.
 func TestRun_unionsV2AndLegacy(t *testing.T) {
 	dir := t.TempDir()
-	rt := &iapRT{
+	live := &iapLive{
 		v2Body:     `{"oneTimeProducts":[{"productId":"coins100","packageName":"com.example.app","listings":[],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE"}]}]}`,
 		legacyBody: `{"inappproduct":[{"sku":"coins100","purchaseType":"managedUser"},{"sku":"old_gems","purchaseType":"managedUser","status":"active","listings":{"en-US":{"title":"Gems & <more>"}}}]}`,
 		offersBody: `{"oneTimeProductOffers":[{"packageName":"com.example.app","productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE"}]}`,
 	}
-	rc := newRC(t, rt)
+	rc := newRC(t, testkit.NewFake(live.serve))
 	r, err := pullcmd.Run(rc, pullcmd.Input{Package: "com.example.app", Dir: dir})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -163,8 +149,8 @@ func TestRun_emptyLiveNonEmptyLocal_refuses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "coins100.json"), []byte(`{"productId":"coins100"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	rt := &iapRT{}
-	rc := newRC(t, rt)
+	live := &iapLive{}
+	rc := newRC(t, testkit.NewFake(live.serve))
 	_, err := pullcmd.Run(rc, pullcmd.Input{Package: "com.example.app", Dir: dir})
 	assertExit(t, err, 2)
 	if _, statErr := os.Stat(filepath.Join(dir, "coins100.json")); statErr != nil {

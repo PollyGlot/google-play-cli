@@ -8,46 +8,23 @@ package countryavailability_test
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/countryavailability"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// caRT answers a single GET on the countryAvailability/{track} path with
-// a configurable status + body, recording the requested path so the test
-// can assert the exact upstream URL.
-type caRT struct {
-	t    *testing.T
-	body string
-	code int // 0 → 200
-
-	mu       sync.Mutex
-	lastPath string
-	calls    int
-}
-
-func (r *caRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls++
-	r.lastPath = req.URL.Path
-	if req.Method != http.MethodGet {
-		r.t.Fatalf("unexpected method %s (countryavailability.Get is read-only)", req.Method)
-	}
-	code := r.code
-	if code == 0 {
-		code = 200
-	}
-	return &http.Response{
-		StatusCode: code,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(r.body)),
-	}, nil
+// newCA answers GETs with a configurable status + body (code 0 means 200).
+// Any other method finds no responder, so the read-only Get fails loudly if
+// it ever writes.
+func newCA(code int, body string) (*testkit.Fake, *http.Client) {
+	f := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		return code, body, c.Method == http.MethodGet
+	})
+	return f, &http.Client{Transport: f}
 }
 
 func exitCodeOf(t *testing.T, err error) int {
@@ -67,8 +44,7 @@ func exitCodeOf(t *testing.T, err error) int {
 // restOfWorld / countries[], and returns the body verbatim.
 func TestGet_happyPath(t *testing.T) {
 	body := `{"syncWithProduction":false,"restOfWorld":true,"countries":[{"countryCode":"US"},{"countryCode":"GB"},{"countryCode":"FR"}]}`
-	rt := &caRT{t: t, body: body}
-	hc := &http.Client{Transport: rt}
+	f, hc := newCA(0, body)
 
 	ca, raw, err := countryavailability.Get(context.Background(), hc, "com.example.app", "edit-1", "production")
 	if err != nil {
@@ -79,8 +55,8 @@ func TestGet_happyPath(t *testing.T) {
 	}
 
 	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-1/countryAvailability/production"
-	if rt.lastPath != wantPath {
-		t.Errorf("GET path = %q, want %q", rt.lastPath, wantPath)
+	if calls := f.Calls(); len(calls) != 1 || calls[0].Path != wantPath {
+		t.Errorf("calls = %+v, want one GET %q", calls, wantPath)
 	}
 	if ca.SyncWithProduction {
 		t.Errorf("SyncWithProduction = true, want false")
@@ -104,8 +80,7 @@ func TestGet_happyPath(t *testing.T) {
 
 // TestGet_403_mapsExit11 asserts a 403 surfaces as *api.Error (exit 11).
 func TestGet_403_mapsExit11(t *testing.T) {
-	rt := &caRT{t: t, code: 403, body: `{"error":{"code":403,"message":"insufficient permissions"}}`}
-	hc := &http.Client{Transport: rt}
+	_, hc := newCA(403, `{"error":{"code":403,"message":"insufficient permissions"}}`)
 
 	_, _, err := countryavailability.Get(context.Background(), hc, "com.example.app", "edit-1", "production")
 	if code := exitCodeOf(t, err); code != 11 {
@@ -123,8 +98,7 @@ func TestGet_403_mapsExit11(t *testing.T) {
 // TestGet_404_mapsExit30 asserts a 404 (unknown track or package) maps to
 // exit 30.
 func TestGet_404_mapsExit30(t *testing.T) {
-	rt := &caRT{t: t, code: 404, body: `{"error":{"code":404,"message":"not found"}}`}
-	hc := &http.Client{Transport: rt}
+	_, hc := newCA(404, `{"error":{"code":404,"message":"not found"}}`)
 
 	_, _, err := countryavailability.Get(context.Background(), hc, "com.example.app", "edit-1", "no-such-track")
 	if code := exitCodeOf(t, err); code != 30 {
@@ -140,26 +114,19 @@ type brokenBody struct{}
 func (brokenBody) Read(_ []byte) (int, error) { return 0, errors.New("simulated read error") }
 func (brokenBody) Close() error               { return nil }
 
-// brokenBodyRT returns a 200 on countryAvailability.get with a body that
-// errors on every Read.
-type brokenBodyRT struct{ t *testing.T }
-
-func (r *brokenBodyRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Method != http.MethodGet {
-		r.t.Fatalf("unexpected method %s", req.Method)
-	}
-	return &http.Response{
-		StatusCode: 200,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       brokenBody{},
-	}, nil
-}
-
 // TestGet_bodyReadFailure_surfacesAsAPIError asserts that a network read
 // failure on the success body is wrapped in *api.Error rather than
-// silently flowing into json.Unmarshal as if the body were complete.
+// silently flowing into json.Unmarshal as if the body were complete, and
+// exits 50: the answer arrived, then the network failed.
 func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
-	hc := &http.Client{Transport: &brokenBodyRT{t: t}}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet {
+			t.Errorf("unexpected method %s", req.Method)
+		}
+		resp := testkit.Response(http.StatusOK, "")
+		resp.Body = brokenBody{}
+		return resp, nil
+	})}
 
 	_, _, err := countryavailability.Get(context.Background(), hc, "com.example.app", "edit-1", "production")
 	if err == nil {
@@ -171,5 +138,8 @@ func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
 	}
 	if !strings.Contains(apiErr.Message, "read response") {
 		t.Errorf("api.Error.Message = %q, want it to mention 'read response'", apiErr.Message)
+	}
+	if code := exitCodeOf(t, err); code != 50 {
+		t.Errorf("ExitCode() = %d, want 50 (a body cut mid-read is a network failure)", code)
 	}
 }

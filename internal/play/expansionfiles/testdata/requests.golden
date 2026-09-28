@@ -1,0 +1,11 @@
+PUT https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/apks/42/expansionFiles/patch
+Accept-Encoding: gzip
+Content-Length: 23
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+
+{"referencesVersion":7}
+
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/apks/42/expansionFiles/main
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1

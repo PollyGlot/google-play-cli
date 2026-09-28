@@ -21,15 +21,17 @@ type deadlineProbe struct {
 	budget time.Duration // remaining deadline seen by the DELETE, 0 if none
 }
 
-func (p *deadlineProbe) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Method == http.MethodDelete {
-		if dl, ok := req.Context().Deadline(); ok {
-			p.mu.Lock()
-			p.budget = time.Until(dl)
-			p.mu.Unlock()
+func (p *deadlineProbe) client() *http.Client {
+	return &http.Client{Transport: testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method == http.MethodDelete {
+			if dl, ok := req.Context().Deadline(); ok {
+				p.mu.Lock()
+				p.budget = time.Until(dl)
+				p.mu.Unlock()
+			}
 		}
-	}
-	return p.fake.RoundTrip(req)
+		return p.fake.RoundTrip(req)
+	})}
 }
 
 func newDeadlineProbe() *deadlineProbe {
@@ -61,7 +63,7 @@ func deletes(f *testkit.Fake) int {
 // interrupted bound that fits the CI kill margin, never the 10s one.
 func TestWithEdit_canceledCtx_discardsWithinInterruptBound(t *testing.T) {
 	probe := newDeadlineProbe()
-	hc := &http.Client{Transport: probe}
+	hc := probe.client()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -89,7 +91,7 @@ func TestWithEdit_canceledCtx_discardsWithinInterruptBound(t *testing.T) {
 // --retry room to replay a 5xx on the DELETE.
 func TestWithEdit_failure_discardsWithRegularBound(t *testing.T) {
 	probe := newDeadlineProbe()
-	hc := &http.Client{Transport: probe}
+	hc := probe.client()
 
 	err := edits.WithEdit(context.Background(), hc, "com.example.app", edits.Options{}, func(string) error {
 		return errors.New("boom")
@@ -108,7 +110,7 @@ func TestWithEdit_failure_discardsWithRegularBound(t *testing.T) {
 // The read-only path (tracks list, releases list, ...) gets the same treatment.
 func TestWithReadOnlyEdit_canceledCtx_discardsWithinInterruptBound(t *testing.T) {
 	probe := newDeadlineProbe()
-	hc := &http.Client{Transport: probe}
+	hc := probe.client()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

@@ -1,0 +1,27 @@
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/listings/en-US/phoneScreenshots
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+POST https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/e1/listings/en-US/icon?uploadType=media
+Accept-Encoding: gzip
+Content-Length: 76
+Content-Type: image/png
+User-Agent: Go-http-client/1.1
+
+<76 bytes, sha256 9898d196162ba363fffa18c747c352500ab299c0020780fae07bca3a6d126ec2>
+
+POST https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/e1/listings/en-US/featureGraphic?uploadType=media
+Accept-Encoding: gzip
+Content-Length: 376
+Content-Type: image/jpeg
+User-Agent: Go-http-client/1.1
+
+<376 bytes, sha256 bc8d7bd558121078ce6621214f7e7c0fe436b1d4a2a77e51ff7c56f15fa9a70f>
+
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/listings/en-US/phoneScreenshots/img-7
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1
+
+DELETE https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/listings/en-US/phoneScreenshots
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1

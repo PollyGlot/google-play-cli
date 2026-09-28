@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,77 +17,76 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// promoteRT routes calls to the androidpublisher endpoints involved in a
+// promoteAPI configures the androidpublisher endpoints involved in a
 // promote: edits.insert, tracks.get (source), tracks.update (dest),
-// edits.commit, and the cleanup edits.delete. Each endpoint has a
-// default happy-path handler; tests override any specific handler to
-// inject a failure or to assert on the request body.
-type promoteRT struct {
-	t                  *testing.T
+// edits.commit, and the cleanup edits.delete. Each endpoint has a default
+// happy-path response; tests override any specific handler to inject a
+// failure or to fail on a call that must not happen.
+type promoteAPI struct {
 	editID             string
 	sourceTrackGetResp string // body returned for GET /tracks/<from>
 	trackUpdateRawResp string // body returned for PUT /tracks/<to>
 	defaultLanguage    string // body returned for GET /details (empty → en-US)
 
-	insertHandler  func(req *http.Request) (*http.Response, error)
-	getHandler     func(req *http.Request) (*http.Response, error)
-	detailsHandler func(req *http.Request) (*http.Response, error)
-	updateHandler  func(req *http.Request) (*http.Response, error)
-	commitHandler  func(req *http.Request) (*http.Response, error)
-	deleteHandler  func(req *http.Request) (*http.Response, error)
-
-	calls          []string
-	trackUpdateReq []byte
+	insertHandler  handler
+	getHandler     handler
+	detailsHandler handler
+	updateHandler  handler
+	commitHandler  handler
+	deleteHandler  handler
 }
 
-func (p *promoteRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	p.calls = append(p.calls, req.Method+" "+req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		if p.insertHandler != nil {
-			return p.insertHandler(req)
-		}
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, p.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		if p.deleteHandler != nil {
-			return p.deleteHandler(req)
-		}
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/details"):
-		if p.detailsHandler != nil {
-			return p.detailsHandler(req)
-		}
-		lang := p.defaultLanguage
-		if lang == "" {
-			lang = "en-US"
-		}
-		return jsonResp(200, fmt.Sprintf(`{"defaultLanguage":%q,"contactEmail":"x@example.com"}`, lang)), nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/tracks/"):
-		if p.getHandler != nil {
-			return p.getHandler(req)
-		}
-		return jsonResp(200, p.sourceTrackGetResp), nil
-	case req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/tracks/"):
-		if p.updateHandler != nil {
-			return p.updateHandler(req)
-		}
-		body, _ := io.ReadAll(req.Body)
-		p.trackUpdateReq = body
-		resp := p.trackUpdateRawResp
-		if resp == "" {
-			resp = `{}`
-		}
-		return jsonResp(200, resp), nil
-	case strings.HasSuffix(req.URL.Path, ":commit"):
-		if p.commitHandler != nil {
-			return p.commitHandler(req)
-		}
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, p.editID)), nil
+// newPromoteFake returns the Fake serving a and recording every call.
+func newPromoteFake(a promoteAPI) *testkit.Fake {
+	override := func(h handler, c testkit.Call) (int, string, bool) {
+		status, body := h(c)
+		return status, body, true
 	}
-	p.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			if a.insertHandler != nil {
+				return override(a.insertHandler, c)
+			}
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			if a.deleteHandler != nil {
+				return override(a.deleteHandler, c)
+			}
+			return http.StatusNoContent, "", true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/details"):
+			if a.detailsHandler != nil {
+				return override(a.detailsHandler, c)
+			}
+			lang := a.defaultLanguage
+			if lang == "" {
+				lang = "en-US"
+			}
+			return http.StatusOK, fmt.Sprintf(`{"defaultLanguage":%q,"contactEmail":"x@example.com"}`, lang), true
+		case c.Method == http.MethodGet && strings.Contains(c.Path, "/tracks/"):
+			if a.getHandler != nil {
+				return override(a.getHandler, c)
+			}
+			return http.StatusOK, a.sourceTrackGetResp, true
+		case c.Method == http.MethodPut && strings.Contains(c.Path, "/tracks/"):
+			if a.updateHandler != nil {
+				return override(a.updateHandler, c)
+			}
+			if a.trackUpdateRawResp == "" {
+				return http.StatusOK, `{}`, true
+			}
+			return http.StatusOK, a.trackUpdateRawResp, true
+		case strings.HasSuffix(c.Path, ":commit"):
+			if a.commitHandler != nil {
+				return override(a.commitHandler, c)
+			}
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"0"}`, a.editID), true
+		}
+		return 0, "", false
+	})
 }
 
 // TestPromote_internalToBeta_happyPath_copiesVersionCode is the tracer
@@ -99,12 +97,11 @@ func (p *promoteRT) RoundTrip(req *http.Request) (*http.Response, error) {
 // the same versionCode as the source plus status=completed,
 // userFraction=1.0 (safe-default for non-production targets).
 func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote",
 		sourceTrackGetResp: `{"track":"internal","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
 		trackUpdateRawResp: `{"track":"beta","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -126,17 +123,18 @@ func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-promote/tracks/beta",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-promote:commit",
 	}
-	if len(rt.calls) != len(wantPaths) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantPaths))
+	calls := apiCalls(rt)
+	if len(calls) != len(wantPaths) {
+		t.Fatalf("got %d calls (%v), want %d", len(calls), calls, len(wantPaths))
 	}
 	for i, want := range wantPaths {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, calls[i], want)
 		}
 	}
 
 	// Track update payload carries versionCode 142, status=completed, userFraction=1.0.
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"versionCodes":["142"]`) {
 		t.Errorf("tracks.update body = %s, want versionCodes=[\"142\"]", body)
 	}
@@ -165,12 +163,11 @@ func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 // release (no userFraction field). The source release's completed
 // status does NOT leak through.
 func TestPromote_internalToProduction_safeDefault_sendsDraftStatus(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-prod",
 		sourceTrackGetResp: `{"track":"internal","releases":[{"name":"200","status":"completed","versionCodes":["200"],"userFraction":1.0}]}`,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"200","status":"draft","versionCodes":["200"]}]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -183,7 +180,7 @@ func TestPromote_internalToProduction_safeDefault_sendsDraftStatus(t *testing.T)
 		t.Fatalf("Promote: %v", err)
 	}
 
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"status":"draft"`) {
 		t.Errorf("production safe-default: body = %s, want status=draft", body)
 	}
@@ -204,12 +201,11 @@ func TestPromote_internalToProduction_safeDefault_sendsDraftStatus(t *testing.T)
 // ADR-0002 safe-default for that destination. Production publish that
 // reaches real users requires Confirm=true (mirrors upload).
 func TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-staged",
 		sourceTrackGetResp: `{"track":"beta","releases":[{"name":"301","status":"completed","versionCodes":["301"],"userFraction":1.0}]}`,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"301","status":"inProgress","versionCodes":["301"],"userFraction":0.05}]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -223,7 +219,7 @@ func TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction(t *test
 	if err != nil {
 		t.Fatalf("Promote: %v", err)
 	}
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"status":"inProgress"`) {
 		t.Errorf("body = %s, want status=inProgress", body)
 	}
@@ -242,19 +238,18 @@ func TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction(t *test
 // an *AmbiguousReleaseError (ExitCode=60) listing the candidate
 // versionCodes, and MUST NOT write to the destination.
 func TestPromote_ambiguousSource_noDisambiguator_returnsExit60Error(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-ambiguous",
 		// Two coexisting releases: halted at fraction 0.10 and inProgress at 0.50.
 		sourceTrackGetResp: `{"track":"production","releases":[` +
 			`{"name":"500","status":"halted","versionCodes":["500"],"userFraction":0.10},` +
 			`{"name":"501","status":"inProgress","versionCodes":["501"],"userFraction":0.50}` +
 			`]}`,
-		updateHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("tracks.update was called despite ambiguous source: %s", req.URL.Path)
-			return jsonResp(500, ""), nil
+		updateHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("tracks.update was called despite ambiguous source: %s", c.Path)
+			return 500, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -282,9 +277,9 @@ func TestPromote_ambiguousSource_noDisambiguator_returnsExit60Error(t *testing.T
 
 	// The error path must run BEFORE any tracks.update on the
 	// destination. (No PUT in calls.)
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "PUT ") {
-			t.Errorf("destination tracks.update should not be called on ambiguous source; calls = %v", rt.calls)
+			t.Errorf("destination tracks.update should not be called on ambiguous source; calls = %v", apiCalls(rt))
 		}
 	}
 }
@@ -293,15 +288,14 @@ func TestPromote_ambiguousSource_noDisambiguator_returnsExit60Error(t *testing.T
 // --version-code picks the matching release out of multiple
 // coexisting ones, and that the non-matching ones are ignored.
 func TestPromote_ambiguousSource_versionCodeDisambiguates(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-disambig",
 		sourceTrackGetResp: `{"track":"production","releases":[` +
 			`{"name":"500","status":"halted","versionCodes":["500"],"userFraction":0.10},` +
 			`{"name":"501","status":"inProgress","versionCodes":["501"],"userFraction":0.50}` +
 			`]}`,
 		trackUpdateRawResp: `{"track":"beta","releases":[{"name":"501","status":"completed","versionCodes":["501"],"userFraction":1.0}]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -316,7 +310,7 @@ func TestPromote_ambiguousSource_versionCodeDisambiguates(t *testing.T) {
 	if result.VersionCode != 501 {
 		t.Errorf("VersionCode = %d, want 501", result.VersionCode)
 	}
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"versionCodes":["501"]`) {
 		t.Errorf("body = %s, want versionCodes=[\"501\"] (the picked release)", body)
 	}
@@ -329,15 +323,14 @@ func TestPromote_ambiguousSource_versionCodeDisambiguates(t *testing.T) {
 // same flow via --release-name (an explicit Name match on the source
 // Release).
 func TestPromote_ambiguousSource_releaseNameDisambiguates(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-disambig-name",
 		sourceTrackGetResp: `{"track":"production","releases":[` +
 			`{"name":"v2.0-rc1","status":"halted","versionCodes":["500"],"userFraction":0.10},` +
 			`{"name":"v2.0-rc2","status":"inProgress","versionCodes":["501"],"userFraction":0.50}` +
 			`]}`,
 		trackUpdateRawResp: `{"track":"beta","releases":[]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -359,15 +352,14 @@ func TestPromote_ambiguousSource_releaseNameDisambiguates(t *testing.T) {
 // source track, Promote refuses with an error carrying ExitCode=60
 // (state conflict) rather than silently falling back to "latest".
 func TestPromote_versionCodeNotFound_returnsExit60Error(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-not-found",
 		sourceTrackGetResp: `{"track":"production","releases":[{"name":"500","status":"completed","versionCodes":["500"],"userFraction":1.0}]}`,
-		updateHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("tracks.update was called despite missing --version-code match: %s", req.URL.Path)
-			return jsonResp(500, ""), nil
+		updateHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("tracks.update was called despite missing --version-code match: %s", c.Path)
+			return 500, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -395,14 +387,13 @@ func TestPromote_versionCodeNotFound_returnsExit60Error(t *testing.T) {
 // rather than the unhelpful default "pass --release-name to pick
 // one", which they already did.
 func TestPromote_ambiguousAfterReleaseName_hintSaysFilterAlreadyApplied(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-ambig-after-filter",
 		sourceTrackGetResp: `{"track":"production","releases":[` +
 			`{"name":"v2.0","status":"halted","versionCodes":["500"],"userFraction":0.10},` +
 			`{"name":"v2.0","status":"inProgress","versionCodes":["501"],"userFraction":0.50}` +
 			`]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -436,11 +427,10 @@ func TestPromote_ambiguousAfterReleaseName_hintSaysFilterAlreadyApplied(t *testi
 // constraint, misses that --release-name also constrained the match,
 // and burns time debugging the wrong filter.
 func TestPromote_noMatchingRelease_listsBothCriteria(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-both-filters",
 		sourceTrackGetResp: `{"track":"production","releases":[{"name":"v1.9-hotfix","status":"completed","versionCodes":["142"],"userFraction":1.0}]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -472,8 +462,7 @@ func TestPromote_noMatchingRelease_listsBothCriteria(t *testing.T) {
 // destination (the AC5 default behavior from issue #45). No call to
 // edits.details.get: the source already carries locale-keyed text.
 func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-notes-carry",
 		// Source release carries 2 locales of notes.
 		sourceTrackGetResp: `{"track":"internal","releases":[{` +
@@ -483,7 +472,7 @@ func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 			`{"language":"fr-FR","text":"Notes en français"}` +
 			`]}]}`,
 		trackUpdateRawResp: `{"track":"beta","releases":[]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -496,7 +485,7 @@ func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 		t.Fatalf("Promote: %v", err)
 	}
 
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	for _, want := range []string{
 		`"language":"en-US"`,
 		`"language":"fr-FR"`,
@@ -510,9 +499,9 @@ func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 
 	// No edits.details.get round-trip: the source already gave us
 	// locale-keyed notes, no DefaultLanguage resolution needed.
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "GET ") && strings.HasSuffix(c, "/details") {
-			t.Errorf("edits.details.get called despite verbatim carry-over: %v", rt.calls)
+			t.Errorf("edits.details.get called despite verbatim carry-over: %v", apiCalls(rt))
 		}
 	}
 
@@ -526,12 +515,11 @@ func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 // degenerate case: source release has no releaseNotes, dest also
 // has none. No spurious empty array, no details.get call.
 func TestPromote_releaseNotesCarryOver_noSourceNotes(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-no-notes",
 		sourceTrackGetResp: `{"track":"internal","releases":[{"name":"700","status":"completed","versionCodes":["700"],"userFraction":1.0}]}`,
 		trackUpdateRawResp: `{"track":"beta","releases":[]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -543,13 +531,13 @@ func TestPromote_releaseNotesCarryOver_noSourceNotes(t *testing.T) {
 		t.Fatalf("Promote: %v", err)
 	}
 
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if strings.Contains(body, `"releaseNotes"`) {
 		t.Errorf("body = %s, should NOT include empty releaseNotes when source has none", body)
 	}
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "GET ") && strings.HasSuffix(c, "/details") {
-			t.Errorf("edits.details.get called despite no notes: %v", rt.calls)
+			t.Errorf("edits.details.get called despite no notes: %v", apiCalls(rt))
 		}
 	}
 }
@@ -559,15 +547,14 @@ func TestPromote_releaseNotesCarryOver_noSourceNotes(t *testing.T) {
 // text against the app's DefaultLanguage (requires an edits.details.get
 // round-trip). Mirrors upload's --release-notes flow.
 func TestPromote_releaseNotesFlag_overridesCarryOver(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-notes-override",
 		sourceTrackGetResp: `{"track":"internal","releases":[{` +
 			`"name":"800","status":"completed","versionCodes":["800"],"userFraction":1.0,` +
 			`"releaseNotes":[{"language":"en-US","text":"OLD source notes"}]` +
 			`}]}`,
 		trackUpdateRawResp: `{"track":"beta","releases":[]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -580,7 +567,7 @@ func TestPromote_releaseNotesFlag_overridesCarryOver(t *testing.T) {
 		t.Fatalf("Promote: %v", err)
 	}
 
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, "Fresh notes for the promotion") {
 		t.Errorf("body = %s, want the --release-notes text", body)
 	}
@@ -594,14 +581,14 @@ func TestPromote_releaseNotesFlag_overridesCarryOver(t *testing.T) {
 	// details.get must be called to resolve DefaultLanguage for the
 	// single-text --release-notes path.
 	sawDetails := false
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "GET ") && strings.HasSuffix(c, "/details") {
 			sawDetails = true
 			break
 		}
 	}
 	if !sawDetails {
-		t.Errorf("--release-notes set but no details.get call; calls = %v", rt.calls)
+		t.Errorf("--release-notes set but no details.get call; calls = %v", apiCalls(rt))
 	}
 	if result.DefaultLanguage != "en-US" {
 		t.Errorf("result.DefaultLanguage = %q, want en-US", result.DefaultLanguage)
@@ -621,18 +608,17 @@ func TestPromote_releaseNotesDir_emptyOrTypod_refusesRatherThanDropSource(t *tes
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-empty-override",
 		sourceTrackGetResp: `{"track":"internal","releases":[{` +
 			`"name":"800","status":"completed","versionCodes":["800"],"userFraction":1.0,` +
 			`"releaseNotes":[{"language":"en-US","text":"source notes"}]` +
 			`}]}`,
-		updateHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("tracks.update was called despite empty override dropping source notes: %s", req.URL.Path)
-			return jsonResp(500, ""), nil
+		updateHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("tracks.update was called despite empty override dropping source notes: %s", c.Path)
+			return 500, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -669,8 +655,7 @@ func TestPromote_releaseNotesDir_partialOverride_refusesRatherThanDropOtherLocal
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-partial-override",
 		sourceTrackGetResp: `{"track":"internal","releases":[{` +
 			`"name":"801","status":"completed","versionCodes":["801"],"userFraction":1.0,` +
@@ -679,11 +664,11 @@ func TestPromote_releaseNotesDir_partialOverride_refusesRatherThanDropOtherLocal
 			`{"language":"de-DE","text":"German notes"},` +
 			`{"language":"fr-FR","text":"old French notes"}` +
 			`]}]}`,
-		updateHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("tracks.update was called despite partial override dropping source locales: %s", req.URL.Path)
-			return jsonResp(500, ""), nil
+		updateHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("tracks.update was called despite partial override dropping source locales: %s", c.Path)
+			return 500, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -712,15 +697,14 @@ func TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "edit-full-override",
 		sourceTrackGetResp: `{"track":"internal","releases":[{` +
 			`"name":"802","status":"completed","versionCodes":["802"],"userFraction":1.0,` +
 			`"releaseNotes":[{"language":"en-US","text":"OLD"}]` +
 			`}]}`,
 		trackUpdateRawResp: `{"track":"beta","releases":[]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -732,7 +716,7 @@ func TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Promote(override covers all source locales): %v", err)
 	}
-	body := string(rt.trackUpdateReq)
+	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, "Fresh English notes") {
 		t.Errorf("body = %s, want the override text", body)
 	}
@@ -744,14 +728,13 @@ func TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds(t *testing.T) {
 // before any HTTP. Mirrors upload's same guard so users learn the rule
 // once.
 func TestPromote_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "should-not-open",
-		insertHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("insert was called despite missing --confirm: %s", req.URL.Path)
-			return jsonResp(500, ""), nil
+		insertHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("insert was called despite missing --confirm: %s", c.Path)
+			return 500, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -775,8 +758,8 @@ func TestPromote_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 	if !errors.As(err, &safety) || safety.Flag != "confirm" {
 		t.Errorf("err = %v (%T), want *exit.SafetyFlagError naming \"confirm\"", err, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before --confirm guard, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before --confirm guard, saw: %v", apiCalls(rt))
 	}
 }
 
@@ -784,12 +767,11 @@ func TestPromote_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 // a draft promote to production (the safe-default path) does NOT need
 // --confirm, since draft does not affect real users.
 func TestPromote_productionDraft_withoutConfirm_works(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-prod-draft",
 		sourceTrackGetResp: `{"track":"beta","releases":[{"name":"900","status":"completed","versionCodes":["900"],"userFraction":1.0}]}`,
 		trackUpdateRawResp: `{"track":"production","releases":[{"name":"900","status":"draft","versionCodes":["900"]}]}`,
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -812,14 +794,13 @@ func TestPromote_productionDraft_withoutConfirm_works(t *testing.T) {
 // before the error propagates (inherited from edits.WithEdit). A
 // leaked Edit blocks the user's next publish for up to 24h.
 func TestPromote_trackUpdateFail_triggersEditDelete(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-fail",
 		sourceTrackGetResp: `{"track":"internal","releases":[{"name":"950","status":"completed","versionCodes":["950"],"userFraction":1.0}]}`,
-		updateHandler: func(req *http.Request) (*http.Response, error) {
-			return jsonResp(503, `{"error":{"code":503,"message":"service unavailable"}}`), nil
+		updateHandler: func(c testkit.Call) (int, string) {
+			return 503, `{"error":{"code":503,"message":"service unavailable"}}`
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -832,14 +813,14 @@ func TestPromote_trackUpdateFail_triggersEditDelete(t *testing.T) {
 	}
 
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-promote-fail") {
 			sawDelete = true
 			break
 		}
 	}
 	if !sawDelete {
-		t.Errorf("auto-discard not triggered after track update failure; calls = %v", rt.calls)
+		t.Errorf("auto-discard not triggered after track update failure; calls = %v", apiCalls(rt))
 	}
 }
 
@@ -887,14 +868,13 @@ func TestPromote_validateOpts_libraryCallers(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &promoteRT{
-				t:      t,
+			rt := newPromoteFake(promoteAPI{
 				editID: "should-not-open",
-				insertHandler: func(req *http.Request) (*http.Response, error) {
-					t.Errorf("insert was called despite invalid opts: %s", req.URL.Path)
-					return jsonResp(500, ""), nil
+				insertHandler: func(c testkit.Call) (int, string) {
+					t.Errorf("insert was called despite invalid opts: %s", c.Path)
+					return 500, ""
 				},
-			}
+			})
 			hc := &http.Client{Transport: rt}
 
 			_, err := orchestrator.Promote(context.Background(), hc, tc.opts)
@@ -908,8 +888,8 @@ func TestPromote_validateOpts_libraryCallers(t *testing.T) {
 			if coder.ExitCode() != 2 {
 				t.Errorf("ExitCode() = %d, want 2 (InvalidOptsError)", coder.ExitCode())
 			}
-			if len(rt.calls) != 0 {
-				t.Errorf("expected zero HTTP calls before validation error, saw: %v", rt.calls)
+			if touched(rt) {
+				t.Errorf("expected zero HTTP calls before validation error, saw: %v", apiCalls(rt))
 			}
 		})
 	}
@@ -922,14 +902,13 @@ func TestPromote_validateOpts_libraryCallers(t *testing.T) {
 // honors it BEFORE the confirm guard so operators can preview a
 // production publish without committing to --confirm.
 func TestPromote_dryRun_makesNoHTTPCalls(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "should-not-open",
-		insertHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("HTTP call in dry-run mode: %s", req.URL.Path)
-			return jsonResp(500, ""), nil
+		insertHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("HTTP call in dry-run mode: %s", c.Path)
+			return 500, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -941,8 +920,8 @@ func TestPromote_dryRun_makesNoHTTPCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Promote(dry-run): %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run made HTTP calls: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("dry-run made HTTP calls: %v", apiCalls(rt))
 	}
 	if result.Status != "completed" {
 		t.Errorf("result.Status = %q, want completed (non-production safe-default preview)", result.Status)
@@ -959,7 +938,7 @@ func TestPromote_dryRun_makesNoHTTPCalls(t *testing.T) {
 // the ADR-0002 safe-default: production target with no status flag
 // previews as draft, with no HTTP and without needing --confirm.
 func TestPromote_dryRun_productionSafeDefault(t *testing.T) {
-	rt := &promoteRT{t: t}
+	rt := newPromoteFake(promoteAPI{})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -982,7 +961,7 @@ func TestPromote_dryRun_productionSafeDefault(t *testing.T) {
 // --confirm. The live path still requires --confirm for the same
 // inputs (covered by other tests).
 func TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate(t *testing.T) {
-	rt := &promoteRT{t: t}
+	rt := newPromoteFake(promoteAPI{})
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -1009,7 +988,7 @@ func TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate(t *testi
 // so a caller previewing with bad inputs still gets the right error
 // instead of a misleading "looks fine, would have shipped" preview.
 func TestPromote_dryRun_invalidOptsStillCaught(t *testing.T) {
-	rt := &promoteRT{t: t}
+	rt := newPromoteFake(promoteAPI{})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -1038,14 +1017,13 @@ func TestPromote_dryRun_invalidOptsStillCaught(t *testing.T) {
 // new Status constant added to the enum but not wired in statusPayload
 // would silently break.
 func TestPromote_unknownStatusValue_returnsExit2Error(t *testing.T) {
-	rt := &promoteRT{
-		t:      t,
+	rt := newPromoteFake(promoteAPI{
 		editID: "should-not-open",
-		insertHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("insert was called despite invalid Status: %s", req.URL.Path)
-			return jsonResp(500, ""), nil
+		insertHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("insert was called despite invalid Status: %s", c.Path)
+			return 500, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -1064,8 +1042,8 @@ func TestPromote_unknownStatusValue_returnsExit2Error(t *testing.T) {
 	if coder.ExitCode() != 2 {
 		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before Status validation, saw: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before Status validation, saw: %v", apiCalls(rt))
 	}
 }
 
@@ -1077,15 +1055,14 @@ func TestPromote_unknownStatusValue_returnsExit2Error(t *testing.T) {
 // guard, the index-out-of-range panic also unwinds past WithEdit's
 // auto-discard path and leaks the open Edit for ~24h.
 func TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-no-codes",
 		sourceTrackGetResp: `{"track":"internal","releases":[{"name":"v2.0-draft","status":"draft"}]}`,
-		updateHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("tracks.update was called despite empty source versionCodes: %s", req.URL.Path)
-			return jsonResp(500, ""), nil
+		updateHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("tracks.update was called despite empty source versionCodes: %s", c.Path)
+			return 500, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
@@ -1107,14 +1084,14 @@ func TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error(t *testing.T)
 	// Auto-discard must have run (no panic = WithEdit handleFailure
 	// ran the cleanup branch).
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-no-codes") {
 			sawDelete = true
 			break
 		}
 	}
 	if !sawDelete {
-		t.Errorf("auto-discard not triggered after empty-versionCodes error; calls = %v", rt.calls)
+		t.Errorf("auto-discard not triggered after empty-versionCodes error; calls = %v", apiCalls(rt))
 	}
 }
 
@@ -1124,18 +1101,17 @@ func TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error(t *testing.T)
 // error must be a *edits.DanglingEditError carrying the Edit ID so the
 // operator can recover.
 func TestPromote_trackUpdateFail_keepOnFailure_doesNotDelete(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-keep",
 		sourceTrackGetResp: `{"track":"internal","releases":[{"name":"951","status":"completed","versionCodes":["951"],"userFraction":1.0}]}`,
-		updateHandler: func(req *http.Request) (*http.Response, error) {
-			return jsonResp(503, `{"error":{"code":503,"message":"service unavailable"}}`), nil
+		updateHandler: func(c testkit.Call) (int, string) {
+			return 503, `{"error":{"code":503,"message":"service unavailable"}}`
 		},
-		deleteHandler: func(req *http.Request) (*http.Response, error) {
-			t.Errorf("DELETE was called despite KeepEditOnFailure=true: %s", req.URL.Path)
-			return jsonResp(204, ""), nil
+		deleteHandler: func(c testkit.Call) (int, string) {
+			t.Errorf("DELETE was called despite KeepEditOnFailure=true: %s", c.Path)
+			return 204, ""
 		},
-	}
+	})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{

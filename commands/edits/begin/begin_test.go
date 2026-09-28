@@ -3,16 +3,11 @@ package begin_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
-	"io"
 	"io/fs"
 	"net/http"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -28,33 +23,36 @@ import (
 
 const pkg = "com.example.app"
 
-// beginRT serves the OAuth token exchange, the edits.insert POST, and the
-// edits.delete DELETE (the rollback path when the pin write fails).
-type beginRT struct {
-	t      *testing.T
-	editID string
-
-	mu          sync.Mutex
-	insertCalls int
-	deleteCalls int
+// newBeginFake serves the edits.insert POST (answering editID) and the
+// edits.delete DELETE (the rollback path when the pin write fails); any other
+// request fails the round trip.
+func newBeginFake(editID string) *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, `{"id":"` + editID + `","expiryTimeSeconds":"1700000000"}`, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return 204, "", true
+		}
+		return 0, "", false
+	})
 }
 
-func (r *beginRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+// countCalls returns the edits.insert and edits.delete calls, and fails the
+// test on any other request (even where Run's error would hide it).
+func countCalls(t *testing.T, f *testkit.Fake) (inserts, deletes int) {
+	t.Helper()
+	for _, c := range f.Calls() {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			inserts++
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			deletes++
+		default:
+			t.Errorf("unexpected request: %s %s", c.Method, c.Path)
+		}
 	}
-	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits") {
-		r.insertCalls++
-		return jsonResp(200, `{"id":"`+r.editID+`","expiryTimeSeconds":"1700000000"}`), nil
-	}
-	if req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/") {
-		r.deleteCalls++
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
+	return inserts, deletes
 }
 
 // failWriteFS is an OSFS whose WriteFile always fails, to drive begin's
@@ -65,27 +63,11 @@ func (failWriteFS) WriteFile(string, []byte, fs.FileMode) error {
 	return errors.New("disk full")
 }
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
-
-func signedSAJSON(t *testing.T) []byte {
-	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, _ := json.Marshal(map[string]any{
-		"type": "service_account", "project_id": "p", "private_key": string(pemBytes),
-		"client_email": "ci@p.iam.gserviceaccount.com", "token_uri": "https://oauth2.googleapis.com/token",
-	})
-	return raw
-}
-
 // newRC wires a RunContext routed through rt, pinned to a project whose .gplay/
 // is dir, and returns it plus the resolved .gplay/ directory.
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, string) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -110,15 +92,15 @@ func exitOf(t *testing.T, err error) int {
 }
 
 func TestRun_opensEditAndWritesPin(t *testing.T) {
-	rt := &beginRT{t: t, editID: "edit-42"}
-	rc, gplayDir := newRC(t, rt)
+	fake := newBeginFake("edit-42")
+	rc, gplayDir := newRC(t, fake)
 
 	r, err := begincmd.Run(rc, begincmd.Input{Package: pkg})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.insertCalls != 1 {
-		t.Errorf("insertCalls = %d, want 1", rt.insertCalls)
+	if inserts, _ := countCalls(t, fake); inserts != 1 {
+		t.Errorf("insertCalls = %d, want 1", inserts)
 	}
 	pin, ok, err := editpin.Lookup(config.OSFS{}, gplayDir, pkg)
 	if err != nil || !ok {
@@ -138,8 +120,8 @@ func TestRun_opensEditAndWritesPin(t *testing.T) {
 }
 
 func TestRun_alreadyOpen_exit60_noNetwork(t *testing.T) {
-	rt := &beginRT{t: t, editID: "edit-new"}
-	rc, gplayDir := newRC(t, rt)
+	fake := newBeginFake("edit-new")
+	rc, gplayDir := newRC(t, fake)
 	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-already"); err != nil {
 		t.Fatalf("seed pin: %v", err)
 	}
@@ -148,8 +130,8 @@ func TestRun_alreadyOpen_exit60_noNetwork(t *testing.T) {
 	if code := exitOf(t, err); code != 60 {
 		t.Fatalf("exit = %d, want 60 (already open)", code)
 	}
-	if rt.insertCalls != 0 {
-		t.Errorf("a second begin must not open another Edit; insertCalls = %d", rt.insertCalls)
+	if inserts, _ := countCalls(t, fake); inserts != 0 {
+		t.Errorf("a second begin must not open another Edit; insertCalls = %d", inserts)
 	}
 }
 
@@ -157,19 +139,20 @@ func TestRun_pinWriteFailure_discardsServerEdit(t *testing.T) {
 	// OpenExplicit succeeds, but persisting the pin fails. begin must roll back
 	// by discarding the just-opened server-side Edit so no orphan is left, and
 	// must leave no pin behind.
-	rt := &beginRT{t: t, editID: "edit-orphan"}
-	rc, gplayDir := newRC(t, rt)
+	fake := newBeginFake("edit-orphan")
+	rc, gplayDir := newRC(t, fake)
 	rc.FS = failWriteFS{config.OSFS{}}
 
 	_, err := begincmd.Run(rc, begincmd.Input{Package: pkg})
 	if err == nil {
 		t.Fatal("expected the pin-write failure to surface")
 	}
-	if rt.insertCalls != 1 {
-		t.Errorf("insertCalls = %d, want 1 (the Edit was opened)", rt.insertCalls)
+	inserts, deletes := countCalls(t, fake)
+	if inserts != 1 {
+		t.Errorf("insertCalls = %d, want 1 (the Edit was opened)", inserts)
 	}
-	if rt.deleteCalls != 1 {
-		t.Errorf("deleteCalls = %d, want 1 (the opened Edit must be discarded on pin-write failure)", rt.deleteCalls)
+	if deletes != 1 {
+		t.Errorf("deleteCalls = %d, want 1 (the opened Edit must be discarded on pin-write failure)", deletes)
 	}
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); ok {
 		t.Error("a failed begin must leave no pin behind")
@@ -177,15 +160,15 @@ func TestRun_pinWriteFailure_discardsServerEdit(t *testing.T) {
 }
 
 func TestRun_noProject_exit2(t *testing.T) {
-	rt := &beginRT{t: t, editID: "edit-x"}
-	rc, _ := newRC(t, rt)
+	fake := newBeginFake("edit-x")
+	rc, _ := newRC(t, fake)
 	rc.Resolved = &config.Resolved{Pin: pkg} // no ProjectSharedPath → no .gplay/
 
 	_, err := begincmd.Run(rc, begincmd.Input{Package: pkg})
 	if code := exitOf(t, err); code != 2 {
 		t.Fatalf("exit = %d, want 2 (no project)", code)
 	}
-	if rt.insertCalls != 0 {
-		t.Errorf("no project must fail before the network; insertCalls = %d", rt.insertCalls)
+	if inserts, _ := countCalls(t, fake); inserts != 0 {
+		t.Errorf("no project must fail before the network; insertCalls = %d", inserts)
 	}
 }

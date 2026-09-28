@@ -9,14 +9,10 @@ package imageslist_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -28,87 +24,68 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// imagesRT terminates the OAuth2 /token exchange and routes the read-only
-// images-list sequence: edits.insert, listings.list (locale enumeration),
-// one images.list per (locale, imageType) slot, edits.delete. Per-slot image
+// imagesRT configures the testkit.Fake that routes the read-only images-list
+// sequence: edits.insert, listings.list (locale enumeration), one
+// images.list per (locale, imageType) slot, edits.delete. Per-slot image
 // payloads come from `slots` keyed by "<locale>/<type>"; an unlisted slot is
 // empty. Any :commit, upload, or mutating call fails the test.
 type imagesRT struct {
-	t            *testing.T
 	editID       string
 	listingsResp string
 	slots        map[string]string // "<locale>/<type>" -> images.list body
-
-	mu        sync.Mutex
-	calls     []string
-	slotGETs  int
-	tokenHits int
 }
 
-func (r *imagesRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q}`, r.editID)), nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/listings"):
-		return jsonResp(200, r.listingsResp), nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/listings/"):
-		r.slotGETs++
-		// Path tail is .../listings/<locale>/<imageType>
-		parts := strings.Split(req.URL.Path, "/listings/")
-		key := parts[len(parts)-1]
-		body := r.slots[key]
-		if body == "" {
-			body = `{"images":[]}`
-		}
-		return jsonResp(200, body), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/") && !strings.Contains(req.URL.Path, "/listings"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}
-	r.t.Fatalf("unexpected request (read-only list must not write/commit): %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-func signedSAJSON(t *testing.T) []byte {
+func newFake(t *testing.T, r imagesRT) *testkit.Fake {
 	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
-	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, err := json.Marshal(map[string]any{
-		"type":         "service_account",
-		"project_id":   "test-proj",
-		"private_key":  string(pemBytes),
-		"client_email": "playci@test-proj.iam.gserviceaccount.com",
-		"token_uri":    "https://oauth2.googleapis.com/token",
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, fmt.Sprintf(`{"id":%q}`, r.editID), true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/listings"):
+			return 200, r.listingsResp, true
+		case isSlotGET(c):
+			// Path tail is .../listings/<locale>/<imageType>
+			parts := strings.Split(c.Path, "/listings/")
+			body := r.slots[parts[len(parts)-1]]
+			if body == "" {
+				body = `{"images":[]}`
+			}
+			return 200, body, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/") && !strings.Contains(c.Path, "/listings"):
+			return 204, "", true
+		}
+		t.Errorf("unexpected request (read-only list must not write/commit): %s %s", c.Method, c.Path)
+		return 0, "", false
 	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+}
+
+// isSlotGET reports an images.list read (GET .../listings/<locale>/<type>).
+func isSlotGET(c testkit.Call) bool {
+	return c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/")
+}
+
+func slotGETs(f *testkit.Fake) int {
+	n := 0
+	for _, c := range f.Calls() {
+		if isSlotGET(c) {
+			n++
+		}
 	}
-	return raw
+	return n
+}
+
+// calls lists the recorded API requests as "METHOD path" lines.
+func calls(f *testkit.Fake) []string {
+	var out []string
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
+	}
+	return out
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
@@ -138,22 +115,23 @@ func twoLocales() (string, map[string]string) {
 // per-image sha256 (ADR-0003 pass-through), and never commits.
 func TestRun_enumeratesNineTypesAcrossLocales(t *testing.T) {
 	listingsResp, slots := twoLocales()
-	rt := &imagesRT{t: t, editID: "edit-img", listingsResp: listingsResp, slots: slots}
+	rt := newFake(t, imagesRT{editID: "edit-img", listingsResp: listingsResp, slots: slots})
 	rc := newRC(t, rt)
 
 	r, err := imageslist.Run(rc, imageslist.Input{Package: "com.example.app"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.tokenHits == 0 {
-		t.Errorf("no /token exchange; calls=%v", rt.calls)
+	if rt.TokenExchanges() == 0 {
+		t.Errorf("no /token exchange; calls=%v", calls(rt))
 	}
 	// 9 types × 2 locales = 18 slot reads.
-	if rt.slotGETs != 18 {
-		t.Errorf("slot GETs = %d, want 18 (9 types × 2 locales)", rt.slotGETs)
+	if slotGETs(rt) != 18 {
+		t.Errorf("slot GETs = %d, want 18 (9 types × 2 locales)", slotGETs(rt))
 	}
 	// Last call must be the Edit discard, never a :commit.
-	last := rt.calls[len(rt.calls)-1]
+	all := calls(rt)
+	last := all[len(all)-1]
 	if !strings.HasPrefix(last, "DELETE ") || strings.Contains(last, ":commit") {
 		t.Errorf("last call = %q, want a DELETE discard (read-only)", last)
 	}
@@ -204,7 +182,7 @@ func TestRun_enumeratesNineTypesAcrossLocales(t *testing.T) {
 // non-empty slot with its count and per-image sha256.
 func TestRun_tableShowsCountsAndSha256(t *testing.T) {
 	listingsResp, slots := twoLocales()
-	rt := &imagesRT{t: t, editID: "edit-img", listingsResp: listingsResp, slots: slots}
+	rt := newFake(t, imagesRT{editID: "edit-img", listingsResp: listingsResp, slots: slots})
 	rc := newRC(t, rt)
 
 	r, err := imageslist.Run(rc, imageslist.Input{Package: "com.example.app"})
@@ -229,17 +207,17 @@ func TestRun_tableShowsCountsAndSha256(t *testing.T) {
 // is exactly 2 slot GETs (en-US/icon, fr-FR/icon).
 func TestRun_typeFilter_readsOnlyThatType(t *testing.T) {
 	listingsResp, slots := twoLocales()
-	rt := &imagesRT{t: t, editID: "edit-img", listingsResp: listingsResp, slots: slots}
+	rt := newFake(t, imagesRT{editID: "edit-img", listingsResp: listingsResp, slots: slots})
 	rc := newRC(t, rt)
 
 	if _, err := imageslist.Run(rc, imageslist.Input{Package: "com.example.app", Type: "icon"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.slotGETs != 2 {
-		t.Errorf("slot GETs = %d, want 2 (icon × 2 locales)", rt.slotGETs)
+	if slotGETs(rt) != 2 {
+		t.Errorf("slot GETs = %d, want 2 (icon × 2 locales)", slotGETs(rt))
 	}
 	// No slot read may address any type other than icon.
-	for _, c := range rt.calls {
+	for _, c := range calls(rt) {
 		if strings.Contains(c, "/listings/") && strings.HasSuffix(c, "/listings") {
 			continue // the listings.list enumeration call
 		}
@@ -253,7 +231,7 @@ func TestRun_typeFilter_readsOnlyThatType(t *testing.T) {
 // TestRun_invalidType_exit20_noHTTP asserts an unknown --type value is
 // refused client-side (exit 20) before any HTTP round-trip.
 func TestRun_invalidType_exit20_noHTTP(t *testing.T) {
-	rt := &imagesRT{t: t, editID: "edit-img"}
+	rt := newFake(t, imagesRT{editID: "edit-img"})
 	rc := newRC(t, rt)
 
 	_, err := imageslist.Run(rc, imageslist.Input{Package: "com.example.app", Type: "iconn"})
@@ -261,8 +239,8 @@ func TestRun_invalidType_exit20_noHTTP(t *testing.T) {
 	if !asCoder(err, &coder) || coder.ExitCode() != 20 {
 		t.Fatalf("err = %v, want ExitCode 20", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("expected zero HTTP calls before validation error, saw: %v", rt.calls)
+	if len(rt.Calls()) != 0 {
+		t.Errorf("expected zero HTTP calls before validation error, saw: %v", calls(rt))
 	}
 }
 
@@ -274,7 +252,7 @@ func TestRun_typeFilter_jsonMatchesUnfiltered(t *testing.T) {
 	listingsResp, slots := twoLocales()
 
 	iconSlot := func(in imageslist.Input) map[string]json.RawMessage {
-		rt := &imagesRT{t: t, editID: "edit-img", listingsResp: listingsResp, slots: slots}
+		rt := newFake(t, imagesRT{editID: "edit-img", listingsResp: listingsResp, slots: slots})
 		rc := newRC(t, rt)
 		r, err := imageslist.Run(rc, in)
 		if err != nil {
@@ -324,7 +302,7 @@ func TestRun_typeFilter_jsonMatchesUnfiltered(t *testing.T) {
 
 // TestRun_noPackage_isUsageError asserts the missing-package guard (exit 2).
 func TestRun_noPackage_isUsageError(t *testing.T) {
-	rc := newRC(t, &imagesRT{t: t, editID: "x"})
+	rc := newRC(t, newFake(t, imagesRT{editID: "x"}))
 	_, err := imageslist.Run(rc, imageslist.Input{})
 	if err == nil {
 		t.Fatal("want usage error on no package")

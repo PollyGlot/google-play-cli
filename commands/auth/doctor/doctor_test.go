@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -58,13 +58,6 @@ func TestRun_pureBusiness(t *testing.T) {
 	if len(parsed) != 4 {
 		t.Errorf("len(results) = %d, want 4", len(parsed))
 	}
-}
-
-// roundTripperFunc: canonical CLAUDE.md pattern.
-type roundTripperFunc func(req *http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
 }
 
 // fakeKeyring mirrors the status_test double: tracks no state by default
@@ -199,119 +192,49 @@ func runCmd(t *testing.T, boot kernel.Boot, ctx context.Context, stdout, stderr 
 	return cmd.Execute()
 }
 
-// successRT returns a roundTripperFunc that responds with a healthy
-// OAuth2 token payload so checks 2 and 3 pass and never panic.
-func successRT() roundTripperFunc {
-	return func(req *http.Request) (*http.Response, error) {
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
-	}
+// successRT answers the OAuth2 token exchange with a healthy token so
+// checks 2 and 3 pass. Any other request fails its round trip: the
+// package-less checks must not reach the Play API.
+func successRT() http.RoundTripper {
+	return testkit.NewFake()
 }
 
-// fullStackRT is a RoundTripper that handles the OAuth2 token exchange
-// plus per-package edits.insert and edits.delete in a single function,
-// for command-level integration tests. The per-package responder
-// returns the matching status for a given packageName.
-type fullStackRT struct {
-	t                  *testing.T
-	insertByPackage    map[string]int // status code per package on edits.insert
-	insertBodyOverride map[string]string
-	deleteStatus       int // status code returned for any edits.delete
-	insertCalls        map[string]int
-	deleteCalls        map[string]int
-	mu                 sync.Mutex
-}
-
-func (r *fullStackRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
-	}
+// fullStackFake answers the OAuth2 token exchange plus per-package
+// edits.insert and edits.delete, for command-level integration tests.
+// insertByPackage sets the edits.insert status per package (200 when
+// absent); every edits.delete answers 204.
+func fullStackFake(insertByPackage map[string]int) *testkit.Fake {
 	// /androidpublisher/v3/applications/<pkg>/edits[/<id>]
 	const prefix = "/androidpublisher/v3/applications/"
-	if !strings.HasPrefix(req.URL.Path, prefix) {
-		r.t.Fatalf("fullStackRT: unexpected URL: %s", req.URL.String())
-	}
-	rest := strings.TrimPrefix(req.URL.Path, prefix)
-	// Either "<pkg>/edits" (insert) or "<pkg>/edits/<id>" (delete).
-	parts := strings.SplitN(rest, "/edits", 2)
-	if len(parts) != 2 {
-		r.t.Fatalf("fullStackRT: cannot parse package from URL: %s", req.URL.String())
-	}
-	pkg := parts[0]
-
-	if req.Method == http.MethodPost && parts[1] == "" {
-		if r.insertCalls == nil {
-			r.insertCalls = map[string]int{}
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		if !strings.HasPrefix(c.Path, prefix) {
+			return 0, "", false
 		}
-		r.insertCalls[pkg]++
-		status, ok := r.insertByPackage[pkg]
-		if !ok {
-			status = 200
+		// Either "<pkg>/edits" (insert) or "<pkg>/edits/<id>" (delete).
+		parts := strings.SplitN(strings.TrimPrefix(c.Path, prefix), "/edits", 2)
+		if len(parts) != 2 {
+			return 0, "", false
 		}
-		body := `{"id":"edit-for-` + pkg + `","expiryTimeSeconds":"1700000000"}`
-		if override, ok := r.insertBodyOverride[pkg]; ok {
-			body = override
+		pkg := parts[0]
+		switch {
+		case c.Method == http.MethodPost && parts[1] == "":
+			status, ok := insertByPackage[pkg]
+			if !ok {
+				status = http.StatusOK
+			}
+			if status != http.StatusOK && status != http.StatusCreated {
+				return status, `{"error":{"code":` + strconv.Itoa(status) + `,"message":"upstream said no"}}`, true
+			}
+			return status, `{"id":"edit-for-` + pkg + `","expiryTimeSeconds":"1700000000"}`, true
+		case c.Method == http.MethodDelete:
+			return http.StatusNoContent, "", true
 		}
-		if status != 200 && status != 201 {
-			body = `{"error":{"code":` + httpStatusToString(status) + `,"message":"upstream said no"}}`
-		}
-		return &http.Response{
-			StatusCode: status,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
-	}
-	if req.Method == http.MethodDelete {
-		if r.deleteCalls == nil {
-			r.deleteCalls = map[string]int{}
-		}
-		r.deleteCalls[pkg]++
-		status := r.deleteStatus
-		if status == 0 {
-			status = 204
-		}
-		return &http.Response{
-			StatusCode: status,
-			Body:       io.NopCloser(bytes.NewBufferString("")),
-		}, nil
-	}
-	r.t.Fatalf("fullStackRT: unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
+		return 0, "", false
+	})
 }
 
-func httpStatusToString(code int) string {
-	switch code {
-	case 200:
-		return "200"
-	case 201:
-		return "201"
-	case 400:
-		return "400"
-	case 403:
-		return "403"
-	case 404:
-		return "404"
-	case 500:
-		return "500"
-	case 503:
-		return "503"
-	}
-	return "0"
-}
-
-func ctxWithRT(fn roundTripperFunc) context.Context {
-	return context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fn})
+func ctxWithRT(rt http.RoundTripper) context.Context {
+	return context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
 }
 
 func TestDoctor_happyPath_prints4CheckmarksAndExits0(t *testing.T) {
@@ -565,11 +488,7 @@ func TestDoctor_twoPackages_bothPassing_returns6ResultsAndExit0(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))
 
-	rt := &fullStackRT{
-		t:               t,
-		insertByPackage: map[string]int{"com.example.app1": 200, "com.example.app2": 200},
-	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := ctxWithRT(fullStackFake(map[string]int{"com.example.app1": 200, "com.example.app2": 200}))
 
 	var stdout, stderr bytes.Buffer
 	if err := runCmd(t, boot, ctx, &stdout, &stderr,
@@ -611,11 +530,7 @@ func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))
 
-	rt := &fullStackRT{
-		t:               t,
-		insertByPackage: map[string]int{"com.example.app1": 200, "com.example.app2": 403},
-	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := ctxWithRT(fullStackFake(map[string]int{"com.example.app1": 200, "com.example.app2": 403}))
 
 	var stdout, stderr bytes.Buffer
 	runErr := runCmd(t, boot, ctx, &stdout, &stderr,

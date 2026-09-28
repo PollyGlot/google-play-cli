@@ -6,10 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -21,23 +19,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-type errorsRT struct {
-	mu      sync.Mutex
-	body    string
-	lastURL string
-	method  string
-}
-
-func (r *errorsRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	h := http.Header{"Content-Type": []string{"application/json"}}
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(`{"access_token":"a","token_type":"Bearer","expires_in":3600}`))}, nil
+// lastCall returns the last API call the fake recorded.
+func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	r.lastURL = req.URL.String()
-	r.method = req.Method
-	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(r.body))}, nil
+	return calls[len(calls)-1]
 }
 
 func saJSON(t *testing.T) []byte {
@@ -59,28 +48,28 @@ func saJSON(t *testing.T) []byte {
 	return raw
 }
 
-func newRC(t *testing.T, body string) (*kernel.RunContext, *errorsRT, *bytes.Buffer) {
+func newRC(t *testing.T, body string) (*kernel.RunContext, *testkit.Fake, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(saJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	rt := &errorsRT{body: body}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, body))
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fake})
 	var stderr bytes.Buffer
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &stderr}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa
 	rc.Scope = token.ReportingScope
-	return rc, rt, &stderr
+	return rc, fake, &stderr
 }
 
 func TestRunCounts_queriesErrorCountSet(t *testing.T) {
-	rc, rt, _ := newRC(t, `{"rows":[{"startTime":{"year":2026,"month":6,"day":1},"metrics":[{"metric":"errorReportCount","decimalValue":{"value":"5"}}]}]}`)
+	rc, fake, _ := newRC(t, `{"rows":[{"startTime":{"year":2026,"month":6,"day":1},"metrics":[{"metric":"errorReportCount","decimalValue":{"value":"5"}}]}]}`)
 	if _, err := runCounts(rc, countsInput{Package: "com.example.app"}); err != nil {
 		t.Fatalf("runCounts: %v", err)
 	}
-	if rt.method != http.MethodPost || !strings.HasSuffix(rt.lastURL, "/apps/com.example.app/errorCountMetricSet:query") {
-		t.Errorf("counts call = %s %s", rt.method, rt.lastURL)
+	if last := lastCall(t, fake); last.Method != http.MethodPost || !strings.HasSuffix(last.URL, "/apps/com.example.app/errorCountMetricSet:query") {
+		t.Errorf("counts call = %s %s", last.Method, last.URL)
 	}
 }
 
@@ -113,12 +102,12 @@ func TestRunCounts_byCountry_rejectedFriendly(t *testing.T) {
 // TestRunCounts_byDevice_isAccepted confirms a dimension the errorCount set DOES
 // support (--by device → deviceModel) passes validation and issues the query.
 func TestRunCounts_byDevice_isAccepted(t *testing.T) {
-	rc, rt, _ := newRC(t, `{"rows":[]}`)
+	rc, fake, _ := newRC(t, `{"rows":[]}`)
 	if _, err := runCounts(rc, countsInput{Package: "com.example.app", By: "device"}); err != nil {
 		t.Fatalf("--by device should be accepted for errors counts: %v", err)
 	}
-	if !strings.Contains(rt.lastURL, "errorCountMetricSet:query") {
-		t.Errorf("expected a query call, got %q", rt.lastURL)
+	if last := lastCall(t, fake); !strings.Contains(last.URL, "errorCountMetricSet:query") {
+		t.Errorf("expected a query call, got %q", last.URL)
 	}
 }
 
@@ -132,13 +121,13 @@ func errorsAs(err error, target *interface{ ExitCode() int }) bool {
 
 func TestRunIssues_searchesAndWarnsAboutMappings(t *testing.T) {
 	body := `{"errorIssues":[{"type":"CRASH","cause":"NullPointerException","location":"A.b","errorReportCount":"7","distinctUsers":"5","lastErrorReportTime":"2026-06-15T10:00:00Z"}]}`
-	rc, rt, stderr := newRC(t, body)
+	rc, fake, stderr := newRC(t, body)
 	r, err := runIssues(rc, issuesInput{Package: "com.example.app"})
 	if err != nil {
 		t.Fatalf("runIssues: %v", err)
 	}
-	if rt.method != http.MethodGet || !strings.Contains(rt.lastURL, "/errorIssues:search") {
-		t.Errorf("issues call = %s %s", rt.method, rt.lastURL)
+	if last := lastCall(t, fake); last.Method != http.MethodGet || !strings.Contains(last.URL, "/errorIssues:search") {
+		t.Errorf("issues call = %s %s", last.Method, last.URL)
 	}
 	p := r.(issuesPayload)
 	if len(p.Issues) != 1 || p.Issues[0].Cause != "NullPointerException" {
@@ -161,13 +150,13 @@ func TestRunIssues_emptyWarnsNotZero(t *testing.T) {
 
 func TestRunReports_searchesAndKeepsFrames(t *testing.T) {
 	body := `{"errorReports":[{"type":"CRASH","eventTime":"2026-06-15T09:00:00Z","reportText":"java.lang.NullPointerException\n\tat a.b.c(Unknown Source)","appVersion":{"versionCode":"123"},"osVersion":{"apiLevel":"31"},"deviceModel":{"marketingName":"Pixel 7"}}]}`
-	rc, rt, stderr := newRC(t, body)
+	rc, fake, stderr := newRC(t, body)
 	r, err := runReports(rc, reportsInput{Package: "com.example.app"})
 	if err != nil {
 		t.Fatalf("runReports: %v", err)
 	}
-	if rt.method != http.MethodGet || !strings.Contains(rt.lastURL, "/errorReports:search") {
-		t.Errorf("reports call = %s %s", rt.method, rt.lastURL)
+	if last := lastCall(t, fake); last.Method != http.MethodGet || !strings.Contains(last.URL, "/errorReports:search") {
+		t.Errorf("reports call = %s %s", last.Method, last.URL)
 	}
 	p := r.(reportsPayload)
 	if len(p.Reports) != 1 || p.Reports[0].AppVersion != "123" || p.Reports[0].Device != "Pixel 7" {

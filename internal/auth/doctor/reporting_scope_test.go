@@ -1,14 +1,13 @@
 package doctor_test
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // TestCheckReportingScope_happyPath_observesReportingScope asserts the new
@@ -18,15 +17,7 @@ import (
 // minted for it.
 func TestCheckReportingScope_happyPath_observesReportingScope(t *testing.T) {
 	sa := makeSignedSA(t)
-	rt := roundTripperFunc(func(_ *http.Request) (*http.Response, error) {
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
-	})
-	hc, obs := scopeWired(rt)
+	hc, obs := scopeWired(testkit.NewFake())
 
 	results := doctor.Run(context.Background(), sa, hc, doctor.CheckReportingScope(obs))
 	if len(results) != 1 {
@@ -55,15 +46,7 @@ func TestCheckReportingScope_happyPath_observesReportingScope(t *testing.T) {
 // make the reporting check pass on a stale scope (a false least-privilege OK).
 func TestScopeChain_reportingNotContaminatedByAndroidPublisher(t *testing.T) {
 	sa := makeSignedSA(t)
-	rt := roundTripperFunc(func(_ *http.Request) (*http.Response, error) {
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
-	})
-	hc, obs := scopeWired(rt)
+	hc, obs := scopeWired(testkit.NewFake())
 
 	results := doctor.Run(context.Background(), sa, hc,
 		doctor.CheckScope(obs), doctor.CheckReportingScope(obs))
@@ -91,10 +74,7 @@ func TestScopeChain_reportingNotContaminatedByAndroidPublisher(t *testing.T) {
 // missing observer is a gplay wiring bug, not a credential problem.
 func TestCheckReportingScope_nilObserver_reportsWiringBug(t *testing.T) {
 	sa := makeSignedSA(t)
-	rt := roundTripperFunc(func(_ *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(`{"access_token":"a","expires_in":3600}`))}, nil
-	})
-	results := doctor.Run(context.Background(), sa, &http.Client{Transport: rt}, doctor.CheckReportingScope(nil))
+	results := doctor.Run(context.Background(), sa, &http.Client{Transport: testkit.NewFake()}, doctor.CheckReportingScope(nil))
 	if results[0].Passed {
 		t.Error("nil observer must fail the check")
 	}

@@ -34,8 +34,17 @@
 // replayed. That is the method's declared Idempotent bit in internal/apiregistry,
 // read by the --retry transport (internal/transport) from the request itself,
 // so a module gets it right by construction whether or not it has migrated
-// onto Do yet. Pagination loops and resumable uploads stay with their callers
-// and ResumableUpload respectively.
+// onto Do yet. Resumable uploads go through ResumableUpload.
+//
+// Two siblings cover what Do deliberately refuses:
+//
+//   - Download streams a media payload (a generated APK, a Store image) into
+//     an io.Writer with no size cap, with Do's error mapping. Call.URL lets it
+//     fetch a URL a response handed back rather than a registry template.
+//   - Paginate follows a continuation token to the end of a listing, or to a
+//     Pager.Limit it reports as truncation, and refuses a repeated token. The
+//     caller's fetch sends each page through Do, so the loop never re-grows
+//     its own request code.
 //
 // Base URLs used to live here too. They are gone since #520: a request's
 // verb and URL are derived from the Discovery snapshots by

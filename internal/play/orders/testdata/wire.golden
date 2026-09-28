@@ -1,0 +1,60 @@
+## Get / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## Get / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1
+content-length=0 replayable=true
+=> error (exit 11): orders.get on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Get / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1
+content-length=0 replayable=true
+=> error (exit 50): orders.get on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## BatchGet / ok
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders:batchGet?orderIds=GPA.1&orderIds=GPA.2
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## BatchGet / denied
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders:batchGet?orderIds=GPA.1&orderIds=GPA.2
+content-length=0 replayable=true
+=> error (exit 11): orders.batchget on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## BatchGet / malformed
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders:batchGet?orderIds=GPA.1&orderIds=GPA.2
+content-length=0 replayable=true
+=> error (exit 50): orders.batchget on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## Refund / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1:refund
+content-length=0 replayable=true
+=> ok {}
+
+## Refund / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1:refund
+content-length=0 replayable=true
+=> error (exit 11): orders.refund on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Refund / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1:refund
+content-length=0 replayable=true
+=> ok not json
+
+## Refund revoke / ok
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1:refund?revoke=true
+content-length=0 replayable=true
+=> ok {}
+
+## Refund revoke / denied
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1:refund?revoke=true
+content-length=0 replayable=true
+=> error (exit 11): orders.refund on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Refund revoke / malformed
+POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1:refund?revoke=true
+content-length=0 replayable=true
+=> ok not json
+

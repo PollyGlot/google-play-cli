@@ -15,7 +15,6 @@ package subscriptions
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -78,59 +77,37 @@ type listPage struct {
 // nextPageToken to completion (no silent truncation: a missing page would read
 // as deletes in a Reconciliation plan). No Edit: the GET is application-scoped.
 func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
-	var (
-		items []Item
-		token string
-	)
-	// seen guards against a server that repeats a pageToken forever.
-	seen := map[string]struct{}{}
-	for {
-		q := url.Values{}
-		q.Set("pageSize", strconv.Itoa(listPageSize))
-		if token != "" {
-			q.Set("pageToken", token)
-		}
-		u, err := mList.URL(map[string]string{"packageName": pkg})
-		if err != nil {
-			return nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		req, err := http.NewRequestWithContext(ctx, mList.Verb, u+"?"+q.Encode(), nil)
-		if err != nil {
-			return nil, &api.Error{Operation: opList, Package: pkg, Message: err.Error(), Cause: err}
-		}
-		raw, err := do(hc, opList, pkg, req)
-		if err != nil {
-			return nil, err
-		}
-		var pg listPage
-		if err := json.Unmarshal(raw, &pg); err != nil {
-			return nil, &api.Error{Operation: opList, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
-		}
-		for _, rawSub := range pg.Subscriptions {
-			var s struct {
-				ProductID string `json:"productId"`
+	items, _, err := api.Paginate(api.Pager{Op: opList, Target: pkg, What: "monetization.subscriptions.list"},
+		func(token string, _ int) ([]Item, string, error) {
+			q := url.Values{}
+			q.Set("pageSize", strconv.Itoa(listPageSize))
+			if token != "" {
+				q.Set("pageToken", token)
 			}
-			if err := json.Unmarshal(rawSub, &s); err != nil {
-				return nil, &api.Error{Operation: opList, Package: pkg, Message: "decode subscription: " + err.Error(), Cause: err}
+			var pg listPage
+			if _, err := api.DoJSON(ctx, hc, api.Call{
+				Method: mList, Op: opList, Target: pkg,
+				Params: map[string]string{"packageName": pkg},
+				Query:  q,
+			}, &pg); err != nil {
+				return nil, "", err
 			}
-			if s.ProductID == "" {
-				return nil, &api.Error{Operation: opList, Package: pkg, Message: "response contains a subscription without a productId: refusing a catalog entry that cannot be addressed"}
+			page := make([]Item, 0, len(pg.Subscriptions))
+			for _, rawSub := range pg.Subscriptions {
+				var s struct {
+					ProductID string `json:"productId"`
+				}
+				if err := json.Unmarshal(rawSub, &s); err != nil {
+					return nil, "", &api.Error{Operation: opList, Package: pkg, Message: "decode subscription: " + err.Error(), Cause: err}
+				}
+				if s.ProductID == "" {
+					return nil, "", &api.Error{Operation: opList, Package: pkg, Message: "response contains a subscription without a productId: refusing a catalog entry that cannot be addressed"}
+				}
+				page = append(page, Item{ProductID: s.ProductID, Raw: rawSub})
 			}
-			items = append(items, Item{ProductID: s.ProductID, Raw: rawSub})
-		}
-		if pg.NextPageToken == "" {
-			return items, nil
-		}
-		if _, dup := seen[pg.NextPageToken]; dup {
-			return nil, &api.Error{
-				Operation: opList,
-				Package:   pkg,
-				Message:   "pagination token loop detected in monetization.subscriptions.list (server repeated a nextPageToken)",
-			}
-		}
-		seen[pg.NextPageToken] = struct{}{}
-		token = pg.NextPageToken
-	}
+			return page, pg.NextPageToken, nil
+		})
+	return items, err
 }
 
 // Create creates a subscription from the catalog-file resource, sent verbatim
@@ -141,16 +118,12 @@ func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion
 	q := url.Values{}
 	q.Set("productId", productID)
 	q.Set("regionsVersion.version", regionsVersion)
-	u, err := mCreate.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mCreate.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
-	if err != nil {
-		return nil, &api.Error{Operation: opCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opCreate, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mCreate, Op: opCreate, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Query:  q,
+		Body:   body,
+	})
 }
 
 // Patch updates a subscription from the catalog-file resource, sent verbatim,
@@ -161,16 +134,12 @@ func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion 
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
 	q.Set("regionsVersion.version", regionsVersion)
-	u, err := mPatch.URL(map[string]string{"packageName": pkg, "productId": productID})
-	if err != nil {
-		return nil, &api.Error{Operation: opPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mPatch.Verb, u+"?"+q.Encode(), strings.NewReader(string(body)))
-	if err != nil {
-		return nil, &api.Error{Operation: opPatch, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opPatch, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mPatch, Op: opPatch, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "productId": productID},
+		Query:  q,
+		Body:   body,
+	})
 }
 
 // Delete deletes a subscription. Reaching here means the plan carried a delete
@@ -178,15 +147,10 @@ func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion 
 // subscription that ever had a published base plan, so the gate covers intent
 // while the server covers damage (ADR-0041).
 func Delete(ctx context.Context, hc *http.Client, pkg, productID string) error {
-	u, err := mDelete.URL(map[string]string{"packageName": pkg, "productId": productID})
-	if err != nil {
-		return &api.Error{Operation: opDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mDelete.Verb, u, nil)
-	if err != nil {
-		return &api.Error{Operation: opDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	_, err = do(hc, opDelete, pkg, req)
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: mDelete, Op: opDelete, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "productId": productID},
+	})
 	return err
 }
 
@@ -196,41 +160,11 @@ func Delete(ctx context.Context, hc *http.Client, pkg, productID string) error {
 // catalog (ADR-0041 §9). Read-only in effect: it computes, it never writes
 // catalog state. The verbatim response is the ADR-0003 pass-through.
 func ConvertRegionPrices(ctx context.Context, hc *http.Client, pkg string, price Money) (json.RawMessage, error) {
-	body, err := json.Marshal(struct {
-		Price Money `json:"price"`
-	}{Price: price})
-	if err != nil {
-		return nil, &api.Error{Operation: opConvert, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
-	}
-	u, err := mConvert.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return nil, &api.Error{Operation: opConvert, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mConvert.Verb, u, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, &api.Error{Operation: opConvert, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opConvert, pkg, req)
-}
-
-// do runs req and maps the response to (raw body, *api.Error): a non-2xx body is
-// parsed for the error envelope, a 2xx body is returned verbatim for the
-// ADR-0003 pass-through.
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
+	return api.Do(ctx, hc, api.Call{
+		Method: mConvert, Op: opConvert, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Body: struct {
+			Price Money `json:"price"`
+		}{Price: price},
+	})
 }

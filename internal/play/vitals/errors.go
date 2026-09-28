@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 // ErrorCountSet is the metric set behind `vitals errors counts`: a queryable
@@ -86,11 +85,7 @@ func searchErrors(ctx context.Context, hc *http.Client, m apiregistry.Method, op
 	if !opts.End.IsZero() {
 		setIntervalDate(base, "interval.endTime", opts.End)
 	}
-	baseURL, err := m.URL(map[string]string{"appsId": pkg})
-	if err != nil {
-		return nil, false, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return paginateGET(ctx, hc, m.Verb, op, pkg, baseURL, base, itemsKey, pageSize, opts.Limit)
+	return paginateGET(ctx, hc, m, op, pkg, base, itemsKey, pageSize, opts.Limit)
 }
 
 // setIntervalDate writes the date-only google.type.DateTime query params for an

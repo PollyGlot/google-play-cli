@@ -7,12 +7,10 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -26,32 +24,12 @@ import (
 
 const createdBody = `{"deviceTierConfigId":"42","deviceGroups":[{"name":"high"}],"deviceTierSet":{"deviceTiers":[{"level":0}]}}`
 
-type dtRT struct {
-	t *testing.T
-
-	mu      sync.Mutex
-	calls   []string
-	postURL string
-}
-
-func (r *dtRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/deviceTierConfigs") {
-		r.postURL = req.URL.String()
-		return jsonResp(200, createdBody), nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+// newFake serves createdBody on the create POST; any other request fails the
+// round trip.
+func newFake() *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		return http.StatusOK, createdBody, c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/deviceTierConfigs")
+	})
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -102,8 +80,8 @@ func exitOf(t *testing.T, err error) int {
 // TestRun_happyPath_postsAndPassesThrough asserts a create POSTs the file body
 // (no /edits/ segment) and the JSON view is the verbatim response, plus a ✓.
 func TestRun_happyPath_postsAndPassesThrough(t *testing.T) {
-	rt := &dtRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -111,8 +89,12 @@ func TestRun_happyPath_postsAndPassesThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if strings.Contains(rt.postURL, "/edits/") {
-		t.Errorf("create must not use an Edit; url=%s", rt.postURL)
+	calls := fake.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %+v, want the one create POST", calls)
+	}
+	if strings.Contains(calls[0].URL, "/edits/") {
+		t.Errorf("create must not use an Edit; url=%s", calls[0].URL)
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
@@ -129,35 +111,35 @@ func TestRun_happyPath_postsAndPassesThrough(t *testing.T) {
 // TestRun_rejectsDeviceTierConfigId_exit20 asserts a body carrying the
 // output-only id is refused offline (no update API).
 func TestRun_rejectsDeviceTierConfigId_exit20(t *testing.T) {
-	rt := &dtRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	_, err := createcmd.Run(rc, createcmd.Input{Package: "com.example.app", File: writeJSON(t, `{"deviceTierConfigId":"7","deviceGroups":[]}`)})
 	if got := exitOf(t, err); got != 20 {
 		t.Errorf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_malformedJSON_exit20 asserts a non-JSON body fails offline.
 func TestRun_malformedJSON_exit20(t *testing.T) {
-	rt := &dtRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	_, err := createcmd.Run(rc, createcmd.Input{Package: "com.example.app", File: writeJSON(t, `not json`)})
 	if got := exitOf(t, err); got != 20 {
 		t.Errorf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_dryRun_noNetwork_noConfirm asserts --dry-run validates offline and
 // emits a dryRun view with no ✓.
 func TestRun_dryRun_noNetwork_noConfirm(t *testing.T) {
-	rt := &dtRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -165,8 +147,8 @@ func TestRun_dryRun_noNetwork_noConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run must make no network call; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("dry-run must make no network call; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run emitted a ✓; stderr=%q", stderr.String())
@@ -183,27 +165,27 @@ func TestRun_dryRun_noNetwork_noConfirm(t *testing.T) {
 
 // TestRun_stdinBody asserts the body is read from stdin when --file is empty.
 func TestRun_stdinBody(t *testing.T) {
-	rt := &dtRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	rc.Stdin = strings.NewReader(`{"deviceGroups":[{"name":"x"}]}`)
 	if _, err := createcmd.Run(rc, createcmd.Input{Package: "com.example.app"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) == 0 {
+	if len(fake.Calls()) == 0 {
 		t.Error("stdin body should have been posted")
 	}
 }
 
 // TestRun_missingPackage_exit2 asserts a missing package is CLI misuse, offline.
 func TestRun_missingPackage_exit2(t *testing.T) {
-	rt := &dtRT{t: t}
-	rc := newRC(t, rt)
+	fake := newFake()
+	rc := newRC(t, fake)
 	_, err := createcmd.Run(rc, createcmd.Input{File: writeJSON(t, `{"deviceGroups":[]}`)})
 	if got := exitOf(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 

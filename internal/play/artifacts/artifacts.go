@@ -9,7 +9,6 @@ package artifacts
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -77,34 +76,19 @@ func ListBundles(ctx context.Context, hc *http.Client, pkg, editID string) (Bund
 	return parsed, raw, err
 }
 
-// get issues the Edit-scoped GET for m and decodes the 2xx body into out. The
-// two list methods differ only by resource segment and response shape, so the
-// transport recipe (error envelope on non-2xx, bounded body reads) lives once.
+// get issues the Edit-scoped GET for m and decodes the 2xx body into out. A
+// body that does not decode keeps the 200 status tag it always had, so its
+// exit code (30) is unchanged.
 func get(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, editID string, out any) (json.RawMessage, error) {
-	u, err := m.URL(map[string]string{"packageName": pkg, "editId": editID})
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: m, Op: op, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
+	})
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, http.NoBody)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + err.Error(), Cause: err}
+		return nil, err
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "decode response: " + err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
 	}
-	return json.RawMessage(raw), nil
+	return raw, nil
 }

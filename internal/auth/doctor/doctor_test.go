@@ -1,13 +1,12 @@
 package doctor_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -30,19 +29,10 @@ func scopeWired(rt http.RoundTripper) (*http.Client, *transport.ScopeObserver) {
 	return &http.Client{Transport: wrapped}, obs
 }
 
-// roundTripperFunc is the canonical pattern documented in CLAUDE.md: a
-// function type that implements http.RoundTripper, so each test wires
-// up the response shape it needs without a wrapper interface.
-type roundTripperFunc func(req *http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-
 // makeSignedSA produces a *ServiceAccount whose PrivateKey is the shared
 // test RSA key, so the OAuth2 library can actually sign the JWT
 // during the token exchange. The token endpoint is then mocked via a
-// roundTripperFunc.
+// testkit.RoundTripFunc.
 func makeSignedSA(t *testing.T) *serviceaccount.ServiceAccount {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -68,10 +58,9 @@ func makeSignedSA(t *testing.T) *serviceaccount.ServiceAccount {
 	return sa
 }
 
-// ctxWithRT wires a roundTripperFunc through oauth2.HTTPClient so the
-// token package's call to JWTConfig.TokenSource uses it for the
-// /token exchange.
-func ctxWithRT(t *testing.T, fn roundTripperFunc) context.Context {
+// ctxWithRT wires fn through oauth2.HTTPClient so the token package's
+// call to JWTConfig.TokenSource uses it for the /token exchange.
+func ctxWithRT(t *testing.T, fn testkit.RoundTripFunc) context.Context {
 	t.Helper()
 	return context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fn})
 }
@@ -177,15 +166,12 @@ func TestCheckOAuth2Mint_happyPath(t *testing.T) {
 	called := false
 	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
 		called = true
-		if req.URL.String() != "https://oauth2.googleapis.com/token" {
+		resp, ok := testkit.TokenResponse(req)
+		if !ok {
 			t.Errorf("RoundTrip URL = %q", req.URL)
+			return nil, errors.New("not the token endpoint")
 		}
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
+		return resp, nil
 	})
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckOAuth2Mint())
@@ -204,12 +190,7 @@ func TestCheckOAuth2Mint_happyPath(t *testing.T) {
 func TestCheckOAuth2Mint_401_failsWithHint(t *testing.T) {
 	sa := makeSignedSA(t)
 	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
-		body := `{"error":"invalid_grant","error_description":"signature mismatch"}`
-		return &http.Response{
-			StatusCode: 401,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
+		return testkit.Response(http.StatusUnauthorized, `{"error":"invalid_grant","error_description":"signature mismatch"}`), nil
 	})
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckOAuth2Mint())
@@ -230,24 +211,16 @@ func TestCheckOAuth2Mint_401_failsWithHint(t *testing.T) {
 
 func TestCheckScope_happyPath_observesAndroidPublisherScope(t *testing.T) {
 	sa := makeSignedSA(t)
-	// The RoundTripper captures the JWT-exchange request body so the
+	// The transport captures the JWT-exchange request body so the
 	// test can independently assert the scope was sent, then responds
 	// with a successful token to let the check complete.
 	var capturedBody string
-	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		if req.Body != nil {
-			buf, err := io.ReadAll(req.Body)
-			if err != nil {
-				t.Fatalf("ReadAll: %v", err)
-			}
-			capturedBody = string(buf)
+	rt := testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		capturedBody = string(testkit.ReadBody(req))
+		if resp, ok := testkit.TokenResponse(req); ok {
+			return resp, nil
 		}
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
+		return nil, fmt.Errorf("unexpected request %s %s", req.Method, req.URL)
 	})
 	hc, obs := scopeWired(rt)
 
@@ -274,15 +247,7 @@ func TestCheckScope_happyPath_observesAndroidPublisherScope(t *testing.T) {
 // scope-mismatch path without mutating production constants.
 func TestCheckScope_wrongRequiredScope_fails(t *testing.T) {
 	sa := makeSignedSA(t)
-	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
-	})
-	hc, obs := scopeWired(rt)
+	hc, obs := scopeWired(testkit.NewFake())
 
 	wrongScope := "https://www.googleapis.com/auth/something-else"
 	results := doctor.Run(context.Background(), sa, hc, doctor.CheckScope(obs, wrongScope))
@@ -308,7 +273,7 @@ func TestRun_stopsOnFirstFailure(t *testing.T) {
 	sa := mustParseSA(t, validSAJSON)
 	sa.ClientEmail = ""
 
-	// Use a RoundTripper that would FAIL THE TEST if invoked: to prove
+	// Use a transport that would FAIL THE TEST if invoked: to prove
 	// downstream checks were not run.
 	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
 		t.Fatalf("RoundTripper should not be called when check #1 fails; got %s", req.URL)
@@ -370,7 +335,7 @@ func TestCheckSAJSONValid_jsonRoundTrip(t *testing.T) {
 	}
 }
 
-// packageRT is a RoundTripper helper for CheckPackageAccess tests. It
+// packageRT is a transport helper for CheckPackageAccess tests. It
 // routes the OAuth2 token-exchange (POST to oauth2.googleapis.com/token)
 // and the androidpublisher edits insert/delete calls to dedicated
 // handlers, so each test wires only the responses it cares about.
@@ -391,16 +356,11 @@ type packageRT struct {
 	calls []string
 }
 
-func (p *packageRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (p *packageRT) serve(req *http.Request) (*http.Response, error) {
 	p.calls = append(p.calls, req.Method+" "+req.URL.Path)
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		p.tokenCalls++
-		body := `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewBufferString(body)),
-		}, nil
+		return resp, nil
 	}
 	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits") {
 		if p.insertResp == nil {
@@ -418,25 +378,17 @@ func (p *packageRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	return nil, nil
 }
 
-func jsonResponse(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(bytes.NewBufferString(body)),
-	}
-}
-
 // insertOK returns an edits.insert handler that responds 200 with a
 // well-formed Edit body so the check has an Edit ID to discard.
 func insertOK() func(*http.Request) (*http.Response, error) {
 	return func(*http.Request) (*http.Response, error) {
-		return jsonResponse(200, `{"id":"edit-xyz","expiryTimeSeconds":"1700000000"}`), nil
+		return testkit.Response(200, `{"id":"edit-xyz","expiryTimeSeconds":"1700000000"}`), nil
 	}
 }
 
 func deleteOK() func(*http.Request) (*http.Response, error) {
 	return func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(bytes.NewBufferString(""))}, nil
+		return testkit.Response(http.StatusNoContent, ""), nil
 	}
 }
 
@@ -447,7 +399,7 @@ func TestCheckPackageAccess_happyPath_passes(t *testing.T) {
 		insertResp: insertOK(),
 		deleteResp: deleteOK(),
 	}
-	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+	ctx := ctxWithRT(t, rt.serve)
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
 	if len(results) != 1 {
@@ -469,7 +421,7 @@ func TestCheckPackageAccess_happyPath_alwaysCleansUpEdit(t *testing.T) {
 		insertResp: insertOK(),
 		deleteResp: deleteOK(),
 	}
-	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+	ctx := ctxWithRT(t, rt.serve)
 
 	_ = doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
 
@@ -490,10 +442,10 @@ func TestCheckPackageAccess_403_returnsExit11AndCanonicalHint(t *testing.T) {
 	rt := &packageRT{
 		t: t,
 		insertResp: func(*http.Request) (*http.Response, error) {
-			return jsonResponse(403, `{"error":{"code":403,"message":"forbidden"}}`), nil
+			return testkit.Response(403, `{"error":{"code":403,"message":"forbidden"}}`), nil
 		},
 	}
-	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+	ctx := ctxWithRT(t, rt.serve)
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
 	if len(results) != 1 {
@@ -522,10 +474,10 @@ func TestCheckPackageAccess_404_returnsExit30(t *testing.T) {
 	rt := &packageRT{
 		t: t,
 		insertResp: func(*http.Request) (*http.Response, error) {
-			return jsonResponse(404, `{"error":{"code":404,"message":"not found"}}`), nil
+			return testkit.Response(404, `{"error":{"code":404,"message":"not found"}}`), nil
 		},
 	}
-	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+	ctx := ctxWithRT(t, rt.serve)
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
 	if len(results) != 1 {
@@ -548,10 +500,10 @@ func TestCheckPackageAccess_400_returnsExit30(t *testing.T) {
 	rt := &packageRT{
 		t: t,
 		insertResp: func(*http.Request) (*http.Response, error) {
-			return jsonResponse(400, `{"error":{"code":400,"message":"bad request"}}`), nil
+			return testkit.Response(400, `{"error":{"code":400,"message":"bad request"}}`), nil
 		},
 	}
-	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+	ctx := ctxWithRT(t, rt.serve)
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
 	if len(results) != 1 {
@@ -571,10 +523,10 @@ func TestCheckPackageAccess_5xxOnInsert_returnsExit40(t *testing.T) {
 	rt := &packageRT{
 		t: t,
 		insertResp: func(*http.Request) (*http.Response, error) {
-			return jsonResponse(503, `{"error":{"code":503,"message":"service unavailable"}}`), nil
+			return testkit.Response(503, `{"error":{"code":503,"message":"service unavailable"}}`), nil
 		},
 	}
-	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+	ctx := ctxWithRT(t, rt.serve)
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
 	if len(results) != 1 {
@@ -595,10 +547,10 @@ func TestCheckPackageAccess_200InsertThen5xxDelete_returnsExit40(t *testing.T) {
 		t:          t,
 		insertResp: insertOK(),
 		deleteResp: func(*http.Request) (*http.Response, error) {
-			return jsonResponse(503, `{"error":{"code":503,"message":"transient"}}`), nil
+			return testkit.Response(503, `{"error":{"code":503,"message":"transient"}}`), nil
 		},
 	}
-	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+	ctx := ctxWithRT(t, rt.serve)
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
 	if len(results) != 1 {
@@ -633,7 +585,7 @@ func TestCheckPackageAccess_networkFailureOnInsert_returnsExit50(t *testing.T) {
 			return nil, errors.New("dial tcp: lookup androidpublisher.googleapis.com: no such host")
 		},
 	}
-	ctx := ctxWithRT(t, roundTripperFunc(rt.RoundTrip))
+	ctx := ctxWithRT(t, rt.serve)
 
 	results := doctor.Run(ctx, sa, nil, doctor.CheckPackageAccess("com.example.app"))
 	if len(results) != 1 {

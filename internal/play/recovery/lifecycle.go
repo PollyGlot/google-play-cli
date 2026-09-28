@@ -1,7 +1,6 @@
 package recovery
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -40,52 +39,29 @@ type addTargetingRequest struct {
 	TargetingUpdate *Targeting `json:"targetingUpdate,omitempty"`
 }
 
-// actionURL resolves .../appRecoveries/{appRecoveryId}:<verb> for one of the
-// three lifecycle methods.
-func actionURL(m apiregistry.Method, pkg, id string) (string, error) {
-	return m.URL(map[string]string{"packageName": pkg, "appRecoveryId": id})
+// actionParams addresses .../appRecoveries/{appRecoveryId}:<verb> for one of
+// the three lifecycle methods.
+func actionParams(pkg, id string) map[string]string {
+	return map[string]string{"packageName": pkg, "appRecoveryId": id}
 }
 
 // Deploy activates a draft recovery (apprecovery.deploy). Empty request body.
 func Deploy(ctx context.Context, hc *http.Client, pkg, id string) (json.RawMessage, error) {
-	return emptyPost(ctx, hc, mDeploy, opDeploy, pkg, id)
+	return api.Do(ctx, hc, api.Call{Method: mDeploy, Op: opDeploy, Target: pkg, Params: actionParams(pkg, id)})
 }
 
 // Cancel terminates an active recovery (apprecovery.cancel). Empty request body;
 // the action persists with status CANCELED and cannot be resumed.
 func Cancel(ctx context.Context, hc *http.Client, pkg, id string) (json.RawMessage, error) {
-	return emptyPost(ctx, hc, mCancel, opCancel, pkg, id)
+	return api.Do(ctx, hc, api.Call{Method: mCancel, Op: opCancel, Target: pkg, Params: actionParams(pkg, id)})
 }
 
 // AddTargeting widens a recovery's audience (apprecovery.addTargeting). The
 // TargetingUpdate is append-only: it can only add users/regions/sdk-levels.
 func AddTargeting(ctx context.Context, hc *http.Client, pkg, id string, t *Targeting) (json.RawMessage, error) {
-	body, err := json.Marshal(addTargetingRequest{TargetingUpdate: t})
-	if err != nil {
-		return nil, &api.Error{Operation: opAddTargeting, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
-	}
-	u, err := actionURL(mAddTargeting, pkg, id)
-	if err != nil {
-		return nil, &api.Error{Operation: opAddTargeting, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mAddTargeting.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, &api.Error{Operation: opAddTargeting, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return do(hc, opAddTargeting, pkg, req)
-}
-
-// emptyPost issues a POST with no request body (Content-Length 0): the shape
-// the deploy/cancel custom verbs expect.
-func emptyPost(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, id string) (json.RawMessage, error) {
-	u, err := actionURL(m, pkg, id)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, http.NoBody)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return do(hc, op, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mAddTargeting, Op: opAddTargeting, Target: pkg,
+		Params: actionParams(pkg, id),
+		Body:   addTargetingRequest{TargetingUpdate: t},
+	})
 }

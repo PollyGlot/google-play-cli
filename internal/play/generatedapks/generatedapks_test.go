@@ -9,13 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/generatedapks"
 )
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func resp(status int, body string) *http.Response {
 	return &http.Response{
@@ -49,7 +47,7 @@ const listBody = `{
 // on the package axis (no /edits/) and parses every artifact family.
 func TestList_noEdit_applicationScoped(t *testing.T) {
 	var gotURL, gotMethod string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
 		return resp(200, listBody), nil
@@ -99,7 +97,7 @@ func TestList_noEdit_applicationScoped(t *testing.T) {
 
 // TestList_403_exit11 asserts a forbidden response maps to the authz exit code.
 func TestList_403_exit11(t *testing.T) {
-	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"caller does not have permission"}}`), nil
 	})
 	_, _, err := generatedapks.List(context.Background(), &http.Client{Transport: rt}, "com.example.app", 142)
@@ -108,7 +106,7 @@ func TestList_403_exit11(t *testing.T) {
 
 // TestList_404_exit30 asserts an unknown version code maps to the not-found exit code.
 func TestList_404_exit30(t *testing.T) {
-	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(404, `{"error":{"message":"not found"}}`), nil
 	})
 	_, _, err := generatedapks.List(context.Background(), &http.Client{Transport: rt}, "com.example.app", 999)
@@ -120,7 +118,7 @@ func TestList_404_exit30(t *testing.T) {
 // to the writer verbatim.
 func TestDownload_altMedia_streamsBytes_noEdit(t *testing.T) {
 	var gotURL string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return &http.Response{
 			StatusCode: 200,
@@ -152,7 +150,7 @@ func TestDownload_altMedia_streamsBytes_noEdit(t *testing.T) {
 
 // TestDownload_403_exit11 / _404_exit30 cover the refusal/not-found paths.
 func TestDownload_403_exit11(t *testing.T) {
-	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"forbidden"}}`), nil
 	})
 	var buf bytes.Buffer
@@ -164,7 +162,7 @@ func TestDownload_403_exit11(t *testing.T) {
 }
 
 func TestDownload_404_exit30(t *testing.T) {
-	rt := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(404, `{"error":{"message":"unknown downloadId"}}`), nil
 	})
 	var buf bytes.Buffer

@@ -3,11 +3,11 @@ package vitals
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
@@ -45,90 +45,61 @@ func decodePage(raw []byte, itemsKey string) (items []json.RawMessage, next stri
 }
 
 // rebuildEnvelope re-serialises accumulated items under itemsKey, the shape the
-// Parse* projectors and the JSON pass-through both consume.
+// Parse* projectors and the JSON pass-through both consume. No items is an
+// empty array, never null.
 func rebuildEnvelope(itemsKey string, items []json.RawMessage) (json.RawMessage, error) {
+	if items == nil {
+		items = []json.RawMessage{}
+	}
 	return output.Marshal(map[string][]json.RawMessage{itemsKey: items})
 }
 
-// tokenLoopError is the api.Error a non-progressing pagination token raises:
-// the same defence internal/play/reviews uses, so a server that repeats a token
-// fails loudly instead of looping until the context is cancelled.
-func tokenLoopError(op, pkg, what string) error {
-	return &api.Error{Operation: op, Package: pkg, Message: "pagination token loop detected in " + what + " (server repeated a nextPageToken)"}
-}
-
-// paginateGET fetches every page of a GET list/search endpoint, following
-// nextPageToken until exhausted or until `limit` items have accumulated (0 =
-// all), and returns a rebuilt {itemsKey: [...]} envelope. base carries the
-// stable query params (filter, interval, orderBy); pageSize bounds each request.
+// paginateGET fetches every page of a GET list/search endpoint through
+// api.Paginate, following nextPageToken until exhausted or until `limit` items
+// have accumulated (0 = all), and returns a rebuilt {itemsKey: [...]} envelope.
+// base carries the stable query params (filter, interval, orderBy); pageSize
+// bounds each request.
 //
-// The second return value is the TRUNCATION signal: true when the loop stopped
-// on `limit` while the server still handed back a nextPageToken, i.e. the
-// envelope is a prefix of the truth rather than the whole of it. It is a return
-// value, not a stderr write, because this layer is HTTP-only: the command layer
-// owns the user-facing note (PRD #446). Hitting the limit exactly on the last
-// page (no token left) is exhaustive, so it reports false.
-// verb comes from the resolved registry method rather than being hard-coded,
-// so a snapshot change moving one of these reads off GET cannot go unnoticed
-// (#513).
-func paginateGET(ctx context.Context, hc *http.Client, verb, op, pkg, baseURL string, base url.Values, itemsKey string, pageSize, limit int) (json.RawMessage, bool, error) {
-	items := make([]json.RawMessage, 0)
-	seen := map[string]struct{}{}
-	token := ""
-	truncated := false
-	for {
-		q := url.Values{}
-		for k, vs := range base {
-			q[k] = append([]string(nil), vs...)
-		}
-		if ps := pageStep(pageSize, limit, len(items)); ps > 0 {
-			q.Set("pageSize", strconv.Itoa(ps))
-		}
-		if token != "" {
-			q.Set("pageToken", token)
-		}
-		u := baseURL
-		if enc := q.Encode(); enc != "" {
-			u += "?" + enc
-		}
-		raw, err := getRaw(ctx, hc, verb, op, pkg, u)
-		if err != nil {
-			return nil, false, err
-		}
-		pageItems, next, derr := decodePage(raw, itemsKey)
-		if derr != nil {
-			return nil, false, &api.Error{Operation: op, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
-		}
-		items = append(items, pageItems...)
-		if limit > 0 && len(items) >= limit {
-			// Truncated means "the cap hid something that existed", and there
-			// are two ways for that to happen. Either the server still has
-			// pages (next != "") and the cap is why we stop asking, or this
-			// page already OVERSHOT the cap (len > limit) and the slice below
-			// drops rows we are holding: a single page of 15 under --limit 10
-			// is a truncation even though no token remains. Both are computed
-			// BEFORE the slice, because slicing destroys the second signal.
-			//
-			// `next != ""` is taken at its word: the Reporting API documents
-			// the token as omitted once there are no subsequent pages, so a
-			// present token IS the server saying more exists, and it is the
-			// only signal available short of spending another request to find
-			// out. If a server ever handed back a token for an empty final
-			// page, the cost is one over-cautious `warning:` on stderr, never
-			// wrong data on stdout: the opposite mistake (staying silent while
-			// results were hidden) is the one PRD #446 exists to prevent.
-			truncated = next != "" || len(items) > limit
-			items = items[:limit]
-			break
-		}
-		if next == "" {
-			break
-		}
-		if _, dup := seen[next]; dup {
-			return nil, false, tokenLoopError(op, pkg, itemsKey+" search")
-		}
-		seen[next] = struct{}{}
-		token = next
+// The second return value is the TRUNCATION signal (api.Paginate's): true when
+// the limit hid items, i.e. the envelope is a prefix of the truth rather than
+// the whole of it. It is a return value, not a stderr write, because this
+// layer is HTTP-only: the command layer owns the user-facing note (PRD #446).
+// Hitting the limit exactly on the last page (no token left) is exhaustive, so
+// it reports false.
+//
+// `next != ""` is taken at its word: the Reporting API documents the token as
+// omitted once there are no subsequent pages, so a present token IS the server
+// saying more exists. If a server ever handed back a token for an empty final
+// page, the cost is one over-cautious `warning:` on stderr, never wrong data on
+// stdout: the opposite mistake (staying silent while results were hidden) is
+// the one PRD #446 exists to prevent.
+func paginateGET(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg string, base url.Values, itemsKey string, pageSize, limit int) (json.RawMessage, bool, error) {
+	items, truncated, err := api.Paginate(api.Pager{Op: op, Target: pkg, What: itemsKey + " search", Limit: limit},
+		func(token string, have int) ([]json.RawMessage, string, error) {
+			q := url.Values{}
+			for k, vs := range base {
+				q[k] = append([]string(nil), vs...)
+			}
+			if ps := pageStep(pageSize, limit, have); ps > 0 {
+				q.Set("pageSize", strconv.Itoa(ps))
+			}
+			if token != "" {
+				q.Set("pageToken", token)
+			}
+			// Discovery names the path parameter after the collection, hence
+			// appsId for what gplay calls the package.
+			raw, err := api.Do(ctx, hc, api.Call{Method: m, Op: op, Target: pkg, Params: map[string]string{"appsId": pkg}, Query: q})
+			if err != nil {
+				return nil, "", err
+			}
+			page, next, derr := decodePage(raw, itemsKey)
+			if derr != nil {
+				return nil, "", &api.Error{Operation: op, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
+			}
+			return page, next, nil
+		})
+	if err != nil {
+		return nil, false, err
 	}
 	envelope, err := rebuildEnvelope(itemsKey, items)
 	if err != nil {
@@ -152,28 +123,4 @@ func pageStep(pageSize, limit, have int) int {
 		return remaining
 	}
 	return pageSize
-}
-
-// getRaw issues a single read and returns the verbatim 2xx body or an
-// *api.Error. The verb is the resolved method's, not a literal.
-func getRaw(ctx context.Context, hc *http.Client, verb, op, pkg, u string) (json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, verb, u, nil)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(errBody, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response: " + readErr.Error(), Cause: readErr}
-	}
-	return raw, nil
 }

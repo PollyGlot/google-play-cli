@@ -90,10 +90,9 @@ type rule struct {
 
 var rules = []rule{
 	{
-		id:           "request-helper",
-		hasAllowlist: true,
-		what:         "direct (*http.Client).Do",
-		fix:          "send the request through the executor, api.Do / api.DoJSON in internal/play/api",
+		id:   "request-helper",
+		what: "direct (*http.Client).Do",
+		fix:  "send the request through the executor, api.Do / api.DoJSON in internal/play/api",
 		exempt: []string{
 			"internal/play/api/", // the executor itself
 			"internal/transport/",
@@ -108,13 +107,12 @@ var rules = []rule{
 		detect: detectDirectDo,
 	},
 	{
-		id:           "test-roundtripper",
-		hasAllowlist: true,
-		what:         "RoundTrip method on a test type",
-		fix:          "use internal/testkit (testkit.NewFake, or testkit.TokenResponse and testkit.Response) and extend the kit when it cannot express the case",
-		exempt:       []string{"internal/testkit/"},
-		testCode:     true,
-		detect:       detectRoundTrip,
+		id:       "test-roundtripper",
+		what:     "RoundTrip method on a test type",
+		fix:      "use internal/testkit (testkit.NewFake, or a testkit.RoundTripFunc built on testkit.TokenResponse and testkit.Response) and extend the kit when it cannot express the case",
+		exempt:   []string{"internal/testkit/"},
+		testCode: true,
+		detect:   detectRoundTrip,
 	},
 	{
 		id:       "test-rsa-keygen",
@@ -125,13 +123,16 @@ var rules = []rule{
 		detect:   detectRSAKeygen,
 	},
 	{
-		id:           "http-client",
-		hasAllowlist: true,
-		what:         "http.Client constructed",
-		fix:          "take the client the RunContext builds (rc.AuthedClient / rc.UploadClient) and wrap transports in internal/transport",
+		id:   "http-client",
+		what: "http.Client constructed",
+		fix:  "take the client the RunContext builds (rc.AuthedClient / rc.UploadClient), wrap transports in internal/transport, and build any new client with transport.NewClient",
 		exempt: []string{
 			"internal/transport/",
 			"internal/discovery/", // dev tool, see request-helper
+			// The test harness: its package name does not end in "test", so
+			// the scan counts it as shipped code, but no production package
+			// imports it and its clients only ever wrap the fake transport.
+			"internal/testkit/",
 		},
 		detect: detectHTTPClient,
 	},

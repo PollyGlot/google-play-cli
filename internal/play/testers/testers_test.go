@@ -8,43 +8,29 @@ package testers_test
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/testers"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// rt is a minimal RoundTripper that returns a canned response for the
-// testers.get GET (and the testers.update PUT) and records the request
-// line (plus the request body, for write ops) for assertion.
-type rt struct {
-	t      *testing.T
-	status int
-	body   string
-
-	gotPath   string
-	gotMethod string
-	gotBody   []byte
+// fakeWith answers every request with status and body.
+func fakeWith(status int, body string) *testkit.Fake {
+	return testkit.NewFake(testkit.Any(status, body))
 }
 
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.gotPath = req.URL.Path
-	r.gotMethod = req.Method
-	if req.Body != nil {
-		r.gotBody, _ = io.ReadAll(req.Body)
+// onlyCall returns the single request the Fake served, failing the test on
+// any other count.
+func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := f.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("want exactly one request, got %d: %+v", len(calls), calls)
 	}
-	status := r.status
-	if status == 0 {
-		status = 200
-	}
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(r.body)),
-	}, nil
+	return calls[0]
 }
 
 // TestGet_parsesGoogleGroups_andReturnsRawBody asserts Get GETs
@@ -52,7 +38,7 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 // back the raw body verbatim for the JSON pass-through.
 func TestGet_parsesGoogleGroups_andReturnsRawBody(t *testing.T) {
 	raw := `{"googleGroups":["qa@googlegroups.com","beta@googlegroups.com"]}`
-	transport := &rt{t: t, body: raw}
+	transport := fakeWith(200, raw)
 	hc := &http.Client{Transport: transport}
 
 	got, gotRaw, err := testers.Get(context.Background(), hc, "com.example.app", "edit-123", "qa-team")
@@ -61,8 +47,9 @@ func TestGet_parsesGoogleGroups_andReturnsRawBody(t *testing.T) {
 	}
 
 	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-123/testers/qa-team"
-	if transport.gotMethod != http.MethodGet || transport.gotPath != wantPath {
-		t.Errorf("request = %s %s, want GET %s", transport.gotMethod, transport.gotPath, wantPath)
+	c := onlyCall(t, transport)
+	if c.Method != http.MethodGet || c.Path != wantPath {
+		t.Errorf("request = %s %s, want GET %s", c.Method, c.Path, wantPath)
 	}
 	if len(got.GoogleGroups) != 2 || got.GoogleGroups[0] != "qa@googlegroups.com" || got.GoogleGroups[1] != "beta@googlegroups.com" {
 		t.Errorf("GoogleGroups = %v, want [qa@googlegroups.com beta@googlegroups.com]", got.GoogleGroups)
@@ -76,7 +63,7 @@ func TestGet_parsesGoogleGroups_andReturnsRawBody(t *testing.T) {
 // response surfaces as an *api.Error carrying the HTTP status so the
 // gplay exit-code taxonomy maps it (404 -> 30, ...).
 func TestGet_apiError_isWrappedWithStatus(t *testing.T) {
-	transport := &rt{t: t, status: 404, body: `{"error":{"code":404,"message":"Track not found"}}`}
+	transport := fakeWith(404, `{"error":{"code":404,"message":"Track not found"}}`)
 	hc := &http.Client{Transport: transport}
 
 	_, _, err := testers.Get(context.Background(), hc, "com.example.app", "edit-123", "qa-team")
@@ -97,7 +84,7 @@ func TestGet_apiError_isWrappedWithStatus(t *testing.T) {
 // body, parses the response, and hands back the raw body verbatim.
 func TestUpdate_putsFullReplacement_andParsesResponse(t *testing.T) {
 	resp := `{"googleGroups":["a@googlegroups.com","b@googlegroups.com"]}`
-	transport := &rt{t: t, body: resp}
+	transport := fakeWith(200, resp)
 	hc := &http.Client{Transport: transport}
 
 	got, gotRaw, err := testers.Update(context.Background(), hc, "com.example.app", "edit-123", "qa-team",
@@ -107,12 +94,13 @@ func TestUpdate_putsFullReplacement_andParsesResponse(t *testing.T) {
 	}
 
 	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-123/testers/qa-team"
-	if transport.gotMethod != http.MethodPut || transport.gotPath != wantPath {
-		t.Errorf("request = %s %s, want PUT %s", transport.gotMethod, transport.gotPath, wantPath)
+	c := onlyCall(t, transport)
+	if c.Method != http.MethodPut || c.Path != wantPath {
+		t.Errorf("request = %s %s, want PUT %s", c.Method, c.Path, wantPath)
 	}
 	wantBody := `{"googleGroups":["a@googlegroups.com","b@googlegroups.com"]}`
-	if strings.TrimSpace(string(transport.gotBody)) != wantBody {
-		t.Errorf("request body = %s, want %s", transport.gotBody, wantBody)
+	if strings.TrimSpace(string(c.Body)) != wantBody {
+		t.Errorf("request body = %s, want %s", c.Body, wantBody)
 	}
 	if len(got.GoogleGroups) != 2 {
 		t.Errorf("GoogleGroups = %v, want two groups", got.GoogleGroups)
@@ -127,14 +115,14 @@ func TestUpdate_putsFullReplacement_andParsesResponse(t *testing.T) {
 // semantics, NOT a null, so the API clears the audience rather than
 // rejecting a malformed body.
 func TestUpdate_clear_putsEmptyArray(t *testing.T) {
-	transport := &rt{t: t, body: `{"googleGroups":[]}`}
+	transport := fakeWith(200, `{"googleGroups":[]}`)
 	hc := &http.Client{Transport: transport}
 
 	_, _, err := testers.Update(context.Background(), hc, "com.example.app", "edit-123", "qa-team", nil)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	body := string(transport.gotBody)
+	body := string(onlyCall(t, transport).Body)
 	if !strings.Contains(body, `"googleGroups":[]`) {
 		t.Errorf("request body = %s, want it to contain \"googleGroups\":[]", body)
 	}
@@ -147,7 +135,7 @@ func TestUpdate_clear_putsEmptyArray(t *testing.T) {
 // testers.update response surfaces as an *api.Error carrying the HTTP
 // status so the gplay exit-code taxonomy maps it (403 -> 11, ...).
 func TestUpdate_apiError_isWrappedWithStatus(t *testing.T) {
-	transport := &rt{t: t, status: 403, body: `{"error":{"code":403,"message":"The caller does not have permission"}}`}
+	transport := fakeWith(403, `{"error":{"code":403,"message":"The caller does not have permission"}}`)
 	hc := &http.Client{Transport: transport}
 
 	_, _, err := testers.Update(context.Background(), hc, "com.example.app", "edit-123", "qa-team",

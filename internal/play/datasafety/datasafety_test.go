@@ -4,74 +4,52 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"strings"
 	"testing"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/datasafety"
 )
 
-// postRT is a minimal RoundTripper for the write-only Data Safety POST. It
-// captures the request URL, method, and body, and serves a configurable
-// status/body so the success and error paths can be exercised. There is no
-// /token exchange here: Post is called with a ready http.Client.
-type postRT struct {
-	t      *testing.T
-	code   int // 0 → 200
-	resp   string
-	netErr error
-
-	method string
-	path   string
-	body   []byte
-}
-
-func (r *postRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if r.netErr != nil {
-		return nil, r.netErr
-	}
-	r.method = req.Method
-	r.path = req.URL.Path
-	if req.Body != nil {
-		r.body, _ = io.ReadAll(req.Body)
-	}
-	code := r.code
-	if code == 0 {
-		code = 200
-	}
-	return &http.Response{
-		StatusCode: code,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(r.resp)),
-	}, nil
-}
-
+// There is no /token exchange here: Post is called with a ready http.Client,
+// so the Fake only ever sees the Data Safety POST.
 func client(rt http.RoundTripper) *http.Client { return &http.Client{Transport: rt} }
+
+// onlyCall returns the single request the Fake recorded, failing otherwise.
+func onlyCall(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want exactly one POST", len(calls))
+	}
+	return calls[0]
+}
 
 // TestPost_happyPath asserts Post issues a POST to
 // /applications/{pkg}/dataSafety with body {"safetyLabels":"<CSV>"} and
 // returns the raw response body verbatim (ADR-0003 pass-through).
 func TestPost_happyPath(t *testing.T) {
-	rt := &postRT{t: t, resp: `{"safetyLabels":"echo"}`}
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"safetyLabels":"echo"}`))
 	csv := []byte("data_type,collected\nLocation,Yes\n")
 
-	raw, err := datasafety.Post(context.Background(), client(rt), "com.example.app", csv)
+	raw, err := datasafety.Post(context.Background(), client(fake), "com.example.app", csv)
 	if err != nil {
 		t.Fatalf("Post: %v", err)
 	}
-	if rt.method != http.MethodPost {
-		t.Errorf("method = %q, want POST", rt.method)
+	c := onlyCall(t, fake)
+	if c.Method != http.MethodPost {
+		t.Errorf("method = %q, want POST", c.Method)
 	}
-	if rt.path != "/androidpublisher/v3/applications/com.example.app/dataSafety" {
-		t.Errorf("path = %q, want the non-Edits dataSafety endpoint", rt.path)
+	if c.Path != "/androidpublisher/v3/applications/com.example.app/dataSafety" {
+		t.Errorf("path = %q, want the non-Edits dataSafety endpoint", c.Path)
 	}
 	var body struct {
 		SafetyLabels string `json:"safetyLabels"`
 	}
-	if err := json.Unmarshal(rt.body, &body); err != nil {
-		t.Fatalf("request body is not JSON: %v\nbody=%s", err, rt.body)
+	if err := json.Unmarshal(c.Body, &body); err != nil {
+		t.Fatalf("request body is not JSON: %v\nbody=%s", err, c.Body)
 	}
 	if body.SafetyLabels != string(csv) {
 		t.Errorf("safetyLabels = %q, want the CSV verbatim %q", body.SafetyLabels, csv)
@@ -84,8 +62,8 @@ func TestPost_happyPath(t *testing.T) {
 // TestPost_emptyResponse asserts an empty 2xx body is returned as empty (the
 // command layer documents the empty-response exception).
 func TestPost_emptyResponse(t *testing.T) {
-	rt := &postRT{t: t, code: 200, resp: ""}
-	raw, err := datasafety.Post(context.Background(), client(rt), "com.example.app", []byte("a,b\n1,2\n"))
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, ""))
+	raw, err := datasafety.Post(context.Background(), client(fake), "com.example.app", []byte("a,b\n1,2\n"))
 	if err != nil {
 		t.Fatalf("Post: %v", err)
 	}
@@ -107,8 +85,8 @@ func TestPost_errorStatuses(t *testing.T) {
 		{"serverError", 500, 40},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &postRT{t: t, code: tc.code, resp: `{"error":{"code":` + itoa(tc.code) + `,"message":"nope"}}`}
-			_, err := datasafety.Post(context.Background(), client(rt), "com.example.app", []byte("a\n1\n"))
+			fake := testkit.NewFake(testkit.Any(tc.code, `{"error":{"code":`+itoa(tc.code)+`,"message":"nope"}}`))
+			_, err := datasafety.Post(context.Background(), client(fake), "com.example.app", []byte("a\n1\n"))
 			var apiErr *api.Error
 			if !errors.As(err, &apiErr) {
 				t.Fatalf("err = %v (%T), want *api.Error", err, err)
@@ -126,7 +104,9 @@ func TestPost_errorStatuses(t *testing.T) {
 // TestPost_networkError asserts a transport failure surfaces as an *api.Error
 // with StatusCode 0 → exit 50.
 func TestPost_networkError(t *testing.T) {
-	rt := &postRT{t: t, netErr: errors.New("connection refused")}
+	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})
 	_, err := datasafety.Post(context.Background(), client(rt), "com.example.app", []byte("a\n1\n"))
 	var apiErr *api.Error
 	if !errors.As(err, &apiErr) {

@@ -17,10 +17,8 @@
 package games
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -79,9 +77,8 @@ func (b *LocalizedStringBundle) First() string {
 }
 
 // listQuery encodes the shared paging parameters (maxResults/pageToken) the two
-// list methods accept; maxResults<=0 omits the param (API default). It stays
-// hand-built: the resolver answers with the path only (#516).
-func listQuery(maxResults int, pageToken string) string {
+// list methods accept; maxResults<=0 omits the param (API default).
+func listQuery(maxResults int, pageToken string) url.Values {
 	q := url.Values{}
 	if maxResults > 0 {
 		q.Set("maxResults", strconv.Itoa(maxResults))
@@ -89,52 +86,30 @@ func listQuery(maxResults int, pageToken string) string {
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)
 	}
-	return q.Encode()
+	return q
 }
 
-// newJSONReq builds a request with a JSON body (POST/PUT writes) or no body
-// (GET/DELETE), wrapping a construction failure as *api.Error. Verb and URL
-// both come from m, so a call site cannot pair one method's verb with
-// another's path (#516). query is the already-encoded suffix ("" for none).
-func newJSONReq(ctx context.Context, m apiregistry.Method, op, ref string, params map[string]string, query string, body []byte) (*http.Request, error) {
-	u, err := m.URL(params)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: ref, Message: err.Error(), Cause: err}
-	}
-	if query != "" {
-		u += "?" + query
-	}
-	var r io.Reader
-	if body != nil {
-		r = bytes.NewReader(body)
-	}
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, r)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: ref, Message: err.Error(), Cause: err}
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	return req, nil
-}
-
-// do runs req and maps the response to (raw body, *api.Error). ref is the
+// call describes one request: m supplies verb and URL template, so a call site
+// cannot pair one method's verb with another's path (#516). ref is the
 // addressing context (application ID or resource ID) carried in api.Error for
-// the human-readable message.
-func do(hc *http.Client, op, ref string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
+// the human-readable message. body nil sends no body (GET/DELETE); anything
+// else is a JSON write sent verbatim.
+func call(m apiregistry.Method, op, ref string, params map[string]string, q url.Values, body []byte) api.Call {
+	c := api.Call{Method: m, Op: op, Target: ref, Params: params, Query: q}
+	if body != nil {
+		c.Body = body
+	}
+	return c
+}
+
+// doJSON sends c and decodes the 2xx body into a T, returning it with the
+// verbatim raw body.
+func doJSON[T any](ctx context.Context, hc *http.Client, c api.Call) (T, json.RawMessage, error) {
+	var out T
+	raw, err := api.DoJSON(ctx, hc, c, &out)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: ref, Message: err.Error(), Cause: err}
+		var zero T
+		return zero, nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: ref, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: ref, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
+	return out, raw, nil
 }

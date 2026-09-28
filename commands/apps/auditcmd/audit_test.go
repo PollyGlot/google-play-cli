@@ -1,5 +1,5 @@
 // Package auditcmd_test drives `gplay apps audit` at the kernel level: a
-// RunContext built by hand and a RoundTripper injected via the
+// RunContext built by hand and a testkit.Fake injected via the
 // oauth2.HTTPClient context key, so the whole sweep runs offline.
 //
 // The transport is the read-only guard PRD #449 asks for: it serves the
@@ -18,10 +18,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -44,61 +42,64 @@ type appFixture struct {
 	status int
 }
 
-// auditRT routes the whole sweep offline. Any request that is not the token
-// exchange, the Reporting search, a GET read, or the Edit open/discard fails
-// the test: an audit that PUTs, PATCHes or commits is a contract breach, not a
-// wrong answer.
-type auditRT struct {
-	t          *testing.T
-	searchBody string
-	apps       map[string]appFixture
-
-	mu       sync.Mutex
-	calls    []string
-	openEdit map[string]bool
-	discards int
+// auditFake routes the whole sweep offline. Any request that is not the
+// token exchange, the Reporting search, a GET read, or the Edit open/discard
+// fails the test: an audit that PUTs, PATCHes or commits is a contract breach,
+// not a wrong answer. The breach is reported through t rather than only as a
+// failed round trip, because the sweep folds a per-app transport error into
+// its report and would otherwise carry on.
+func auditFake(t *testing.T, searchBody string, apps map[string]appFixture) *testkit.Fake {
+	t.Helper()
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/apps:search"):
+			return http.StatusOK, searchBody, true
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return http.StatusOK, fmt.Sprintf(`{"id":"edit-%s","expiryTimeSeconds":"1700000000"}`, pkgOf(c.Path)), true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return http.StatusNoContent, "", true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/tracks"):
+			f := apps[pkgOf(c.Path)]
+			if f.status != 0 {
+				return f.status, `{"error":{"message":"nope"}}`, true
+			}
+			return http.StatusOK, f.tracksBody, true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/listings"):
+			return http.StatusOK, apps[pkgOf(c.Path)].listingsBody, true
+		}
+		t.Errorf("audit issued a non-read request (it must never mutate): %s %s", c.Method, c.URL)
+		return 0, "", false
+	})
 }
 
-func (r *auditRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// isDiscard reports whether c is an Edit discard (edits.delete).
+func isDiscard(c testkit.Call) bool {
+	return c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/")
+}
 
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"a","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	path := req.URL.Path
-	r.calls = append(r.calls, req.Method+" "+path)
-
-	switch {
-	case req.Method == http.MethodGet && strings.HasSuffix(path, "/apps:search"):
-		return jsonResp(200, r.searchBody), nil
-
-	case req.Method == http.MethodPost && strings.HasSuffix(path, "/edits"):
-		pkg := pkgOf(path)
-		if r.openEdit == nil {
-			r.openEdit = map[string]bool{}
+// discards counts the Edits the sweep discarded.
+func discards(fake *testkit.Fake) int {
+	n := 0
+	for _, c := range fake.Calls() {
+		if isDiscard(c) {
+			n++
 		}
-		r.openEdit[pkg] = true
-		return jsonResp(200, fmt.Sprintf(`{"id":"edit-%s","expiryTimeSeconds":"1700000000"}`, pkg)), nil
-
-	case req.Method == http.MethodDelete && strings.Contains(path, "/edits/"):
-		r.discards++
-		delete(r.openEdit, pkgOf(path))
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-
-	case req.Method == http.MethodGet && strings.HasSuffix(path, "/tracks"):
-		f := r.apps[pkgOf(path)]
-		if f.status != 0 {
-			return jsonResp(f.status, `{"error":{"message":"nope"}}`), nil
-		}
-		return jsonResp(200, f.tracksBody), nil
-
-	case req.Method == http.MethodGet && strings.HasSuffix(path, "/listings"):
-		return jsonResp(200, r.apps[pkgOf(path)].listingsBody), nil
 	}
+	return n
+}
 
-	r.t.Fatalf("audit issued a non-read request (it must never mutate): %s %s", req.Method, req.URL)
-	return nil, nil
+// openEdits returns the packages whose Edit was opened and never discarded.
+func openEdits(fake *testkit.Fake) map[string]bool {
+	open := map[string]bool{}
+	for _, c := range fake.Calls() {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			open[pkgOf(c.Path)] = true
+		case isDiscard(c):
+			delete(open, pkgOf(c.Path))
+		}
+	}
+	return open
 }
 
 // pkgOf pulls the package out of an androidpublisher applications path.
@@ -113,14 +114,6 @@ func pkgOf(path string) string {
 		return rest[:j]
 	}
 	return rest
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -182,11 +175,11 @@ const (
 // positional packages the sweep discovers via apps.search, reads both apps,
 // and reports the drift on the one that has it.
 func TestRun_discoversAndFindsDrift(t *testing.T) {
-	rt := &auditRT{t: t, searchBody: searchTwoApps, apps: map[string]appFixture{
+	fake := auditFake(t, searchTwoApps, map[string]appFixture{
 		"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
 		"com.example.b": {tracksBody: cleanTracks, listingsBody: twoLocales},
-	}}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, fake)
 
 	report, err := auditcmd.Run(rc, auditcmd.Input{})
 	if err != nil {
@@ -215,23 +208,23 @@ func TestRun_discoversAndFindsDrift(t *testing.T) {
 		t.Errorf("no-production-release hit %v, want nothing (both apps ship to production)", pkgs)
 	}
 
-	// Read-only proof: every Edit opened was discarded, and the transport
-	// fatals on any other mutating verb.
-	if rt.discards != 2 {
-		t.Errorf("discarded %d Edits, want 2 (one per audited app)", rt.discards)
+	// Read-only proof: every Edit opened was discarded, and the fake fails
+	// the test on any other mutating verb.
+	if n := discards(fake); n != 2 {
+		t.Errorf("discarded %d Edits, want 2 (one per audited app)", n)
 	}
-	if len(rt.openEdit) != 0 {
-		t.Errorf("Edits left open: %v", rt.openEdit)
+	if open := openEdits(fake); len(open) != 0 {
+		t.Errorf("Edits left open: %v", open)
 	}
 }
 
 // TestRun_cleanAccount is the zero-findings path: the report still names what
 // ran, so a clean bill is distinguishable from an empty sweep.
 func TestRun_cleanAccount(t *testing.T) {
-	rt := &auditRT{t: t, apps: map[string]appFixture{
+	fake := auditFake(t, "", map[string]appFixture{
 		"com.example.b": {tracksBody: cleanTracks, listingsBody: twoLocales},
-	}}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, fake)
 
 	report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.b"}})
 	if err != nil {
@@ -244,9 +237,9 @@ func TestRun_cleanAccount(t *testing.T) {
 		t.Errorf("ran section = %+v / %+v, want the audited app and the checks named", report.Ran, report.Summary)
 	}
 	// Explicit packages must not cost a Reporting call.
-	for _, c := range rt.calls {
-		if strings.Contains(c, "apps:search") {
-			t.Errorf("named packages still hit apps.search: %v", rt.calls)
+	for _, c := range fake.Calls() {
+		if strings.Contains(c.Path, "apps:search") {
+			t.Errorf("named packages still hit apps.search: %s %s", c.Method, c.Path)
 		}
 	}
 }
@@ -255,11 +248,11 @@ func TestRun_cleanAccount(t *testing.T) {
 // credential cannot read is reported inside the document, the others are still
 // audited, and the failure carries its taxonomy exit code.
 func TestRun_partialFailureDoesNotAbort(t *testing.T) {
-	rt := &auditRT{t: t, apps: map[string]appFixture{
+	fake := auditFake(t, "", map[string]appFixture{
 		"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
 		"com.example.b": {status: http.StatusForbidden},
-	}}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, fake)
 
 	report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
 	if err != nil {
@@ -279,8 +272,8 @@ func TestRun_partialFailureDoesNotAbort(t *testing.T) {
 	}
 	// The failed app's Edit is still discarded: a dangling Edit would block
 	// the operator's next publish for 24h.
-	if rt.discards != 2 {
-		t.Errorf("discarded %d Edits, want 2 (including the app that failed mid-read)", rt.discards)
+	if n := discards(fake); n != 2 {
+		t.Errorf("discarded %d Edits, want 2 (including the app that failed mid-read)", n)
 	}
 }
 
@@ -292,7 +285,7 @@ func TestRun_checkSelection(t *testing.T) {
 	}
 
 	t.Run("only the selected check runs", func(t *testing.T) {
-		rc, _ := newRC(t, &auditRT{t: t, apps: fixtures})
+		rc, _ := newRC(t, auditFake(t, "", fixtures))
 		report, err := auditcmd.Run(rc, auditcmd.Input{
 			Packages: []string{"com.example.a"},
 			Checks:   []string{audit.CheckLingeringDrafts},
@@ -311,7 +304,7 @@ func TestRun_checkSelection(t *testing.T) {
 	})
 
 	t.Run("skip-check removes it from the what-ran section", func(t *testing.T) {
-		rc, _ := newRC(t, &auditRT{t: t, apps: fixtures})
+		rc, _ := newRC(t, auditFake(t, "", fixtures))
 		report, err := auditcmd.Run(rc, auditcmd.Input{
 			Packages:   []string{"com.example.a"},
 			SkipChecks: []string{audit.CheckEmptyReleaseNotes},
@@ -332,7 +325,7 @@ func TestRun_checkSelection(t *testing.T) {
 	})
 
 	t.Run("unknown check is exit 2", func(t *testing.T) {
-		rc, _ := newRC(t, &auditRT{t: t, apps: fixtures})
+		rc, _ := newRC(t, auditFake(t, "", fixtures))
 		_, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a"}, Checks: []string{"lingering-draft"}})
 		if err == nil {
 			t.Fatal("Run = nil error, want CLI misuse for an unknown check ID")
@@ -343,7 +336,7 @@ func TestRun_checkSelection(t *testing.T) {
 	})
 
 	t.Run("skipping every check is exit 2", func(t *testing.T) {
-		rc, _ := newRC(t, &auditRT{t: t, apps: fixtures})
+		rc, _ := newRC(t, auditFake(t, "", fixtures))
 		_, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a"}, SkipChecks: audit.IDs()})
 		if err == nil {
 			t.Fatal("Run = nil error, want CLI misuse when the selection is empty")
@@ -358,10 +351,10 @@ func TestRun_checkSelection(t *testing.T) {
 // clean (0), findings (70), and a sweep that could not run at all.
 func TestExitCodes(t *testing.T) {
 	t.Run("clean sweep exits 0 and hands the report to the kernel", func(t *testing.T) {
-		rt := &auditRT{t: t, apps: map[string]appFixture{
+		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.b": {tracksBody: cleanTracks, listingsBody: twoLocales},
-		}}
-		rc, stdout := newRC(t, rt)
+		})
+		rc, stdout := newRC(t, fake)
 		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.b"}})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
@@ -385,10 +378,10 @@ func TestExitCodes(t *testing.T) {
 		if exit.FindingsCode != 70 {
 			t.Fatalf("FindingsCode = %d, want the documented 70 (DESIGN §9)", exit.FindingsCode)
 		}
-		rt := &auditRT{t: t, apps: map[string]appFixture{
+		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
-		}}
-		rc, stdout := newRC(t, rt)
+		})
+		rc, stdout := newRC(t, fake)
 		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a"}})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
@@ -412,11 +405,11 @@ func TestExitCodes(t *testing.T) {
 	// return zero findings and exit 0, handing back a clean bill for an
 	// account it never actually looked at.
 	t.Run("every app failed exits with the API code, not 0", func(t *testing.T) {
-		rt := &auditRT{t: t, apps: map[string]appFixture{
+		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {status: http.StatusForbidden},
 			"com.example.b": {status: http.StatusForbidden},
-		}}
-		rc, stdout := newRC(t, rt)
+		})
+		rc, stdout := newRC(t, fake)
 		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
@@ -441,11 +434,11 @@ func TestExitCodes(t *testing.T) {
 
 	// Errors outrank findings: a hole in the sweep is not a result.
 	t.Run("errors win over findings", func(t *testing.T) {
-		rt := &auditRT{t: t, apps: map[string]appFixture{
+		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
 			"com.example.b": {status: http.StatusNotFound},
-		}}
-		rc, _ := newRC(t, rt)
+		})
+		rc, _ := newRC(t, fake)
 		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
@@ -461,11 +454,11 @@ func TestExitCodes(t *testing.T) {
 	// Non-retryable-wins, the `apps add` batch rule: a permanent failure must
 	// not be masked by a transient one, or a caller loops on a 403 forever.
 	t.Run("a permanent failure outranks a transient one", func(t *testing.T) {
-		rt := &auditRT{t: t, apps: map[string]appFixture{
+		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {status: http.StatusServiceUnavailable},
 			"com.example.b": {status: http.StatusForbidden},
-		}}
-		rc, _ := newRC(t, rt)
+		})
+		rc, _ := newRC(t, fake)
 		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
@@ -477,10 +470,10 @@ func TestExitCodes(t *testing.T) {
 
 	// The mirror image: when every failure is transient, the caller is told so.
 	t.Run("all-transient failures keep a retryable code", func(t *testing.T) {
-		rt := &auditRT{t: t, apps: map[string]appFixture{
+		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {status: http.StatusServiceUnavailable},
-		}}
-		rc, _ := newRC(t, rt)
+		})
+		rc, _ := newRC(t, fake)
 		report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a"}})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
@@ -491,8 +484,8 @@ func TestExitCodes(t *testing.T) {
 	})
 
 	t.Run("a sweep that cannot discover fails with the API code", func(t *testing.T) {
-		rt := &auditRT{t: t, searchBody: `{"apps":[]}`, apps: map[string]appFixture{}}
-		rc, _ := newRC(t, rt)
+		fake := auditFake(t, `{"apps":[]}`, map[string]appFixture{})
+		rc, _ := newRC(t, fake)
 		_, err := auditcmd.Run(rc, auditcmd.Input{})
 		if err == nil {
 			t.Fatal("Run = nil error, want a refusal when discovery yields no app")
@@ -507,10 +500,10 @@ func TestExitCodes(t *testing.T) {
 // agent reads. Not an API pass-through (the report composes several
 // resources), so gplay owns and must not silently reshape it.
 func TestReportJSONShape(t *testing.T) {
-	rt := &auditRT{t: t, apps: map[string]appFixture{
+	fake := auditFake(t, "", map[string]appFixture{
 		"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
-	}}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, fake)
 	report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.a"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -556,10 +549,10 @@ func TestReportJSONShape(t *testing.T) {
 // TestRun_dedupesPackages: naming the same package twice must not audit it
 // twice, which would double the quota cost for no new information.
 func TestRun_dedupesPackages(t *testing.T) {
-	rt := &auditRT{t: t, apps: map[string]appFixture{
+	fake := auditFake(t, "", map[string]appFixture{
 		"com.example.b": {tracksBody: cleanTracks, listingsBody: twoLocales},
-	}}
-	rc, _ := newRC(t, rt)
+	})
+	rc, _ := newRC(t, fake)
 	report, err := auditcmd.Run(rc, auditcmd.Input{Packages: []string{"com.example.b", "com.example.b", " "}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -567,7 +560,7 @@ func TestRun_dedupesPackages(t *testing.T) {
 	if report.Summary.AppsAudited != 1 {
 		t.Errorf("audited %d apps, want 1", report.Summary.AppsAudited)
 	}
-	if rt.discards != 1 {
-		t.Errorf("opened %d Edits, want 1", rt.discards)
+	if n := discards(fake); n != 1 {
+		t.Errorf("opened %d Edits, want 1", n)
 	}
 }

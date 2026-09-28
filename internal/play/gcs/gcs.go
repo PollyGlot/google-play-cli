@@ -51,29 +51,9 @@ type Object struct {
 // (403 → exit 11, 404 → exit 30); the bucket stands in for the api.Error's
 // Package field so the message names what was addressed.
 func ListObjects(ctx context.Context, hc *http.Client, bucket, prefix string) ([]Object, error) {
-	var out []Object
-	pageToken := ""
-	// seen guards against a server that repeats a pageToken forever.
-	seen := map[string]struct{}{}
-	for {
-		items, next, err := listPage(ctx, hc, bucket, prefix, pageToken)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, items...)
-		if next == "" {
-			return out, nil
-		}
-		if _, dup := seen[next]; dup {
-			return nil, &api.Error{
-				Operation: opObjectsList,
-				Package:   bucket,
-				Message:   "pagination token loop detected in storage.objects.list (server repeated a pageToken)",
-			}
-		}
-		seen[next] = struct{}{}
-		pageToken = next
-	}
+	out, _, err := api.Paginate(api.Pager{Op: opObjectsList, Target: bucket, What: "storage.objects.list"},
+		func(token string, _ int) ([]Object, string, error) { return listPage(ctx, hc, bucket, prefix, token) })
+	return out, err
 }
 
 // listPage fetches one storage.objects.list page. pageToken is the prior

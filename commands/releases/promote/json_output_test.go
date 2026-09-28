@@ -28,12 +28,11 @@ const promoteUpdateBody = `{
 // the fake API and asserts `--output json` prints the tracks.update body
 // byte for byte (ADR-0003): the contract agents and storedeck parse.
 func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
-	rt := &promoteRT{
-		t:                  t,
+	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-xyz",
 		sourceTrackGetResp: `{"track":"internal","releases":[{"name":"142","status":"completed","versionCodes":["142"]}]}`,
 		trackUpdateRawResp: promoteUpdateBody,
-	}
+	})
 	rc, _ := newRC(t, rt)
 
 	r, err := promote.Run(rc, promote.Input{Package: "com.example.app", FromTrack: "internal", ToTrack: "beta"})

@@ -3,15 +3,10 @@ package validate_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -27,53 +22,39 @@ import (
 
 const pkg = "com.example.app"
 
-// validateRT serves the token exchange and the edits.validate POST;
-// validateStatus (0 → 200) forces a non-2xx for the failure test. Any other
-// request (an insert, a commit, a delete) is a contract breach.
-type validateRT struct {
-	t              *testing.T
-	validateStatus int
-
-	mu            sync.Mutex
-	validateCalls int
-}
-
-func (r *validateRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits/edit-9:validate") {
-		r.validateCalls++
-		if r.validateStatus != 0 {
-			return jsonResp(r.validateStatus, `{"error":{"code":400,"message":"The release notes exceed 500 characters"}}`), nil
+// newValidateFake serves the edits.validate POST; validateStatus (0 → 200)
+// forces a non-2xx for the failure test.
+func newValidateFake(validateStatus int) *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		if c.Method != http.MethodPost || !strings.HasSuffix(c.Path, "/edits/edit-9:validate") {
+			return 0, "", false
 		}
-		return jsonResp(200, `{"id":"edit-9","expiryTimeSeconds":"1700000000"}`), nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
-
-func signedSAJSON(t *testing.T) []byte {
-	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, _ := json.Marshal(map[string]any{
-		"type": "service_account", "project_id": "p", "private_key": string(pemBytes),
-		"client_email": "ci@p.iam.gserviceaccount.com", "token_uri": "https://oauth2.googleapis.com/token",
+		if validateStatus != 0 {
+			return validateStatus, `{"error":{"code":400,"message":"The release notes exceed 500 characters"}}`, true
+		}
+		return 200, `{"id":"edit-9","expiryTimeSeconds":"1700000000"}`, true
 	})
-	return raw
+}
+
+// validateCalls counts the edits.validate calls and fails the test on any
+// other request: an insert, a commit or a delete is a contract breach,
+// including on the paths where Run's error would otherwise hide it.
+func validateCalls(t *testing.T, f *testkit.Fake) int {
+	t.Helper()
+	n := 0
+	for _, c := range f.Calls() {
+		if c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits/edit-9:validate") {
+			n++
+			continue
+		}
+		t.Errorf("unexpected request: %s %s", c.Method, c.Path)
+	}
+	return n
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, string) {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -107,8 +88,8 @@ func render(t *testing.T, r output.Renderable, f output.Format) string {
 }
 
 func TestRun_valid_mirrorsAPIBodyAndKeepsPin(t *testing.T) {
-	rt := &validateRT{t: t}
-	rc, gplayDir := newRC(t, rt)
+	fake := newValidateFake(0)
+	rc, gplayDir := newRC(t, fake)
 	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-9"); err != nil {
 		t.Fatalf("seed pin: %v", err)
 	}
@@ -117,8 +98,8 @@ func TestRun_valid_mirrorsAPIBodyAndKeepsPin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rt.validateCalls != 1 {
-		t.Errorf("validateCalls = %d, want 1", rt.validateCalls)
+	if n := validateCalls(t, fake); n != 1 {
+		t.Errorf("validateCalls = %d, want 1", n)
 	}
 	// ADR-0003: --output json is the API body, not a gplay envelope.
 	if got, want := strings.TrimSpace(render(t, r, output.FormatJSON)), `{"id":"edit-9","expiryTimeSeconds":"1700000000"}`; got != want {
@@ -134,8 +115,8 @@ func TestRun_valid_mirrorsAPIBodyAndKeepsPin(t *testing.T) {
 }
 
 func TestRun_invalid_400_exit30_keepsPin(t *testing.T) {
-	rt := &validateRT{t: t, validateStatus: 400}
-	rc, gplayDir := newRC(t, rt)
+	fake := newValidateFake(400)
+	rc, gplayDir := newRC(t, fake)
 	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-9"); err != nil {
 		t.Fatalf("seed pin: %v", err)
 	}
@@ -150,17 +131,18 @@ func TestRun_invalid_400_exit30_keepsPin(t *testing.T) {
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); !ok {
 		t.Error("a failed validate must leave the pin in place for a fix-and-retry")
 	}
+	validateCalls(t, fake)
 }
 
 func TestRun_noOpenEdit_exit60_noNetwork(t *testing.T) {
-	rt := &validateRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newValidateFake(0)
+	rc, _ := newRC(t, fake)
 
 	_, err := validatecmd.Run(rc, validatecmd.Input{Package: pkg})
 	if code := exitOf(t, err); code != 60 {
 		t.Fatalf("exit = %d, want 60 (no open edit)", code)
 	}
-	if rt.validateCalls != 0 {
-		t.Errorf("no open edit must fail before the network; validateCalls = %d", rt.validateCalls)
+	if n := validateCalls(t, fake); n != 0 {
+		t.Errorf("no open edit must fail before the network; validateCalls = %d", n)
 	}
 }
