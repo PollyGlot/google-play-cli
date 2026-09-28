@@ -226,11 +226,18 @@ jobs:
           KIND: ${{ steps.diff.outputs.kind }}
         run: |
           set -euo pipefail
-          # Both labels are removed first: the branch is rolling, so last week's
-          # verdict must not survive into this week's classification.
-          gh pr edit "$PR" \
-            --remove-label discovery:schema --remove-label discovery:surface \
-            --add-label "discovery:$KIND"
+          # The branch is rolling, so last week's kind must not survive into this
+          # week's classification: drop the other kind's label. Never remove the
+          # label being added in the same call: gh applies --add-label before
+          # --remove-label, so the pair nets to no label at all (this is what
+          # happened on #648, leaving the triage routine nothing to pick up).
+          # Removing an absent label is a no-op for gh, not an error.
+          case "$KIND" in
+            schema) stale=discovery:surface ;;
+            surface) stale=discovery:schema ;;
+            *) echo "::error::Unexpected kind '$KIND'." && exit 1 ;;
+          esac
+          gh pr edit "$PR" --remove-label "$stale" --add-label "discovery:$KIND"
 
       # revision-only means the classifier found nothing beyond the date stamp,
       # so there is nothing for a human to read — the PR merges itself. Two
