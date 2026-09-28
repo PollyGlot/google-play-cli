@@ -5,6 +5,24 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/PollyGlot/google-play-cli/compare/v1.7.1...v2.0.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **output:** resource field in the error envelope, package means package ([#638](https://github.com/PollyGlot/google-play-cli/issues/638))
+* **cli:** one canonical name per flag and verb ([#639](https://github.com/PollyGlot/google-play-cli/issues/639))
+
+### Features
+
+* **cli:** one canonical name per flag and verb ([#639](https://github.com/PollyGlot/google-play-cli/issues/639)) ([6e7d90e](https://github.com/PollyGlot/google-play-cli/commit/6e7d90ea21f485631c87a8a2ed204e3299242358))
+* **output:** resource field in the error envelope, package means package ([#638](https://github.com/PollyGlot/google-play-cli/issues/638)) ([c22798a](https://github.com/PollyGlot/google-play-cli/commit/c22798a801b7f4bebec96c8a8a9ee8b328497c3b))
+
+
+### Bug Fixes
+
+* **install-skills:** pin the skills commit that speaks the 2.0 flag and verb names ([#651](https://github.com/PollyGlot/google-play-cli/issues/651)) ([2751553](https://github.com/PollyGlot/google-play-cli/commit/275155318618466445447b8b05fc6d39d3c0b92c))
+
 ## [1.7.1](https://github.com/PollyGlot/google-play-cli/compare/v1.7.0...v1.7.1) (2026-09-28)
 
 
