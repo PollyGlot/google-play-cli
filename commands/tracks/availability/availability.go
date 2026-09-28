@@ -17,7 +17,6 @@ package availability
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,9 +25,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/countryavailability"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 )
@@ -38,13 +38,6 @@ type Input struct {
 	Package string
 	Track   string
 }
-
-// usageError is a CLI-misuse error (missing --track, no package);
-// ExitCode()=2 per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // notFoundError wraps a 404 (unknown track OR package) with a hint
 // pointing at `gplay tracks list`. It carries no ExitCode of its own so
@@ -66,40 +59,17 @@ func (e *notFoundError) Error() string {
 // mapping the 404 to exit 30.
 func (e *notFoundError) Unwrap() error { return e.cause }
 
-// forbiddenError wraps a 403 (service account not granted access on the
-// app) with the standard grant-access hint. It carries no ExitCode of its
-// own so the wrapped *api.Error (403 → exit 11) stays authoritative.
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-// Error renders the forbidden message plus the Play Console grant hint.
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 403 to exit 11.
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// classifyEditError attaches an actionable hint to the operator-facing
+// classifyAvailabilityError attaches an actionable hint to the operator-facing
 // failures of an availability read, while leaving the wrapped *api.Error
 // to drive the exit code. A 404 (on edits.insert OR countryAvailability.get)
 // means an unknown track or package (→ `gplay tracks list` hint); a 403
 // means the service account lacks API access on the app. Every other
 // failure (5xx, network, edit conflict) propagates verbatim.
-func classifyEditError(pkg, track string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &notFoundError{track: track, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
+func classifyAvailabilityError(pkg, track string, err error) error {
+	if apihint.Status(err) == http.StatusNotFound {
+		return &notFoundError{track: track, cause: err}
 	}
-	return err
+	return apihint.Forbidden(pkg, err)
 }
 
 // Payload satisfies output.Renderable. Raw carries the
@@ -185,15 +155,12 @@ func renderMarkdown(w io.Writer, p Payload) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	track := strings.TrimSpace(in.Track)
 	if track == "" {
-		return nil, &usageError{msg: "missing --track: Country availability is keyed by track; pass --track <name> (e.g. production)"}
+		return nil, &exit.UsageError{Msg: "missing --track: Country availability is keyed by track; pass --track <name> (e.g. production)"}
 	}
 
-	pkg := strings.TrimSpace(in.Package)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -213,7 +180,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		parsed, raw = ca, r
 		return nil
 	}); err != nil {
-		return nil, classifyEditError(pkg, track, err)
+		return nil, classifyAvailabilityError(pkg, track, err)
 	}
 
 	codes := make([]string, 0, len(parsed.Countries))
@@ -251,7 +218,9 @@ countryavailability.get → discard); nothing is committed. To CHANGE where
 an app is available, use the Play Console.
 
 --output json returns the edits.countryavailability.get body verbatim (a
-clean ADR-0003 pass-through: a single endpoint is read).`,
+clean pass-through: a single endpoint is read).`,
+		Example: `  gplay tracks availability view --track production
+  gplay tracks availability view --track beta --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

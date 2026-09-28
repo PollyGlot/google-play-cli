@@ -20,7 +20,6 @@ package accessibleapps
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -70,10 +69,6 @@ type SearchResponse struct {
 // response's NextPageToken to fetch the next page. pageSize <= 0 lets the
 // server apply its default (50; max 1000).
 func Search(ctx context.Context, hc *http.Client, pageSize int, pageToken string) (SearchResponse, json.RawMessage, error) {
-	u, err := mSearch.URL(nil)
-	if err != nil {
-		return SearchResponse{}, nil, &api.Error{Operation: opSearch, Message: err.Error(), Cause: err}
-	}
 	q := url.Values{}
 	if pageSize > 0 {
 		q.Set("pageSize", strconv.Itoa(pageSize))
@@ -81,43 +76,11 @@ func Search(ctx context.Context, hc *http.Client, pageSize int, pageToken string
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)
 	}
-	if enc := q.Encode(); enc != "" {
-		u += "?" + enc
-	}
-
-	req, err := http.NewRequestWithContext(ctx, mSearch.Verb, u, nil)
-	if err != nil {
-		return SearchResponse{}, nil, &api.Error{Operation: opSearch, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, req)
+	// apps.search is account-scoped, not app-scoped: no Target.
+	var sr SearchResponse
+	raw, err := api.DoJSON(ctx, hc, api.Call{Method: mSearch, Op: opSearch, Query: q}, &sr)
 	if err != nil {
 		return SearchResponse{}, nil, err
 	}
-	var sr SearchResponse
-	if err := json.Unmarshal(raw, &sr); err != nil {
-		return SearchResponse{}, nil, &api.Error{Operation: opSearch, Message: "decode response: " + err.Error(), Cause: err}
-	}
 	return sr, raw, nil
-}
-
-// do performs the request, mapping any non-2xx to an *api.Error carrying
-// the status so exit.For dispatches it through the shared taxonomy. It
-// mirrors the helper in internal/play/devicetiers; the Package field is
-// left empty because apps.search is account-scoped, not app-scoped.
-func do(hc *http.Client, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: opSearch, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{Operation: opSearch, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: opSearch, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
 }

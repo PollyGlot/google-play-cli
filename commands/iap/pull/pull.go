@@ -93,7 +93,7 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 // Run is the business function the kernel invokes: list both live surfaces to
 // completion, union them (v2 wins), mirror into --dir.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg, err := iapcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// No single API response covers a two-surface union, so the json view is a
 	// composite of the two verbatim list envelopes (the `apps view` precedent:
 	// each sub-array is upstream bytes, key names mirror the API envelopes).
-	merged, err := json.Marshal(struct {
+	merged, err := output.Marshal(struct {
 		OneTimeProducts []json.RawMessage `json:"oneTimeProducts"`
 		InAppProduct    []json.RawMessage `json:"inappproduct"`
 	}{OneTimeProducts: rawV2, InAppProduct: rawLegacy})
@@ -191,6 +191,10 @@ mirrors Play; non-.json files are never touched.
 
 --output json is a composite of the two verbatim list envelopes
 ({"oneTimeProducts":[...],"inappproduct":[...]}).`,
+		Example: `  # Write the live catalog to ./monetization/iap, then commit it
+  gplay iap pull
+
+  gplay iap pull --dir store/iap --package com.example.app`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

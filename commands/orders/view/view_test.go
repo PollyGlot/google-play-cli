@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -22,34 +20,29 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// ordersRT is a RoundTripper that answers the /token exchange and the
-// orders.get / orders.batchget calls, recording the API URL. status/body are
-// configurable so the refusal path can return a 403/404; otherwise it serves
-// the batch body for a :batchGet path and the single order body for a get.
-type ordersRT struct {
-	mu     sync.Mutex
-	calls  []string
-	apiURL string
-	status int
-	body   string
+// newFake answers the orders.get / orders.batchget calls. A non-zero status
+// serves body for the refusal path (403/404); otherwise it serves the batch
+// body for a :batchGet path and the single order body for a get.
+func newFake(status int, body string) *testkit.Fake {
+	if status != 0 {
+		return testkit.NewFake(testkit.Any(status, body))
+	}
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		if strings.Contains(c.Path, ":batchGet") {
+			return http.StatusOK, batchBody, true
+		}
+		return http.StatusOK, orderBody, true
+	})
 }
 
-func (r *ordersRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+// lastURL is the URL of the last API call, failing the test when none was made.
+func lastURL(t *testing.T, fake *testkit.Fake) string {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.apiURL = req.URL.String()
-	if r.status != 0 {
-		return jsonResp(r.status, r.body), nil
-	}
-	if strings.Contains(req.URL.Path, ":batchGet") {
-		return jsonResp(200, batchBody), nil
-	}
-	return jsonResp(200, orderBody), nil
+	return calls[len(calls)-1].URL
 }
 
 const orderBody = `{
@@ -68,10 +61,6 @@ const batchBody = `{
   ],
   "nextPageToken": "ignored-but-verbatim"
 }`
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
@@ -97,17 +86,18 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 // TestRun_happyPath_packageScoped_noEdit asserts a single ID hits orders.get on
 // the package axis (no Edit) and passes the response through verbatim.
 func TestRun_happyPath_packageScoped_noEdit(t *testing.T) {
-	rt := &ordersRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app", OrderIDs: []string{"GPA.1234-5678-9012-34567"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.HasSuffix(rt.apiURL, "/applications/com.example.app/orders/GPA.1234-5678-9012-34567") {
-		t.Errorf("url %q is not the package-scoped orders.get endpoint", rt.apiURL)
+	apiURL := lastURL(t, fake)
+	if !strings.HasSuffix(apiURL, "/applications/com.example.app/orders/GPA.1234-5678-9012-34567") {
+		t.Errorf("url %q is not the package-scoped orders.get endpoint", apiURL)
 	}
-	if strings.Contains(rt.apiURL, "/edits/") {
-		t.Errorf("url %q must not open an Edit", rt.apiURL)
+	if strings.Contains(apiURL, "/edits/") {
+		t.Errorf("url %q must not open an Edit", apiURL)
 	}
 	// ADR-0003: --output json is the verbatim Order, including fields the typed
 	// summary drops (buyerAddress).
@@ -123,8 +113,8 @@ func TestRun_happyPath_packageScoped_noEdit(t *testing.T) {
 // TestRun_humanSummary renders the single table view and asserts the compact
 // summary (order id, state, total + currency, create time, line items) appears.
 func TestRun_humanSummary(t *testing.T) {
-	rt := &ordersRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app", OrderIDs: []string{"GPA.1234-5678-9012-34567"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -145,17 +135,18 @@ func TestRun_humanSummary(t *testing.T) {
 // :batchGet endpoint with one orderIds param each), render one summary line per
 // order, and pass the BatchGetOrdersResponse through verbatim.
 func TestRun_batch_routesToBatchGet(t *testing.T) {
-	rt := &ordersRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 	r, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app", OrderIDs: []string{"GPA.0001", "GPA.0002"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/applications/com.example.app/orders:batchGet?") {
-		t.Errorf("url %q is not the orders.batchget endpoint", rt.apiURL)
+	apiURL := lastURL(t, fake)
+	if !strings.Contains(apiURL, "/applications/com.example.app/orders:batchGet?") {
+		t.Errorf("url %q is not the orders.batchget endpoint", apiURL)
 	}
-	if c := strings.Count(rt.apiURL, "orderIds="); c != 2 {
-		t.Errorf("url %q must carry one orderIds param per ID, got %d", rt.apiURL, c)
+	if c := strings.Count(apiURL, "orderIds="); c != 2 {
+		t.Errorf("url %q must carry one orderIds param per ID, got %d", apiURL, c)
 	}
 	// Human view: one summary line per order.
 	var tbl bytes.Buffer
@@ -184,20 +175,20 @@ func TestRun_batch_routesToBatchGet(t *testing.T) {
 // TestRun_missingOrderID_exit2_noNetwork asserts a whitespace-only order ID is
 // CLI misuse caught before any HTTP call.
 func TestRun_missingOrderID_exit2_noNetwork(t *testing.T) {
-	rt := &ordersRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app", OrderIDs: []string{"   "}})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_capExceeded_exit2_noNetwork asserts more than 1000 IDs is a usage
 // error naming the cap, caught before any HTTP call.
 func TestRun_capExceeded_exit2_noNetwork(t *testing.T) {
-	rt := &ordersRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 	ids := make([]string, 1001)
 	for i := range ids {
 		ids[i] = "GPA." + strings.Repeat("x", 4)
@@ -207,16 +198,16 @@ func TestRun_capExceeded_exit2_noNetwork(t *testing.T) {
 	if !strings.Contains(err.Error(), "1000") {
 		t.Errorf("cap error %q must name the 1–1000 limit", err.Error())
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }
 
 // TestRun_403_namesPermission asserts a forbidden read maps to exit 11 and the
 // refusal message names CAN_VIEW_FINANCIAL_DATA (agent-resolvable).
 func TestRun_403_namesPermission(t *testing.T) {
-	rt := &ordersRT{status: 403, body: `{"error":{"message":"The caller does not have permission"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
+	rc := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app", OrderIDs: []string{"GPA.1"}})
 	assertExit(t, err, 11)
 	if !strings.Contains(err.Error(), "CAN_VIEW_FINANCIAL_DATA") {
@@ -227,8 +218,8 @@ func TestRun_403_namesPermission(t *testing.T) {
 // TestRun_batch_404_exit30 asserts a batch 404 (any unknown ID fails the whole
 // request) maps to the not-found exit code with the all-or-nothing hint.
 func TestRun_batch_404_exit30(t *testing.T) {
-	rt := &ordersRT{status: 404, body: `{"error":{"message":"order not found"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(404, `{"error":{"message":"order not found"}}`)
+	rc := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app", OrderIDs: []string{"GPA.1", "GPA.missing"}})
 	assertExit(t, err, 30)
 	if !strings.Contains(err.Error(), "batchget") {
@@ -239,8 +230,8 @@ func TestRun_batch_404_exit30(t *testing.T) {
 // TestRun_404_exit30 asserts an unknown single order id maps to the not-found
 // exit code with a hint.
 func TestRun_404_exit30(t *testing.T) {
-	rt := &ordersRT{status: 404, body: `{"error":{"message":"order not found"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(404, `{"error":{"message":"order not found"}}`)
+	rc := newRC(t, fake)
 	_, err := viewcmd.Run(rc, viewcmd.Input{Package: "com.example.app", OrderIDs: []string{"GPA.missing"}})
 	assertExit(t, err, 30)
 }

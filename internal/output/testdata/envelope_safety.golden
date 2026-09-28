@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "SAFETY_FLAG_REQUIRED",
+    "exitCode": 3,
+    "retryable": false,
+    "message": "refusing to remove <user>: pass --confirm",
+    "requires": [
+      "confirm"
+    ]
+  }
+}

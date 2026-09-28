@@ -126,7 +126,7 @@ func TestClassifyView(t *testing.T) {
 
 func TestClassify_nonAPIError_passesThrough(t *testing.T) {
 	in := errors.New("some transport hiccup")
-	if got := Classify("com.example.app", in); got != in {
+	if got := Classify("com.example.app", in); got != in { //nolint:errorlint // identity, not errors.Is: the test asserts the error is returned verbatim
 		t.Errorf("non-api error should pass through unchanged, got %v", got)
 	}
 }

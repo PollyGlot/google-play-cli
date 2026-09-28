@@ -150,7 +150,7 @@ func TestBasePlanDeletes_removedPlansOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BasePlanDeletes: %v", err)
 	}
-	if len(got) != 2 || got[0].ProductID != "premium/trial" || got[1].ProductID != "premium/yearly" {
+	if len(got) != 2 || got[0].Key() != "premium/trial" || got[1].Key() != "premium/yearly" {
 		t.Errorf("BasePlanDeletes = %+v, want [premium/trial premium/yearly]", got)
 	}
 	plan := reconcile.Plan{BasePlanDeletes: got}
@@ -166,5 +166,76 @@ func TestBasePlanDeletes_unaddressablePlan_refuses(t *testing.T) {
 	live := map[string]json.RawMessage{"premium": raw(`{"productId":"premium","basePlans":[{"state":"DRAFT"}]}`)}
 	if _, err := reconcile.BasePlanDeletes(local, live); err == nil {
 		t.Fatal("want an error on a base plan without basePlanId")
+	}
+}
+
+// TestComputeChildren_typedAndInDisplayOrder asserts the nested diff returns
+// typed identities in the order of the productId/parentId/offerId display key:
+// "a-b/..." sorts before "a/..." because '-' < '/', which a tuple sort would
+// invert. The plan views print that order, so it must not move.
+func TestComputeChildren_typedAndInDisplayOrder(t *testing.T) {
+	offer := raw(`{"offerTags":[]}`)
+	local := map[reconcile.Key]json.RawMessage{
+		{ProductID: "a", ParentID: "p", OfferID: "x"}:   offer,
+		{ProductID: "a-b", ParentID: "p", OfferID: "x"}: offer,
+	}
+	live := map[reconcile.Key]json.RawMessage{
+		{ProductID: "a", ParentID: "p", OfferID: "gone"}: offer,
+	}
+	creates, patches, deletes, err := reconcile.ComputeChildren(local, live, []reconcile.Field{{Name: "offerTags"}})
+	if err != nil {
+		t.Fatalf("ComputeChildren: %v", err)
+	}
+	if len(creates) != 2 || creates[0].ProductID != "a-b" || creates[1].ProductID != "a" {
+		t.Fatalf("creates = %+v, want a-b/p/x then a/p/x", creates)
+	}
+	if c := creates[1]; c.ParentID != "p" || c.OfferID != "x" || c.Key() != "a/p/x" {
+		t.Errorf("create identity = %+v, want typed a / p / x", c)
+	}
+	if len(patches) != 0 || len(deletes) != 1 || deletes[0].Key() != "a/p/gone" {
+		t.Errorf("patches = %+v, deletes = %+v, want none and a/p/gone", patches, deletes)
+	}
+}
+
+// TestPlanEntries_orderAndOps pins the flattened order every plan view lists
+// (grow, move state, shrink) and the state verbs.
+func TestPlanEntries_orderAndOps(t *testing.T) {
+	p := reconcile.Plan{
+		Creates:         []reconcile.Change{{ProductID: "c"}},
+		Patches:         []reconcile.Change{{ProductID: "p", Fields: []string{"listings"}}},
+		Deletes:         []reconcile.Change{{ProductID: "d"}},
+		BasePlanDeletes: []reconcile.Change{{ProductID: "p", ParentID: "old"}},
+		OfferCreates:    []reconcile.Change{{ProductID: "p", ParentID: "bp", OfferID: "new"}},
+		OfferPatches:    []reconcile.Change{{ProductID: "p", ParentID: "bp", OfferID: "chg"}},
+		OfferDeletes:    []reconcile.Change{{ProductID: "p", ParentID: "bp", OfferID: "del"}},
+		StateChanges: []reconcile.StateChange{
+			{Kind: reconcile.KindBasePlan, ProductID: "p", BasePlanID: "bp", From: "DRAFT", To: "ACTIVE"},
+			{Kind: reconcile.KindOffer, ProductID: "p", PurchaseOptionID: "po", OfferID: "o", From: "ACTIVE", To: "INACTIVE"},
+			{Kind: reconcile.KindOffer, ProductID: "p", PurchaseOptionID: "po", OfferID: "pre", From: "ACTIVE", To: "CANCELLED"},
+		},
+	}
+	var got []string
+	for _, e := range p.Entries() {
+		got = append(got, e.Op+" "+e.Kind+" "+e.Target())
+	}
+	want := []string{
+		"create  c",
+		"patch  p",
+		"create offer p/bp/new",
+		"patch offer p/bp/chg",
+		"activate basePlan p/bp",
+		"deactivate offer p/po/o",
+		"cancel offer p/po/pre",
+		"delete offer p/bp/del",
+		"delete basePlan p/old",
+		"delete  d",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Entries = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Entries[%d] = %q, want %q", i, got[i], want[i])
+		}
 	}
 }

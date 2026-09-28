@@ -8,7 +8,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// writeDryRunView is the gplay-shaped --dry-run report for a create/update: the
+// writeDryRunView is the gplay-shaped --dry-run report for a create/set: the
 // verb, the addressing target, and the exact request body that WOULD be sent,
 // so an agent can inspect the payload offline before writing live.
 type writeDryRunView struct {
@@ -18,11 +18,11 @@ type writeDryRunView struct {
 	Body   json.RawMessage `json:"body"`
 }
 
-// AchievementWritePayload renders a create/update result (the row table + the
+// AchievementWritePayload renders a create/set result (the row table + the
 // verbatim API response for --output json) or, under --dry-run, a preview of
 // the request body.
 type AchievementWritePayload struct {
-	Verb   string // "create" | "update"
+	Verb   string // "create" | "set"
 	Target string // e.g. "application 123" | "achievement a7"
 	DryRun bool
 	Body   json.RawMessage // the request body (preview in dry-run)

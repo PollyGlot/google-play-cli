@@ -1,0 +1,6 @@
+{
+  "defaultLanguage": "en-US",
+  "contactEmail": "dev@example.com",
+  "contactPhone": "+1 555 0100",
+  "contactWebsite": "https://example.com/support?lang=en&ref=<play>"
+}

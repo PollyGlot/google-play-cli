@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
-	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
@@ -51,12 +50,9 @@ func (p Payload) Renderers() output.Renderers {
 // Run resolves the package, lists anomalies bounded by --filter (or a
 // --since-derived activeBetween window), and renders them.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	filter := in.Filter
@@ -93,14 +89,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 // yet. Anomalies are exceptional by nature, so an empty result is the common,
 // healthy case; the note just keeps the freshness caveat visible.
 func warn(rc *kernel.RunContext, n int) {
-	if rc.Stderr == nil {
-		return
-	}
 	if n == 0 {
-		_, _ = io.WriteString(rc.Stderr, "NOTE: no anomalies detected in the requested window; vitals are reported with a delay, so very recent spikes may not appear yet.\n")
+		rc.Notef("no anomalies detected in the requested window; vitals are reported with a delay, so very recent spikes may not appear yet.")
 		return
 	}
-	_, _ = io.WriteString(rc.Stderr, "NOTE: vitals are reported with a delay; very recent anomalies may not appear yet.\n")
+	rc.Notef("vitals are reported with a delay; very recent anomalies may not appear yet.")
 }
 
 // NewCommand returns the cobra command for `gplay vitals anomalies`.
@@ -116,15 +109,16 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 package (unexpected spikes in crash rate, ANR rate, and the other vitals) over
 a window.
 
-  gplay vitals anomalies --package com.example.app
-  gplay vitals anomalies --since 90d
-  gplay vitals anomalies --filter 'activeBetween("2026-01-01T00:00:00Z", UNBOUNDED)'
-
 --since builds an activeBetween(...) window for you; --filter passes a raw
 AIP-160 predicate (e.g. an open-ended window) and overrides --since.
 
 Read-only; --output json mirrors the API response verbatim; table/markdown show
 the metric set, anomalous metric and value, period, and dimensions.`,
+		Example: `  gplay vitals anomalies --package com.example.app
+  gplay vitals anomalies --since 90d --output json
+
+  # An open-ended window through a raw filter
+  gplay vitals anomalies --filter 'activeBetween("2026-01-01T00:00:00Z", UNBOUNDED)'`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

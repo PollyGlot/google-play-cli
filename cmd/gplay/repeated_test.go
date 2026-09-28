@@ -13,9 +13,10 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// failingTransport is the RoundTripper the repeated-flag tests install over
+// failingTransport is the transport the repeated-flag tests install over
 // http.DefaultTransport (what the kernel falls back to in production when no
 // client is injected): every request it sees is a contract violation, because a
 // repeated flag must be rejected during parsing, long before any RunE body can
@@ -25,19 +26,19 @@ type failingTransport struct {
 	calls int
 }
 
-func (f *failingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (f *failingTransport) serve(req *http.Request) (*http.Response, error) {
 	f.calls++
 	f.t.Errorf("unexpected HTTP request to %s: a repeated flag must be rejected before any network I/O", req.URL)
 	return nil, errors.New("no network in tests")
 }
 
-// noNetwork swaps http.DefaultTransport for a failing RoundTripper for the
+// noNetwork swaps http.DefaultTransport for a failing transport for the
 // duration of the test and returns it so the caller can assert the call count.
 func noNetwork(t *testing.T) *failingTransport {
 	t.Helper()
 	ft := &failingTransport{t: t}
 	prev := http.DefaultTransport
-	http.DefaultTransport = ft
+	http.DefaultTransport = testkit.RoundTripFunc(ft.serve)
 	t.Cleanup(func() { http.DefaultTransport = prev })
 	return ft
 }
@@ -165,6 +166,8 @@ func TestRepeatedFlags_everyRegisteredFlagRejects(t *testing.T) {
 		"float64": "0.5", "duration": "1s",
 		"stringSlice": "x", "stringArray": "x", "int64Slice": "1",
 		"stringToString": "k=v", "stringToInt": "k=1", "stringToInt64": "k=1",
+		// commitflags' validated enum (#598): only its listed values parse.
+		"cancel|error": "error",
 	}
 	// Flag types whose second occurrence is normal use, not misuse. pflag
 	// publishes an interface for its slice values and none for its map values,

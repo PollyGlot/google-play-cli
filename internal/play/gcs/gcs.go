@@ -51,29 +51,9 @@ type Object struct {
 // (403 → exit 11, 404 → exit 30); the bucket stands in for the api.Error's
 // Package field so the message names what was addressed.
 func ListObjects(ctx context.Context, hc *http.Client, bucket, prefix string) ([]Object, error) {
-	var out []Object
-	pageToken := ""
-	// seen guards against a server that repeats a pageToken forever.
-	seen := map[string]struct{}{}
-	for {
-		items, next, err := listPage(ctx, hc, bucket, prefix, pageToken)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, items...)
-		if next == "" {
-			return out, nil
-		}
-		if _, dup := seen[next]; dup {
-			return nil, &api.Error{
-				Operation: opObjectsList,
-				Package:   bucket,
-				Message:   "pagination token loop detected in storage.objects.list (server repeated a pageToken)",
-			}
-		}
-		seen[next] = struct{}{}
-		pageToken = next
-	}
+	out, _, err := api.Paginate(api.Pager{Op: opObjectsList, Resource: bucketResource(bucket), What: "storage.objects.list"},
+		func(token string, _ int) ([]Object, string, error) { return listPage(ctx, hc, bucket, prefix, token) })
+	return out, err
 }
 
 // listPage fetches one storage.objects.list page. pageToken is the prior
@@ -102,7 +82,7 @@ func listPage(ctx context.Context, hc *http.Client, bucket, prefix, pageToken st
 	if err := json.Unmarshal(raw, &page); err != nil {
 		return nil, "", &api.Error{
 			Operation: opObjectsList,
-			Package:   bucket,
+			Resource:  bucketResource(bucket),
 			Message:   "decode response: " + err.Error(),
 			Cause:     err,
 		}
@@ -126,11 +106,11 @@ func FetchObject(ctx context.Context, hc *http.Client, bucket, object string) ([
 func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: bucket, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: bucketResource(bucket), Message: err.Error(), Cause: err}
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: bucket, Message: err.Error(), Cause: err}
+		return nil, &api.Error{Operation: op, Resource: bucketResource(bucket), Message: err.Error(), Cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -138,7 +118,7 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
 		return nil, &api.Error{
 			Operation:  op,
-			Package:    bucket,
+			Resource:   bucketResource(bucket),
 			StatusCode: resp.StatusCode,
 			Message:    msg,
 			Reasons:    reasons,
@@ -150,7 +130,7 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 	if readErr != nil {
 		return nil, &api.Error{
 			Operation:  op,
-			Package:    bucket,
+			Resource:   bucketResource(bucket),
 			StatusCode: resp.StatusCode,
 			Message:    "read response: " + readErr.Error(),
 			Cause:      readErr,
@@ -159,10 +139,16 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 	if int64(len(raw)) > maxRead {
 		return nil, &api.Error{
 			Operation:  op,
-			Package:    bucket,
+			Resource:   bucketResource(bucket),
 			StatusCode: resp.StatusCode,
 			Message:    "response exceeds size limit",
 		}
 	}
 	return raw, nil
+}
+
+// bucketResource is the error target of a storage call: the bucket, which the
+// JSON error envelope reports as such rather than as a package (#599).
+func bucketResource(bucket string) api.Resource {
+	return api.Resource{Kind: api.KindBucket, ID: bucket}
 }

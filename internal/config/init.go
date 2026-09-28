@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
+
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
 // Marker lines bound the gplay-managed block inside .gplay/.gitignore so
@@ -31,6 +33,10 @@ edit-*.json`
 // config.json is rewritten unconditionally so calling Init twice with a
 // different package updates the pin. ctx is threaded for future
 // cancellation; the FS operations themselves are synchronous today.
+//
+// The refusals a user can cause (running at $HOME, a missing or malformed
+// package) are *exit.UsageError, exit 2 per docs/DESIGN.md §9 (#593): they
+// are CLI misuse, not the generic exit 1 a plain error falls back to.
 func Init(_ context.Context, fsys FS, repoRoot, homeDir, pkg string) error {
 	if repoRoot == "" {
 		return fmt.Errorf("config init: repoRoot is empty")
@@ -47,7 +53,7 @@ func Init(_ context.Context, fsys FS, repoRoot, homeDir, pkg string) error {
 		return err
 	}
 	if absRepo == absHome {
-		return fmt.Errorf("config init: refusing to initialise at $HOME (%s); run gplay init inside a repo", absRepo)
+		return exit.Usagef("config init: refusing to initialise at $HOME (%s); run gplay init inside a repo", absRepo)
 	}
 
 	gplayDir := filepath.Join(absRepo, ".gplay")
@@ -62,10 +68,10 @@ func Init(_ context.Context, fsys FS, repoRoot, homeDir, pkg string) error {
 
 func validatePackage(pkg string) error {
 	if pkg == "" {
-		return fmt.Errorf("config init: package is required (e.g. --package com.example.myapp)")
+		return exit.Usagef("config init: package is required (e.g. --package com.example.myapp)")
 	}
 	if !strings.Contains(pkg, ".") {
-		return fmt.Errorf("config init: package %q does not look like a valid Android package name (must contain a '.')", pkg)
+		return exit.Usagef("config init: package %q does not look like a valid Android package name (must contain a '.')", pkg)
 	}
 	return nil
 }

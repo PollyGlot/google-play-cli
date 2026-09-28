@@ -1,0 +1,17 @@
+{
+  "ran": {
+    "apps": [
+      "com.example.app"
+    ],
+    "checks": [
+      "lingering-drafts",
+      "no-production-release"
+    ]
+  },
+  "findings": [],
+  "summary": {
+    "appsAudited": 1,
+    "appsFailed": 0,
+    "findings": 0
+  }
+}

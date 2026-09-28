@@ -1,0 +1,9 @@
+{
+  "dryRun": true,
+  "email": "dev@example.com",
+  "permissions": [
+    "CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL",
+    "CAN_REPLY_TO_REVIEWS_GLOBAL"
+  ],
+  "requires": []
+}

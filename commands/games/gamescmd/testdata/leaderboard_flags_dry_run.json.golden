@@ -1,0 +1,17 @@
+{
+  "dryRun": true,
+  "verb": "create leaderboard",
+  "target": "application 123456789012",
+  "body": {
+    "draft": {
+      "name": {
+        "translations": [
+          {
+            "locale": "en-US",
+            "value": "Boss <Rush> & Co"
+          }
+        ]
+      }
+    }
+  }
+}

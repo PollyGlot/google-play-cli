@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/recovery/recoverycmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
@@ -54,14 +55,17 @@ func (p Payload) renderTable(w io.Writer) error {
 	return output.RenderTable(w, p.Cols, []recoverycmd.Row{p.Row})
 }
 
+// dryRunView carries the ADR-0017 `requires` array like its lifecycle
+// siblings: empty, because creating a draft needs no --confirm.
 type dryRunView struct {
-	DryRun  bool   `json:"dryRun"`
-	Package string `json:"package"`
+	DryRun   bool     `json:"dryRun"`
+	Package  string   `json:"package"`
+	Requires []string `json:"requires"`
 }
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package})
+		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package, Requires: []string{}})
 	}
 	_, err := w.Write(p.Raw)
 	return err
@@ -70,16 +74,16 @@ func (p Payload) renderJSON(w io.Writer) error {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, recoverycmd.Usagef("missing or invalid --version-code: the bad APK versionCode the recovery targets is required")
+		return nil, exit.Usagef("missing or invalid --version-code: the bad APK versionCode the recovery targets is required")
 	}
 	if !in.AllUsers && len(in.Regions) == 0 && len(in.SdkLevels) == 0 {
-		return nil, recoverycmd.Usagef("missing targeting: pass one of --all-users, --regions, or --sdk-levels")
+		return nil, exit.Usagef("missing targeting: pass one of --all-users, --regions, or --sdk-levels")
 	}
 	cols, err := recoverycmd.ResolveColumns("")
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := recoverycmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +130,11 @@ remote in-app update by default (--remote-in-app-update).
 
 A draft is harmless, so create needs no --confirm; use --dry-run to validate
 inputs without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
+		Example: `  # Validate a draft Recovery for every user of the bad versionCode
+  gplay recovery create --version-code 1042 --all-users --dry-run
+
+  # Stage a draft for users in two regions only
+  gplay recovery create --version-code 1042 --regions US,FR`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

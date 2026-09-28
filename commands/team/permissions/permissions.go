@@ -241,6 +241,11 @@ the write commands, even one with no alias here.
 
 An alias marked deprecated is still accepted, but Google no longer supports
 its enum: the write commands warn when it is used.`,
+		Example: `  # Aliases and role bundles for team users (account-wide)
+  gplay team permissions
+
+  # The per-app family used by team grants, with the admin gate marked
+  gplay team permissions --scope app --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

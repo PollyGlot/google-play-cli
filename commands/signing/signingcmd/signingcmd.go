@@ -1,6 +1,6 @@
 // Package signingcmd holds the wiring shared by the `gplay signing` leaves:
-// package resolution, PEM/lineage file reading, the --confirm gate, the
-// certificate-hash table (ADR-0018) and 404/403 hint classification. Mirrors
+// PEM/lineage file reading, the --confirm gate, the certificate-hash table
+// (ADR-0018) and 404/403 hint classification. Mirrors
 // commands/recovery/recoverycmd.
 package signingcmd
 
@@ -15,27 +15,8 @@ import (
 	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
-	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
-
-// Usagef builds a usage error (exit 2).
-func Usagef(format string, a ...any) error { return exit.Usagef(format, a...) }
-
-// ResolvePackage resolves the target app: --package wins, else the project pin.
-// The API calls this path parameter `name` and accepts either the Android
-// package name or the app ID; gplay keeps its own vocabulary (Project pin,
-// --package) so the flag matches every other command.
-func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
-	pkg := strings.TrimSpace(flag)
-	if pkg == "" && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", Usagef("no package: pass --package <pkg> or run gplay init in your repo")
-	}
-	return pkg, nil
-}
 
 // RequireConfirm enforces the DESTRUCTIVE-tier --confirm gate (ADR-0017/0043):
 // both signing leaves change the live signing key of a real app, which is
@@ -70,7 +51,7 @@ func ReadPEM(flag, path string) ([]byte, error) {
 	}
 	hint := certHint(flag)
 	if json.Valid(b) {
-		return nil, Usagef("--%s: %s is a JSON file (a service-account key?), not a certificate: %s", flag, path, hint)
+		return nil, exit.Usagef("--%s: %s is a JSON file (a service-account key?), not a certificate: %s", flag, path, hint)
 	}
 	var out []byte
 	for rest := b; ; {
@@ -80,18 +61,18 @@ func ReadPEM(flag, path string) ([]byte, error) {
 			break
 		}
 		if strings.Contains(block.Type, "PRIVATE KEY") {
-			return nil, Usagef("--%s: %s contains a %q block: a private key must never be sent to Google Play; %s", flag, path, block.Type, hint)
+			return nil, exit.Usagef("--%s: %s contains a %q block: a private key must never be sent to Google Play; %s", flag, path, block.Type, hint)
 		}
 		if block.Type != "CERTIFICATE" {
-			return nil, Usagef("--%s: %s contains a %q block, not a certificate: %s", flag, path, block.Type, hint)
+			return nil, exit.Usagef("--%s: %s contains a %q block, not a certificate: %s", flag, path, block.Type, hint)
 		}
 		if _, err := x509.ParseCertificate(block.Bytes); err != nil {
-			return nil, Usagef("--%s: %s holds a CERTIFICATE block that is not a valid X.509 certificate (%v): %s", flag, path, err, hint)
+			return nil, exit.Usagef("--%s: %s holds a CERTIFICATE block that is not a valid X.509 certificate (%v): %s", flag, path, err, hint)
 		}
 		out = append(out, pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: block.Bytes})...)
 	}
 	if len(out) == 0 {
-		return nil, Usagef("--%s: %s is not a PEM certificate (no \"-----BEGIN CERTIFICATE-----\" block): %s", flag, path, hint)
+		return nil, exit.Usagef("--%s: %s is not a PEM certificate (no \"-----BEGIN CERTIFICATE-----\" block): %s", flag, path, hint)
 	}
 	return out, nil
 }
@@ -110,10 +91,10 @@ func certHint(flag string) string {
 func ReadFile(flag, path string) ([]byte, error) {
 	b, err := os.ReadFile(path) //nolint:gosec // the path is the operator's own flag value
 	if err != nil {
-		return nil, Usagef("--%s: cannot read %s: %v", flag, path, err)
+		return nil, exit.Usagef("--%s: cannot read %s: %v", flag, path, err)
 	}
 	if len(b) == 0 {
-		return nil, Usagef("--%s: %s is empty", flag, path)
+		return nil, exit.Usagef("--%s: %s is empty", flag, path)
 	}
 	return b, nil
 }

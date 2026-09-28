@@ -2,10 +2,11 @@ package vitals_test
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
@@ -27,11 +28,11 @@ const crashrateDescriptor = `{
 func TestDescribe_getsDescriptorAndParsesFreshness(t *testing.T) {
 	var gotURL, gotMethod string
 	var gotBody []byte
-	hc := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
 		if r.Body != nil {
-			gotBody, _ = io.ReadAll(r.Body)
+			gotBody = testkit.ReadBody(r)
 		}
 		return jsonResp(200, crashrateDescriptor), nil
 	})}
@@ -76,7 +77,7 @@ func TestDescribe_getsDescriptorAndParsesFreshness(t *testing.T) {
 }
 
 func TestDescribe_nonOKIsAPIError(t *testing.T) {
-	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResp(403, `{"error":{"message":"no"}}`), nil
 	})}
 	set, _ := vitals.MetricSetByName("anrrate")

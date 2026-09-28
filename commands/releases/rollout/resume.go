@@ -16,7 +16,7 @@ func RunResume(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // NewResumeCommand returns the cobra command for `gplay releases resume`.
 func NewResumeCommand(boot kernel.Boot) *cobra.Command {
-	return newStateCommand(boot, "resume",
+	cmd := newStateCommand(boot, "resume",
 		"Resume a halted rollout on the latest release of a track",
 		`Set the latest release on --track back to status=inProgress, continuing
 the rollout at the userFraction it was halted at.
@@ -24,4 +24,10 @@ the rollout at the userFraction it was halted at.
 Targets the latest release on the track; when two releases coexist pass
 --version-code N or --release-name <name> to pick one.`,
 		RunResume)
+	cmd.Example = `  # Resume a halted production rollout at the fraction it stopped at
+  gplay releases resume --track production --confirm
+
+  # Preview first, without any HTTP call
+  gplay releases resume --track production --dry-run --output json`
+	return cmd
 }

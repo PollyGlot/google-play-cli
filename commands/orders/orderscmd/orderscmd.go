@@ -1,7 +1,6 @@
 // Package orderscmd holds the wiring shared by the `gplay orders` leaves:
-// package resolution, the exit-2 usage error, and the 404/403 hint
-// classification that turns a bare API rejection into an agent-resolvable
-// refusal. The read leaves (view single / batch) name CAN_VIEW_FINANCIAL_DATA
+// the 404/403 hint classification that turns a bare API rejection into an
+// agent-resolvable refusal. The read leaves (view single / batch) name CAN_VIEW_FINANCIAL_DATA
 // on a 403; the refund leaf names CAN_MANAGE_ORDERS and surfaces the API's
 // "orders older than 3 years cannot be refunded" rule as a specific refusal.
 // Mirrors commands/releases/generated/generatedcmd. See ADR-0031 /
@@ -14,7 +13,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -27,27 +25,6 @@ const PermViewFinancialData = "CAN_VIEW_FINANCIAL_DATA"
 // (orders.refund). Like PermViewFinancialData it is a money capability, never
 // part of a Role bundle (ADR-0016), so a refusal names it verbatim.
 const PermManageOrders = "CAN_MANAGE_ORDERS"
-
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
-
-// Usagef builds a usage error (exit 2).
-func Usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf(format, a...)} }
-
-// ResolvePackage resolves the target package: --package wins, else the project
-// pin. orders ride the package/app axis like releases/metadata (ADR-0031).
-func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
-	pkg := strings.TrimSpace(flag)
-	if pkg == "" && rc != nil && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
-	}
-	return pkg, nil
-}
 
 // orderNotFoundError wraps a 404 with an actionable hint, leaving the wrapped
 // *api.Error to drive the exit code (404 → 30).

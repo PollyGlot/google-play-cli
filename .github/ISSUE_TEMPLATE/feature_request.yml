@@ -1,6 +1,6 @@
 name: Feature request
 description: Propose a new command, flag, or behavior
-labels: ["enhancement", "triage"]
+labels: ["enhancement", "needs-triage"]
 body:
   - type: markdown
     attributes:

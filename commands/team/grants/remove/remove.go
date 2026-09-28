@@ -154,7 +154,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("missing <email>: usage: gplay team grants remove <email> --package <pkg> --confirm")
 	}
 	if pkg == "" {
-		return nil, exit.Usagef("missing --package <pkg> (the app whose access to remove)")
+		return nil, exit.Usagef("missing --package: pass --package <pkg> (the app whose access to remove)")
 	}
 
 	gate := teamcmd.Gate{Destructive: true}
@@ -199,6 +199,8 @@ To off-board a member entirely, use ` + "`gplay team users remove`" + ` instead.
 This is destructive, so it refuses without --confirm (exit 3, naming the flag);
 CI=true never auto-confirms. Use --dry-run to preview the target with no HTTP
 call.`,
+		Example: `  gplay team grants remove contractor@example.com --package com.example.app --dry-run
+  gplay team grants remove contractor@example.com --package com.example.app --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

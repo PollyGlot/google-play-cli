@@ -1,0 +1,184 @@
+## Query / ok
+POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
+Content-Type: application/json
+content-length=70 replayable=true
+{"metrics":["crashRate"],"timelineSpec":{"aggregationPeriod":"DAILY"}}
+=> ok {"rows":[]}
+
+## Query / denied
+POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
+Content-Type: application/json
+content-length=70 replayable=true
+{"metrics":["crashRate"],"timelineSpec":{"aggregationPeriod":"DAILY"}}
+=> error (exit 11): playdeveloperreporting.vitals.query on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Query / malformed
+POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
+Content-Type: application/json
+content-length=70 replayable=true
+{"metrics":["crashRate"],"timelineSpec":{"aggregationPeriod":"DAILY"}}
+=> error (exit 50): playdeveloperreporting.vitals.query on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## Describe / ok
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet
+content-length=0 replayable=true
+=> ok {}
+
+## Describe / denied
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet
+content-length=0 replayable=true
+=> error (exit 11): playdeveloperreporting.vitals.get on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## Describe / malformed
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet
+content-length=0 replayable=true
+=> ok not json
+
+## ListAnomalies / ok
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=100
+content-length=0 replayable=true
+=> ok [{"anomalies":[]},false]
+
+## ListAnomalies / denied
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=100
+content-length=0 replayable=true
+=> error (exit 11): playdeveloperreporting.anomalies.list on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListAnomalies / malformed
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): playdeveloperreporting.anomalies.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## SearchErrorIssues / ok
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorIssues:search?filter=errorIssueType+%3D+CRASH&interval.endTime.day=8&interval.endTime.month=9&interval.endTime.year=2026&interval.startTime.day=1&interval.startTime.month=9&interval.startTime.year=2026&orderBy=errorReportCount+desc&pageSize=1000
+content-length=0 replayable=true
+=> ok [{"errorIssues":[]},false]
+
+## SearchErrorIssues / denied
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorIssues:search?filter=errorIssueType+%3D+CRASH&interval.endTime.day=8&interval.endTime.month=9&interval.endTime.year=2026&interval.startTime.day=1&interval.startTime.month=9&interval.startTime.year=2026&orderBy=errorReportCount+desc&pageSize=1000
+content-length=0 replayable=true
+=> error (exit 11): playdeveloperreporting.vitals.errors.issues.search on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## SearchErrorIssues / malformed
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorIssues:search?filter=errorIssueType+%3D+CRASH&interval.endTime.day=8&interval.endTime.month=9&interval.endTime.year=2026&interval.startTime.day=1&interval.startTime.month=9&interval.startTime.year=2026&orderBy=errorReportCount+desc&pageSize=1000
+content-length=0 replayable=true
+=> error (exit 50): playdeveloperreporting.vitals.errors.issues.search on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## SearchErrorReports / ok
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorReports:search?pageSize=100
+content-length=0 replayable=true
+=> ok [{"errorReports":[]},false]
+
+## SearchErrorReports / denied
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorReports:search?pageSize=100
+content-length=0 replayable=true
+=> error (exit 11): playdeveloperreporting.vitals.errors.reports.search on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## SearchErrorReports / malformed
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorReports:search?pageSize=100
+content-length=0 replayable=true
+=> error (exit 50): playdeveloperreporting.vitals.errors.reports.search on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## Query / two pages
+POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
+Content-Type: application/json
+content-length=70 replayable=true
+{"metrics":["crashRate"],"timelineSpec":{"aggregationPeriod":"DAILY"}}
+POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
+Content-Type: application/json
+content-length=89 replayable=true
+{"metrics":["crashRate"],"pageToken":"p/2+","timelineSpec":{"aggregationPeriod":"DAILY"}}
+=> ok {"rows":[{"name":"p1a"},{"name":"p1b"},{"name":"p2a"},{"name":"p2b"}]}
+
+## Query / token loop
+POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
+Content-Type: application/json
+content-length=70 replayable=true
+{"metrics":["crashRate"],"timelineSpec":{"aggregationPeriod":"DAILY"}}
+POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
+Content-Type: application/json
+content-length=90 replayable=true
+{"metrics":["crashRate"],"pageToken":"again","timelineSpec":{"aggregationPeriod":"DAILY"}}
+=> error (exit 50): playdeveloperreporting.vitals.query on com.example.app: pagination token loop detected in vitals :query (server repeated a nextPageToken)
+
+## Query / empty body
+POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
+Content-Type: application/json
+content-length=70 replayable=true
+{"metrics":["crashRate"],"timelineSpec":{"aggregationPeriod":"DAILY"}}
+=> ok {"rows":[]}
+
+## ListAnomalies / two pages
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=100
+content-length=0 replayable=true
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=100&pageToken=p%2F2%2B
+content-length=0 replayable=true
+=> ok [{"anomalies":[{"name":"p1a"},{"name":"p1b"},{"name":"p2a"},{"name":"p2b"}]},false]
+
+## ListAnomalies / token loop
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=100
+content-length=0 replayable=true
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=100&pageToken=again
+content-length=0 replayable=true
+=> error (exit 50): playdeveloperreporting.anomalies.list on com.example.app: pagination token loop detected in anomalies search (server repeated a nextPageToken)
+
+## ListAnomalies / empty body
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=100
+content-length=0 replayable=true
+=> ok [{"anomalies":[]},false]
+
+## ListAnomalies limit 3 / two pages
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=3
+content-length=0 replayable=true
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=1&pageToken=p%2F2%2B
+content-length=0 replayable=true
+=> ok [{"anomalies":[{"name":"p1a"},{"name":"p1b"},{"name":"p2a"}]},true]
+
+## ListAnomalies limit 3 / token loop
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=3
+content-length=0 replayable=true
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=2&pageToken=again
+content-length=0 replayable=true
+=> error (exit 50): playdeveloperreporting.anomalies.list on com.example.app: pagination token loop detected in anomalies search (server repeated a nextPageToken)
+
+## ListAnomalies limit 3 / empty body
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/anomalies?filter=activeBetween%28%22a%22%2C+%22b%22%29&pageSize=3
+content-length=0 replayable=true
+=> ok [{"anomalies":[]},false]
+
+## SearchErrorIssues limit 2 / two pages
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorIssues:search?filter=errorIssueType+%3D+CRASH&interval.endTime.day=8&interval.endTime.month=9&interval.endTime.year=2026&interval.startTime.day=1&interval.startTime.month=9&interval.startTime.year=2026&orderBy=errorReportCount+desc&pageSize=2
+content-length=0 replayable=true
+=> ok [{"errorIssues":[{"name":"p1a"},{"name":"p1b"}]},true]
+
+## SearchErrorIssues limit 2 / token loop
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorIssues:search?filter=errorIssueType+%3D+CRASH&interval.endTime.day=8&interval.endTime.month=9&interval.endTime.year=2026&interval.startTime.day=1&interval.startTime.month=9&interval.startTime.year=2026&orderBy=errorReportCount+desc&pageSize=2
+content-length=0 replayable=true
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorIssues:search?filter=errorIssueType+%3D+CRASH&interval.endTime.day=8&interval.endTime.month=9&interval.endTime.year=2026&interval.startTime.day=1&interval.startTime.month=9&interval.startTime.year=2026&orderBy=errorReportCount+desc&pageSize=1&pageToken=again
+content-length=0 replayable=true
+=> ok [{"errorIssues":[{"name":"p1a"},{"name":"p1a"}]},true]
+
+## SearchErrorIssues limit 2 / empty body
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorIssues:search?filter=errorIssueType+%3D+CRASH&interval.endTime.day=8&interval.endTime.month=9&interval.endTime.year=2026&interval.startTime.day=1&interval.startTime.month=9&interval.startTime.year=2026&orderBy=errorReportCount+desc&pageSize=2
+content-length=0 replayable=true
+=> ok [{"errorIssues":[]},false]
+
+## SearchErrorReports / two pages
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorReports:search?pageSize=100
+content-length=0 replayable=true
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorReports:search?pageSize=100&pageToken=p%2F2%2B
+content-length=0 replayable=true
+=> ok [{"errorReports":[{"name":"p1a"},{"name":"p1b"},{"name":"p2a"},{"name":"p2b"}]},false]
+
+## SearchErrorReports / token loop
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorReports:search?pageSize=100
+content-length=0 replayable=true
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorReports:search?pageSize=100&pageToken=again
+content-length=0 replayable=true
+=> error (exit 50): playdeveloperreporting.vitals.errors.reports.search on com.example.app: pagination token loop detected in errorReports search (server repeated a nextPageToken)
+
+## SearchErrorReports / empty body
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/errorReports:search?pageSize=100
+content-length=0 replayable=true
+=> ok [{"errorReports":[]},false]
+

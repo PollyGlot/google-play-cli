@@ -1,0 +1,83 @@
+{
+  "package": "com.example.app",
+  "dryRun": true,
+  "changes": [
+    {
+      "op": "create",
+      "productId": "premium_yearly"
+    },
+    {
+      "op": "patch",
+      "productId": "premium_monthly",
+      "fields": [
+        "basePlans",
+        "listings"
+      ]
+    },
+    {
+      "op": "create",
+      "kind": "offer",
+      "productId": "premium_monthly",
+      "basePlanId": "monthly-autorenew",
+      "offerId": "intro-7d"
+    },
+    {
+      "op": "patch",
+      "kind": "offer",
+      "productId": "premium_monthly",
+      "basePlanId": "monthly-autorenew",
+      "offerId": "winback",
+      "fields": [
+        "phases"
+      ]
+    },
+    {
+      "op": "activate",
+      "kind": "basePlan",
+      "productId": "premium_yearly",
+      "basePlanId": "yearly-autorenew",
+      "from": "DRAFT",
+      "to": "ACTIVE"
+    },
+    {
+      "op": "deactivate",
+      "kind": "offer",
+      "productId": "premium_monthly",
+      "basePlanId": "monthly-autorenew",
+      "offerId": "winback",
+      "from": "ACTIVE",
+      "to": "INACTIVE"
+    },
+    {
+      "op": "delete",
+      "kind": "offer",
+      "productId": "premium_monthly",
+      "basePlanId": "monthly-autorenew",
+      "offerId": "legacy-promo"
+    },
+    {
+      "op": "delete",
+      "kind": "basePlan",
+      "productId": "premium_monthly",
+      "basePlanId": "monthly-prepaid"
+    },
+    {
+      "op": "delete",
+      "productId": "pro_legacy"
+    }
+  ],
+  "summary": {
+    "basePlanDelete": 1,
+    "create": 1,
+    "delete": 1,
+    "offerCreate": 1,
+    "offerDelete": 1,
+    "offerPatch": 1,
+    "patch": 1,
+    "state": 2,
+    "unchanged": 1
+  },
+  "requires": [
+    "confirm"
+  ]
+}

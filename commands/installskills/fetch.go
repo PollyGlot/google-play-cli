@@ -64,13 +64,13 @@ func fetchPinned(ctx context.Context, run RunFunc, git string, p Pin, dest strin
 	// generic 1.
 	for _, args := range steps {
 		if out, err := run(ctx, git, args, dest); err != nil {
-			return "", fmt.Errorf("git %s: %v%s", subcommandOf(args), err, indentOutput(out))
+			return "", fmt.Errorf("git %s: %v%s", subcommandOf(args), err, indentOutput(out)) //nolint:errorlint // see above: wrapping leaks git's exit code
 		}
 	}
 
 	out, err := run(ctx, git, hardenedGit("rev-parse", "HEAD"), dest)
 	if err != nil {
-		return "", fmt.Errorf("git rev-parse: %v%s", err, indentOutput(out))
+		return "", fmt.Errorf("git rev-parse: %v%s", err, indentOutput(out)) //nolint:errorlint // see above: wrapping leaks git's exit code
 	}
 	if got := strings.TrimSpace(out); got != p.Commit {
 		// Belt and braces over the fetch: if the checkout is not byte-for-byte

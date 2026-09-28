@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
 func TestInit_writesConfigJSON_withPackagePin(t *testing.T) {
@@ -56,6 +57,11 @@ func TestInit_inHomeDir_isRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), home) {
 		t.Errorf("error %q should mention $HOME path", err.Error())
+	}
+	// Running init in the wrong place is CLI misuse (DESIGN §9), not the
+	// generic exit 1 a plain error falls back to (#593).
+	if code := exit.For(err); code != 2 {
+		t.Errorf("exit.For = %d, want 2 (CLI misuse)", code)
 	}
 }
 

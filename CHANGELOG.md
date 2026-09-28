@@ -5,6 +5,43 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1](https://github.com/PollyGlot/google-play-cli/compare/v1.7.0...v1.7.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* move the remaining modules onto the executor, one paginator, listings that say where the next page is ([#643](https://github.com/PollyGlot/google-play-cli/issues/643)) ([6d3d6a7](https://github.com/PollyGlot/google-play-cli/commit/6d3d6a7940ea4fa8cc60e97acf1ae4f199873b81))
+* **play:** Edit-scoped modules on the api executor and the test kit ([#641](https://github.com/PollyGlot/google-play-cli/issues/641)) ([0cf6e0a](https://github.com/PollyGlot/google-play-cli/commit/0cf6e0aedc6448829d44a21ff95d2ad918a7a6a4))
+
+
+### Performance Improvements
+
+* **auth:** drop golang.org/x/oauth2/google and the GCE metadata client ([#647](https://github.com/PollyGlot/google-play-cli/issues/647)) ([dcc5f27](https://github.com/PollyGlot/google-play-cli/commit/dcc5f27ea5feebb1a45b10d1e650c720b546291c))
+
+## [1.7.0](https://github.com/PollyGlot/google-play-cli/compare/v1.6.2...v1.7.0) (2026-09-26)
+
+
+### Features
+
+* **edits:** opt-in review behavior on commit, unknown commit outcome, API 401 ([#623](https://github.com/PollyGlot/google-play-cli/issues/623)) ([aa86db2](https://github.com/PollyGlot/google-play-cli/commit/aa86db2a56285a03e104a4af2851c7e0e7bfdb88))
+* **releases:** add --device-tier-config; refuse path-like Account names; route questions to Issues ([#631](https://github.com/PollyGlot/google-play-cli/issues/631)) ([39fc3e1](https://github.com/PollyGlot/google-play-cli/commit/39fc3e1839e8098487af3078df3efc21fdb9c7e3))
+
+
+### Bug Fixes
+
+* **auth:** honest credential storage and stricter input checks ([#617](https://github.com/PollyGlot/google-play-cli/issues/617)) ([aebfb7b](https://github.com/PollyGlot/google-play-cli/commit/aebfb7b4a23da9e9a301cb421517733c42533b87))
+* **cli:** JSON envelope for CLI misuse, named fixes, strict positional args ([#637](https://github.com/PollyGlot/google-play-cli/issues/637)) ([26511a4](https://github.com/PollyGlot/google-play-cli/commit/26511a4e12e37c14cf673dfb94e8fdec4131be3c))
+* **commands:** one package resolver, one usage-error type, one Edit error classifier ([#620](https://github.com/PollyGlot/google-play-cli/issues/620)) ([b9990bd](https://github.com/PollyGlot/google-play-cli/commit/b9990bd49b35ab75010c31a7062097156cd3fd99))
+* **exit:** repair the exit-codes table and generate exit-code and experimental docs from the binary ([#624](https://github.com/PollyGlot/google-play-cli/issues/624)) ([5e42540](https://github.com/PollyGlot/google-play-cli/commit/5e42540ff9651d28611cd54ab62f14814853938a))
+* **output:** consistent gplay-authored JSON shapes (dryRun marker, requires never null, no HTML escaping left) ([#636](https://github.com/PollyGlot/google-play-cli/issues/636)) ([04cd341](https://github.com/PollyGlot/google-play-cli/commit/04cd341c6d6b7856239ba3286f5474dd3deb69be))
+* **output:** golden tests for JSON outputs and Edit lifecycle error paths ([#618](https://github.com/PollyGlot/google-play-cli/issues/618)) ([0428e2f](https://github.com/PollyGlot/google-play-cli/commit/0428e2fef050ae9c7993d3482ee67d04e4698c8a))
+* **releases:** robust uploads and downloads (deadlines, resume backoff, signal handling) ([#619](https://github.com/PollyGlot/google-play-cli/issues/619)) ([7359969](https://github.com/PollyGlot/google-play-cli/commit/73599690e05607057eee6bc67955c36c529d9a2d))
+
+
+### Performance Improvements
+
+* parallel reads (limit 4) for images list/pull and apps audit ([#629](https://github.com/PollyGlot/google-play-cli/issues/629)) ([20b83e1](https://github.com/PollyGlot/google-play-cli/commit/20b83e1b7f6e620689c8938237c24fa5c75822af))
+
 ## [1.6.2](https://github.com/PollyGlot/google-play-cli/compare/v1.6.1...v1.6.2) (2026-09-26)
 
 

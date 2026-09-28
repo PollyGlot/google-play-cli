@@ -1,0 +1,12 @@
+{
+  "versionCode": 142,
+  "track": "production",
+  "releaseName": "142 <rc> & hotfix",
+  "status": "inProgress",
+  "userFraction": 0.05,
+  "defaultLanguage": "en-US",
+  "locales": [
+    "en-US",
+    "fr-FR"
+  ]
+}

@@ -39,9 +39,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/audit"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/fanout"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/accessibleapps"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/listings"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
@@ -175,13 +177,25 @@ func Run(rc *kernel.RunContext, in Input) (Report, error) {
 		return Report{}, err
 	}
 
+	// Apps are independent (one throwaway Edit each), so they are read
+	// fanout.Limit at a time. Each result lands at its package's index and is
+	// folded below in package order, so ran, failures and findings come out
+	// exactly as a serial sweep orders them. A per-app failure is data, not a
+	// fanout error: it never stops the other apps.
+	snaps := make([]audit.Snapshot, len(packages))
+	readErrs := make([]error, len(packages))
+	_ = fanout.Each(len(packages), func(i int) error {
+		snaps[i], readErrs[i] = readSnapshot(rc, httpClient, packages[i])
+		return nil
+	})
+
 	var (
 		snapshots []audit.Snapshot
 		ran       []string
 		failures  []SweepError
 	)
-	for _, pkg := range packages {
-		snap, readErr := readSnapshot(rc, httpClient, pkg)
+	for i, pkg := range packages {
+		snap, readErr := snaps[i], readErrs[i]
 		if readErr != nil {
 			failures = append(failures, SweepError{
 				Package:  pkg,
@@ -254,31 +268,34 @@ func discoverPackages(rc *kernel.RunContext) ([]string, error) {
 		return nil, err
 	}
 
-	var (
-		pkgs      []string
-		pageToken string
-	)
 	// Bounded: a runaway or looping nextPageToken must not turn an audit into
-	// an unbounded quota burn. 1000 pages is far past any real account.
-	for page := 0; page < 1000; page++ {
-		sr, _, err := accessibleapps.Search(rc.Ctx, hc, 0, pageToken)
-		if err != nil {
-			return nil, &discoveryError{cause: err}
-		}
-		for _, a := range sr.Apps {
-			if a.PackageName != "" {
-				pkgs = append(pkgs, a.PackageName)
+	// an unbounded quota burn. A repeated token fails at once, and 1000 pages
+	// (far past any real account) with a token still set fails loudly rather
+	// than auditing a partial list as if it were the whole account.
+	pkgs, _, err := api.Paginate(api.Pager{Op: "apps.search", What: "apps.search", MaxPages: maxDiscoveryPages},
+		func(token string, _ int) ([]string, string, error) {
+			sr, _, err := accessibleapps.Search(rc.Ctx, hc, 0, token)
+			if err != nil {
+				return nil, "", err
 			}
-		}
-		if sr.NextPageToken == "" {
-			break
-		}
-		pageToken = sr.NextPageToken
+			page := make([]string, 0, len(sr.Apps))
+			for _, a := range sr.Apps {
+				if a.PackageName != "" {
+					page = append(page, a.PackageName)
+				}
+			}
+			return page, sr.NextPageToken, nil
+		})
+	if err != nil {
+		return nil, &discoveryError{cause: err}
 	}
 	pkgs = dedupe(pkgs)
 	sort.Strings(pkgs)
 	return pkgs, nil
 }
+
+// maxDiscoveryPages bounds the apps.search walk of discoverPackages.
+const maxDiscoveryPages = 1000
 
 // discoveryError points at the named-packages escape hatch when discovery fails.
 // A credential can hold androidpublisher rights without the Reporting access
@@ -295,6 +312,8 @@ func (e *discoveryError) Unwrap() error { return e.cause }
 
 // readSnapshot reads one app: open a read-only Edit, list its tracks and its
 // Listings, discard the Edit. Two GETs per app; the Edit is never committed.
+// The two GETs stay serial: the sweep already runs fanout.Limit apps at once,
+// and nesting a second fan-out here would double the burst past that limit.
 func readSnapshot(rc *kernel.RunContext, hc *http.Client, pkg string) (audit.Snapshot, error) {
 	snap := audit.Snapshot{Package: pkg}
 	err := edits.WithReadOnlyEdit(rc.Ctx, hc, pkg, func(editID string) error {
@@ -441,7 +460,7 @@ nothing.
 
 Scope: with no arguments, the sweep covers every app the credential can see
 (the same server-authoritative inventory ` + "`gplay apps accessible list`" + `
-prints, ADR-0039). Name one or more packages to audit those only, which also
+prints). Name one or more packages to audit those only, which also
 skips the Play Developer Reporting call discovery needs. Each audited app
 costs one throwaway Edit and two reads, so scope a large account deliberately.
 
@@ -462,6 +481,13 @@ Exit 0 when every app was read and nothing was found, 70 when the report
 carries findings (a gate, not an error), and the ordinary API/network code
 whenever an app could not be read at all: a sweep with holes never reports
 clean.`,
+		Example: `  # Sweep every app the credential can see
+  gplay apps audit
+
+  # Gate CI on draft releases left behind on two apps (exit 70 on findings)
+  gplay apps audit com.example.app com.example.lite --check lingering-drafts
+
+  gplay apps audit --skip-check locale-drift --output json`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

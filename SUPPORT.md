@@ -1,14 +1,14 @@
 # Getting help
 
-`gplay` is pre-1.0 and maintained by a single person — please pick the right
-channel so questions and bugs don't get crossed.
+`gplay` is maintained by a single person: please pick the right channel so
+questions and bugs don't get crossed. Everything goes through GitHub Issues,
+each kind with its own form; the repository has no Discussions.
 
 ## Quick reference
 
 | Situation | Channel |
 |---|---|
-| "How do I…?" / general usage question | [Discussions → Q&A](https://github.com/PollyGlot/google-play-cli/discussions/categories/q-a) |
-| Idea, feature proposal, design feedback | [Discussions → Ideas](https://github.com/PollyGlot/google-play-cli/discussions/categories/ideas) |
+| "How do I…?", usage question, design feedback before a concrete proposal | [Ask a question](https://github.com/PollyGlot/google-play-cli/issues/new?template=question.yml) |
 | Something that worked yesterday is broken today | [Open an issue](https://github.com/PollyGlot/google-play-cli/issues/new?template=bug_report.yml) |
 | Concrete missing feature | [Open an issue](https://github.com/PollyGlot/google-play-cli/issues/new?template=feature_request.yml) (search the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking) first) |
 | Security vulnerability | **Do NOT open a public issue.** [Private advisory](https://github.com/PollyGlot/google-play-cli/security/advisories/new) |
@@ -24,15 +24,15 @@ channel so questions and bugs don't get crossed.
   missing.
 - **Search existing issues.** Especially for upload / track / rollout errors.
 
-## What about asking a question on Issues anyway?
+## Why a separate question form?
 
-Issues filed as questions will be politely routed to Discussions — not
-because the question isn't welcome, but because:
+Questions are welcome in Issues, through their own form rather than as a bug
+or a feature request, because:
 
-1. Discussions are searchable and indexed separately, so future readers
-   benefit.
-2. Issues with a `bug` or `enhancement` label trigger label automations and
-   appear in milestone planning; questions don't fit either.
+1. The `question` label keeps them searchable on their own, so future readers
+   find the answer.
+2. Issues labelled `bug` or `enhancement` feed milestone planning; a question
+   fits neither until it turns into one, and then it is relabelled.
 
 ## Response expectations
 

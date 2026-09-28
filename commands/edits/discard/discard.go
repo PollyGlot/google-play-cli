@@ -36,7 +36,7 @@ func alreadyGone(err error) bool {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg, err := editscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	switch {
 	case remoteErr != nil && clearErr != nil:
-		return nil, fmt.Errorf("discard explicit edit %s for %s: %w; also failed to clear the local pin: %v", pin.EditID, pkg, remoteErr, clearErr)
+		return nil, fmt.Errorf("discard explicit edit %s for %s: %w; also failed to clear the local pin: %w", pin.EditID, pkg, remoteErr, clearErr)
 	case remoteErr != nil:
 		return nil, remoteErr
 	case clearErr != nil:
@@ -102,6 +102,10 @@ so the local pin is never left behind to block the next ` + "`gplay edits begin`
 
 With no open Edit, discard fails with exit 60. The package defaults to the
 repo's .gplay/config.json pin when --package is omitted.`,
+		Example: `  # Abandon the batched changes: nothing reaches Play
+  gplay edits discard
+
+  gplay edits discard --package com.example.app`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

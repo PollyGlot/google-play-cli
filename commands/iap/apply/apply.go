@@ -33,6 +33,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/monetization/catalog"
+	"github.com/PollyGlot/google-play-cli/internal/monetization/planview"
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
@@ -90,220 +91,20 @@ type Payload struct {
 }
 
 func (p Payload) Renderers() output.Renderers {
+	v := planview.View{Axis: planview.OneTimeProducts, Package: p.Package, Plan: p.Plan, Migrating: p.Migrating, DryRun: p.DryRun, Requires: p.Requires}
 	return output.Renderers{
-		Table:    func(w io.Writer) error { return p.renderHuman(w, false) },
-		JSON:     func(w io.Writer) error { return p.renderJSON(w) },
-		Markdown: func(w io.Writer) error { return p.renderHuman(w, true) },
+		Table:    func(w io.Writer) error { return v.Human(w, false) },
+		JSON:     v.JSON,
+		Markdown: func(w io.Writer) error { return v.Human(w, true) },
 	}
-}
-
-func (p Payload) verb(present, past string) string {
-	if p.DryRun {
-		return present
-	}
-	return past
-}
-
-func (p Payload) changeCount() int {
-	return len(p.Plan.Creates) + len(p.Plan.Patches) + len(p.Plan.Deletes) +
-		len(p.Plan.OfferCreates) + len(p.Plan.OfferPatches) + len(p.Plan.OfferDeletes) +
-		len(p.Plan.StateChanges)
-}
-
-// stateOp names the verb a state change rides, in the plan's op vocabulary
-// (activate / deactivate / cancel): the same word in the table and the JSON.
-func stateOp(s reconcile.StateChange) string {
-	switch s.To {
-	case iap.OfferStateInactive:
-		return "deactivate"
-	case iap.OfferStateCancelled:
-		return "cancel"
-	default:
-		return "activate"
-	}
-}
-
-// statePast is the past tense of stateOp for an executed plan ("cancel"
-// doubles its consonant, so the suffix is not mechanical).
-func statePast(s reconcile.StateChange) string {
-	if s.To == iap.OfferStateCancelled {
-		return "cancelled"
-	}
-	return stateOp(s) + "d"
-}
-
-// stateTarget renders the identity a state change moves, in the composite
-// form the plan displays (productId/purchaseOptionId[/offerId]).
-func stateTarget(s reconcile.StateChange) string {
-	t := s.ProductID + "/" + s.PurchaseOptionID
-	if s.OfferID != "" {
-		t += "/" + s.OfferID
-	}
-	return t
 }
 
 // stateKindLabel is the human name of a state change's kind.
 func stateKindLabel(kind string) string {
-	if kind == "offer" {
+	if kind == reconcile.KindOffer {
 		return "offer"
 	}
 	return "purchase option"
-}
-
-func (p Payload) renderHuman(w io.Writer, markdown bool) error {
-	if markdown {
-		if _, err := fmt.Fprintf(w, "## iap apply: %s\n\n", p.Package); err != nil {
-			return err
-		}
-	}
-	if !p.Plan.HasChanges() {
-		_, err := fmt.Fprintln(w, "no changes to apply (catalog directory already matches Play)")
-		return err
-	}
-	header := "applied to"
-	if p.DryRun {
-		header = "plan for"
-	}
-	if _, err := fmt.Fprintf(w, "%s %s (%d change(s)):\n", header, p.Package, p.changeCount()); err != nil {
-		return err
-	}
-	line := func(format string, a ...any) error {
-		_, err := fmt.Fprintf(w, "  "+format+"\n", a...)
-		return err
-	}
-	for _, c := range p.Plan.Creates {
-		if p.Migrating[c.ProductID] {
-			if err := line("%s %s (legacy → v2, one-way)", p.verb("migrate", "migrated"), c.ProductID); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := line("%s %s", p.verb("create", "created"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.Patches {
-		if err := line("%s %s (%s)", p.verb("patch", "patched"), c.ProductID, strings.Join(c.Fields, ", ")); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.OfferCreates {
-		if err := line("%s offer %s", p.verb("create", "created"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.OfferPatches {
-		if err := line("%s offer %s (%s)", p.verb("patch", "patched"), c.ProductID, strings.Join(c.Fields, ", ")); err != nil {
-			return err
-		}
-	}
-	for _, s := range p.Plan.StateChanges {
-		if err := line("%s %s %s (%s → %s)", p.verb(stateOp(s), statePast(s)), stateKindLabel(s.Kind), stateTarget(s), s.From, s.To); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.OfferDeletes {
-		if err := line("%s offer %s", p.verb("delete", "deleted"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	for _, c := range p.Plan.Deletes {
-		if err := line("%s %s", p.verb("delete", "deleted"), c.ProductID); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintf(w, "summary: create=%d migrate=%d patch=%d delete=%d offerCreate=%d offerPatch=%d offerDelete=%d state=%d unchanged=%d\n",
-		len(p.Plan.Creates)-len(p.Migrating), len(p.Migrating), len(p.Plan.Patches), len(p.Plan.Deletes),
-		len(p.Plan.OfferCreates), len(p.Plan.OfferPatches), len(p.Plan.OfferDeletes), len(p.Plan.StateChanges), len(p.Plan.Unchanged)); err != nil {
-		return err
-	}
-	if len(p.Requires) > 0 {
-		if _, err := fmt.Fprintf(w, "requires: %s\n", strings.Join(p.Requires, ", ")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// jsonChange is one plan entry of the flat --output json schema (gplay-owned,
-// ADR-0003 exception family). Offer entries carry purchaseOptionId/offerId;
-// state entries use op activate/deactivate/cancel with kind
-// purchaseOption/offer and the from/to states.
-type jsonChange struct {
-	Op               string   `json:"op"`
-	Kind             string   `json:"kind,omitempty"`
-	ProductID        string   `json:"productId"`
-	PurchaseOptionID string   `json:"purchaseOptionId,omitempty"`
-	OfferID          string   `json:"offerId,omitempty"`
-	Fields           []string `json:"fields,omitempty"`
-	From             string   `json:"from,omitempty"`
-	To               string   `json:"to,omitempty"`
-}
-
-type jsonView struct {
-	Package  string         `json:"package"`
-	DryRun   bool           `json:"dryRun"`
-	Changes  []jsonChange   `json:"changes"`
-	Summary  map[string]int `json:"summary"`
-	Requires []string       `json:"requires,omitempty"`
-}
-
-// splitOfferKey undoes the composite productId/purchaseOptionId/offerId key.
-func splitOfferKey(composite string) (productID, purchaseOptionID, offerID string) {
-	parts := strings.SplitN(composite, "/", 3)
-	for len(parts) < 3 {
-		parts = append(parts, "")
-	}
-	return parts[0], parts[1], parts[2]
-}
-
-func (p Payload) renderJSON(w io.Writer) error {
-	changes := make([]jsonChange, 0, p.changeCount())
-	for _, c := range p.Plan.Creates {
-		op := "create"
-		if p.Migrating[c.ProductID] {
-			op = "migrate"
-		}
-		changes = append(changes, jsonChange{Op: op, ProductID: c.ProductID})
-	}
-	for _, c := range p.Plan.Patches {
-		changes = append(changes, jsonChange{Op: "patch", ProductID: c.ProductID, Fields: c.Fields})
-	}
-	for _, c := range p.Plan.OfferCreates {
-		pid, oid, off := splitOfferKey(c.ProductID)
-		changes = append(changes, jsonChange{Op: "create", Kind: "offer", ProductID: pid, PurchaseOptionID: oid, OfferID: off})
-	}
-	for _, c := range p.Plan.OfferPatches {
-		pid, oid, off := splitOfferKey(c.ProductID)
-		changes = append(changes, jsonChange{Op: "patch", Kind: "offer", ProductID: pid, PurchaseOptionID: oid, OfferID: off, Fields: c.Fields})
-	}
-	for _, s := range p.Plan.StateChanges {
-		changes = append(changes, jsonChange{Op: stateOp(s), Kind: s.Kind, ProductID: s.ProductID, PurchaseOptionID: s.PurchaseOptionID, OfferID: s.OfferID, From: s.From, To: s.To})
-	}
-	for _, c := range p.Plan.OfferDeletes {
-		pid, oid, off := splitOfferKey(c.ProductID)
-		changes = append(changes, jsonChange{Op: "delete", Kind: "offer", ProductID: pid, PurchaseOptionID: oid, OfferID: off})
-	}
-	for _, c := range p.Plan.Deletes {
-		changes = append(changes, jsonChange{Op: "delete", ProductID: c.ProductID})
-	}
-	return output.WriteJSON(w, jsonView{
-		Package: p.Package,
-		DryRun:  p.DryRun,
-		Changes: changes,
-		Summary: map[string]int{
-			"create":      len(p.Plan.Creates) - len(p.Migrating),
-			"migrate":     len(p.Migrating),
-			"patch":       len(p.Plan.Patches),
-			"delete":      len(p.Plan.Deletes),
-			"offerCreate": len(p.Plan.OfferCreates),
-			"offerPatch":  len(p.Plan.OfferPatches),
-			"offerDelete": len(p.Plan.OfferDeletes),
-			"state":       len(p.Plan.StateChanges),
-			"unchanged":   len(p.Plan.Unchanged),
-		},
-		Requires: p.Requires,
-	})
 }
 
 // guardLegacy enforces the legacy surface's inertness: every legacy file must
@@ -467,7 +268,7 @@ func stateTransition(kind, productID, purchaseOptionID, offerID, declared, live 
 		return nil, nil
 	}
 	sc := reconcile.StateChange{Kind: kind, ProductID: productID, PurchaseOptionID: purchaseOptionID, OfferID: offerID, From: live, To: declared}
-	label, target := stateKindLabel(kind), stateTarget(sc)
+	label, target := stateKindLabel(kind), sc.Target()
 	switch declared {
 	case iap.OfferStateActive:
 		if live == iap.OfferStateCancelled {
@@ -516,7 +317,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := iapcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -565,22 +366,21 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	for _, c := range plan.Deletes {
 		deletedProducts[c.ProductID] = true
 	}
-	localComposite := map[string]json.RawMessage{}
+	localKeyed := map[reconcile.Key]json.RawMessage{}
 	for key, raw := range localOffers {
-		localComposite[key.String()] = raw
+		localKeyed[reconcile.Key{ProductID: key.ProductID, ParentID: key.PurchaseOptionID, OfferID: key.OfferID}] = raw
 	}
-	liveComposite := map[string]json.RawMessage{}
+	liveKeyed := map[reconcile.Key]json.RawMessage{}
 	for _, o := range liveOffers {
 		if deletedProducts[o.ProductID] {
 			continue // the parent delete takes its offers
 		}
-		liveComposite[iapcmd.OfferKey{ProductID: o.ProductID, PurchaseOptionID: o.PurchaseOptionID, OfferID: o.OfferID}.String()] = o.Raw
+		liveKeyed[reconcile.Key{ProductID: o.ProductID, ParentID: o.PurchaseOptionID, OfferID: o.OfferID}] = o.Raw
 	}
-	offerPlan, err := reconcile.Compute(localComposite, liveComposite, offerManagedFields)
+	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes, err = reconcile.ComputeChildren(localKeyed, liveKeyed, offerManagedFields)
 	if err != nil {
 		return nil, err
 	}
-	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes = offerPlan.Creates, offerPlan.Patches, offerPlan.Deletes
 	if err := planStates(localV2, liveV2, liveOffers, localOffers, &plan); err != nil {
 		return nil, err
 	}
@@ -645,12 +445,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		updates[k] = append(updates[k], u)
 	}
 	for _, c := range plan.OfferCreates {
-		pid, oid, off := splitOfferKey(c.ProductID)
-		addUpdate(optionKey{pid, oid}, iap.OfferUpdate{Offer: localOffers[iapcmd.OfferKey{ProductID: pid, PurchaseOptionID: oid, OfferID: off}], AllowMissing: true})
+		addUpdate(optionKey{c.ProductID, c.ParentID}, iap.OfferUpdate{Offer: localOffers[iapcmd.OfferKey{ProductID: c.ProductID, PurchaseOptionID: c.ParentID, OfferID: c.OfferID}], AllowMissing: true})
 	}
 	for _, c := range plan.OfferPatches {
-		pid, oid, off := splitOfferKey(c.ProductID)
-		addUpdate(optionKey{pid, oid}, iap.OfferUpdate{Offer: localOffers[iapcmd.OfferKey{ProductID: pid, PurchaseOptionID: oid, OfferID: off}], UpdateMask: c.Fields})
+		addUpdate(optionKey{c.ProductID, c.ParentID}, iap.OfferUpdate{Offer: localOffers[iapcmd.OfferKey{ProductID: c.ProductID, PurchaseOptionID: c.ParentID, OfferID: c.OfferID}], UpdateMask: c.Fields})
 	}
 	for _, k := range updateOrder {
 		if err := iap.BatchUpdateOffers(rc.Ctx, httpClient, pkg, k.product, k.option, updates[k], regionsVersion); err != nil {
@@ -712,12 +510,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	deletes := map[optionKey][]string{}
 	var deleteOrder []optionKey
 	for _, c := range plan.OfferDeletes {
-		pid, oid, off := splitOfferKey(c.ProductID)
-		k := optionKey{pid, oid}
+		k := optionKey{c.ProductID, c.ParentID}
 		if _, ok := deletes[k]; !ok {
 			deleteOrder = append(deleteOrder, k)
 		}
-		deletes[k] = append(deletes[k], off)
+		deletes[k] = append(deletes[k], c.OfferID)
 	}
 	for _, k := range deleteOrder {
 		if err := iap.BatchDeleteOffers(rc.Ctx, httpClient, pkg, k.product, k.option, deletes[k]); err != nil {
@@ -776,6 +573,14 @@ the API has no insert); a plan containing any delete, or any offer cancel
 --regions-version pins the regions version sent with writes (default
 ` + iapcmd.DefaultRegionsVersion + `). GPLAY_READONLY refuses the command
 (exit 4).`,
+		Example: `  # Show the plan against live Play (online, nothing changes)
+  gplay iap apply --dry-run
+
+  # Run it, deletes and offer cancels included
+  gplay iap apply --confirm
+
+  # Promote legacy products redeclared in the v2 schema (one-way)
+  gplay iap apply --migrate --dry-run`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

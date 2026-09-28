@@ -57,13 +57,45 @@ func StripKeys(keys ...string) func(any) any {
 	return walk
 }
 
-// Change is one planned action on one product. Fields names the changed managed
-// fields (patch only): it is both the human diff summary and the exact
-// updateMask the executor sends, which is what keeps unmanaged nesting out of
-// reach (ADR-0041 §5).
+// Change is one planned action on one catalog resource. Fields names the
+// changed managed fields (patch only): it is both the human diff summary and
+// the exact updateMask the executor sends, which is what keeps unmanaged
+// nesting out of reach (ADR-0041 §5).
+//
+// The identity is typed, never a composite string to split again: ProductID
+// alone for a product; ParentID (the base plan or purchase option, the middle
+// level whose name depends on the catalog) for a base-plan delete; ParentID
+// and OfferID for an offer.
 type Change struct {
 	ProductID string   `json:"productId"`
+	ParentID  string   `json:"parentId,omitempty"`
+	OfferID   string   `json:"offerId,omitempty"`
 	Fields    []string `json:"fields,omitempty"`
+}
+
+// Key renders the change's identity as its productId[/parentId[/offerId]]
+// display key: the form the plan prints and the order it sorts by.
+func (c Change) Key() string {
+	return Key{ProductID: c.ProductID, ParentID: c.ParentID, OfferID: c.OfferID}.String()
+}
+
+// Key is the typed identity of a nested catalog resource (a base plan, a
+// purchase option or an offer) under its product.
+type Key struct {
+	ProductID, ParentID, OfferID string
+}
+
+// String joins the levels with "/": productId, productId/parentId or
+// productId/parentId/offerId.
+func (k Key) String() string {
+	s := k.ProductID
+	if k.ParentID != "" || k.OfferID != "" {
+		s += "/" + k.ParentID
+	}
+	if k.OfferID != "" {
+		s += "/" + k.OfferID
+	}
+	return s
 }
 
 // StateChange is one planned lifecycle transition (slice #369): a base plan or
@@ -87,9 +119,9 @@ type StateChange struct {
 }
 
 // Plan is the Reconciliation plan: what apply would (or did) do. The Offer*
-// slices carry offer-level actions (their Change.ProductID holds the composite
-// productId/basePlanId/offerId display key); BasePlanDeletes carries the
-// productId/basePlanId key. All slices are sorted for stable output.
+// slices carry offer-level actions (typed productId, parentId and offerId);
+// BasePlanDeletes carries productId and parentId. All slices are sorted by
+// display key for stable output; Entries flattens them in plan-view order.
 //
 // Base plans have deletes but no creates or patches of their own: their config
 // rides the parent subscription patch, which never removes a plan its body
@@ -105,6 +137,83 @@ type Plan struct {
 	OfferDeletes    []Change      `json:"-"`
 	StateChanges    []StateChange `json:"-"`
 	Unchanged       []string      `json:"-"`
+}
+
+// Kinds of a plan entry below the product level.
+const (
+	KindOffer          = "offer"
+	KindBasePlan       = "basePlan"
+	KindPurchaseOption = "purchaseOption"
+)
+
+// Entry is one typed plan record: every action of a Plan in one shape, so a
+// renderer walks a single list instead of re-deriving identities per slice.
+// Op is the plan's verb (create, patch, delete, activate, deactivate, cancel);
+// Kind is "" for a product, else KindOffer, KindBasePlan or
+// KindPurchaseOption. From/To are set on state changes only.
+type Entry struct {
+	Op        string
+	Kind      string
+	ProductID string
+	ParentID  string
+	OfferID   string
+	Fields    []string
+	From, To  string
+}
+
+// Target is the entry's productId[/parentId[/offerId]] display key.
+func (e Entry) Target() string {
+	return Key{ProductID: e.ProductID, ParentID: e.ParentID, OfferID: e.OfferID}.String()
+}
+
+// Entries flattens the plan in the order every plan view lists it: grow
+// (creates, patches, offer creates and patches), move state, then shrink
+// (offer deletes, base-plan deletes, product deletes), the order apply runs.
+func (p Plan) Entries() []Entry {
+	out := make([]Entry, 0, len(p.Creates)+len(p.Patches)+len(p.Deletes)+len(p.BasePlanDeletes)+
+		len(p.OfferCreates)+len(p.OfferPatches)+len(p.OfferDeletes)+len(p.StateChanges))
+	add := func(op, kind string, cs []Change) {
+		for _, c := range cs {
+			out = append(out, Entry{Op: op, Kind: kind, ProductID: c.ProductID, ParentID: c.ParentID, OfferID: c.OfferID, Fields: c.Fields})
+		}
+	}
+	add("create", "", p.Creates)
+	add("patch", "", p.Patches)
+	add("create", KindOffer, p.OfferCreates)
+	add("patch", KindOffer, p.OfferPatches)
+	for _, s := range p.StateChanges {
+		out = append(out, Entry{Op: s.Op(), Kind: s.Kind, ProductID: s.ProductID, ParentID: s.Parent(), OfferID: s.OfferID, From: s.From, To: s.To})
+	}
+	add("delete", KindOffer, p.OfferDeletes)
+	add("delete", KindBasePlan, p.BasePlanDeletes)
+	add("delete", "", p.Deletes)
+	return out
+}
+
+// Op names the verb a state change rides: cancel, deactivate or activate.
+func (s StateChange) Op() string {
+	switch s.To {
+	case "CANCELLED":
+		return "cancel"
+	case "INACTIVE":
+		return "deactivate"
+	default:
+		return "activate"
+	}
+}
+
+// Parent is the middle level of the identity, whichever catalog it belongs to.
+func (s StateChange) Parent() string {
+	if s.BasePlanID != "" {
+		return s.BasePlanID
+	}
+	return s.PurchaseOptionID
+}
+
+// Target is the productId/parentId[/offerId] display key of the resource the
+// state change moves.
+func (s StateChange) Target() string {
+	return Key{ProductID: s.ProductID, ParentID: s.Parent(), OfferID: s.OfferID}.String()
 }
 
 // HasChanges reports whether the plan does anything at all.
@@ -145,7 +254,7 @@ func BasePlanDeletes(local, live map[string]json.RawMessage) ([]Change, error) {
 		}
 		for bp := range liveIDs {
 			if _, declared := localIDs[bp]; !declared {
-				out = append(out, Change{ProductID: id + "/" + bp})
+				out = append(out, Change{ProductID: id, ParentID: bp})
 			}
 		}
 	}
@@ -237,6 +346,34 @@ func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []Field
 	return changed, nil
 }
 
+// ComputeChildren diffs a nested level (the offers of a catalog) with the same
+// engine as Compute. The comparison runs on the display keys, so the order
+// (and any error naming a resource) follows the productId/parentId/offerId
+// string, and the changes come back with their identity typed.
+func ComputeChildren(local, live map[Key]json.RawMessage, managed []Field) (creates, patches, deletes []Change, err error) {
+	byKey := map[string]Key{}
+	flatten := func(in map[Key]json.RawMessage) map[string]json.RawMessage {
+		out := make(map[string]json.RawMessage, len(in))
+		for k, raw := range in {
+			byKey[k.String()] = k
+			out[k.String()] = raw
+		}
+		return out
+	}
+	plan, err := Compute(flatten(local), flatten(live), managed)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	typed := func(cs []Change) []Change {
+		for i, c := range cs {
+			k := byKey[c.ProductID]
+			cs[i] = Change{ProductID: k.ProductID, ParentID: k.ParentID, OfferID: k.OfferID, Fields: c.Fields}
+		}
+		return cs
+	}
+	return typed(plan.Creates), typed(plan.Patches), typed(plan.Deletes), nil
+}
+
 func sortChanges(cs []Change) {
-	sort.Slice(cs, func(i, j int) bool { return cs[i].ProductID < cs[j].ProductID })
+	sort.Slice(cs, func(i, j int) bool { return cs[i].Key() < cs[j].Key() })
 }

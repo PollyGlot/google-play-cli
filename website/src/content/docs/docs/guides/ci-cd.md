@@ -125,7 +125,7 @@ A common shape across workflows:
 2. **Manual or scheduled promotion** → `releases promote --from internal --to beta`
 3. **Release tag** → `releases promote --from beta --to production` (lands
    as a draft), then a human or a final job runs
-   `releases rollout --track production --to 0.05 --confirm`
+   `releases rollout --track production --staged 0.05 --confirm`
 
 Google rate-limits publishing; as a rule of thumb, don't publish to
 alpha/beta more than once a day, and less often to production.
@@ -139,7 +139,7 @@ archive and verify it before running anything:
       - name: Install and verify gplay
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: v0.5.0
+          VERSION: v1.7.1 # x-release-please-version
         run: |
           set -euo pipefail
           base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"

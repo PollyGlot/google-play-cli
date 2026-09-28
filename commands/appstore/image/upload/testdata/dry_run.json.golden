@@ -1,0 +1,7 @@
+{
+  "dryRun": true,
+  "appStorePackageName": "com.example.store",
+  "packageName": "com.example.app",
+  "file": "art/r&d/icon-512.png",
+  "requires": []
+}

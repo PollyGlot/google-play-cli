@@ -1,0 +1,15 @@
+{
+  "dryRun": true,
+  "account": "1234567890123456789",
+  "title": "Field <Ops> & Logistics",
+  "languageCode": "en-US",
+  "organizations": [
+    {
+      "organizationId": "org-001",
+      "organizationName": "Example Corp"
+    }
+  ],
+  "requires": [
+    "confirm"
+  ]
+}

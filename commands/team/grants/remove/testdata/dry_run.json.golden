@@ -1,0 +1,8 @@
+{
+  "dryRun": true,
+  "email": "dev@example.com",
+  "package": "com.example.app",
+  "requires": [
+    "confirm"
+  ]
+}

@@ -100,7 +100,7 @@ type dryRunView struct {
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions, Oldest: p.Oldest, Requires: p.Requires})
+		return output.WriteJSON(w, dryRunView{DryRun: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions, Oldest: p.Oldest, Requires: output.NonNil(p.Requires)})
 	}
 	// migratePrices returns an empty body on success; emit a gplay-shaped
 	// success object so --output json (the CI default) is always parseable
@@ -144,7 +144,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		regions = append(regions, r)
 	}
 	if len(regions) == 0 {
-		return nil, exit.Usagef("no regions: pass at least one --region <ISO-3166-2 code> whose price cohorts should migrate")
+		return nil, exit.Usagef("no regions: pass --regions with at least one ISO-3166-2 code whose price cohorts should migrate (e.g. --regions US,CA)")
 	}
 	oldest := strings.TrimSpace(in.Oldest)
 	if _, err := time.Parse(time.RFC3339, oldest); err != nil {
@@ -166,7 +166,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.SafetyFlag("confirm", "migrating existing subscribers of %s/%s changes what live purchasers pay and cannot be undone; pass --confirm to proceed (rehearse first with --dry-run)", product, basePlan)
 	}
 
-	pkg, err := subscriptionscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 (basePlans.migratePrices): the one deliberate exception to the rule that
 editing catalog files never touches a live purchaser: "subscriptions apply"
 changes what NEW buyers pay, this command changes what EXISTING subscribers
-pay. Subscribers in price cohorts older than --oldest migrate, per --region.
+pay. Subscribers in price cohorts older than --oldest migrate, per --regions code.
 
 This is money-moving, so it refuses without --confirm (exit 3, naming the
 flag); CI=true never auto-confirms. Use --dry-run to preview the target with
@@ -223,6 +223,13 @@ there is deliberately no bulk migration.
 
 --price-increase-type opt-in requires subscribers to accept the new price or
 churn; opt-out (where Google allows it) applies it automatically with notice.`,
+		Example: `  # Preview: US and Canadian subscribers of premium/monthly priced before 2026
+  gplay subscriptions prices migrate --product premium --base-plan monthly \
+    --regions US,CA --oldest 2026-01-01T00:00:00Z --dry-run
+
+  # Migrate them, asking each subscriber to accept the new price
+  gplay subscriptions prices migrate --product premium --base-plan monthly \
+    --regions US,CA --oldest 2026-01-01T00:00:00Z --price-increase-type opt-in --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -236,7 +243,7 @@ churn; opt-out (where Google allows it) applies it automatically with notice.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Product, "product", "", "subscription product ID (required)")
 	cmd.Flags().StringVar(&in.BasePlan, "base-plan", "", "base plan ID whose subscribers migrate (required)")
-	cmd.Flags().StringArrayVar(&in.Regions, "region", nil, "region code to migrate (repeatable, at least one)")
+	cmd.Flags().StringSliceVar(&in.Regions, "regions", nil, "region codes to migrate, comma-separated or repeated (e.g. US,CA; at least one)")
 	cmd.Flags().StringVar(&in.Oldest, "oldest", "", "RFC-3339 cutoff: price cohorts older than this migrate (required)")
 	cmd.Flags().StringVar(&in.PriceIncreaseType, "price-increase-type", "", "opt-in or opt-out (default: API decides)")
 	cmd.Flags().StringVar(&in.RegionsVersion, "regions-version", subscriptionscmd.DefaultRegionsVersion, "regions version pin")

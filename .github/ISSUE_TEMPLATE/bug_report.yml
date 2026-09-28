@@ -86,10 +86,10 @@ body:
   - type: textarea
     id: debug
     attributes:
-      label: Debug output (recommended)
-      description: Re-run the command with `-vv` and paste the output here. Redact secrets.
+      label: Verbose output (recommended)
+      description: Re-run the command with `-v` (`--verbose`) and paste the output here. Redact secrets.
       render: shell
-      placeholder: "gplay <command> -vv ..."
+      placeholder: "gplay <command> -v ..."
 
   - type: textarea
     id: reproduce

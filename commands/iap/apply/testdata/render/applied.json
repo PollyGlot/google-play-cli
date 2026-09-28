@@ -1,0 +1,104 @@
+{
+  "package": "com.example.app",
+  "dryRun": false,
+  "changes": [
+    {
+      "op": "create",
+      "productId": "coins"
+    },
+    {
+      "op": "migrate",
+      "productId": "legacy_gem"
+    },
+    {
+      "op": "patch",
+      "productId": "sword",
+      "fields": [
+        "listings",
+        "purchaseOptions"
+      ]
+    },
+    {
+      "op": "create",
+      "kind": "offer",
+      "productId": "coins",
+      "purchaseOptionId": "buy",
+      "offerId": "launch"
+    },
+    {
+      "op": "patch",
+      "kind": "offer",
+      "productId": "sword",
+      "purchaseOptionId": "buy",
+      "offerId": "promo",
+      "fields": [
+        "offerTags"
+      ]
+    },
+    {
+      "op": "activate",
+      "kind": "purchaseOption",
+      "productId": "coins",
+      "purchaseOptionId": "buy",
+      "from": "DRAFT",
+      "to": "ACTIVE"
+    },
+    {
+      "op": "activate",
+      "kind": "offer",
+      "productId": "coins",
+      "purchaseOptionId": "buy",
+      "offerId": "launch",
+      "from": "DRAFT",
+      "to": "ACTIVE"
+    },
+    {
+      "op": "deactivate",
+      "kind": "offer",
+      "productId": "sword",
+      "purchaseOptionId": "buy",
+      "offerId": "promo",
+      "from": "ACTIVE",
+      "to": "INACTIVE"
+    },
+    {
+      "op": "cancel",
+      "kind": "offer",
+      "productId": "sword",
+      "purchaseOptionId": "preorder",
+      "offerId": "early",
+      "from": "ACTIVE",
+      "to": "CANCELLED"
+    },
+    {
+      "op": "deactivate",
+      "kind": "purchaseOption",
+      "productId": "sword",
+      "purchaseOptionId": "rent",
+      "from": "ACTIVE",
+      "to": "INACTIVE"
+    },
+    {
+      "op": "delete",
+      "kind": "offer",
+      "productId": "sword",
+      "purchaseOptionId": "buy",
+      "offerId": "stale"
+    },
+    {
+      "op": "delete",
+      "productId": "old"
+    }
+  ],
+  "summary": {
+    "create": 1,
+    "delete": 1,
+    "migrate": 1,
+    "offerCreate": 1,
+    "offerDelete": 1,
+    "offerPatch": 1,
+    "patch": 1,
+    "state": 5,
+    "unchanged": 1
+  }
+}

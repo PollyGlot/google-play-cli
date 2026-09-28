@@ -291,6 +291,14 @@ func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 		if pl != nil {
 			r.ProjectLocalPath = localPath
 			if pl.Account != "" {
+				// The file sits in a repo, so its content is whatever the repo
+				// says, and the name ends up joined into the file keystore's
+				// path (<root>/<name>.json). `../x` would read a credential
+				// from outside the accounts directory: refuse it here, where
+				// the error can name the file to fix (#603).
+				if err := pathguard.Segment("the Account name in "+localPath, pl.Account); err != nil {
+					return nil, err
+				}
 				r.ConfigAccount = pl.Account
 			}
 			// Project-local developer-id overrides the active Account's: the

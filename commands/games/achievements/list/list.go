@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/games/gamescmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
@@ -19,7 +20,7 @@ import (
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	ApplicationID string
-	MaxResults    int
+	PageSize      int
 	PageToken     string
 	Columns       string
 }
@@ -41,8 +42,8 @@ func (p Payload) Renderers() output.Renderers {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if in.MaxResults < 0 {
-		return nil, gamescmd.Usagef("invalid --max-results: must be >= 0")
+	if in.PageSize < 0 {
+		return nil, exit.Usagef("invalid --page-size: must be >= 0")
 	}
 	cols, err := gamescmd.ResolveAchievementColumns(in.Columns)
 	if err != nil {
@@ -56,9 +57,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	lr, raw, err := games.ListAchievements(rc.Ctx, httpClient, appID, in.MaxResults, in.PageToken)
+	lr, raw, err := games.ListAchievements(rc.Ctx, httpClient, appID, in.PageSize, in.PageToken)
 	if err != nil {
 		return nil, gamescmd.Classify(appID, err)
+	}
+	// One page per invocation: without the note a first page in table or
+	// markdown reads as the whole list (--output json keeps the token).
+	if lr.NextPageToken != "" {
+		rc.Notef("more achievements available, re-run with --page-token %s for the next page.", lr.NextPageToken)
 	}
 	return Payload{Rows: gamescmd.BuildAchievementRows(lr.Items), Cols: cols, Raw: raw}, nil
 }
@@ -75,10 +81,13 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Long: `List the achievement configurations for a Play Games Services application.
 
 Addressing rides the numeric Play Games application ID (--application-id): a
-distinct ID space from the Android package (ADR-0033). Use --max-results and
+distinct ID space from the Android package. Use --page-size and
 --page-token to page; --output json passes the
-AchievementConfigurationListResponse through verbatim, including nextPageToken
-(ADR-0003).`,
+AchievementConfigurationListResponse through verbatim, including
+nextPageToken. In table/markdown output a note on stderr carries the next
+--page-token when more achievements are available.`,
+		Example: `  gplay games achievements list --application-id 123456789012
+  gplay games achievements list --application-id 123456789012 --page-size 50 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -90,7 +99,7 @@ AchievementConfigurationListResponse through verbatim, including nextPageToken
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.ApplicationID, "application-id", "", "numeric Play Games Services application ID (required)")
-	cmd.Flags().IntVar(&in.MaxResults, "max-results", 0, "max configs per page (API default when unset)")
+	cmd.Flags().IntVar(&in.PageSize, "page-size", 0, "max configs per page (API default when unset)")
 	cmd.Flags().StringVar(&in.PageToken, "page-token", "", "page token from a previous response's nextPageToken")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns (default: "+gamescmd.DefaultAchievementColumns()+")")
 	return cmd

@@ -1,0 +1,7 @@
+{
+  "active": true,
+  "name": "ci",
+  "client_email": "gplay-ci@example-project.iam.gserviceaccount.com",
+  "backend": "file",
+  "path": "/home/dev/.config/gplay/accounts/ci.json"
+}

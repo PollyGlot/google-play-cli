@@ -1,7 +1,7 @@
 // Package subscriptionscmd holds the wiring shared by the `gplay
-// subscriptions` leaves: package resolution, the default catalog directory,
-// and the 403/404 hint classification that turns a bare API rejection into an
-// agent-resolvable refusal. Mirrors commands/orders/orderscmd. See ADR-0041 /
+// subscriptions` leaves: the default catalog directory and the 403/404 hint
+// classification that turns a bare API rejection into an agent-resolvable
+// refusal. Mirrors commands/orders/orderscmd. See ADR-0041 /
 // CONTEXT.md ("Subscription", "Monetization catalog").
 package subscriptionscmd
 
@@ -9,10 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
-	"github.com/PollyGlot/google-play-cli/internal/exit"
-	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -26,20 +23,6 @@ const DefaultDir = "./monetization/subscriptions"
 // writes (create/patch) unless --regions-version overrides it: the latest
 // version Google has published (ADR-0041 §7).
 const DefaultRegionsVersion = "2022/02"
-
-// ResolvePackage resolves the target package: --package wins, else the project
-// pin. The Monetization catalog rides the package/app axis like
-// releases/metadata/orders.
-func ResolvePackage(rc *kernel.RunContext, flag string) (string, error) {
-	pkg := strings.TrimSpace(flag)
-	if pkg == "" && rc != nil && rc.Resolved != nil {
-		pkg = strings.TrimSpace(rc.Resolved.Pin)
-	}
-	if pkg == "" {
-		return "", exit.Usagef("no package: pass --package <pkg> or run gplay init in your repo")
-	}
-	return pkg, nil
-}
 
 // forbiddenError wraps a 403 with an agent-resolvable hint. The Discovery
 // snapshot ties no specific Play permission to the monetization.subscriptions

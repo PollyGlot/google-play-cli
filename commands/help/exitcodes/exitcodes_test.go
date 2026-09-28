@@ -1,6 +1,8 @@
 package exitcodes_test
 
 import (
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,6 +46,28 @@ func TestExitCodesHelp_surfacesTheDiagnosticCatalog(t *testing.T) {
 	if !strings.Contains(long, exit.CodeTableString()) {
 		t.Errorf("exit-codes help does not embed exit.CodeTableString verbatim\n%s", long)
 	}
+}
+
+// TestExitCodesHelp_row4RendersInItsColumns reads the printed table the way a
+// person does, by column: #594 found row 4's RETRY-SAFE cell reading
+// "no) change the environment" because a parenthesis had slid across the split.
+func TestExitCodesHelp_row4RendersInItsColumns(t *testing.T) {
+	for _, line := range strings.Split(exitcodes.NewCommand().Long, "\n") {
+		if !strings.HasPrefix(line, "4 ") {
+			continue
+		}
+		cols := regexp.MustCompile(`\s{2,}`).Split(strings.TrimSpace(line), -1)
+		want := []string{
+			"4",
+			"Denied by environment policy (GPLAY_READONLY): a mutating command was refused",
+			"no; not resolvable by a flag, change the environment",
+		}
+		if !slices.Equal(cols, want) {
+			t.Fatalf("row 4 columns = %q, want %q", cols, want)
+		}
+		return
+	}
+	t.Fatal("exit-codes help has no row for exit 4")
 }
 
 // TestCatalog_hasCode3 pins the taxonomy: code 3 is present with the

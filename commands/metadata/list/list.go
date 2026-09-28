@@ -14,20 +14,18 @@ package list
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/listings"
 )
@@ -35,62 +33,6 @@ import (
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
-}
-
-// usageError is a CLI-misuse error (no package); ExitCode()=2 per
-// docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-
-func (e *usageError) ExitCode() int { return 2 }
-
-// packageNotFoundError wraps an edits.insert 404 with a hint pointing at
-// `gplay apps list`. Like in `tracks list`, it carries no ExitCode of its
-// own so the wrapped *api.Error (404 -> exit 30) stays authoritative
-// through the Coder chain: an unknown package is an API 4xx, not a CLI
-// misuse.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
-
-// forbiddenError wraps a 403 (service account not invited on the app) with
-// the standard grant-access hint. It carries no ExitCode of its own so the
-// wrapped *api.Error (403 -> exit 11) stays authoritative.
-type forbiddenError struct {
-	pkg   string
-	cause error
-}
-
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not granted access to %q: in the Play Console, open Setup → API access and grant this service account permission on the app: %v", e.pkg, e.cause)
-}
-
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// classifyEditError adds an actionable hint to the two operator-facing
-// failures of a read-only listings read: an unknown package (404) and a
-// service account that has not been invited on the app (403), while
-// leaving the wrapped *api.Error to drive the exit code. Every other
-// failure (5xx, network, edit conflict) propagates verbatim.
-func classifyEditError(pkg string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
-		case http.StatusForbidden:
-			return &forbiddenError{pkg: pkg, cause: err}
-		}
-	}
-	return err
 }
 
 // ListingRow is the synthesized, one-line-per-locale view rendered by the
@@ -261,12 +203,9 @@ func renderMarkdown(w io.Writer, p Payload) error {
 // package, builds an authenticated HTTP client, then opens a read-only
 // Edit and lists every locale's Listing.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 
 	httpClient, err := rc.AuthedClient()
@@ -286,7 +225,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		parsed, raw = ls, r
 		return nil
 	}); err != nil {
-		return nil, classifyEditError(pkg, err)
+		return nil, apihint.ForPackage(pkg, err)
 	}
 
 	return Payload{Raw: raw, Rows: BuildRows(parsed)}, nil
@@ -313,6 +252,9 @@ live Listings against an on-disk metadata tree is the job of ` +
 
 (--output json is the raw edits.listings.list payload; --output markdown
 renders a Markdown table.)`,
+		Example: `  gplay metadata list
+  gplay metadata list --package com.example.app --output markdown
+  gplay metadata list --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

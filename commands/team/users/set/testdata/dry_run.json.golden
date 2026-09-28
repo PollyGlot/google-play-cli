@@ -1,0 +1,14 @@
+{
+  "dryRun": true,
+  "email": "admin@example.com",
+  "permissions": [
+    "CAN_MANAGE_PERMISSIONS_GLOBAL",
+    "CAN_SEE_ALL_APPS"
+  ],
+  "requires": [
+    "grant-admin"
+  ],
+  "warnings": [
+    "permission CAN_SEE_ALL_APPS is deprecated; prefer CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL"
+  ]
+}

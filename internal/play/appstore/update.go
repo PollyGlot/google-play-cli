@@ -1,7 +1,6 @@
 package appstore
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -29,7 +28,7 @@ type AppDetails struct {
 }
 
 // ActiveApkSet mirrors AppStoreAppActiveApkSet: one base module plus the split
-// modules delivered with it. The ids are the ones `appstore upload apk`
+// modules delivered with it. The ids are the ones `appstore apk upload`
 // returned.
 type ActiveApkSet struct {
 	BaseApkID   string   `json:"baseApkId,omitempty"`
@@ -42,7 +41,7 @@ type ActiveApks struct {
 }
 
 // StoreListing mirrors AppStoreAppStoreListing: the per-locale store text and
-// the image ids `appstore upload image` returned.
+// the image ids `appstore image upload` returned.
 type StoreListing struct {
 	LanguageCode     string   `json:"languageCode,omitempty"`
 	AppName          string   `json:"appName,omitempty"`
@@ -113,17 +112,12 @@ func UpdateHostedApp(ctx context.Context, hc *http.Client, storePackage, pkg str
 		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
 	}
 
-	u, err := mUpdateHostedApp.URL(map[string]string{"appStorePackageName": storePackage})
-	if err != nil {
-		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mUpdateHostedApp.Verb, u, bytes.NewReader(out))
-	if err != nil {
-		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-
-	return do(hc, opUpdateHostedApp, pkg, req)
+	return api.Do(ctx, hc, api.Call{
+		Method: mUpdateHostedApp, Op: opUpdateHostedApp, Target: pkg,
+		Params:      map[string]string{"appStorePackageName": storePackage},
+		Body:        out,
+		ContentType: jsonUTF8,
+	})
 }
 
 // UpdatePublishStatus flips a hosted app between PUBLISHED and UNPUBLISHED via
@@ -136,25 +130,12 @@ func UpdateHostedApp(ctx context.Context, hc *http.Client, storePackage, pkg str
 //
 // The response carries no fields: same acknowledgement shape as create.
 func UpdatePublishStatus(ctx context.Context, hc *http.Client, storePackage, pkg, state string) (json.RawMessage, error) {
-	body, err := json.Marshal(struct {
-		PublishState string `json:"publishState"`
-	}{PublishState: state})
-	if err != nil {
-		return nil, &api.Error{Operation: opUpdatePublishState, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
-	}
-
-	u, err := mUpdatePublishState.URL(map[string]string{
-		"appStorePackageName": storePackage,
-		"packageName":         pkg,
+	return api.Do(ctx, hc, api.Call{
+		Method: mUpdatePublishState, Op: opUpdatePublishState, Target: pkg,
+		Params: map[string]string{"appStorePackageName": storePackage, "packageName": pkg},
+		Body: struct {
+			PublishState string `json:"publishState"`
+		}{PublishState: state},
+		ContentType: jsonUTF8,
 	})
-	if err != nil {
-		return nil, &api.Error{Operation: opUpdatePublishState, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mUpdatePublishState.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, &api.Error{Operation: opUpdatePublishState, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-
-	return do(hc, opUpdatePublishState, pkg, req)
 }

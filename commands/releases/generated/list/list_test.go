@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -22,27 +20,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-type genRT struct {
-	mu     sync.Mutex
-	calls  []string
-	getURL string
-}
-
-func (r *genRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(`{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.getURL = req.URL.String()
-	return jsonResp(`{"generatedApks":[{"certificateSha256Hash":"0123456789abcdef","generatedUniversalApk":{"downloadId":"dl-univ"}}]}`), nil
-}
-
-func jsonResp(body string) *http.Response {
-	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
+const generatedBody = `{"generatedApks":[{"certificateSha256Hash":"0123456789abcdef","generatedUniversalApk":{"downloadId":"dl-univ"}}]}`
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
@@ -68,17 +46,22 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 // TestRun_happyPath_versionScoped_noEdit asserts the GET addresses the version
 // code on the package axis (no Edit) and passes the response through verbatim.
 func TestRun_happyPath_versionScoped_noEdit(t *testing.T) {
-	rt := &genRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, generatedBody))
+	rc := newRC(t, fake)
 	r, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", VersionCode: 142})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.HasSuffix(rt.getURL, "/applications/com.example.app/generatedApks/142") {
-		t.Errorf("url %q is not the version-scoped generatedApks endpoint", rt.getURL)
+	calls := fake.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want the single generatedApks GET", len(calls))
 	}
-	if strings.Contains(rt.getURL, "/edits/") {
-		t.Errorf("url %q must not open an Edit", rt.getURL)
+	getURL := calls[0].URL
+	if !strings.HasSuffix(getURL, "/applications/com.example.app/generatedApks/142") {
+		t.Errorf("url %q is not the version-scoped generatedApks endpoint", getURL)
+	}
+	if strings.Contains(getURL, "/edits/") {
+		t.Errorf("url %q must not open an Edit", getURL)
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
@@ -91,14 +74,14 @@ func TestRun_happyPath_versionScoped_noEdit(t *testing.T) {
 
 // TestRun_missingVersionCode_exit2_noNetwork asserts --version-code is required.
 func TestRun_missingVersionCode_exit2_noNetwork(t *testing.T) {
-	rt := &genRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, generatedBody))
+	rc := newRC(t, fake)
 	_, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app"})
 	var c interface{ ExitCode() int }
 	if !errors.As(err, &c) || c.ExitCode() != 2 {
 		t.Errorf("err = %v, want exit 2", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if n := len(fake.Calls()) + fake.TokenExchanges(); n != 0 {
+		t.Errorf("must not reach the network; calls=%v tokens=%d", fake.Calls(), fake.TokenExchanges())
 	}
 }

@@ -38,24 +38,30 @@ func newLeaf(use string, args cobra.PositionalArgs) *cobra.Command {
 
 // TestWrapArgErrors_argCountRejectionIsUsage is the core of #426: a validator
 // rejection (missing argument or surplus argument) comes back as CLI misuse
-// (exit 2 per docs/DESIGN.md §9) with cobra's message intact, instead of the
-// untyped error exit.For could only map to the generic exit 1.
+// (exit 2 per docs/DESIGN.md §9) instead of the untyped error exit.For could
+// only map to the generic exit 1. Since #593 the message names the fix: the
+// missing placeholder from Use, or the stray argument, then the usage line.
 func TestWrapArgErrors_argCountRejectionIsUsage(t *testing.T) {
 	cases := []struct {
 		name    string
+		use     string
 		args    cobra.PositionalArgs
 		give    []string
 		wantMsg string
 	}{
-		{"missing-argument", cobra.ExactArgs(1), nil, "accepts 1 arg(s), received 0"},
-		{"missing-argument-minimum", cobra.MinimumNArgs(1), nil, "requires at least 1 arg(s), only received 0"},
-		{"surplus-argument", cobra.ExactArgs(1), []string{"a", "b"}, "accepts 1 arg(s), received 2"},
-		{"surplus-argument-maximum", cobra.MaximumNArgs(1), []string{"a", "b"}, "accepts at most 1 arg(s), received 2"},
-		{"surplus-argument-none-accepted", cobra.NoArgs, []string{"a"}, `unknown command "a" for "view"`},
+		{"missing-argument", "view <reviewId>", cobra.ExactArgs(1), nil, "missing <reviewId>; usage: view <reviewId>"},
+		{"missing-argument-minimum", "view <orderId> [<orderId>...]", cobra.MinimumNArgs(1), nil, "missing <orderId>; usage: view <orderId> [<orderId>...]"},
+		{"missing-variadic", "add <package>...", cobra.MinimumNArgs(1), nil, "missing <package>; usage: add <package>..."},
+		{"missing-before-flag-in-use", "set <email> --package <pkg>", cobra.ExactArgs(1), nil, "missing <email>; usage: set <email> --package <pkg>"},
+		{"missing-second", "copy <from> <to>", cobra.ExactArgs(2), []string{"a"}, "missing <to>; usage: copy <from> <to>"},
+		{"missing-no-placeholder", "view", cobra.ExactArgs(1), nil, "accepts 1 arg(s), received 0; usage: view"},
+		{"surplus-argument", "view <reviewId>", cobra.ExactArgs(1), []string{"a", "b"}, "accepts 1 arg(s), received 2; usage: view <reviewId>"},
+		{"surplus-argument-maximum", "schema [query]", cobra.MaximumNArgs(1), []string{"a", "b"}, "accepts at most 1 arg(s), received 2; usage: schema [query]"},
+		{"surplus-argument-none-accepted", "list", cobra.NoArgs, []string{"a"}, `unexpected argument "a": list takes no positional arguments; usage: list`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := kernel.WrapArgErrors(newLeaf("view", tc.args))
+			cmd := kernel.WrapArgErrors(newLeaf(tc.use, tc.args))
 
 			err := cmd.Args(cmd, tc.give)
 			if err == nil {
@@ -69,7 +75,7 @@ func TestWrapArgErrors_argCountRejectionIsUsage(t *testing.T) {
 				t.Errorf("error type = %T, want *exit.UsageError", err)
 			}
 			if got := err.Error(); got != tc.wantMsg {
-				t.Errorf("message = %q, want %q verbatim (same treatment as a flag-parse error)", got, tc.wantMsg)
+				t.Errorf("message = %q, want %q", got, tc.wantMsg)
 			}
 		})
 	}

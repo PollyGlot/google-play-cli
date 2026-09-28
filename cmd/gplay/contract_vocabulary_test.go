@@ -8,8 +8,8 @@ package main
 // flagVocabulary maps each canonical flag name to its concept: one concept,
 // one name. It was seeded from the flags shipped at 1.6.1; where one concept
 // had several names, the name used on frozen leaves (or on the most leaves)
-// became canonical and the others sit in flagNameDrift. The final names of
-// those groups are decision #597's to make; this table records today's state.
+// became canonical, and 2.0.0 removed the other names without an alias
+// (decision #597, ADR-0048). The groups still undecided sit in flagNameDrift.
 //
 // A new flag either reuses the canonical name of its concept or adds a new
 // concept here, in review, where the collision with an existing one is seen.
@@ -41,6 +41,7 @@ var flagVocabulary = map[string]string{
 	"allow-locale":       "locale admitted beyond Play's published list",
 	"type":               "subtype of the addressed resource (mapping, expansion file, image, achievement type)",
 	"format":             "artifact container: apk or bundle",
+	"device-tier-config": "device tier config (an ID, or LATEST) a bundle's deliverables are generated with",
 	"scope":              "permission scope: account or app",
 
 	// Input and output.
@@ -66,7 +67,9 @@ var flagVocabulary = map[string]string{
 	"filter":     "AIP-160 filter expression",
 	"order-by":   "sort order expression",
 	"stars":      "star-rating filter",
-	"since":      "start of the time window, as a length back from now",
+	"since":      "start of the time window (a length back from now, or an absolute bound where the command takes one)",
+	"until":      "end of the time window, the absolute bound paired with --since",
+	"month":      "one calendar month to read (YYYY-MM), not a window",
 	"period":     "aggregation period",
 	"by":         "dimension to slice a timeline by",
 	"dimensions": "dimensions of a raw metric query",
@@ -84,9 +87,12 @@ var flagVocabulary = map[string]string{
 	"confirm":              "consent to an irreversible or production-impacting write",
 	"grant-admin":          "consent to granting admin permissions",
 	"keep-edit-on-failure": "keep the Edit open on failure for debugging",
-	"skip-preflight":       "skip the local check before an upload or write",
-	"no-verify":            "skip the remote access probe",
-	"live":                 "also check server-side state",
+	// Edit commit opt-ins (#598): Discovery's edits.commit query parameters.
+	"changes-in-review":           "what an Edit commit does with changes already in review: cancel or error",
+	"changes-not-sent-for-review": "commit an Edit without sending its changes for review",
+	"skip-preflight":              "skip the local check before an upload or write",
+	"no-verify":                   "skip the remote access probe",
+	"live":                        "also check server-side state",
 
 	// Release state.
 	"staged":   "rollout user fraction of a staged release",
@@ -131,47 +137,14 @@ var flagVocabulary = map[string]string{
 
 // flagNameDrift lists today's flags that name a concept already in
 // flagVocabulary under another name (or reuse a canonical name for another
-// concept). Renames are decided in #597 (COH-04/05/06) and ship with a
-// deprecated alias; the alias is then skipped and the entry goes stale here.
+// concept). 2.0.0 settled every group #597 decided (--staged, --version-code,
+// --page-size, --file, --regions, --skip-preflight, --format, and the time
+// window --since/--until) with no alias, so it is empty and only stops a new
+// synonym from being admitted.
 var flagNameDrift = ratchet{
 	name:    "flagNameDrift",
-	ceiling: 23,
-	entries: []string{
-		// versionCode is --version-code on every other leaf (COH-05).
-		"vitals anr --version",
-		"vitals crashes --version",
-		"vitals errors counts --version",
-		"vitals excessivewakeup --version",
-		"vitals lmk --version",
-		"vitals slowrendering --version",
-		"vitals slowstart --version",
-		"vitals stuckbgwakelock --version",
-		// Page size is --page-size elsewhere (COH-06).
-		"games achievements list --max-results",
-		"games leaderboards list --max-results",
-		// A JSON body from a path or stdin is --file elsewhere (COH-06).
-		"games achievements create --from-json",
-		"games achievements update --from-json",
-		"games leaderboards create --from-json",
-		"games leaderboards update --from-json",
-		// The rollout fraction is --staged on upload and promote, where --to is
-		// the destination track (COH-04).
-		"releases rollout --to",
-		// Region codes are --regions elsewhere (COH-06).
-		"subscriptions prices migrate --region",
-		// Skipping the local pre-check is --skip-preflight elsewhere.
-		"metadata images apply --no-validate",
-		// Time windows start at --since elsewhere; no end-of-window name has
-		// been chosen yet, so both ends of both ranges wait on #597.
-		"appstore catalog events list --end-time",
-		"appstore catalog events list --start-time",
-		"reviews history --from",
-		"reviews history --month",
-		"reviews history --to",
-		// The artifact container (apk or bundle) is --format on uploads. Found
-		// while seeding this table; not listed in #597 yet.
-		"releases artifacts list --kind",
-	},
+	ceiling: 0,
+	entries: []string{},
 }
 
 // verbVocabulary maps the last token of a leaf path to its category in
@@ -216,6 +189,10 @@ var verbVocabulary = map[string]string{
 	"migrate": "domain",
 	"history": "domain",
 	"audit":   "domain",
+
+	// 2c. Admitted with the 2.0.0 verb renames (#597): `appstore submit` sends
+	// a hosted app to Google review, irrevocably, which `set` would hide.
+	"submit": "domain",
 }
 
 // verbPathExceptions are leaves outside the verb grammar for a documented
@@ -252,22 +229,12 @@ var verbPathExceptions = map[string]string{
 }
 
 // verbDrift lists experimental leaves whose verb contradicts ADR-0019 (`set`
-// not update, `remove` not delete, noun before verb). The renames are decision
-// #597 (COH-07); each entry goes stale when its leaf is renamed.
+// not update, `remove` not delete, noun before verb). 2.0.0 renamed every one
+// of them (#597), so it is empty and only stops a new one from being admitted.
 var verbDrift = ratchet{
 	name:    "verbDrift",
-	ceiling: 9,
-	entries: []string{
-		"games achievements update",
-		"games achievements delete",
-		"games leaderboards update",
-		"games leaderboards delete",
-		"appstore update",
-		"appstore publish-status",
-		"appstore upload apk",
-		"appstore upload image",
-		"appstore upload policy",
-	},
+	ceiling: 0,
+	entries: []string{},
 }
 
 // leavesWithoutOutputByDesign are the leaves docs/DESIGN.md section 7 exempts
@@ -304,130 +271,5 @@ var leavesWithoutLong = ratchet{
 		"auth logout",
 		"auth status",
 		"version",
-	},
-}
-
-// leavesWithoutExample are today's leaves with no Example; #592 drains it.
-var leavesWithoutExample = ratchet{
-	name:    "leavesWithoutExample",
-	ceiling: 117,
-	entries: []string{
-		"apps accessible list",
-		"apps add",
-		"apps audit",
-		"apps details set",
-		"apps details view",
-		"apps init",
-		"apps list",
-		"apps remove",
-		"apps view",
-		"appstore catalog events list",
-		"appstore catalog view",
-		"appstore create",
-		"appstore publish-status",
-		"appstore update",
-		"appstore upload apk",
-		"appstore upload image",
-		"appstore upload policy",
-		"auth doctor",
-		"auth list",
-		"auth login",
-		"auth logout",
-		"auth status",
-		"compliance datasafety set",
-		"compliance datasafety validate",
-		"customapps create",
-		"device-tiers create",
-		"device-tiers list",
-		"device-tiers view",
-		"edits begin",
-		"edits commit",
-		"edits discard",
-		"edits status",
-		"edits validate",
-		"exit-codes",
-		"games achievements create",
-		"games achievements delete",
-		"games achievements list",
-		"games achievements update",
-		"games achievements view",
-		"games leaderboards create",
-		"games leaderboards delete",
-		"games leaderboards list",
-		"games leaderboards update",
-		"games leaderboards view",
-		"iap apply",
-		"iap pull",
-		"init",
-		"install-skills",
-		"metadata apply",
-		"metadata images apply",
-		"metadata images list",
-		"metadata images pull",
-		"metadata images validate",
-		"metadata list",
-		"metadata pull",
-		"metadata validate",
-		"orders refund",
-		"orders view",
-		"recovery add-targeting",
-		"recovery cancel",
-		"recovery create",
-		"recovery deploy",
-		"recovery list",
-		"releases artifacts list",
-		"releases complete",
-		"releases expansion-files set",
-		"releases expansion-files upload",
-		"releases expansion-files view",
-		"releases generated download",
-		"releases generated list",
-		"releases halt",
-		"releases list",
-		"releases mappings upload",
-		"releases promote",
-		"releases resume",
-		"releases rollout",
-		"releases sharing upload",
-		"releases upload",
-		"reviews history",
-		"reviews list",
-		"reviews reply",
-		"reviews view",
-		"schema",
-		"signing enroll",
-		"signing rotate",
-		"subscriptions apply",
-		"subscriptions prices convert",
-		"subscriptions prices migrate",
-		"subscriptions pull",
-		"team grants list",
-		"team grants remove",
-		"team grants set",
-		"team permissions",
-		"team users add",
-		"team users list",
-		"team users remove",
-		"team users set",
-		"team users view",
-		"testers list",
-		"testers set",
-		"tracks availability view",
-		"tracks create",
-		"tracks list",
-		"tracks view",
-		"version",
-		"vitals anomalies",
-		"vitals anr",
-		"vitals crashes",
-		"vitals errors counts",
-		"vitals errors issues",
-		"vitals errors reports",
-		"vitals excessivewakeup",
-		"vitals lmk",
-		"vitals query",
-		"vitals slowrendering",
-		"vitals slowstart",
-		"vitals stuckbgwakelock",
 	},
 }

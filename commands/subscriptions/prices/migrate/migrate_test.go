@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -21,30 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-type migrateRT struct {
-	mu    sync.Mutex
-	calls []string
-	body  string
-}
-
-func (r *migrateRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	if req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
-		r.body = string(b)
-	}
-	return jsonResp(200, `{}`), nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
 
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
@@ -80,16 +54,16 @@ func validInput() migratecmd.Input {
 // TestRun_dryRun_offlinePreview asserts --dry-run makes no HTTP call and lists
 // the confirm gate in requires.
 func TestRun_dryRun_offlinePreview(t *testing.T) {
-	rt := &migrateRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	in := validInput()
 	in.DryRun = true
 	r, err := migratecmd.Run(rc, in)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run must be offline; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 {
+		t.Errorf("dry-run must be offline; calls=%v", fake.Calls())
 	}
 	var js bytes.Buffer
 	if err := r.Renderers().JSON(&js); err != nil {
@@ -113,23 +87,23 @@ func TestRun_dryRun_offlinePreview(t *testing.T) {
 
 // TestRun_refusesWithoutConfirm asserts exit 3 naming --confirm, no network.
 func TestRun_refusesWithoutConfirm(t *testing.T) {
-	rt := &migrateRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	_, err := migratecmd.Run(rc, validInput())
 	assertExit(t, err, 3)
 	if !strings.Contains(err.Error(), "--confirm") {
 		t.Errorf("refusal %q must name --confirm", err.Error())
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("refusal must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 {
+		t.Errorf("refusal must not reach the network; calls=%v", fake.Calls())
 	}
 }
 
 // TestRun_confirmed_migrates asserts the confirmed run POSTs :migratePrices
 // with one RegionalPriceMigration per region and the path identity echoed.
 func TestRun_confirmed_migrates(t *testing.T) {
-	rt := &migrateRT{}
-	rc := newRC(t, rt)
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	rc := newRC(t, fake)
 	in := validInput()
 	in.Confirm = true
 	in.PriceIncreaseType = "opt-out"
@@ -137,12 +111,13 @@ func TestRun_confirmed_migrates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(rt.calls) != 1 || !strings.HasSuffix(rt.calls[0], "/subscriptions/premium/basePlans/monthly:migratePrices") {
-		t.Fatalf("calls = %v, want the :migratePrices POST", rt.calls)
+	calls := fake.Calls()
+	if len(calls) != 1 || !strings.HasSuffix(calls[0].Path, "/subscriptions/premium/basePlans/monthly:migratePrices") {
+		t.Fatalf("calls = %v, want the :migratePrices POST", calls)
 	}
 	for _, want := range []string{`"regionCode":"US"`, `"regionCode":"FR"`, `"packageName":"com.example.app"`, `"priceIncreaseType":"PRICE_INCREASE_TYPE_OPT_OUT"`, `"version":"2022/02"`} {
-		if !strings.Contains(rt.body, want) {
-			t.Errorf("body %q missing %s", rt.body, want)
+		if !strings.Contains(string(calls[0].Body), want) {
+			t.Errorf("body %q missing %s", calls[0].Body, want)
 		}
 	}
 	var js bytes.Buffer
@@ -164,15 +139,15 @@ func TestRun_validation_exit2_noNetwork(t *testing.T) {
 		func(in *migratecmd.Input) { in.PriceIncreaseType = "mandatory" },
 	}
 	for i, mutate := range cases {
-		rt := &migrateRT{}
-		rc := newRC(t, rt)
+		fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+		rc := newRC(t, fake)
 		in := validInput()
 		in.Confirm = true
 		mutate(&in)
 		_, err := migratecmd.Run(rc, in)
 		assertExit(t, err, 2)
-		if len(rt.calls) != 0 {
-			t.Errorf("case %d must not reach the network; calls=%v", i, rt.calls)
+		if len(fake.Calls()) != 0 {
+			t.Errorf("case %d must not reach the network; calls=%v", i, fake.Calls())
 		}
 	}
 }

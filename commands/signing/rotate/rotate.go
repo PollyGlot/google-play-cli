@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/signing/signingcmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/appsigning"
@@ -36,20 +37,20 @@ type Input struct {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.KmsKey == "" {
-		return nil, signingcmd.Usagef("missing --kms-key: pass the Cloud KMS crypto key VERSION resource of the NEW signing key")
+		return nil, exit.Usagef("missing --kms-key: pass the Cloud KMS crypto key VERSION resource of the NEW signing key")
 	}
 	if in.KmsCert == "" {
-		return nil, signingcmd.Usagef("missing --kms-cert <file.pem>: the new key's certificate travels with the key")
+		return nil, exit.Usagef("missing --kms-cert <file.pem>: the new key's certificate travels with the key")
 	}
 	if in.Lineage == "" {
-		return nil, signingcmd.Usagef("missing --lineage <file>: the API requires the apksigner proof-of-rotation lineage (apksigner rotate)")
+		return nil, exit.Usagef("missing --lineage <file>: the API requires the apksigner proof-of-rotation lineage (apksigner rotate)")
 	}
 	reason, ok := appsigning.RotationReason(in.Reason)
 	if !ok {
-		return nil, signingcmd.Usagef("invalid --reason %q (valid: %s)", in.Reason, strings.Join(appsigning.RotationReasons(), ", "))
+		return nil, exit.Usagef("invalid --reason %q (valid: %s)", in.Reason, strings.Join(appsigning.RotationReasons(), ", "))
 	}
 
-	pkg, err := signingcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -106,17 +107,22 @@ Signing, a key rotation request must be initiated through the Google Play
 Console UI. See
 ` + appsigning.HelpCenterURL + `
 
-The proof-of-rotation lineage is produced by apksigner, not by gplay:
-
-  apksigner rotate --out lineage.bin --old-signer ... --new-signer ...
-  gplay signing rotate --kms-key <resource> --kms-cert new-cert.pem \
-    --lineage lineage.bin --reason routine-key-upgrade --confirm
+The proof-of-rotation lineage (--lineage) is produced by apksigner rotate,
+not by gplay: gplay only carries its bytes.
 
 --reason is required and takes one of: ` + reasons + `.
 
 Prints the rotated key's certificate hashes (SHA256/SHA1/MD5); --output json
 mirrors the API response verbatim. Requires --confirm (missing → exit 3);
 rehearse first with --dry-run. GPLAY_READONLY refuses it (exit 4).`,
+		Example: `  # 1. apksigner (not gplay) produces the proof-of-rotation lineage
+  apksigner rotate --out lineage.bin --old-signer ... --new-signer ...
+
+  # 2. Rehearse, then rotate to the new Cloud KMS key
+  gplay signing rotate --kms-key "$NEW_KMS_KEY" --kms-cert new-cert.pem \
+    --lineage lineage.bin --reason routine-key-upgrade --dry-run
+  gplay signing rotate --kms-key "$NEW_KMS_KEY" --kms-cert new-cert.pem \
+    --lineage lineage.bin --reason routine-key-upgrade --confirm`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

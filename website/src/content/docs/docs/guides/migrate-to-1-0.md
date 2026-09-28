@@ -53,7 +53,9 @@ so it follows the TTY default alone.
 ```json
 {
   "error": {
+    "code": "SAFETY_FLAG_REQUIRED",
     "exitCode": 3,
+    "retryable": false,
     "message": "logout: --confirm is required to remove a credential (this operation is destructive)",
     "requires": ["confirm"]
   }

@@ -51,11 +51,11 @@ always an explicit step.
 
 ```sh
 # Start at 5% of users (requires --confirm on production).
-gplay releases rollout --track production --to 0.05 --confirm
+gplay releases rollout --track production --staged 0.05 --confirm
 
 # Ramp up over the following days.
-gplay releases rollout --track production --to 0.20 --confirm
-gplay releases rollout --track production --to 0.50 --confirm
+gplay releases rollout --track production --staged 0.20 --confirm
+gplay releases rollout --track production --staged 0.50 --confirm
 
 # Finish: userFraction → 1.0, status → completed.
 gplay releases complete --track production --confirm

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -37,13 +36,13 @@ type getRT struct {
 	getCalls  int
 }
 
-func (r *getRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *getRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.tokenHits++
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	// reviews.get is GET .../reviews/<id>, not the collection, not :reply.
 	if req.Method != http.MethodGet || !strings.Contains(req.URL.Path, "/reviews/") {
@@ -53,15 +52,9 @@ func (r *getRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.getCalls++
 	r.gotPath = req.URL.Path
 	if r.code != 0 {
-		return jsonResp(r.code, r.errBody), nil
+		return testkit.Response(r.code, r.errBody), nil
 	}
-	return jsonResp(200, r.body), nil
-}
-
-func jsonResp(code int, body string) *http.Response {
-	h := make(http.Header)
-	h.Set("Content-Type", "application/json")
-	return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)), Header: h}
+	return testkit.Response(http.StatusOK, r.body), nil
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -126,7 +119,7 @@ const oneReviewBody = `{
 
 func TestRun_human_headerAndThread(t *testing.T) {
 	rt := &getRT{t: t, body: oneReviewBody}
-	rc, _, _ := newRC(t, rt, output.FormatTable)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable)
 
 	r, err := Run(rc, Input{Package: "com.example.app", ReviewID: "gp:AOqpT123"})
 	if err != nil {
@@ -166,7 +159,7 @@ func TestRun_human_headerAndThread(t *testing.T) {
 
 func TestRun_json_passthroughVerbatim(t *testing.T) {
 	rt := &getRT{t: t, body: oneReviewBody}
-	rc, _, _ := newRC(t, rt, output.FormatJSON)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON)
 
 	r, err := Run(rc, Input{Package: "com.example.app", ReviewID: "gp:AOqpT123"})
 	if err != nil {
@@ -200,7 +193,7 @@ func TestRun_json_passthroughVerbatim(t *testing.T) {
 
 func TestRun_markdown_recordAndBlockquotes(t *testing.T) {
 	rt := &getRT{t: t, body: oneReviewBody}
-	rc, _, _ := newRC(t, rt, output.FormatMarkdown)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatMarkdown)
 
 	r, err := Run(rc, Input{Package: "com.example.app", ReviewID: "gp:AOqpT123"})
 	if err != nil {
@@ -227,7 +220,7 @@ func TestRun_markdown_recordAndBlockquotes(t *testing.T) {
 
 func TestRun_notFound_exit30_namesWindow(t *testing.T) {
 	rt := &getRT{t: t, code: 404, errBody: `{"error":{"code":404,"message":"not found"}}`}
-	rc, _, _ := newRC(t, rt, output.FormatJSON)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON)
 
 	_, err := Run(rc, Input{Package: "com.example.app", ReviewID: "gp:gone"})
 	if code := exitCodeOf(t, err); code != 30 {
@@ -245,7 +238,7 @@ func TestRun_notFound_exit30_namesWindow(t *testing.T) {
 
 func TestRun_forbidden_exit11_withGrantHint(t *testing.T) {
 	rt := &getRT{t: t, code: 403, errBody: `{"error":{"code":403,"message":"forbidden"}}`}
-	rc, _, _ := newRC(t, rt, output.FormatJSON)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON)
 
 	_, err := Run(rc, Input{Package: "com.example.app", ReviewID: "r1"})
 	if code := exitCodeOf(t, err); code != 11 {
@@ -258,7 +251,7 @@ func TestRun_forbidden_exit11_withGrantHint(t *testing.T) {
 
 func TestRun_emptyReviewID_exit2_noNetwork(t *testing.T) {
 	rt := &getRT{t: t, body: oneReviewBody}
-	rc, _, _ := newRC(t, rt, output.FormatJSON)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON)
 
 	_, err := Run(rc, Input{Package: "com.example.app", ReviewID: "   "})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -266,6 +259,20 @@ func TestRun_emptyReviewID_exit2_noNetwork(t *testing.T) {
 	}
 	if rt.tokenHits != 0 || rt.getCalls != 0 {
 		t.Errorf("a blank reviewId must fail before the network; tokenHits=%d getCalls=%d", rt.tokenHits, rt.getCalls)
+	}
+}
+
+// TestRun_packageFlagTrimmed pins the shared resolver (rc.Package): a padded
+// --package reaches the wire trimmed. This copy used to send it verbatim.
+func TestRun_packageFlagTrimmed(t *testing.T) {
+	rt := &getRT{t: t, body: oneReviewBody}
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON)
+
+	if _, err := Run(rc, Input{Package: "  com.example.app\t", ReviewID: "r1"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if want := "/androidpublisher/v3/applications/com.example.app/reviews/r1"; rt.gotPath != want {
+		t.Errorf("path = %q, want %q", rt.gotPath, want)
 	}
 }
 
@@ -290,7 +297,7 @@ func TestRun_human_neutralizesHostileReview(t *testing.T) {
 	for _, format := range []output.Format{output.FormatTable, output.FormatMarkdown} {
 		t.Run(string(format), func(t *testing.T) {
 			rt := &getRT{t: t, body: hostileReviewBody}
-			rc, _, _ := newRC(t, rt, format)
+			rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), format)
 			r, err := Run(rc, Input{Package: "com.example.app", ReviewID: "gp:hostile"})
 			if err != nil {
 				t.Fatalf("Run: %v", err)
@@ -318,7 +325,7 @@ func TestRun_human_neutralizesHostileReview(t *testing.T) {
 	}
 
 	rt := &getRT{t: t, body: hostileReviewBody}
-	rc, _, _ := newRC(t, rt, output.FormatJSON)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON)
 	r, err := Run(rc, Input{Package: "com.example.app", ReviewID: "gp:hostile"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -334,7 +341,7 @@ func TestRun_human_neutralizesHostileReview(t *testing.T) {
 
 func TestRun_noPackage_exit2_noNetwork(t *testing.T) {
 	rt := &getRT{t: t, body: oneReviewBody}
-	rc, _, _ := newRC(t, rt, output.FormatJSON)
+	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON)
 
 	_, err := Run(rc, Input{ReviewID: "r1"})
 	if code := exitCodeOf(t, err); code != 2 {

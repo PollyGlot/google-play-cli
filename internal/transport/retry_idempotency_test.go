@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // imagesUploadURL is edits.images.upload on its media endpoint: a POST that
@@ -20,7 +22,7 @@ const imagesUploadURL = "https://androidpublisher.googleapis.com/upload/androidp
 func TestRetry_nonIdempotentPOSTNotReplayedAfter5xx(t *testing.T) {
 	for _, st := range []step{{status: 503}, {status: 500}, {status: 0}} {
 		inner := &scriptRT{t: t, steps: []step{st}}
-		rt, delays := newRetry(t, inner, 3)
+		rt, delays := newRetry(t, testkit.RoundTripFunc(inner.serve), 3)
 		resp, err := rt.RoundTrip(newReq(t, http.MethodPost, imagesUploadURL, "png-bytes"))
 		if st.status != 0 && (err != nil || resp.StatusCode != st.status) {
 			t.Fatalf("status %d: got resp=%v err=%v, want the %d handed back", st.status, resp, err, st.status)
@@ -41,7 +43,7 @@ func TestRetry_nonIdempotentPOSTRetriedWhenNeverSent(t *testing.T) {
 	}
 	for name, first := range cases {
 		inner := &scriptRT{t: t, steps: []step{first, {status: 200}}}
-		rt, _ := newRetry(t, inner, 1)
+		rt, _ := newRetry(t, testkit.RoundTripFunc(inner.serve), 1)
 		resp, err := rt.RoundTrip(newReq(t, http.MethodPost, imagesUploadURL, "png-bytes"))
 		if err != nil || resp.StatusCode != 200 || inner.calls != 2 {
 			t.Errorf("%s: resp=%v err=%v attempts=%d, want 200 after 2 attempts", name, resp, err, inner.calls)
@@ -54,7 +56,7 @@ func TestRetry_nonIdempotentPOSTRetriedWhenNeverSent(t *testing.T) {
 func TestRetry_replaySafePOSTReplayed(t *testing.T) {
 	const validateURL = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/abc:validate"
 	inner := &scriptRT{t: t, steps: []step{{status: 503}, {status: 200}}}
-	rt, _ := newRetry(t, inner, 1)
+	rt, _ := newRetry(t, testkit.RoundTripFunc(inner.serve), 1)
 	resp, err := rt.RoundTrip(newReq(t, http.MethodPost, validateURL, ""))
 	if err != nil || resp.StatusCode != 200 || inner.calls != 2 {
 		t.Errorf("resp=%v err=%v attempts=%d, want 200 after 2 attempts", resp, err, inner.calls)
@@ -69,7 +71,7 @@ func TestRetry_retryAfterClampedToMaxDelay(t *testing.T) {
 		h := http.Header{}
 		h.Set("Retry-After", v)
 		inner := &scriptRT{t: t, steps: []step{{status: 429, header: h}, {status: 200}}}
-		rt, delays := newRetry(t, inner, 1)
+		rt, delays := newRetry(t, testkit.RoundTripFunc(inner.serve), 1)
 		if _, err := rt.RoundTrip(newReq(t, http.MethodGet, apiURL, "")); err != nil {
 			t.Fatalf("Retry-After %s: %v", v, err)
 		}

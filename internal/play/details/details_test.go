@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // infoRT routes the apps view sequence: edits.insert, edits.details.get,
@@ -35,52 +35,44 @@ type infoRT struct {
 	listingCode int // 0 → 200
 	iconCode    int // 0 → 200
 
-	mu    sync.Mutex
-	calls []string
+	fake *testkit.Fake
 }
 
-func (r *infoRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
+// client returns the client whose transport is r's fake. A request no case
+// claims (a PUT, a :commit) fails the round trip, and the call still shows
+// in calls().
+func (r *infoRT) client() *http.Client {
+	r.fake = testkit.NewFake(r.respond)
+	return &http.Client{Transport: r.fake}
+}
+
+func (r *infoRT) respond(c testkit.Call) (int, string, bool) {
 	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/details"):
-		code := r.detailsCode
-		if code == 0 {
-			code = 200
-		}
-		return jsonResp(code, r.details), nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/icon"):
-		code := r.iconCode
-		if code == 0 {
-			code = 200
-		}
+	case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+		return 200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID), true
+	case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+		return 204, "", true
+	case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/details"):
+		return r.detailsCode, r.details, true
+	case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/icon"):
 		body := r.icon
 		if body == "" {
 			body = `{"images":[]}` // missing == empty (ADR-0013)
 		}
-		return jsonResp(code, body), nil
-	case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/listings/"):
-		code := r.listingCode
-		if code == 0 {
-			code = 200
-		}
-		return jsonResp(code, r.listing), nil
+		return r.iconCode, body, true
+	case c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/"):
+		return r.listingCode, r.listing, true
 	}
-	r.t.Fatalf("unexpected request (apps view is read-only): %s %s", req.Method, req.URL)
-	return nil, nil
+	return 0, "", false
 }
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
+// calls lists the requests served, as "METHOD path".
+func (r *infoRT) calls() []string {
+	var out []string
+	for _, c := range r.fake.Calls() {
+		out = append(out, c.Method+" "+c.Path)
 	}
+	return out
 }
 
 func exitCodeOf(t *testing.T, err error) int {
@@ -109,7 +101,7 @@ func TestGet_happyPath(t *testing.T) {
 		details: detailsBody,
 		listing: listingBody,
 	}
-	hc := &http.Client{Transport: rt}
+	hc := rt.client()
 
 	d, raw, err := details.Get(context.Background(), hc, "com.example.app")
 	if err != nil {
@@ -137,12 +129,12 @@ func TestGet_happyPath(t *testing.T) {
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/listings/en-US/icon",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-info",
 	}
-	if len(rt.calls) != len(wantSequence) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantSequence))
+	if len(rt.calls()) != len(wantSequence) {
+		t.Fatalf("got %d calls (%v), want %d", len(rt.calls()), rt.calls(), len(wantSequence))
 	}
 	for i, want := range wantSequence {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if rt.calls()[i] != want {
+			t.Errorf("call %d = %q, want %q", i, rt.calls()[i], want)
 		}
 	}
 
@@ -189,7 +181,7 @@ func TestGet_iconPresent_addsIconKey(t *testing.T) {
 		listing: listingBody,
 		icon:    iconBody,
 	}
-	hc := &http.Client{Transport: rt}
+	hc := rt.client()
 
 	d, raw, err := details.Get(context.Background(), hc, "com.example.app")
 	if err != nil {
@@ -222,7 +214,7 @@ func TestGet_iconPresent_addsIconKey(t *testing.T) {
 	}
 	// Exactly one Edit was opened (single insert), reused for all reads.
 	inserts := 0
-	for _, c := range rt.calls {
+	for _, c := range rt.calls() {
 		if strings.HasSuffix(c, "/edits") && strings.HasPrefix(c, "POST ") {
 			inserts++
 		}
@@ -243,7 +235,7 @@ func TestGet_iconRead403_mapsExit11(t *testing.T) {
 		iconCode: 403,
 		icon:     `{"error":{"code":403,"message":"insufficient permissions"}}`,
 	}
-	hc := &http.Client{Transport: rt}
+	hc := rt.client()
 	_, _, err := details.Get(context.Background(), hc, "com.example.app")
 	if code := exitCodeOf(t, err); code != 11 {
 		t.Errorf("ExitCode() = %d, want 11 (403 on icon read)", code)
@@ -261,7 +253,7 @@ func TestGet_iconRead404_mapsExit30(t *testing.T) {
 		iconCode: 404,
 		icon:     `{"error":{"code":404,"message":"not found"}}`,
 	}
-	hc := &http.Client{Transport: rt}
+	hc := rt.client()
 	_, _, err := details.Get(context.Background(), hc, "com.example.app")
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Errorf("ExitCode() = %d, want 30 (404 on icon read)", code)
@@ -280,7 +272,7 @@ func TestGet_detailsGet403_mapsExit11_discardsEdit(t *testing.T) {
 		detailsCode: 403,
 		details:     `{"error":{"code":403,"message":"The current user has insufficient permissions"}}`,
 	}
-	hc := &http.Client{Transport: rt}
+	hc := rt.client()
 
 	_, _, err := details.Get(context.Background(), hc, "com.example.app")
 	if code := exitCodeOf(t, err); code != 11 {
@@ -298,13 +290,13 @@ func TestGet_detailsGet403_mapsExit11_discardsEdit(t *testing.T) {
 	}
 	// The Edit must still be discarded after a failed details.get.
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range rt.calls() {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-403") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("Edit not discarded after 403; calls = %v", rt.calls)
+		t.Errorf("Edit not discarded after 403; calls = %v", rt.calls())
 	}
 }
 
@@ -324,7 +316,7 @@ func TestGet_emptyDefaultLanguage_errorsBeforeListingsCall(t *testing.T) {
 		// listings.get: we want the test to fail noisily if it does.
 		listing: `{"language":"","title":"WOULDNT-REACH-HERE"}`,
 	}
-	hc := &http.Client{Transport: rt}
+	hc := rt.client()
 
 	_, _, err := details.Get(context.Background(), hc, "com.example.app")
 	if err == nil {
@@ -338,20 +330,20 @@ func TestGet_emptyDefaultLanguage_errorsBeforeListingsCall(t *testing.T) {
 		t.Errorf("api.Error.Operation = %q, want it to mention details.get", apiErr.Operation)
 	}
 	// listings.get must NOT have been called.
-	for _, c := range rt.calls {
+	for _, c := range rt.calls() {
 		if strings.Contains(c, "/listings/") {
-			t.Errorf("listings.get was called after an empty defaultLanguage; calls = %v", rt.calls)
+			t.Errorf("listings.get was called after an empty defaultLanguage; calls = %v", rt.calls())
 		}
 	}
 	// The Edit must still be discarded.
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range rt.calls() {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-empty-lang") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("Edit not discarded after empty defaultLanguage; calls = %v", rt.calls)
+		t.Errorf("Edit not discarded after empty defaultLanguage; calls = %v", rt.calls())
 	}
 }
 
@@ -365,7 +357,7 @@ func (brokenBody) Read(_ []byte) (int, error) { return 0, errors.New("simulated 
 func (brokenBody) Close() error               { return nil }
 
 // detailsBodyReadErrorRT delivers a 200 status on details.get but
-// returns a body that errors on every Read, so getJSON's io.ReadAll
+// returns a body that errors on every Read, so the success-body read
 // fails. Insert + delete still succeed so the test can also assert the
 // Edit is discarded.
 type detailsBodyReadErrorRT struct {
@@ -373,27 +365,33 @@ type detailsBodyReadErrorRT struct {
 	editID string
 
 	mu    sync.Mutex
-	calls []string
+	lines []string
 }
 
-func (r *detailsBodyReadErrorRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *detailsBodyReadErrorRT) client() *http.Client {
+	return &http.Client{Transport: testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.lines = append(r.lines, req.Method+" "+req.URL.Path)
+		switch {
+		case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
+			return testkit.Response(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
+		case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
+			return testkit.Response(204, ""), nil
+		case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/details"):
+			resp := testkit.Response(200, "")
+			resp.Body = brokenBody{}
+			return resp, nil
+		}
+		r.t.Errorf("unexpected request: %s %s", req.Method, req.URL)
+		return nil, fmt.Errorf("unexpected request %s %s", req.Method, req.URL)
+	})}
+}
+
+func (r *detailsBodyReadErrorRT) calls() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/details"):
-		return &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       brokenBody{},
-		}, nil
-	}
-	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
+	return append([]string(nil), r.lines...)
 }
 
 // TestGet_bodyReadFailure_surfacesAsAPIError asserts that a network
@@ -402,7 +400,7 @@ func (r *detailsBodyReadErrorRT) RoundTrip(req *http.Request) (*http.Response, e
 // the body were complete. The Edit is still discarded.
 func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
 	rt := &detailsBodyReadErrorRT{t: t, editID: "edit-readerr"}
-	hc := &http.Client{Transport: rt}
+	hc := rt.client()
 
 	_, _, err := details.Get(context.Background(), hc, "com.example.app")
 	if err == nil {
@@ -418,15 +416,18 @@ func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
 	if !strings.Contains(apiErr.Operation, "details.get") {
 		t.Errorf("api.Error.Operation = %q, want it to mention details.get", apiErr.Operation)
 	}
+	if code := exitCodeOf(t, err); code != 50 {
+		t.Errorf("ExitCode() = %d, want 50 (a body cut mid-read is a network failure)", code)
+	}
 	// Edit must still be discarded.
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range rt.calls() {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-readerr") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("Edit not discarded after read failure; calls = %v", rt.calls)
+		t.Errorf("Edit not discarded after read failure; calls = %v", rt.calls())
 	}
 }
 
@@ -440,7 +441,7 @@ func TestGet_detailsGet404_mapsExit30(t *testing.T) {
 		detailsCode: 404,
 		details:     `{"error":{"code":404,"message":"Application not found"}}`,
 	}
-	hc := &http.Client{Transport: rt}
+	hc := rt.client()
 
 	_, _, err := details.Get(context.Background(), hc, "com.example.app")
 	if code := exitCodeOf(t, err); code != 30 {

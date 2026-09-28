@@ -254,6 +254,11 @@ gated); conferring admin still requires the named --grant-admin (exit 3).
 
 Use --dry-run to preview the resolved payload with no HTTP; with --output json
 it emits a ` + "`requires`" + ` array naming any safety flag the live write needs.`,
+		Example: `  # Replace the member's account-wide permissions with the viewer bundle
+  gplay team users set dev@example.com --role viewer
+
+  # Preview emptying them on purpose
+  gplay team users set dev@example.com --clear --dry-run`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

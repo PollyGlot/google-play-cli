@@ -95,7 +95,7 @@ func TestIdempotentRequest(t *testing.T) {
 		{http.MethodPut, "https://example.test/unknown", true},
 	}
 	for _, tc := range cases {
-		req, err := http.NewRequest(tc.verb, tc.url, nil)
+		req, err := http.NewRequestWithContext(t.Context(), tc.verb, tc.url, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

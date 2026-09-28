@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
@@ -23,7 +25,7 @@ func TestActiveBetween_rfc3339Quoted(t *testing.T) {
 
 func TestListAnomalies_getAndParse(t *testing.T) {
 	var gotURL, gotMethod string
-	hc := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
 		return jsonResp(200, `{"anomalies":[{
@@ -74,7 +76,7 @@ func TestListAnomalies_getAndParse(t *testing.T) {
 }
 
 func TestListAnomalies_nonOKIsAPIError(t *testing.T) {
-	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResp(403, `{"error":{"message":"no"}}`), nil
 	})}
 	_, _, err := vitals.ListAnomalies(context.Background(), hc, "com.example.app", vitals.AnomalyListOptions{})

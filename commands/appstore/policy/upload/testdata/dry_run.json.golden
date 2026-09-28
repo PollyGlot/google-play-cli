@@ -1,0 +1,8 @@
+{
+  "dryRun": true,
+  "appStorePackageName": "com.example.store",
+  "packageName": "com.example.app",
+  "file": "docs/privacy & data policy.pdf",
+  "fileType": "DECLARATION_FILE_TYPE_DOCUMENT",
+  "requires": []
+}

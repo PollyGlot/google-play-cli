@@ -180,6 +180,11 @@ projects the grants. Filter with --package <pkg> ("who can touch this app") or
 
 Default table columns: user, package, permissions. --output json is a faithful
 {"grants":[…]} projection.`,
+		Example: `  # Who can touch this app?
+  gplay team grants list --package com.example.app
+
+  # Which apps does this person touch?
+  gplay team grants list --user dev@example.com --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -1,0 +1,10 @@
+{
+  "dryRun": true,
+  "package": "com.example.app",
+  "account": "ci",
+  "bytes": 2048,
+  "rows": 42,
+  "warnings": [
+    "header differs from the <reference> template & may be stale"
+  ]
+}

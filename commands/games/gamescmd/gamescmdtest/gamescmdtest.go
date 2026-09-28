@@ -21,11 +21,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// RTFunc adapts a function to an http.RoundTripper.
-type RTFunc func(*http.Request) (*http.Response, error)
-
-// RoundTrip implements http.RoundTripper.
-func (f RTFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+// RTFunc adapts a function to an http.RoundTripper. It aliases testkit's
+// adapter so the leaf tests keep their spelling without a second RoundTrip.
+type RTFunc = testkit.RoundTripFunc
 
 // Token answers the OAuth2 /token exchange with a canned bearer token, so a
 // leaf test's RoundTripper can delegate the auth hop and focus on the API call.

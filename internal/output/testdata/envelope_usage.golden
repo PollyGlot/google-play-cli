@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "USAGE_ERROR",
+    "exitCode": 2,
+    "retryable": false,
+    "message": "no package: pass --package <pkg> or run `gplay init`"
+  }
+}

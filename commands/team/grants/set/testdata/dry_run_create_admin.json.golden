@@ -1,0 +1,17 @@
+{
+  "dryRun": true,
+  "email": "admin@example.com",
+  "package": "com.example.app",
+  "verb": "create",
+  "current": [],
+  "desired": [
+    "CAN_MANAGE_PERMISSIONS"
+  ],
+  "add": [
+    "CAN_MANAGE_PERMISSIONS"
+  ],
+  "remove": [],
+  "requires": [
+    "grant-admin"
+  ]
+}

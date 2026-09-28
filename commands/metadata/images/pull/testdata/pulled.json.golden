@@ -1,0 +1,31 @@
+{
+  "package": "com.example.app",
+  "dir": "./metadata",
+  "pulled": [
+    {
+      "locale": "en-US",
+      "imageType": "icon",
+      "count": 1
+    },
+    {
+      "locale": "en-US",
+      "imageType": "featureGraphic",
+      "count": 1
+    },
+    {
+      "locale": "en-US",
+      "imageType": "phoneScreenshots",
+      "count": 3
+    },
+    {
+      "locale": "fr-FR",
+      "imageType": "phoneScreenshots",
+      "count": 1
+    }
+  ],
+  "summary": {
+    "locales": 2,
+    "slots": 4,
+    "files": 6
+  }
+}

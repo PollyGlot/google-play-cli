@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
@@ -30,18 +31,6 @@ func (e *forbiddenError) Error() string {
 }
 
 func (e *forbiddenError) Unwrap() error { return e.cause }
-
-// packageNotFoundError wraps a 404 with a hint pointing at `gplay apps list`.
-type packageNotFoundError struct {
-	pkg   string
-	cause error
-}
-
-func (e *packageNotFoundError) Error() string {
-	return fmt.Sprintf("package %q not found: run `gplay apps list` to see the packages registered with gplay: %v", e.pkg, e.cause)
-}
-
-func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
 // reviewNotFoundError wraps a 404 from reviews.reply, where the unknown
 // resource is the review (not the package) so the hint names the reviewId
@@ -85,7 +74,7 @@ func Classify(pkg string, err error) error {
 		case http.StatusForbidden:
 			return &forbiddenError{pkg: pkg, cause: err}
 		case http.StatusNotFound:
-			return &packageNotFoundError{pkg: pkg, cause: err}
+			return &apihint.PackageNotFoundError{Package: pkg, Cause: err}
 		}
 	}
 	return err

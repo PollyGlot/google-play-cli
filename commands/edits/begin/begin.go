@@ -29,7 +29,7 @@ type Input struct {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	pkg, err := editscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -59,9 +59,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		// The Edit is open server-side but we could not persist the pin. Discard
 		// it so the user is not left with an orphaned 24h Edit lock they cannot
 		// see locally. If the discard ALSO fails, surface both: the Edit is
-		// still open with no local pin to recover it.
+		// still open with no local pin to recover it. The discard error stays
+		// %v: the pin write is the primary failure and owns the exit code,
+		// which a wrapped API error would otherwise take through exit.For.
 		if discardErr := edits.DiscardExplicit(rc.Ctx, httpClient, pkg, editID); discardErr != nil {
-			return nil, fmt.Errorf("write edit pin: %w; cleanup also failed: explicit edit %s is still open on Play (discard it via the Play Console or wait ~24h): %v", err, editID, discardErr)
+			return nil, fmt.Errorf("write edit pin: %w; cleanup also failed: explicit edit %s is still open on Play (discard it via the Play Console or wait ~24h): %v", err, editID, discardErr) //nolint:errorlint // secondary error must not own the exit code
 		}
 		return nil, err
 	}
@@ -91,6 +93,11 @@ auto-discard in explicit mode: the lifecycle is yours.
 The package defaults to the repo's .gplay/config.json pin when --package is
 omitted; a project (gplay init) is required since the pin lives in .gplay/.
 Opening a second Edit while one is already pinned is refused (exit 60).`,
+		Example: `  # Open one Edit, run write commands (they join it), then gplay edits commit
+  gplay edits begin
+
+  # Name the package explicitly and keep the Edit id for a script
+  gplay edits begin --package com.example.app --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -1,0 +1,91 @@
+{
+  "package": "com.example.app",
+  "dryRun": true,
+  "changes": [
+    {
+      "op": "create",
+      "productId": "coins_100"
+    },
+    {
+      "op": "migrate",
+      "productId": "remove_ads"
+    },
+    {
+      "op": "patch",
+      "productId": "coins_500",
+      "fields": [
+        "listings",
+        "purchaseOptions"
+      ]
+    },
+    {
+      "op": "create",
+      "kind": "offer",
+      "productId": "coins_500",
+      "purchaseOptionId": "buy",
+      "offerId": "launch-discount"
+    },
+    {
+      "op": "patch",
+      "kind": "offer",
+      "productId": "coins_500",
+      "purchaseOptionId": "buy",
+      "offerId": "weekend-sale",
+      "fields": [
+        "regionalPricingAndAvailabilityConfigs"
+      ]
+    },
+    {
+      "op": "activate",
+      "kind": "purchaseOption",
+      "productId": "coins_100",
+      "purchaseOptionId": "buy",
+      "from": "DRAFT",
+      "to": "ACTIVE"
+    },
+    {
+      "op": "deactivate",
+      "kind": "offer",
+      "productId": "coins_500",
+      "purchaseOptionId": "buy",
+      "offerId": "weekend-sale",
+      "from": "ACTIVE",
+      "to": "INACTIVE"
+    },
+    {
+      "op": "cancel",
+      "kind": "offer",
+      "productId": "season_pass",
+      "purchaseOptionId": "preorder",
+      "offerId": "early-bird",
+      "from": "ACTIVE",
+      "to": "CANCELLED"
+    },
+    {
+      "op": "delete",
+      "kind": "offer",
+      "productId": "coins_500",
+      "purchaseOptionId": "buy",
+      "offerId": "expired-promo"
+    },
+    {
+      "op": "delete",
+      "productId": "coins_legacy"
+    }
+  ],
+  "summary": {
+    "create": 1,
+    "delete": 1,
+    "migrate": 1,
+    "offerCreate": 1,
+    "offerDelete": 1,
+    "offerPatch": 1,
+    "patch": 1,
+    "state": 3,
+    "unchanged": 1
+  },
+  "requires": [
+    "confirm",
+    "migrate"
+  ]
+}

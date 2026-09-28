@@ -8,13 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/accessibleapps"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func resp(status int, body string) *http.Response {
 	return &http.Response{
@@ -31,7 +29,7 @@ const pageBody = `{"apps":[{"name":"apps/com.example.a","packageName":"com.examp
 // makes a GET, parses the page, and returns the body verbatim.
 func TestSearch_hitsReportingHost_parsesPage(t *testing.T) {
 	var gotURL, gotMethod string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
 		return resp(200, pageBody), nil
@@ -67,7 +65,7 @@ func TestSearch_hitsReportingHost_parsesPage(t *testing.T) {
 // default.
 func TestSearch_pagingParams(t *testing.T) {
 	var gotURL string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return resp(200, `{"apps":[]}`), nil
 	})
@@ -95,7 +93,7 @@ func TestSearch_pagingParams(t *testing.T) {
 // TestSearch_apiError_carriesStatus asserts a non-2xx becomes an *api.Error
 // with the status, so the exit-code taxonomy can map it (403 → exit 11).
 func TestSearch_apiError_carriesStatus(t *testing.T) {
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return resp(http.StatusForbidden, `{"error":{"code":403,"message":"no reporting access"}}`), nil
 	})
 	hc := &http.Client{Transport: rt}
@@ -117,7 +115,7 @@ func TestSearch_apiError_carriesStatus(t *testing.T) {
 // and an empty token (a valid, common state: the credential simply sees no
 // Apps on the Reporting side).
 func TestSearch_emptyResult(t *testing.T) {
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return resp(200, `{}`), nil
 	})
 	hc := &http.Client{Transport: rt}

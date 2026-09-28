@@ -1,0 +1,204 @@
+## ListAchievements / ok
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## ListAchievements / denied
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements
+content-length=0 replayable=true
+=> error (exit 11): achievementConfigurations.list on 123456789012: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListAchievements / malformed
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements
+content-length=0 replayable=true
+=> error (exit 50): achievementConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListAchievements paged / ok
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements?maxResults=25&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## ListAchievements paged / denied
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements?maxResults=25&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> error (exit 11): achievementConfigurations.list on 123456789012: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListAchievements paged / malformed
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements?maxResults=25&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> error (exit 50): achievementConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## GetAchievement / ok
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach%201
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## GetAchievement / denied
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach%201
+content-length=0 replayable=true
+=> error (exit 11): achievementConfigurations.get on ach 1: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## GetAchievement / malformed
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach%201
+content-length=0 replayable=true
+=> error (exit 50): achievementConfigurations.get on ach 1: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## CreateAchievement / ok
+POST https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> ok [{},{}]
+
+## CreateAchievement / denied
+POST https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> error (exit 11): achievementConfigurations.insert on 123456789012: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## CreateAchievement / malformed
+POST https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> error (exit 50): achievementConfigurations.insert on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## UpdateAchievement / ok
+PUT https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach1
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> ok [{},{}]
+
+## UpdateAchievement / denied
+PUT https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach1
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> error (exit 11): achievementConfigurations.update on ach1: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## UpdateAchievement / malformed
+PUT https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach1
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> error (exit 50): achievementConfigurations.update on ach1: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## DeleteAchievement / ok
+DELETE https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach1
+content-length=0 replayable=true
+=> ok null
+
+## DeleteAchievement / denied
+DELETE https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach1
+content-length=0 replayable=true
+=> error (exit 11): achievementConfigurations.delete on ach1: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## DeleteAchievement / malformed
+DELETE https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach1
+content-length=0 replayable=true
+=> ok null
+
+## ListLeaderboards / ok
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## ListLeaderboards / denied
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards
+content-length=0 replayable=true
+=> error (exit 11): leaderboardConfigurations.list on 123456789012: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListLeaderboards / malformed
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards
+content-length=0 replayable=true
+=> error (exit 50): leaderboardConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## ListLeaderboards paged / ok
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards?maxResults=25&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## ListLeaderboards paged / denied
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards?maxResults=25&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> error (exit 11): leaderboardConfigurations.list on 123456789012: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## ListLeaderboards paged / malformed
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards?maxResults=25&pageToken=tok%2F%2B%3D
+content-length=0 replayable=true
+=> error (exit 50): leaderboardConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## GetLeaderboard / ok
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+content-length=0 replayable=true
+=> ok [{},{}]
+
+## GetLeaderboard / denied
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+content-length=0 replayable=true
+=> error (exit 11): leaderboardConfigurations.get on lb1: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## GetLeaderboard / malformed
+GET https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+content-length=0 replayable=true
+=> error (exit 50): leaderboardConfigurations.get on lb1: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## CreateLeaderboard / ok
+POST https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> ok [{},{}]
+
+## CreateLeaderboard / denied
+POST https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> error (exit 11): leaderboardConfigurations.insert on 123456789012: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## CreateLeaderboard / malformed
+POST https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> error (exit 50): leaderboardConfigurations.insert on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## UpdateLeaderboard / ok
+PUT https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> ok [{},{}]
+
+## UpdateLeaderboard / denied
+PUT https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> error (exit 11): leaderboardConfigurations.update on lb1: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## UpdateLeaderboard / malformed
+PUT https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+Content-Type: application/json
+content-length=30 replayable=true
+{"achievementType":"STANDARD"}
+=> error (exit 50): leaderboardConfigurations.update on lb1: decode response: invalid character 'o' in literal null (expecting 'u')
+
+## DeleteLeaderboard / ok
+DELETE https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+content-length=0 replayable=true
+=> ok null
+
+## DeleteLeaderboard / denied
+DELETE https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+content-length=0 replayable=true
+=> error (exit 11): leaderboardConfigurations.delete on lb1: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## DeleteLeaderboard / malformed
+DELETE https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
+content-length=0 replayable=true
+=> ok null
+

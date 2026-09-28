@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "productId": "premium_monthly",
+  "basePlanId": "monthly-autorenew",
+  "regions": [
+    "FR",
+    "US"
+  ]
+}

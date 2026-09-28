@@ -72,20 +72,60 @@ the failure without scraping stderr:
 ```json
 {
   "error": {
+    "code": "EDIT_ALREADY_EXISTS",
     "exitCode": 60,
-    "message": "edits.commit on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
-    "reasons": ["editAlreadyExists"],
-    "requires": ["confirm"]
+    "retryable": false,
+    "operation": "edits.insert",
+    "resource": { "kind": "package", "id": "com.example.app" },
+    "package": "com.example.app",
+    "message": "edits.insert on com.example.app: edit already exists (HTTP 409) [reason: editAlreadyExists]",
+    "reasons": ["editAlreadyExists"]
   }
 }
 ```
 
-- `exitCode` and `message` are always present; `exitCode` mirrors the process
-  [exit code](/docs/concepts/exit-codes/).
+- `code`, `exitCode`, `retryable` and `message` are always present.
+- `code` is the stable diagnostic code, the field to branch on: it tells apart
+  failures that share an exit code (see
+  [Diagnostic codes](/docs/concepts/exit-codes/#diagnostic-codes)).
+- `exitCode` mirrors the process [exit code](/docs/concepts/exit-codes/).
+- `retryable` says whether replaying the same command unchanged can plausibly
+  succeed; it is written even when `false`.
+- `operation` names the API call that failed; it is omitted on a local
+  failure, which itself signals that no call was made.
+- `resource` names what the failed call addressed, as a `kind` and an `id`.
+  The kind tells you which identifier you are looking at: `package`, `app` (a
+  numeric Play Console app ID), `developerAccount` (`team`, `customapps`),
+  `gamesApplication`, `achievement`, `leaderboard` (`games`) or `bucket`
+  (`reviews history`). Omitted when the failure has no target. New kinds may
+  be added; existing ones never change meaning.
+- `package` appears only when `resource.kind` is `package`, and always holds a
+  real Android package name. Before 2.0.0 it also carried developer account,
+  games application and bucket ids: read `resource` instead.
+
+For example, a `gplay team users list` that the Play Console refuses:
+
+```json
+{
+  "error": {
+    "code": "PERMISSION_DENIED",
+    "exitCode": 11,
+    "retryable": false,
+    "operation": "users.list",
+    "resource": { "kind": "developerAccount", "id": "1234567890123456789" },
+    "message": "users.list on 1234567890123456789: The caller does not have permission (HTTP 403)"
+  }
+}
+```
 - `reasons` carries the upstream `error.errors[].reason` values when an API
   envelope was parsed; omitted otherwise.
 - `requires` names the missing safety flag on an exit-3 refusal; omitted
   otherwise.
+
+The envelope covers CLI misuse too (an unknown or repeated flag, a missing or
+stray argument, an unknown subcommand), with `"code": "USAGE_ERROR"` and exit
+`2`. The one failure without it is an invalid `--output` value itself: no
+format is known there.
 
 Under `table` / `markdown` a failure leaves stdout empty: the error goes to
 stderr only. The envelope shape is part of gplay's public contract.

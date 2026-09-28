@@ -69,6 +69,12 @@ const (
 	// CodeNetworkError is a transport failure with no HTTP response at all:
 	// timeout, DNS, connection refused.
 	CodeNetworkError Code = "NETWORK_ERROR"
+	// CodeCommitOutcomeUnknown is an Edit commit that failed after the request
+	// left (timeout, reset, 5xx): it may have been applied. The exit code stays
+	// the network or upstream one (50 or 40), but unlike NETWORK_ERROR and
+	// UPSTREAM_UNAVAILABLE it is not retryable: a blind re-run of a publish that
+	// did land fails on the already-used version code (#598).
+	CodeCommitOutcomeUnknown Code = "COMMIT_OUTCOME_UNKNOWN"
 	// CodeStateConflict is the residual 409 bucket: the remote state is not
 	// what the call assumed (ambiguous target, concurrent change).
 	CodeStateConflict Code = "STATE_CONFLICT"
@@ -123,9 +129,10 @@ var codeCatalog = []CodeDoc{
 	{CodeAPIError, 30, false, "Other API 4xx rejection"},
 	{CodeUpstreamUnavailable, 40, true, "The API is temporarily unhealthy (5xx); retry"},
 	{CodeNetworkError, 50, true, "Network failure with no HTTP response: timeout, DNS, refused"},
+	{CodeCommitOutcomeUnknown, 50, false, "An Edit commit failed after it was sent (timeout, reset or 5xx, exit 50 or 40) and may be live; check the live state before re-running"},
 	{CodeStateConflict, 60, false, "Remote state conflicts with the request (409)"},
 	{CodeEditAlreadyExists, 60, false, "An Edit is already open on this package; commit or delete it first"},
-	{CodeEditExpired, 60, false, "The pinned Edit expired; begin a new Edit and replay the mutation"},
+	{CodeEditExpired, 60, false, "The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit and replay the mutation"},
 	{CodeRateLimitExceeded, 60, true, "Rate or quota limit exceeded; back off and retry"},
 	{CodeFindingsPresent, 70, false, "A read-only check command completed and reported findings; not a failure"},
 }
@@ -164,10 +171,11 @@ type Diagnostic struct {
 	Code      Code
 	ExitCode  int
 	Retryable bool
-	Operation string   // API operation, e.g. "edits.commit"; empty on a local failure
-	Package   string   // targeted package; empty when the failure is not package-scoped
-	Reasons   []string // verbatim upstream error.errors[].reason values
-	Message   string   // the same human string stderr carries
+	Operation string       // API operation, e.g. "edits.commit"; empty on a local failure
+	Resource  api.Resource // what the call addressed, on any axis; zero when unknown
+	Package   string       // Resource.ID when it is a package, empty otherwise (#599)
+	Reasons   []string     // verbatim upstream error.errors[].reason values
+	Message   string       // the same human string stderr carries
 }
 
 // Classify is the one classifier: it maps any error to its Diagnostic. A nil
@@ -185,7 +193,12 @@ func Classify(err error) Diagnostic {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
 		d.Operation = apiErr.Operation
-		d.Package = apiErr.Package
+		d.Resource = apiErr.Target()
+		// package is derived from the target, never copied from a module's
+		// field: the envelope's `package` promises an Android package name.
+		if d.Resource.Kind == api.KindPackage {
+			d.Package = d.Resource.ID
+		}
 		d.Reasons = apiErr.Reasons
 	}
 	return d

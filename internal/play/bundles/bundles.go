@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -53,6 +54,21 @@ func (e *LocalIOError) ExitCode() int { return 20 }
 // simple-media upload returned. Upstream failures map to *api.Error (DESIGN §9);
 // a local file problem maps to *LocalIOError (exit 20).
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (int, error) {
+	return UploadWith(ctx, hc, pkg, editID, aabPath, Options{})
+}
+
+// Options carries the optional query parameters of edits.bundles.upload. The
+// zero value is the plain upload.
+type Options struct {
+	// DeviceTierConfigID is the device tier config (DTC) Google uses to
+	// generate the bundle's deliverables: a deviceTierConfigId from
+	// `gplay device-tiers create`/`list`, or "LATEST" for the last one
+	// uploaded. Passed through verbatim; the API validates it.
+	DeviceTierConfigID string
+}
+
+// UploadWith is Upload with the optional parameters in o.
+func UploadWith(ctx context.Context, hc *http.Client, pkg, editID, aabPath string, o Options) (int, error) {
 	f, err := os.Open(aabPath)
 	if err != nil {
 		return 0, &LocalIOError{Path: aabPath, Cause: err}
@@ -83,7 +99,13 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, aabPath string) (
 	if err != nil {
 		return 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
 	}
-	u += "?uploadType=resumable"
+	q := url.Values{"uploadType": {"resumable"}}
+	// The initiate request carries the resource's query parameters; the chunk
+	// PUTs go to the session URI Google returns, which already embeds them.
+	if o.DeviceTierConfigID != "" {
+		q.Set("deviceTierConfigId", o.DeviceTierConfigID)
+	}
+	u += "?" + q.Encode()
 
 	// *os.File is an io.ReaderAt, giving the resumable helper random access so
 	// it can re-send from a server-acknowledged offset after a transient

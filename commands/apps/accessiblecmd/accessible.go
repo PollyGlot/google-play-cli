@@ -31,6 +31,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/accessibleapps"
@@ -43,13 +44,6 @@ type Input struct {
 	PageSize  int
 	PageToken string
 }
-
-// usageError is a CLI-misuse error (a negative --page-size); ExitCode()=2
-// per docs/DESIGN.md §9.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // Payload renders one page of accessible Apps. Raw is the verbatim
 // apps.search body for the ADR-0003 JSON pass-through; Apps drives the
@@ -79,7 +73,7 @@ func (p Payload) Renderers() output.Renderers {
 // token in the body for a machine caller.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.PageSize < 0 {
-		return nil, &usageError{msg: "apps accessible list: invalid --page-size: must be >= 0"}
+		return nil, &exit.UsageError{Msg: "apps accessible list: invalid --page-size: must be >= 0"}
 	}
 	hc, err := rc.AuthedClient()
 	if err != nil {
@@ -89,8 +83,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	if sr.NextPageToken != "" && rc.Stderr != nil {
-		_, _ = io.WriteString(rc.Stderr, "NOTE: more Apps available, re-run with --page-token "+sr.NextPageToken+" for the next page.\n")
+	if sr.NextPageToken != "" {
+		rc.Notef("more Apps available, re-run with --page-token %s for the next page.", sr.NextPageToken)
 	}
 	return Payload{Apps: sr.Apps, Raw: raw}, nil
 }
@@ -111,17 +105,22 @@ inventory, not gplay's local registry.
 This is distinct from ` + "`gplay apps list`" + `, which prints the packages you
 have run ` + "`gplay apps add`" + ` on (your chosen working set). The two sets do
 not necessarily coincide: a credential may be able to add an App it cannot
-see here, or see org Apps it does not drive (ADR-0039). Use this to
+see here, or see org Apps it does not drive. Use this to
 bootstrap: discover package names, then ` + "`gplay apps add`" + ` the ones you
 want to work on.
 
 Pagination is one page per invocation: use --page-size and --page-token,
 and --output json passes the SearchAccessibleAppsResponse through verbatim,
-nextPageToken included (ADR-0003). In table/markdown output a note on stderr
+nextPageToken included. In table/markdown output a note on stderr
 carries the next --page-token when more Apps are available.
 
 Reads on the Play Developer Reporting service with the least-privilege
 reporting scope; needs a resolved credential (no local-registry fallback).`,
+		Example: `  # Discover the package names the active credential can see
+  gplay apps accessible list
+
+  # Page through a large Developer account, 200 Apps at a time
+  gplay apps accessible list --page-size 200 --output json | jq -r '.apps[].packageName'`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -154,7 +153,7 @@ credential can access; the bare ` + "`apps accessible`" + ` command prints this
 help.
 
 Distinct from ` + "`apps list`" + ` (gplay's local registry): see
-` + "`apps accessible list --help`" + ` and ADR-0039.`,
+` + "`apps accessible list --help`" + `.`,
 		RunE:          kernel.GroupRunE,
 		SilenceUsage:  true,
 		SilenceErrors: true,

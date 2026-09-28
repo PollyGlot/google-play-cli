@@ -1,0 +1,9 @@
+{
+  "file": "./compliance/data-safety.csv",
+  "ok": true,
+  "rows": 42,
+  "columns": 6,
+  "warnings": [
+    "header differs from gplay's bundled reference template: this is a hint, not an error (Google's Data Safety CSV template evolves, and only the live POST validates the declaration). Double-check that --file points at a Data Safety export."
+  ]
+}

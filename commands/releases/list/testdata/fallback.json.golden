@@ -1,0 +1,26 @@
+{
+  "track": "production",
+  "releases": [
+    {
+      "name": "142 <rc> & hotfix",
+      "status": "inProgress",
+      "userFraction": 0.1,
+      "versionCodes": [
+        "142"
+      ],
+      "releaseNotes": [
+        {
+          "language": "en-US",
+          "text": "Fixes <crash> on start & faster sync"
+        }
+      ]
+    },
+    {
+      "name": "141",
+      "status": "completed",
+      "versionCodes": [
+        "141"
+      ]
+    }
+  ]
+}

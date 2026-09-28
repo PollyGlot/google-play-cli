@@ -1,0 +1,267 @@
+{
+  "scope": "app",
+  "aliases": [
+    {
+      "alias": "view-app-info",
+      "accountEnum": "CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL",
+      "appEnum": "CAN_VIEW_NON_FINANCIAL_DATA",
+      "enum": "CAN_VIEW_NON_FINANCIAL_DATA",
+      "label": "View app information (read-only)",
+      "bundles": [
+        "viewer",
+        "reviewer",
+        "tester-manager",
+        "release-manager"
+      ],
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "view-app-quality",
+      "accountEnum": "CAN_VIEW_APP_QUALITY_GLOBAL",
+      "appEnum": "CAN_VIEW_APP_QUALITY",
+      "enum": "CAN_VIEW_APP_QUALITY",
+      "label": "View app quality (Android vitals, crashes & ANRs)",
+      "bundles": [
+        "viewer",
+        "reviewer",
+        "tester-manager",
+        "release-manager"
+      ],
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "reply-reviews",
+      "accountEnum": "CAN_REPLY_TO_REVIEWS_GLOBAL",
+      "appEnum": "CAN_REPLY_TO_REVIEWS",
+      "enum": "CAN_REPLY_TO_REVIEWS",
+      "label": "Reply to user reviews",
+      "bundles": [
+        "reviewer"
+      ],
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "release-testing",
+      "accountEnum": "CAN_MANAGE_TRACK_APKS_GLOBAL",
+      "appEnum": "CAN_MANAGE_TRACK_APKS",
+      "enum": "CAN_MANAGE_TRACK_APKS",
+      "label": "Release to testing tracks",
+      "bundles": [
+        "tester-manager",
+        "release-manager"
+      ],
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "release-production",
+      "accountEnum": "CAN_MANAGE_PUBLIC_APKS_GLOBAL",
+      "appEnum": "CAN_MANAGE_PUBLIC_APKS",
+      "enum": "CAN_MANAGE_PUBLIC_APKS",
+      "label": "Release to production, exclude devices & use Play App Signing",
+      "bundles": [
+        "release-manager"
+      ],
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "manage-testers",
+      "accountEnum": "CAN_MANAGE_TRACK_USERS_GLOBAL",
+      "appEnum": "CAN_MANAGE_TRACK_USERS",
+      "enum": "CAN_MANAGE_TRACK_USERS",
+      "label": "Manage testing tracks & tester lists",
+      "bundles": [
+        "tester-manager"
+      ],
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "manage-store-listing",
+      "accountEnum": "CAN_MANAGE_PUBLIC_LISTING_GLOBAL",
+      "appEnum": "CAN_MANAGE_PUBLIC_LISTING",
+      "enum": "CAN_MANAGE_PUBLIC_LISTING",
+      "label": "Manage store presence (store listing, pricing & distribution)",
+      "bundles": [
+        "release-manager"
+      ],
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "manage-draft-apps",
+      "accountEnum": "CAN_MANAGE_DRAFT_APPS_GLOBAL",
+      "appEnum": "CAN_MANAGE_DRAFT_APPS",
+      "enum": "CAN_MANAGE_DRAFT_APPS",
+      "label": "Create, edit & delete draft apps",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "manage-app-content",
+      "accountEnum": "CAN_MANAGE_APP_CONTENT_GLOBAL",
+      "appEnum": "CAN_MANAGE_APP_CONTENT",
+      "enum": "CAN_MANAGE_APP_CONTENT",
+      "label": "Manage policy & app-content declarations",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "manage-deeplinks",
+      "accountEnum": "CAN_MANAGE_DEEPLINKS_GLOBAL",
+      "appEnum": "CAN_MANAGE_DEEPLINKS",
+      "enum": "CAN_MANAGE_DEEPLINKS",
+      "label": "Manage deep links setup",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "view-financial",
+      "accountEnum": "CAN_VIEW_FINANCIAL_DATA_GLOBAL",
+      "appEnum": "CAN_VIEW_FINANCIAL_DATA",
+      "enum": "CAN_VIEW_FINANCIAL_DATA",
+      "label": "View financial data (sales, payouts, breakdowns)",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "manage-orders",
+      "accountEnum": "CAN_MANAGE_ORDERS_GLOBAL",
+      "appEnum": "CAN_MANAGE_ORDERS",
+      "enum": "CAN_MANAGE_ORDERS",
+      "label": "Manage orders & subscriptions",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "manage-permissions",
+      "accountEnum": "CAN_MANAGE_PERMISSIONS_GLOBAL",
+      "appEnum": "CAN_MANAGE_PERMISSIONS",
+      "enum": "CAN_MANAGE_PERMISSIONS",
+      "label": "Admin: manage permissions for this scope (confers full control)",
+      "bundles": [
+        "admin"
+      ],
+      "adminConferring": true,
+      "deprecated": false
+    },
+    {
+      "alias": "edit-games",
+      "accountEnum": "CAN_EDIT_GAMES_GLOBAL",
+      "label": "Edit Play Games Services projects (account-wide)",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "publish-games",
+      "accountEnum": "CAN_PUBLISH_GAMES_GLOBAL",
+      "label": "Publish Play Games Services projects (account-wide)",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "create-managed-play-apps",
+      "accountEnum": "CAN_CREATE_MANAGED_PLAY_APPS_GLOBAL",
+      "label": "Create managed Play (private) apps (account-wide)",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "manage-managed-play",
+      "accountEnum": "CAN_CHANGE_MANAGED_PLAY_SETTING_GLOBAL",
+      "label": "Change managed Play settings (account-wide)",
+      "adminConferring": false,
+      "deprecated": true
+    },
+    {
+      "alias": "view-connected-apps",
+      "accountEnum": "CAN_VIEW_CONNECTED_APPS_GLOBAL",
+      "label": "View connected (SDK) apps (account-wide)",
+      "adminConferring": false,
+      "deprecated": false
+    },
+    {
+      "alias": "edit-connected-apps",
+      "accountEnum": "CAN_EDIT_CONNECTED_APPS_GLOBAL",
+      "label": "Edit connected (SDK) apps (account-wide)",
+      "adminConferring": false,
+      "deprecated": false
+    }
+  ],
+  "bundles": [
+    {
+      "role": "viewer",
+      "permissions": [
+        "view-app-info",
+        "view-app-quality"
+      ],
+      "enums": [
+        "CAN_VIEW_NON_FINANCIAL_DATA",
+        "CAN_VIEW_APP_QUALITY"
+      ],
+      "adminConferring": false
+    },
+    {
+      "role": "reviewer",
+      "permissions": [
+        "view-app-info",
+        "view-app-quality",
+        "reply-reviews"
+      ],
+      "enums": [
+        "CAN_VIEW_NON_FINANCIAL_DATA",
+        "CAN_VIEW_APP_QUALITY",
+        "CAN_REPLY_TO_REVIEWS"
+      ],
+      "adminConferring": false
+    },
+    {
+      "role": "tester-manager",
+      "permissions": [
+        "view-app-info",
+        "view-app-quality",
+        "release-testing",
+        "manage-testers"
+      ],
+      "enums": [
+        "CAN_VIEW_NON_FINANCIAL_DATA",
+        "CAN_VIEW_APP_QUALITY",
+        "CAN_MANAGE_TRACK_APKS",
+        "CAN_MANAGE_TRACK_USERS"
+      ],
+      "adminConferring": false
+    },
+    {
+      "role": "release-manager",
+      "permissions": [
+        "view-app-info",
+        "view-app-quality",
+        "release-testing",
+        "release-production",
+        "manage-store-listing"
+      ],
+      "enums": [
+        "CAN_VIEW_NON_FINANCIAL_DATA",
+        "CAN_VIEW_APP_QUALITY",
+        "CAN_MANAGE_TRACK_APKS",
+        "CAN_MANAGE_PUBLIC_APKS",
+        "CAN_MANAGE_PUBLIC_LISTING"
+      ],
+      "adminConferring": false
+    },
+    {
+      "role": "admin",
+      "permissions": [
+        "manage-permissions"
+      ],
+      "enums": [
+        "CAN_MANAGE_PERMISSIONS"
+      ],
+      "adminConferring": true
+    }
+  ]
+}

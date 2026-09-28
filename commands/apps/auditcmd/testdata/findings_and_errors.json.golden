@@ -1,0 +1,42 @@
+{
+  "ran": {
+    "apps": [
+      "com.example.app",
+      "com.example.app.beta"
+    ],
+    "checks": [
+      "lingering-drafts",
+      "empty-release-notes"
+    ]
+  },
+  "findings": [
+    {
+      "package": "com.example.app",
+      "check": "lingering-drafts",
+      "severity": "warning",
+      "message": "track beta holds a draft release <142> & it was never shipped",
+      "evidence": {
+        "release": "142",
+        "track": "beta"
+      }
+    },
+    {
+      "package": "com.example.app.beta",
+      "check": "empty-release-notes",
+      "severity": "info",
+      "message": "release 7 on internal has no release notes"
+    }
+  ],
+  "errors": [
+    {
+      "package": "com.example.locked",
+      "message": "service account is not granted access to \"com.example.locked\"",
+      "exitCode": 11
+    }
+  ],
+  "summary": {
+    "appsAudited": 2,
+    "appsFailed": 1,
+    "findings": 2
+  }
+}

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/device-tiers/devicetierscmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/devicetiers"
@@ -42,13 +43,13 @@ func (p Payload) Renderers() output.Renderers {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	id := strings.TrimSpace(in.ID)
 	if id == "" {
-		return nil, devicetierscmd.Usagef("missing device tier config id: gplay device-tiers view <id>")
+		return nil, exit.Usagef("missing device tier config id: gplay device-tiers view <id>")
 	}
 	cols, err := devicetierscmd.ResolveColumns(in.Columns)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := devicetierscmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +74,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "view <deviceTierConfigId>",
 		Short: "Read one device tier config by id",
 		Long: `Read a single device tier config by its server-assigned id.
---output json passes the DeviceTierConfig through verbatim (ADR-0003).`,
+--output json passes the DeviceTierConfig through verbatim.`,
+		Example: `  gplay device-tiers view 1234567890
+  gplay device-tiers view 1234567890 --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

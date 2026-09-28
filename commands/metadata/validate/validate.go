@@ -178,6 +178,11 @@ against what is live on Play is the job of ` +
 
 A locale Google added after this gplay release can be whitelisted with
 --allow-locale xx-YY (repeatable). Any violation exits 20.`,
+		Example: `  # Lint ./metadata offline, e.g. in a pre-commit hook
+  gplay metadata validate
+
+  # Lint another tree and accept a locale newer than this gplay release
+  gplay metadata validate --dir store/metadata --allow-locale ks-IN`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

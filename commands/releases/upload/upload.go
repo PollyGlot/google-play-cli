@@ -6,7 +6,6 @@
 package upload
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,8 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/commands/releases/trackhint"
 	"github.com/PollyGlot/google-play-cli/internal/artifact"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -36,16 +37,16 @@ type Input struct {
 	StagedFraction    float64
 	StagedFractionSet bool
 	KeepEditOnFailure bool
+	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
 	SkipPreflight     bool
+	// DeviceTierConfig is --device-tier-config: a deviceTierConfigId or
+	// LATEST, forwarded verbatim to edits.bundles.upload. A 1:1 mirror of the
+	// Google parameter, so it is part of the frozen contract like the rest of
+	// the command.
+	DeviceTierConfig string
 }
-
-// usageError is a CLI-misuse error with ExitCode()=2.
-type usageError struct{ msg string }
-
-func (e *usageError) Error() string { return e.msg }
-func (e *usageError) ExitCode() int { return 2 }
 
 // resolveFormat classifies the artifact as an APK or an AAB, from an
 // explicit --format override or the file extension (.apk / .aab). It
@@ -66,10 +67,10 @@ func resolveFormat(path, formatOverride string) (string, error) {
 		case ".aab":
 			return orchestrator.FormatBundle, nil
 		default:
-			return "", &usageError{msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
+			return "", &exit.UsageError{Msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
 		}
 	default:
-		return "", &usageError{msg: "--format must be apk or bundle"}
+		return "", &exit.UsageError{Msg: "--format must be apk or bundle"}
 	}
 }
 
@@ -84,9 +85,11 @@ func preflightKind(format string) artifact.Kind {
 	return artifact.KindBundle
 }
 
-// Payload satisfies output.Renderable for the resulting upload Result.
+// Payload satisfies output.Renderable for the resulting upload Result. DryRun
+// marks the --dry-run preview, the path with no API body to pass through.
 type Payload struct {
 	Result *orchestrator.Result
+	DryRun bool
 }
 
 // Renderers returns the per-Format renderers. The JSON form is API
@@ -95,7 +98,7 @@ type Payload struct {
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p.Result) },
-		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result) },
+		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result, p.DryRun) },
 		Markdown: func(w io.Writer) error { return renderMarkdown(w, p.Result) },
 	}
 }
@@ -145,16 +148,20 @@ func renderTable(w io.Writer, r *orchestrator.Result) error {
 	return nil
 }
 
-func renderJSON(w io.Writer, r *orchestrator.Result) error {
-	// API pass-through: emit the raw tracks.update body (ADR-0003).
+func renderJSON(w io.Writer, r *orchestrator.Result, dryRun bool) error {
+	// API pass-through: emit the raw tracks.update body (ADR-0003), never
+	// touched: the dryRun marker below lives only in gplay's own shape.
 	if len(r.RawTrackResponse) > 0 {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
 	}
-	// Fallback to the gplay Result shape if we somehow lost the raw.
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(r)
+	// Fallback to the gplay Result shape (the --dry-run preview, or a live
+	// upload that somehow lost the raw), led under --dry-run by the dryRun
+	// marker every other mutating command's preview carries.
+	return output.WriteJSON(w, struct {
+		DryRun bool `json:"dryRun,omitempty"`
+		*orchestrator.Result
+	}{DryRun: dryRun, Result: r})
 }
 
 func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
@@ -179,7 +186,7 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Mutual exclusion validation (ADR-0002 / DESIGN §3 / §9).
 	if in.ReleaseNotes != "" && in.ReleaseNotesDir != "" {
-		return nil, &usageError{msg: "--release-notes and --release-notes-dir are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
 	statusFlags := 0
 	if in.Draft {
@@ -192,25 +199,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		statusFlags++
 	}
 	if statusFlags > 1 {
-		return nil, &usageError{msg: "--draft, --complete, and --staged are mutually exclusive"}
+		return nil, &exit.UsageError{Msg: "--draft, --complete, and --staged are mutually exclusive"}
 	}
 	if in.StagedFractionSet && (in.StagedFraction <= 0 || in.StagedFraction > 1.0) {
-		return nil, &usageError{msg: "--staged fraction must be in (0, 1]"}
+		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
 	}
 	if in.AABPath == "" {
-		return nil, &usageError{msg: "missing AAB path: gplay releases upload <aab> ..."}
+		return nil, &exit.UsageError{Msg: "missing AAB path: gplay releases upload <aab> ..."}
 	}
 
 	// Resolve package: --package flag → project pin.
-	pkg := in.Package
-	if pkg == "" && rc.Resolved != nil {
-		pkg = rc.Resolved.Pin
-	}
-	if pkg == "" {
-		return nil, &usageError{msg: "no package: pass --package <pkg> or run gplay init in your repo"}
+	pkg, err := rc.Package(in.Package)
+	if err != nil {
+		return nil, err
 	}
 	if in.Track == "" {
-		return nil, &usageError{msg: "missing --track"}
+		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
 	// Classify APK vs AAB up front (before any HTTP and even on --dry-run)
@@ -219,6 +223,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	format, err := resolveFormat(in.AABPath, in.Format)
 	if err != nil {
 		return nil, err
+	}
+	// A device tier config drives how Google splits an App Bundle; an APK is
+	// already the deliverable, and edits.apks.upload has no such parameter.
+	// Refused here so it is never silently dropped.
+	if in.DeviceTierConfig != "" && format == orchestrator.FormatAPK {
+		return nil, &exit.UsageError{Msg: "--device-tier-config applies to an App Bundle (.aab) only, not an APK"}
 	}
 
 	// Artifact preflight (PRD #448): the artifact's container and declared
@@ -276,12 +286,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		AABPath:           in.AABPath,
 		Format:            format,
 		MappingPath:       in.Mapping,
+		DeviceTierConfig:  in.DeviceTierConfig,
 		Status:            status,
 		UserFraction:      in.StagedFraction,
 		ReleaseNotes:      in.ReleaseNotes,
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
+		Commit:            in.Commit.For(rc, explicitEditID),
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 	})
@@ -305,7 +317,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.ConfirmMutation(explicitEditID, "uploaded versionCode %d to track %q (status %s%s)",
 			result.VersionCode, result.Track, result.Status, extra)
 	}
-	return Payload{Result: result}, nil
+	return Payload{Result: result, DryRun: in.DryRun}, nil
 }
 
 // NewCommand returns the cobra command for `gplay releases upload`.
@@ -340,14 +352,29 @@ deobfuscation file in the same Edit, so Play vitals can symbolicate
 obfuscated crash stacks. To attach a mapping to an already-published
 version, use gplay releases mappings upload instead.
 
-Targeting production defaults to a draft release (ADR-0002) unless
---complete or --staged is supplied. Any string is accepted as --track
-so closed-test tracks with custom names just work.
+Targeting production defaults to a draft release, which reaches no user,
+unless --complete or --staged is supplied (both require --confirm there).
+Any string is accepted as --track so Closed tracks with custom names just
+work. See https://gplay.sh/docs/concepts/tracks-and-releases/
 
 [experimental] APK upload: Google has required the AAB for new apps
 since August 2021, so .apk uploads only serve existing apps still
 distributed as APKs; if the app requires an App Bundle, Google's rejection
-of the APK passes through verbatim.`,
+of the APK passes through verbatim.
+
+Pass --device-tier-config to attach a device tier config to the
+uploaded bundle, so Google generates its deliverables for the device tiers
+it defines. Pass an id from gplay device-tiers list, or LATEST for the last
+one created. AAB only.`,
+		Example: `  # Ship a build to internal testing, with its R8 mapping
+  gplay releases upload app-release.aab --track internal --mapping mapping.txt
+
+  # Start a 10% staged rollout on production, release notes per locale
+  gplay releases upload app-release.aab --track production --staged 0.1 \
+    --release-notes-dir distribution/whatsnew --confirm
+
+  # Preview the release payload without any HTTP call
+  gplay releases upload app-release.aab --track production --dry-run --output json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -366,7 +393,7 @@ of the APK passes through verbatim.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name)")
+	cmd.Flags().StringVar(&in.Track, "track", "", "target track (internal, alpha, beta, production, or any closed-track name) (required)")
 	cmd.Flags().StringVar(&in.Format, "format", "", "artifact type: apk or bundle (overrides extension auto-detect)")
 	cmd.Flags().StringVar(&in.Mapping, "mapping", "", "ProGuard/R8 deobfuscation file (mapping.txt) uploaded with the artifact so Play vitals can symbolicate obfuscated crash stacks")
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "release notes text (applied to the app's default language)")
@@ -375,8 +402,10 @@ of the APK passes through verbatim.`,
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
+	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")
+	cmd.Flags().StringVar(&in.DeviceTierConfig, "device-tier-config", "", "device tier config id, or LATEST, applied to the uploaded bundle (AAB only)")
 	return cmd
 }

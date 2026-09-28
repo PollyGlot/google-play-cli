@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/config/configtest"
 	"github.com/PollyGlot/google-play-cli/internal/editpin"
 )
 
@@ -61,7 +62,7 @@ func TestWriteCreatesGplayDir(t *testing.T) {
 // pin. A non-atomic WriteFile-in-place would clobber it. MemFS mirrors the
 // FS-level contract (as config's atomic-Save test does).
 func TestWriteFailedSwapKeepsPriorPin(t *testing.T) {
-	fsys := config.NewMemFS("/", "/home/u")
+	fsys := configtest.NewMemFS("/", "/home/u")
 	dir := "/repo/.gplay"
 	path := editpin.Path(dir, pkg)
 

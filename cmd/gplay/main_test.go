@@ -173,7 +173,10 @@ var groupPaths = [][]string{
 	{"appstore"},
 	{"appstore", "catalog"},
 	{"appstore", "catalog", "events"},
-	{"appstore", "upload"},
+	{"appstore", "apk"},
+	{"appstore", "image"},
+	{"appstore", "policy"},
+	{"appstore", "publish-status"},
 }
 
 // TestGroupCommands_unknownSubcommandFailsLoudly asserts the UX contract for
@@ -346,7 +349,7 @@ func TestFlagErrors_areCliMisuse(t *testing.T) {
 		// not pflag.Set): typed as a UsageError at its source, so it lands on
 		// the same exit-2 path without the FlagErrorFunc seeing it.
 		{"bad-output-value", []string{"apps", "list", "--output", "xyz"}, "unsupported --output"},
-		{"missing-required-flag", []string{"apps", "init"}, "--package is required"},
+		{"missing-required-flag", []string{"apps", "init"}, "missing --package: pass --package"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -390,16 +393,26 @@ func TestPositionalArgErrors_areCliMisuse(t *testing.T) {
 		wantMsg string // substring the one-line error must contain
 	}{
 		// --- missing positional argument ---
-		{"missing-arg-minimum", []string{"orders", "view"}, "requires at least 1 arg"},
-		{"missing-arg-exact", []string{"appstore", "catalog", "view"}, "accepts 1 arg(s), received 0"},
-		{"missing-arg-nested-group", []string{"games", "achievements", "view"}, "accepts 1 arg(s), received 0"},
+		{"missing-arg-minimum", []string{"orders", "view"}, "missing <orderId>; usage: gplay orders view <orderId>"},
+		{"missing-arg-exact", []string{"appstore", "catalog", "view"}, "missing <play-package>; usage: gplay appstore catalog view <play-package>"},
+		{"missing-arg-nested-group", []string{"games", "achievements", "view"}, "missing <achievementId>"},
 		// --- surplus positional argument ---
 		{"surplus-arg-exact", []string{"tracks", "create", "qa-alpha", "surplus"}, "accepts 1 arg(s), received 2"},
-		{"surplus-arg-none-accepted", []string{"apps", "list", "surplus"}, `unknown command "surplus"`},
-		{"surplus-arg-nested-group", []string{"games", "achievements", "list", "surplus"}, `unknown command "surplus"`},
+		{"surplus-arg-none-accepted", []string{"apps", "list", "surplus"}, `unexpected argument "surplus": gplay apps list takes no positional arguments`},
+		{"surplus-arg-nested-group", []string{"games", "achievements", "list", "surplus"}, `unexpected argument "surplus"`},
 		// cobra's own scaffolding, materialised in newRootCmd before the wrap
 		// so it obeys the same contract (#426).
-		{"surplus-arg-cobra-completion", []string{"completion", "bash", "surplus"}, `unknown command "surplus"`},
+		{"surplus-arg-cobra-completion", []string{"completion", "bash", "surplus"}, `unexpected argument "surplus"`},
+		// Leaves that used to declare no validator at all, so cobra accepted
+		// any stray token and exited 0 (#593, COH-12).
+		{"surplus-arg-version", []string{"version", "surplus"}, `unexpected argument "surplus": gplay version takes no positional arguments`},
+		{"surplus-arg-exit-codes", []string{"exit-codes", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-auth-list", []string{"auth", "list", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-auth-status", []string{"auth", "status", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-auth-doctor", []string{"auth", "doctor", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-auth-login", []string{"auth", "login", "surplus"}, `unexpected argument "surplus"`},
+		{"surplus-arg-init-names-the-flag", []string{"init", "com.example.app"}, "pass --package com.example.app"},
+		{"surplus-arg-apps-init", []string{"apps", "init", "surplus", "--package", "com.example.app"}, `unexpected argument "surplus": gplay apps init takes no positional arguments`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -648,15 +661,15 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"appstore", "catalog", "events", "list"}, false},
 
 		// appstore review path: every one of these writes to the hosted app.
-		// The uploads create server-side media artifacts, publish-status flips
-		// storefront visibility, and update submits to Google's review; a
+		// The uploads create server-side media artifacts, publish-status set flips
+		// storefront visibility, and submit sends to Google's review; a
 		// dropped MarkMutating would let any of them run under GPLAY_READONLY=1
 		// instead of exit 4.
-		{[]string{"appstore", "upload", "apk"}, true},
-		{[]string{"appstore", "upload", "image"}, true},
-		{[]string{"appstore", "upload", "policy"}, true},
-		{[]string{"appstore", "publish-status"}, true},
-		{[]string{"appstore", "update"}, true},
+		{[]string{"appstore", "apk", "upload"}, true},
+		{[]string{"appstore", "image", "upload"}, true},
+		{[]string{"appstore", "policy", "upload"}, true},
+		{[]string{"appstore", "publish-status", "set"}, true},
+		{[]string{"appstore", "submit"}, true},
 
 		// edits: begin/commit/discard mutate Play state (insert/commit/delete);
 		// status is a local-pin read (--live adds a GET) and validate is a
@@ -671,13 +684,13 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"games", "achievements", "list"}, false},
 		{[]string{"games", "achievements", "view"}, false},
 		{[]string{"games", "achievements", "create"}, true},
-		{[]string{"games", "achievements", "update"}, true},
-		{[]string{"games", "achievements", "delete"}, true},
+		{[]string{"games", "achievements", "set"}, true},
+		{[]string{"games", "achievements", "remove"}, true},
 		{[]string{"games", "leaderboards", "list"}, false},
 		{[]string{"games", "leaderboards", "view"}, false},
 		{[]string{"games", "leaderboards", "create"}, true},
-		{[]string{"games", "leaderboards", "update"}, true},
-		{[]string{"games", "leaderboards", "delete"}, true},
+		{[]string{"games", "leaderboards", "set"}, true},
+		{[]string{"games", "leaderboards", "remove"}, true},
 
 		// orders
 		{[]string{"orders", "view"}, false},
@@ -870,11 +883,11 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"appstore", "create"}, true},
 		{[]string{"appstore", "catalog", "view"}, true},
 		{[]string{"appstore", "catalog", "events", "list"}, true},
-		{[]string{"appstore", "upload", "apk"}, true},
-		{[]string{"appstore", "upload", "image"}, true},
-		{[]string{"appstore", "upload", "policy"}, true},
-		{[]string{"appstore", "publish-status"}, true},
-		{[]string{"appstore", "update"}, true},
+		{[]string{"appstore", "apk", "upload"}, true},
+		{[]string{"appstore", "image", "upload"}, true},
+		{[]string{"appstore", "policy", "upload"}, true},
+		{[]string{"appstore", "publish-status", "set"}, true},
+		{[]string{"appstore", "submit"}, true},
 
 		// team / edits: exercised on every real account and every write
 		// respectively, frozen.
@@ -897,13 +910,13 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"games", "achievements", "list"}, true},
 		{[]string{"games", "achievements", "view"}, true},
 		{[]string{"games", "achievements", "create"}, true},
-		{[]string{"games", "achievements", "update"}, true},
-		{[]string{"games", "achievements", "delete"}, true},
+		{[]string{"games", "achievements", "set"}, true},
+		{[]string{"games", "achievements", "remove"}, true},
 		{[]string{"games", "leaderboards", "list"}, true},
 		{[]string{"games", "leaderboards", "view"}, true},
 		{[]string{"games", "leaderboards", "create"}, true},
-		{[]string{"games", "leaderboards", "update"}, true},
-		{[]string{"games", "leaderboards", "delete"}, true},
+		{[]string{"games", "leaderboards", "set"}, true},
+		{[]string{"games", "leaderboards", "remove"}, true},
 
 		// orders / subscriptions / iap: the commerce continent. The declarative
 		// catalog (ADR-0041) shipped in v0.18.0, days before the 1.0 cut, and

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/generated/generatedcmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/generatedapks"
@@ -43,13 +44,13 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, generatedcmd.Usagef("missing or invalid --version-code: the bundle versionCode whose generated APKs to list is required")
+		return nil, exit.Usagef("missing or invalid --version-code: the bundle versionCode whose generated APKs to list is required")
 	}
 	cols, err := generatedcmd.ResolveColumns(in.Columns)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := generatedcmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -80,9 +81,12 @@ given versionCode. Each artifact carries an opaque downloadId to feed
 
 --version-code is required (the resource is keyed by version). The human table
 flattens the grouped-by-signing-key response to one row per artifact; --output
-json passes the GeneratedApksListResponse through verbatim (ADR-0003).
+json passes the GeneratedApksListResponse through verbatim.
 
 This is a direct application-scoped read: it opens no Edit.`,
+		Example: `  gplay releases generated list --version-code 1042
+  gplay releases generated list --version-code 1042 --columns type,downloadId
+  gplay releases generated list --version-code 1042 --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -1,0 +1,17 @@
+{
+  "error": {
+    "code": "EDIT_ALREADY_EXISTS",
+    "exitCode": 60,
+    "retryable": false,
+    "operation": "edits.commit",
+    "resource": {
+      "kind": "package",
+      "id": "com.example.app"
+    },
+    "package": "com.example.app",
+    "message": "edits.commit on com.example.app: Edit already exists & is open (HTTP 409) [reason: editAlreadyExists]",
+    "reasons": [
+      "editAlreadyExists"
+    ]
+  }
+}

@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -23,29 +21,23 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// catalogRT answers the /token exchange and the recentappviews.get call,
-// recording the API URL. Nothing here reaches the network.
-type catalogRT struct {
-	mu     sync.Mutex
-	calls  []string
-	apiURL string
-	status int
-	body   string
+// newFake answers every recentappviews.get call with status and body; a zero
+// status serves appViewBody. Nothing here reaches the network.
+func newFake(status int, body string) *testkit.Fake {
+	if status == 0 {
+		status, body = http.StatusOK, appViewBody
+	}
+	return testkit.NewFake(testkit.Any(status, body))
 }
 
-func (r *catalogRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+// last is the most recent API call, failing the test when none was made.
+func last(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no API call recorded")
 	}
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	r.apiURL = req.URL.String()
-	if r.status != 0 {
-		return jsonResp(r.status, r.body), nil
-	}
-	return jsonResp(200, appViewBody), nil
+	return calls[len(calls)-1]
 }
 
 const appViewBody = `{
@@ -77,10 +69,6 @@ const appViewBody = `{
   }
 }`
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
-
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -107,18 +95,19 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 // RecentAppView through verbatim on --output json (ADR-0003).
 func TestRun_happyPath_storeAxis_noEdit(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &catalogRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	r, err := viewcmd.Run(rc, viewcmd.Input{StorePackage: "com.store.alt", PlayPackage: "com.example.app"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.HasSuffix(rt.apiURL, "/appstorecatalog/com.store.alt/recentAppViews/com.example.app") {
-		t.Errorf("url %q is not the recentappviews.get endpoint", rt.apiURL)
+	apiCall := last(t, fake)
+	if !strings.HasSuffix(apiCall.URL, "/appstorecatalog/com.store.alt/recentAppViews/com.example.app") {
+		t.Errorf("url %q is not the recentappviews.get endpoint", apiCall.URL)
 	}
-	if strings.Contains(rt.apiURL, "/edits/") {
-		t.Errorf("url %q must not open an Edit", rt.apiURL)
+	if strings.Contains(apiCall.URL, "/edits/") {
+		t.Errorf("url %q must not open an Edit", apiCall.URL)
 	}
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
@@ -134,8 +123,8 @@ func TestRun_happyPath_storeAxis_noEdit(t *testing.T) {
 // permissions and device compatibility.
 func TestRun_humanSummary(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &catalogRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	r, err := viewcmd.Run(rc, viewcmd.Input{StorePackage: "com.store.alt", PlayPackage: "com.example.app"})
 	if err != nil {
@@ -171,8 +160,8 @@ func TestRun_humanSummary(t *testing.T) {
 // field list, so a pasted report stands alone.
 func TestRun_markdownRecord(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &catalogRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	r, err := viewcmd.Run(rc, viewcmd.Input{StorePackage: "com.store.alt", PlayPackage: "com.example.app"})
 	if err != nil {
@@ -194,8 +183,8 @@ func TestRun_markdownRecord(t *testing.T) {
 // rather than an empty cell (the API expresses free by omitting the Money).
 func TestRun_freeApp_rendersFree(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &catalogRT{status: 200, body: `{"appView":{"packageName":"com.example.free"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(200, `{"appView":{"packageName":"com.example.free"}}`)
+	rc := newRC(t, fake)
 
 	r, err := viewcmd.Run(rc, viewcmd.Input{StorePackage: "com.store.alt", PlayPackage: "com.example.free"})
 	if err != nil {
@@ -214,14 +203,15 @@ func TestRun_freeApp_rendersFree(t *testing.T) {
 // $GPLAY_APP_STORE_PACKAGE when --store-package is omitted: the CI path.
 func TestRun_storePackageFromEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.fromenv")
-	rt := &catalogRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	if _, err := viewcmd.Run(rc, viewcmd.Input{PlayPackage: "com.example.app"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/appstorecatalog/com.store.fromenv/") {
-		t.Errorf("url %q should use the app store package name from the environment", rt.apiURL)
+	apiCall := last(t, fake)
+	if !strings.Contains(apiCall.URL, "/appstorecatalog/com.store.fromenv/") {
+		t.Errorf("url %q should use the app store package name from the environment", apiCall.URL)
 	}
 }
 
@@ -229,14 +219,15 @@ func TestRun_storePackageFromEnv(t *testing.T) {
 // layer wins, ADR-0004).
 func TestRun_flagBeatsEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.fromenv")
-	rt := &catalogRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	if _, err := viewcmd.Run(rc, viewcmd.Input{StorePackage: "com.store.fromflag", PlayPackage: "com.example.app"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(rt.apiURL, "/appstorecatalog/com.store.fromflag/") {
-		t.Errorf("url %q should prefer --store-package over the environment", rt.apiURL)
+	apiCall := last(t, fake)
+	if !strings.Contains(apiCall.URL, "/appstorecatalog/com.store.fromflag/") {
+		t.Errorf("url %q should prefer --store-package over the environment", apiCall.URL)
 	}
 }
 
@@ -244,8 +235,8 @@ func TestRun_flagBeatsEnv(t *testing.T) {
 // package name is CLI misuse caught before any HTTP call, naming both layers.
 func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &catalogRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	_, err := viewcmd.Run(rc, viewcmd.Input{PlayPackage: "com.example.app"})
 	assertExit(t, err, 2)
@@ -254,8 +245,8 @@ func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 			t.Errorf("usage error %q must name %q", err.Error(), want)
 		}
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v", fake.Calls())
 	}
 }
 
@@ -263,13 +254,13 @@ func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 // package name is CLI misuse caught before any HTTP call.
 func TestRun_missingPlayPackage_exit2_noNetwork(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.alt")
-	rt := &catalogRT{}
-	rc := newRC(t, rt)
+	fake := newFake(0, "")
+	rc := newRC(t, fake)
 
 	_, err := viewcmd.Run(rc, viewcmd.Input{PlayPackage: "   "})
 	assertExit(t, err, 2)
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v", fake.Calls())
 	}
 }
 
@@ -277,8 +268,8 @@ func TestRun_missingPlayPackage_exit2_noNetwork(t *testing.T) {
 // the refusal points at the app store enrollment, not a per-app permission.
 func TestRun_403_namesStorePackage(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &catalogRT{status: 403, body: `{"error":{"message":"The caller does not have permission"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
+	rc := newRC(t, fake)
 
 	_, err := viewcmd.Run(rc, viewcmd.Input{StorePackage: "com.store.alt", PlayPackage: "com.example.app"})
 	assertExit(t, err, 11)
@@ -291,8 +282,8 @@ func TestRun_403_namesStorePackage(t *testing.T) {
 // not-found exit code with an eligibility hint.
 func TestRun_404_exit30(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
-	rt := &catalogRT{status: 404, body: `{"error":{"message":"not found"}}`}
-	rc := newRC(t, rt)
+	fake := newFake(404, `{"error":{"message":"not found"}}`)
+	rc := newRC(t, fake)
 
 	_, err := viewcmd.Run(rc, viewcmd.Input{StorePackage: "com.store.alt", PlayPackage: "com.example.gone"})
 	assertExit(t, err, 30)

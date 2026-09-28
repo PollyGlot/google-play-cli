@@ -2,7 +2,7 @@
 // images apply`. It wires auth → the Edit lifecycle → the pure imagediff
 // engine → images.upload / deleteall / delete, applying the ADR-0011 stance
 // with ADR-0013 mechanics: --confirm gates every real write, the offline
-// imagevalidate runs as a fail-fast pre-check (bypassable with --no-validate),
+// imagevalidate runs as a fail-fast pre-check (bypassable with --skip-preflight),
 // the sync is additive (online-only images are never deleted: that is
 // --prune, #135), and every slot is reconciled inside a single Edit committed
 // once. It is the image analogue of internal/metadata/orchestrator.
@@ -62,6 +62,10 @@ type Opts struct {
 	// instead of opening/committing a per-apply Edit (docs/DESIGN.md §4). Empty
 	// is the implicit default.
 	ExplicitEditID string
+
+	// Commit carries the opt-in edits.commit parameters; the zero value keeps
+	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
+	Commit edits.CommitOptions
 }
 
 // Result is what Apply returns. Diff is always populated. On a real apply the
@@ -149,7 +153,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 	// In EXPLICIT mode (opts.ExplicitEditID set) WithEdit reuses the pinned Edit
 	// and never commits or discards: staged changes wait for `gplay edits
 	// commit`/`discard`.
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
+	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
 		plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types, opts.Prune)
 		if err != nil {
 			return err

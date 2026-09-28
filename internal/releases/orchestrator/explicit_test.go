@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // TestUpload_explicitEdit_reusesPinNoInsertNoCommit is the #48 reuse contract:
@@ -16,25 +17,24 @@ import (
 // must target the pinned Edit ID.
 func TestUpload_explicitEdit_reusesPinNoInsertNoCommit(t *testing.T) {
 	aab := writeFakeAAB(t)
-	rt := &playRT{
-		t:                  t,
+	rt, transport := newPlay(playAPI{
 		editID:             "edit-should-not-open",
 		versionCode:        7,
 		trackUpdateRawResp: `{"track":"internal","releases":[{"name":"7","status":"completed","versionCodes":["7"],"userFraction":1.0}]}`,
-		insertHandler: func(*http.Request) (*http.Response, error) {
+		insertHandler: func(testkit.Call) (int, string) {
 			t.Fatalf("edits.insert called in explicit mode: the pinned Edit must be reused")
-			return nil, nil
+			return 0, ""
 		},
-		commitHandler: func(*http.Request) (*http.Response, error) {
+		commitHandler: func(testkit.Call) (int, string) {
 			t.Fatalf("edits.commit called in explicit mode: the user owns commit")
-			return nil, nil
+			return 0, ""
 		},
-		deleteHandler: func(*http.Request) (*http.Response, error) {
+		deleteHandler: func(testkit.Call) (int, string) {
 			t.Fatalf("edits.delete called in explicit mode: no auto-discard")
-			return nil, nil
+			return 0, ""
 		},
-	}
-	hc := &http.Client{Transport: rt}
+	})
+	hc := &http.Client{Transport: transport}
 
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:        "com.example.app",
@@ -51,7 +51,7 @@ func TestUpload_explicitEdit_reusesPinNoInsertNoCommit(t *testing.T) {
 
 	// Zero edits.insert calls (the explicit AC), and the writes target the pin.
 	var sawBundle, sawTrack bool
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "POST ") && strings.HasSuffix(c, "/edits") {
 			t.Errorf("explicit mode must not open an Edit; saw %q", c)
 		}
@@ -63,6 +63,6 @@ func TestUpload_explicitEdit_reusesPinNoInsertNoCommit(t *testing.T) {
 		}
 	}
 	if !sawBundle || !sawTrack {
-		t.Errorf("upload did not target the pinned Edit; calls = %v", rt.calls)
+		t.Errorf("upload did not target the pinned Edit; calls = %v", apiCalls(rt))
 	}
 }

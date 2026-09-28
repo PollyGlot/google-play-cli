@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2/jwt"
 
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
@@ -77,17 +77,32 @@ func TestServiceAccountJSON_fields(t *testing.T) {
 }
 
 // The fixture is only useful if the real oauth2 JWT flow signs with it and
-// lands on the fake: this drives golang.org/x/oauth2/google end to end.
+// lands on the fake: this drives golang.org/x/oauth2/jwt end to end, the
+// flow internal/auth/token builds from the same key-file fields.
 func TestFake_servesTheJWTExchangeOfTheFixture(t *testing.T) {
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		return 200, `{"ok":true}`, c.Method == http.MethodGet && c.Path == "/v1/things"
 	})
-	cfg, err := google.JWTConfigFromJSON(testkit.ServiceAccountJSON(t), "https://www.googleapis.com/auth/androidpublisher")
-	if err != nil {
-		t.Fatalf("JWTConfigFromJSON: %v", err)
+	var key struct {
+		ClientEmail string `json:"client_email"`
+		PrivateKey  string `json:"private_key"`
+		TokenURI    string `json:"token_uri"`
+	}
+	if err := json.Unmarshal(testkit.ServiceAccountJSON(t), &key); err != nil {
+		t.Fatalf("unmarshal fixture: %v", err)
+	}
+	cfg := &jwt.Config{
+		Email:      key.ClientEmail,
+		PrivateKey: []byte(key.PrivateKey),
+		Scopes:     []string{"https://www.googleapis.com/auth/androidpublisher"},
+		TokenURL:   key.TokenURI,
 	}
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fake})
-	resp, err := cfg.Client(ctx).Get("https://androidpublisher.googleapis.com/v1/things")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://androidpublisher.googleapis.com/v1/things", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := cfg.Client(ctx).Do(req)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -116,7 +131,7 @@ func TestFake_rejectsTokenRequestsThatOnlyEndInToken(t *testing.T) {
 	} {
 		t.Run(u, func(t *testing.T) {
 			fake := testkit.NewFake()
-			req, _ := http.NewRequest(http.MethodPost, u, strings.NewReader("grant_type=x"))
+			req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, u, strings.NewReader("grant_type=x"))
 			resp, err := fake.RoundTrip(req)
 			if err == nil {
 				t.Fatalf("got %d, want the round trip rejected (no bearer token for %s)", resp.StatusCode, u)
@@ -136,7 +151,7 @@ func TestFake_respondersInOrderAndWrote(t *testing.T) {
 		func(c testkit.Call) (int, string, bool) { return 0, `first`, c.Method == http.MethodGet },
 		testkit.Any(404, `fallback`),
 	)
-	get, _ := http.NewRequest(http.MethodGet, "https://example.test/a", nil)
+	get, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.test/a", nil)
 	resp, err := fake.RoundTrip(get)
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("GET = %v %v, want 200 (status 0 means 200)", resp, err)
@@ -144,7 +159,7 @@ func TestFake_respondersInOrderAndWrote(t *testing.T) {
 	if fake.Wrote() {
 		t.Error("a GET is not a write")
 	}
-	patch, _ := http.NewRequest(http.MethodPatch, "https://example.test/a?b=c", strings.NewReader(`{"x":1}`))
+	patch, _ := http.NewRequestWithContext(t.Context(), http.MethodPatch, "https://example.test/a?b=c", strings.NewReader(`{"x":1}`))
 	resp, err = fake.RoundTrip(patch)
 	if err != nil || resp.StatusCode != 404 {
 		t.Fatalf("PATCH = %v %v, want the 404 fallback", resp, err)

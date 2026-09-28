@@ -25,7 +25,10 @@ autonomous release managers. This page is the contract an agent can rely on.
 The [exit code taxonomy](/docs/concepts/exit-codes/) makes failure handling
 decidable without parsing prose: `40`/`50` are retry-safe, `2` means the
 command was malformed, `10`/`11` mean credentials/permissions, `60` means
-state conflict.
+state conflict. The one `40`/`50` that is not retry-safe is an Edit commit
+whose outcome is unknown: the `--output json` envelope says
+`COMMIT_OUTCOME_UNKNOWN` with `"retryable": false`, so read `retryable`
+rather than the exit code alone and check the live state before re-running.
 
 **Exit `3` is the agent-resolvable refusal**: the command was well-formed,
 but a named safety acknowledgment (`--confirm`, `--grant-admin`) is
@@ -33,10 +36,13 @@ missing, and the error names it. An agent can surface the decision to a
 human, or re-run with the flag if its policy allows.
 
 Under `--output json`, a failure also writes a structured envelope to stdout
-(`{"error":{"exitCode","message","reasons","requires"}}`), so the failure is
-parseable without scraping stderr, and `requires` names the missing flag at
-failure time, not just in a dry-run. See
-[output formats](/docs/concepts/output-formats/).
+(`{"error":{"code","exitCode","retryable","message",...}}`), so the failure is
+parseable without scraping stderr. Branch on `code`, a stable diagnostic code
+such as `EDIT_ALREADY_EXISTS` that tells apart failures sharing an exit code;
+read `retryable` to decide whether replaying the same command can succeed; and
+`requires` names the missing flag at failure time, not just in a dry-run. See
+[output formats](/docs/concepts/output-formats/) and the
+[diagnostic codes](/docs/concepts/exit-codes/#diagnostic-codes).
 
 ## The read-only authority boundary: `GPLAY_READONLY`
 

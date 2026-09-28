@@ -1,0 +1,12 @@
+{
+  "apps": [
+    {
+      "package": "com.example.app",
+      "pinned": true
+    },
+    {
+      "package": "com.example.app.beta",
+      "pinned": false
+    }
+  ]
+}

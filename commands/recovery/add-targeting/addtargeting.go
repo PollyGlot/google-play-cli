@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/recovery/recoverycmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
@@ -29,12 +30,12 @@ type Input struct {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ID == "" {
-		return nil, recoverycmd.Usagef("missing recovery id: gplay recovery add-targeting <appRecoveryId>")
+		return nil, exit.Usagef("missing recovery id: gplay recovery add-targeting <appRecoveryId>")
 	}
 	if !in.AllUsers && len(in.Regions) == 0 && len(in.SdkLevels) == 0 {
-		return nil, recoverycmd.Usagef("missing targeting to add: pass one of --all-users, --regions, or --sdk-levels")
+		return nil, exit.Usagef("missing targeting to add: pass one of --all-users, --regions, or --sdk-levels")
 	}
-	pkg, err := recoverycmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +74,9 @@ shrink the blast radius, cancel the recovery and create a new one.
 Pass at least one of --all-users, --regions <CC,CC>, or --sdk-levels <N,N>.
 Requires --confirm (missing → exit 3); rehearse first with --dry-run.
 GPLAY_READONLY refuses it (exit 4).`,
+		Example: `  # Preview widening a region-targeted Recovery to two more regions
+  gplay recovery add-targeting 4567890123 --regions DE,CA --dry-run
+  gplay recovery add-targeting 4567890123 --regions DE,CA --confirm`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

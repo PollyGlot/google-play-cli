@@ -1,5 +1,5 @@
 // Package addcmd_test exercises `gplay apps add` at the kernel level:
-// a RunContext built by hand, a RoundTripper injected via the
+// a RunContext built by hand, a transport injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
 // commands/releases/upload_test pattern so the seams stay consistent
 // across write-side commands.
@@ -11,11 +11,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -31,55 +29,41 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// validateRT terminates the OAuth2 /token exchange so token.Source
-// produces a usable Bearer token, then routes the edits.insert and
-// edits.delete pair that edits.Validate makes. Tests can pre-set
-// insertStatus / insertBody to simulate API failures.
-type validateRT struct {
-	t            *testing.T
-	editID       string
-	insertStatus int    // 0 means "default 200 with editID"
-	insertBody   string // raw response body to return; empty falls back to a default per status
-
-	mu        sync.Mutex
-	calls     []string
-	tokenHits int
-}
-
-func (r *validateRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		r.tokenHits++
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		if r.insertStatus != 0 {
-			body := r.insertBody
-			if body == "" {
-				body = fmt.Sprintf(`{"error":{"code":%d,"message":"stub"}}`, r.insertStatus)
+// probeFake answers the edits.insert+delete pair edits.Validate makes, per
+// package: an insert for a package listed in insertStatusByPkg returns that
+// status (a simulated API failure), every other insert returns 200 with
+// editID, and every delete returns 204. Any other request fails the round
+// trip, so a stray call surfaces as an error.
+func probeFake(editID string, insertStatusByPkg map[string]int) *testkit.Fake {
+	return testkit.NewFake(
+		func(c testkit.Call) (int, string, bool) {
+			if c.Method != http.MethodPost || !strings.HasSuffix(c.Path, "/edits") {
+				return 0, "", false
 			}
-			return jsonResp(r.insertStatus, body), nil
-		}
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}
-	r.t.Fatalf("validateRT: unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
+			if status, bad := insertStatusByPkg[pkgFromPath(c.Path)]; bad {
+				return status, fmt.Sprintf(`{"error":{"code":%d,"message":"stub"}}`, status), true
+			}
+			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, editID), true
+		},
+		func(c testkit.Call) (int, string, bool) {
+			return http.StatusNoContent, "", c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/")
+		},
+	)
 }
 
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
+// pkgFromPath extracts the package from a `/applications/{pkg}/edits...`
+// URL path: the shape internal/play/edits builds.
+func pkgFromPath(path string) string {
+	const marker = "/applications/"
+	i := strings.Index(path, marker)
+	if i < 0 {
+		return ""
 	}
+	rest := path[i+len(marker):]
+	if j := strings.Index(rest, "/"); j >= 0 {
+		return rest[:j]
+	}
+	return rest
 }
 
 // signedSAJSON generates a service-account JSON whose private_key is a
@@ -138,13 +122,15 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// failOnCallRT fails the test on any HTTP call. Tests pass it through
-// the oauth2.HTTPClient seam to prove --no-verify never hits the wire.
-type failOnCallRT struct{ t *testing.T }
-
-func (r *failOnCallRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.t.Fatalf("--no-verify must not make HTTP calls, but saw: %s %s", req.Method, req.URL)
-	return nil, nil
+// failOnCall fails the test on any HTTP call, the token exchange included.
+// Tests pass it through the oauth2.HTTPClient seam to prove --no-verify
+// never hits the wire.
+func failOnCall(t *testing.T) http.RoundTripper {
+	t.Helper()
+	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("--no-verify must not make HTTP calls, but saw: %s %s", req.Method, req.URL)
+		return nil, nil
+	})
 }
 
 // TestRun_noVerify_skipsAPIAndRecordsAnyway asserts the --no-verify
@@ -152,8 +138,7 @@ func (r *failOnCallRT) RoundTrip(req *http.Request) (*http.Response, error) {
 // under the active Account. The RoundTripper is the assertion: any
 // network call would fail the test.
 func TestRun_noVerify_skipsAPIAndRecordsAnyway(t *testing.T) {
-	rt := &failOnCallRT{t: t}
-	rc := newRC(t, rt)
+	rc := newRC(t, failOnCall(t))
 
 	if _, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.myapp"}, NoVerify: true}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -173,8 +158,7 @@ func TestRun_noVerify_skipsAPIAndRecordsAnyway(t *testing.T) {
 // carry exit code 20 (client-side validation) so CI can distinguish
 // "user mistyped the package" from "API said no".
 func TestRun_invalidPackage_rejectsClientSide(t *testing.T) {
-	rt := &failOnCallRT{t: t}
-	rc := newRC(t, rt)
+	rc := newRC(t, failOnCall(t))
 
 	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"notapackage"}})
 	if err == nil {
@@ -201,8 +185,7 @@ func TestRun_invalidPackage_rejectsClientSide(t *testing.T) {
 // ConfigAccount snapshot. The pre-fix code did the opposite, silently
 // recording the (Account, Package) pair under the wrong identity.
 func TestRun_persistsUnderAccountThatActuallyRanProbe(t *testing.T) {
-	rt := &validateRT{t: t, editID: "edit-misattrib"}
-	rc := newRC(t, rt)
+	rc := newRC(t, probeFake("edit-misattrib", nil))
 
 	// Seed a second Account in the global so registry.Add can find it.
 	g, err := config.LoadGlobalOrEmpty(rc.Ctx, config.OSFS{}, rc.ConfigPath)
@@ -239,10 +222,9 @@ func TestRun_persistsUnderAccountThatActuallyRanProbe(t *testing.T) {
 // check: if rc.AccountName names an Account that isn't in the global
 // config (keystore-only, or a stale local override), apps add must
 // refuse client-side without burning a Google round-trip. The
-// failOnCallRT is the assertion mechanism.
+// failOnCall transport is the assertion mechanism.
 func TestRun_accountNotInGlobal_refusesBeforeProbe(t *testing.T) {
-	rt := &failOnCallRT{t: t}
-	rc := newRC(t, rt)
+	rc := newRC(t, failOnCall(t))
 	rc.AccountName = "ghost" // not in g.Accounts (newRC seeds only "playci")
 
 	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.app"}})
@@ -264,8 +246,7 @@ func TestRun_accountNotInGlobal_refusesBeforeProbe(t *testing.T) {
 // by-default: users would end up with a registry full of packages
 // the credential cannot reach.
 func TestRun_apiError_doesNotPersistPackage(t *testing.T) {
-	rt := &validateRT{t: t, editID: "edit-x", insertStatus: http.StatusForbidden}
-	rc := newRC(t, rt)
+	rc := newRC(t, probeFake("edit-x", map[string]int{"com.example.myapp": http.StatusForbidden}))
 
 	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.myapp"}})
 	if err == nil {
@@ -288,8 +269,8 @@ func TestRun_apiError_doesNotPersistPackage(t *testing.T) {
 // /token exchange + edits.insert + edits.delete round trip, then the
 // global config carries the package under the active Account.
 func TestRun_happyPath_validatesAndPersists(t *testing.T) {
-	rt := &validateRT{t: t, editID: "edit-add"}
-	rc := newRC(t, rt)
+	fake := probeFake("edit-add", nil)
+	rc := newRC(t, fake)
 
 	if _, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.myapp"}}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -302,8 +283,8 @@ func TestRun_happyPath_validatesAndPersists(t *testing.T) {
 	if !registry.Has(g.Accounts, "playci", "com.example.myapp") {
 		t.Errorf("package not registered after happy path; accounts=%+v", g.Accounts)
 	}
-	if rt.tokenHits == 0 {
-		t.Errorf("expected /token exchange; calls=%v", rt.calls)
+	if fake.TokenExchanges() == 0 {
+		t.Errorf("expected /token exchange; calls=%+v", fake.Calls())
 	}
 }
 

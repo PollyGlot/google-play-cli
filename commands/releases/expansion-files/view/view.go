@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/expansion-files/expansionfilescmd"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -47,13 +48,13 @@ func (p Payload) Renderers() output.Renderers {
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
-		return nil, expansionfilescmd.Usagef("missing or invalid --version-code: the APK versionCode to read is required")
+		return nil, exit.Usagef("missing or invalid --version-code: the APK versionCode to read is required")
 	}
 	ft, err := expansionfilescmd.NormalizeType(in.Type)
 	if err != nil {
 		return nil, err
 	}
-	pkg, err := expansionfilescmd.ResolvePackage(rc, in.Package)
+	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +91,9 @@ uploaded file, or referencesVersion if it points at another APK's) for a given
 versionCode and type. Opens a read-only Edit (insert → get → discard).
 
 LEGACY (OBB). --type is main or patch. --output json passes the ExpansionFile
-through verbatim (ADR-0003).`,
+through verbatim.`,
+		Example: `  gplay releases expansion-files view --version-code 1042
+  gplay releases expansion-files view --version-code 1042 --type patch --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

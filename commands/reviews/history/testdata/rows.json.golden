@@ -1,0 +1,40 @@
+{
+  "reviews": [
+    {
+      "packageName": "com.example.app",
+      "appVersionCode": "142",
+      "appVersionName": "1.4.2",
+      "reviewerLanguage": "en",
+      "device": "a52q",
+      "reviewSubmitDateAndTime": "2026-08-03T09:15:00Z",
+      "reviewSubmitMillisSinceEpoch": "1785748500000",
+      "reviewLastUpdateDateAndTime": "2026-08-03T09:15:00Z",
+      "reviewLastUpdateMillisSinceEpoch": "1785748500000",
+      "starRating": "2",
+      "reviewTitle": "Sync <broken>",
+      "reviewText": "Crashes on start & loses my streak",
+      "developerReplyDateAndTime": "2026-08-04T10:00:00Z",
+      "developerReplyMillisSinceEpoch": "1785837600000",
+      "developerReplyText": "Fixed in 1.4.3, thanks for the report!",
+      "reviewLink": "https://play.google.com/apps/publish?account=0&review=gp:AOqpTOE-example-1"
+    },
+    {
+      "packageName": "com.example.app",
+      "appVersionCode": "142",
+      "appVersionName": "1.4.2",
+      "reviewerLanguage": "fr",
+      "device": "oriole",
+      "reviewSubmitDateAndTime": "2026-08-05T18:40:00Z",
+      "reviewSubmitMillisSinceEpoch": "1785955200000",
+      "reviewLastUpdateDateAndTime": "2026-08-05T18:40:00Z",
+      "reviewLastUpdateMillisSinceEpoch": "1785955200000",
+      "starRating": "5",
+      "reviewTitle": "",
+      "reviewText": "Parfait",
+      "developerReplyDateAndTime": "",
+      "developerReplyMillisSinceEpoch": "",
+      "developerReplyText": "",
+      "reviewLink": "https://play.google.com/apps/publish?account=0&review=gp:AOqpTOE-example-2"
+    }
+  ]
+}

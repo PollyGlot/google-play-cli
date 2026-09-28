@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -38,16 +41,23 @@ type resumeRT struct {
 	putSteps []step
 	putIdx   int
 	puts     []putRecord
+
+	// waits records every backoff the helper asked for (see run).
+	waits []time.Duration
+	// onPut, when set, runs before PUT number i (0-based) is answered.
+	onPut func(i int)
 }
 
 // step is one scripted PUT outcome.
 type step struct {
-	status int    // 0 => transport error
-	rng    string // Range header value for a 308
-	body   string // response body for a 2xx (or error envelope)
+	status  int    // 0 => transport error
+	rng     string // Range header value for a 308
+	body    string // response body for a 2xx (or error envelope)
+	hang    bool   // block until the request's ctx is done (a stalled connection)
+	cutBody bool   // the 2xx body fails mid-read (the final response is lost)
 }
 
-func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
 	switch req.Method {
 	case http.MethodPost:
 		if req.URL.String() != initiateURL {
@@ -60,29 +70,41 @@ func (r *resumeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if status == 0 {
 			status = http.StatusOK
 		}
-		h := http.Header{}
+		resp := testkit.Response(status, r.initBody)
 		if status >= 200 && status < 300 && !r.initNoLoc {
-			h.Set("Location", sessionURI)
+			resp.Header.Set("Location", sessionURI)
 		}
-		return &http.Response{StatusCode: status, Header: h, Body: io.NopCloser(strings.NewReader(r.initBody))}, nil
+		return resp, nil
 
 	case http.MethodPut:
-		body, _ := io.ReadAll(req.Body)
-		_ = req.Body.Close()
+		body := testkit.ReadBody(req)
+		if req.Body != nil {
+			_ = req.Body.Close()
+		}
 		r.puts = append(r.puts, putRecord{contentRange: req.Header.Get("Content-Range"), bodyLen: len(body)})
 		if r.putIdx >= len(r.putSteps) {
 			r.t.Fatalf("unexpected PUT #%d: only %d scripted", r.putIdx+1, len(r.putSteps))
 		}
 		st := r.putSteps[r.putIdx]
+		if r.onPut != nil {
+			r.onPut(r.putIdx)
+		}
 		r.putIdx++
+		if st.hang {
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		}
 		if st.status == 0 {
 			return nil, &net0Error{}
 		}
-		h := http.Header{}
+		resp := testkit.Response(st.status, st.body)
 		if st.rng != "" {
-			h.Set("Range", st.rng)
+			resp.Header.Set("Range", st.rng)
 		}
-		return &http.Response{StatusCode: st.status, Header: h, Body: io.NopCloser(strings.NewReader(st.body))}, nil
+		if st.cutBody {
+			resp.Body = io.NopCloser(io.MultiReader(strings.NewReader(st.body[:len(st.body)/2]), errReader{}))
+		}
+		return resp, nil
 
 	default:
 		r.t.Fatalf("unexpected method %s", req.Method)
@@ -94,12 +116,25 @@ type net0Error struct{}
 
 func (*net0Error) Error() string { return "simulated transport failure" }
 
+// errReader fails every read, standing in for a connection reset mid-body.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("simulated reset mid-body") }
+
 func reader(n int) io.ReaderAt { return bytes.NewReader(make([]byte, n)) }
 
+// run uploads size bytes through rt with the backoff recorded (not slept) into
+// rt.waits and a one-minute chunk bound.
 func run(t *testing.T, rt *resumeRT, size int) ([]byte, int, error) {
 	t.Helper()
-	hc := &http.Client{Transport: rt}
-	return api.ResumableUpload(context.Background(), hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", reader(size), int64(size))
+	return runCtx(t, context.Background(), rt, size, time.Minute)
+}
+
+func runCtx(t *testing.T, ctx context.Context, rt *resumeRT, size int, chunkTimeout time.Duration) ([]byte, int, error) {
+	t.Helper()
+	api.SetResumeTiming(t, chunkTimeout, &rt.waits)
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
+	return api.ResumableUpload(ctx, hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", reader(size), int64(size))
 }
 
 // TestResumable_happyPath_singleChunk: a sub-chunk-size artifact is one
@@ -349,7 +384,7 @@ func (s *shortReader) ReadAt(p []byte, off int64) (int, error) {
 // LocalIOError (exit 20).
 func TestResumable_shortRead_isLocalIOError(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{}}
-	hc := &http.Client{Transport: rt}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
 	_, _, err := api.ResumableUpload(context.Background(), hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", &shortReader{actual: 512}, 1024)
 	var lioErr *api.LocalIOError
 	if !errors.As(err, &lioErr) {

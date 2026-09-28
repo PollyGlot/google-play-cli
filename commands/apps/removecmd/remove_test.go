@@ -2,8 +2,8 @@
 // level: a RunContext built by hand and Run invoked directly. Mirrors
 // the commands/apps/addcmd and commands/auth/logout patterns. The
 // command is a pure local-state op (zero HTTP calls) so tests never
-// install a token exchange or RoundTripper machinery (an opt-in
-// failOnCallRT proves the no-network invariant where it matters).
+// install a token exchange or transport machinery (an opt-in
+// failOnCall transport proves the no-network invariant where it matters).
 package removecmd_test
 
 import (
@@ -26,6 +26,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // newRC builds a RunContext with a fresh global config at a temp path,
@@ -366,26 +367,27 @@ func TestCobra_extraArgs_isRejectedByExactArgs(t *testing.T) {
 	}
 }
 
-// failOnCallRT fails the test on any HTTP call. Tests pass it through
+// failOnCall fails the test on any HTTP call. Tests pass it through
 // the oauth2.HTTPClient context key: the same seam addcmd uses for
 // its --no-verify assertion. `apps remove` is pure local state and
-// MUST never hit the network; this RoundTripper is the assertion.
-type failOnCallRT struct{ t *testing.T }
-
-func (r *failOnCallRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.t.Fatalf("apps remove must not make HTTP calls, but saw: %s %s", req.Method, req.URL)
-	return nil, nil
+// MUST never hit the network; this transport is the assertion.
+func failOnCall(t *testing.T) http.RoundTripper {
+	t.Helper()
+	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("apps remove must not make HTTP calls, but saw: %s %s", req.Method, req.URL)
+		return nil, nil
+	})
 }
 
 // TestRun_makesZeroHTTPCalls is the no-network invariant from the
 // issue's acceptance criteria. The package is registered, Run drops
-// it, and the failOnCallRT never sees a request: proving the
+// it, and the failOnCall transport never sees a request: proving the
 // "pure local state op" contract held end-to-end (not just by the
 // absence of an HTTP client in the current implementation).
 func TestRun_makesZeroHTTPCalls(t *testing.T) {
 	var stderr bytes.Buffer
 	rc := newRC(t, &stderr, []string{"com.example.myapp"})
-	rc.Ctx = context.WithValue(rc.Ctx, oauth2.HTTPClient, &http.Client{Transport: &failOnCallRT{t: t}})
+	rc.Ctx = context.WithValue(rc.Ctx, oauth2.HTTPClient, &http.Client{Transport: failOnCall(t)})
 
 	if _, err := removecmd.Run(rc, removecmd.Input{Package: "com.example.myapp"}); err != nil {
 		t.Fatalf("Run: %v", err)

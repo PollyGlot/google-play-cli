@@ -1,0 +1,5 @@
+{
+  "dryRun": true,
+  "package": "com.example.app",
+  "requires": []
+}

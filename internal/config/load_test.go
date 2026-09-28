@@ -5,10 +5,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
 // loadFixture is a `t.TempDir`-rooted scratch space for cascading-loader
@@ -259,5 +261,46 @@ func TestLoad_missingGlobal_isOK(t *testing.T) {
 	}
 	if _, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts()); err != nil {
 		t.Errorf("Load (missing global): %v", err)
+	}
+}
+
+// TestLoad_projectLocal_pathLikeAccount_refused asserts a repo's
+// config.local.json cannot name an Account that is a path: the name is joined
+// into the file keystore's path, so `../x` would load a credential from outside
+// the accounts directory (#603). The refusal is a usage error (exit 2) naming
+// the file to fix, raised before any command runs.
+func TestLoad_projectLocal_pathLikeAccount_refused(t *testing.T) {
+	for _, name := range []string{"../client-b", "a/b", "..", "/etc/x"} {
+		t.Run(name, func(t *testing.T) {
+			f := newLoadFixture(t)
+			f.writeGlobal(t, `{"accounts":[{"name":"ci","active":true}]}`)
+			f.writeLocal(t, `{"account":`+strconv.Quote(name)+`}`)
+
+			_, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
+			if err == nil {
+				t.Fatalf("Load accepted Account name %q from config.local.json", name)
+			}
+			if got := exit.For(err); got != 2 {
+				t.Errorf("exit.For(err) = %d, want 2; err=%v", got, err)
+			}
+			if !strings.Contains(err.Error(), f.localPath) {
+				t.Errorf("error %q does not name the file to fix (%s)", err, f.localPath)
+			}
+		})
+	}
+}
+
+// TestLoad_projectLocal_plainAccountWithDots_accepted guards the other side:
+// a name carrying dots or dashes but no separator is an ordinary Account name.
+func TestLoad_projectLocal_plainAccountWithDots_accepted(t *testing.T) {
+	f := newLoadFixture(t)
+	f.writeLocal(t, `{"account":"client-b.prod"}`)
+
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if r.ConfigAccount != "client-b.prod" {
+		t.Errorf("ConfigAccount = %q, want %q", r.ConfigAccount, "client-b.prod")
 	}
 }

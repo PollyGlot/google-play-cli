@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
@@ -71,7 +72,7 @@ func EmbedOffers(items []subscriptions.Item, offers []subscriptions.OfferItem) (
 			}
 		}
 		delete(byProduct, it.ProductID)
-		b, err := json.Marshal(sub)
+		b, err := output.Marshal(sub)
 		if err != nil {
 			return nil, fmt.Errorf("encode subscription %q: %w", it.ProductID, err)
 		}
@@ -110,7 +111,7 @@ func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessa
 				if offerID == "" || planID == "" {
 					return nil, exit.Usagef("catalog file %s.json: an offer under base plan %q has no offerId (or the base plan has no basePlanId): the IDs are the reconciliation keys", productID, planID)
 				}
-				b, err := json.Marshal(offer)
+				b, err := output.Marshal(offer)
 				if err != nil {
 					return nil, fmt.Errorf("encode declared offer %s/%s/%s: %w", productID, planID, offerID, err)
 				}
@@ -139,7 +140,7 @@ func StripOffersFromSubscription(raw json.RawMessage) (json.RawMessage, error) {
 			delete(plan, "offers")
 		}
 	}
-	b, err := json.Marshal(sub)
+	b, err := output.Marshal(sub)
 	if err != nil {
 		return nil, fmt.Errorf("encode declared subscription: %w", err)
 	}

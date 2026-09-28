@@ -1,0 +1,17 @@
+{
+  "grants": [
+    {
+      "email": "dev@example.com",
+      "packageName": "com.example.app",
+      "appLevelPermissions": [
+        "CAN_REPLY_TO_REVIEWS",
+        "CAN_VIEW_APP_QUALITY"
+      ]
+    },
+    {
+      "email": "qa@example.com",
+      "packageName": "com.example.app.beta",
+      "appLevelPermissions": []
+    }
+  ]
+}

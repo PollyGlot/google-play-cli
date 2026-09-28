@@ -15,9 +15,9 @@ func Catalog() []Doc {
 	return []Doc{
 		{0, "Success", "n/a"},
 		{1, "Generic error (fallback when nothing more specific fits)", "no"},
-		{2, "CLI misuse (unknown flag, bad value, wrong number of positional args)", "no"},
+		{2, "CLI misuse (unknown flag, bad value, repeated single-value flag, wrong number of positional args)", "no"},
 		{3, "Safety flag required: well-formed, but a named --confirm/--grant-admin is missing; the message names it", "re-run with the named flag"},
-		{4, "Denied by environment policy (GPLAY_READONLY) (a mutating command was refused; NOT resolvable by adding a flag", "no) change the environment"},
+		{4, "Denied by environment policy (GPLAY_READONLY): a mutating command was refused", "no; not resolvable by a flag, change the environment"},
 		{10, "Authentication failure (SA invalid, token refused, scope missing, no developer-id)", "no"},
 		{11, "Authorization (403: SA not invited on the app/account)", "no"},
 		{20, "Client-side validation (malformed AAB, unknown locale, ...)", "no"},

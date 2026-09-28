@@ -77,11 +77,6 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 generic, full-coverage form the opinionated presets (vitals crashes, vitals
 anr, …) wrap.
 
-  gplay vitals query crashrate --package com.example.app
-  gplay vitals query crashrate --metrics crashRate,distinctUsers --dimensions versionCode
-  gplay vitals query anrrate --period HOURLY --since 24h
-  gplay vitals query crashrate --describe
-
 --describe fetches the metric set's descriptor instead of a timeline: the
 latest end time for which data is available, per aggregation period, in the
 set's timezone. It answers "up to when is this data complete?"; the window
@@ -101,6 +96,9 @@ Reporting), requested with the least-privilege playdeveloperreporting scope.
 --output json mirrors the API response verbatim; table/markdown render the
 timeline (dates × metrics, sliced by --dimensions). A freshness note is always
 printed to stderr so an empty window is not mistaken for zero.`,
+		Example: `  gplay vitals query crashrate --package com.example.app
+  gplay vitals query crashrate --metrics crashRate,distinctUsers --dimensions versionCode
+  gplay vitals query anrrate --period HOURLY --since 24h`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

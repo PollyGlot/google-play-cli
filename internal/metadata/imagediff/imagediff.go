@@ -141,6 +141,9 @@ func Aggregate(pkg string, plans []Plan) Result {
 				res.Summary.Reorder++
 			case OpUnchanged:
 				res.Summary.Unchanged++
+			case OpUntouchedSlot:
+				// Not tallied: nothing on disk for this slot, so gplay does
+				// not manage it and the summary counts managed slots only.
 			}
 		}
 	}

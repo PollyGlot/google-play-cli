@@ -2,10 +2,13 @@ package vitals_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
@@ -37,7 +40,7 @@ func TestErrorCountSet_isAQueryableMetricSet(t *testing.T) {
 
 func TestSearchErrorIssues_issuesGET(t *testing.T) {
 	var gotURL, gotMethod string
-	hc := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
 		return jsonResp(200, `{"errorIssues":[{"type":"CRASH","cause":"NullPointerException","location":"MainActivity.onCreate","errorReportCount":"42","distinctUsers":"30","lastErrorReportTime":"2026-06-15T10:00:00Z","issueUri":"https://play/x"}]}`), nil
@@ -76,7 +79,7 @@ func TestSearchErrorIssues_issuesGET(t *testing.T) {
 // break the call otherwise).
 func TestSearchErrorIssues_encodesFilterOrderByPageSize(t *testing.T) {
 	var gotURL string
-	hc := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return jsonResp(200, `{"errorIssues":[]}`), nil
 	})}
@@ -96,7 +99,7 @@ func TestSearchErrorIssues_encodesFilterOrderByPageSize(t *testing.T) {
 }
 
 func TestSearchErrorReports_reportsGETAndParse(t *testing.T) {
-	hc := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if !strings.Contains(r.URL.Path, "/errorReports:search") {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -123,7 +126,7 @@ func TestSearchErrorReports_reportsGETAndParse(t *testing.T) {
 }
 
 func TestSearchErrors_nonOKIsAPIError(t *testing.T) {
-	hc := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+	hc := &http.Client{Transport: testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResp(403, `{"error":{"message":"no"}}`), nil
 	})}
 	_, _, err := vitals.SearchErrorIssues(context.Background(), hc, "com.example.app", vitals.SearchOptions{})
@@ -142,10 +145,4 @@ func containsStr(ss []string, want string) bool {
 	return false
 }
 
-func asAPIErr(err error, target **api.Error) bool {
-	if e, ok := err.(*api.Error); ok {
-		*target = e
-		return true
-	}
-	return false
-}
+func asAPIErr(err error, target **api.Error) bool { return errors.As(err, target) }

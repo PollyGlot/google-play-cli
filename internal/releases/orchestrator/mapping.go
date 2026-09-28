@@ -34,6 +34,10 @@ type MappingOpts struct {
 	// Empty is the implicit default.
 	ExplicitEditID string
 
+	// Commit carries the opt-in edits.commit parameters; the zero value keeps
+	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
+	Commit edits.CommitOptions
+
 	// DryRun validates inputs and the mapping is readable without any
 	// HTTP: no Edit is opened, nothing is uploaded.
 	DryRun bool
@@ -99,7 +103,7 @@ func UploadMapping(ctx context.Context, hc *http.Client, opts MappingOpts) (*Map
 	}
 
 	result := &MappingResult{VersionCode: opts.VersionCode, FileType: fileType}
-	err = edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID}, func(editID string) error {
+	err = edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
 		res, err := mappings.Upload(ctx, hc, opts.Package, editID, opts.VersionCode, fileType, opts.MappingPath)
 		if err != nil {
 			return err

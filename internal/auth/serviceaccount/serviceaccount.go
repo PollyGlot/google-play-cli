@@ -12,7 +12,7 @@ import (
 // FileReader is the slice of config.FS this package needs. Declared
 // here as a tiny interface so internal/auth/serviceaccount stays
 // import-free of internal/config; production callers pass config.OSFS{}
-// and tests pass config.MemFS or any other matching implementation.
+// and tests pass configtest.MemFS or any other matching implementation.
 type FileReader interface {
 	ReadFile(name string) ([]byte, error)
 }
@@ -39,8 +39,15 @@ type ServiceAccount struct {
 	TokenURI    string
 	ProjectID   string
 
-	// Raw retains the original bytes so callers (e.g. the token package) can
-	// hand them directly to google.JWTConfigFromJSON without reserializing.
+	// Type is the key file's `type`. Parse leaves it unchecked: the token
+	// package refuses anything but "service_account" when it builds the JWT.
+	Type string
+	// PrivateKeyID is the optional `private_key_id`, sent as the JWT header
+	// `kid` so Google verifies against that key instead of trying each one.
+	PrivateKeyID string
+
+	// Raw retains the original bytes so a caller that stores the key (auth
+	// login) saves exactly what the user supplied, without reserializing.
 	Raw []byte
 }
 
@@ -69,10 +76,12 @@ func LoadFromFS(_ context.Context, fr FileReader, path string) (*ServiceAccount,
 // Parse validates raw service-account JSON bytes.
 func Parse(data []byte) (*ServiceAccount, error) {
 	var raw struct {
-		ClientEmail string `json:"client_email"`
-		PrivateKey  string `json:"private_key"`
-		TokenURI    string `json:"token_uri"`
-		ProjectID   string `json:"project_id"`
+		Type         string `json:"type"`
+		PrivateKeyID string `json:"private_key_id"`
+		ClientEmail  string `json:"client_email"`
+		PrivateKey   string `json:"private_key"`
+		TokenURI     string `json:"token_uri"`
+		ProjectID    string `json:"project_id"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -91,10 +100,12 @@ func Parse(data []byte) (*ServiceAccount, error) {
 		}
 	}
 	return &ServiceAccount{
-		ClientEmail: raw.ClientEmail,
-		PrivateKey:  raw.PrivateKey,
-		TokenURI:    raw.TokenURI,
-		ProjectID:   raw.ProjectID,
-		Raw:         data,
+		ClientEmail:  raw.ClientEmail,
+		PrivateKey:   raw.PrivateKey,
+		TokenURI:     raw.TokenURI,
+		ProjectID:    raw.ProjectID,
+		Type:         raw.Type,
+		PrivateKeyID: raw.PrivateKeyID,
+		Raw:          data,
 	}, nil
 }

@@ -129,3 +129,42 @@ func TestFileBackend_save_createsParentDirIfMissing(t *testing.T) {
 		t.Errorf("Save did not create parent dir: %v", err)
 	}
 }
+
+// TestFileBackend_pathLikeName_refusedWithoutTouchingDisk asserts the file
+// backend refuses an Account name that is not one plain path component. The
+// name arrives from --name, --account, GPLAY_ACCOUNT and a repo's
+// config.local.json; joined as-is, `../x` reads, writes or deletes x.json one
+// directory above the keystore (#603).
+func TestFileBackend_pathLikeName_refusedWithoutTouchingDisk(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "accounts")
+	be := keystore.NewFileBackend(root)
+	outside := filepath.Join(parent, "victim.json")
+	const victim = `{"client_email":"other@tenant"}`
+	if err := os.WriteFile(outside, []byte(victim), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	const name = "../victim"
+
+	if err := be.Save(ctx, name, []byte(`{}`)); err == nil {
+		t.Error("Save accepted a path-like name")
+	}
+	if data, err := be.Load(ctx, name); err == nil {
+		t.Errorf("Load read %q through a path-like name", data)
+	} else if errors.Is(err, keystore.ErrNotFound) {
+		t.Error("Load returned ErrNotFound, want a refusal: not-found lets the resolver fall through silently")
+	}
+	// Delete answers "nothing stored here": Save never stores such a name, and
+	// logout sweeps the file backend after the keyring, so a refusal would
+	// fail the logout of a keyring Account whose name has a slash.
+	if err := be.Delete(ctx, name); !errors.Is(err, keystore.ErrNotFound) {
+		t.Errorf("Delete(%q) = %v, want ErrNotFound", name, err)
+	}
+	if got, err := os.ReadFile(outside); err != nil || string(got) != victim {
+		t.Errorf("file outside the keystore changed: %q, %v", got, err)
+	}
+	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Save created the keystore directory before refusing: %v", err)
+	}
+}

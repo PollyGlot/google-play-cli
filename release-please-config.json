@@ -7,7 +7,11 @@
       "release-type": "simple",
       "package-name": "gplay",
       "include-component-in-tag": false,
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "docs/CI_CD.md",
+        "website/src/content/docs/docs/guides/ci-cd.md"
+      ]
     }
   }
 }

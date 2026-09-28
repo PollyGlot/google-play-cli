@@ -411,7 +411,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	if res.empty() {
 		// Best-effort note; a stderr write failure must not fail the command.
-		_, _ = fmt.Fprintln(rc.Stderr, zeroMatchNote(in))
+		rc.Logf("%s", zeroMatchNote(in))
 	}
 	return Payload{Index: idx, Result: res, Compact: compact}, nil
 }
@@ -465,6 +465,14 @@ rendered directly.
                      API index; ignores the query and the other flags
 
 A query that matches nothing prints a note on stderr and exits 0.`,
+		Example: `  # What does edits.tracks.update send and return?
+  gplay schema edits.tracks.update
+
+  # Every DELETE method of the API
+  gplay schema --list --method DELETE
+
+  # The diagnostic codes a failure can carry, for a machine
+  gplay schema --codes --output json`,
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
