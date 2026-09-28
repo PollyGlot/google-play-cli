@@ -43,7 +43,7 @@ jobs:
         id: app-token
         if: github.event.label.name == 'discovery:verdict-merge'
         with:
-          app-id: ${{ secrets.GPLAY_APP_ID }}
+          client-id: ${{ vars.GPLAY_APP_CLIENT_ID }}
           private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
