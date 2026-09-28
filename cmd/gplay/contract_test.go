@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -353,6 +354,42 @@ func TestLeafContract(t *testing.T) {
 		verbDrift.enforce(t, subjects,
 			`leaf "{}" ends in a verb outside the vocabulary: use a CRUD or admitted domain verb from verbVocabulary (docs/DESIGN.md section 0, ADR-0019); a new domain verb must pass the admission test there and be added to the table`)
 	})
+}
+
+// TestAPIRegistry_commandsNameRealLeaves: every command internal/apiregistry
+// credits with an API method starts with a leaf of the tree, and every --flag
+// after it is one that leaf registers. docs/COVERAGE.md is generated from
+// those strings, so a renamed verb or flag (#597 renamed nine verbs) would
+// otherwise keep advertising a command that no longer exists.
+func TestAPIRegistry_commandsNameRealLeaves(t *testing.T) {
+	byKey := map[string]*cobra.Command{}
+	for _, c := range runnableLeaves(newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})) {
+		byKey[leafKey(c)] = c
+	}
+	for _, e := range apiregistry.Entries() {
+		for _, credited := range e.Commands {
+			words := strings.Fields(credited)
+			var leaf *cobra.Command
+			n := len(words)
+			for ; n > 0 && leaf == nil; n-- {
+				leaf = byKey[strings.Join(words[:n], " ")]
+			}
+			if leaf == nil {
+				t.Errorf("apiregistry: %s credits %q, which starts with no leaf of the command tree (renamed?)", e.MethodID, credited)
+				continue
+			}
+			for _, w := range words[n+1:] {
+				name, isFlag := strings.CutPrefix(w, "--")
+				if !isFlag {
+					continue // a positional argument
+				}
+				name, _, _ = strings.Cut(name, "=")
+				if leaf.Flags().Lookup(name) == nil {
+					t.Errorf("apiregistry: %s credits %q, but %q has no --%s (renamed?)", e.MethodID, credited, leafKey(leaf), name)
+				}
+			}
+		}
+	}
 }
 
 func hasLeaf(leaves []*cobra.Command, key string) bool {

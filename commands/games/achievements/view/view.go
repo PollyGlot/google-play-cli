@@ -74,7 +74,7 @@ publishing to players is Console-only). --output json passes the
 AchievementConfiguration through verbatim.`,
 		Example: `  gplay games achievements view CgkI4ZqN0pMUEAIQAQ
 
-  # Save the body to edit it and send it back with update --from-json
+  # Save the body to edit it and send it back with set --file
   gplay games achievements view CgkI4ZqN0pMUEAIQAQ --output json > achievement.json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,

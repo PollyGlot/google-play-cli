@@ -8,7 +8,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// achievementBody is a --from-json request body, kept byte-for-byte by the
+// achievementBody is a --file request body, kept byte-for-byte by the
 // reader: its & and <> must reach the preview unescaped.
 const achievementBody = `{"achievementType":"STANDARD","initialState":"REVEALED","draft":{"name":{"translations":[{"locale":"en-US","value":"First <Boss> & Beyond"}]},"pointValue":10}}`
 
@@ -24,13 +24,13 @@ func TestRenderJSON_achievementWriteDryRun_golden(t *testing.T) {
 // the leaderboard payload, a separate Renderable over the shared encoder.
 func TestRenderJSON_leaderboardWriteDryRun_golden(t *testing.T) {
 	body := `{"scoreOrder":"LARGER_IS_BETTER","scoreMin":"0","scoreMax":"100000"}`
-	p := gamescmd.LeaderboardWritePayload{Verb: "update leaderboard", Target: "leaderboard CgkI-example", DryRun: true, Body: json.RawMessage(body)}
+	p := gamescmd.LeaderboardWritePayload{Verb: "set leaderboard", Target: "leaderboard CgkI-example", DryRun: true, Body: json.RawMessage(body)}
 	outputtest.GoldenJSON(t, "leaderboard_write_dry_run.json.golden", p)
 }
 
 // TestRenderJSON_flagBuiltBodyDryRun_golden freezes the preview of a body gplay
 // marshals itself from field flags: the name's & and <> stay literal (#622),
-// where --from-json bytes above are merely kept.
+// where --file bytes above are merely kept.
 func TestRenderJSON_flagBuiltBodyDryRun_golden(t *testing.T) {
 	body, err := gamescmd.BuildLeaderboardBody(nil, gamescmd.LeaderboardWrite{Name: "Boss <Rush> & Co"}, true)
 	if err != nil {

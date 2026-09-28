@@ -156,7 +156,7 @@ const demoSession = [
     out: demoUploadOutput,
   },
   { cmd: 'gplay releases promote --from internal --to beta' },
-  { cmd: 'gplay releases rollout --track production \\\n    --to 0.10 --confirm' },
+  { cmd: 'gplay releases rollout --track production \\\n    --staged 0.10 --confirm' },
 ];
 ---
 

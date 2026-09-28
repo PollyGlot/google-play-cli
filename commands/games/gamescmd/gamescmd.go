@@ -1,12 +1,12 @@
 // Package gamescmd holds the wiring shared by the ten `gplay games` leaves
-// (achievements + leaderboards × list/view/create/update/delete): Play Games
+// (achievements + leaderboards × list/view/create/set/remove): Play Games
 // application-ID resolution, the destructive-tier --confirm gate, the ADR-0018
 // shared table machinery, request-body construction for the writes, and
 // 404/403 hint classification. Keeping it in one place mirrors
 // commands/device-tiers/devicetierscmd and keeps the leaves thin.
 //
 // Addressing rides the Play Games application ID (--application-id, numeric) for
-// list/create and the resource ID (positional) for view/update/delete: a
+// list/create and the resource ID (positional) for view/set/remove: a
 // distinct axis from the Android package (ADR-0033), so there is no project-pin
 // cascade: --application-id is simply required where the API needs it.
 package gamescmd
@@ -27,14 +27,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
 
-// localFileError is a client-side --from-json read failure (exit 20), matching
+// localFileError is a client-side --file read failure (exit 20), matching
 // the convention bundles/customapps use for unreadable local inputs.
 type localFileError struct {
 	path  string
 	cause error
 }
 
-func (e *localFileError) Error() string { return fmt.Sprintf("--from-json %s: %v", e.path, e.cause) }
+func (e *localFileError) Error() string { return fmt.Sprintf("--file %s: %v", e.path, e.cause) }
 func (e *localFileError) Unwrap() error { return e.cause }
 func (e *localFileError) ExitCode() int { return 20 }
 
@@ -179,13 +179,13 @@ func DefaultLeaderboardColumns() string { return strings.Join(LeaderboardColumns
 // lands under.
 const defaultLocale = "en-US"
 
-// AchievementWrite carries the create/update inputs for an achievement. When
-// FromJSON is set the body is that file's bytes verbatim (ADR-0003 symmetry:
+// AchievementWrite carries the create/set inputs for an achievement. When
+// File is set the body is that file's bytes verbatim (ADR-0003 symmetry:
 // what `view --output json` emits round-trips here); otherwise the body is
 // built from the field flags. The *Set flags let an explicit zero (e.g.
 // --point-value 0) be distinguished from an unset flag.
 type AchievementWrite struct {
-	FromJSON      string
+	File          string
 	Name          string
 	Description   string
 	Locale        string
@@ -208,19 +208,19 @@ func (w AchievementWrite) hasFieldFlags() bool {
 		w.PointValueSet || w.StepsSet
 }
 
-// BuildAchievementBody resolves the request body for create/update: the
-// --from-json file (verbatim, validated as JSON) or a body built from the field
+// BuildAchievementBody resolves the request body for create/set: the
+// --file file (verbatim, validated as JSON) or a body built from the field
 // flags. The two modes are mutually exclusive. requireField rejects an empty
-// flag-built body (create/update with nothing to send).
+// flag-built body (create/set with nothing to send).
 func BuildAchievementBody(stdin io.Reader, w AchievementWrite, requireField bool) ([]byte, error) {
-	if w.FromJSON != "" {
+	if w.File != "" {
 		if w.hasFieldFlags() {
-			return nil, exit.Usagef("--from-json cannot be combined with field flags (--name, --description, --type, --initial-state, --point-value, --steps-to-unlock)")
+			return nil, exit.Usagef("--file cannot be combined with field flags (--name, --description, --type, --initial-state, --point-value, --steps-to-unlock)")
 		}
-		return readJSONSource(stdin, w.FromJSON)
+		return readJSONSource(stdin, w.File)
 	}
 	if requireField && !w.hasFieldFlags() {
-		return nil, exit.Usagef("nothing to send: pass --from-json <file> or at least one field flag (--name, --description, --type, --initial-state, --point-value, --steps-to-unlock)")
+		return nil, exit.Usagef("nothing to send: pass --file <file> or at least one field flag (--name, --description, --type, --initial-state, --point-value, --steps-to-unlock)")
 	}
 	cfg := games.AchievementConfiguration{
 		AchievementType: strings.TrimSpace(w.Type),
@@ -254,9 +254,9 @@ func ensureAchDraft(d *games.AchievementConfigurationDetail) *games.AchievementC
 	return d
 }
 
-// LeaderboardWrite carries the create/update inputs for a leaderboard.
+// LeaderboardWrite carries the create/set inputs for a leaderboard.
 type LeaderboardWrite struct {
-	FromJSON    string
+	File        string
 	Name        string
 	Locale      string
 	ScoreOrder  string
@@ -272,18 +272,18 @@ func (w LeaderboardWrite) hasFieldFlags() bool {
 		w.ScoreMinSet || w.ScoreMaxSet
 }
 
-// BuildLeaderboardBody resolves the request body for create/update. scoreMin /
+// BuildLeaderboardBody resolves the request body for create/set. scoreMin /
 // scoreMax are int64s the API encodes as JSON strings, so an explicit value is
 // rendered with strconv (0 is a legitimate score bound, hence the *Set flags).
 func BuildLeaderboardBody(stdin io.Reader, w LeaderboardWrite, requireField bool) ([]byte, error) {
-	if w.FromJSON != "" {
+	if w.File != "" {
 		if w.hasFieldFlags() {
-			return nil, exit.Usagef("--from-json cannot be combined with field flags (--name, --score-order, --score-min, --score-max)")
+			return nil, exit.Usagef("--file cannot be combined with field flags (--name, --score-order, --score-min, --score-max)")
 		}
-		return readJSONSource(stdin, w.FromJSON)
+		return readJSONSource(stdin, w.File)
 	}
 	if requireField && !w.hasFieldFlags() {
-		return nil, exit.Usagef("nothing to send: pass --from-json <file> or at least one field flag (--name, --score-order, --score-min, --score-max)")
+		return nil, exit.Usagef("nothing to send: pass --file <file> or at least one field flag (--name, --score-order, --score-min, --score-max)")
 	}
 	cfg := games.LeaderboardConfiguration{ScoreOrder: strings.TrimSpace(w.ScoreOrder)}
 	if w.ScoreMinSet {
@@ -320,7 +320,7 @@ func marshalBody(v any) ([]byte, error) {
 	return b, nil
 }
 
-// readJSONSource reads the --from-json source (a file, or stdin when the path is
+// readJSONSource reads the --file source (a file, or stdin when the path is
 // "-") and validates it parses as JSON, so a malformed payload is caught here
 // (exit 2) rather than as an opaque API 400. A read failure is a local IO error
 // (exit 20).
@@ -331,7 +331,7 @@ func readJSONSource(stdin io.Reader, path string) ([]byte, error) {
 	)
 	if path == "-" {
 		if stdin == nil {
-			return nil, exit.Usagef("--from-json -: no stdin available")
+			return nil, exit.Usagef("--file -: no stdin available")
 		}
 		raw, err = io.ReadAll(stdin)
 	} else {
@@ -341,7 +341,7 @@ func readJSONSource(stdin io.Reader, path string) ([]byte, error) {
 		return nil, &localFileError{path: path, cause: err}
 	}
 	if !json.Valid(raw) {
-		return nil, exit.Usagef("--from-json %s: not valid JSON", path)
+		return nil, exit.Usagef("--file %s: not valid JSON", path)
 	}
 	return raw, nil
 }

@@ -1,6 +1,6 @@
 {
   "dryRun": true,
-  "verb": "update leaderboard",
+  "verb": "set leaderboard",
   "target": "leaderboard CgkI-example",
   "body": {
     "scoreOrder": "LARGER_IS_BETTER",

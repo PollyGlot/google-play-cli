@@ -287,7 +287,7 @@ func validateStateOpts(opts StateOpts, verb string) error {
 	if verb == "rollout" {
 		if opts.UserFraction <= 0 || opts.UserFraction > 1.0 {
 			return &InvalidOptsError{
-				Message: "rollout --to fraction must be in (0, 1] (e.g. 0.05, 0.20)",
+				Message: "rollout --staged fraction must be in (0, 1] (e.g. 0.05, 0.20)",
 			}
 		}
 	}

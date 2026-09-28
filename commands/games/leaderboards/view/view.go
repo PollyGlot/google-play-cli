@@ -74,7 +74,7 @@ publishing to players is Console-only). --output json passes the
 LeaderboardConfiguration through verbatim.`,
 		Example: `  gplay games leaderboards view CgkI4ZqN0pMUEAIQAg
 
-  # Save the body to edit it and send it back with update --from-json
+  # Save the body to edit it and send it back with set --file
   gplay games leaderboards view CgkI4ZqN0pMUEAIQAg --output json > leaderboard.json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,

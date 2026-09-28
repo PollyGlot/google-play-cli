@@ -149,11 +149,11 @@ var entries = []Entry{
 
 	// --- androidpublisher: alternative app stores (DMA) -----------------
 	{MethodID: "androidpublisher.appstoreappsreview.createappstorehostedapp", Commands: []string{"appstore create"}},
-	{MethodID: "androidpublisher.appstoreappsreview.updateappstorehostedapp", Commands: []string{"appstore update"}, Note: "--confirm-gated: sends the app to review (ADR-0043)"},
-	{MethodID: "androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus", Commands: []string{"appstore publish-status"}},
-	{MethodID: "androidpublisher.appstoreappsreview.uploadapk", Commands: []string{"appstore upload apk"}},
-	{MethodID: "androidpublisher.appstoreappsreview.uploadappstoreapppolicydeclarationfile", Commands: []string{"appstore upload policy"}},
-	{MethodID: "androidpublisher.appstoreappsreview.uploadimage", Commands: []string{"appstore upload image"}},
+	{MethodID: "androidpublisher.appstoreappsreview.updateappstorehostedapp", Commands: []string{"appstore submit"}, Note: "--confirm-gated: sends the app to review (ADR-0043)"},
+	{MethodID: "androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus", Commands: []string{"appstore publish-status set"}},
+	{MethodID: "androidpublisher.appstoreappsreview.uploadapk", Commands: []string{"appstore apk upload"}},
+	{MethodID: "androidpublisher.appstoreappsreview.uploadappstoreapppolicydeclarationfile", Commands: []string{"appstore policy upload"}},
+	{MethodID: "androidpublisher.appstoreappsreview.uploadimage", Commands: []string{"appstore image upload"}},
 	{MethodID: "androidpublisher.appstorecatalog.recentappviews.get", Commands: []string{"appstore catalog view"}},
 	{MethodID: "androidpublisher.appstorecatalog.recentupdateevents.list", Commands: []string{"appstore catalog events list"}},
 
@@ -238,14 +238,14 @@ var entries = []Entry{
 	{MethodID: "playcustomapp.accounts.customApps.create", Commands: []string{"customapps create"}, Note: "account-scoped, not package-scoped (ADR-0032)"},
 
 	// --- gamesConfiguration ----------------------------------------------
-	{MethodID: "gamesConfiguration.achievementConfigurations.delete", Commands: []string{"games achievements delete"}},
+	{MethodID: "gamesConfiguration.achievementConfigurations.delete", Commands: []string{"games achievements remove"}},
 	{MethodID: "gamesConfiguration.achievementConfigurations.get", Commands: []string{"games achievements view"}},
 	{MethodID: "gamesConfiguration.achievementConfigurations.insert", Commands: []string{"games achievements create"}},
 	{MethodID: "gamesConfiguration.achievementConfigurations.list", Commands: []string{"games achievements list"}},
-	{MethodID: "gamesConfiguration.achievementConfigurations.update", Commands: []string{"games achievements update"}},
-	{MethodID: "gamesConfiguration.leaderboardConfigurations.delete", Commands: []string{"games leaderboards delete"}},
+	{MethodID: "gamesConfiguration.achievementConfigurations.update", Commands: []string{"games achievements set"}},
+	{MethodID: "gamesConfiguration.leaderboardConfigurations.delete", Commands: []string{"games leaderboards remove"}},
 	{MethodID: "gamesConfiguration.leaderboardConfigurations.get", Commands: []string{"games leaderboards view"}},
 	{MethodID: "gamesConfiguration.leaderboardConfigurations.insert", Commands: []string{"games leaderboards create"}},
 	{MethodID: "gamesConfiguration.leaderboardConfigurations.list", Commands: []string{"games leaderboards list"}},
-	{MethodID: "gamesConfiguration.leaderboardConfigurations.update", Commands: []string{"games leaderboards update"}},
+	{MethodID: "gamesConfiguration.leaderboardConfigurations.update", Commands: []string{"games leaderboards set"}},
 }

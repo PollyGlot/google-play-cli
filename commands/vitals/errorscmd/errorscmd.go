@@ -80,13 +80,13 @@ func warnResult(rc *kernel.RunContext, kind string, n int) {
 // --- counts ----------------------------------------------------------------
 
 type countsInput struct {
-	Package, By, Version, Since, Period string
-	Describe                            bool     // --describe: errors.counts.get (freshness) instead of :query
-	WindowFlags                         []string // query-shaping flags the user set (rejected under --describe)
+	Package, By, VersionCode, Since, Period string
+	Describe                                bool     // --describe: errors.counts.get (freshness) instead of :query
+	WindowFlags                             []string // query-shaping flags the user set (rejected under --describe)
 }
 
 // countsWindowFlags are the counts flags that only make sense for a `:query`.
-var countsWindowFlags = []string{"since", "period", "by", "version"}
+var countsWindowFlags = []string{"since", "period", "by", "version-code"}
 
 // runCounts queries the errorCount metric set, reusing the shared metric-set
 // orchestration (the errors.counts set is queryable like any rate set). Note
@@ -104,7 +104,7 @@ func runCounts(rc *kernel.RunContext, in countsInput) (output.Renderable, error)
 	if err != nil {
 		return nil, err
 	}
-	p, err := vitalscmd.PresetParams(idx, vitals.ErrorCountSet(), in.Package, in.Version, in.By, in.Since, in.Period)
+	p, err := vitalscmd.PresetParams(idx, vitals.ErrorCountSet(), in.Package, in.VersionCode, in.By, in.Since, in.Period)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func newCountsCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Query the errorCount metric set (errorReportCount / distinctUsers) as a
 timeline, the count side of vitals errors.
 
---by slices the timeline (` + vitalscmd.ByChoices() + `); --version filters to
+--by slices the timeline (` + vitalscmd.ByChoices() + `); --version-code filters to
 one versionCode. Read-only; --output json mirrors the API response verbatim.
 --describe fetches the metric set's descriptor instead (latest available end
 time per aggregation period); the window flags do not apply and are rejected.`,
@@ -142,7 +142,7 @@ time per aggregation period); the window flags do not apply and are rejected.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension ("+vitalscmd.ByChoices()+"; availability depends on the metric set)")
-	cmd.Flags().StringVar(&in.Version, "version", "", "filter to a single versionCode")
+	cmd.Flags().StringVar(&in.VersionCode, "version-code", "", "filter to a single versionCode")
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")
 	cmd.Flags().BoolVar(&in.Describe, vitalscmd.DescribeFlag, false, vitalscmd.DescribeHelp)

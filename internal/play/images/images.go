@@ -190,7 +190,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 		// with a 400 (#560), so the type is sniffed from the leading bytes, as
 		// appstore.UploadImage does. A type other than png/jpeg is sent as
 		// sniffed, not refused here: the default apply path already decodes
-		// every file as png/jpeg upstream (imagevalidate), and --no-validate
+		// every file as png/jpeg upstream (imagevalidate), and --skip-preflight
 		// hands the verdict to Play, whose 400 then names the type actually
 		// sent (ADR-0013 §4).
 		ContentType: http.DetectContentType(data),

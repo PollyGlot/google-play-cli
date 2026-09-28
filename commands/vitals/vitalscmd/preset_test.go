@@ -110,7 +110,7 @@ func TestRunPreset_anr_hitsAnrSet(t *testing.T) {
 func TestRunPreset_byAndVersion(t *testing.T) {
 	fake := newPresetFake()
 	rc := newRC(t, fake)
-	_, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app", By: "device", Version: "123"})
+	_, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app", By: "device", VersionCode: "123"})
 	if err != nil {
 		t.Fatalf("runPreset: %v", err)
 	}
@@ -119,9 +119,9 @@ func TestRunPreset_byAndVersion(t *testing.T) {
 	if !strings.Contains(body, `"deviceModel"`) {
 		t.Errorf("--by device must map to deviceModel: %s", body)
 	}
-	// --version 123 → a versionCode filter.
+	// --version-code 123 → a versionCode filter.
 	if !strings.Contains(body, `versionCode = 123`) {
-		t.Errorf("--version must produce a versionCode filter: %s", body)
+		t.Errorf("--version-code must produce a versionCode filter: %s", body)
 	}
 }
 
@@ -135,7 +135,7 @@ func TestRunPreset_unknownBy_isUsageError(t *testing.T) {
 
 func TestRunPreset_badVersion_isUsageError(t *testing.T) {
 	rc := newRC(t, newPresetFake())
-	_, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app", Version: "not-a-number"})
+	_, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app", VersionCode: "not-a-number"})
 	if got := exitCode(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2", got)
 	}
