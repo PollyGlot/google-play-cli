@@ -99,17 +99,40 @@ release:
     curl -fsSL https://gplay.sh/install | sh
     ```
 
-brews:
+# A Homebrew Cask, not a Formula: GoReleaser deprecated `brews` (the generated
+# formula only ever wrapped the prebuilt binary, which is what a cask is for),
+# and `goreleaser check` fails on it. The cask carries the macOS and Linux
+# archives, so Linuxbrew keeps working (`binary` casks install on both).
+# Pushed straight to Casks/gplay.rb on the tap's default branch, like the
+# formula was: the tap must never require a PR, or the release breaks.
+# Moving existing formula users over is a one-time tap change (delete
+# Formula/gplay.rb, add tap_migrations.json); see #601.
+homebrew_casks:
   - name: gplay
+    binaries:
+      - gplay
     repository:
       owner: PollyGlot
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
     homepage: "https://gplay.sh"
     description: "Fast, lightweight CLI for the Google Play Developer API."
-    license: "MIT"
-    test: |
-      system "#{bin}/gplay", "version"
-    install: |
-      bin.install "gplay"
+    # Homebrew quarantines what a cask downloads (a formula it does not), and
+    # the darwin binary is not notarized: without this step, Gatekeeper refuses
+    # to run it. The archive's integrity is still checked against the cask's
+    # sha256 before this runs.
+    #
+    # Written as a custom_block, not `hooks.post.install`: GoReleaser 2.18
+    # renders hooks as a `postflight` block, which Homebrew 7 deprecated, so
+    # every install would print "Calling `postflight` is deprecated" and point
+    # users at the tap. `postflight_steps` is the declarative replacement.
+    # GoReleaser 2.19 adds `hooks.post.install_steps` for this
+    # (goreleaser/goreleaser#6873); move there once the pin reaches it. The
+    # `{{ "{{staged_path}}" }}` escape keeps Homebrew's install-time token out
+    # of GoReleaser's own template pass.
+    custom_block: |
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/gplay"]
+        end
+      end

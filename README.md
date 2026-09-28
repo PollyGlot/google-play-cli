@@ -45,7 +45,8 @@ means free to evolve. `--help` tells you which, per command.
 >
 > **`--help` is the source of truth**: the label is on the command itself.
 > See [Stability and the Public contract](https://gplay.sh/docs/concepts/stability/),
-> [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/), and
+> [Migrating to 1.0](https://gplay.sh/docs/guides/migrate-to-1-0/),
+> [Migrating to 2.0](https://gplay.sh/docs/migration/2.0/), and
 > the [parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking) for what's out of scope.
 
 ## Why
@@ -85,6 +86,18 @@ checksum aborts the install before anything is written, and so does a host with
 no sha256 tool. Set `GPLAY_INSTALL_NO_VERIFY=1` to bypass (prints
 a warning, greppable in CI). To add cosign and provenance checks on top, see
 [Verify a release](#verify-a-release).
+
+**Homebrew formula users: switch to the cask once.** The tap now ships gplay
+as a cask (macOS and Linux) instead of a formula, and `brew upgrade` does not
+move a formula install over by itself. If `brew list --formula gplay` finds it:
+
+```bash
+brew uninstall --formula gplay
+brew install --cask PollyGlot/tap/gplay
+```
+
+Uninstall the formula first: installed side by side, the cask skips linking
+`gplay` and the old formula binary stays first on your `PATH`.
 
 ## Agent skills
 

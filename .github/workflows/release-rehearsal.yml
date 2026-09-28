@@ -57,14 +57,12 @@ jobs:
           cache: true
 
       # Static validation of .goreleaser.yaml: unknown keys, bad templates,
-      # deprecated fields. Advisory only (`continue-on-error`), because `check`
-      # exits non-zero on *deprecations* too and `brews:` is currently
-      # deprecated in favour of `homebrew_casks:` — migrating that changes how
-      # users install gplay, so it is its own decision, not a CI side effect.
-      # The blocking gate is the snapshot build below; read this step's log when
-      # it is orange.
+      # deprecated fields. Blocking: `check` also exits non-zero on
+      # deprecations, and that is the point. It was advisory while `brews:`
+      # stood deprecated; since the move to `homebrew_casks:` (#601) the config
+      # is clean, so the next deprecation fails the PR that meets it instead of
+      # surfacing when GoReleaser removes the field mid-release.
       - name: GoReleaser check
-        continue-on-error: true
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
