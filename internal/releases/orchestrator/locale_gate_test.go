@@ -10,22 +10,15 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// countingRT fails the test on ANY request. It is the whole point of the
-// pre-Edit locale gate (PRD #446 / #452): a malformed `<locale>.txt` name is
-// knowable from the filesystem alone, so discovering it must not cost an
-// edits.insert, an artifact upload, or a burnt Edit.
-type countingRT struct {
-	t     *testing.T
-	calls int
-}
-
-func (r *countingRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.calls++
-	r.t.Errorf("unexpected HTTP request %s %s: the locale gate must reject before any Edit is opened", req.Method, req.URL.Path)
-	return nil, errors.New("no network in tests")
-}
+// requests counts what reached f, token exchanges included. A Fake with no
+// responders answers nothing: that is the whole point of the pre-Edit locale
+// gate (PRD #446 / #452): a malformed `<locale>.txt` name is knowable from
+// the filesystem alone, so discovering it must not cost an edits.insert, an
+// artifact upload, or a burnt Edit.
+func requests(f *testkit.Fake) int { return len(f.Calls()) + f.TokenExchanges() }
 
 // notesDir writes a release-notes directory with the given `<name>.txt` files.
 func notesDir(t *testing.T, names ...string) string {
@@ -44,7 +37,7 @@ func notesDir(t *testing.T, names ...string) string {
 // every offending file is named at once, and the RoundTripper never sees a
 // request.
 func TestUpload_invalidNotesLocale_failsBeforeAnyHTTP(t *testing.T) {
-	rt := &countingRT{t: t}
+	rt := testkit.NewFake()
 	dir := notesDir(t, "en_US.txt", "pt_BR.txt", "fr-FR.txt")
 
 	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: rt}, orchestrator.Opts{
@@ -65,8 +58,8 @@ func TestUpload_invalidNotesLocale_failsBeforeAnyHTTP(t *testing.T) {
 			t.Errorf("error = %q, want it to name %q (all offenders in one pass)", err, want)
 		}
 	}
-	if rt.calls != 0 {
-		t.Errorf("%d HTTP request(s) issued, want 0", rt.calls)
+	if n := requests(rt); n != 0 {
+		t.Errorf("%d HTTP request(s) issued, want 0: %v (the locale gate must reject before any Edit is opened)", n, apiCalls(rt))
 	}
 }
 
@@ -74,7 +67,7 @@ func TestUpload_invalidNotesLocale_failsBeforeAnyHTTP(t *testing.T) {
 // path, so the gate is not an upload-only accident: promote overrides notes
 // from the same kind of directory.
 func TestPromote_invalidNotesLocale_failsBeforeAnyHTTP(t *testing.T) {
-	rt := &countingRT{t: t}
+	rt := testkit.NewFake()
 	dir := notesDir(t, "en_US.txt")
 
 	_, err := orchestrator.Promote(context.Background(), &http.Client{Transport: rt}, orchestrator.PromoteOpts{
@@ -90,8 +83,8 @@ func TestPromote_invalidNotesLocale_failsBeforeAnyHTTP(t *testing.T) {
 	if !errors.As(err, &coder) || coder.ExitCode() != 2 {
 		t.Errorf("err = %v (%T), want ExitCode() 2 (CLI misuse)", err, err)
 	}
-	if rt.calls != 0 {
-		t.Errorf("%d HTTP request(s) issued, want 0", rt.calls)
+	if n := requests(rt); n != 0 {
+		t.Errorf("%d HTTP request(s) issued, want 0: %v (the locale gate must reject before any Edit is opened)", n, apiCalls(rt))
 	}
 }
 
@@ -102,7 +95,7 @@ func TestPromote_invalidNotesLocale_failsBeforeAnyHTTP(t *testing.T) {
 // after edits.insert: an Edit burnt for a mistake the filesystem could have
 // reported for free.
 func TestUpload_missingNotesDir_failsBeforeAnyHTTP(t *testing.T) {
-	rt := &countingRT{t: t}
+	rt := testkit.NewFake()
 	missing := filepath.Join(t.TempDir(), "relase-notes") // the typo a human makes
 
 	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: rt}, orchestrator.Opts{
@@ -121,8 +114,8 @@ func TestUpload_missingNotesDir_failsBeforeAnyHTTP(t *testing.T) {
 	if !strings.Contains(err.Error(), missing) {
 		t.Errorf("error = %q, want it to name the directory %q", err, missing)
 	}
-	if rt.calls != 0 {
-		t.Errorf("%d HTTP request(s) issued, want 0", rt.calls)
+	if n := requests(rt); n != 0 {
+		t.Errorf("%d HTTP request(s) issued, want 0: %v (the locale gate must reject before any Edit is opened)", n, apiCalls(rt))
 	}
 }
 
@@ -132,9 +125,9 @@ func TestUpload_missingNotesDir_failsBeforeAnyHTTP(t *testing.T) {
 // everything".
 func TestUpload_validNotesLocales_passTheGate(t *testing.T) {
 	dir := notesDir(t, "en-US.txt", "zh-Hant-TW.txt", "es-419.txt", "default.txt")
-	rt := &playRT{t: t, editID: "edit-loc", versionCode: 7}
+	_, transport := newPlay(playAPI{editID: "edit-loc", versionCode: 7})
 
-	if _, err := orchestrator.Upload(context.Background(), &http.Client{Transport: rt}, orchestrator.Opts{
+	if _, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
 		Package:         "com.example.app",
 		Track:           "internal",
 		AABPath:         writeFakeAAB(t),

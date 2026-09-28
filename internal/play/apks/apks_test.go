@@ -12,23 +12,25 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/apks"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// rt is a RoundTripper that speaks the resumable-upload protocol: the POST
-// initiate answers with a session URI in Location, then the chunk PUT(s)
-// carry the bytes and return the final resource body. It records the
-// method sequence plus the initiate path/query and the chunk headers.
+// resumable speaks the resumable-upload protocol through a
+// testkit.RoundTripFunc (a Fake cannot set the Location and Range headers the
+// protocol needs): the POST initiate answers with a session URI in Location,
+// then the chunk PUT(s) carry the bytes and return the final resource body.
+// It records the method sequence plus the initiate path/query and the chunk
+// headers.
 //
 // initiateStatus (when >= 400) short-circuits at initiate: the error the
 // helper surfaces without ever opening the transfer. resumeAfter, when > 0,
 // makes the first N chunk PUTs answer 308 (Resume Incomplete) so the
 // resume path is exercised before the final chunk.
-type rt struct {
+type resumable struct {
 	initiateStatus int // default 200
 	putStatus      int // final chunk status, default 200
 	body           string
@@ -43,7 +45,15 @@ type rt struct {
 	putHits    int
 }
 
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
+// client returns an http.Client whose every request lands on r.
+func (r *resumable) client() *http.Client {
+	return &http.Client{Transport: testkit.RoundTripFunc(r.serve)}
+}
+
+func (r *resumable) serve(req *http.Request) (*http.Response, error) {
+	if resp, ok := testkit.TokenResponse(req); ok {
+		return resp, nil
+	}
 	r.methods = append(r.methods, req.Method)
 
 	if req.Method == http.MethodPost {
@@ -55,18 +65,11 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 			status = 200
 		}
 		if status >= 400 {
-			return &http.Response{
-				StatusCode: status,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(r.body)),
-			}, nil
+			return testkit.Response(status, r.body), nil
 		}
-		loc := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path + "?upload_id=session-1"
-		return &http.Response{
-			StatusCode: status,
-			Header:     http.Header{"Location": []string{loc}},
-			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
+		resp := testkit.Response(status, "")
+		resp.Header.Set("Location", req.URL.Scheme+"://"+req.URL.Host+req.URL.Path+"?upload_id=session-1")
+		return resp, nil
 	}
 
 	// Chunk PUT.
@@ -76,11 +79,9 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.putBody = append(r.putBody, b...)
 	if r.putHits <= r.resumeAfter {
 		// Resume Incomplete: acknowledge the bytes received so far.
-		return &http.Response{
-			StatusCode: 308,
-			Header:     http.Header{"Range": []string{"bytes=0-" + strconv.Itoa(len(r.putBody)-1)}},
-			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
+		resp := testkit.Response(308, "")
+		resp.Header.Set("Range", "bytes=0-"+strconv.Itoa(len(r.putBody)-1))
+		return resp, nil
 	}
 	status := r.putStatus
 	if status == 0 {
@@ -90,11 +91,7 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 	if body == "" {
 		body = `{"versionCode":7}`
 	}
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}, nil
+	return testkit.Response(status, body), nil
 }
 
 func writeFakeAPK(t *testing.T) string {
@@ -112,8 +109,8 @@ func writeFakeAPK(t *testing.T) string {
 // the parsed versionCode comes back.
 func TestUpload_happyPath_resumableProtocol_returnsVersionCode(t *testing.T) {
 	apk := writeFakeAPK(t)
-	transport := &rt{body: `{"versionCode":142}`}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{body: `{"versionCode":142}`}
+	hc := transport.client()
 
 	vc, err := apks.Upload(context.Background(), hc, "com.example.app", "edit-1", apk)
 	if err != nil {
@@ -148,8 +145,8 @@ func TestUpload_happyPath_resumableProtocol_returnsVersionCode(t *testing.T) {
 // intermediate 308 and still returns the final versionCode.
 func TestUpload_resumeAfter308_completes(t *testing.T) {
 	apk := writeFakeAPK(t)
-	transport := &rt{body: `{"versionCode":9}`, resumeAfter: 1}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{body: `{"versionCode":9}`, resumeAfter: 1}
+	hc := transport.client()
 
 	vc, err := apks.Upload(context.Background(), hc, "com.example.app", "edit-1", apk)
 	if err != nil {
@@ -167,8 +164,8 @@ func TestUpload_resumeAfter308_completes(t *testing.T) {
 // AAB-required app) surfaces as client-side validation (exit 20).
 func TestUpload_400_mapsToExit20(t *testing.T) {
 	apk := writeFakeAPK(t)
-	transport := &rt{initiateStatus: 400, body: `{"error":{"code":400,"message":"APK not allowed; app requires an App Bundle."}}`}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{initiateStatus: 400, body: `{"error":{"code":400,"message":"APK not allowed; app requires an App Bundle."}}`}
+	hc := transport.client()
 
 	_, err := apks.Upload(context.Background(), hc, "com.example.app", "edit-1", apk)
 	if err == nil {
@@ -183,8 +180,8 @@ func TestUpload_400_mapsToExit20(t *testing.T) {
 // as malformed-artifact client-side validation (exit 20).
 func TestUpload_404_mapsToExit20(t *testing.T) {
 	apk := writeFakeAPK(t)
-	transport := &rt{initiateStatus: 404, body: `{"error":{"code":404,"message":"Not found."}}`}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{initiateStatus: 404, body: `{"error":{"code":404,"message":"Not found."}}`}
+	hc := transport.client()
 
 	_, err := apks.Upload(context.Background(), hc, "com.example.app", "edit-1", apk)
 	if err == nil {
@@ -200,8 +197,8 @@ func TestUpload_404_mapsToExit20(t *testing.T) {
 // error (exit 20) BEFORE any HTTP. Mirrors bundles.Upload's guard.
 func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {
 	dir := t.TempDir() // a directory, not a regular file
-	transport := &rt{}
-	hc := &http.Client{Transport: transport}
+	transport := &resumable{}
+	hc := transport.client()
 
 	_, err := apks.Upload(context.Background(), hc, "com.example.app", "edit-1", dir)
 	if err == nil {

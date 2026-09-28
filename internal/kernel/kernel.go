@@ -896,7 +896,7 @@ func (rc *RunContext) authedClientFor(timeout time.Duration, mediaExempt bool) (
 	// http.DefaultClient, before threading it into the context the token
 	// source captures. timeout==0 leaves the wrapper deadline-free.
 	base := baseHTTPClient(rc.Ctx)
-	timedBase := &http.Client{Transport: base.Transport, Timeout: timeout}
+	timedBase := transport.NewClient(base.Transport, timeout)
 	ctx := context.WithValue(rc.Ctx, oauth2.HTTPClient, timedBase)
 	// rc.Scope is "" for the default androidpublisher surface; a vitals command
 	// (WithScope) passes the reporting scope. token.Source treats no scope as the

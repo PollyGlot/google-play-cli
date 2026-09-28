@@ -1,10 +1,8 @@
 package exit_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,25 +10,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-// testRoundTripper serves one canned response for every request, so a
-// classification test can exercise the real internal/play call path with zero
-// network (AGENTS.md: a test that reaches the network is wrong).
-type testRoundTripper struct {
-	status int
-	body   string
-}
-
-func (rt testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	return &http.Response{
-		StatusCode: rt.status,
-		Status:     http.StatusText(rt.status),
-		Body:       io.NopCloser(bytes.NewBufferString(rt.body)),
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Request:    req,
-	}, nil
-}
 
 // googleError builds the canonical Google API error envelope for a status and
 // a reason, the exact shape internal/play parses into api.Error.Reasons.
@@ -332,10 +313,11 @@ func upper(s string) string {
 // reach the api.Error through the EditConflictError that wraps it, so the code
 // survives the wrapping a real command does.
 func TestClassify_throughRealCallPath(t *testing.T) {
-	hc := &http.Client{Transport: testRoundTripper{
-		status: http.StatusConflict,
-		body:   googleError(http.StatusConflict, "Edit ID is required", "editAlreadyExists"),
-	}}
+	// Every request gets the canned 409, so the real internal/play call path
+	// runs with zero network (AGENTS.md: a test that reaches the network is
+	// wrong).
+	hc := &http.Client{Transport: testkit.NewFake(testkit.Any(http.StatusConflict,
+		googleError(http.StatusConflict, "Edit ID is required", "editAlreadyExists")))}
 	_, err := edits.OpenExplicit(context.Background(), hc, "com.example.app")
 	if err == nil {
 		t.Fatal("expected the mocked 409 to fail the insert")

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -56,25 +55,21 @@ type historyRT struct {
 	errBody  string
 }
 
-func (r *historyRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return resp(200, []byte(`{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`)), nil
+func (r *historyRT) serve(req *http.Request) (*http.Response, error) {
+	if resp, ok := testkit.TokenResponse(req); ok {
+		return resp, nil
 	}
 	r.mu.Lock()
 	r.calls = append(r.calls, req.Method+" "+req.URL.Host+req.URL.EscapedPath()+"?"+req.URL.RawQuery)
 	r.mu.Unlock()
 
 	if r.code != 0 {
-		return resp(r.code, []byte(r.errBody)), nil
+		return testkit.Response(r.code, r.errBody), nil
 	}
 	if strings.Contains(req.URL.Path, "/o/") { // media fetch
-		return resp(200, r.getBody), nil
+		return testkit.Response(http.StatusOK, string(r.getBody)), nil
 	}
-	return resp(200, []byte(r.listBody)), nil // list
-}
-
-func resp(code int, body []byte) *http.Response {
-	return &http.Response{StatusCode: code, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header)}
+	return testkit.Response(http.StatusOK, r.listBody), nil // list
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -136,7 +131,7 @@ func exitCodeOf(t *testing.T, err error) int {
 // bucket, and the token exchange carries the devstorage.read_only scope.
 func TestRun_monthFetch_wirePathAndScope(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
-	rc, obs, _, _ := newRC(t, rt)
+	rc, obs, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06"})
 	if err != nil {
@@ -188,7 +183,7 @@ func TestRun_noMonth_selectsLatest(t *testing.T) {
 		]}`,
 		getBody: utf16LE(reportCSV),
 	}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	if _, err := Run(rc, Input{Package: "com.example.app"}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -213,7 +208,7 @@ func TestRun_noMonth_selectsLatest(t *testing.T) {
 
 func TestRun_noReports_exit30(t *testing.T) {
 	rt := &historyRT{listBody: `{"items":[]}`}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app"})
 	if code := exitCodeOf(t, err); code != 30 {
@@ -225,7 +220,7 @@ func TestRun_noReports_exit30(t *testing.T) {
 // developer-id is required).
 func TestRun_bucketOverride(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 	rc.Resolved = &config.Resolved{} // no developer-id at all
 
 	if _, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06", Bucket: "custom-bucket-name"}); err != nil {
@@ -244,7 +239,7 @@ func TestRun_bucketOverride(t *testing.T) {
 
 func TestRun_forbidden_exit11_namesConsoleAndPermission(t *testing.T) {
 	rt := &historyRT{code: 403, errBody: `{"error":{"code":403,"message":"forbidden"}}`}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06"})
 	if code := exitCodeOf(t, err); code != 11 {
@@ -261,7 +256,7 @@ func TestRun_forbidden_exit11_namesConsoleAndPermission(t *testing.T) {
 
 func TestRun_notFound_exit30_namesConsoleAndPermission(t *testing.T) {
 	rt := &historyRT{code: 404, errBody: `{"error":{"code":404,"message":"no such bucket"}}`}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06"})
 	if code := exitCodeOf(t, err); code != 30 {
@@ -274,7 +269,7 @@ func TestRun_notFound_exit30_namesConsoleAndPermission(t *testing.T) {
 
 func TestRun_badMonth_exit2_noNetwork(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-13"})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -287,7 +282,7 @@ func TestRun_badMonth_exit2_noNetwork(t *testing.T) {
 
 func TestRun_noDeveloperId_exit10(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 	rc.Resolved = &config.Resolved{} // no developer-id, no --bucket
 
 	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06"})
@@ -298,7 +293,7 @@ func TestRun_noDeveloperId_exit10(t *testing.T) {
 
 func TestPayload_JSON_emitsParsedRows(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06"})
 	if err != nil {
@@ -342,9 +337,9 @@ type monthRT struct {
 
 var monthInPath = regexp.MustCompile(`_(\d{6})\.csv`)
 
-func (r *monthRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return resp(200, []byte(`{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`)), nil
+func (r *monthRT) serve(req *http.Request) (*http.Response, error) {
+	if resp, ok := testkit.TokenResponse(req); ok {
+		return resp, nil
 	}
 	path := req.URL.EscapedPath()
 	r.mu.Lock()
@@ -352,12 +347,12 @@ func (r *monthRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.mu.Unlock()
 	m := monthInPath.FindStringSubmatch(path)
 	if m == nil {
-		return resp(200, []byte(`{"items":[]}`)), nil
+		return testkit.Response(http.StatusOK, `{"items":[]}`), nil
 	}
 	if body, ok := r.bodies[m[1]]; ok {
-		return resp(200, body), nil
+		return testkit.Response(http.StatusOK, string(body)), nil
 	}
-	return resp(404, []byte(`{"error":{"code":404,"message":"no such object"}}`)), nil
+	return testkit.Response(http.StatusNotFound, `{"error":{"code":404,"message":"no such object"}}`), nil
 }
 
 // oneReviewCSV builds a minimal single-row report carrying the columns Merge
@@ -380,7 +375,7 @@ func TestRun_range_fetchesAllMonths_mergedSorted(t *testing.T) {
 		"202603": utf16LE(oneReviewCSV("https://play.google.com/r/1", "1000", "2000", "jan-edited") +
 			"com.example.app,2000,2000,\"mar\",https://play.google.com/r/3\n"),
 	}}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
 	if err != nil {
@@ -445,7 +440,7 @@ func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 		// 202602 absent → 404.
 		"202603": utf16LE(oneReviewCSV("https://play.google.com/r/3", "3000", "3000", "mar")),
 	}}
-	rc, _, _, stderr := newRC(t, rt)
+	rc, _, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
 	if err != nil {
@@ -463,7 +458,7 @@ func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 // package) is the "no reports" condition: exit 30, not a silent empty success.
 func TestRun_range_allMissing_exit30(t *testing.T) {
 	rt := &monthRT{bodies: map[string][]byte{}} // nothing published → every month 404
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-03"})
 	if code := exitCodeOf(t, err); code != 30 {
@@ -481,7 +476,7 @@ func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
 		"com.example.app,2000,\"first\",https://play.google.com/r/a\n" +
 		"com.example.app,1000,\"second\",https://play.google.com/r/b\n"
 	rt := &monthRT{bodies: map[string][]byte{"202601": utf16LE(csv)}}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", From: "2026-01", To: "2026-01"})
 	if err != nil {
@@ -501,7 +496,7 @@ func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
 // error (exit 2) caught before any network I/O.
 func TestRun_monthAndRange_exit2_noNetwork(t *testing.T) {
 	rt := &monthRT{}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06", From: "2026-01", To: "2026-03"})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -515,7 +510,7 @@ func TestRun_monthAndRange_exit2_noNetwork(t *testing.T) {
 // TestRun_halfRange_exit2: --from without --to (or vice versa) is a usage error.
 func TestRun_halfRange_exit2(t *testing.T) {
 	rt := &monthRT{}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	if _, err := Run(rc, Input{Package: "com.example.app", From: "2026-01"}); exitCodeOf(t, err) != 2 {
 		t.Errorf("--from without --to should be exit 2")
@@ -529,7 +524,7 @@ func TestRun_halfRange_exit2(t *testing.T) {
 // usage before any I/O.
 func TestRun_badRange_exit2_noNetwork(t *testing.T) {
 	rt := &monthRT{}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", From: "2026-03", To: "2026-01"})
 	if code := exitCodeOf(t, err); code != 2 {
@@ -542,7 +537,7 @@ func TestRun_badRange_exit2_noNetwork(t *testing.T) {
 
 func TestPayload_Table_defaultColumns(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
-	rc, _, _, _ := newRC(t, rt)
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	r, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06"})
 	if err != nil {

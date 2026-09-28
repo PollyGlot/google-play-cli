@@ -12,7 +12,7 @@ import (
 	"net/http"
 
 	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2/jwt"
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 )
@@ -36,6 +36,10 @@ const ReportingScope = "https://www.googleapis.com/auth/playdeveloperreporting"
 // and no publishing or reporting command requests it. Documented at:
 // https://cloud.google.com/storage/docs/authentication
 const StorageReadOnlyScope = "https://www.googleapis.com/auth/devstorage.read_only"
+
+// serviceAccountType is the `type` of a Google service-account key file, the
+// only credential this package can sign a JWT with.
+const serviceAccountType = "service_account"
 
 // AuthError wraps an HTTP error from the OAuth2 token endpoint so callers
 // (and the command layer) can map it to exit code 10.
@@ -62,13 +66,26 @@ func (*AuthError) ExitCode() int { return 10 }
 // least-privilege access to the read-only reporting service (#49). Errors from
 // the exchange are wrapped in *AuthError when they are an auth refusal (see
 // isAuthRefusal).
+//
+// The jwt.Config is built from the already-parsed key, field for field what
+// golang.org/x/oauth2/google's JWTConfigFromJSON produced: that call was the
+// package's only use here, and importing it linked the GCE metadata client
+// (and log/slog) into the binary for a server a key file never needs (#646).
 func Source(ctx context.Context, sa *serviceaccount.ServiceAccount, scopes ...string) (oauth2.TokenSource, error) {
 	if len(scopes) == 0 {
 		scopes = []string{AndroidPublisherScope}
 	}
-	cfg, err := google.JWTConfigFromJSON(sa.Raw, scopes...)
-	if err != nil {
-		return nil, err
+	// JWTConfigFromJSON refused any other key type (an authorized_user or
+	// external_account file carries no private key to sign with); keep that.
+	if sa.Type != serviceAccountType {
+		return nil, fmt.Errorf("token: credentials JSON 'type' field is %q (expected %q)", sa.Type, serviceAccountType)
+	}
+	cfg := &jwt.Config{
+		Email:        sa.ClientEmail,
+		PrivateKey:   []byte(sa.PrivateKey),
+		PrivateKeyID: sa.PrivateKeyID,
+		Scopes:       append([]string(nil), scopes...),
+		TokenURL:     sa.TokenURI,
 	}
 	return &wrappedSource{inner: cfg.TokenSource(ctx)}, nil
 }

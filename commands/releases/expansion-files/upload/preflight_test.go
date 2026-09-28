@@ -26,16 +26,16 @@ func TestRun_preflight_refusesAnAndroidPackageWhereAnOBBBelongs(t *testing.T) {
 		{"apk", func(dir string) string { return artifacttest.APK(t, dir, "assets.obb", "com.example.app") }, "an APK"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &efRT{t: t}
-			rc := newRC(t, rt)
+			rt, transport := newEFTransport()
+			rc := newRC(t, transport)
 			_, err := uploadcmd.Run(rc, uploadcmd.Input{
 				Package: "com.example.app", VersionCode: 142, Type: "main", OBBPath: tc.path(t.TempDir()),
 			})
 			if got := exitOf(t, err); got != 20 {
 				t.Fatalf("exit = %d, want 20; err=%v", got, err)
 			}
-			if len(rt.calls) != 0 {
-				t.Errorf("a refused artifact must make no network call; calls=%v", rt.calls)
+			if touched(rt) {
+				t.Errorf("a refused artifact must make no network call; calls=%v", apiCalls(rt))
 			}
 			if !strings.Contains(err.Error(), "found "+tc.found) {
 				t.Errorf("refusal %q does not name what it found (%s)", err, tc.found)
@@ -48,8 +48,8 @@ func TestRun_preflight_refusesAnAndroidPackageWhereAnOBBBelongs(t *testing.T) {
 // hatch bypasses the container check here too: an unusual but legitimate
 // artifact must never be blocked by gplay's own classifier.
 func TestRun_skipPreflight_uploadsAnAABAsAnExpansionFile(t *testing.T) {
-	rt := &efRT{t: t}
-	rc := newRC(t, rt)
+	rt, transport := newEFTransport()
+	rc := newRC(t, transport)
 	if _, err := uploadcmd.Run(rc, uploadcmd.Input{
 		Package:       "com.example.app",
 		VersionCode:   142,
@@ -59,7 +59,7 @@ func TestRun_skipPreflight_uploadsAnAABAsAnExpansionFile(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Run with --skip-preflight: %v", err)
 	}
-	if len(rt.calls) == 0 {
+	if !touched(rt) {
 		t.Error("--skip-preflight must let the upload proceed")
 	}
 }
@@ -71,8 +71,8 @@ func TestRun_skipPreflight_uploadsAnAABAsAnExpansionFile(t *testing.T) {
 // Unclassified is now its own state: the container check is skipped, and the
 // user is told so rather than left believing gplay vouched for the file.
 func TestRun_preflight_overTheMemberCapDegradesInsteadOfPassingAsAnOBB(t *testing.T) {
-	rt := &efRT{t: t}
-	rc := newRC(t, rt)
+	_, transport := newEFTransport()
+	rc := newRC(t, transport)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
@@ -97,8 +97,8 @@ func TestRun_preflight_overTheMemberCapDegradesInsteadOfPassingAsAnOBB(t *testin
 // stat'd the file on --dry-run before the preflight existed, and a missing
 // path must not become exit 0 with a payload preview.
 func TestRun_dryRunSkipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
-	rt := &efRT{t: t}
-	rc := newRC(t, rt)
+	rt, transport := newEFTransport()
+	rc := newRC(t, transport)
 
 	_, err := uploadcmd.Run(rc, uploadcmd.Input{
 		Package:       "com.example.app",
@@ -111,7 +111,7 @@ func TestRun_dryRunSkipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
 	if got := exitOf(t, err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("a missing artifact must make no network call; calls=%v", rt.calls)
+	if touched(rt) {
+		t.Errorf("a missing artifact must make no network call; calls=%v", apiCalls(rt))
 	}
 }

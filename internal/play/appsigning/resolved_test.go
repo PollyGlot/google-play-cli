@@ -9,28 +9,25 @@ package appsigning_test
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/appsigning"
 )
 
-type pinRT struct {
-	url, verb string
-}
+// pinned answers {} to every call and records what was sent.
+func pinned() *testkit.Fake { return testkit.NewFake(testkit.Any(http.StatusOK, `{}`)) }
 
-func (r *pinRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if r.url == "" {
-		r.url, r.verb = req.URL.String(), req.Method
+// first is the first call f recorded, or the zero Call when none was sent.
+func first(f *testkit.Fake) testkit.Call {
+	if calls := f.Calls(); len(calls) > 0 {
+		return calls[0]
 	}
-	return &http.Response{
-		StatusCode: 200,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{}`)),
-	}, nil
+	return testkit.Call{}
 }
 
 const base = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/appSigning:"
@@ -62,15 +59,15 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &pinRT{}
+			rt := pinned()
 			if err := tc.call(&http.Client{Transport: rt}); err != nil {
 				t.Fatalf("call: %v", err)
 			}
-			if rt.url != tc.want {
-				t.Errorf("URL = %q, want %q", rt.url, tc.want)
+			if first(rt).URL != tc.want {
+				t.Errorf("URL = %q, want %q", first(rt).URL, tc.want)
 			}
-			if rt.verb != http.MethodPost {
-				t.Errorf("verb = %q, want POST", rt.verb)
+			if first(rt).Method != http.MethodPost {
+				t.Errorf("verb = %q, want POST", first(rt).Method)
 			}
 		})
 	}
@@ -80,13 +77,13 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 // locally rather than sent as a truncated URL: enrolment changes the live
 // signing key of an app, so a malformed request must not reach the wire.
 func TestEmptyNameFailsBeforeTheWire(t *testing.T) {
-	rt := &pinRT{}
+	rt := pinned()
 	_, _, err := appsigning.Enroll(context.Background(), &http.Client{Transport: rt}, "", appsigning.EnrollOpts{})
 	if err == nil {
 		t.Fatal("Enroll with an empty name succeeded, want an error")
 	}
-	if rt.url != "" {
-		t.Errorf("a request was sent (%q); the missing parameter must be caught before the wire", rt.url)
+	if first(rt).URL != "" {
+		t.Errorf("a request was sent (%q); the missing parameter must be caught before the wire", first(rt).URL)
 	}
 	var apiErr *api.Error
 	if !errors.As(err, &apiErr) {

@@ -14,8 +14,8 @@ import (
 )
 
 func TestRun_preflight_refusesAContainerThatIsNotTheResolvedFormat(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 
 	// An AAB behind an .apk name: extension auto-detect says "apk".
 	p := artifacttest.AAB(t, t.TempDir(), "app.apk", "com.example.app")
@@ -23,8 +23,8 @@ func TestRun_preflight_refusesAContainerThatIsNotTheResolvedFormat(t *testing.T)
 	if got := exitOf(t, err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("a refused artifact must make no network call; calls=%v", rt.calls)
+	if networkCalls(fake) != 0 {
+		t.Errorf("a refused artifact must make no network call; calls=%v", fake.Calls())
 	}
 	for _, want := range []string{"expected an APK", "found an Android App Bundle (AAB)"} {
 		if !strings.Contains(err.Error(), want) {
@@ -34,16 +34,16 @@ func TestRun_preflight_refusesAContainerThatIsNotTheResolvedFormat(t *testing.T)
 }
 
 func TestRun_preflight_refusesAnotherAppsBuild(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 
 	p := artifacttest.APK(t, t.TempDir(), "app.apk", "com.other.app")
 	_, err := uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", ArtifactPath: p})
 	if got := exitOf(t, err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("a refused artifact must make no network call; calls=%v", rt.calls)
+	if networkCalls(fake) != 0 {
+		t.Errorf("a refused artifact must make no network call; calls=%v", fake.Calls())
 	}
 	if !strings.Contains(err.Error(), "package mismatch") {
 		t.Errorf("refusal %q does not name the mismatch", err)
@@ -51,8 +51,8 @@ func TestRun_preflight_refusesAnotherAppsBuild(t *testing.T) {
 }
 
 func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
-	rt := &sharingRT{t: t}
-	rc, _ := newRC(t, rt)
+	fake := newFake()
+	rc, _ := newRC(t, fake)
 
 	p := artifacttest.WriteFile(t, t.TempDir(), "app.apk", []byte("not an artifact at all"))
 	if _, err := uploadcmd.Run(rc, uploadcmd.Input{
@@ -60,7 +60,7 @@ func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Run with --skip-preflight: %v", err)
 	}
-	if !strings.Contains(rt.uploadURL, "/artifacts/apk") {
-		t.Errorf("--skip-preflight must let the upload proceed; url=%q", rt.uploadURL)
+	if !strings.Contains(uploadURL(fake), "/artifacts/apk") {
+		t.Errorf("--skip-preflight must let the upload proceed; url=%q", uploadURL(fake))
 	}
 }

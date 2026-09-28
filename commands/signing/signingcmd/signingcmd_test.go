@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,25 +17,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// errRT answers every request with the configured status and body: enough to
-// drive the *api.Error path offline.
-type errRT struct {
-	status int
-	body   string
-}
-
-func (e errRT) RoundTrip(*http.Request) (*http.Response, error) {
-	return &http.Response{
-		StatusCode: e.status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(e.body)),
-	}, nil
-}
-
 // TestEnroll_nonSuccessBecomesApiError asserts a refusal surfaces as *api.Error
 // tagged with the REST method id, so the exit-code taxonomy maps transparently.
 func TestEnroll_nonSuccessBecomesApiError(t *testing.T) {
-	hc := &http.Client{Transport: errRT{status: http.StatusForbidden, body: `{"error":{"code":403,"message":"caller lacks permission"}}`}}
+	// Every request refused: enough to drive the *api.Error path offline.
+	hc := &http.Client{Transport: testkit.NewFake(testkit.Any(http.StatusForbidden, `{"error":{"code":403,"message":"caller lacks permission"}}`))}
 	_, _, err := appsigning.Enroll(context.Background(), hc, "com.example.app", appsigning.EnrollOpts{KmsKeyResource: "k"})
 	var apiErr *api.Error
 	if !errors.As(err, &apiErr) {

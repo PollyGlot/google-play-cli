@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -556,32 +555,12 @@ func GetExplicit(ctx context.Context, hc *http.Client, pkg, editID string) (AppE
 }
 
 // callEdit issues a body-less request on an {packageName, editId}-addressed
-// method and returns the 2xx body, mapping a non-2xx to *api.Error exactly
-// like the insert/commit/delete helpers above.
+// method and returns the 2xx body.
 func callEdit(ctx context.Context, hc *http.Client, op string, m apiregistry.Method, pkg, editID string) (json.RawMessage, error) {
-	u, err := m.URL(map[string]string{"packageName": pkg, "editId": editID})
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, m.Verb, u, http.NoBody)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response: " + err.Error(), Cause: err}
-	}
-	return body, nil
+	return api.Do(ctx, hc, api.Call{
+		Method: m, Op: op, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
+	})
 }
 
 // isEditAlreadyExists reports whether err carries Google Play's
@@ -609,40 +588,24 @@ func hasReason(e *api.Error, want string) bool {
 }
 
 func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error) {
-	u, err := methodInsert.URL(map[string]string{"packageName": pkg})
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodInsert, Op: "edits.insert", Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		// An empty body that still carries the JSON content type: the
+		// request edits.insert has always sent (an AppEdit is optional).
+		Body: []byte{},
+	})
 	if err != nil {
-		return "", &api.Error{Operation: "edits.insert", Package: pkg, Message: err.Error(), Cause: err}
+		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, methodInsert.Verb, u, http.NoBody)
-	if err != nil {
-		return "", &api.Error{Operation: "edits.insert", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return "", &api.Error{Operation: "edits.insert", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return "", &api.Error{
-			Operation:  "edits.insert",
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
+	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return "", &api.Error{
 			Operation:  "edits.insert",
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: http.StatusOK,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
 		}
@@ -651,7 +614,7 @@ func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error
 		return "", &api.Error{
 			Operation:  "edits.insert",
 			Package:    pkg,
-			StatusCode: resp.StatusCode,
+			StatusCode: http.StatusOK,
 			Message:    "empty Edit ID in response body",
 		}
 	}
@@ -662,31 +625,11 @@ func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error
 // telemetry but the caller (WithEdit) treats them as non-fatal so the
 // real upstream error is not masked.
 func deleteEdit(ctx context.Context, hc *http.Client, pkg, editID string) error {
-	u, err := methodDelete.URL(map[string]string{"packageName": pkg, "editId": editID})
-	if err != nil {
-		return &api.Error{Operation: "edits.delete", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, methodDelete.Verb, u, http.NoBody)
-	if err != nil {
-		return &api.Error{Operation: "edits.delete", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return &api.Error{Operation: "edits.delete", Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return &api.Error{
-			Operation:  "edits.delete",
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	return nil
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: methodDelete, Op: "edits.delete", Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
+	})
+	return err
 }
 
 // commitEdit sends edits.commit through the executor. A 2xx is success

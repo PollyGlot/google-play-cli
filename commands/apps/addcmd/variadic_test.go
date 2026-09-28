@@ -2,18 +2,16 @@
 // (ADR-0040). These exercise the multi-package contract: partial success,
 // the non-retryable-wins exit code, argument dedup, and offline
 // --no-verify batches. The single-package non-regression cases live in
-// add_test.go; newRC / signedSAJSON / jsonResp are shared from there.
+// add_test.go; newRC / signedSAJSON / probeFake / failOnCall are shared
+// from there.
 package addcmd_test
 
 import (
 	"bytes"
 	"errors"
-	"fmt"
-	"io"
 	iofs "io/fs"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/commands/apps/addcmd"
@@ -30,67 +28,11 @@ func (saveFailFS) WriteFile(string, []byte, iofs.FileMode) error {
 	return errors.New("simulated disk failure")
 }
 
-// variadicRT routes the edits.insert+delete probe per package: an insert
-// for a package listed in insertStatusByPkg returns that status (a
-// simulated API failure), every other insert returns 200 with a shared
-// editID, and every delete returns 204. insertsByPkg counts inserts per
-// package so a test can assert dedup probed a repeated argument only once.
-type variadicRT struct {
-	t                 *testing.T
-	editID            string
-	insertStatusByPkg map[string]int
-
-	mu           sync.Mutex
-	insertsByPkg map[string]int
-}
-
-// pkgFromPath extracts the package from a `/applications/{pkg}/edits...`
-// URL path: the shape internal/play/edits builds.
-func pkgFromPath(path string) string {
-	const marker = "/applications/"
-	i := strings.Index(path, marker)
-	if i < 0 {
-		return ""
-	}
-	rest := path[i+len(marker):]
-	if j := strings.Index(rest, "/"); j >= 0 {
-		return rest[:j]
-	}
-	return rest
-}
-
-func (r *variadicRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
-	}
-
-	pkg := pkgFromPath(req.URL.Path)
-	switch {
-	case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/edits"):
-		if r.insertsByPkg == nil {
-			r.insertsByPkg = map[string]int{}
-		}
-		r.insertsByPkg[pkg]++
-		if status, bad := r.insertStatusByPkg[pkg]; bad {
-			return jsonResp(status, fmt.Sprintf(`{"error":{"code":%d,"message":"stub"}}`, status)), nil
-		}
-		return jsonResp(200, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, r.editID)), nil
-	case req.Method == http.MethodDelete && strings.Contains(req.URL.Path, "/edits/"):
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}
-	r.t.Fatalf("variadicRT: unexpected request: %s %s", req.Method, req.URL)
-	return nil, nil
-}
-
 // TestRun_variadic_allSucceed_registersAll drives three packages that all
 // probe clean and asserts each lands in the registry and the command
 // returns a clean nil error (exit 0).
 func TestRun_variadic_allSucceed_registersAll(t *testing.T) {
-	rt := &variadicRT{t: t, editID: "edit-multi"}
-	rc := newRC(t, rt)
+	rc := newRC(t, probeFake("edit-multi", nil))
 
 	pkgs := []string{"com.example.a", "com.example.b", "com.example.c"}
 	if _, err := addcmd.Run(rc, addcmd.Input{Packages: pkgs}); err != nil {
@@ -113,12 +55,7 @@ func TestRun_variadic_allSucceed_registersAll(t *testing.T) {
 // 11) while its neighbors register. The successes must persist, the failed
 // package must NOT, and the returned error must carry exit 11.
 func TestRun_variadic_partialFailure_registersSuccessesAndAggregates(t *testing.T) {
-	rt := &variadicRT{
-		t:                 t,
-		editID:            "edit-multi",
-		insertStatusByPkg: map[string]int{"com.example.b": http.StatusForbidden},
-	}
-	rc := newRC(t, rt)
+	rc := newRC(t, probeFake("edit-multi", map[string]int{"com.example.b": http.StatusForbidden}))
 
 	pkgs := []string{"com.example.a", "com.example.b", "com.example.c"}
 	_, err := addcmd.Run(rc, addcmd.Input{Packages: pkgs})
@@ -152,15 +89,10 @@ func TestRun_variadic_partialFailure_registersSuccessesAndAggregates(t *testing.
 // (403 → exit 11), the non-retryable code wins so an agent does not blindly
 // retry a batch that carries a permanent failure.
 func TestRun_variadic_nonRetryableWins(t *testing.T) {
-	rt := &variadicRT{
-		t:      t,
-		editID: "edit-multi",
-		insertStatusByPkg: map[string]int{
-			"com.example.transient": http.StatusServiceUnavailable, // 40, retryable
-			"com.example.forbidden": http.StatusForbidden,          // 11, non-retryable
-		},
-	}
-	rc := newRC(t, rt)
+	rc := newRC(t, probeFake("edit-multi", map[string]int{
+		"com.example.transient": http.StatusServiceUnavailable, // 40, retryable
+		"com.example.forbidden": http.StatusForbidden,          // 11, non-retryable
+	}))
 
 	pkgs := []string{"com.example.transient", "com.example.forbidden"}
 	_, err := addcmd.Run(rc, addcmd.Input{Packages: pkgs})
@@ -177,15 +109,10 @@ func TestRun_variadic_nonRetryableWins(t *testing.T) {
 // exits 40 so an automated caller may retry once the transient condition
 // clears.
 func TestRun_variadic_allRetryable_reportsRetryable(t *testing.T) {
-	rt := &variadicRT{
-		t:      t,
-		editID: "edit-multi",
-		insertStatusByPkg: map[string]int{
-			"com.example.a": http.StatusServiceUnavailable,
-			"com.example.b": http.StatusBadGateway,
-		},
-	}
-	rc := newRC(t, rt)
+	rc := newRC(t, probeFake("edit-multi", map[string]int{
+		"com.example.a": http.StatusServiceUnavailable,
+		"com.example.b": http.StatusBadGateway,
+	}))
 
 	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.a", "com.example.b"}})
 	if err == nil {
@@ -199,16 +126,19 @@ func TestRun_variadic_allRetryable_reportsRetryable(t *testing.T) {
 // TestRun_variadic_dedupProbesOnce asserts a repeated argument is a single
 // unit of work: `add a a b` probes `a` exactly once and registers it once.
 func TestRun_variadic_dedupProbesOnce(t *testing.T) {
-	rt := &variadicRT{t: t, editID: "edit-multi"}
-	rc := newRC(t, rt)
+	fake := probeFake("edit-multi", nil)
+	rc := newRC(t, fake)
 
 	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.a", "com.example.a", "com.example.b"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	rt.mu.Lock()
-	got := rt.insertsByPkg["com.example.a"]
-	rt.mu.Unlock()
+	got := 0
+	for _, c := range fake.Calls() {
+		if c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits") && pkgFromPath(c.Path) == "com.example.a" {
+			got++
+		}
+	}
 	if got != 1 {
 		t.Errorf("com.example.a probed %d times, want 1 (dedup)", got)
 	}
@@ -227,8 +157,7 @@ func TestRun_variadic_dedupProbesOnce(t *testing.T) {
 // report is still emitted (so the operator sees which packages probed
 // clean) before the raw Save error propagates.
 func TestRun_variadic_saveFailure_reportsBeforePropagating(t *testing.T) {
-	rt := &variadicRT{t: t, editID: "edit-multi"}
-	rc := newRC(t, rt)
+	rc := newRC(t, probeFake("edit-multi", nil))
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 	rc.FS = saveFailFS{}
@@ -251,11 +180,10 @@ func TestRun_variadic_saveFailure_reportsBeforePropagating(t *testing.T) {
 }
 
 // TestRun_variadic_noVerify_registersAllOffline asserts a --no-verify
-// batch touches no network (failOnCallRT is the assertion) yet persists
+// batch touches no network (failOnCall is the assertion) yet persists
 // every package.
 func TestRun_variadic_noVerify_registersAllOffline(t *testing.T) {
-	rt := &failOnCallRT{t: t}
-	rc := newRC(t, rt)
+	rc := newRC(t, failOnCall(t))
 
 	pkgs := []string{"com.example.a", "com.example.b", "com.example.c"}
 	if _, err := addcmd.Run(rc, addcmd.Input{Packages: pkgs, NoVerify: true}); err != nil {

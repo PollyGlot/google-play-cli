@@ -11,34 +11,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"golang.org/x/oauth2"
 
+	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// maxAPIBodyRead caps how many bytes of an androidpublisher API
-// response body we hold in memory. Error envelopes are small; the cap
-// stops a malformed or hostile server from blowing up RAM.
-const maxAPIBodyRead = 64 * 1024
+// The package-access probe's two calls, resolved from the registry like every
+// Play module's (#586): verb and URL come from the Discovery snapshot, and the
+// executor owns the body caps and the error envelope.
+var (
+	mEditsInsert = apiregistry.MustResolve("androidpublisher.edits.insert")
+	mEditsDelete = apiregistry.MustResolve("androidpublisher.edits.delete")
+)
 
 // Exit codes per docs/DESIGN.md §9.
 const (
-	exitAuth        = 10 // 10: auth (credential invalid, token mint failed, scope missing)
-	exitAuthz       = 11 // 11 (authorization (403) SA not invited on the app, etc.)
-	exitAPI4xx      = 30 // 30: API 4xx other than auth/perms (not found, conflict, gone)
-	exitAPI5xx      = 40 // 40: API 5xx (upstream temporarily unhealthy)
-	exitNetwork     = 50 // 50: transport-level failure (timeout, DNS, refused)
-	androidPubHost  = "https://androidpublisher.googleapis.com"
-	androidPubBase  = androidPubHost + "/androidpublisher/v3"
-	editsPathFmt    = "/applications/%s/edits"
-	editsItemPathFm = "/applications/%s/edits/%s"
+	exitAuth    = 10 // 10: auth (credential invalid, token mint failed, scope missing)
+	exitAuthz   = 11 // 11 (authorization (403) SA not invited on the app, etc.)
+	exitAPI4xx  = 30 // 30: API 4xx other than auth/perms (not found, conflict, gone)
+	exitAPI5xx  = 40 // 40: API 5xx (upstream temporarily unhealthy)
+	exitNetwork = 50 // 50: transport-level failure (timeout, DNS, refused)
 )
 
 // DefaultChecks returns the ordered chain used by `gplay auth doctor`
@@ -345,50 +344,52 @@ func CheckPackageAccess(packageName string) Check {
 
 // insertEdit POSTs edits.insert and returns the new Edit ID on success.
 // The third return value is true when the caller should return the
-// CheckResult directly (i.e. on any non-2xx insert). When true, no
+// CheckResult directly (i.e. on any failed insert). When true, no
 // delete attempt is made: there is no Edit ID to clean up.
 func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount.ServiceAccount, packageName string) (string, CheckResult, bool) {
-	u := androidPubBase + fmt.Sprintf(editsPathFmt, url.PathEscape(packageName))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, http.NoBody)
+	// An empty body still carries the JSON Content-Type edits.insert has
+	// always been sent with.
+	raw, err := api.Do(ctx, httpClient, api.Call{
+		Method: mEditsInsert, Target: packageName,
+		Params: map[string]string{"packageName": packageName},
+		Body:   []byte{},
+	})
 	if err != nil {
-		return "", CheckResult{
-			Passed:   false,
-			ExitCode: exitNetwork,
-			Hint:     "could not build edits.insert request: " + err.Error(),
-		}, true
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", CheckResult{
-			Passed:   false,
-			ExitCode: exitNetwork,
-			Hint:     "network failure on edits.insert for " + packageName + ": safe to retry (" + err.Error() + ")",
-		}, true
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAPIBodyRead))
-
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
-		var parsed struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal(body, &parsed); err != nil || parsed.ID == "" {
-			// Edit succeeded but we can't extract the ID: there is
-			// nothing to clean up, so report a 5xx-shaped failure: the
-			// upstream gave us a malformed body.
+		status, msg := failure(err)
+		if status == 0 {
 			return "", CheckResult{
 				Passed:   false,
-				ExitCode: exitAPI5xx,
-				Hint:     "edits.insert for " + packageName + " returned a malformed body: no Edit ID to discard",
+				ExitCode: exitNetwork,
+				Hint:     "network failure on edits.insert for " + packageName + ": safe to retry (" + msg + ")",
 			}, true
 		}
-		return parsed.ID, CheckResult{}, false
+		return "", insertFailureResult(status, msg, sa, packageName), true
 	}
+	var parsed struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.ID == "" {
+		// Edit succeeded but we can't extract the ID: there is nothing to
+		// clean up, so report a 5xx-shaped failure: the upstream gave us a
+		// malformed body.
+		return "", CheckResult{
+			Passed:   false,
+			ExitCode: exitAPI5xx,
+			Hint:     "edits.insert for " + packageName + " returned a malformed body: no Edit ID to discard",
+		}, true
+	}
+	return parsed.ID, CheckResult{}, false
+}
 
-	return "", insertFailureResult(resp.StatusCode, body, sa, packageName), true
+// failure splits an executor error into the HTTP status (0 when no answer
+// came back) and the message: Google's envelope message for an answer, the
+// transport error otherwise.
+func failure(err error) (int, string) {
+	var ae *api.Error
+	if errors.As(err, &ae) {
+		return ae.StatusCode, ae.Message
+	}
+	return 0, err.Error()
 }
 
 // statusToExitCode maps a Google Play API HTTP status to the gplay
@@ -408,9 +409,9 @@ func statusToExitCode(status int) int {
 	}
 }
 
-// insertFailureResult maps an edits.insert non-2xx status to the
-// CheckResult shape required by the issue.
-func insertFailureResult(status int, body []byte, sa *serviceaccount.ServiceAccount, packageName string) CheckResult {
+// insertFailureResult maps an edits.insert non-2xx status, and the message
+// of Google's error envelope, to the CheckResult shape required by the issue.
+func insertFailureResult(status int, msg string, sa *serviceaccount.ServiceAccount, packageName string) CheckResult {
 	exit := statusToExitCode(status)
 	switch {
 	case status == http.StatusForbidden:
@@ -437,66 +438,41 @@ func insertFailureResult(status int, body []byte, sa *serviceaccount.ServiceAcco
 	return CheckResult{
 		Passed:   false,
 		ExitCode: exit,
-		Hint:     fmt.Sprintf("%s (HTTP %d from edits.insert on %s)", apiErrorMessage(body, status), status, packageName),
+		Hint:     fmt.Sprintf("%s (HTTP %d from edits.insert on %s)", msg, status, packageName),
 	}
 }
 
 // deleteEdit issues edits.delete to clean up an Edit opened by the
 // happy-path insert. Returns (result, true) when the cleanup itself
-// failed and the caller should surface that as the check outcome.
+// failed and the caller should surface that as the check outcome. Any 2xx
+// (200, 204) is a clean delete.
 func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editID string) (CheckResult, bool) {
-	u := androidPubBase + fmt.Sprintf(editsItemPathFm, url.PathEscape(packageName), url.PathEscape(editID))
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, http.NoBody)
-	if err != nil {
-		return CheckResult{
-			Passed:   false,
-			ExitCode: exitNetwork,
-			Hint:     "could not build edits.delete request for " + packageName + ": " + err.Error(),
-		}, true
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return CheckResult{
-			Passed:   false,
-			ExitCode: exitNetwork,
-			Hint:     "edits.insert on " + packageName + " succeeded but cleanup failed: safe to retry (" + err.Error() + ")",
-		}, true
-	}
-	defer func() { _ = resp.Body.Close() }()
-	// 200, 204, and any other 2xx are fine.
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	_, err := api.Do(ctx, httpClient, api.Call{
+		Method: mEditsDelete, Target: packageName,
+		Params: map[string]string{"packageName": packageName, "editId": editID},
+	})
+	if err == nil {
 		return CheckResult{}, false
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAPIBodyRead))
-	exit := statusToExitCode(resp.StatusCode)
-	if resp.StatusCode >= 500 {
+	status, msg := failure(err)
+	if status == 0 {
+		return CheckResult{
+			Passed:   false,
+			ExitCode: exitNetwork,
+			Hint:     "edits.insert on " + packageName + " succeeded but cleanup failed: safe to retry (" + msg + ")",
+		}, true
+	}
+	exit := statusToExitCode(status)
+	if status >= 500 {
 		return CheckResult{
 			Passed:   false,
 			ExitCode: exit,
-			Hint:     fmt.Sprintf("edits.insert on %s succeeded but cleanup failed: temporary upstream failure, safe to retry (HTTP %d)", packageName, resp.StatusCode),
+			Hint:     fmt.Sprintf("edits.insert on %s succeeded but cleanup failed: temporary upstream failure, safe to retry (HTTP %d)", packageName, status),
 		}, true
 	}
 	return CheckResult{
 		Passed:   false,
 		ExitCode: exit,
-		Hint:     fmt.Sprintf("edits.insert on %s succeeded but cleanup failed: %s (HTTP %d)", packageName, apiErrorMessage(body, resp.StatusCode), resp.StatusCode),
+		Hint:     fmt.Sprintf("edits.insert on %s succeeded but cleanup failed: %s (HTTP %d)", packageName, msg, status),
 	}, true
-}
-
-// apiErrorMessage extracts the most useful human-readable message from
-// a Google API error envelope, falling back to a generic placeholder
-// when the body is empty or unparseable.
-func apiErrorMessage(body []byte, status int) string {
-	if len(body) == 0 {
-		return fmt.Sprintf("HTTP %d", status)
-	}
-	var env struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(body, &env); err == nil && env.Error.Message != "" {
-		return env.Error.Message
-	}
-	return strings.TrimSpace(string(body))
 }

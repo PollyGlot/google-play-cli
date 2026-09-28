@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/sharing"
 )
@@ -17,9 +19,6 @@ import (
 // roundTripperFunc adapts a function to http.RoundTripper so a test can route
 // the single upload request without a network. No /token exchange here: these
 // API-layer tests call the package directly with a bare *http.Client.
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func resp(status int, body string) *http.Response {
 	return &http.Response{
@@ -44,7 +43,7 @@ const artifactBody = `{"downloadUrl":"https://play.google.com/apps/test/abc123",
 // with the media-upload shape and the parsed + raw artifact comes back.
 func TestUploadAPK_happyPath(t *testing.T) {
 	var gotURL, gotMethod, gotContentType string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		gotMethod = r.Method
 		gotContentType = r.Header.Get("Content-Type")
@@ -78,7 +77,7 @@ func TestUploadAPK_happyPath(t *testing.T) {
 // TestUploadBundle_pathSegment asserts the bundle endpoint is used for an AAB.
 func TestUploadBundle_pathSegment(t *testing.T) {
 	var gotURL string
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotURL = r.URL.String()
 		return resp(200, artifactBody), nil
 	})
@@ -95,7 +94,7 @@ func TestUploadBundle_pathSegment(t *testing.T) {
 // *LocalIOError (exit 20), never a network call.
 func TestUpload_directory_exit20(t *testing.T) {
 	called := false
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		called = true
 		return resp(200, artifactBody), nil
 	})
@@ -120,7 +119,7 @@ func TestUpload_directory_exit20(t *testing.T) {
 // TestUpload_apiError_mapsExit asserts an API 4xx surfaces as *api.Error (exit
 // 30 via StatusToExitCode).
 func TestUpload_apiError_mapsExit(t *testing.T) {
-	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return resp(400, `{"error":{"code":400,"message":"artifact too large"}}`), nil
 	})
 	hc := &http.Client{Transport: rt}

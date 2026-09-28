@@ -12,26 +12,23 @@ package vitals_test
 
 import (
 	"context"
-	"io"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 const reportingRoot = "https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app"
 
-type urlRT struct{ url, verb string }
-
-func (r *urlRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.url = req.URL.String()
-	r.verb = req.Method
-	return &http.Response{
-		StatusCode: 200,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{}`)),
-	}, nil
+// lastCall returns the most recent request the Fake recorded.
+func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
+	t.Helper()
+	calls := fake.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no request reached the transport")
+	}
+	return calls[len(calls)-1]
 }
 
 // TestQueryAbsoluteURLPerMetricSet pins the resolved `:query` endpoint of every
@@ -42,16 +39,17 @@ func TestQueryAbsoluteURLPerMetricSet(t *testing.T) {
 	sets := append(vitals.MetricSets(), vitals.ErrorCountSet())
 	for _, set := range sets {
 		t.Run(set.Name, func(t *testing.T) {
-			rt := &urlRT{}
+			rt := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 			if _, err := vitals.Query(context.Background(), &http.Client{Transport: rt}, set, "com.example.app", nil); err != nil {
 				t.Fatalf("Query: %v", err)
 			}
+			c := lastCall(t, rt)
 			want := reportingRoot + "/" + set.Resource + ":query"
-			if rt.url != want {
-				t.Errorf("URL = %q, want %q", rt.url, want)
+			if c.URL != want {
+				t.Errorf("URL = %q, want %q", c.URL, want)
 			}
-			if rt.verb != http.MethodPost {
-				t.Errorf("verb = %q, want POST", rt.verb)
+			if c.Method != http.MethodPost {
+				t.Errorf("verb = %q, want POST", c.Method)
 			}
 		})
 	}
@@ -91,15 +89,16 @@ func TestListAndSearchAbsoluteURLs(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &urlRT{}
+			rt := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 			if err := tc.call(&http.Client{Transport: rt}); err != nil {
 				t.Fatalf("call: %v", err)
 			}
-			if rt.url != tc.want {
-				t.Errorf("URL = %q, want %q", rt.url, tc.want)
+			c := lastCall(t, rt)
+			if c.URL != tc.want {
+				t.Errorf("URL = %q, want %q", c.URL, tc.want)
 			}
-			if rt.verb != http.MethodGet {
-				t.Errorf("verb = %q, want GET", rt.verb)
+			if c.Method != http.MethodGet {
+				t.Errorf("verb = %q, want GET", c.Method)
 			}
 		})
 	}

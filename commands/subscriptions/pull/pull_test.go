@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,33 +35,29 @@ type subsRT struct {
 	offersBody string
 }
 
-func (r *subsRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *subsRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 	r.urls = append(r.urls, req.URL.String())
 	if r.status != 0 {
-		return jsonResp(r.status, r.body), nil
+		return testkit.Response(r.status, r.body), nil
 	}
 	if strings.Contains(req.URL.Path, "/subscriptions/-/basePlans/-/offers") {
 		body := r.offersBody
 		if body == "" {
 			body = `{}`
 		}
-		return jsonResp(200, body), nil
+		return testkit.Response(http.StatusOK, body), nil
 	}
 	if strings.Contains(req.URL.RawQuery, "pageToken=p2") {
-		return jsonResp(200, `{"subscriptions":[{"productId":"pro","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Pro & <Plus>"}]}]}`), nil
+		return testkit.Response(http.StatusOK, `{"subscriptions":[{"productId":"pro","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Pro & <Plus>"}]}]}`), nil
 	}
-	return jsonResp(200, `{"subscriptions":[{"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}],"nextPageToken":"p2"}`), nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+	return testkit.Response(http.StatusOK, `{"subscriptions":[{"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}],"nextPageToken":"p2"}`), nil
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -74,13 +69,13 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
+func newRC(t *testing.T, rt *subsRT) *kernel.RunContext {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rt.serve)})
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa
 	return rc

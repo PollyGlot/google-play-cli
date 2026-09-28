@@ -6,39 +6,13 @@ package bundles_test
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/bundles"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
-
-// rt is a minimal RoundTripper that records the request line and returns a
-// canned bundles.upload response. A test that expects no HTTP asserts
-// gotMethod stayed "".
-type rt struct {
-	status int
-	body   string
-
-	gotMethod string
-	gotPath   string
-}
-
-func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.gotMethod = req.Method
-	r.gotPath = req.URL.Path
-	status := r.status
-	if status == 0 {
-		status = 200
-	}
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(r.body)),
-	}, nil
-}
 
 // TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP asserts a
 // non-regular path (a directory) is rejected as a client-side validation
@@ -47,8 +21,8 @@ func (r *rt) RoundTrip(req *http.Request) (*http.Response, error) {
 // later as a transport error (exit 50). Mirrors the mappings.Upload guard.
 func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {
 	dir := t.TempDir() // a directory, not a regular file
-	transport := &rt{}
-	hc := &http.Client{Transport: transport}
+	fake := testkit.NewFake(testkit.Any(200, ``))
+	hc := &http.Client{Transport: fake}
 
 	_, err := bundles.Upload(context.Background(), hc, "com.example.app", "edit-1", dir)
 	if err == nil {
@@ -61,7 +35,7 @@ func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {
 	if !errors.As(err, &ioErr) {
 		t.Errorf("error %v is not *bundles.LocalIOError", err)
 	}
-	if transport.gotMethod != "" {
-		t.Errorf("uploader hit the network for a directory path: %s %s", transport.gotMethod, transport.gotPath)
+	if calls := fake.Calls(); len(calls) != 0 {
+		t.Errorf("uploader hit the network for a directory path: %+v", calls)
 	}
 }

@@ -3,14 +3,10 @@ package list_test
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -30,54 +26,27 @@ const (
 	bundlesBody = `{"kind":"androidpublisher#bundlesListResponse","bundles":[{"versionCode":9,"sha256":"aab-9"},{"versionCode":5,"sha256":"aab-5"}]}`
 )
 
-// artRT fakes the Edit lifecycle plus both list endpoints and records the
-// sequence of calls so tests can assert insert → lists → delete.
-type artRT struct {
-	mu    sync.Mutex
-	calls []string
-}
-
-func (r *artRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	p := req.URL.Path
-	switch {
-	case req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(p, "/token"):
-		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`), nil
-	case req.Method == http.MethodPost && strings.HasSuffix(p, "/edits"):
-		r.calls = append(r.calls, "POST /edits")
-		return jsonResp(200, `{"id":"edit-ro","expiryTimeSeconds":"1700000000"}`), nil
-	case req.Method == http.MethodDelete && strings.Contains(p, "/edits/"):
-		r.calls = append(r.calls, "DELETE "+p)
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	case req.Method == http.MethodGet && strings.HasSuffix(p, "/apks"):
-		r.calls = append(r.calls, "GET "+p)
-		return jsonResp(200, apksBody), nil
-	case req.Method == http.MethodGet && strings.HasSuffix(p, "/bundles"):
-		r.calls = append(r.calls, "GET "+p)
-		return jsonResp(200, bundlesBody), nil
-	}
-	r.calls = append(r.calls, "UNEXPECTED "+req.Method+" "+p)
-	return jsonResp(500, `{}`), nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
-}
-
-func signedSAJSON(t *testing.T) []byte {
-	t.Helper()
-	key := testkit.RSAKey(t)
-	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	raw, _ := json.Marshal(map[string]any{"type": "service_account", "project_id": "p", "private_key": string(pemBytes), "client_email": "ci@p.iam.gserviceaccount.com", "token_uri": "https://oauth2.googleapis.com/token"})
-	return raw
+// newArtFake fakes the Edit lifecycle plus both list endpoints; the Fake
+// records the sequence so tests can assert insert → lists → delete.
+func newArtFake() *testkit.Fake {
+	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return http.StatusOK, `{"id":"edit-ro","expiryTimeSeconds":"1700000000"}`, true
+		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
+			return http.StatusNoContent, "", true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/apks"):
+			return http.StatusOK, apksBody, true
+		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/bundles"):
+			return http.StatusOK, bundlesBody, true
+		}
+		return 0, "", false
+	})
 }
 
 func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
-	sa, err := serviceaccount.Parse(signedSAJSON(t))
+	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -87,12 +56,12 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-func apiCalls(rt *artRT) []string {
+// apiCalls lists the recorded API calls (token exchanges excluded) as
+// "METHOD path".
+func apiCalls(f *testkit.Fake) []string {
 	var out []string
-	for _, c := range rt.calls {
-		if c != "POST /token" {
-			out = append(out, c)
-		}
+	for _, c := range f.Calls() {
+		out = append(out, c.Method+" "+c.Path)
 	}
 	return out
 }
@@ -101,14 +70,14 @@ func apiCalls(rt *artRT) []string {
 // (insert → apks → bundles → delete, never commit), the merged table ordered
 // by versionCode, and the {"apks","bundles"} JSON envelope of verbatim bodies.
 func TestRun_bothKinds_readOnlyEdit_rowsByVersionCode(t *testing.T) {
-	rt := &artRT{}
+	rt := newArtFake()
 	rc := newRC(t, rt)
 	r, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	want := []string{
-		"POST /edits",
+		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-ro/apks",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-ro/bundles",
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-ro",
@@ -153,25 +122,26 @@ func TestRun_bothKinds_readOnlyEdit_rowsByVersionCode(t *testing.T) {
 // TestRun_kindApk_sendsOnlyApksRequest asserts --kind apk skips bundles.list
 // and passes the apks response through verbatim.
 func TestRun_kindApk_sendsOnlyApksRequest(t *testing.T) {
-	rt := &artRT{}
+	rt := newArtFake()
 	rc := newRC(t, rt)
 	r, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", Kind: "apk"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	for _, c := range rt.calls {
+	calls := apiCalls(rt)
+	for _, c := range calls {
 		if strings.HasSuffix(c, "/bundles") {
-			t.Errorf("--kind apk must not call bundles.list; calls=%v", rt.calls)
+			t.Errorf("--kind apk must not call bundles.list; calls=%v", calls)
 		}
 	}
 	sawApks := false
-	for _, c := range rt.calls {
+	for _, c := range calls {
 		if strings.HasSuffix(c, "/apks") {
 			sawApks = true
 		}
 	}
 	if !sawApks {
-		t.Errorf("apks.list not called; calls=%v", rt.calls)
+		t.Errorf("apks.list not called; calls=%v", calls)
 	}
 	var js bytes.Buffer
 	if err := r.Renderers().JSON(&js); err != nil {
@@ -185,7 +155,7 @@ func TestRun_kindApk_sendsOnlyApksRequest(t *testing.T) {
 // TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete asserts a
 // `gplay edits begin` pin is reused untouched: no insert, no delete.
 func TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete(t *testing.T) {
-	rt := &artRT{}
+	rt := newArtFake()
 	rc := newRC(t, rt)
 	fsys := configtest.NewMemFS("/repo", "/home")
 	if err := editpin.Write(fsys, "/repo/.gplay", "com.example.app", "edit-pinned"); err != nil {
@@ -204,21 +174,21 @@ func TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete(t *testing.T) {
 
 // TestRun_badKind_exit2_noNetwork asserts --kind is validated before any HTTP.
 func TestRun_badKind_exit2_noNetwork(t *testing.T) {
-	rt := &artRT{}
+	rt := newArtFake()
 	rc := newRC(t, rt)
 	_, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app", Kind: "aab"})
 	var c interface{ ExitCode() int }
 	if !errors.As(err, &c) || c.ExitCode() != 2 {
 		t.Errorf("err = %v, want exit 2", err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	if len(rt.Calls()) != 0 || rt.TokenExchanges() != 0 {
+		t.Errorf("must not reach the network; calls=%v, token exchanges=%d", apiCalls(rt), rt.TokenExchanges())
 	}
 }
 
 // TestRun_noPackage_exit2 asserts the package resolution guard.
 func TestRun_noPackage_exit2(t *testing.T) {
-	rt := &artRT{}
+	rt := newArtFake()
 	rc := newRC(t, rt)
 	_, err := listcmd.Run(rc, listcmd.Input{})
 	var c interface{ ExitCode() int }

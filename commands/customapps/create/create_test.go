@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -51,13 +50,13 @@ type customRT struct {
 	uploadURL string
 }
 
-func (r *customRT) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *customRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
+	if resp, ok := testkit.TokenResponse(req); ok {
 		r.tokenHits++
 		r.calls = append(r.calls, "POST /token")
-		return jsonResp(200, `{"access_token":"abc.def.ghi","token_type":"Bearer","expires_in":3600}`), nil
+		return resp, nil
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
 	// Initiate: the metadata POST that opens the resumable session.
@@ -67,13 +66,12 @@ func (r *customRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if status == 0 {
 			status = 200
 		}
-		resp := jsonResp(status, "")
-		if status >= 200 && status < 300 {
-			resp.Header.Set("Location", customSessionURI)
-		} else {
+		if status < 200 || status >= 300 {
 			// Error envelope surfaces on the initiate.
-			resp.Body = io.NopCloser(strings.NewReader(r.body))
+			return testkit.Response(status, r.body), nil
 		}
+		resp := testkit.Response(status, "")
+		resp.Header.Set("Location", customSessionURI)
 		return resp, nil
 	}
 	// Chunk PUT: the session URI carries the artifact; the final chunk returns
@@ -83,18 +81,10 @@ func (r *customRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		if body == "" {
 			body = createdApp
 		}
-		return jsonResp(200, body), nil
+		return testkit.Response(200, body), nil
 	}
 	r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 	return nil, nil
-}
-
-func jsonResp(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -118,13 +108,13 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
+func newRC(t *testing.T, rt *customRT) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
 	if err != nil {
 		t.Fatalf("serviceaccount.Parse: %v", err)
 	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rt.serve)})
 	var stdout bytes.Buffer
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &stdout}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa

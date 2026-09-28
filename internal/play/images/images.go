@@ -11,15 +11,13 @@
 //   - Delete (one image by server id)         → images apply --prune
 //   - DeleteAll (every image in a slot)       → images apply (gallery reorder)
 //
-// gplay speaks edits.images over raw HTTP (ADR-0007), reusing the api.Error
-// envelope and the body-size caps every other internal/play/* module uses.
+// gplay speaks edits.images over raw HTTP (ADR-0007), through the api
+// executor every other internal/play/* module sends with.
 package images
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -159,33 +157,18 @@ func slotParams(pkg, editID, language string, imageType Type) map[string]string 
 // the --output json pass-through (ADR-0003). An absent slot returns an empty
 // slice, no error (missing == empty, ADR-0013).
 func List(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type) ([]Image, json.RawMessage, error) {
-	u, err := methodList.URL(slotParams(pkg, editID, language, imageType))
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodList, Op: opImagesList, Target: pkg,
+		Params: slotParams(pkg, editID, language, imageType),
+	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opImagesList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, methodList.Verb, u, nil)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opImagesList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opImagesList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{Operation: opImagesList, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, nil, &api.Error{Operation: opImagesList, Package: pkg, StatusCode: resp.StatusCode, Message: "read response: " + readErr.Error(), Cause: readErr}
+		return nil, nil, err
 	}
 	var parsed struct {
 		Images []Image `json:"images"`
 	}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{Operation: opImagesList, Package: pkg, StatusCode: resp.StatusCode, Message: "decode response: " + err.Error(), Cause: err}
+	if err := decode(opImagesList, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return parsed.Images, raw, nil
 }
@@ -198,44 +181,28 @@ func List(ctx context.Context, hc *http.Client, pkg, editID, language string, im
 // ordering is the caller's job (upload in name order after a DeleteAll:
 // ADR-0013).
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, data []byte) (*Image, error) {
-	u, err := methodUpload.UploadURL(slotParams(pkg, editID, language, imageType))
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodUpload, Op: opImagesUpload, Target: pkg,
+		Params: slotParams(pkg, editID, language, imageType),
+		Media:  true,
+		Body:   data,
+		// The endpoint declares `image/*` and rejects application/octet-stream
+		// with a 400 (#560), so the type is sniffed from the leading bytes, as
+		// appstore.UploadImage does. A type other than png/jpeg is sent as
+		// sniffed, not refused here: the default apply path already decodes
+		// every file as png/jpeg upstream (imagevalidate), and --no-validate
+		// hands the verdict to Play, whose 400 then names the type actually
+		// sent (ADR-0013 §4).
+		ContentType: http.DetectContentType(data),
+	})
 	if err != nil {
-		return nil, &api.Error{Operation: opImagesUpload, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, err
 	}
-	u += "?uploadType=media"
-	req, err := http.NewRequestWithContext(ctx, methodUpload.Verb, u, bytes.NewReader(data))
-	if err != nil {
-		return nil, &api.Error{Operation: opImagesUpload, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.ContentLength = int64(len(data))
-	// GetBody lets the transport replay the body across redirects and an
-	// oauth2 token-refresh retry (net/http closes Request.Body each attempt).
-	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(data)), nil
-	}
-	// The endpoint declares `image/*` and rejects application/octet-stream with
-	// a 400 (#560), so the type is sniffed from the leading bytes, as
-	// appstore.UploadImage does. A type other than png/jpeg is sent as sniffed,
-	// not refused here: the default apply path already decodes every file as
-	// png/jpeg upstream (imagevalidate), and --no-validate hands the verdict to
-	// Play, whose 400 then names the type actually sent (ADR-0013 §4).
-	req.Header.Set("Content-Type", http.DetectContentType(data))
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: opImagesUpload, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, &api.Error{Operation: opImagesUpload, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed struct {
 		Image Image `json:"image"`
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, &api.Error{Operation: opImagesUpload, Package: pkg, StatusCode: resp.StatusCode, Message: "decode response: " + err.Error(), Cause: err}
+	if err := decode(opImagesUpload, pkg, raw, &parsed); err != nil {
+		return nil, err
 	}
 	return &parsed.Image, nil
 }
@@ -246,25 +213,8 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, imageID string) error {
 	params := slotParams(pkg, editID, language, imageType)
 	params["imageId"] = imageID
-	u, err := methodDelete.URL(params)
-	if err != nil {
-		return &api.Error{Operation: opImagesDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, methodDelete.Verb, u, nil)
-	if err != nil {
-		return &api.Error{Operation: opImagesDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return &api.Error{Operation: opImagesDelete, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return &api.Error{Operation: opImagesDelete, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	return nil
+	_, err := api.Do(ctx, hc, api.Call{Method: methodDelete, Op: opImagesDelete, Target: pkg, Params: params})
+	return err
 }
 
 // DeleteAll removes every image in a slot at edits.images.deleteall (DELETE on
@@ -273,23 +223,18 @@ func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 // destructive primitive behind a full-slot clear. The {"deleted":[...]} body
 // is not parsed; a non-2xx surfaces as an *api.Error.
 func DeleteAll(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type) error {
-	u, err := methodDeleteAll.URL(slotParams(pkg, editID, language, imageType))
-	if err != nil {
-		return &api.Error{Operation: opImagesDeleteAll, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, methodDeleteAll.Verb, u, nil)
-	if err != nil {
-		return &api.Error{Operation: opImagesDeleteAll, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return &api.Error{Operation: opImagesDeleteAll, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return &api.Error{Operation: opImagesDeleteAll, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
+	_, err := api.Do(ctx, hc, api.Call{
+		Method: methodDeleteAll, Op: opImagesDeleteAll, Target: pkg,
+		Params: slotParams(pkg, editID, language, imageType),
+	})
+	return err
+}
+
+// decode unmarshals a 2xx body into out. A body that does not decode keeps
+// the 200 status tag it always had, so its exit code (30) is unchanged.
+func decode(op, pkg string, raw json.RawMessage, out any) error {
+	if err := json.Unmarshal(raw, out); err != nil {
+		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return nil
 }

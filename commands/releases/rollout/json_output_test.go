@@ -29,12 +29,11 @@ const rolloutUpdateBody = `{
 // against the fake API and asserts `--output json` prints the tracks.update
 // body byte for byte (ADR-0003). halt/resume/complete share the renderer.
 func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
-	rt := &stateRT{
-		t:                  t,
+	rt := newStateFake(stateAPI{
 		editID:             "edit-xyz",
 		trackGetResp:       oneInProgressRelease,
 		trackUpdateRawResp: rolloutUpdateBody,
-	}
+	})
 	rc := newRC(t, rt)
 
 	r, err := rollout.RunRollout(rc, rollout.Input{Package: "com.example.app", Track: "production", To: "0.2", ToSet: true, Confirm: true})

@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -16,40 +14,20 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// pagingRT serves a fixed sequence of page bodies, so a test can hand the
-// client a stream that still has a nextPageToken when --limit cuts it off. It
-// answers the OAuth token exchange like the other RoundTrippers in this package
-// so nothing here touches the network.
-type pagingRT struct {
-	mu    sync.Mutex
-	pages []string
-	n     int
-}
-
-func (r *pagingRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	h := http.Header{"Content-Type": []string{"application/json"}}
-	if req.URL.Host == "oauth2.googleapis.com" || strings.HasSuffix(req.URL.Path, "/token") {
-		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(`{"access_token":"a","token_type":"Bearer","expires_in":3600}`))}, nil
-	}
-	body := "{}"
-	if r.n < len(r.pages) {
-		body = r.pages[r.n]
-	}
-	r.n++
-	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(body))}, nil
-}
-
+// newPagingRC serves a fixed sequence of page bodies, so a test can hand the
+// client a stream that still has a nextPageToken when --limit cuts it off.
+// Sequence repeats the last page once exhausted; every stream here ends
+// without a nextPageToken, so the client never asks past it.
 func newPagingRC(t *testing.T, pages []string) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(saJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: &pagingRT{pages: pages}})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.NewFake(testkit.Sequence(pages...))})
 	var stderr bytes.Buffer
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &stderr}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa

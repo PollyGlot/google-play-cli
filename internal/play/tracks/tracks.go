@@ -6,10 +6,8 @@
 package tracks
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -84,45 +82,16 @@ type TrackConfig struct {
 // resume verbs consume. The raw JSON body is returned alongside for
 // --output json pass-through (ADR-0003) and for diagnostics.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Track, json.RawMessage, error) {
-	u, err := methodGet.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
-		"track":       track,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodGet, Op: opTracksGet, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID, "track": track},
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksGet, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, methodGet.Verb, u, nil)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opTracksGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed Track
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opTracksGet,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+	if err := decode(opTracksGet, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return &parsed, raw, nil
 }
@@ -136,55 +105,18 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Trac
 // exactly what the API returns. Like Get, it runs inside an Edit the
 // caller has already opened.
 func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Track, json.RawMessage, error) {
-	u, err := methodList.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodList, Op: opTracksList, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, methodList.Verb, u, nil)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksList, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opTracksList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, nil, &api.Error{
-			Operation:  opTracksList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
-		}
+		return nil, nil, err
 	}
 	var parsed struct {
 		Tracks []Track `json:"tracks"`
 	}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opTracksList,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+	if err := decode(opTracksList, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return parsed.Tracks, raw, nil
 }
@@ -209,49 +141,17 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, rel
 // and patching only the target release is the lossless way to do that;
 // round-tripping through the typed Release struct would drop the rest.
 func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, body []byte) (*Track, json.RawMessage, error) {
-	u, err := methodUpdate.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
-		"track":       track,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodUpdate, Op: opTracksUpdate, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID, "track": track},
+		Body:   body,
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, methodUpdate.Verb, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opTracksUpdate,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	// The success body is the ADR-0003 JSON pass-through; cap it at the
-	// generous MaxAPISuccessBodyRead so apps with many locales × long
-	// release notes don't get a silently truncated tracks.update response.
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed Track
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opTracksUpdate,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+	if err := decode(opTracksUpdate, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return &parsed, raw, nil
 }
@@ -263,50 +163,26 @@ func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, 
 // --output json pass-through (ADR-0003). Creating a track that already
 // exists is an API 4xx surfaced verbatim: gplay does not fake idempotency.
 func Create(ctx context.Context, hc *http.Client, pkg, editID, name, formFactor string) (*Track, json.RawMessage, error) {
-	payload, err := json.Marshal(TrackConfig{Track: name, Type: TrackTypeClosedTesting, FormFactor: formFactor})
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
-	}
-
-	u, err := methodCreate.URL(map[string]string{
-		"packageName": pkg,
-		"editId":      editID,
+	raw, err := api.Do(ctx, hc, api.Call{
+		Method: methodCreate, Op: opTracksCreate, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "editId": editID},
+		Body:   TrackConfig{Track: name, Type: TrackTypeClosedTesting, FormFactor: formFactor},
 	})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, methodCreate.Verb, u, bytes.NewReader(payload))
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksCreate, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(body, resp.StatusCode)
-		return nil, nil, &api.Error{
-			Operation:  opTracksCreate,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    msg,
-			Reasons:    reasons,
-		}
-	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
 	var parsed Track
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opTracksCreate,
-			Package:    pkg,
-			StatusCode: resp.StatusCode,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+	if err := decode(opTracksCreate, pkg, raw, &parsed); err != nil {
+		return nil, raw, err
 	}
 	return &parsed, raw, nil
+}
+
+// decode unmarshals a 2xx body into out. A body that does not decode keeps
+// the 200 status tag it always had, so its exit code (30) is unchanged.
+func decode(op, pkg string, raw json.RawMessage, out any) error {
+	if err := json.Unmarshal(raw, out); err != nil {
+		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+	}
+	return nil
 }

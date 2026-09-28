@@ -14,7 +14,6 @@ package orders
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 
@@ -90,21 +89,13 @@ type BatchGetOrdersResponse struct {
 // service account to hold CAN_VIEW_FINANCIAL_DATA; a 403 surfaces as an
 // *api.Error the command classifies into an agent-resolvable refusal.
 func Get(ctx context.Context, hc *http.Client, pkg, orderID string) (Order, json.RawMessage, error) {
-	u, err := mGet.URL(map[string]string{"packageName": pkg, "orderId": orderID})
-	if err != nil {
-		return Order{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mGet.Verb, u, nil)
-	if err != nil {
-		return Order{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, opGet, pkg, req)
+	var o Order
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: mGet, Op: opGet, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "orderId": orderID},
+	}, &o)
 	if err != nil {
 		return Order{}, nil, err
-	}
-	var o Order
-	if err := json.Unmarshal(raw, &o); err != nil {
-		return Order{}, nil, &api.Error{Operation: opGet, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return o, raw, nil
 }
@@ -120,21 +111,14 @@ func BatchGet(ctx context.Context, hc *http.Client, pkg string, orderIDs []strin
 	for _, id := range orderIDs {
 		q.Add("orderIds", id)
 	}
-	u, err := mBatchGet.URL(map[string]string{"packageName": pkg})
-	if err != nil {
-		return BatchGetOrdersResponse{}, nil, &api.Error{Operation: opBatchGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	req, err := http.NewRequestWithContext(ctx, mBatchGet.Verb, u+"?"+q.Encode(), nil)
-	if err != nil {
-		return BatchGetOrdersResponse{}, nil, &api.Error{Operation: opBatchGet, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	raw, err := do(hc, opBatchGet, pkg, req)
+	var resp BatchGetOrdersResponse
+	raw, err := api.DoJSON(ctx, hc, api.Call{
+		Method: mBatchGet, Op: opBatchGet, Target: pkg,
+		Params: map[string]string{"packageName": pkg},
+		Query:  q,
+	}, &resp)
 	if err != nil {
 		return BatchGetOrdersResponse{}, nil, err
-	}
-	var resp BatchGetOrdersResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return BatchGetOrdersResponse{}, nil, &api.Error{Operation: opBatchGet, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return resp, raw, nil
 }
@@ -149,37 +133,13 @@ func BatchGet(ctx context.Context, hc *http.Client, pkg string, orderIDs []strin
 // command classifies into agent-resolvable refusals. A success body is usually
 // empty, so the verbatim bytes are returned for pass-through but may be nil.
 func Refund(ctx context.Context, hc *http.Client, pkg, orderID string, revoke bool) (json.RawMessage, error) {
-	u, err := mRefund.URL(map[string]string{"packageName": pkg, "orderId": orderID})
-	if err != nil {
-		return nil, &api.Error{Operation: opRefund, Package: pkg, Message: err.Error(), Cause: err}
-	}
+	var q url.Values
 	if revoke {
-		u += "?revoke=true"
+		q = url.Values{"revoke": {"true"}}
 	}
-	req, err := http.NewRequestWithContext(ctx, mRefund.Verb, u, nil)
-	if err != nil {
-		return nil, &api.Error{Operation: opRefund, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	return do(hc, opRefund, pkg, req)
-}
-
-// do runs req and maps the response to (raw body, *api.Error): a non-2xx body is
-// parsed for the error envelope, a 2xx body is returned verbatim for the
-// ADR-0003 pass-through.
-func do(hc *http.Client, op, pkg string, req *http.Request) (json.RawMessage, error) {
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPIErrorBodyRead))
-		msg, reasons := api.ParseErrorEnvelope(b, resp.StatusCode)
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: msg, Reasons: reasons}
-	}
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, api.MaxAPISuccessBodyRead))
-	if readErr != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: resp.StatusCode, Message: "read response body: " + readErr.Error(), Cause: readErr}
-	}
-	return json.RawMessage(raw), nil
+	return api.Do(ctx, hc, api.Call{
+		Method: mRefund, Op: opRefund, Target: pkg,
+		Params: map[string]string{"packageName": pkg, "orderId": orderID},
+		Query:  q,
+	})
 }

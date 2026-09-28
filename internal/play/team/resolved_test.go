@@ -13,20 +13,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
+
 	"github.com/PollyGlot/google-play-cli/internal/play/team"
 )
 
 const devRoot = "https://androidpublisher.googleapis.com/androidpublisher/v3/developers/1234567890"
 
-type rtFunc func(*http.Request) (*http.Response, error)
-
-func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
 // recorder captures the last request's absolute URL and verb, answering with
 // an empty JSON object (enough for every call here: ListUsers reads `users`
 // and `nextPageToken`, the writes pass the body through verbatim).
 func recorder(gotURL, gotVerb *string) *http.Client {
-	return &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+	return &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		*gotURL = r.URL.String()
 		*gotVerb = r.Method
 		return &http.Response{

@@ -1,7 +1,7 @@
 // Package orchestrator_test: UploadMapping exercises the standalone
 // mapping-upload choreography behind `gplay releases mappings upload`:
 // open an Edit, POST the deobfuscation file keyed by an explicit
-// versionCode, and commit: no track update. Reuses playRT and the
+// versionCode, and commit: no track update. Reuses newPlay and the
 // helpers from orchestrator_test.go (same package).
 package orchestrator_test
 
@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
+	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
 // TestUploadMapping_happyPath_beginUploadCommit asserts the standalone
@@ -20,8 +21,8 @@ import (
 // commit, no track update (#250).
 func TestUploadMapping_happyPath_beginUploadCommit(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &playRT{t: t, editID: "edit-map"}
-	hc := &http.Client{Transport: rt}
+	rt, transport := newPlay(playAPI{editID: "edit-map"})
+	hc := &http.Client{Transport: transport}
 
 	res, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
 		Package:     "com.example.app",
@@ -38,12 +39,13 @@ func TestUploadMapping_happyPath_beginUploadCommit(t *testing.T) {
 		"PUT /upload/androidpublisher/v3/applications/com.example.app/edits/edit-map/apks/142/deobfuscationFiles/proguard",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-map:commit",
 	}
-	if len(rt.calls) != len(wantPaths) {
-		t.Fatalf("got %d calls (%v), want %d", len(rt.calls), rt.calls, len(wantPaths))
+	calls := apiCalls(rt)
+	if len(calls) != len(wantPaths) {
+		t.Fatalf("got %d calls (%v), want %d", len(calls), calls, len(wantPaths))
 	}
 	for i, want := range wantPaths {
-		if rt.calls[i] != want {
-			t.Errorf("call %d = %q, want %q", i, rt.calls[i], want)
+		if calls[i] != want {
+			t.Errorf("call %d = %q, want %q", i, calls[i], want)
 		}
 	}
 	if res.VersionCode != 142 {
@@ -55,7 +57,7 @@ func TestUploadMapping_happyPath_beginUploadCommit(t *testing.T) {
 	if res.SymbolType != "proguard" {
 		t.Errorf("SymbolType = %q, want proguard (from the response)", res.SymbolType)
 	}
-	if len(rt.deobfReqBody) == 0 {
+	if len(deobfReqBody(rt)) == 0 {
 		t.Error("deobfuscationfiles.upload received an empty body")
 	}
 }
@@ -64,8 +66,8 @@ func TestUploadMapping_happyPath_beginUploadCommit(t *testing.T) {
 // type lands verbatim in the path (Discovery enum, not invented).
 func TestUploadMapping_nativeCodeType_inPath(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &playRT{t: t, editID: "edit-map"}
-	hc := &http.Client{Transport: rt}
+	rt, transport := newPlay(playAPI{editID: "edit-map"})
+	hc := &http.Client{Transport: transport}
 
 	if _, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
 		Package:     "com.example.app",
@@ -76,13 +78,13 @@ func TestUploadMapping_nativeCodeType_inPath(t *testing.T) {
 		t.Fatalf("UploadMapping: %v", err)
 	}
 	found := false
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasSuffix(c, "/apks/7/deobfuscationFiles/nativeCode") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("no deobfuscationFiles/nativeCode call in %v", rt.calls)
+		t.Errorf("no deobfuscationFiles/nativeCode call in %v", apiCalls(rt))
 	}
 }
 
@@ -90,8 +92,8 @@ func TestUploadMapping_nativeCodeType_inPath(t *testing.T) {
 // versionCode is a caller-side misuse (exit 2) caught before any HTTP.
 func TestUploadMapping_invalidVersionCode_exit2_noHTTP(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &playRT{t: t}
-	hc := &http.Client{Transport: rt}
+	rt, transport := newPlay(playAPI{})
+	hc := &http.Client{Transport: transport}
 
 	_, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
 		Package:     "com.example.app",
@@ -104,8 +106,8 @@ func TestUploadMapping_invalidVersionCode_exit2_noHTTP(t *testing.T) {
 	if got := exitCode(err); got != 2 {
 		t.Errorf("exit code = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("hit the network on an invalid versionCode: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("hit the network on an invalid versionCode: %v", apiCalls(rt))
 	}
 }
 
@@ -113,8 +115,8 @@ func TestUploadMapping_invalidVersionCode_exit2_noHTTP(t *testing.T) {
 // the Discovery enum (proguard / nativeCode) is rejected before any HTTP.
 func TestUploadMapping_invalidType_exit2_noHTTP(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &playRT{t: t}
-	hc := &http.Client{Transport: rt}
+	rt, transport := newPlay(playAPI{})
+	hc := &http.Client{Transport: transport}
 
 	_, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
 		Package:     "com.example.app",
@@ -128,8 +130,8 @@ func TestUploadMapping_invalidType_exit2_noHTTP(t *testing.T) {
 	if got := exitCode(err); got != 2 {
 		t.Errorf("exit code = %d, want 2; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("hit the network on an invalid file type: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("hit the network on an invalid file type: %v", apiCalls(rt))
 	}
 }
 
@@ -137,8 +139,8 @@ func TestUploadMapping_invalidType_exit2_noHTTP(t *testing.T) {
 // the mapping is readable (exit 20 when missing) and performs no HTTP.
 func TestUploadMapping_dryRun_validatesFile_noHTTP(t *testing.T) {
 	// Missing file → exit 20, no HTTP.
-	rt := &playRT{t: t}
-	hc := &http.Client{Transport: rt}
+	rt, transport := newPlay(playAPI{})
+	hc := &http.Client{Transport: transport}
 	_, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
 		Package:     "com.example.app",
 		VersionCode: 142,
@@ -151,14 +153,14 @@ func TestUploadMapping_dryRun_validatesFile_noHTTP(t *testing.T) {
 	if got := exitCode(err); got != 20 {
 		t.Errorf("exit code = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run hit the network: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("dry-run hit the network: %v", apiCalls(rt))
 	}
 
 	// Present file → succeeds, no HTTP.
 	mapping := writeFakeMapping(t)
-	rt2 := &playRT{t: t}
-	hc2 := &http.Client{Transport: rt2}
+	rt2, transport2 := newPlay(playAPI{})
+	hc2 := &http.Client{Transport: transport2}
 	if _, err := orchestrator.UploadMapping(context.Background(), hc2, orchestrator.MappingOpts{
 		Package:     "com.example.app",
 		VersionCode: 142,
@@ -167,8 +169,8 @@ func TestUploadMapping_dryRun_validatesFile_noHTTP(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("dry-run with a present mapping: %v", err)
 	}
-	if len(rt2.calls) != 0 {
-		t.Errorf("dry-run hit the network: %v", rt2.calls)
+	if touched(rt2) {
+		t.Errorf("dry-run hit the network: %v", apiCalls(rt2))
 	}
 }
 
@@ -177,14 +179,13 @@ func TestUploadMapping_dryRun_validatesFile_noHTTP(t *testing.T) {
 // 24h lock leaks: the implicit-edit cleanup contract (DESIGN §4).
 func TestUploadMapping_uploadFails_discardsEdit(t *testing.T) {
 	mapping := writeFakeMapping(t)
-	rt := &playRT{
-		t:      t,
+	rt, transport := newPlay(playAPI{
 		editID: "edit-map",
-		deobfHandler: func(req *http.Request) (*http.Response, error) {
-			return jsonResp(500, `{"error":{"code":500,"message":"boom"}}`), nil
+		deobfHandler: func(c testkit.Call) (int, string) {
+			return 500, `{"error":{"code":500,"message":"boom"}}`
 		},
-	}
-	hc := &http.Client{Transport: rt}
+	})
+	hc := &http.Client{Transport: transport}
 
 	if _, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
 		Package:     "com.example.app",
@@ -194,13 +195,13 @@ func TestUploadMapping_uploadFails_discardsEdit(t *testing.T) {
 		t.Fatal("UploadMapping returned nil error on a 500 upload")
 	}
 	sawDelete := false
-	for _, c := range rt.calls {
+	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "DELETE ") {
 			sawDelete = true
 		}
 	}
 	if !sawDelete {
-		t.Errorf("no edits.delete after a failed upload; calls=%v", rt.calls)
+		t.Errorf("no edits.delete after a failed upload; calls=%v", apiCalls(rt))
 	}
 }
 
@@ -209,8 +210,8 @@ func TestUploadMapping_uploadFails_discardsEdit(t *testing.T) {
 // with the live path, which cannot stream a directory (PR #264 review).
 func TestUploadMapping_dryRun_directoryPath_exit20_noHTTP(t *testing.T) {
 	dir := t.TempDir()
-	rt := &playRT{t: t}
-	hc := &http.Client{Transport: rt}
+	rt, transport := newPlay(playAPI{})
+	hc := &http.Client{Transport: transport}
 	_, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
 		Package:     "com.example.app",
 		VersionCode: 142,
@@ -223,7 +224,7 @@ func TestUploadMapping_dryRun_directoryPath_exit20_noHTTP(t *testing.T) {
 	if got := exitCode(err); got != 20 {
 		t.Errorf("exit code = %d, want 20; err=%v", got, err)
 	}
-	if len(rt.calls) != 0 {
-		t.Errorf("dry-run hit the network: %v", rt.calls)
+	if touched(rt) {
+		t.Errorf("dry-run hit the network: %v", apiCalls(rt))
 	}
 }
