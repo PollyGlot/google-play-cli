@@ -253,7 +253,7 @@ func TestExampleParser_selfCheck(t *testing.T) {
 // someone who installed the binary: ADR and PRD numbers, issue numbers, and
 // repo file paths. The public docs site (https://gplay.sh/docs/...) is where
 // help text sends a reader who needs more.
-var internalReference = regexp.MustCompile(`ADR-?\d|\bPRD\b|#\d|docs/[A-Za-z_]+\.md|\bCONTEXT\.md\b|\bDESIGN\.md\b|§`)
+var internalReference = regexp.MustCompile(`ADR-?\d|\bPRD\b|#\d|docs/[A-Za-z_]+\.md|\bGLOSSARY\.md\b|\bDESIGN\.md\b|§`)
 
 // TestHelp_noInternalReferences walks every command, groups and root
 // included, and checks each piece of text --help prints.

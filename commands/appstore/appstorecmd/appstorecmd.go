@@ -6,7 +6,7 @@
 //
 // The namespace wraps two sibling surfaces sharing one addressing axis:
 // `appstorecatalog` (read-only catalog export) and `appstoreappsreview` (the
-// hosted app review path: see CONTEXT.md "Hosted app" and PRD #377).
+// hosted app review path: see GLOSSARY.md "Hosted app" and PRD #377).
 //
 // Addressing rides the APP STORE PACKAGE NAME: the package of the alternative
 // app store on whose behalf the request is made, which is a different axis

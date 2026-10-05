@@ -4,7 +4,7 @@
 // on a 403; the refund leaf names CAN_MANAGE_ORDERS and surfaces the API's
 // "orders older than 3 years cannot be refunded" rule as a specific refusal.
 // Mirrors commands/releases/generated/generatedcmd. See ADR-0031 /
-// CONTEXT.md ("Order").
+// GLOSSARY.md ("Order").
 package orderscmd
 
 import (

@@ -2,10 +2,10 @@
 // generates and signs from an uploaded App Bundle, via the generatedapks.list /
 // generatedapks.download endpoints. Unlike releases/tracks these endpoints are
 // NOT under the Edit lifecycle: they are direct application-scoped reads at
-// /applications/{packageName}/generatedApks/{versionCode} (CONTEXT.md "Generated
+// /applications/{packageName}/generatedApks/{versionCode} (GLOSSARY.md "Generated
 // APK"), so the client must never open a read-only Edit. List returns every
 // artifact grouped by signing key, each carrying an opaque downloadId
-// (CONTEXT.md "Download ID"). Raw HTTP (ADR-0007), never the google-go-sdk.
+// (GLOSSARY.md "Download ID"). Raw HTTP (ADR-0007), never the google-go-sdk.
 package generatedapks
 
 import (

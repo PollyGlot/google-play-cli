@@ -8,8 +8,8 @@
 // The Metadata tree mirrors the shape `fastlane supply` reads (one
 // snake_case `.txt` per Listing field, under a per-locale directory),
 // minus fastlane's `android/` segment and its `changelogs/` (release
-// notes live with `releases`, not metadata: CONTEXT.md "Metadata
-// tree"). This package owns the on-disk encoding of the ADR-0011
+// notes live with `releases`, not metadata: GLOSSARY.md "Listing"). This
+// package owns the on-disk encoding of the ADR-0011
 // "missing ≠ empty" rule: a field *file* that is absent stays absent
 // from the Listing (unmanaged → "leave online untouched"); a field file
 // that is present but empty is read back as a managed empty string

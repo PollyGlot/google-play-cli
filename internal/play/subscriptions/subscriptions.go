@@ -1,5 +1,5 @@
 // Package subscriptions calls the Android Publisher monetization.subscriptions
-// endpoints: the subscription level of the Monetization catalog (CONTEXT.md).
+// endpoints: the subscription level of the Monetization catalog (GLOSSARY.md).
 // These are Edit-free, application-scoped calls on the package axis
 // (applications/{packageName}/subscriptions...), like deviceTierConfigs and
 // orders. Raw HTTP (ADR-0007), never the google-go-sdk.

@@ -1,5 +1,5 @@
 // Package mappings uploads a ProGuard/R8 deobfuscation file (a Mapping,
-// per CONTEXT.md) to a specific Edit via the Android Publisher
+// per GLOSSARY.md) to a specific Edit via the Android Publisher
 // edits.deobfuscationfiles.upload endpoint. Like bundles.upload it uses
 // Google's upload sub-host and the resumable protocol (Content-Type:
 // application/octet-stream, uploadType=resumable); unlike bundles it is keyed
@@ -9,7 +9,7 @@
 // obfuscated crash stack traces readable in Play vitals), a Mapping is
 // architecturally a publisher Edit upload: same OAuth scope and Edit
 // model as a release upload, NOT the read-only Reporting service, so it
-// is surfaced under `releases`, never `vitals` (CONTEXT.md / ADR-0027).
+// is surfaced under `releases`, never `vitals` (GLOSSARY.md / ADR-0027).
 package mappings
 
 import (

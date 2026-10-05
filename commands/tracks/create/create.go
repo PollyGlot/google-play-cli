@@ -38,7 +38,7 @@ type Input struct {
 // body for the ADR-0003 JSON pass-through; Name/Type/FormFactor/Kind are
 // the gplay-shaped context shown in the human views. A created track is
 // always a Closed track (closed testing is the only creatable type), so
-// Kind is the derived "custom" label per CONTEXT.md. DryRun marks the
+// Kind is the derived "custom" label per GLOSSARY.md. DryRun marks the
 // preview path, where Raw is empty (no API body) and the JSON view emits
 // a small gplay-shaped preview instead.
 type Payload struct {

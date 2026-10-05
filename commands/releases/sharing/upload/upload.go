@@ -1,6 +1,6 @@
 // Package upload implements `gplay releases sharing upload`: upload an APK or
 // AAB to Google Play Internal App Sharing and print the private, shareable
-// download link (CONTEXT.md: Internal App Sharing). It bypasses tracks and the
+// download link (GLOSSARY.md: Internal App Sharing). It bypasses tracks and the
 // Edit lifecycle: a QA/preview gesture, not a release. APK vs AAB is
 // auto-detected by file extension (.apk / .aab) with a --format override.
 //

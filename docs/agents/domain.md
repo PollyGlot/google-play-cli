@@ -1,9 +1,9 @@
 # Domain docs
 
 How engineering skills use this repo's domain docs. Single context: one
-`CONTEXT.md` and `docs/adr/` at the root.
+`GLOSSARY.md` and `docs/adr/` at the root.
 
-- **A domain term you need**: find its heading in `CONTEXT.md` (`grep -n "^### <Term>"`)
+- **A domain term you need**: find its entry in `GLOSSARY.md` (`grep -n -A2 "^\*\*<Term>\*\*:"`)
   and read that entry. Read the whole file only when the task is about the
   glossary itself.
 - **An area you will change**: read the ADRs in `docs/adr/` whose title touches it.

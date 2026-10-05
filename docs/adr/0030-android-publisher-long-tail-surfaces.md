@@ -37,7 +37,7 @@ method name suggests.
 The rule that decides "new top-level namespace vs grouping noun under an
 existing one" is **whether the resource rides the Edit lifecycle**, matching the
 precedent that `releases mappings` lives under `releases` *because* a Mapping is
-an androidpublisher Edit upload ([ADR-0027](0027-vitals-second-service-scope-readonly.md) / CONTEXT.md "Mapping").
+an androidpublisher Edit upload ([ADR-0027](0027-vitals-second-service-scope-readonly.md) / GLOSSARY.md "Mapping").
 
 | Surface | Edit resource? | Placement | Verbs |
 |---|---|---|---|

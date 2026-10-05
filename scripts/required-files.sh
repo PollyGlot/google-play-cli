@@ -11,7 +11,7 @@ cd "$(git rev-parse --show-toplevel)"
 missing=0
 for f in \
 	CLAUDE.md \
-	CONTEXT.md \
+	GLOSSARY.md \
 	CONTRIBUTING.md \
 	CODE_OF_CONDUCT.md \
 	LICENSE \

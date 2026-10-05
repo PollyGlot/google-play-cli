@@ -3,7 +3,7 @@
 // axis (applications/{packageName}/orders/...), the admin-side commerce
 // diagnostic: a human or agent holds an order ID from a complaint or a payout
 // report and looks it up: no device token, unlike runtime purchase-token
-// verification (CONTEXT.md "Order", ADR-0031). Raw HTTP (ADR-0007), never the
+// verification (GLOSSARY.md "Order", ADR-0031). Raw HTTP (ADR-0007), never the
 // google-go-sdk.
 //
 // This package ships the full orders surface (PRD #245): orders.get (a single

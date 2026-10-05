@@ -198,7 +198,7 @@ and agents start from the same page.
 
 - [**CLAUDE.md**](CLAUDE.md): project context and agent working
   instructions (read order, conventions, build/test, PR gate).
-- [**CONTEXT.md**](CONTEXT.md): glossary of canonical terms (Edit,
+- [**GLOSSARY.md**](GLOSSARY.md): glossary of canonical terms (Edit,
   Account, Project, ...). Use them verbatim.
 - [**docs/DESIGN.md**](docs/DESIGN.md): CLI conventions across commands
   (auth precedence, exit codes, output format, verbosity, edit lifecycle).

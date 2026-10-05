@@ -1,4 +1,4 @@
-// Package reconcile computes the Reconciliation plan (CONTEXT.md) of the
+// Package reconcile computes the Reconciliation plan (GLOSSARY.md) of the
 // Monetization catalog: the pure create/patch/delete diff between a declared
 // catalog (files) and the live one, restricted to the managed fields of the
 // calling slice. No I/O, no clock, no auth: the same split as
