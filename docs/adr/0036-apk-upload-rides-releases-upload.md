@@ -3,7 +3,7 @@
 Grilled from PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118)
 under [ADR-0026](0026-maximal-admin-api-coverage.md) (maximal admin-API
 coverage). `edits.apks.upload` is the legacy sibling of `edits.bundles.upload`:
-it attaches an `.apk` (instead of an `.aab`) to an [Edit](../../CONTEXT.md#edit),
+it attaches an `.apk` (instead of an `.aab`) to an [Edit](../../GLOSSARY.md),
 after which track assignment, release notes, and commit are identical. Google
 has required the AAB for **new** apps since August 2021, so this surface only
 serves **existing** apps still distributed as APKs — a completeness/parity

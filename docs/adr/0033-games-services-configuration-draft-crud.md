@@ -42,7 +42,7 @@ this prep (declared in `discovery.Services`, regenerated with
 4. **Draft-only model.** Writes affect the editable `draft`; `published` is
    read-only live state. The API has **no publish method** — publishing to
    players is Console-only and therefore out of scope. No mapping onto gplay's
-   [Edit](../../CONTEXT.md) lifecycle (there is no edit/commit here).
+   [Edit](../../GLOSSARY.md) lifecycle (there is no edit/commit here).
 5. **Localization inline; bulk sweep deferred.** Localized name/description are
    part of the draft payload (declarative, per resource). The bulk localization
    sweep (add a locale across every achievement/leaderboard at once) is a

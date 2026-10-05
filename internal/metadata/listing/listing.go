@@ -39,7 +39,7 @@ const (
 
 // Spec is the static metadata of one Field: its on-disk file name
 // (snake_case, byte-identical to `fastlane supply` so an existing tree is
-// a drop-in: CONTEXT.md "Listing"), its Google Play API JSON key
+// a drop-in), its Google Play API JSON key
 // (camelCase, the edits.listings field name), its character limit
 // (0 = unlimited), and whether Play requires it non-empty.
 type Spec struct {

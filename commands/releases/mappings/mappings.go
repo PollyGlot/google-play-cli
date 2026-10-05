@@ -1,5 +1,5 @@
 // Package mappings implements `gplay releases mappings upload`: attach a
-// ProGuard/R8 deobfuscation file (a Mapping, per CONTEXT.md) to an
+// ProGuard/R8 deobfuscation file (a Mapping, per GLOSSARY.md) to an
 // already-published versionCode after the fact, so Play vitals can
 // symbolicate that version's obfuscated crash stacks. The CLI glue
 // resolves --package, validates --version-code, and hands a MappingOpts

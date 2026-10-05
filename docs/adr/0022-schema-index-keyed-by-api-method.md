@@ -7,7 +7,7 @@ accepted
 ## Context
 
 `gplay schema` (the `[experimental]` introspection command) exposes an
-embedded, normalized **Schema index** (see CONTEXT.md) derived from the Android
+embedded, normalized **Schema index** (see GLOSSARY.md) derived from the Android
 Publisher v3 **Discovery snapshot** (#52). Every index entry needs a primary
 key — the thing a caller queries by and the canonical address shown back.
 Three axes were on the table:

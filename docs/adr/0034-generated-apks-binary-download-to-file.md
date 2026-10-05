@@ -32,7 +32,7 @@ The decisions:
   the DESIGN §0 domain-verb list; no verb-gate rename is involved.
 
 - **Destination is `--dest`, not `--output`.** `download`'s payload is raw bytes,
-  not a [Renderable](../../CONTEXT.md#renderer), so the command does **not** expose
+  not a [Renderable](0005-tty-aware-output.md#renderer-interface), so the command does **not** expose
   the global `--output json|table|markdown` flag (same rule as `auth login`,
   DESIGN §"Commands without `--output`"). The artifact is written to **`--dest
   PATH`** (required in v1); **`--dest -`** streams the bytes to stdout for piping.

@@ -1,7 +1,7 @@
 // Package editpin persists the open *explicit* Edit ID for a package to
 // .gplay/edit-<package>.json: the file `gplay edits begin` writes and every
 // write command consults to reuse an open Edit instead of opening its own
-// (docs/DESIGN.md §4 / CONTEXT.md "Edit"). The directory is the project's
+// (docs/DESIGN.md §4 / GLOSSARY.md "Edit"). The directory is the project's
 // .gplay/ (the same dir that holds config.json), which `gplay init` already
 // gitignores for edit-*.json (transient, per-machine state). Reads and writes
 // go through config.FS so callers and tests stay filesystem-seamed.

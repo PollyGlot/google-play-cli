@@ -3,7 +3,7 @@
 // returns the resulting shareable artifact. Unlike a release upload these
 // endpoints are OUTSIDE the Edit lifecycle (no editId): they create a private
 // InternalAppSharingArtifact whose downloadUrl an authorized tester follows
-// into the Play Store, bypassing tracks entirely (CONTEXT.md: Internal App
+// into the Play Store, bypassing tracks entirely (GLOSSARY.md: Internal App
 // Sharing). They use Google's upload sub-host and the simple-media protocol
 // (Content-Type: application/octet-stream, uploadType=media), exactly like
 // internal/play/bundles, so the proven ContentLength / GetBody recipe applies.

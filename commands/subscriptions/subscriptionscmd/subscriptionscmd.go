@@ -2,7 +2,7 @@
 // subscriptions` leaves: the default catalog directory and the 403/404 hint
 // classification that turns a bare API rejection into an agent-resolvable
 // refusal. Mirrors commands/orders/orderscmd. See ADR-0041 /
-// CONTEXT.md ("Subscription", "Monetization catalog").
+// GLOSSARY.md ("Subscription", "Monetization catalog").
 package subscriptionscmd
 
 import (

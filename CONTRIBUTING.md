@@ -121,7 +121,7 @@ None of those bump the version or land in the CLI `CHANGELOG.md`. Reserve
 
 - **CLI convention or cross-command behavior change** → also update
   `docs/DESIGN.md` in the same PR.
-- **New canonical term** (a new domain noun) → add to `CONTEXT.md`.
+- **New canonical term** (a new domain noun) → add to `GLOSSARY.md`.
 - **Irreversible / surprising decision** → add an ADR under `docs/adr/`.
 - **Feature you decided to defer** → file a `type:parking` issue with the rationale.
 - **New command that mutates Google Play state** → wrap it with

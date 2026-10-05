@@ -4,7 +4,7 @@ Public Go CLI for the Google Play Developer API: one static binary for CI and AI
 
 ## Glossary
 
-Canonical terms live in `CONTEXT.md`; use them verbatim, no synonyms. The core five:
+Canonical terms live in `GLOSSARY.md`; use them verbatim, no synonyms. The core five:
 
 - **Edit**: the API's transactional unit; implicit (per-command) by default, explicit via `gplay edits begin/commit`, pinned in `.gplay/edit-<package>.json`.
 - **Account**: a locally registered service-account credential; exactly one active at a time.
@@ -46,4 +46,4 @@ Issue tracker, triage labels and domain docs: `docs/agents/`. `to-tickets`,
 
 ## Goût
 
-New surfaces earn their place through an issue first (`type:prd`, or `type:parking` when deferred): surface the scope decision there, then apply the matching `docs/DESIGN.md` section, write the RoundTripper-mocked test, and keep `--help` and docs in `CONTEXT.md` vocabulary.
+New surfaces earn their place through an issue first (`type:prd`, or `type:parking` when deferred): surface the scope decision there, then apply the matching `docs/DESIGN.md` section, write the RoundTripper-mocked test, and keep `--help` and docs in `GLOSSARY.md` vocabulary.

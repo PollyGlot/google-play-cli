@@ -244,7 +244,7 @@ the same reason.
 - `config.local.json` — per-developer overrides (`account`, rarely
   `package`). **Gitignore this** — `gplay init` writes the rule for you
   in `.gplay/.gitignore`.
-- `edit-<package>.json` — open explicit Edit ID (see `CONTEXT.md` → Edit).
+- `edit-<package>.json` — open explicit Edit ID (see `GLOSSARY.md` → Edit).
   **Gitignore this** too — transient and per-developer; covered by the
   same `.gplay/.gitignore`.
 
@@ -302,17 +302,17 @@ Each transition is its own verb:
 `generated` added in ADR-0034):
 
 - **`releases sharing upload`** — Internal App Sharing: a non-track media upload
-  (no Edit) returning a private shareable link (CONTEXT.md "Internal App
+  (no Edit) returning a private shareable link (GLOSSARY.md "Internal App
   Sharing").
 - **`releases expansion-files upload/set/view`** — legacy OBB expansion files,
-  an Edit artifact keyed by `apkVersionCode` (CONTEXT.md "Expansion file (OBB)").
+  an Edit artifact keyed by `apkVersionCode` (GLOSSARY.md "Expansion file (OBB)").
   Labeled legacy (superseded by Play Asset Delivery). The expansion **`patch`
   type** (`--type patch`) is unrelated to the HTTP PATCH method: the API's
   `update` (PUT) and `patch` (PATCH) both write the single field
   `referencesVersion`, so gplay exposes one declarative `set` (PUT primary), not
   a PUT/PATCH pair.
 - **`releases generated list/download`** — the APKs Play generates and signs from
-  an uploaded AAB (CONTEXT.md "Generated APK"). **Read-only and Edit-free**
+  an uploaded AAB (GLOSSARY.md "Generated APK"). **Read-only and Edit-free**
   (application-scoped, not under an Edit). `list` enumerates the artifacts for a
   `--version-code`; `download <downloadId>` streams one artifact's raw bytes to
   `--dest PATH` (or `--dest -` for stdout) — gplay's only binary download-to-file
@@ -502,7 +502,7 @@ language, read live via `edits.images.list` inside the same read-only Edit:
   responsibility.
 
 `gplay metadata images list --type <AppImageType>` (`[experimental]`) narrows
-the same live per-slot summary to a single image slot (CONTEXT.md "Image slot")
+the same live per-slot summary to a single image slot (GLOSSARY.md "Image slot")
 across locales; an unknown `--type` is refused client-side (exit 20) before any
 API call, and `--output json` keeps its exact per-slot shape — `--type` only
 narrows which slots appear.
@@ -683,7 +683,7 @@ piping (where stdout is machine data and the table view is absent).
 
 - The line leans only on canonical terms (`track`, `status`, `versionCode`,
   `userFraction`); it never names the Play "release" object — the glossary's
-  **Release** is the CLI's own distribution (CONTEXT.md), a different thing.
+  **Release** is the CLI's own distribution (GLOSSARY.md), a different thing.
 - `userFraction` is rendered as a percentage and only when `status` is
   `inProgress` (a partial rollout — the one case where the fraction informs).
 - `--dry-run` never emits it: `✓` means *committed*. A dry-run already prints
@@ -994,7 +994,7 @@ introspectable without reading source, from `gplay help exit-codes` (human) and
 
 `gplay tracks create` and `gplay testers list/set` manage custom closed
 testing tracks and their authorized audience. Both surfaces are shaped by
-hard constraints of the Play Developer API — see `CONTEXT.md` (**Closed
+hard constraints of the Play Developer API — see `GLOSSARY.md` (**Closed
 track**, **Tester**) for the domain terms.
 
 ### Creating tracks

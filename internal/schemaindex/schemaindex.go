@@ -1,5 +1,5 @@
 // Package schemaindex defines the normalized, embeddable projection of a Google
-// API Discovery document: the Schema index (see CONTEXT.md and ADR-0022) that
+// API Discovery document: the Schema index (see GLOSSARY.md and ADR-0022) that
 // `gplay schema` queries offline.
 //
 // Unlike internal/discovery (build-and-maintenance tooling that is never

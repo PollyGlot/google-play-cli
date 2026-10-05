@@ -2,7 +2,7 @@
 // expansion-file surface (edits.expansionfiles; ADR-0007 raw HTTP). An
 // ExpansionFile is an Android Publisher Edit artifact keyed by an APK
 // apkVersionCode and a type (main|patch): structurally a sibling of a Mapping
-// (CONTEXT.md), uploaded with the same scope and Edit model. The Edit lifecycle
+// (GLOSSARY.md), uploaded with the same scope and Edit model. The Edit lifecycle
 // (begin/commit/discard) is the caller's concern (edits.WithEdit /
 // WithReadOnlyEdit); these functions perform a single call inside an already-open
 // Edit, given the editID.

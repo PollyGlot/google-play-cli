@@ -34,6 +34,6 @@ If there's no obvious way to test (refactor, docs), say so.
 
 - [ ] `make check` passes locally (the same checks CI requires).
 - [ ] Behavior change is reflected in `--help` text and (if cross-command) in [`docs/DESIGN.md`](../blob/main/docs/DESIGN.md).
-- [ ] New canonical term → added to [`CONTEXT.md`](../blob/main/CONTEXT.md).
+- [ ] New canonical term → added to [`GLOSSARY.md`](../blob/main/GLOSSARY.md).
 - [ ] Irreversible / surprising decision → ADR added under [`docs/adr/`](../blob/main/docs/adr/).
 - [ ] Deferred work → filed as a `type:parking` issue with its rationale.

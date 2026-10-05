@@ -1,7 +1,7 @@
 // Package planview renders a Monetization Reconciliation plan (reconcile.Plan)
 // for the declarative apply commands: the human table/markdown view and the
 // flat --output json schema (gplay-owned, the ADR-0003 exception family,
-// [experimental] per CONTEXT.md). Both catalogs share the plan shape and
+// [experimental] per ADR-0041). Both catalogs share the plan shape and
 // differ only in their middle level (a subscription's base plan, a one-time
 // product's purchase option), so one renderer serves both through an Axis;
 // the commands keep flag parsing, confirmation gating and the API calls.

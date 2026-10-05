@@ -12,7 +12,7 @@ local note or an external document: if it is not in the repo or reachable with
 `gh`, it does not exist for this run.
 
 Tools assumed available: `gh`, `go`, `jq`, `grep`. Vocabulary: use the terms of
-[CONTEXT.md](../../CONTEXT.md) verbatim (Edit, Account, Project, Listing, track,
+[GLOSSARY.md](../../GLOSSARY.md) verbatim (Edit, Account, Project, Listing, track,
 release). Scope decisions cite
 [ADR-0026](../adr/0026-maximal-admin-api-coverage.md).
 

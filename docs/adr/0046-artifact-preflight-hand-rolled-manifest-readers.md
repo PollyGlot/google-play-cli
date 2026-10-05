@@ -10,7 +10,7 @@ gplay uploaded whatever file it was handed. A wrong path (an APK where an
 AAB is expected, a mislabeled zip, a build for another application) was only
 rejected by Google after the bytes were sent. With resumable uploads on
 150 MB-plus artifacts, that is minutes of wasted transfer, a burned
-[Edit](../../CONTEXT.md#edit), and a `400` whose message is far less specific
+[Edit](../../GLOSSARY.md), and a `400` whose message is far less specific
 than a local check could be. The worst case is not slow, it is wrong: nothing
 stopped app A's release from receiving app B's build.
 

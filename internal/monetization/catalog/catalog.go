@@ -1,5 +1,5 @@
 // Package catalog is the on-disk codec of the Monetization catalog
-// (CONTEXT.md): a flat directory of <productId>.json files, each one API
+// (GLOSSARY.md): a flat directory of <productId>.json files, each one API
 // resource in wire format. Read is the input side of `apply`; Write is the
 // output side of `pull`. Both keep the invariant that pull-then-apply with no
 // edits is a no-op (ADR-0041 §1): Write strips only server-derived noise and

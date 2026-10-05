@@ -3,7 +3,7 @@
 // and exiting 70 when anything was found, so CI can gate on "is my account in
 // a clean state?" without clicking through the Play Console app by app.
 //
-// Why `apps audit` and not `account audit`: CONTEXT.md reserves **Account**
+// Why `apps audit` and not `account audit`: GLOSSARY.md reserves **Account**
 // for a locally registered credential and warns against writing "account"
 // unqualified (three different things end in "account" here). The sweep's unit
 // is the app, so the command hangs off the `apps` noun with a

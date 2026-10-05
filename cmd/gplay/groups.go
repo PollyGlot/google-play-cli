@@ -152,7 +152,7 @@ func newAppsGroup(boot kernel.Boot) *cobra.Command {
 // a read and stays unmarked.
 func newReleasesGroup(boot kernel.Boot) *cobra.Command {
 	// `gplay releases mappings`: ProGuard/R8 deobfuscation mappings, the
-	// publisher-Edit side of vitals symbolication (CONTEXT.md / ADR-0027 /
+	// publisher-Edit side of vitals symbolication (GLOSSARY.md / ADR-0027 /
 	// #250). It lives under releases (not vitals) because a Mapping is an
 	// androidpublisher Edit upload, not a read from the Reporting service.
 	// Only the upload leaf mutates Play state.
@@ -163,7 +163,7 @@ func newReleasesGroup(boot kernel.Boot) *cobra.Command {
 	// `gplay releases sharing`: Internal App Sharing (internalappsharingartifacts).
 	// A grouping noun under releases, mirroring `releases mappings`: a non-track
 	// upload that bypasses the Edit lifecycle entirely and mints a private,
-	// shareable install link (CONTEXT.md / ADR-0030 / PRD #243). The single
+	// shareable install link (GLOSSARY.md / ADR-0030 / PRD #243). The single
 	// `upload` leaf mutates Play state (creates an artifact), so it is marked.
 	// [experimental] (ADR-0010/ADR-0042): shipped in the #243 long-tail batch and
 	// barely exercised: the shape of what it returns for a link is the part most
@@ -174,7 +174,7 @@ func newReleasesGroup(boot kernel.Boot) *cobra.Command {
 
 	// `gplay releases expansion-files`: legacy OBB expansion files
 	// (edits.expansionfiles). A grouping noun under releases, mirroring
-	// `releases mappings`: an Edit artifact keyed by apkVersionCode (CONTEXT.md /
+	// `releases mappings`: an Edit artifact keyed by apkVersionCode (GLOSSARY.md /
 	// ADR-0030). upload (media) and set (PUT) mutate inside an Edit; view is a
 	// read-only Edit. The expansion 'patch' type is a --type value, not the HTTP
 	// PATCH method, which folds into set.
@@ -190,7 +190,7 @@ func newReleasesGroup(boot kernel.Boot) *cobra.Command {
 	// `gplay releases generated`: the APKs Play generates and signs from an
 	// uploaded AAB (generatedapks). A grouping noun under releases, mirroring
 	// `releases sharing`: an application-scoped read that bypasses the Edit
-	// lifecycle entirely (CONTEXT.md "Generated APK" / ADR-0034 / PRD #299). The
+	// lifecycle entirely (GLOSSARY.md "Generated APK" / ADR-0034 / PRD #299). The
 	// leaves are pure reads (no MarkMutating, not gated by GPLAY_READONLY):
 	// `list` enumerates the artifacts, `download` fetches one to disk.
 	// [experimental] (ADR-0010/ADR-0042): the download target (file vs stdout) and
@@ -255,7 +255,7 @@ func newTestersGroup(boot kernel.Boot) *cobra.Command {
 // app-scoped and OUTSIDE the Edit lifecycle (no editId), not under `tracks`
 // (an Edit surface) nor `apps` (the local registry). The resource is immutable
 // (create/get/list only), so `create` is the only mutating leaf. See ADR-0030 /
-// PRD #243 / CONTEXT.md (Device tier config).
+// PRD #243 / GLOSSARY.md (Device tier config).
 //
 // [experimental] (ADR-0010/ADR-0042): #243 long-tail, and the config resource
 // is immutable server-side, if the create surface needs a different shape,
@@ -274,7 +274,7 @@ func newDeviceTiersGroup(boot kernel.Boot) *cobra.Command {
 // lifecycle (own appRecoveryId, draft→active→canceled): the inverse of why
 // `releases mappings` lives under releases. The draft/read leaves are here;
 // the production-impacting lifecycle leaves (deploy/cancel/add-targeting)
-// require --confirm. See ADR-0030 / PRD #243 / CONTEXT.md (Recovery).
+// require --confirm. See ADR-0030 / PRD #243 / GLOSSARY.md (Recovery).
 //
 // [experimental] (ADR-0010/ADR-0042): incident-response surface shipped in the
 // #243 batch, with three new domain verbs (deploy/cancel/add-targeting) that
@@ -300,7 +300,7 @@ func newRecoveryGroup(boot kernel.Boot) *cobra.Command {
 // done via API at all, and rotating a Google-managed key goes through the
 // Play Console. Each swaps the live signing key of a real app, so each
 // requires --confirm (exit 3 if missing) per ADR-0043's criterion. See
-// PRD #476 / ADR-0026 / CONTEXT.md.
+// PRD #476 / ADR-0026 / GLOSSARY.md.
 //
 // [experimental] (ADR-0010/ADR-0042): a low-traffic enterprise surface whose
 // flag shape has never been exercised against a real Cloud KMS key.
@@ -316,7 +316,7 @@ func newSigningGroup(boot kernel.Boot) *cobra.Command {
 // account rather than a package (ADR-0015). `team`, `users`, and `grants` are
 // grouping nouns (kernel.Group: bare prints help, an unknown subcommand is
 // exit-2 misuse); the named `team` (not `users`/`access`) avoids colliding
-// with gplay's Account. See PRD #147 / ADR-0015/0016/0017 / CONTEXT.md.
+// with gplay's Account. See PRD #147 / ADR-0015/0016/0017 / GLOSSARY.md.
 func newTeamGroup(boot kernel.Boot) *cobra.Command {
 	return kernel.Group("team", "Manage the Developer account's members and permissions (users, grants)",
 		teampermissions.NewCommand(boot),
@@ -341,7 +341,7 @@ func newTeamGroup(boot kernel.Boot) *cobra.Command {
 // be keyed by package. The whole upstream surface is one method (no read, no
 // delete), so `create` is the only leaf; it is the destructive/irreversible
 // tier (--confirm, exit 3 if missing) and MarkMutating for GPLAY_READONLY.
-// See ADR-0032 / PRD #242 / CONTEXT.md (Custom app).
+// See ADR-0032 / PRD #242 / GLOSSARY.md (Custom app).
 //
 // [experimental] (ADR-0010/ADR-0042): one irreversible create against an
 // organisation-scoped API with no read to verify the result: the surface
@@ -362,7 +362,7 @@ func newCustomAppsGroup(boot kernel.Boot) *cobra.Command {
 // `catalog` is read-only (the Catalog Export for app stores, PRD #396) and
 // `create` (#378, PRD #377) opens the hosted app review path: the mandatory
 // first call for any hosted app, MarkMutating so GPLAY_READONLY refuses it
-// (exit 4). All of it is Edit-free. See CONTEXT.md ("Catalog app view",
+// (exit 4). All of it is Edit-free. See GLOSSARY.md ("Catalog app view",
 // "Hosted app").
 //
 // [experimental] (ADR-0010/ADR-0042): a brand-new namespace serving a persona
@@ -415,7 +415,7 @@ func newAppStoreGroup(boot kernel.Boot) *cobra.Command {
 }
 
 // `gplay edits`: the EXPLICIT Edit lifecycle (begin/commit/discard/status,
-// docs/DESIGN.md §4 / CONTEXT.md "Edit"). Most write commands run their own
+// docs/DESIGN.md §4 / GLOSSARY.md "Edit"). Most write commands run their own
 // implicit Edit (open → mutate → commit) per invocation; `edits begin` opens
 // one and pins its ID to .gplay/edit-<package>.json so subsequent writes batch
 // into it instead of opening their own: committed or discarded explicitly by
@@ -443,7 +443,7 @@ func newEditsGroup(boot kernel.Boot) *cobra.Command {
 // publish method: publishing to players is Console-only); list/view are reads,
 // create/set are routine writes, and remove is the destructive tier
 // (--confirm, exit 3 if missing). The write verbs follow ADR-0019 (`set`, one
-// delete verb `remove`), renamed from update/delete in 2.0.0 (#597). See PRD #241 / ADR-0033 / CONTEXT.md (Play
+// delete verb `remove`), renamed from update/delete in 2.0.0 (#597). See PRD #241 / ADR-0033 / GLOSSARY.md (Play
 // Games Services Publishing API).
 //
 // [experimental] (ADR-0010/ADR-0042): a second Google service on its own ID
@@ -474,7 +474,7 @@ func newGamesGroup(boot kernel.Boot) *cobra.Command {
 // (applications/{packageName}/orders/...), NOT the developer-account axis: a
 // human or agent holds an order ID from a complaint or payout report (no
 // device token), distinct from runtime purchase-token verification, which
-// gplay does not wrap (ADR-0031 / CONTEXT.md "Order"). `view` is a pure read
+// gplay does not wrap (ADR-0031 / GLOSSARY.md "Order"). `view` is a pure read
 // (single #282 + batch #283), not marked mutating, not gated by
 // GPLAY_READONLY. `refund` (#284) is the money-moving, irreversible write:
 // MarkMutating so GPLAY_READONLY refuses it (exit 4), and it requires
