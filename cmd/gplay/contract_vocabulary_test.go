@@ -229,9 +229,6 @@ var verbPathExceptions = map[string]string{
 	"vitals errors counts":   "ADR-0027",
 	"vitals errors issues":   "ADR-0027",
 	"vitals errors reports":  "ADR-0027",
-	// The voided-purchases feed (#346): named after the API resource next to
-	// `orders view`/`orders refund`, a list with no other verb to tell apart.
-	"orders voided": "#346 (maintainer decision)",
 }
 
 // verbDrift lists experimental leaves whose verb contradicts ADR-0019 (`set`

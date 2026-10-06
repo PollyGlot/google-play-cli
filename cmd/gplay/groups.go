@@ -479,8 +479,8 @@ func newGamesGroup(boot kernel.Boot) *cobra.Command {
 // (single #282 + batch #283), not marked mutating, not gated by
 // GPLAY_READONLY. `refund` (#284) is the money-moving, irreversible write:
 // MarkMutating so GPLAY_READONLY refuses it (exit 4), and it requires
-// --confirm at the command layer (exit 3 if missing). `voided` (#346) is the
-// reconciliation read over purchases.voidedpurchases.list: same package axis,
+// --confirm at the command layer (exit 3 if missing). `voided list` (#346) is
+// the reconciliation read over purchases.voidedpurchases.list: same package axis,
 // pure read, not gated.
 //
 // [experimental] (ADR-0010/ADR-0042): money-moving, and the batch-vs-single

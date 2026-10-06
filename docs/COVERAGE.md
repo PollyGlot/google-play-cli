@@ -175,7 +175,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **129 are 
 | `androidpublisher.purchases.subscriptionsv2.defer` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
 | `androidpublisher.purchases.subscriptionsv2.get` | ⚫️ | runtime: server-side subscription-token verification (v2 shape) |
 | `androidpublisher.purchases.subscriptionsv2.revoke` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
-| `androidpublisher.purchases.voidedpurchases.list` | ✅ | `gplay orders voided`; voided-purchases feed for refund/chargeback reconciliation (#346) |
+| `androidpublisher.purchases.voidedpurchases.list` | ✅ | `gplay orders voided list`; voided-purchases feed for refund/chargeback reconciliation (#346) |
 | `androidpublisher.reviews.get` | ✅ | `gplay reviews view` |
 | `androidpublisher.reviews.list` | ✅ | `gplay reviews list` |
 | `androidpublisher.reviews.reply` | ✅ | `gplay reviews reply` |

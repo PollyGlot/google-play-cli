@@ -1,11 +1,12 @@
-// Package voided implements `gplay orders voided`: the purchases Google Play
+// Package voided implements `gplay orders voided list`: the purchases Google Play
 // voided (refunded, charged back, revoked) over the last --since window, via
 // purchases.voidedpurchases.list (#346). The reconciliation read next to
 // `orders view` / `orders refund` (ADR-0031): pure read, no Edit, no
 // GPLAY_READONLY gate. --output json is the API's voidedPurchases envelope,
 // every page's items verbatim (ADR-0003); the human views decode the numeric
 // source/reason codes and epoch-millis times. Ships [experimental] with the
-// rest of `orders` (ADR-0010).
+// rest of `orders` (ADR-0010). `voided` is a pure grouping noun and `list` the
+// canonical verb (ADR-0019), the `apps accessible list` shape.
 package voided
 
 import (
@@ -154,14 +155,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{List: list}, nil
 }
 
-// NewCommand returns the cobra command for `gplay orders voided`.
-func NewCommand(boot kernel.Boot) *cobra.Command {
+// newListCommand returns the `gplay orders voided list` verb.
+func newListCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
 		in         Input
 	)
 	cmd := &cobra.Command{
-		Use:   "voided",
+		Use:   "list",
 		Short: "List voided purchases (refunds, chargebacks, revocations) for reconciliation",
 		Long: `List the purchases Google Play voided for a package over a window: refunded,
 charged back, or revoked, whether the buyer, the developer, or Google
@@ -182,10 +183,10 @@ each item verbatim; the table decodes the source and reason codes and shows
 times in UTC. Reading requires the service account to hold the
 CAN_VIEW_FINANCIAL_DATA permission (never part of a Role bundle); a 403 names
 it.`,
-		Example: `  gplay orders voided --package com.example.app
+		Example: `  gplay orders voided list --package com.example.app
 
   # Only in-app products voided in the last week, as JSON
-  gplay orders voided --since 7d --type inapp --output json`,
+  gplay orders voided list --since 7d --type inapp --output json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -201,5 +202,23 @@ it.`,
 	cmd.Flags().StringVar(&in.Type, "type", TypeAll, "purchases to list: all (in-app products and subscriptions) or inapp")
 	cmd.Flags().BoolVar(&in.IncludePartialRefunds, "include-partial-refunds", false, "also list quantity-based partial refunds of multi-quantity purchases")
 	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max voided purchases to return (0 = all, no cap); a capped list warns on stderr")
+	return cmd
+}
+
+// NewCommand returns the cobra group for `orders voided`: a pure grouping noun
+// (ADR-0019) holding one verb, `list`. The bare `voided` only prints help
+// (kernel.GroupRunE), so a mistyped subcommand fails as CLI misuse (exit 2).
+func NewCommand(boot kernel.Boot) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "voided",
+		Short: "Reconcile voided purchases (refunds, chargebacks, revocations)",
+		Long: `Group for the voided-purchases reconciliation feed.
+` + "`orders voided list`" + ` lists the purchases Google Play voided for a package;
+the bare ` + "`orders voided`" + ` command prints this help.`,
+		RunE:          kernel.GroupRunE,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	cmd.AddCommand(newListCommand(boot))
 	return cmd
 }
