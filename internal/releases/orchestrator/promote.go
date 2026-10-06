@@ -144,6 +144,10 @@ type PromoteOpts struct {
 	Status       Status
 	UserFraction float64
 
+	// UpdatePriority, when non-nil, overrides the inAppUpdatePriority the
+	// source release carries; nil carries the source's value over (#664).
+	UpdatePriority *int
+
 	// VersionCode / ReleaseName disambiguate the source release when
 	// multiple coexist on FromTrack (e.g. inProgress + halted). Exactly
 	// one is needed in that case; if neither is provided and the source
@@ -289,6 +293,7 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 		result.ReleaseName = release.Name
 		result.Status = release.Status
 		result.UserFraction = release.UserFraction
+		result.InAppUpdatePriority = release.InAppUpdatePriority
 		result.RawTrackResponse = raw
 		return nil
 	})
@@ -306,6 +311,9 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 // 404 or a panic.
 func validatePromoteOpts(opts PromoteOpts) error {
 	if err := validateStatusValue(opts.Status); err != nil {
+		return err
+	}
+	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
 		return err
 	}
 	if opts.FromTrack == "" {
@@ -347,7 +355,10 @@ func dryRunPromoteResult(opts PromoteOpts) *Result {
 		VersionCode:  0,
 		Status:       statusStr,
 		UserFraction: userFraction,
-		ReleaseName:  "(dry-run)",
+		// Only an explicit override is knowable offline: the source's own
+		// priority would come from tracks.get, which a dry-run never issues.
+		InAppUpdatePriority: opts.UpdatePriority,
+		ReleaseName:         "(dry-run)",
 	}
 }
 
@@ -436,13 +447,20 @@ func containsVersionCode(codes []string, want int) bool {
 // the tracks.Release payload sent on the destination track. Carries
 // over the source's versionCode and name; the ADR-0002 safe-default
 // rule and the status→userFraction mapping live in statusPayload,
-// shared with buildRelease.
+// shared with buildRelease. The source's inAppUpdatePriority carries over
+// unless opts.UpdatePriority overrides it: before #664 the typed rebuild
+// silently dropped a priority set in the Play Console.
 func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release {
 	statusStr, userFraction := statusPayload(opts.ToTrack, opts.Status, opts.UserFraction)
+	priority := source.InAppUpdatePriority
+	if opts.UpdatePriority != nil {
+		priority = opts.UpdatePriority
+	}
 	return tracks.Release{
-		Name:         source.Name,
-		Status:       statusStr,
-		UserFraction: userFraction,
-		VersionCodes: source.VersionCodes,
+		Name:                source.Name,
+		Status:              statusStr,
+		UserFraction:        userFraction,
+		VersionCodes:        source.VersionCodes,
+		InAppUpdatePriority: priority,
 	}
 }
