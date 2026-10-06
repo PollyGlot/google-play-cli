@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/play/apks"
@@ -164,7 +165,10 @@ type Opts struct {
 	UserFraction float64
 	// UpdatePriority, when non-nil, sets the release's inAppUpdatePriority
 	// (0..5). nil leaves the field off the wire (#664).
-	UpdatePriority    *int
+	UpdatePriority *int
+	// ReleaseName, when non-empty, names the new release (#665); empty keeps
+	// the versionCode as its name. Whitespace-only is refused.
+	ReleaseName       string
 	ReleaseNotes      string
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
@@ -239,7 +243,7 @@ type Result struct {
 //
 // opts.DryRun runs the input validation and previews what would be
 // sent, without any HTTP. The returned Result has VersionCode=0 and
-// ReleaseName="(dry-run)".
+// ReleaseName="(dry-run)", or opts.ReleaseName when one is set.
 func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 	// Caller-side validation runs first so dry-run callers still see
 	// invalid-opts errors and live callers don't open an Edit only to
@@ -360,6 +364,9 @@ func validateOpts(opts Opts) error {
 	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
 		return err
 	}
+	if opts.ReleaseName != "" && strings.TrimSpace(opts.ReleaseName) == "" {
+		return &InvalidOptsError{Message: "ReleaseName must not be blank"}
+	}
 	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
 		return &InvalidOptsError{
 			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
@@ -403,8 +410,12 @@ func hasDefaultTxt(dir string) bool {
 func buildRelease(versionCode int, opts Opts) tracks.Release {
 	statusStr, userFraction := statusPayload(opts.Track, opts.Status, opts.UserFraction)
 	codeStr := strconv.Itoa(versionCode)
+	name := codeStr
+	if opts.ReleaseName != "" {
+		name = opts.ReleaseName
+	}
 	return tracks.Release{
-		Name:                codeStr,
+		Name:                name,
 		Status:              statusStr,
 		UserFraction:        userFraction,
 		VersionCodes:        []string{codeStr},
@@ -503,7 +514,7 @@ func dryRunResult(opts Opts) (*Result, error) {
 		Status:              release.Status,
 		UserFraction:        release.UserFraction,
 		InAppUpdatePriority: release.InAppUpdatePriority,
-		ReleaseName:         "(dry-run)",
+		ReleaseName:         dryRunReleaseName(opts),
 		Locales:             previewLocales,
 	}, nil
 }
@@ -514,3 +525,13 @@ type dryRunError struct{ msg string }
 
 func (e *dryRunError) Error() string { return "dry-run: " + e.msg }
 func (e *dryRunError) ExitCode() int { return 20 }
+
+// dryRunReleaseName is the name a --dry-run preview shows: the explicit name
+// when one is set (known before any upload), otherwise the "(dry-run)"
+// placeholder, since the versionCode default only exists after the upload.
+func dryRunReleaseName(opts Opts) string {
+	if opts.ReleaseName != "" {
+		return opts.ReleaseName
+	}
+	return "(dry-run)"
+}
