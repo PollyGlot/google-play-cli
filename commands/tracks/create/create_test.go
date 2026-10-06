@@ -210,21 +210,25 @@ func TestRun_createOnExistingTrack_exit30(t *testing.T) {
 
 // TestNewCommand_registersExpectedFlags is a thin smoke test for the
 // cobra wiring: the expected flags exist, the deliberately-absent ones
-// (--type / --form-factor / --confirm) do not, and Use carries the
-// positional <name>.
+// (--type / --confirm) do not, --form-factor defaults to default, and Use
+// carries the positional <name>.
 func TestNewCommand_registersExpectedFlags(t *testing.T) {
 	cmd := create.NewCommand(kernel.Boot{})
 	for _, name := range []string{
 		"package",
 		"dry-run",
 		"keep-edit-on-failure",
+		"form-factor",
 		"output",
 	} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("cobra command missing expected flag --%s", name)
 		}
 	}
-	for _, name := range []string{"type", "form-factor", "confirm"} {
+	if f := cmd.Flags().Lookup("form-factor"); f != nil && f.DefValue != "default" {
+		t.Errorf("--form-factor default = %q, want %q", f.DefValue, "default")
+	}
+	for _, name := range []string{"type", "confirm"} {
 		if cmd.Flags().Lookup(name) != nil {
 			t.Errorf("cobra command has unexpected flag --%s", name)
 		}
@@ -299,5 +303,90 @@ func TestRun_forwardsCommitOptIns(t *testing.T) {
 	}
 	if commitQuery != "changesNotSentForReview=true" {
 		t.Errorf("commit query = %q, want changesNotSentForReview=true", commitQuery)
+	}
+}
+
+// TestRun_dryRun_formFactorWear asserts --form-factor maps the
+// operator-facing value (any case) to the TrackConfig enum the --dry-run
+// preview prints, still without any HTTP call.
+func TestRun_dryRun_formFactorWear(t *testing.T) {
+	api := &createAPI{}
+	rc, _ := newRC(t, api.serve(t))
+
+	r, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "beta-wear", FormFactor: "Wear", DryRun: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", api.calls())
+	}
+	var out bytes.Buffer
+	if err := r.Renderers().JSON(&out); err != nil {
+		t.Fatalf("JSON render: %v", err)
+	}
+	if !strings.Contains(out.String(), `"formFactor": "WEAR"`) {
+		t.Errorf("dry-run JSON = %s, want formFactor WEAR", out.String())
+	}
+}
+
+// TestRun_formFactorAutomotive_sentInBody asserts the chosen form factor
+// reaches the tracks.create request body and the human view.
+func TestRun_formFactorAutomotive_sentInBody(t *testing.T) {
+	api := &createAPI{
+		editID:          "edit-create-cli",
+		trackCreateResp: `{"track":"beta-car","releases":[]}`,
+	}
+	rc, _ := newRC(t, api.serve(t))
+
+	r, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "beta-car", FormFactor: "automotive"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := string(api.trackCreateReq()); !strings.Contains(got, `"formFactor":"AUTOMOTIVE"`) {
+		t.Errorf("create request body = %s, want formFactor=AUTOMOTIVE", got)
+	}
+	var table bytes.Buffer
+	if err := r.Renderers().Table(&table); err != nil {
+		t.Fatalf("Table render: %v", err)
+	}
+	if !strings.Contains(table.String(), "formFactor:  AUTOMOTIVE") {
+		t.Errorf("table output = %q, want formFactor AUTOMOTIVE", table.String())
+	}
+}
+
+// TestRun_defaultFormFactor_bodyUnchanged asserts that leaving the flag
+// unset sends the exact body gplay always sent (formFactor DEFAULT).
+func TestRun_defaultFormFactor_bodyUnchanged(t *testing.T) {
+	api := &createAPI{editID: "edit-create-cli", trackCreateResp: `{"track":"qa-team","releases":[]}`}
+	rc, _ := newRC(t, api.serve(t))
+
+	if _, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "qa-team"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	want := `{"track":"qa-team","type":"CLOSED_TESTING","formFactor":"DEFAULT"}`
+	if got := strings.TrimSpace(string(api.trackCreateReq())); got != want {
+		t.Errorf("create request body = %s, want %s", got, want)
+	}
+}
+
+// TestRun_unknownFormFactor_exit2NoHTTP asserts an unsupported value is CLI
+// misuse (exit 2) naming the accepted values, refused before any request.
+func TestRun_unknownFormFactor_exit2NoHTTP(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		api := &createAPI{editID: "edit-create-cli"}
+		rc, _ := newRC(t, api.serve(t))
+
+		_, err := create.Run(rc, create.Input{Package: "com.example.app", Name: "beta-tv", FormFactor: "tv", DryRun: dryRun})
+		if got := exit.For(err); got != 2 {
+			t.Fatalf("dryRun=%v: exit.For(err) = %d, want 2; err=%v", dryRun, got, err)
+		}
+		for _, v := range []string{"default", "wear", "automotive"} {
+			if !strings.Contains(err.Error(), v) {
+				t.Errorf("dryRun=%v: error %q does not name accepted value %q", dryRun, err, v)
+			}
+		}
+		if calls := api.calls(); len(calls) != 0 {
+			t.Errorf("dryRun=%v: expected zero HTTP calls, saw: %v", dryRun, calls)
+		}
 	}
 }
