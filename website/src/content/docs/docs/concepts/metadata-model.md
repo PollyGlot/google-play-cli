@@ -97,4 +97,4 @@ walkthrough including images.
 ## Related
 
 - [`gplay metadata` reference](/docs/reference/metadata/)
-- [Fastlane migration](/docs/guides/fastlane-migration/)
+- [Migrating from fastlane supply](/docs/migration/fastlane-supply/)
