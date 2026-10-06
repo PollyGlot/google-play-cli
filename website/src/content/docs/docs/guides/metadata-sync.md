@@ -78,4 +78,4 @@ A metadata job fits naturally next to your release job:
 
 - [The metadata model](/docs/concepts/metadata-model/)
 - [`gplay metadata` reference](/docs/reference/metadata/)
-- [Fastlane migration](/docs/guides/fastlane-migration/)
+- [Migrating from fastlane supply](/docs/migration/fastlane-supply/)

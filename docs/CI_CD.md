@@ -275,13 +275,14 @@ pipelines the attestation check above is the only thing you need to add.
 
 Coming from Fastlane, the single most common surprise is that
 `gplay releases upload --track production` does **not** publish 100% by
-default — it creates a `draft` release that you (or a follow-up command)
+default: it creates a `draft` release that you (or a follow-up command)
 must explicitly promote with `--complete` or `--staged <fraction>`. This is
 deliberate; see [ADR-0002](adr/0002-safe-production-defaults.md). On every
 other track the behavior matches Fastlane (`completed` at 100%).
 
-Fully detailed migration table: parked (issue #526), to be added once real
-migrators give feedback on the pitfalls.
+Every `supply` option mapped to its gplay command and flag, side-by-side
+lanes and the other behavior differences:
+[Migrating from fastlane supply](https://gplay.sh/docs/migration/fastlane-supply/).
 
 ## 7. Troubleshooting: orphaned Edits (`editAlreadyExists`)
 
