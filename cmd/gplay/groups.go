@@ -111,6 +111,7 @@ import (
 	vitalsanomalies "github.com/PollyGlot/google-play-cli/commands/vitals/anomaliescmd"
 	vitalserrors "github.com/PollyGlot/google-play-cli/commands/vitals/errorscmd"
 	vitalsquery "github.com/PollyGlot/google-play-cli/commands/vitals/query"
+	vitalsreleases "github.com/PollyGlot/google-play-cli/commands/vitals/releasescmd"
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
@@ -582,6 +583,9 @@ func newVitalsGroup(boot kernel.Boot) *cobra.Command {
 		// added bare.
 		vitalserrors.NewCommand(boot),
 		kernel.WithScope(vitalsanomalies.NewCommand(boot), token.ReportingScope),
+		// [experimental] (ADR-0010/ADR-0042): new in #348; its table columns
+		// may still move while the release-keyed vitals filters settle.
+		kernel.Experimental(kernel.WithScope(vitalsreleases.NewCommand(boot), token.ReportingScope)),
 	)
 	return kernel.Group("vitals", "Read post-launch quality signals (crashes, ANRs, …) from Play vitals", leaves...)
 }

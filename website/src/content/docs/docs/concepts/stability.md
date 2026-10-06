@@ -75,6 +75,7 @@ Generated from the binary's own command registry, so it matches what
 - `gplay schema`: Introspect the Android Publisher API surface offline
 - `gplay signing`: Manage Play App Signing with a self-hosted Cloud KMS key (enterprise key custody)
 - `gplay subscriptions`: Pull and apply the app's subscription catalog as files (declarative)
+- `gplay vitals releases`: List the tracks, releases and version codes that carry vitals data
 
 Every other command is frozen, across `apps`, `auth`, `compliance`, `edits`,
 `exit-codes`, `init`, `install-skills`, `metadata`, `releases`, `reviews`,

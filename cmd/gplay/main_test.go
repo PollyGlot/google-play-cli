@@ -16,7 +16,7 @@ import (
 
 // TestVitalsLeavesAreReportingScoped is the end-to-end least-privilege guard for
 // PRD #49: EVERY leaf command under `gplay vitals` (query, the seven presets,
-// errors counts/issues/reports, anomalies) must request the playdeveloperreporting
+// errors counts/issues/reports, anomalies, releases) must request the playdeveloperreporting
 // scope via kernel.WithScope. A dropped wrapper anywhere in the registration
 // (main.go or errorscmd.NewCommand) makes that leaf silently fall back to the
 // androidpublisher scope: this walks the real command tree and catches it.
@@ -51,9 +51,30 @@ func TestVitalsLeavesAreReportingScoped(t *testing.T) {
 	}
 	walk(vitals)
 
-	// query + 7 presets + errors{counts,issues,reports} + anomalies = 12.
-	if leaves < 12 {
-		t.Errorf("walked %d vitals leaves, want >= 12 (did the tree shrink?)", leaves)
+	// query + 7 presets + errors{counts,issues,reports} + anomalies + releases = 13.
+	if leaves < 13 {
+		t.Errorf("walked %d vitals leaves, want >= 13 (did the tree shrink?)", leaves)
+	}
+}
+
+// TestVitalsVersionCodeFlagsComplete pins #348: every vitals leaf that takes
+// --version-code completes it from the release filter options, so a new
+// preset or errors leaf cannot ship the flag without the suggestions.
+func TestVitalsVersionCodeFlagsComplete(t *testing.T) {
+	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
+	withFlag := 0
+	for _, c := range runnableLeaves(root) {
+		if !strings.HasPrefix(leafKey(c), "vitals ") || c.Flags().Lookup("version-code") == nil {
+			continue
+		}
+		withFlag++
+		if _, ok := c.GetFlagCompletionFunc("version-code"); !ok {
+			t.Errorf("%q has --version-code without its completion (vitalscmd.RegisterVersionCodeCompletion)", c.CommandPath())
+		}
+	}
+	// The seven presets + errors counts.
+	if withFlag < 8 {
+		t.Errorf("found %d vitals leaves with --version-code, want >= 8", withFlag)
 	}
 }
 
@@ -729,6 +750,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"vitals", "errors", "issues"}, false},
 		{[]string{"vitals", "errors", "reports"}, false},
 		{[]string{"vitals", "anomalies"}, false},
+		{[]string{"vitals", "releases"}, false},
 
 		// metadata: validate leaves are offline; only apply mutates.
 		{[]string{"metadata", "list"}, false},
@@ -952,6 +974,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"vitals", "errors", "issues"}, false},
 		{[]string{"vitals", "errors", "reports"}, false},
 		{[]string{"vitals", "anomalies"}, false},
+		{[]string{"vitals", "releases"}, true},
 
 		// metadata / compliance: the first-release readiness surfaces, driven
 		// end-to-end since June, frozen.

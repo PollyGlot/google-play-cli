@@ -37,10 +37,10 @@ means free to evolve. `--help` tells you which, per command.
 > Experimental today: `apps audit`, `appstore`, `customapps`, `device-tiers`,
 > `games`, `iap`, `orders`, `recovery`, `releases artifacts`,
 > `releases expansion-files`, `releases generated`, `releases sharing`,
-> `reviews history`, `schema`, `signing`, `subscriptions`. Every other command
-> is frozen, across `apps`, `auth`, `compliance`, `edits`, `exit-codes`, `init`,
-> `install-skills`, `metadata`, `releases`, `reviews`, `team`, `testers`,
-> `tracks`, `version`, `vitals`.
+> `reviews history`, `schema`, `signing`, `subscriptions`, `vitals releases`.
+> Every other command is frozen, across `apps`, `auth`, `compliance`, `edits`,
+> `exit-codes`, `init`, `install-skills`, `metadata`, `releases`, `reviews`,
+> `team`, `testers`, `tracks`, `version`, `vitals`.
 > <!-- END GENERATED experimental-commands -->
 >
 > **`--help` is the source of truth**: the label is on the command itself.

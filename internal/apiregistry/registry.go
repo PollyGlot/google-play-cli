@@ -208,6 +208,7 @@ var entries = []Entry{
 
 	// --- playdeveloperreporting -----------------------------------------
 	{MethodID: "playdeveloperreporting.anomalies.list", Commands: []string{"vitals anomalies"}},
+	{MethodID: "playdeveloperreporting.apps.fetchReleaseFilterOptions", Commands: []string{"vitals releases"}, Note: "also backs the --version-code completion of the vitals presets and `vitals errors counts`"},
 	{MethodID: "playdeveloperreporting.apps.search", Commands: []string{"apps accessible list"}, Note: "server-authoritative discovery, distinct from the local registry (ADR-0039)"},
 	// Each metric set pairs a `.query` (the timeline) with a `.get` (the
 	// descriptor: freshnessInfo, i.e. up to when the data is complete). The

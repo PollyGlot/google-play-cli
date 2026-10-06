@@ -220,8 +220,11 @@ var verbPathExceptions = map[string]string{
 	"edits status": "status (frozen exception)",
 	// Vitals hybrid query model (ADR-0027): presets named after the metric set
 	// sit over `vitals query`; there is no resource to view, only metrics.
+	// `vitals releases` (#348) is the same kind of named view: the filter
+	// options a vitals query accepts, not a resource gplay addresses.
 	"vitals query":           "ADR-0027",
 	"vitals anomalies":       "ADR-0027",
+	"vitals releases":        "ADR-0027",
 	"vitals anr":             "ADR-0027",
 	"vitals crashes":         "ADR-0027",
 	"vitals excessivewakeup": "ADR-0027",
