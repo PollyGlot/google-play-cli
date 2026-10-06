@@ -31,12 +31,12 @@ worth shipping.
 | Service | Methods | ✅ called | ⚪ redundant | ⚫️ excluded | 🔴 parked | 🔴 uncovered |
 |---|---:|---:|---:|---:|---:|---:|
 | `androidpublisher` v3 | 145 | 94 | 31 | 11 | 9 | 0 |
-| `playdeveloperreporting` v1beta1 | 25 | 24 | 0 | 0 | 1 | 0 |
+| `playdeveloperreporting` v1beta1 | 25 | 25 | 0 | 0 | 0 | 0 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 | 0 | 0 |
-| **Total** | **181** | **129** | **31** | **11** | **10** | **0** |
+| **Total** | **181** | **130** | **31** | **11** | **9** | **0** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **129 are called**, **31 are redundant** with a called method, **10 are parked** behind an issue and **0 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **130 are called**, **31 are redundant** with a called method, **9 are parked** behind an issue and **0 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -193,7 +193,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **129 are 
 | Method | State | Commands / reason |
 |---|---|---|
 | `playdeveloperreporting.anomalies.list` | ✅ | `gplay vitals anomalies` |
-| `playdeveloperreporting.apps.fetchReleaseFilterOptions` | 🔴 | parked, [#348](https://github.com/PollyGlot/google-play-cli/issues/348): release-keyed vitals filters, to fold into `vitals` when release filtering lands |
+| `playdeveloperreporting.apps.fetchReleaseFilterOptions` | ✅ | `gplay vitals releases`; also backs the --version-code completion of the vitals presets and `vitals errors counts` |
 | `playdeveloperreporting.apps.search` | ✅ | `gplay apps accessible list`; server-authoritative discovery, distinct from the local registry (ADR-0039) |
 | `playdeveloperreporting.vitals.anonrssandswapmemoryusage.get` | ✅ | `gplay vitals query anonrssandswapmemoryusage --describe` |
 | `playdeveloperreporting.vitals.anonrssandswapmemoryusage.query` | ✅ | `gplay vitals query anonrssandswapmemoryusage` |

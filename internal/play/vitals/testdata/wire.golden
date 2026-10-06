@@ -79,6 +79,21 @@ GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/e
 content-length=0 replayable=true
 => error (exit 50): playdeveloperreporting.vitals.errors.reports.search on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
 
+## FetchReleaseFilterOptions / ok
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app:fetchReleaseFilterOptions
+content-length=0 replayable=true
+=> ok {}
+
+## FetchReleaseFilterOptions / denied
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app:fetchReleaseFilterOptions
+content-length=0 replayable=true
+=> error (exit 11): playdeveloperreporting.apps.fetchReleaseFilterOptions on com.example.app: The caller does not have permission (HTTP 403) [reason: forbidden]
+
+## FetchReleaseFilterOptions / malformed
+GET https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app:fetchReleaseFilterOptions
+content-length=0 replayable=true
+=> ok not json
+
 ## Query / two pages
 POST https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query
 Content-Type: application/json

@@ -48,6 +48,10 @@ func TestWire(t *testing.T) {
 		{Name: "ListAnomalies", Fn: anomalies(0)},
 		{Name: "SearchErrorIssues", Fn: issues(0)},
 		{Name: "SearchErrorReports", Fn: reports},
+		{Name: "FetchReleaseFilterOptions", Fn: func(hc *http.Client) (any, error) {
+			v, err := vitals.FetchReleaseFilterOptions(ctx, hc, pkg)
+			return v, err
+		}},
 	}
 	var b strings.Builder
 	b.WriteString(testkit.Exchanges(sends, testkit.AnswerOK, testkit.AnswerDenied, testkit.AnswerMalformed))

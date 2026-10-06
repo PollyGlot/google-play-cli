@@ -195,11 +195,12 @@ flags (--since, --period, --by, --version-code) do not apply and are rejected.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.VersionCode, "version-code", "", "filter to a single versionCode")
+	cmd.Flags().StringVar(&in.VersionCode, VersionCodeFlag, "", "filter to a single versionCode")
 	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension ("+ByChoices()+"; availability depends on the metric set)")
 	cmd.Flags().StringVar(&in.Since, "since", DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE")
 	cmd.Flags().BoolVar(&in.Describe, DescribeFlag, false, DescribeHelp)
+	RegisterVersionCodeCompletion(cmd, boot)
 	return cmd
 }
 

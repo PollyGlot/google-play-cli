@@ -352,9 +352,4 @@ var parkings = []Parked{
 		Issue:    296,
 		Reason:   "system APK variants are preload/OEM system-image material",
 	},
-	{
-		MethodID: "playdeveloperreporting.apps.fetchReleaseFilterOptions",
-		Issue:    348,
-		Reason:   "release-keyed vitals filters, to fold into `vitals` when release filtering lands",
-	},
 }

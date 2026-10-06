@@ -73,6 +73,7 @@ func main() {
 	// subcommand) never met the kernel's JSON envelope: write it once Execute
 	// fails, when nothing else reached stdout (ADR-0023, #593).
 	envelope := func(err error) { writeFailureEnvelope(stdout, stdout.n > 0, os.Args[1:], err) }
+	prepareCompletion(root, os.Args[1:])
 	os.Exit(execute(context.Background(), root, stderr, envelope))
 }
 
@@ -322,4 +323,17 @@ func defaultConfigDir() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".gplay"), nil
+}
+
+// prepareCompletion readies root for a shell completion request (args being
+// the process arguments). cobra parses a completion request's flags twice
+// (once with a trailing "--" to count positionals, then for real), and the
+// repeated-flag guard reads the second parse as `--package` passed twice: every
+// completion after a single-value flag failed (#348). A completion never runs
+// a RunE, so the guard has nothing to protect there and comes off; any other
+// invocation keeps it.
+func prepareCompletion(root *cobra.Command, args []string) {
+	if len(args) > 0 && (args[0] == cobra.ShellCompRequestCmd || args[0] == cobra.ShellCompNoDescRequestCmd) {
+		kernel.AllowRepeatedFlags(root)
+	}
 }

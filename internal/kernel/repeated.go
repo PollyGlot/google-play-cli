@@ -140,6 +140,14 @@ func renderUnwrapped(cmd *cobra.Command) {
 	})
 }
 
+// AllowRepeatedFlags takes the RejectRepeatedFlags guard off cmd's subtree for
+// the rest of the process. It exists for shell completion requests only: cobra
+// parses their flags twice, which the guard would read as a repetition, and a
+// completion never reaches a RunE the guard could protect.
+func AllowRepeatedFlags(cmd *cobra.Command) {
+	unwrapSubtree(cmd)
+}
+
 // unwrapSubtree puts the DECLARED pflag.Value back on every wrapped flag in
 // cmd's subtree and returns the function that reinstates the wrappers, counters
 // and all.
