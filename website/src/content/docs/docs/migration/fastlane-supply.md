@@ -60,7 +60,7 @@ or the workaround.
 | `version_code` | `--version-code N` on `releases promote`, `rollout`, `complete`, `halt`, `resume` and `releases mappings upload` | Picks the release (or the artifact) to act on when a track holds more than one. `--release-name <name>` is the other selector. |
 | `version_name` | No equivalent | gplay names a new release after its versionCode; supply uses `version_name` ([`uploader.rb`][fl-uploader]). Rename the release in the Play Console if the name matters. |
 | `version_codes_to_retain` | No equivalent | gplay writes a release holding only the uploaded versionCode. |
-| `in_app_update_priority` | No equivalent | gplay does not set the release's in-app update priority, so it stays at the API default (`0`). |
+| `in_app_update_priority` | `--update-priority <0..5>` on `releases upload` and `releases promote` | Without the flag, `upload` leaves the field unset (Google's default, `0`) and `promote` carries the source release's priority over. |
 | `check_superseded_tracks` | Not needed | Deprecated in supply: "Google Play does this automatically now" ([`options.rb`][fl-options]). |
 | `deactivate_on_promote` | Not needed | Deprecated in supply for the same reason. |
 | `ack_bundle_installation_warning` | Not needed | Google deprecated the parameter: "The installation warning has been removed" ([`edits.bundles.upload`](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.bundles/upload)). |

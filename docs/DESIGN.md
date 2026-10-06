@@ -1003,9 +1003,9 @@ track**, **Tester**) for the domain terms.
   create endpoint (`edits.tracks.create`) supports exactly one type
   (`CLOSED_TESTING`), so there is **no `--type` flag** — every created
   track is closed. Open/internal track creation has no API path.
-- The new track's form factor is `DEFAULT` (phone). `WEAR` / `AUTOMOTIVE`
-  closed tracks are deferred (issue #528) behind a future
-  `--form-factor` flag — additive, non-breaking when it lands.
+- `--form-factor default|wear|automotive` (case-insensitive) sets the
+  `TrackConfig.formFactor` to `DEFAULT` (phone, the default), `WEAR` or
+  `AUTOMOTIVE`. Any other value is CLI misuse (exit 2) before any HTTP.
 - Creating a track that **already exists** surfaces the API error (exit
   30); gplay does not fake idempotency. "Ensure exists" would be an
   explicit future `--if-not-exists`.

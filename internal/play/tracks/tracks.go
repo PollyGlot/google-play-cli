@@ -33,13 +33,16 @@ var (
 )
 
 // TrackTypeClosedTesting is the only track type edits.tracks.create
-// supports (open / internal track creation has no API path), and
-// FormFactorDefault is the phone form factor. They are exported so the
-// command layer can label and preview a created track without restating
-// the wire strings.
+// supports (open / internal track creation has no API path). The
+// FormFactor* values are the TrackConfig.formFactor enum a closed track
+// can be created for: DEFAULT (phone), WEAR and AUTOMOTIVE. They are
+// exported so the command layer can label and preview a created track
+// without restating the wire strings.
 const (
 	TrackTypeClosedTesting = "CLOSED_TESTING"
 	FormFactorDefault      = "DEFAULT"
+	FormFactorWear         = "WEAR"
+	FormFactorAutomotive   = "AUTOMOTIVE"
 )
 
 // LocalizedText mirrors the API's `LocalizedText` shape: one per locale
@@ -58,6 +61,11 @@ type Release struct {
 	UserFraction float64         `json:"userFraction,omitempty"`
 	VersionCodes []string        `json:"versionCodes,omitempty"`
 	ReleaseNotes []LocalizedText `json:"releaseNotes,omitempty"`
+	// InAppUpdatePriority is the 0..5 priority the Play Core in-app update
+	// API exposes to the app. A pointer because 0 is a real priority: nil
+	// omits the field, so a release built without a priority sends the same
+	// bytes as before the field existed (#664).
+	InAppUpdatePriority *int `json:"inAppUpdatePriority,omitempty"`
 }
 
 // Track is the API-shaped Track resource. Only the fields gplay reads
@@ -69,7 +77,7 @@ type Track struct {
 
 // TrackConfig is the edits.tracks.create request body. The API supports
 // exactly one type (CLOSED_TESTING), so gplay hardcodes it; formFactor is
-// DEFAULT (phone) for now (WEAR/AUTOMOTIVE deferred, issue #528).
+// one of the FormFactor* values, chosen by the caller.
 type TrackConfig struct {
 	Track      string `json:"track"`
 	Type       string `json:"type"`
@@ -158,9 +166,9 @@ func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, 
 
 // Create POSTs a fresh closed-testing track to edits.tracks.create. The
 // create endpoint supports exactly one type (CLOSED_TESTING), so the body
-// hardcodes it; formFactor is DEFAULT (phone) for now (WEAR/AUTOMOTIVE
-// deferred). Returns the parsed Track and the raw JSON body for the
-// --output json pass-through (ADR-0003). Creating a track that already
+// hardcodes it; formFactor is the caller's FormFactor* value. Returns the
+// parsed Track and the raw JSON body for the --output json pass-through
+// (ADR-0003). Creating a track that already
 // exists is an API 4xx surfaced verbatim: gplay does not fake idempotency.
 func Create(ctx context.Context, hc *http.Client, pkg, editID, name, formFactor string) (*Track, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{

@@ -43,6 +43,7 @@ var flagVocabulary = map[string]string{
 	"format":             "artifact container: apk or bundle",
 	"device-tier-config": "device tier config (an ID, or LATEST) a bundle's deliverables are generated with",
 	"scope":              "permission scope: account or app",
+	"form-factor":        "device form factor a created track targets: default, wear or automotive",
 
 	// Input and output.
 	"output":            "structured output format (output.RegisterFlag)",
@@ -101,6 +102,8 @@ var flagVocabulary = map[string]string{
 	"staged":   "rollout user fraction of a staged release",
 	"complete": "force the release status to completed",
 	"draft":    "force the release status to draft",
+	// #664: Google's TrackRelease.inAppUpdatePriority, read by the app.
+	"update-priority": "in-app update priority (0..5) of a release",
 
 	// Field values written by the command.
 	"name":                  "name given to the object created or registered",
