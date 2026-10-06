@@ -33,6 +33,7 @@ jobs:
       contents: write
       id-token: write       # OIDC token for keyless cosign signing + attestations
       attestations: write   # publish GitHub build-provenance attestations
+      packages: write       # push the container image (+ signature, attestation) to GHCR
     steps:
       - name: Validate ref is a tag
         env:
@@ -73,6 +74,22 @@ jobs:
       - name: Install syft (SBOM generator)
         uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
 
+      # Container image (#659): GoReleaser's dockers_v2 builds and pushes the
+      # multi-arch image with buildx, which needs a docker-container builder for
+      # a multi-platform push and the SBOM attestation. No QEMU: the Dockerfile
+      # only COPYs the prebuilt binaries, nothing runs for the foreign arch.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # GITHUB_TOKEN with this job's `packages: write`, no new secret. The
+      # login also serves cosign (image signature) and the attestation push.
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -97,3 +114,25 @@ jobs:
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
+
+      # Same provenance for the image, keyed on the multi-arch index digest
+      # GoReleaser pushed (every tag points at it), and stored in GHCR next to
+      # the image: `gh attestation verify oci://ghcr.io/pollyglot/gplay:vX.Y.Z
+      # -R PollyGlot/google-play-cli`.
+      - name: Resolve image digest
+        id: image
+        run: |
+          set -euo pipefail
+          digests=$(jq -r '[.[] | select(.type == "Docker Image" and .extra.ID == "gplay") | .extra.Digest] | unique | .[]' dist/artifacts.json)
+          if [ "$(printf '%s\n' "$digests" | grep -c .)" -ne 1 ]; then
+            echo "Expected exactly one pushed image digest, got: ${digests:-none}" >&2
+            exit 1
+          fi
+          echo "digest=$digests" >> "$GITHUB_OUTPUT"
+
+      - name: Attest image build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/pollyglot/gplay
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true

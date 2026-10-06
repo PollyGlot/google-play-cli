@@ -8,7 +8,7 @@ name: Release rehearsal
 # This job rehearses the same config on the PR that changes it.
 #
 # Scope: path-triggered on release machinery only (GoReleaser config, release
-# workflows, install script, Makefile), so ordinary code PRs do not pay the
+# Dockerfile, release workflows, install script, Makefile), so ordinary code PRs do not pay the
 # ~2 min cost. It is deliberately NOT a required check: it guards the release
 # path, not the binary's behaviour, and it never runs on most PRs (a
 # permanently-skipped required check blocks merge).
@@ -27,6 +27,7 @@ on:
   pull_request:
     paths:
       - '.goreleaser.yaml'
+      - 'Dockerfile'
       - '.github/workflows/release.yml'
       - '.github/workflows/release-please.yml'
       - '.github/workflows/release-rehearsal.yml'
@@ -82,6 +83,15 @@ jobs:
           # (publish is skipped); the placeholder just keeps template rendering
           # from failing on an undefined .Env lookup.
           HOMEBREW_TAP_GITHUB_TOKEN: rehearsal-not-a-token
+
+      # The snapshot above also built the container image, one local image per
+      # platform (dockers_v2 pushes nothing in --snapshot). Running the native
+      # (amd64) one proves the base image, binary path and entrypoint agree.
+      - name: Smoke-test the snapshot image
+        run: |
+          set -euo pipefail
+          tag=$(jq -r '[.[] | select(.type == "Docker Image" and (.name | endswith("-next-amd64"))) | .name][0]' dist/artifacts.json)
+          docker run --rm "$tag" version
 
       - name: Summarise artifacts
         run: |
