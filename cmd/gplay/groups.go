@@ -65,6 +65,7 @@ import (
 	metadatavalidate "github.com/PollyGlot/google-play-cli/commands/metadata/validate"
 	ordersrefund "github.com/PollyGlot/google-play-cli/commands/orders/refund"
 	ordersview "github.com/PollyGlot/google-play-cli/commands/orders/view"
+	ordersvoided "github.com/PollyGlot/google-play-cli/commands/orders/voided"
 	recoveryaddtargeting "github.com/PollyGlot/google-play-cli/commands/recovery/add-targeting"
 	recoverycancel "github.com/PollyGlot/google-play-cli/commands/recovery/cancel"
 	recoverycreate "github.com/PollyGlot/google-play-cli/commands/recovery/create"
@@ -478,13 +479,16 @@ func newGamesGroup(boot kernel.Boot) *cobra.Command {
 // (single #282 + batch #283), not marked mutating, not gated by
 // GPLAY_READONLY. `refund` (#284) is the money-moving, irreversible write:
 // MarkMutating so GPLAY_READONLY refuses it (exit 4), and it requires
-// --confirm at the command layer (exit 3 if missing).
+// --confirm at the command layer (exit 3 if missing). `voided` (#346) is the
+// reconciliation read over purchases.voidedpurchases.list: same package axis,
+// pure read, not gated.
 //
 // [experimental] (ADR-0010/ADR-0042): money-moving, and the batch-vs-single
 // shape of `view` is still unproven against real support workflows.
 func newOrdersGroup(boot kernel.Boot) *cobra.Command {
-	return kernel.Experimental(kernel.Group("orders", "Look up and refund Google Play orders by order ID (admin commerce surface)",
+	return kernel.Experimental(kernel.Group("orders", "Look up, refund and reconcile Google Play orders (admin commerce surface)",
 		ordersview.NewCommand(boot),
+		ordersvoided.NewCommand(boot),
 		kernel.MarkMutating(ordersrefund.NewCommand(boot)),
 	))
 }

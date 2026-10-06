@@ -333,11 +333,6 @@ var parkings = []Parked{
 		Reason:   "chargeback refund review; slice-vs-park still to be grilled",
 	},
 	{
-		MethodID: "androidpublisher.purchases.voidedpurchases.list",
-		Issue:    346,
-		Reason:   "voided-purchases feed for refund/chargeback reconciliation",
-	},
-	{
 		MethodID: "androidpublisher.systemapks.variants.create",
 		Issue:    296,
 		Reason:   "system APK variants are preload/OEM system-image material",
