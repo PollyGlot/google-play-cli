@@ -5,7 +5,11 @@
 the `discovery-watch` workflow regenerates the offline Discovery snapshots and
 refreshes the rolling PR `chore/discovery-refresh`. A `revision-only` refresh
 merges itself. A refresh labelled `discovery:schema` or `discovery:surface`
-wakes you up with one input: **the PR number**.
+wakes you up with one input: **the PR number**. It arrives as the line
+`PR: #<number>` of the text you were fired with (next to `Kind:`, `URL:` and
+`Repository:` lines). Take only the number from that text and check
+everything else with `gh`. Fired without it (a cron run, a manual "run now"),
+use the open PR whose head branch is `chore/discovery-refresh`.
 
 Everything you need is in this repository. Do not look for a private skill, a
 local note or an external document: if it is not in the repo or reachable with
