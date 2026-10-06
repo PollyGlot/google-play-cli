@@ -61,6 +61,9 @@ jobs:
       # ("requesting 'attestations: write', but is only allowed 'attestations:
       # none'") on every push to main, before the `if` is even evaluated.
       attestations: write
+      # Same rule for the GHCR image (#659): release.yml's goreleaser job
+      # requests packages:write to push it, so the caller grants it too.
+      packages: write
     # GITHUB_TOKEN is forwarded to called workflows automatically; only the tap
     # PAT needs to be passed explicitly.
     secrets:
