@@ -50,7 +50,7 @@ LABELS=(
   "area:reviews|fbca04|Review listing and replies"
   "area:metadata|006b75|Store listings (per-locale text): edits.listings"
   "area:vitals|d93f0b|Crashes/ANR (Play Developer Reporting API) and ProGuard mappings"
-  "area:monetization|1a7f37|Subscriptions v2, one-time IAP, per-territory pricing, RevenueCat sync"
+  "area:monetization|1a7f37|Subscriptions v2, one-time IAP, per-territory pricing"
   "area:compliance|5319e7|Data Safety, content rating, Play Console regulatory declarations"
   "area:team|5319e7|Developer account team management: users and grants"
   "area:skills|c5def5|Companion Agent Skills repo (google-play-cli-skills): SKILL.md folders driving gplay"
