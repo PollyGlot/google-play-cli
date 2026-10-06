@@ -101,6 +101,8 @@ var flagVocabulary = map[string]string{
 	"staged":   "rollout user fraction of a staged release",
 	"complete": "force the release status to completed",
 	"draft":    "force the release status to draft",
+	// #664: Google's TrackRelease.inAppUpdatePriority, read by the app.
+	"update-priority": "in-app update priority (0..5) of a release",
 
 	// Field values written by the command.
 	"name":                  "name given to the object created or registered",
