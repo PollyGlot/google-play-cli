@@ -40,6 +40,10 @@ type Input struct {
 	// explicit 0 (lowest priority) apart from "not passed".
 	UpdatePriority    int
 	UpdatePrioritySet bool
+	// ReleaseName is --release-name; ReleaseNameSet tells an explicit empty
+	// value (a usage error) apart from "not passed" (versionCode default).
+	ReleaseName       string
+	ReleaseNameSet    bool
 	KeepEditOnFailure bool
 	Commit            commitflags.Flags
 	Confirm           bool
@@ -211,6 +215,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.UpdatePrioritySet && (in.UpdatePriority < 0 || in.UpdatePriority > orchestrator.MaxUpdatePriority) {
 		return nil, exit.Usagef("--update-priority must be in 0..%d, got %d", orchestrator.MaxUpdatePriority, in.UpdatePriority)
 	}
+	if (in.ReleaseNameSet || in.ReleaseName != "") && strings.TrimSpace(in.ReleaseName) == "" {
+		return nil, exit.Usagef("--release-name must not be empty or blank")
+	}
 	if in.AABPath == "" {
 		return nil, &exit.UsageError{Msg: "missing AAB path: gplay releases upload <aab> ..."}
 	}
@@ -297,6 +304,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Status:            status,
 		UserFraction:      in.StagedFraction,
 		UpdatePriority:    updatePriority(in),
+		ReleaseName:       in.ReleaseName,
 		ReleaseNotes:      in.ReleaseNotes,
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
@@ -360,6 +368,11 @@ deobfuscation file in the same Edit, so Play vitals can symbolicate
 obfuscated crash stacks. To attach a mapping to an already-published
 version, use gplay releases mappings upload instead.
 
+The new release is named after its versionCode. Pass --release-name to
+name it yourself (a versionName such as 2.4.1, say): it is the name the
+Play Console shows and the one --release-name matches on releases promote,
+rollout, complete, halt and resume.
+
 Targeting production defaults to a draft release, which reaches no user,
 unless --complete or --staged is supplied (both require --confirm there).
 Any string is accepted as --track so Closed tracks with custom names just
@@ -395,6 +408,7 @@ one created. AAB only.`,
 			in.StagedFractionSet = cmd.Flags().Changed("staged")
 			in.StagedFraction = stagedFractionVar
 			in.UpdatePrioritySet = cmd.Flags().Changed("update-priority")
+			in.ReleaseNameSet = cmd.Flags().Changed("release-name")
 			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, in)
 			})
@@ -410,6 +424,7 @@ one created. AAB only.`,
 	cmd.Flags().BoolVar(&in.Draft, "draft", false, "force the release status to draft")
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
+	cmd.Flags().StringVar(&in.ReleaseName, "release-name", "", "name of the new release, as shown in the Play Console and matched by --release-name elsewhere (default: its versionCode)")
 	cmd.Flags().IntVar(&in.UpdatePriority, "update-priority", 0, "in-app update priority of the release, 0 (default) to 5 (highest), read by the app through the Play in-app updates API")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	commitflags.Register(cmd, &in.Commit)
