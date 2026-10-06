@@ -15,7 +15,9 @@ gplay tracks create qa-team
 ```
 
 Closed testing is the only track type the API can create, so there is no
-`--type` flag. The new track is a phone (default form factor) track.
+`--type` flag. The new track is a phone track by default; pass
+`--form-factor wear` or `--form-factor automotive` for a Wear OS or
+Android Automotive closed track.
 Creating a track that already exists surfaces the API error (exit `30`);
 gplay doesn't fake idempotency.
 
