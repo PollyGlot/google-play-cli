@@ -65,7 +65,7 @@ Generated from the binary's own command registry, so it matches what
 - `gplay device-tiers`: Manage device tier configs (device-targeting for tiered delivery)
 - `gplay games`: Configure a game's Play Games Services resources (achievements, leaderboards)
 - `gplay iap`: Pull and apply the app's one-time-product catalog as files (declarative)
-- `gplay orders`: Look up and refund Google Play orders by order ID (admin commerce surface)
+- `gplay orders`: Look up, refund and reconcile Google Play orders (admin commerce surface)
 - `gplay recovery`: Manage app recovery actions (incident-response remediation for a bad release)
 - `gplay releases artifacts`: List the APKs and App Bundles attached to an app
 - `gplay releases expansion-files`: Manage legacy OBB expansion files (superseded by Play Asset Delivery)

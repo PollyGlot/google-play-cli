@@ -30,13 +30,13 @@ worth shipping.
 
 | Service | Methods | ✅ called | ⚪ redundant | ⚫️ excluded | 🔴 parked | 🔴 uncovered |
 |---|---:|---:|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 93 | 31 | 11 | 10 | 0 |
+| `androidpublisher` v3 | 145 | 94 | 31 | 11 | 9 | 0 |
 | `playdeveloperreporting` v1beta1 | 25 | 24 | 0 | 0 | 1 | 0 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 | 0 | 0 |
-| **Total** | **181** | **128** | **31** | **11** | **11** | **0** |
+| **Total** | **181** | **129** | **31** | **11** | **10** | **0** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **128 are called**, **31 are redundant** with a called method, **11 are parked** behind an issue and **0 are uncovered**.
+Of the 170 admin methods (181 total minus the 11 excluded by nature), **129 are called**, **31 are redundant** with a called method, **10 are parked** behind an issue and **0 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -175,7 +175,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **128 are 
 | `androidpublisher.purchases.subscriptionsv2.defer` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
 | `androidpublisher.purchases.subscriptionsv2.get` | ⚫️ | runtime: server-side subscription-token verification (v2 shape) |
 | `androidpublisher.purchases.subscriptionsv2.revoke` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
-| `androidpublisher.purchases.voidedpurchases.list` | 🔴 | parked, [#346](https://github.com/PollyGlot/google-play-cli/issues/346): voided-purchases feed for refund/chargeback reconciliation |
+| `androidpublisher.purchases.voidedpurchases.list` | ✅ | `gplay orders voided list`; voided-purchases feed for refund/chargeback reconciliation (#346) |
 | `androidpublisher.reviews.get` | ✅ | `gplay reviews view` |
 | `androidpublisher.reviews.list` | ✅ | `gplay reviews list` |
 | `androidpublisher.reviews.reply` | ✅ | `gplay reviews reply` |

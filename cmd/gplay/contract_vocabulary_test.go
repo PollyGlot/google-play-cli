@@ -82,6 +82,9 @@ var flagVocabulary = map[string]string{
 	"oldest":     "cutoff before which price cohorts migrate",
 	"describe":   "describe the metric set instead of querying it",
 
+	// Commerce reads.
+	"include-partial-refunds": "also list quantity-based partial refunds (voided purchases)",
+
 	// Safety and execution control.
 	"dry-run":              "plan and print without writing",
 	"confirm":              "consent to an irreversible or production-impacting write",
