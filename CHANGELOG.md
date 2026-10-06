@@ -5,6 +5,17 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0](https://github.com/PollyGlot/google-play-cli/compare/v2.0.0...v2.1.0) (2026-10-06)
+
+
+### Features
+
+* **orders:** add orders voided list, the voided-purchases reconciliation feed ([#667](https://github.com/PollyGlot/google-play-cli/issues/667)) ([2ed53ca](https://github.com/PollyGlot/google-play-cli/commit/2ed53ca869e678408dd8f544b2826e6d74879689))
+* **releases:** --release-name on releases upload ([#672](https://github.com/PollyGlot/google-play-cli/issues/672)) ([38d57bd](https://github.com/PollyGlot/google-play-cli/commit/38d57bd812b810f2ed702dc6136891e13026128e))
+* **releases:** --update-priority on upload and promote, carried over on promote ([#670](https://github.com/PollyGlot/google-play-cli/issues/670)) ([40f2ce9](https://github.com/PollyGlot/google-play-cli/commit/40f2ce9c919989432a47278e262ec049763c7807))
+* **tracks:** --form-factor on tracks create (WEAR / AUTOMOTIVE closed tracks) ([#669](https://github.com/PollyGlot/google-play-cli/issues/669)) ([cb9ee22](https://github.com/PollyGlot/google-play-cli/commit/cb9ee22437753cafecd225a9e48ae9e340483bca))
+* **vitals:** add vitals releases and complete --version-code from it ([#671](https://github.com/PollyGlot/google-play-cli/issues/671)) ([1a84853](https://github.com/PollyGlot/google-play-cli/commit/1a848534eef97ba962a132ef7d8f9fb662f18db8))
+
 ## [2.0.0](https://github.com/PollyGlot/google-play-cli/compare/v1.7.1...v2.0.0) (2026-09-28)
 
 
