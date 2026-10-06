@@ -695,6 +695,7 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		// orders
 		{[]string{"orders", "view"}, false},
 		{[]string{"orders", "refund"}, true},
+		{[]string{"orders", "voided", "list"}, false},
 
 		// subscriptions: pull writes only local catalog files; apply
 		// reconciles the live catalog (ADR-0041). prices convert is a pure
@@ -923,6 +924,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		// exposes a file schema and a reconciliation model as contract.
 		{[]string{"orders", "view"}, true},
 		{[]string{"orders", "refund"}, true},
+		{[]string{"orders", "voided", "list"}, true},
 		{[]string{"subscriptions", "pull"}, true},
 		{[]string{"subscriptions", "apply"}, true},
 		{[]string{"subscriptions", "prices", "convert"}, true},

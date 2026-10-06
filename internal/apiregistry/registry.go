@@ -161,6 +161,7 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.orders.batchget", Commands: []string{"orders view"}, Note: "the multi-id form of orders view"},
 	{MethodID: "androidpublisher.orders.get", Commands: []string{"orders view"}},
 	{MethodID: "androidpublisher.orders.refund", Commands: []string{"orders refund"}, Note: "--confirm-gated, money-moving (ADR-0031)"},
+	{MethodID: "androidpublisher.purchases.voidedpurchases.list", Commands: []string{"orders voided list"}, Note: "voided-purchases feed for refund/chargeback reconciliation (#346)"},
 	{
 		MethodID: "androidpublisher.inappproducts.list",
 		Commands: []string{"iap pull"},

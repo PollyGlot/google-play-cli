@@ -66,6 +66,17 @@ func ClassifyView(pkg, orderID string, err error) error {
 	return err
 }
 
+// ClassifyList adds the 403 hint to a list read (purchases.voidedpurchases.list):
+// it needs the same CAN_VIEW_FINANCIAL_DATA as the lookups, and has no per-ID
+// 404 to explain. Any other error passes through.
+func ClassifyList(pkg string, err error) error {
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden {
+		return &forbiddenError{pkg: pkg, cause: err}
+	}
+	return err
+}
+
 // batchNotFoundError wraps a 404 on a batch read: orders.batchget fails the
 // whole request if any single ID is unknown or belongs to another package, so
 // the hint names that all-or-nothing semantics rather than a single ID.
