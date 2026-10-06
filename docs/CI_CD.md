@@ -402,6 +402,7 @@ other workflow reports, but never blocks a merge.
 | `deploy-site.yml` | push to `main` touching `website/**`, `deploy/gplay.sh/**` or the workflow itself + release published + manual | builds the site and deploys the Cloudflare Worker serving gplay.sh and `/install` (ADR-0025). | `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID` |
 | `discovery-watch.yml` | weekly + manual | refreshes the Discovery snapshots on a rolling PR, auto-merges a revision-only bump, hands a schema or surface change to the triage routine (PRD #501). | variable `GPLAY_APP_CLIENT_ID`, `GPLAY_APP_PRIVATE_KEY`, `DISCOVERY_TRIAGE_WEBHOOK_URL`, `DISCOVERY_TRIAGE_API_TOKEN`, variable `DISCOVERY_TRIAGE_ENABLED` |
 | `discovery-verdict.yml` | label on the rolling Discovery PR | acts on the routine's verdict label: merges on `discovery:verdict-merge`, only reports on `discovery:needs-decision`. | variable `GPLAY_APP_CLIENT_ID`, `GPLAY_APP_PRIVATE_KEY` |
+| `slice-agent.yml` | `ready-for-agent` label on an issue + manual (issue input) | hands an open `type:slice` issue to the slice implementation routine (PRD #501), which opens a draft PR with `Closes #N` and never merges (`docs/agents/slice-implementation.md`); an issue an open PR already refers to is skipped with a comment (`.github/scripts/slice-agent-gate.sh`). | `SLICE_AGENT_WEBHOOK_URL`, `SLICE_AGENT_API_TOKEN`, variable `SLICE_AGENT_ENABLED` |
 
 ### Workflow hardening
 

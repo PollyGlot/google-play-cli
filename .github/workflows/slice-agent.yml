@@ -1,0 +1,211 @@
+name: Slice Agent
+
+# The implementation half of the autonomous loop (PRD #501, slice #507). When
+# `ready-for-agent` lands on an open `type:slice` issue, this wakes a second
+# Claude routine that implements the slice on its own branch and opens a
+# **draft** PR with `Closes #N`. The routine never marks the PR ready and never
+# merges: the maintainer's remaining job is review and merge. Its brief is
+# docs/agents/slice-implementation.md.
+#
+# Same split as the Discovery triage loop (discovery-watch.yml): intelligence
+# in the routine, privileges and the deterministic gates here. Before the call,
+# .github/scripts/slice-agent-gate.sh re-reads the issue live and refuses an
+# issue that is closed, no longer carries both labels, or already has an open
+# PR referring to it. That last case is answered with a comment on the issue;
+# every other skip only shows in the job summary, so that labelling dozens of
+# slices with the bot off does not spam the tracker.
+#
+# ---------------------------------------------------------------------------
+# Setup of the slice implementation routine (one-time, by hand)
+# ---------------------------------------------------------------------------
+# 1. Create a second routine in the Claude app (claude.ai/code/routines), on the
+#    subscription, with this repository selected and an API trigger. Its prompt
+#    tells it to read docs/agents/slice-implementation.md from the cloned
+#    repository and follow it (or paste the file). The environment needs Go
+#    (from go.mod), golangci-lint at the version pinned in ci.yml, shellcheck
+#    and Node 22, because the brief gates the PR on `make check`; put their
+#    installation in the environment's setup script.
+# 2. Store the routine's "call via API" URL (the .../fire endpoint) as the
+#    repository secret SLICE_AGENT_WEBHOOK_URL and the Bearer token generated
+#    next to it as SLICE_AGENT_API_TOKEN. They cannot be the Discovery triage
+#    ones: a URL and its token fire exactly one routine. URL absent, the call is
+#    skipped and the job summary says so.
+# 3. Before relying on it, "Run now" the routine with the text
+#    `Issue: #<n>` on a closed, already-shipped slice and check that it stops
+#    on the closed issue without pushing anything; then on a small open slice,
+#    check that it opens a draft PR with `Closes #<n>` and leaves it draft.
+# 4. Set the repository variable SLICE_AGENT_ENABLED to "true". This is the
+#    kill switch: anything else (including absent) means no call, with the
+#    reason in the job summary, and the routine itself stays untouched.
+#
+# The call goes through the routine API (`text` body, Bearer token,
+# `anthropic-version` and the routine beta header). The routine receives the
+# `text` value wrapped as untrusted fire payload, which is why the brief only
+# takes the issue number from it and re-checks the issue with gh.
+#
+# The trigger is the `ready-for-agent` label itself: an issue published with
+# both labels at once (to-tickets, the Discovery triage routine) fires; adding
+# `type:slice` after `ready-for-agent` does not. Dispatch this workflow with the
+# "issue" input to hand an issue to the routine again (a failed call, a slice
+# labelled in the other order, a PR closed without merging).
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Slice issue number to hand to the implementation routine'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# One handover per issue at a time, never a global group: GitHub keeps a single
+# pending run per group and cancels the older pending one, so a batch of
+# slices labelled together would silently lose all but two. Every other label
+# gets a throwaway group of its own: an issue published with four labels at
+# once fires four runs, and sharing the issue's group would let the
+# `area:*` run cancel the pending `ready-for-agent` one.
+concurrency:
+  group: >-
+    ${{ (github.event_name == 'workflow_dispatch' || github.event.label.name == 'ready-for-agent')
+    && format('slice-agent-{0}', github.event.issue.number || inputs.issue)
+    || format('slice-agent-noop-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Hand the slice to the routine
+    # Any other label on any issue ends here, before a runner is even booked.
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ready-for-agent'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout of the gate script
+      issues: write # read the issue, and the open-PR skip comment
+      pull-requests: read # the gate's open-PR lookup
+    steps:
+      # Checked out for the gate script only (default branch on both events),
+      # with no credential left in .git/config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The kill switch is read before anything touches the tracker: with the
+      # bot off, not even the open-PR comment is posted.
+      - name: Check the kill switch and the secret
+        id: switch
+        env:
+          ENABLED: ${{ vars.SLICE_AGENT_ENABLED }}
+          WEBHOOK_URL: ${{ secrets.SLICE_AGENT_WEBHOOK_URL }}
+        run: |
+          if [ "${ENABLED:-}" != "true" ]; then
+            echo "on=false" >> "$GITHUB_OUTPUT"
+            echo "reason=the SLICE_AGENT_ENABLED repository variable is not \`true\` (kill switch off)" >> "$GITHUB_OUTPUT"
+          elif [ -z "${WEBHOOK_URL:-}" ]; then
+            echo "on=false" >> "$GITHUB_OUTPUT"
+            echo "reason=the SLICE_AGENT_WEBHOOK_URL secret is not set (the routine has not been created yet)" >> "$GITHUB_OUTPUT"
+          else
+            echo "on=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate the issue
+        id: gate
+        if: steps.switch.outputs.on == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: .github/scripts/slice-agent-gate.sh "$ISSUE" >> "$GITHUB_OUTPUT"
+
+      # The one skip that is said on the issue itself: someone (human or
+      # routine) is already on this slice, and whoever applied the label should
+      # learn why nothing else happened.
+      - name: Comment on the skipped slice
+        if: steps.gate.outputs.decision == 'skip-pr'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          PRS: ${{ steps.gate.outputs.prs }}
+        run: |
+          gh issue comment "$ISSUE" --body "Not handed to the slice implementation routine: an open PR already refers to this issue ($PRS). Close that PR first, then re-apply \`ready-for-agent\` or dispatch the Slice Agent workflow with this issue number."
+
+      - name: Call the slice implementation routine
+        id: routine
+        if: steps.gate.outputs.decision == 'fire'
+        env:
+          WEBHOOK_URL: ${{ secrets.SLICE_AGENT_WEBHOOK_URL }}
+          API_TOKEN: ${{ secrets.SLICE_AGENT_API_TOKEN }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          # `text` is the only field the routine API passes on, as a literal
+          # string. Nothing from the issue itself (title, body) goes in: the
+          # routine reads those with gh, from the source.
+          text="Issue: #$ISSUE
+          Repository: $REPO
+          URL: $SERVER/$REPO/issues/$ISSUE
+          Trigger: ready-for-agent applied by @$ACTOR (workflow run $GITHUB_RUN_ID)"
+          payload=$(jq -n --arg text "$text" '{text: $text}')
+          # One attempt, no --retry: firing the routine twice over a flaky
+          # endpoint means two branches for one slice. A failed call leaves the
+          # issue labelled; the "issue" dispatch input replays it. The URL is a
+          # secret, so only the status code is ever echoed.
+          auth=()
+          if [ -n "${API_TOKEN:-}" ]; then
+            auth=(-H "Authorization: Bearer $API_TOKEN")
+          fi
+          code=$(curl -sS --max-time 30 \
+            -o "$RUNNER_TEMP/routine-response.txt" -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -H 'anthropic-version: 2023-06-01' \
+            -H 'anthropic-beta: experimental-cc-routine-2026-04-01' "${auth[@]}" \
+            -d "$payload" "$WEBHOOK_URL")
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::The slice implementation routine answered HTTP $code."
+            head -c 500 "$RUNNER_TEMP/routine-response.txt" || true
+            exit 1
+          fi
+          session=$(jq -r '.claude_code_session_url // empty' "$RUNNER_TEMP/routine-response.txt" 2>/dev/null || true)
+          echo "called=true" >> "$GITHUB_OUTPUT"
+          echo "session=$session" >> "$GITHUB_OUTPUT"
+          echo "Slice implementation routine called for issue #$ISSUE, HTTP $code."
+
+      # Runs whatever happened above: "the bot is off", "the slice was skipped"
+      # and "the bot is dead" must never look the same.
+      - name: Job summary
+        if: always()
+        env:
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          ON: ${{ steps.switch.outputs.on }}
+          SWITCH_REASON: ${{ steps.switch.outputs.reason }}
+          DECISION: ${{ steps.gate.outputs.decision }}
+          GATE_REASON: ${{ steps.gate.outputs.reason }}
+          CALLED: ${{ steps.routine.outputs.called }}
+          SESSION: ${{ steps.routine.outputs.session }}
+        run: |
+          {
+            echo "## Slice Agent"
+            echo
+            echo "- Issue: #$ISSUE"
+            if [ "${ON:-}" != "true" ]; then
+              echo "- Outcome: **not called**, ${SWITCH_REASON:-the switch step did not complete}."
+            elif [ "${CALLED:-}" = "true" ]; then
+              echo "- Outcome: **routine called**. Expect a draft PR with \`Closes #$ISSUE\`, or a comment on the issue explaining why none was opened."
+              if [ -n "${SESSION:-}" ]; then
+                echo "- Session: $SESSION"
+              fi
+            elif [ "${DECISION:-}" = "skip-pr" ]; then
+              echo "- Outcome: **skipped**, $GATE_REASON. Commented on the issue."
+            elif [ "${DECISION:-}" = "skip-ineligible" ]; then
+              echo "- Outcome: **skipped**, $GATE_REASON."
+            elif [ "${DECISION:-}" = "fire" ]; then
+              echo "- Outcome: **not called**: the routine call failed (see the step log). Re-dispatch this workflow with the \`issue\` input."
+            else
+              echo "- Outcome: **not called**: the gate did not complete (it errored, or the job was cancelled)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

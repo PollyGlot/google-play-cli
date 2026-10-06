@@ -13,6 +13,12 @@ table mappe ces rôles vers les labels réels du tracker.
 | `ready-for-human`  | _(pas encore créé)_ | Demande implémentation humaine — créer à la demande |
 | `wontfix`          | `wontfix`           | Ne sera pas actionné                                |
 
+`ready-for-agent` posé sur une issue `type:slice` ouverte réveille la routine
+d'implémentation (workflow `slice-agent.yml`, brief
+[slice-implementation.md](slice-implementation.md)) quand la variable
+`SLICE_AGENT_ENABLED` vaut `true` : elle ouvre une PR draft `Closes #N`, ou
+commente l'issue pour dire pourquoi elle n'en ouvre pas.
+
 ## Rôles de catégorie (un seul par issue)
 
 | Rôle canonique  | Label dans ce repo |
