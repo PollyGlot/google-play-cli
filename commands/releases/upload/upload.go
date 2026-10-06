@@ -36,6 +36,10 @@ type Input struct {
 	Complete          bool
 	StagedFraction    float64
 	StagedFractionSet bool
+	// UpdatePriority is --update-priority (0..5); UpdatePrioritySet tells an
+	// explicit 0 (lowest priority) apart from "not passed".
+	UpdatePriority    int
+	UpdatePrioritySet bool
 	KeepEditOnFailure bool
 	Commit            commitflags.Flags
 	Confirm           bool
@@ -204,6 +208,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.StagedFractionSet && (in.StagedFraction <= 0 || in.StagedFraction > 1.0) {
 		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
 	}
+	if in.UpdatePrioritySet && (in.UpdatePriority < 0 || in.UpdatePriority > orchestrator.MaxUpdatePriority) {
+		return nil, exit.Usagef("--update-priority must be in 0..%d, got %d", orchestrator.MaxUpdatePriority, in.UpdatePriority)
+	}
 	if in.AABPath == "" {
 		return nil, &exit.UsageError{Msg: "missing AAB path: gplay releases upload <aab> ..."}
 	}
@@ -289,6 +296,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		DeviceTierConfig:  in.DeviceTierConfig,
 		Status:            status,
 		UserFraction:      in.StagedFraction,
+		UpdatePriority:    updatePriority(in),
 		ReleaseNotes:      in.ReleaseNotes,
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
@@ -386,6 +394,7 @@ one created. AAB only.`,
 			// Detect explicit --staged so 0 is distinguished from "unset".
 			in.StagedFractionSet = cmd.Flags().Changed("staged")
 			in.StagedFraction = stagedFractionVar
+			in.UpdatePrioritySet = cmd.Flags().Changed("update-priority")
 			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, in)
 			})
@@ -401,6 +410,7 @@ one created. AAB only.`,
 	cmd.Flags().BoolVar(&in.Draft, "draft", false, "force the release status to draft")
 	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
 	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
+	cmd.Flags().IntVar(&in.UpdatePriority, "update-priority", 0, "in-app update priority of the release, 0 (default) to 5 (highest), read by the app through the Play in-app updates API")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required for production publishes (--complete / --staged on production)")
@@ -408,4 +418,14 @@ one created. AAB only.`,
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")
 	cmd.Flags().StringVar(&in.DeviceTierConfig, "device-tier-config", "", "device tier config id, or LATEST, applied to the uploaded bundle (AAB only)")
 	return cmd
+}
+
+// updatePriority maps the flag pair to the orchestrator's optional priority:
+// nil when --update-priority was not passed, so the field stays off the wire.
+func updatePriority(in Input) *int {
+	if !in.UpdatePrioritySet {
+		return nil
+	}
+	p := in.UpdatePriority
+	return &p
 }

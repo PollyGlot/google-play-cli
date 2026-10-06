@@ -61,6 +61,19 @@ func validateStatusValue(status Status) error {
 	}
 }
 
+// MaxUpdatePriority is the highest inAppUpdatePriority Google Play accepts;
+// the range is 0..MaxUpdatePriority.
+const MaxUpdatePriority = 5
+
+// validateUpdatePriority rejects a priority outside 0..5 before any HTTP, so
+// a typo never costs an Edit. Shared by upload and promote.
+func validateUpdatePriority(p *int) error {
+	if p != nil && (*p < 0 || *p > MaxUpdatePriority) {
+		return &InvalidOptsError{Message: "UpdatePriority must be in 0..5"}
+	}
+	return nil
+}
+
 // resolvedStatus reports the wire-format release status (draft /
 // completed / inProgress) a given Status + Track would produce after
 // applying the ADR-0002 safe-default rule. Shared by both the upload
@@ -146,9 +159,12 @@ type Opts struct {
 	// from the file extension or an explicit --format override; the
 	// versionCode both endpoints return drives the rest of the pipeline
 	// unchanged.
-	Format            string
-	Status            Status
-	UserFraction      float64
+	Format       string
+	Status       Status
+	UserFraction float64
+	// UpdatePriority, when non-nil, sets the release's inAppUpdatePriority
+	// (0..5). nil leaves the field off the wire (#664).
+	UpdatePriority    *int
 	ReleaseNotes      string
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
@@ -192,14 +208,17 @@ type Opts struct {
 // Result is what Upload returns on success. RawTrackResponse carries
 // the raw tracks.update JSON for --output json pass-through (ADR-0003).
 type Result struct {
-	VersionCode      int             `json:"versionCode"`
-	Track            string          `json:"track"`
-	ReleaseName      string          `json:"releaseName"`
-	Status           string          `json:"status"`
-	UserFraction     float64         `json:"userFraction,omitempty"`
-	DefaultLanguage  string          `json:"defaultLanguage,omitempty"`
-	Locales          []string        `json:"locales,omitempty"`
-	RawTrackResponse json.RawMessage `json:"-"`
+	VersionCode  int     `json:"versionCode"`
+	Track        string  `json:"track"`
+	ReleaseName  string  `json:"releaseName"`
+	Status       string  `json:"status"`
+	UserFraction float64 `json:"userFraction,omitempty"`
+	// InAppUpdatePriority is the priority the release carries (or, on
+	// --dry-run, would carry); nil when none is set.
+	InAppUpdatePriority *int            `json:"inAppUpdatePriority,omitempty"`
+	DefaultLanguage     string          `json:"defaultLanguage,omitempty"`
+	Locales             []string        `json:"locales,omitempty"`
+	RawTrackResponse    json.RawMessage `json:"-"`
 
 	// MappingUploaded reports whether a ProGuard/R8 mapping was uploaded
 	// alongside the AAB (the --mapping path, #250). The ✓ confirmation
@@ -317,6 +336,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		result.ReleaseName = release.Name
 		result.Status = release.Status
 		result.UserFraction = release.UserFraction
+		result.InAppUpdatePriority = release.InAppUpdatePriority
 		result.RawTrackResponse = raw
 		return nil
 	})
@@ -335,6 +355,9 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 // belong in buildRelease.
 func validateOpts(opts Opts) error {
 	if err := validateStatusValue(opts.Status); err != nil {
+		return err
+	}
+	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
 		return err
 	}
 	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
@@ -381,10 +404,11 @@ func buildRelease(versionCode int, opts Opts) tracks.Release {
 	statusStr, userFraction := statusPayload(opts.Track, opts.Status, opts.UserFraction)
 	codeStr := strconv.Itoa(versionCode)
 	return tracks.Release{
-		Name:         codeStr,
-		Status:       statusStr,
-		UserFraction: userFraction,
-		VersionCodes: []string{codeStr},
+		Name:                codeStr,
+		Status:              statusStr,
+		UserFraction:        userFraction,
+		VersionCodes:        []string{codeStr},
+		InAppUpdatePriority: opts.UpdatePriority,
 	}
 }
 
@@ -474,12 +498,13 @@ func dryRunResult(opts Opts) (*Result, error) {
 	// only known after bundles.upload.
 	release := buildRelease(0, opts)
 	return &Result{
-		Track:        opts.Track,
-		VersionCode:  0,
-		Status:       release.Status,
-		UserFraction: release.UserFraction,
-		ReleaseName:  "(dry-run)",
-		Locales:      previewLocales,
+		Track:               opts.Track,
+		VersionCode:         0,
+		Status:              release.Status,
+		UserFraction:        release.UserFraction,
+		InAppUpdatePriority: release.InAppUpdatePriority,
+		ReleaseName:         "(dry-run)",
+		Locales:             previewLocales,
 	}, nil
 }
 
