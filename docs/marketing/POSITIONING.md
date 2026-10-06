@@ -144,7 +144,7 @@ categorical on purpose so it doesn't drift version-to-version.
 ## What's coming next
 
 - Vitals (crashes / ANR, Reporting API) — [#49](https://github.com/PollyGlot/google-play-cli/issues/49)
-- Monetization (subscriptions v2, IAP, RevenueCat sync) — post-v1,
+- Monetization (subscriptions v2, IAP) — post-v1,
   [#51](https://github.com/PollyGlot/google-play-cli/issues/51)
 - Reviews history beyond 7 days (CSV reports) — [#94](https://github.com/PollyGlot/google-play-cli/issues/94)
 - See the [issue tracker](https://github.com/PollyGlot/google-play-cli/issues) (`type:prd` / `type:slice`).
