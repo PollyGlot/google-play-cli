@@ -1,11 +1,10 @@
 // Package create implements `gplay tracks create <name>`: the CLI glue
 // that creates a custom closed-testing track. It is thin glue: resolve
 // --package, open an Edit (open → tracks.create → commit), and render.
-// The create endpoint supports exactly one type (CLOSED_TESTING), so there
-// is no --type flag; --form-factor picks the TrackConfig form factor
-// (default, wear or automotive) and defaults to the phone one. A closed
-// test track is low-stakes and reversible, so there is no --confirm
-// (unlike a production rollout). See docs/DESIGN.md §10.
+// The create endpoint supports exactly one type (CLOSED_TESTING) and the
+// DEFAULT form factor, so there is no --type / --form-factor flag; and a
+// closed test track is low-stakes and reversible, so there is no
+// --confirm (unlike a production rollout). See docs/DESIGN.md §10.
 package create
 
 import (
@@ -30,7 +29,6 @@ import (
 type Input struct {
 	Package           string
 	Name              string
-	FormFactor        string
 	DryRun            bool
 	KeepEditOnFailure bool
 	Commit            commitflags.Flags
@@ -115,16 +113,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return err
 }
 
-// formFactors maps the --form-factor values, lowercased, to the
-// TrackConfig enum. "" stands for a direct caller that never set the field
-// and gets the phone form factor, exactly the body sent before the flag.
-var formFactors = map[string]string{
-	"":           tracks.FormFactorDefault,
-	"default":    tracks.FormFactorDefault,
-	"wear":       tracks.FormFactorWear,
-	"automotive": tracks.FormFactorAutomotive,
-}
-
 // Run is the business function the kernel invokes. It validates inputs,
 // resolves the package, then (live path) opens an Edit and creates the
 // closed track inside it (open → tracks.create → commit). The dry-run
@@ -134,10 +122,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return nil, &exit.UsageError{Msg: "missing track name: gplay tracks create <name>"}
-	}
-	formFactor, ok := formFactors[strings.ToLower(strings.TrimSpace(in.FormFactor))]
-	if !ok {
-		return nil, exit.Usagef("invalid --form-factor %q: pass default, wear or automotive", in.FormFactor)
 	}
 
 	pkg, err := rc.Package(in.Package)
@@ -152,7 +136,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return Payload{
 			Name:       in.Name,
 			Type:       tracks.TrackTypeClosedTesting,
-			FormFactor: formFactor,
+			FormFactor: tracks.FormFactorDefault,
 			Kind:       "custom",
 			DryRun:     true,
 		}, nil
@@ -175,7 +159,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		raw     json.RawMessage
 	)
 	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
-		t, r, e := tracks.Create(rc.Ctx, httpClient, pkg, editID, in.Name, formFactor)
+		t, r, e := tracks.Create(rc.Ctx, httpClient, pkg, editID, in.Name, tracks.FormFactorDefault)
 		if e != nil {
 			return e
 		}
@@ -193,7 +177,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{
 		Name:       created.Track,
 		Type:       tracks.TrackTypeClosedTesting,
-		FormFactor: formFactor,
+		FormFactor: tracks.FormFactorDefault,
 		Kind:       "custom",
 		Raw:        raw,
 	}, nil
@@ -210,12 +194,11 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Create a custom closed-testing track",
 		Long: `Create a custom closed-testing track named <name>.
 
-The create endpoint supports exactly one type (CLOSED_TESTING), so there
-is no --type flag: every created track is closed. Open / internal track
-creation has no API path. --form-factor picks the devices the track
-targets: default (phone, the default), wear or automotive. Creating a
-track that already exists surfaces the API error (exit 30); gplay does
-not fake idempotency.
+The create endpoint supports exactly one type (CLOSED_TESTING) and the
+DEFAULT (phone) form factor, so there is no --type / --form-factor flag:
+every created track is closed. Open / internal track creation has no API
+path. Creating a track that already exists surfaces the API error (exit
+30); gplay does not fake idempotency.
 
 Runs inside an implicit Edit (open → tracks.create → commit). --dry-run
 previews the TrackConfig without any HTTP; --keep-edit-on-failure skips
@@ -223,9 +206,6 @@ the auto-discard cleanup on failure (debug). No --confirm: a closed test
 track is low-stakes and reversible.`,
 		Example: `  # Create a Closed track for an internal QA group
   gplay tracks create qa-team
-
-  # Create a Closed track for Wear OS testers
-  gplay tracks create beta-wear --form-factor wear
 
   # Preview the TrackConfig without any HTTP call
   gplay tracks create qa-team --dry-run --output json`,
@@ -244,7 +224,6 @@ track is low-stakes and reversible.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.FormFactor, "form-factor", "default", "form factor the track targets: default (phone), wear or automotive")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the TrackConfig without any HTTP call")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	commitflags.Register(cmd, &in.Commit)

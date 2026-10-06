@@ -43,7 +43,6 @@ var flagVocabulary = map[string]string{
 	"format":             "artifact container: apk or bundle",
 	"device-tier-config": "device tier config (an ID, or LATEST) a bundle's deliverables are generated with",
 	"scope":              "permission scope: account or app",
-	"form-factor":        "device form factor a created track targets: default, wear or automotive",
 
 	// Input and output.
 	"output":            "structured output format (output.RegisterFlag)",

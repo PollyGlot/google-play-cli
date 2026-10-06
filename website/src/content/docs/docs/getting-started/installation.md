@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install the gplay CLI with Homebrew, the install script, go install, or pre-built binaries for Linux, macOS, and Windows.
+description: Install the gplay CLI with Homebrew, the install script, go install, a container image, or pre-built binaries for Linux, macOS, and Windows.
 sidebar:
   order: 1
 ---
@@ -38,6 +38,19 @@ With a Go toolchain installed:
 go install github.com/PollyGlot/google-play-cli/cmd/gplay@latest
 ```
 
+## Container image
+
+A multi-arch image (linux/amd64, linux/arm64) ships with every release on
+GHCR, built from the same binaries as the archives. Tags are `vX.Y.Z`, `X.Y`
+and `latest`; the entrypoint is `gplay`, on a distroless base running as a
+non-root user. Forward the credential from your environment as inline JSON
+(a host path does not exist inside the container):
+
+```sh
+docker run --rm -e GPLAY_SERVICE_ACCOUNT \
+  ghcr.io/pollyglot/gplay:<version> tracks list --package com.example.myapp
+```
+
 ## Pre-built binaries
 
 Archives for Linux, macOS, and Windows (amd64 and arm64), with checksums and
@@ -61,6 +74,16 @@ cosign verify-blob checksums.txt \
   --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 shasum -a 256 -c <(grep " gplay_<version>_<os>_<arch>.tar.gz$" checksums.txt)
+```
+
+The container image carries the same proofs, stored in GHCR next to it:
+
+```sh
+gh attestation verify oci://ghcr.io/pollyglot/gplay:<version> \
+  -R PollyGlot/google-play-cli
+cosign verify ghcr.io/pollyglot/gplay:<version> \
+  --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 A ready-to-paste CI step that installs and verifies in one shot is in the

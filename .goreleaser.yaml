@@ -72,6 +72,49 @@ signs:
     artifacts: checksum
     output: true
 
+# Multi-arch container image on GHCR (#659), built in the same release run
+# from the Linux binaries above (`ids: [gplay]`), so the image runs the exact
+# bytes the archives ship. Needs `packages: write` and a `docker login
+# ghcr.io` in the release job, plus buildx for the multi-platform push.
+# `vX.Y.Z` always; `X.Y` and `latest` only for a stable version, so a
+# prerelease never moves the floating tags. In `--snapshot` GoReleaser builds
+# one local image per platform (`:vX.Y.Z-next-amd64`, `-arm64`) and pushes
+# nothing.
+dockers_v2:
+  - id: gplay
+    ids: [gplay]
+    dockerfile: Dockerfile
+    images:
+      - ghcr.io/pollyglot/gplay
+    tags:
+      - "v{{ .Version }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    # org.opencontainers.image.source links the GHCR package to this repo, so
+    # the job's GITHUB_TOKEN can publish to it.
+    labels:
+      org.opencontainers.image.title: gplay
+      org.opencontainers.image.description: "Fast, lightweight CLI for the Google Play Developer API."
+      org.opencontainers.image.url: "https://gplay.sh"
+      org.opencontainers.image.source: "https://github.com/PollyGlot/google-play-cli"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.licenses: MIT
+
+# Keyless cosign signature on the pushed image, by digest, with the same OIDC
+# identity as the checksums signature above: no key, no new secret. The
+# signature lands in GHCR next to the image (`cosign verify`).
+docker_signs:
+  - cmd: cosign
+    args:
+      - "sign"
+      - "${artifact}@${digest}"
+      - "--yes"
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
@@ -97,6 +140,8 @@ release:
     brew install PollyGlot/tap/gplay
     # or
     curl -fsSL https://gplay.sh/install | sh
+    # or, as a container
+    docker run --rm ghcr.io/pollyglot/gplay:{{.Tag}} version
     ```
 
 # A Homebrew Cask, not a Formula: GoReleaser deprecated `brews` (the generated

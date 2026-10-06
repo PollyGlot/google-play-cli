@@ -637,7 +637,6 @@ frozen leaf "tracks create" use="create <name>" mutating
 frozen flag "tracks create" --changes-in-review type=cancel|error default=""
 frozen flag "tracks create" --changes-not-sent-for-review type=bool default="false"
 frozen flag "tracks create" --dry-run type=bool default="false"
-frozen flag "tracks create" --form-factor type=string default="default"
 frozen flag "tracks create" --keep-edit-on-failure type=bool default="false"
 frozen flag "tracks create" --output type=string default=""
 frozen flag "tracks create" --package type=string default=""

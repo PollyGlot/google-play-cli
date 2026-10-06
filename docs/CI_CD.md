@@ -113,6 +113,27 @@ jobs:
             --release-notes-dir ./whatsnew
 ```
 
+### Container image
+
+Each release also ships a multi-arch image (linux/amd64, linux/arm64) on GHCR,
+built from the same binaries as the archives: `ghcr.io/pollyglot/gplay`, tagged
+`vX.Y.Z`, `X.Y` and `latest` (a prerelease only gets its `vX.Y.Z` tag). The
+entrypoint is `gplay`; the base is distroless static (CA certificates, no
+shell), running as a non-root user. `-e GPLAY_SERVICE_ACCOUNT` with no `=value`
+forwards the variable from the job's environment, so the key stays off the
+command line; hold the JSON inline, since a host path does not exist inside the
+container:
+
+```sh
+docker run --rm -e GPLAY_SERVICE_ACCOUNT \
+  ghcr.io/pollyglot/gplay:v2.0.0 tracks list --package com.example.myapp # x-release-please-version
+```
+
+Mount the files a command reads (an AAB, a metadata directory) and work from
+there: `-v "$PWD:/work" -w /work`. The container runs as uid 65532, so add
+`--user "$(id -u):$(id -g)"` when a command writes into the mount (an explicit
+Edit pins itself in `.gplay/`).
+
 ### Credential hygiene — env var, never a flag
 
 Pass the credential through **`GPLAY_SERVICE_ACCOUNT` (env)**, never through the
@@ -264,6 +285,18 @@ Pin a verification step into the job that installs `gplay`:
           tar -xzf "$archive" gplay && sudo install -m0755 gplay /usr/local/bin/gplay
 ```
 
+The container image carries the same two proofs, both stored in GHCR next to
+it: a build-provenance attestation and a keyless cosign signature, on the
+multi-arch digest every tag points to.
+
+```sh
+image=ghcr.io/pollyglot/gplay:v2.0.0 # x-release-please-version
+gh attestation verify "oci://$image" -R PollyGlot/google-play-cli
+cosign verify "$image" \
+  --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 `gh attestation verify` needs only the GitHub CLI (preinstalled on GitHub
 runners) and `GH_TOKEN`; `cosign verify-blob` needs `cosign` on `PATH`
 (`sigstore/cosign-installer`). Either one alone is a meaningful gate; running
@@ -398,7 +431,7 @@ other workflow reports, but never blocks a merge.
 | `site.yml` | PR touching `website/**`, `deploy/**`, `cmd/**`, `commands/**` or the workflow itself | builds the site (reference generated from the fresh binary), runs `astro check` and `website/scripts/check-dist.mjs` (internal links and anchors, links to untracked repo paths, mangled flag dashes), and the `deploy/gplay.sh/worker.js` routing tests on `node:test`. Not required. | none |
 | `release-rehearsal.yml` | PR touching release machinery + manual | non-publishing GoReleaser dry run. Not required. | none |
 | `release-please.yml` | push to `main` | maintains the release PR; once it merges, cuts the tag and GitHub Release and calls `release.yml`. | variable `GPLAY_APP_CLIENT_ID` + `GPLAY_APP_PRIVATE_KEY` (gplay App token), `HOMEBREW_TAP_GITHUB_TOKEN` (passed on) |
-| `release.yml` | called by `release-please.yml` + manual (tag input) | GoReleaser build, cosign signature, SBOMs, build-provenance attestations, Homebrew tap push. | `HOMEBREW_TAP_GITHUB_TOKEN`, `GITHUB_TOKEN` |
+| `release.yml` | called by `release-please.yml` + manual (tag input) | GoReleaser build, cosign signatures, SBOMs, build-provenance attestations, Homebrew tap push, multi-arch container image on GHCR (`packages: write` on that job only). | `HOMEBREW_TAP_GITHUB_TOKEN`, `GITHUB_TOKEN` |
 | `deploy-site.yml` | push to `main` touching `website/**`, `deploy/gplay.sh/**` or the workflow itself + release published + manual | builds the site and deploys the Cloudflare Worker serving gplay.sh and `/install` (ADR-0025). | `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID` |
 | `discovery-watch.yml` | weekly + manual | refreshes the Discovery snapshots on a rolling PR, auto-merges a revision-only bump, hands a schema or surface change to the triage routine (PRD #501). | variable `GPLAY_APP_CLIENT_ID`, `GPLAY_APP_PRIVATE_KEY`, `DISCOVERY_TRIAGE_WEBHOOK_URL`, `DISCOVERY_TRIAGE_API_TOKEN`, variable `DISCOVERY_TRIAGE_ENABLED` |
 | `discovery-verdict.yml` | label on the rolling Discovery PR | acts on the routine's verdict label: merges on `discovery:verdict-merge`, only reports on `discovery:needs-decision`. | variable `GPLAY_APP_CLIENT_ID`, `GPLAY_APP_PRIVATE_KEY` |
@@ -651,15 +684,17 @@ A release config is otherwise only exercised once a tag exists, i.e. mid-release
 when a mistake costs a half-published version. `release-rehearsal.yml` runs the
 same GoReleaser config in dry run on the PR that changes it: `goreleaser check`
 then `release --snapshot --clean --skip=publish,sign,sbom,announce`,
-the same flags as `make release-snapshot`. Nothing is published: `--snapshot`
-plus the skip list, `permissions: contents: read`, and no secret reaches the job
-(the tap token is a placeholder string, present only so the Homebrew template
-renders).
+the same flags as `make release-snapshot`. The snapshot also builds the
+container image, one local image per platform (GoReleaser pushes nothing in
+`--snapshot`), and the job runs the amd64 one (`gplay version`). Nothing is
+published: `--snapshot` plus the skip list, `permissions: contents: read`, and
+no secret reaches the job (the tap token is a placeholder string, present only
+so the Homebrew template renders).
 
-It triggers on `.goreleaser.yaml`, the release workflows, `install.sh` and
-`Makefile`, so ordinary code PRs don't pay it, and it is **not** a required
-check for exactly that reason: a check that never runs on most PRs would block
-merge if required.
+It triggers on `.goreleaser.yaml`, the `Dockerfile`, the release workflows,
+`install.sh` and `Makefile`, so ordinary code PRs don't pay it, and it is
+**not** a required check for exactly that reason: a check that never runs on
+most PRs would block merge if required.
 
 `goreleaser check` blocks, deprecations included. It was advisory while the
 config still used the deprecated `brews:`; since the move to `homebrew_casks:`
