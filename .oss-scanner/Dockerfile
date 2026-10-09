@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
 
 # Delve, to step through a reproducer offline.
-RUN go install github.com/go-delve/delve/cmd/dlv@latest
+RUN go install github.com/go-delve/delve/cmd/dlv@v1.27.2
 
 # scanner contract: the checkout lives inside the image, at /src
 COPY . /src
