@@ -208,8 +208,9 @@ collaborative.
 
 ## Status & honesty
 
-- **Public preview, `0.x`.** Pre-1.0 by design. Breaking changes expected.
-- The goal is to get the *surface* right before stabilizing.
+- **Stable, `2.x`.** The public contract is frozen per command
+  (ADR-0042); a command labelled experimental may still change its flags,
+  and breaking changes ship only in a major release.
 - Built in public. Issues + PRs welcome.
 - This is the author's first OSS project — feedback on the project
   itself (not just the code) is encouraged.
