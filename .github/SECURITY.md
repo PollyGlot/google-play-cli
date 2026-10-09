@@ -2,8 +2,10 @@
 
 ## Supported versions
 
-`gplay` is pre-1.0. Only the **latest released version** receives security
-fixes. Once 1.0 ships, this policy will be updated with an LTS column.
+`gplay` follows semantic versioning, with the public contract defined in
+[ADR-0042](../docs/adr/0042-one-zero-ga-and-stability-label-mechanism.md). Only
+the **latest released version** receives security fixes: a fix ships as a new
+release of the current major line, and older releases are not patched.
 
 ## Reporting a vulnerability
 
