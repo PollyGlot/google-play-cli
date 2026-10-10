@@ -7,8 +7,10 @@ refreshes the rolling PR `chore/discovery-refresh`. A `revision-only` refresh
 merges itself. A refresh labelled `discovery:schema` or `discovery:surface`
 wakes you up with one input: **the PR number**. It arrives as the line
 `PR: #<number>` of the text you were fired with (next to `Kind:`, `URL:` and
-`Repository:` lines). Take only the number from that text and check
-everything else with `gh`. Fired without it (a cron run, a manual "run now"),
+`Repository:` lines), either in the routine's fire payload or in the prompt
+of the t3code webhook task (the `AGENT_RUNTIME` repository variable picks
+which runtime the workflow calls). Take only the number from that text and
+check everything else with `gh`. Fired without it (a cron run, a manual "run now"),
 use the open PR whose head branch is `chore/discovery-refresh`.
 
 Everything you need is in this repository. Do not look for a private skill, a
@@ -271,6 +273,7 @@ verbatim failing lines). <One sentence on what that proves.>
   change in the Discovery doc, zero behavioural surface.
 
 **Tickets opened:** #<n> (or: none, the fix basket is empty).
+**Refutation:** Codex, <n> item(s) moved (or: not available on this runtime).
 **COVERAGE.md:** <commit sha> regenerated, <n> new 🔴 row(s) (or: unchanged).
 **Verdict:** `discovery:verdict-merge` (or `discovery:needs-decision`, because …).
 ````
@@ -285,6 +288,14 @@ Rules on the baskets:
 - **Every dismissed item names its reason.** "Not relevant" is not a reason.
 - Refute your own items before posting: for each fix item, try to prove it wrong
   against the real code. It survives only if confirmed and worth a change.
+- **Second opinion from another provider, when the runtime has one.** On t3code,
+  before setting `discovery:verdict-merge`, hand the draft verdict and the PR
+  number to a Codex child task (`delegate_task`, read-only) and ask it to refute
+  every item and the clearance itself against the code. A refutation that
+  survives your own re-check moves the item to its right basket, or the label
+  to `discovery:needs-decision`. Say in the verdict that it ran (`**Refutation:**
+  Codex, <n> item(s) moved` or `none moved`). Without such a tool, skip it and
+  write `**Refutation:** not available on this runtime`.
 
 ## 8. Finish with exactly one label
 
