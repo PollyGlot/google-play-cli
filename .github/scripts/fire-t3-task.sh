@@ -18,15 +18,22 @@ out=${1:?usage: fire-t3-task.sh <response-file> < payload.json}
 : "${WEBHOOK_URL:?WEBHOOK_URL is not set}"
 : "${SIGNING_SECRET:?SIGNING_SECRET is not set}"
 
-body=$(cat)
+body_file=$(mktemp)
+trap 'rm -f "$body_file"' EXIT
+cat > "$body_file"
 # The key is read from the environment, never passed as an argument, so it does
 # not show in the runner's process list.
-sig=$(BODY="$body" python3 -I -c '
+sig=$(BODY_FILE="$body_file" python3 -I -c '
 import hashlib, hmac, os
-print(hmac.new(os.environ["SIGNING_SECRET"].encode(), os.environ["BODY"].encode(), hashlib.sha256).hexdigest())
+with open(os.environ["BODY_FILE"], "rb") as f:
+    print(hmac.new(os.environ["SIGNING_SECRET"].encode(), f.read(), hashlib.sha256).hexdigest())
 ')
 
+# The URL and the signature go through a curl config on stdin, not argv: with
+# both, anyone reading the process list could replay a valid request.
 curl -sS --max-time 30 -o "$out" -w '%{http_code}' \
   -X POST -H 'Content-Type: application/json' \
-  -H "X-Hub-Signature-256: sha256=$sig" \
-  --data-binary "$body" "$WEBHOOK_URL"
+  --data-binary "@$body_file" -K - <<CONFIG
+url = "$WEBHOOK_URL"
+header = "X-Hub-Signature-256: sha256=$sig"
+CONFIG
