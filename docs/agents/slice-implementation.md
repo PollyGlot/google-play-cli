@@ -224,7 +224,8 @@ On t3code, once CI has settled, ask a Codex child task (`delegate_task`,
 read-only) to review the PR diff against the slice and refute what it can. Post
 what survives your own re-check as one PR comment in four baskets (to fix, to
 consider, noted, dismissed with the reason), and fix the "to fix" items on your
-branch first if they stay inside the slice. Without such a tool, skip this.
+branch first if they stay inside the slice: `make check` again, push, and watch
+CI again under the rules above. Without such a tool, skip this.
 
 ## 8. No PR: one comment on the issue
 
