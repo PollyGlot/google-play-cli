@@ -45,6 +45,9 @@ var flagVocabulary = map[string]string{
 	"scope":              "permission scope: account or app",
 	"form-factor":        "device form factor a created track targets: default, wear or automotive",
 
+	// Release contents.
+	"retain-version-code": "Retained version code: an already-uploaded versionCode the release created keeps serving (repeatable)",
+
 	// Input and output.
 	"output":            "structured output format (output.RegisterFlag)",
 	"columns":           "table columns to render",

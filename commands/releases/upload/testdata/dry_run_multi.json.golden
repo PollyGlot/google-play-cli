@@ -1,0 +1,21 @@
+{
+  "dryRun": true,
+  "versionCode": 0,
+  "track": "internal",
+  "releaseName": "(dry-run)",
+  "status": "completed",
+  "userFraction": 1,
+  "retainedVersionCodes": [
+    41
+  ],
+  "artifacts": [
+    {
+      "path": "phone.aab",
+      "format": "bundle"
+    },
+    {
+      "path": "wear.aab",
+      "format": "bundle"
+    }
+  ]
+}

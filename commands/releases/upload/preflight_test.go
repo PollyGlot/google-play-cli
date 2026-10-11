@@ -27,7 +27,7 @@ func TestRun_preflight_refusesAPKPassedToABundleUpload(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
 
-	_, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: p})
+	_, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{p}})
 	if got := exit.For(err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
@@ -49,7 +49,7 @@ func TestRun_preflight_refusesAnotherAppsBuild(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
 
-	_, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: p})
+	_, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{p}})
 	if got := exit.For(err); got != 20 {
 		t.Fatalf("exit = %d, want 20; err=%v", got, err)
 	}
@@ -79,7 +79,7 @@ func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 	if _, err := upload.Run(rc, upload.Input{
 		Package:       "com.example.app",
 		Track:         "internal",
-		AABPath:       p,
+		Artifacts:     []string{p},
 		SkipPreflight: true,
 	}); err != nil {
 		t.Fatalf("Run with --skip-preflight: %v", err)
@@ -105,10 +105,10 @@ func TestRun_preflight_dryRunReportsWhatItFound(t *testing.T) {
 	rc.Stderr = &stderr
 
 	if _, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: writeFakeAAB(t),
-		DryRun:  true,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []string{writeFakeAAB(t)},
+		DryRun:    true,
 	}); err != nil {
 		t.Fatalf("dry-run: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestRun_preflight_unreadableManifestDegradesRatherThanRefuses(t *testing.T)
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
-	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: p}); err != nil {
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{p}}); err != nil {
 		t.Fatalf("Run: %v, want the upload to proceed on a degraded parse", err)
 	}
 	if !strings.Contains(stderr.String(), "preflight") {
@@ -169,7 +169,7 @@ func TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads(t *testing.
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
-	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: p}); err != nil {
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{p}}); err != nil {
 		t.Fatalf("Run: %v, want an over-cap bundle to upload rather than be refused", err)
 	}
 	if !strings.Contains(stderr.String(), "not classified") {
@@ -189,7 +189,7 @@ func TestRun_skipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
 	_, err := upload.Run(rc, upload.Input{
 		Package:       "com.example.app",
 		Track:         "internal",
-		AABPath:       filepath.Join(t.TempDir(), "never-built.aab"),
+		Artifacts:     []string{filepath.Join(t.TempDir(), "never-built.aab")},
 		SkipPreflight: true,
 		DryRun:        true,
 	})

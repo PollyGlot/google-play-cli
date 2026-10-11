@@ -24,7 +24,7 @@ func TestRun_deviceTierConfig_forwardedToBundlesUpload(t *testing.T) {
 	if _, err := upload.Run(rc, upload.Input{
 		Package:          "com.example.app",
 		Track:            "internal",
-		AABPath:          writeFakeAAB(t),
+		Artifacts:        []string{writeFakeAAB(t)},
 		DeviceTierConfig: "1234567890",
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -49,7 +49,7 @@ func TestRun_deviceTierConfig_withAPK_exit2_noHTTP(t *testing.T) {
 	_, err := upload.Run(rc, upload.Input{
 		Package:          "com.example.app",
 		Track:            "internal",
-		AABPath:          writeFakeAPK(t),
+		Artifacts:        []string{writeFakeAPK(t)},
 		DeviceTierConfig: "LATEST",
 	})
 	if err == nil {

@@ -1,7 +1,7 @@
 // Package orchestrator owns the choreography of `gplay releases upload`:
-// open an Edit, upload the AAB, attach the resulting versionCode to the
-// target track, and commit the Edit. Safe-default rules from ADR-0002,
-// release notes loading, and the auto-discard error path land in
+// open an Edit, upload the artifacts, attach the resulting versionCodes to
+// one release on the target track, and commit the Edit. Safe-default rules
+// from ADR-0002, release notes loading, and the auto-discard error path land in
 // subsequent TDD blocks; the tracer bullet here is the minimum
 // vertical slice that exercises every collaborating module.
 package orchestrator
@@ -149,18 +149,18 @@ const (
 type Opts struct {
 	Package string
 	Track   string
-	// AABPath is the local path to the artifact uploaded into the Edit. It
-	// is historically named for the AAB common case but also carries an
-	// APK path when Format is FormatAPK (ADR-0036); the release pipeline
-	// after the upload step is identical either way.
-	AABPath string
-	// Format selects the upload endpoint for AABPath: FormatBundle (the
-	// default, empty) routes through edits.bundles.upload, FormatAPK routes
-	// through edits.apks.upload (ADR-0036). The command layer resolves this
-	// from the file extension or an explicit --format override; the
-	// versionCode both endpoints return drives the rest of the pipeline
-	// unchanged.
-	Format       string
+	// Artifacts are the files uploaded into the Edit, in order: one or more
+	// AABs or APKs (#666). Every one is uploaded before the single
+	// tracks.update, and the release carries all of their versionCodes, so a
+	// release made of several artifacts (per-ABI APKs, a phone and a Wear
+	// bundle) ships in one commit or not at all.
+	Artifacts []Artifact
+	// RetainVersionCodes are versionCodes already uploaded to the app that the
+	// new release keeps serving, appended after the uploaded ones. They are
+	// passed to Google unvalidated: an unknown or inactive code fails with
+	// Google's own error (ADR-0003), and no extra read call is made.
+	RetainVersionCodes []int
+
 	Status       Status
 	UserFraction float64
 	// UpdatePriority, when non-nil, sets the release's inAppUpdatePriority
@@ -212,6 +212,8 @@ type Opts struct {
 // Result is what Upload returns on success. RawTrackResponse carries
 // the raw tracks.update JSON for --output json pass-through (ADR-0003).
 type Result struct {
+	// VersionCode is the highest uploaded versionCode: the only one for a
+	// single artifact, the one a multi-artifact release is named after.
 	VersionCode  int     `json:"versionCode"`
 	Track        string  `json:"track"`
 	ReleaseName  string  `json:"releaseName"`
@@ -228,11 +230,30 @@ type Result struct {
 	// alongside the AAB (the --mapping path, #250). The ✓ confirmation
 	// line surfaces it; the JSON pass-through stays the tracks.update body.
 	MappingUploaded bool `json:"-"`
+
+	// UploadedVersionCodes lists the versionCode of every uploaded artifact,
+	// in argument order (nil on --dry-run: they are only known once Google
+	// has read the files). RetainedVersionCodes echoes Opts.RetainVersionCodes.
+	// Both stay out of this struct's JSON: whether they join the
+	// gplay-authored shape is the command's Public-contract call, which keeps
+	// the single-artifact shape byte-identical (#666).
+	UploadedVersionCodes []int `json:"-"`
+	RetainedVersionCodes []int `json:"-"`
+}
+
+// Artifact is one file Upload sends into the Edit. Format selects its upload
+// endpoint: FormatBundle (or empty) rides edits.bundles.upload, FormatAPK
+// rides edits.apks.upload (ADR-0036). The command layer resolves it per file
+// from the extension or an explicit --format; the versionCode both endpoints
+// return drives the rest of the pipeline unchanged.
+type Artifact struct {
+	Path   string
+	Format string
 }
 
 // Upload performs the upload flow inside a single Edit:
 // edits.insert → (optional details.get for release notes) →
-// bundles.upload → notes.Load → tracks.update → edits.commit.
+// bundles.upload per artifact → notes.Load → tracks.update → edits.commit.
 // Release notes are fetched only when --release-notes or
 // --release-notes-dir is supplied; otherwise the extra
 // details.get round-trip is skipped.
@@ -298,24 +319,21 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 			}
 		}
 
-		// Dispatch on artifact format: an APK rides edits.apks.upload, an
-		// AAB (the default) rides edits.bundles.upload. Both return the
-		// versionCode that drives the rest of the pipeline, so everything
-		// below this line is format-agnostic (ADR-0036).
-		var (
-			versionCode int
-			err         error
-		)
-		if opts.Format == FormatAPK {
-			versionCode, err = apks.Upload(ctx, hc, opts.Package, editID, opts.AABPath)
-		} else {
-			versionCode, err = bundles.UploadWith(ctx, hc, opts.Package, editID, opts.AABPath,
-				bundles.Options{DeviceTierConfigID: opts.DeviceTierConfig})
+		// Every artifact is uploaded into the same Edit before the single
+		// tracks.update: the first failure aborts the closure, so an implicit
+		// Edit is discarded and an explicit one is left uncommitted, and no
+		// partial release ever ships (#666).
+		codes := make([]int, 0, len(opts.Artifacts))
+		for _, a := range opts.Artifacts {
+			code, err := uploadArtifact(ctx, hc, opts, editID, a)
+			if err != nil {
+				return err
+			}
+			codes = append(codes, code)
 		}
-		if err != nil {
-			return err
-		}
-		result.VersionCode = versionCode
+		result.VersionCode = highest(codes)
+		result.UploadedVersionCodes = codes
+		result.RetainedVersionCodes = opts.RetainVersionCodes
 
 		// Upload the ProGuard/R8 mapping in the SAME edit once the
 		// versionCode is known. A failure here aborts the closure: in IMPLICIT
@@ -323,15 +341,15 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		// silently failed to attach; in EXPLICIT mode the pinned Edit is left
 		// open for the user to retry or discard. Either way the release is not
 		// committed without its mapping: the whole point is readable crash
-		// stacks (#250).
+		// stacks (#250). validateOpts guarantees a single artifact here.
 		if opts.MappingPath != "" {
-			if _, err := mappings.Upload(ctx, hc, opts.Package, editID, versionCode, mappings.TypeProguard, opts.MappingPath); err != nil {
+			if _, err := mappings.Upload(ctx, hc, opts.Package, editID, codes[0], mappings.TypeProguard, opts.MappingPath); err != nil {
 				return err
 			}
 			result.MappingUploaded = true
 		}
 
-		release := buildRelease(versionCode, opts)
+		release := buildRelease(codes, opts)
 		release.ReleaseNotes = localized
 		_, raw, err := tracks.Update(ctx, hc, opts.Package, editID, opts.Track, release)
 		if err != nil {
@@ -350,6 +368,28 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 	return result, nil
 }
 
+// uploadArtifact sends one artifact into the Edit and returns the versionCode
+// Google assigned it. An APK rides edits.apks.upload, an AAB (the default)
+// rides edits.bundles.upload with the device tier config, if any: a tier
+// config only means something to a bundle, so a mixed set applies it to the
+// bundles alone (ADR-0036).
+func uploadArtifact(ctx context.Context, hc *http.Client, opts Opts, editID string, a Artifact) (int, error) {
+	if a.Format == FormatAPK {
+		return apks.Upload(ctx, hc, opts.Package, editID, a.Path)
+	}
+	return bundles.UploadWith(ctx, hc, opts.Package, editID, a.Path,
+		bundles.Options{DeviceTierConfigID: opts.DeviceTierConfig})
+}
+
+// highest returns the largest of codes, 0 for none.
+func highest(codes []int) int {
+	top := 0
+	for _, c := range codes {
+		top = max(top, c)
+	}
+	return top
+}
+
 // validateOpts enforces the orchestrator-level preconditions every
 // caller (CLI, future MCP server, library user) must satisfy. Centralizing
 // these checks here keeps exit semantics stable across dry-run and live
@@ -360,6 +400,15 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 func validateOpts(opts Opts) error {
 	if err := validateStatusValue(opts.Status); err != nil {
 		return err
+	}
+	if len(opts.Artifacts) == 0 {
+		return &InvalidOptsError{Message: "Artifacts must name at least one file to upload"}
+	}
+	// A mapping deobfuscates one versionCode: with several artifacts there is
+	// no telling which one it belongs to, so it is refused rather than
+	// guessed (`releases mappings upload` attaches the others).
+	if opts.MappingPath != "" && len(opts.Artifacts) > 1 {
+		return &InvalidOptsError{Message: "MappingPath applies to a single artifact, got " + strconv.Itoa(len(opts.Artifacts))}
 	}
 	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
 		return err
@@ -402,23 +451,31 @@ func hasDefaultTxt(dir string) bool {
 	return false
 }
 
-// buildRelease translates Opts + the discovered versionCode into a
-// tracks.Release payload. The ADR-0002 safe-default rule and the
-// status→userFraction mapping live in statusPayload, shared with
+// buildRelease translates Opts + the uploaded versionCodes into a
+// tracks.Release payload: the uploaded codes in argument order, then the
+// retained ones, unvalidated. The default name is the highest uploaded code
+// (the only one for a single artifact). The ADR-0002 safe-default rule and
+// the status→userFraction mapping live in statusPayload, shared with
 // buildPromoteRelease so the wire shape stays identical across upload
 // and promote.
-func buildRelease(versionCode int, opts Opts) tracks.Release {
+func buildRelease(uploaded []int, opts Opts) tracks.Release {
 	statusStr, userFraction := statusPayload(opts.Track, opts.Status, opts.UserFraction)
-	codeStr := strconv.Itoa(versionCode)
-	name := codeStr
+	name := strconv.Itoa(highest(uploaded))
 	if opts.ReleaseName != "" {
 		name = opts.ReleaseName
+	}
+	codes := make([]string, 0, len(uploaded)+len(opts.RetainVersionCodes))
+	for _, c := range uploaded {
+		codes = append(codes, strconv.Itoa(c))
+	}
+	for _, c := range opts.RetainVersionCodes {
+		codes = append(codes, strconv.Itoa(c))
 	}
 	return tracks.Release{
 		Name:                name,
 		Status:              statusStr,
 		UserFraction:        userFraction,
-		VersionCodes:        []string{codeStr},
+		VersionCodes:        codes,
 		InAppUpdatePriority: opts.UpdatePriority,
 	}
 }
@@ -428,7 +485,7 @@ func buildRelease(versionCode int, opts Opts) tracks.Release {
 // constant rather than a string literal so the comparison is grep-able.
 const TrackProduction = "production"
 
-// Artifact format values for Opts.Format. FormatBundle is the empty
+// Artifact format values for Artifact.Format. FormatBundle is the empty
 // default (edits.bundles.upload); FormatAPK routes the legacy path
 // (edits.apks.upload, ADR-0036).
 const (
@@ -449,8 +506,8 @@ const dryRunDefaultLangPlaceholder = "(default-language-at-upload-time)"
 // (AAB reachable, notes dir walkable) and the notes loader's own
 // structural validation via a placeholder DefaultLanguage.
 func dryRunResult(opts Opts) (*Result, error) {
-	if opts.AABPath != "" {
-		st, err := os.Stat(opts.AABPath)
+	for _, a := range opts.Artifacts {
+		st, err := os.Stat(a.Path)
 		if err != nil {
 			return nil, &dryRunError{msg: "artifact not accessible: " + err.Error()}
 		}
@@ -458,7 +515,7 @@ func dryRunResult(opts Opts) (*Result, error) {
 		// Stat but cannot be streamed, so reject non-regular files here too
 		//: otherwise --dry-run would green-light what the live upload rejects.
 		if !st.Mode().IsRegular() {
-			return nil, &dryRunError{msg: "artifact is not a regular file: " + opts.AABPath}
+			return nil, &dryRunError{msg: "artifact is not a regular file: " + a.Path}
 		}
 	}
 
@@ -505,17 +562,18 @@ func dryRunResult(opts Opts) (*Result, error) {
 	}
 
 	// Compute the would-be release shape via the same builder the live
-	// flow uses, with a synthetic versionCode 0 since the real one is
-	// only known after bundles.upload.
-	release := buildRelease(0, opts)
+	// flow uses, with a synthetic versionCode 0 since the real ones are
+	// only known after the uploads. The retained codes are known already.
+	release := buildRelease([]int{0}, opts)
 	return &Result{
-		Track:               opts.Track,
-		VersionCode:         0,
-		Status:              release.Status,
-		UserFraction:        release.UserFraction,
-		InAppUpdatePriority: release.InAppUpdatePriority,
-		ReleaseName:         dryRunReleaseName(opts),
-		Locales:             previewLocales,
+		Track:                opts.Track,
+		VersionCode:          0,
+		Status:               release.Status,
+		UserFraction:         release.UserFraction,
+		InAppUpdatePriority:  release.InAppUpdatePriority,
+		ReleaseName:          dryRunReleaseName(opts),
+		Locales:              previewLocales,
+		RetainedVersionCodes: opts.RetainVersionCodes,
 	}, nil
 }
 

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -39,6 +40,14 @@ type uploadAPI struct {
 	// that status (carrying a Google error envelope) so tests can exercise
 	// the track-not-found hint path. 0 (the default) means a 200 success.
 	trackUpdateStatus int
+	// versionCodes, when set, answers the successive artifact uploads with
+	// these codes in order (a multi-artifact release, #666); empty answers
+	// every upload with versionCode.
+	versionCodes []int
+	// failArtifact, when >= 1, refuses the resumable initiate of that
+	// (1-based) artifact upload with a Google 400, so the all-or-nothing
+	// path can be driven. 0 (the default) lets every upload succeed.
+	failArtifact int
 }
 
 // newUploadTransport returns the Fake that records every call (so tests can
@@ -47,7 +56,31 @@ type uploadAPI struct {
 // session URI (Location) to each resumable initiate, which a responder
 // cannot express; the chunk PUT on the same path carries the bytes.
 func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
-	uploaded := fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, a.versionCode)
+	// The counters number the artifact initiates and chunk PUTs, so each
+	// artifact of a multi-artifact upload gets its own answer.
+	var (
+		mu                 sync.Mutex
+		initiates, uploads int
+	)
+	uploaded := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		code := a.versionCode
+		if uploads < len(a.versionCodes) {
+			code = a.versionCodes[uploads]
+		}
+		uploads++
+		return fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, code)
+	}
+	refuseInitiate := func(c testkit.Call) bool {
+		if strings.Contains(c.Path, "/deobfuscationFiles/") {
+			return false
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		initiates++
+		return initiates == a.failArtifact
+	}
 	f := testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
@@ -55,11 +88,14 @@ func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
 		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
 			return http.StatusNoContent, "", true
 		case isResumableInitiate(c.Method, c.Path):
+			if refuseInitiate(c) {
+				return http.StatusBadRequest, `{"error":{"code":400,"message":"Version code already used."}}`, true
+			}
 			return http.StatusOK, "", true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/deobfuscationFiles/"):
 			return http.StatusOK, `{"deobfuscationFile":{"symbolType":"proguard"}}`, true
 		case c.Method == http.MethodPut && (strings.HasSuffix(c.Path, "/bundles") || strings.HasSuffix(c.Path, "/apks")):
-			return http.StatusOK, uploaded, true
+			return http.StatusOK, uploaded(), true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/tracks/"):
 			if a.trackUpdateStatus >= 400 {
 				return a.trackUpdateStatus, `{"error":{"code":404,"message":"Track not found."}}`, true
@@ -74,7 +110,7 @@ func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
 		return 0, "", false
 	}, "Location", func(c testkit.Call, status int) string {
 		// Resumable initiate: the session URI goes in Location.
-		if isResumableInitiate(c.Method, c.Path) {
+		if status == http.StatusOK && isResumableInitiate(c.Method, c.Path) {
 			return "https://" + c.Host + c.Path + "?upload_id=session-" + a.editID
 		}
 		return ""
@@ -187,9 +223,9 @@ func TestRun_internalTrack_happyPath_hitsTokenAndAndroidPublisher(t *testing.T) 
 	rc, _ := newRC(t, transport)
 
 	r, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []string{aab},
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -223,7 +259,7 @@ func TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP(t *testing.T) {
 	_, err := upload.Run(rc, upload.Input{
 		Package:         "com.example.app",
 		Track:           "internal",
-		AABPath:         "/tmp/whatever.aab",
+		Artifacts:       []string{"/tmp/whatever.aab"},
 		ReleaseNotes:    "hello",
 		ReleaseNotesDir: "/tmp/notes",
 	})
@@ -250,11 +286,11 @@ func TestRun_productionPublishWithoutConfirm_exit3_noHTTP(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	_, err := upload.Run(rc, upload.Input{
-		Package:  "com.example.app",
-		Track:    "production",
-		AABPath:  aab,
-		Complete: true,
-		Confirm:  false,
+		Package:   "com.example.app",
+		Track:     "production",
+		Artifacts: []string{aab},
+		Complete:  true,
+		Confirm:   false,
 	})
 	if err == nil {
 		t.Fatal("Run returned nil error; want a --confirm safety refusal")
@@ -285,11 +321,11 @@ func TestRun_productionPublishWithConfirm_succeedsAndHitsAPI(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	r, err := upload.Run(rc, upload.Input{
-		Package:  "com.example.app",
-		Track:    "production",
-		AABPath:  aab,
-		Complete: true,
-		Confirm:  true,
+		Package:   "com.example.app",
+		Track:     "production",
+		Artifacts: []string{aab},
+		Complete:  true,
+		Confirm:   true,
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -327,9 +363,9 @@ func TestRun_uploadToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	_, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app",
-		Track:   "qa-team",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "qa-team",
+		Artifacts: []string{aab},
 	})
 	if err == nil {
 		t.Fatal("Run returned nil error; want a track-not-found hint")
@@ -369,14 +405,15 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 		"dry-run",
 		"mapping",
 		"format",
+		"retain-version-code",
 		"output",
 	} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("cobra command missing expected flag --%s", name)
 		}
 	}
-	if got := cmd.Use; got != "upload <artifact>" {
-		t.Errorf("cmd.Use = %q, want %q", got, "upload <artifact>")
+	if got := cmd.Use; got != "upload <artifact>..." {
+		t.Errorf("cmd.Use = %q, want %q", got, "upload <artifact>...")
 	}
 }
 
@@ -394,7 +431,7 @@ func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
-	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: aab}); err != nil {
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{aab}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	got := stderr.String()
@@ -417,7 +454,7 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
-	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: aab, DryRun: true}); err != nil {
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{aab}, DryRun: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if strings.Contains(stderr.String(), "✓") {
@@ -439,7 +476,7 @@ func TestRun_inProgressRollout_confirmationShowsUserFractionPercent(t *testing.T
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 
-	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "beta", AABPath: aab, StagedFraction: 0.05, StagedFractionSet: true}); err != nil {
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "beta", Artifacts: []string{aab}, StagedFraction: 0.05, StagedFractionSet: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if !strings.Contains(stderr.String(), "5%") {
@@ -475,10 +512,10 @@ func TestRun_withMapping_uploadsMappingInSameEditAndConfirms(t *testing.T) {
 	rc.Stderr = &stderr
 
 	if _, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: aab,
-		Mapping: mapping,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []string{aab},
+		Mapping:   mapping,
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -520,9 +557,9 @@ func TestRun_apkExtension_ridesApksUploadEndpoint(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	if _, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: apk,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []string{apk},
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -552,10 +589,10 @@ func TestRun_formatApkOverride_forcesApkPathForNonApkFilename(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	if _, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: p,
-		Format:  "apk",
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []string{p},
+		Format:    "apk",
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -582,9 +619,9 @@ func TestRun_unknownExtension_noFormat_exit2_noHTTP(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	_, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: p,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []string{p},
 	})
 	if err == nil {
 		t.Fatal("Run accepted an unknown-extension artifact without --format")
@@ -614,10 +651,10 @@ func TestRun_apkWithMapping_uploadsMappingAgainstApkVersionCode(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	if _, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: apk,
-		Mapping: mapping,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []string{apk},
+		Mapping:   mapping,
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}

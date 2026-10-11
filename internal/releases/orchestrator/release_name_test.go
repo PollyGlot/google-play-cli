@@ -36,7 +36,7 @@ func uploadedReleaseNames(t *testing.T, body []byte) []string {
 func TestUpload_releaseName_namesTheReleaseAndPromoteFindsIt(t *testing.T) {
 	up, transport := newPlay(playAPI{editID: "edit-named", versionCode: 142})
 	if _, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
-		Package: "com.example.app", Track: "beta", AABPath: writeFakeAAB(t), ReleaseName: "2.4.1",
+		Package: "com.example.app", Track: "beta", Artifacts: []orchestrator.Artifact{{Path: writeFakeAAB(t)}}, ReleaseName: "2.4.1",
 	}); err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestUpload_releaseName_namesTheReleaseAndPromoteFindsIt(t *testing.T) {
 func TestUpload_noReleaseName_keepsVersionCodeName(t *testing.T) {
 	up, transport := newPlay(playAPI{editID: "edit-default", versionCode: 142})
 	if _, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
-		Package: "com.example.app", Track: "beta", AABPath: writeFakeAAB(t),
+		Package: "com.example.app", Track: "beta", Artifacts: []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
 	}); err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestUpload_noReleaseName_keepsVersionCodeName(t *testing.T) {
 func TestUpload_dryRun_releaseName_previewed(t *testing.T) {
 	rt, transport := newPlay(playAPI{})
 	result, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
-		Package: "com.example.app", Track: "beta", AABPath: writeFakeAAB(t), ReleaseName: "2.4.1", DryRun: true,
+		Package: "com.example.app", Track: "beta", Artifacts: []orchestrator.Artifact{{Path: writeFakeAAB(t)}}, ReleaseName: "2.4.1", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("Upload(dry-run): %v", err)
@@ -106,7 +106,7 @@ func TestUpload_dryRun_releaseName_previewed(t *testing.T) {
 func TestUpload_blankReleaseName_invalidOpts_noHTTP(t *testing.T) {
 	rt, transport := newPlay(playAPI{editID: "edit-blank"})
 	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
-		Package: "com.example.app", Track: "beta", AABPath: writeFakeAAB(t), ReleaseName: "   ",
+		Package: "com.example.app", Track: "beta", Artifacts: []orchestrator.Artifact{{Path: writeFakeAAB(t)}}, ReleaseName: "   ",
 	})
 	var invalid *orchestrator.InvalidOptsError
 	if !errors.As(err, &invalid) {

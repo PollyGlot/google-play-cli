@@ -164,7 +164,7 @@ func TestRepeatedFlags_everyRegisteredFlagRejects(t *testing.T) {
 	samples := map[string]string{
 		"string": "x", "bool": "true", "int": "1", "int64": "1",
 		"float64": "0.5", "duration": "1s",
-		"stringSlice": "x", "stringArray": "x", "int64Slice": "1",
+		"stringSlice": "x", "stringArray": "x", "int64Slice": "1", "intSlice": "1",
 		"stringToString": "k=v", "stringToInt": "k=1", "stringToInt64": "k=1",
 		// commitflags' validated enum (#598): only its listed values parse.
 		"cancel|error": "error",
