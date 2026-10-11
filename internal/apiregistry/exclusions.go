@@ -2,8 +2,10 @@ package apiregistry
 
 // Exclusion is one API method gplay will never wrap, with the one-line reason
 // why. "By nature" is a narrow claim under ADR-0026: every Play *admin* method
-// is in scope, so the only legitimate exclusions are *runtime* APIs, where the
-// input is an ephemeral token minted on a device and consumed server-side. A
+// is in scope, so the only legitimate exclusions are *runtime* APIs, called
+// server-to-server by an app backend reacting to a user event: a purchase
+// token minted on a device, a token delivered by a Real-time Developer
+// Notification, or a transaction the backend must report as it happens. A
 // method that is merely unshipped, redundant or parked is NOT excluded: it is
 // uncovered, and docs/COVERAGE.md says so.
 type Exclusion struct {
@@ -25,6 +27,22 @@ func Exclusions() []Exclusion {
 // The Play Integrity API is excluded by nature too, but it is its own API with
 // no snapshot under docs/discovery/, so it has no method id to list here.
 var exclusions = []Exclusion{
+	{
+		MethodID: "androidpublisher.externaltransactions.createexternaltransaction",
+		Reason:   "runtime: the backend reports each alternative-billing transaction as it happens, not an admin operation",
+	},
+	{
+		MethodID: "androidpublisher.externaltransactions.getexternaltransaction",
+		Reason:   "runtime: reads back a transaction the backend reported, keyed by its own transaction id",
+	},
+	{
+		MethodID: "androidpublisher.externaltransactions.refundexternaltransaction",
+		Reason:   "runtime: the backend reports a refund of an alternative-billing transaction as it happens",
+	},
+	{
+		MethodID: "androidpublisher.orders.reviewrefund",
+		Reason:   "runtime: answers a refund review with a token delivered by a Real-time Developer Notification",
+	},
 	{
 		MethodID: "androidpublisher.purchases.products.acknowledge",
 		Reason:   "runtime: acknowledges a purchase token minted on-device, not an admin operation",

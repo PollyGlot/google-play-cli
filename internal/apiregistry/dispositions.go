@@ -313,26 +313,6 @@ var parkings = []Parked{
 		Reason:   "externally hosted APKs are a Managed Play only flow",
 	},
 	{
-		MethodID: "androidpublisher.externaltransactions.createexternaltransaction",
-		Issue:    295,
-		Reason:   "alternative billing / DMA reporting: an external-transactions pipeline, not a catalog write",
-	},
-	{
-		MethodID: "androidpublisher.externaltransactions.getexternaltransaction",
-		Issue:    295,
-		Reason:   "alternative billing / DMA reporting: an external-transactions pipeline, not a catalog read",
-	},
-	{
-		MethodID: "androidpublisher.externaltransactions.refundexternaltransaction",
-		Issue:    295,
-		Reason:   "alternative billing / DMA reporting: money-moving on an external transaction",
-	},
-	{
-		MethodID: "androidpublisher.orders.reviewrefund",
-		Issue:    352,
-		Reason:   "chargeback refund review; slice-vs-park still to be grilled",
-	},
-	{
 		MethodID: "androidpublisher.systemapks.variants.create",
 		Issue:    296,
 		Reason:   "system APK variants are preload/OEM system-image material",
