@@ -70,7 +70,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **130 are 
 | `androidpublisher.edits.commit` | ✅ | `gplay edits commit`; also called implicitly at the end of every mutating Edit-scoped command |
 | `androidpublisher.edits.countryavailability.get` | ✅ | `gplay tracks availability view` |
 | `androidpublisher.edits.delete` | ✅ | `gplay edits discard`; also called to drop the read-only Edit opened by list/view commands |
-| `androidpublisher.edits.deobfuscationfiles.upload` | ✅ | `gplay releases mappings upload` |
+| `androidpublisher.edits.deobfuscationfiles.upload` | ✅ | `gplay releases mappings upload`, `gplay releases upload`; releases upload calls it only with --mapping, in the same Edit |
 | `androidpublisher.edits.details.get` | ✅ | `gplay apps details view`, `gplay apps view`, `gplay apps audit` |
 | `androidpublisher.edits.details.patch` | ✅ | `gplay apps details set` |
 | `androidpublisher.edits.details.update` | ⚪ | redundant with `androidpublisher.edits.details.patch`: full-body `update` of App details; `apps details set` writes field by field through `patch` |

@@ -55,7 +55,7 @@ func TestCommand_listsTheRegistryMethods(t *testing.T) {
 	}
 	// Spot-check the N:1 case the parking note called "not derivable".
 	v := parseJSON(t, renderJSON(t, run(t, schemacmd.Input{Command: "releases upload"})))
-	for _, id := range []string{"androidpublisher.edits.bundles.upload", "androidpublisher.edits.tracks.update"} {
+	for _, id := range []string{"androidpublisher.edits.bundles.upload", "androidpublisher.edits.tracks.update", "androidpublisher.edits.deobfuscationfiles.upload"} {
 		if _, ok := v.Methods[id]; !ok {
 			t.Errorf("releases upload must list %s, got %v", id, sortedKeys(v.Methods))
 		}
@@ -150,6 +150,18 @@ func TestCommand_unknownIsANoteAndExit0(t *testing.T) {
 				t.Errorf("want an empty result, got %v / %v", sortedKeys(v.Methods), sortedKeys(v.Schemas))
 			}
 		})
+	}
+}
+
+// TestCommand_editLifecycleNote asserts the shared Edit calls the lens does not
+// list are named on stderr for an Edit-scoped command, and only there.
+func TestCommand_editLifecycleNote(t *testing.T) {
+	_, stderr := runCaptureStderr(t, schemacmd.Input{Command: "releases upload"})
+	if !strings.Contains(stderr, "edits.insert") || !strings.Contains(stderr, "edits.commit") {
+		t.Errorf("releases upload: stderr = %q, want the Edit lifecycle note", stderr)
+	}
+	if _, stderr := runCaptureStderr(t, schemacmd.Input{Command: "reviews list"}); stderr != "" {
+		t.Errorf("reviews list is not Edit-scoped, stderr = %q, want none", stderr)
 	}
 }
 

@@ -476,7 +476,9 @@ rendered directly.
 the API methods that command calls (as gplay's own code declares them) and
 renders each one exactly as a method-id query would. A command can call
 several methods ("releases upload" uploads the artifact, then writes the track),
-and a method can serve several commands.
+and a method can serve several commands. The Edit lifecycle calls every
+Edit-scoped command shares (edits.insert, edits.commit, edits.delete) are not
+repeated on each command; a note on stderr says so when they apply.
 
   --list             print the compact catalog (id · http · path) of all methods
   --method GET|POST|PATCH|PUT|DELETE

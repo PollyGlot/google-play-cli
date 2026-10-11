@@ -97,8 +97,27 @@ func runCommand(rc *kernel.RunContext, idx schemaindex.Index, in Input) Payload 
 	if res.empty() {
 		// Best-effort note; a stderr write failure must not fail the command.
 		rc.Logf("%s", zeroCommandNote(entries, in))
+	} else if editScoped(res) {
+		rc.Logf("%s", editLifecycleNote)
 	}
 	return Payload{Index: idx, Result: res, Compact: in.List}
+}
+
+// editLifecycleNote names the calls the lens leaves out on purpose. The registry
+// attributes edits.insert/commit/delete to the edits commands only: every
+// Edit-scoped command shares them, and which ones run depends on the Edit mode
+// (implicit or explicit) and on whether the command mutates, so listing them on
+// each command would be wrong half the time.
+const editLifecycleNote = "gplay schema: Edit-scoped methods: the command also opens an Edit (edits.insert) and commits it (edits.commit) or drops it (edits.delete), unless an explicit Edit is pinned (gplay edits begin); those shared calls are not listed"
+
+// editScoped reports whether any matched method runs inside an Edit.
+func editScoped(r result) bool {
+	for id := range r.Methods {
+		if strings.HasPrefix(id, "androidpublisher.edits.") {
+			return true
+		}
+	}
+	return false
 }
 
 // zeroCommandNote explains an empty --command result, telling apart a verb
