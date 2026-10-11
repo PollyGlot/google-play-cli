@@ -13,6 +13,11 @@
 // shown by name). --list prints the compact method catalog; --method filters by
 // HTTP verb. A zero-match query prints a note on stderr and exits 0.
 //
+// --command is a second lens on the same index, keyed by gplay command instead
+// of method id (#527): it inverts the API registry (internal/apiregistry, the
+// single command-to-method mapping) and renders each method the command calls
+// exactly as a method-id query would. See command.go.
+//
 // --codes reuses this same offline introspection surface for a second catalog:
 // gplay's own diagnostic codes (ADR-0044); see codes.go.
 package schema
@@ -25,6 +30,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
@@ -36,6 +42,9 @@ type Input struct {
 	Method string // --method: filter the method projection by HTTP verb
 	List   bool   // --list: print the compact catalog of all methods
 	Codes  bool   // --codes: print gplay's diagnostic-code catalog instead of the API index
+	// Command (--command) selects the methods a gplay command calls, by its
+	// command path (e.g. "releases upload"), instead of matching Query.
+	Command string
 }
 
 // result is the matched slice of the index: the methods, and the schemas
@@ -402,9 +411,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.Codes {
 		return CodesPayload{}, nil
 	}
+	if in.Command != "" && strings.TrimSpace(in.Query) != "" {
+		return nil, exit.Usagef("give either a query or --command, not both (a query matches method ids, --command selects a command's methods)")
+	}
 	idx, err := schemaindex.Embedded()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded schema index: %w", err)
+	}
+	if in.Command != "" {
+		return runCommand(rc, idx, in), nil
 	}
 	res := match(idx, in)
 	compact := in.List || (strings.TrimSpace(in.Query) == "" && strings.TrimSpace(in.Method) != "")
@@ -457,16 +472,34 @@ inline expansion of its request/response schema (fields, types, enums, Google's
 verbatim descriptions); nested types are shown by name. A matched schema is
 rendered directly.
 
+--command "<command>" looks the surface up by gplay command instead: it lists
+the API methods that command calls (as gplay's own code declares them) and
+renders each one exactly as a method-id query would. A command can call
+several methods ("releases upload" uploads the artifact, then writes the track),
+and a method can serve several commands. The Edit lifecycle calls every
+Edit-scoped command shares (edits.insert, edits.commit, edits.delete) are not
+repeated on each command; a note on stderr says so when they apply.
+
   --list             print the compact catalog (id · http · path) of all methods
   --method GET|POST|PATCH|PUT|DELETE
-                     filter the method surface by HTTP verb (combinable)
+                     filter the method surface by HTTP verb (combinable,
+                     also with --command)
+  --command "<command>"
+                     the methods a gplay command calls, by its command path
+                     (e.g. "releases upload"); combines with --method and
+                     --list, and is mutually exclusive with a query (exit 2)
   --codes            print gplay's diagnostic-code catalog (the stable "code"
                      values the JSON error envelope carries) instead of the
                      API index; ignores the query and the other flags
 
-A query that matches nothing prints a note on stderr and exits 0.`,
+A query that matches nothing prints a note on stderr and exits 0, and so does a
+--command that calls no API method (an offline command such as "auth list", or
+a path that is not a gplay command).`,
 		Example: `  # What does edits.tracks.update send and return?
   gplay schema edits.tracks.update
+
+  # Which API methods does releases upload call, and what do they take?
+  gplay schema --command "releases upload"
 
   # Every DELETE method of the API
   gplay schema --list --method DELETE
@@ -488,6 +521,7 @@ A query that matches nothing prints a note on stderr and exits 0.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().BoolVar(&in.List, "list", false, "print the compact catalog of all methods")
 	cmd.Flags().StringVar(&in.Method, "method", "", "filter methods by HTTP verb (GET, POST, PATCH, PUT, DELETE)")
+	cmd.Flags().StringVar(&in.Command, "command", "", `list the API methods a gplay command calls (e.g. "releases upload")`)
 	cmd.Flags().BoolVar(&in.Codes, "codes", false, "print gplay's diagnostic-code catalog instead of the API index")
 	return cmd
 }

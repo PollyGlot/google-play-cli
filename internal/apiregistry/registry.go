@@ -97,7 +97,7 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.edits.bundles.list", Commands: []string{"releases artifacts list"}, Note: "the bundle kind; read inside a read-only Edit or the pinned explicit one"},
 	{MethodID: "androidpublisher.edits.bundles.upload", Commands: []string{"releases upload"}, Note: "the .aab path, resumable upload host"},
 	{MethodID: "androidpublisher.edits.countryavailability.get", Commands: []string{"tracks availability view"}},
-	{MethodID: "androidpublisher.edits.deobfuscationfiles.upload", Commands: []string{"releases mappings upload"}},
+	{MethodID: "androidpublisher.edits.deobfuscationfiles.upload", Commands: []string{"releases mappings upload", "releases upload"}, Note: "releases upload calls it only with --mapping, in the same Edit"},
 	{MethodID: "androidpublisher.edits.details.get", Commands: []string{"apps details view", "apps view", "apps audit"}},
 	{MethodID: "androidpublisher.edits.details.patch", Commands: []string{"apps details set"}},
 	{MethodID: "androidpublisher.edits.expansionfiles.get", Commands: []string{"releases expansion-files view"}},
