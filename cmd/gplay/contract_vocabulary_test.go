@@ -47,6 +47,7 @@ var flagVocabulary = map[string]string{
 
 	// Release contents.
 	"retain-version-code": "Retained version code: an already-uploaded versionCode the release created keeps serving (repeatable)",
+	"externally-hosted":   "ExternallyHostedApk resource file: an APK served from the organisation's own host, added to the release instead of uploaded bytes",
 
 	// Input and output.
 	"output":            "structured output format (output.RegisterFlag)",

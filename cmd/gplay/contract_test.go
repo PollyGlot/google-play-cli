@@ -104,7 +104,14 @@ func renderSurface(root *cobra.Command) string {
 		}
 		fmt.Fprintf(&b, "%s leaf %q use=%q%s\n", stab, leafKey(c), c.Use, leafMarkers(c))
 		for _, f := range leafFlags(root, c) {
-			fmt.Fprintf(&b, "%s flag %q %s\n", stab, leafKey(c), flagSpec(f))
+			// A frozen leaf may carry one experimental flag
+			// (kernel.ExperimentalFlag): the line says so, so reshaping that
+			// flag is not read as a contract break.
+			fstab := "frozen"
+			if kernel.IsExperimentalFlag(c, f) {
+				fstab = "experimental"
+			}
+			fmt.Fprintf(&b, "%s flag %q %s\n", fstab, leafKey(c), flagSpec(f))
 		}
 	}
 	return b.String()

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // stabilityAnnotation is the cobra annotation key carrying a command's
@@ -95,6 +96,39 @@ func tagExperimental(cmd *cobra.Command) {
 		body = strings.TrimSpace(strings.TrimPrefix(cmd.Short, experimentalTag))
 	}
 	cmd.Long = experimentalNotice + "\n\n" + body
+}
+
+// ExperimentalFlag declares one flag of an otherwise frozen command as
+// outside the Public contract, and returns cmd so it composes at registration
+// like Experimental. Before it, a young sub-feature of a frozen command could
+// only be labelled in prose, and its flag still sat in surface.golden as
+// "frozen": the first reshaping would have tripped the contract gate as a
+// breaking change. The label rides the same annotation key, on the flag, and
+// its usage line gains the visible tag. Registering an unknown flag name
+// panics: a typo would otherwise freeze the flag silently.
+func ExperimentalFlag(cmd *cobra.Command, name string) *cobra.Command {
+	f := cmd.Flags().Lookup(name)
+	if f == nil {
+		panic("kernel.ExperimentalFlag: " + cmd.CommandPath() + " has no --" + name + " flag")
+	}
+	if f.Annotations == nil {
+		f.Annotations = map[string][]string{}
+	}
+	f.Annotations[stabilityAnnotation] = []string{StabilityExperimental}
+	if !strings.HasPrefix(f.Usage, experimentalTag) {
+		f.Usage = experimentalTag + " " + f.Usage
+	}
+	return cmd
+}
+
+// IsExperimentalFlag reports whether flag f of cmd is outside the Public
+// contract: labelled itself, or carried by an experimental command.
+func IsExperimentalFlag(cmd *cobra.Command, f *pflag.Flag) bool {
+	if IsExperimental(cmd) {
+		return true
+	}
+	v := f.Annotations[stabilityAnnotation]
+	return len(v) == 1 && v[0] == StabilityExperimental
 }
 
 // IsExperimental reports whether cmd is outside the Public contract, either

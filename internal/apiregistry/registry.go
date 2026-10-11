@@ -92,6 +92,7 @@ var entries = []Entry{
 	},
 
 	// --- androidpublisher: Edit-scoped resources ------------------------
+	{MethodID: "androidpublisher.edits.apks.addexternallyhosted", Commands: []string{"releases upload"}, Note: "--externally-hosted registers an APK served from the organisation's own host, Managed Play private apps only (#546)"},
 	{MethodID: "androidpublisher.edits.apks.list", Commands: []string{"releases artifacts list"}, Note: "the apk kind; read inside a read-only Edit or the pinned explicit one"},
 	{MethodID: "androidpublisher.edits.apks.upload", Commands: []string{"releases upload"}, Note: "an .apk payload rides releases upload (ADR-0036)"},
 	{MethodID: "androidpublisher.edits.bundles.list", Commands: []string{"releases artifacts list"}, Note: "the bundle kind; read inside a read-only Edit or the pinned explicit one"},

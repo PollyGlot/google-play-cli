@@ -64,6 +64,10 @@ type Input struct {
 	// Google parameter, so it is part of the frozen contract like the rest of
 	// the command.
 	DeviceTierConfig string
+	// ExternallyHosted is --externally-hosted: a JSON ExternallyHostedApk
+	// resource registered through edits.apks.addexternallyhosted instead of
+	// uploaded bytes, joined to the same release (#546). Experimental flag.
+	ExternallyHosted string
 }
 
 // resolveFormat classifies the artifact as an APK or an AAB, from an
@@ -126,7 +130,7 @@ func resolveArtifacts(paths []string, formatOverride string) ([]orchestrator.Art
 // hasBundle reports whether any artifact is an App Bundle.
 func hasBundle(artifacts []orchestrator.Artifact) bool {
 	for _, a := range artifacts {
-		if a.Format != orchestrator.FormatAPK {
+		if a.Format == orchestrator.FormatBundle {
 			return true
 		}
 	}
@@ -352,14 +356,23 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if (in.ReleaseNameSet || in.ReleaseName != "") && strings.TrimSpace(in.ReleaseName) == "" {
 		return nil, exit.Usagef("--release-name must not be empty or blank")
 	}
-	if len(in.Artifacts) == 0 || slices.Contains(in.Artifacts, "") {
+	// --externally-hosted stands in for the positional artifact: an
+	// externally hosted APK alone is a complete release.
+	hosted := strings.TrimSpace(in.ExternallyHosted) != ""
+	if in.ExternallyHosted != "" && !hosted {
+		return nil, exit.Usagef("--externally-hosted must name a JSON file")
+	}
+	if (len(in.Artifacts) == 0 && !hosted) || slices.Contains(in.Artifacts, "") {
 		return nil, &exit.UsageError{Msg: "missing AAB path: gplay releases upload <aab> ..."}
+	}
+	if hosted && len(in.Artifacts) == 0 && in.Format != "" {
+		return nil, exit.Usagef("--format applies to uploaded artifacts, and --externally-hosted names none")
 	}
 	// A mapping deobfuscates one versionCode: with several artifacts there is
 	// no telling which one it belongs to, so it is refused before anything
 	// else rather than attached to a guess.
-	if in.Mapping != "" && len(in.Artifacts) > 1 {
-		return nil, exit.Usagef("--mapping applies to a single artifact (a mapping belongs to one versionCode), got %d: upload the other mappings with gplay releases mappings upload", len(in.Artifacts))
+	if total := len(in.Artifacts) + boolInt(hosted); in.Mapping != "" && total > 1 {
+		return nil, exit.Usagef("--mapping applies to a single artifact (a mapping belongs to one versionCode), got %d: upload the other mappings with gplay releases mappings upload", total)
 	}
 
 	// Resolve package: --package flag → project pin.
@@ -400,6 +413,17 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}, artifact.Options{Skip: in.SkipPreflight, Report: in.DryRun}); err != nil {
 			return nil, err
 		}
+	}
+
+	// The externally hosted APK joins the set after the uploaded files. Its
+	// resource is checked here, before credentials are even loaded, so a
+	// malformed file or another app's package fails offline (exit 20); the
+	// orchestrator re-checks it before edits.insert for its other callers.
+	if hosted {
+		if _, err := orchestrator.LoadExternallyHosted(in.ExternallyHosted, pkg); err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, orchestrator.Artifact{Path: in.ExternallyHosted, Format: orchestrator.FormatExternallyHosted})
 	}
 
 	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the
@@ -553,7 +577,20 @@ of the APK passes through verbatim.
 Pass --device-tier-config to attach a device tier config to the
 uploaded bundle, so Google generates its deliverables for the device tiers
 it defines. Pass an id from gplay device-tiers list, or LATEST for the last
-one created. AAB only: with several artifacts it applies to every bundle.`,
+one created. AAB only: with several artifacts it applies to every bundle.
+
+[experimental] Pass --externally-hosted <file.json> to register an APK your
+organisation serves from its own host instead of uploading it. Google
+restricts this to Managed Play organisations publishing a private app (the
+same population as gplay customapps); for any other app Google's refusal
+passes through verbatim. The file is an ExternallyHostedApk resource (see
+gplay schema ExternallyHostedApk). gplay only checks that it is a JSON object
+and that its packageName, when present, is the package being released, both
+before any Edit is opened; every other field is Google's to accept. The
+versionCode Google returns joins the release like an uploaded artifact, so it
+combines with positional artifacts and --retain-version-code, and replaces
+the positional artifact when used alone. gplay neither hosts, uploads nor
+signs the APK.`,
 		Example: `  # Ship a build to internal testing, with its R8 mapping
   gplay releases upload app-release.aab --track internal --mapping mapping.txt
 
@@ -565,8 +602,19 @@ one created. AAB only: with several artifacts it applies to every bundle.`,
     --release-notes-dir distribution/whatsnew --confirm
 
   # Preview the release payload without any HTTP call
-  gplay releases upload app-release.aab --track production --dry-run --output json`,
-		Args:          cobra.MinimumNArgs(1),
+  gplay releases upload app-release.aab --track production --dry-run --output json
+
+  # Release an APK served from your own host (Managed Play private app)
+  gplay releases upload --externally-hosted externally-hosted-apk.json --track internal`,
+		// Positional artifacts are optional only when --externally-hosted
+		// stands in for them; otherwise the historical "missing <artifact>"
+		// refusal (kernel.WrapArgErrors) is kept word for word.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("externally-hosted") {
+				return nil
+			}
+			return cobra.MinimumNArgs(1)(cmd, args)
+		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -603,7 +651,18 @@ one created. AAB only: with several artifacts it applies to every bundle.`,
 	cmd.Flags().BoolVar(&in.SkipPreflight, "skip-preflight", false, "skip the local artifact check (container format and declared package name) and upload the file as-is")
 	cmd.Flags().StringVar(&in.DeviceTierConfig, "device-tier-config", "", "device tier config id, or LATEST, applied to every uploaded bundle (AAB only)")
 	cmd.Flags().IntSliceVar(&in.RetainVersionCodes, "retain-version-code", nil, "versionCode already uploaded that the new release keeps serving, passed to Google unchecked (repeatable)")
-	return cmd
+	cmd.Flags().StringVar(&in.ExternallyHosted, "externally-hosted", "", "ExternallyHostedApk JSON file registering an APK served from your own host, added to the release (Managed Play private apps only)")
+	// The flag is young surface on a frozen command: labelled here, next to
+	// its declaration, so it can never ship frozen by omission (#546).
+	return kernel.ExperimentalFlag(cmd, "externally-hosted")
+}
+
+// boolInt counts a set flag as one artifact.
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // updatePriority maps the flag pair to the orchestrator's optional priority:

@@ -80,6 +80,10 @@ _Avoid_: validation (it never checks signatures, version codes or policy)
 A versionCode already uploaded to the app that a new track release keeps serving next to the artifacts uploaded with it. gplay passes it to Google unchecked.
 _Avoid_: kept, pinned, previous version
 
+**Externally hosted APK**:
+An APK a Managed Play organisation serves from its own host for a private app, registered in an Edit from an `ExternallyHostedApk` resource instead of uploaded. Its versionCode joins the release like an uploaded artifact's.
+_Avoid_: remote APK, APK link, self-hosted APK (that name reads like the self-hosted signing key)
+
 **Mapping**:
 A ProGuard/R8 deobfuscation file uploaded to an Edit so Play can symbolicate crash stack traces. It is a publisher upload, hence under `releases`, not `vitals`.
 
