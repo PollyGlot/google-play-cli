@@ -243,9 +243,11 @@ type Result struct {
 
 // Artifact is one file Upload sends into the Edit. Format selects its upload
 // endpoint: FormatBundle (or empty) rides edits.bundles.upload, FormatAPK
-// rides edits.apks.upload (ADR-0036). The command layer resolves it per file
-// from the extension or an explicit --format; the versionCode both endpoints
-// return drives the rest of the pipeline unchanged.
+// rides edits.apks.upload (ADR-0036), and FormatExternallyHosted names a JSON
+// ExternallyHostedApk resource registered through
+// edits.apks.addexternallyhosted (#546). The command layer resolves it per
+// file from the extension or an explicit --format; the versionCode every
+// endpoint returns drives the rest of the pipeline unchanged.
 type Artifact struct {
 	Path   string
 	Format string
@@ -272,6 +274,13 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 	if err := validateOpts(opts); err != nil {
 		return nil, err
 	}
+	// Externally hosted resources are read and checked here, before the
+	// dry-run branch and before edits.insert: a malformed file or another
+	// app's package never costs an Edit (#546).
+	hosted, err := loadHosted(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	// Dry-run is evaluated BEFORE the --confirm guard so users can
 	// preview a production publish (e.g. to inspect what --staged 0.05
@@ -287,7 +296,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 
 	result := &Result{Track: opts.Track}
 
-	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
+	err = edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
 		var localized []tracks.LocalizedText
 		if opts.ReleaseNotes != "" || opts.ReleaseNotesDir != "" {
 			// details.get is an extra round-trip; only do it when the
@@ -324,8 +333,8 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		// Edit is discarded and an explicit one is left uncommitted, and no
 		// partial release ever ships (#666).
 		codes := make([]int, 0, len(opts.Artifacts))
-		for _, a := range opts.Artifacts {
-			code, err := uploadArtifact(ctx, hc, opts, editID, a)
+		for i, a := range opts.Artifacts {
+			code, err := uploadArtifact(ctx, hc, opts, editID, a, hosted[i])
 			if err != nil {
 				return err
 			}
@@ -372,10 +381,16 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 // Google assigned it. An APK rides edits.apks.upload, an AAB (the default)
 // rides edits.bundles.upload with the device tier config, if any: a tier
 // config only means something to a bundle, so a mixed set applies it to the
-// bundles alone (ADR-0036).
-func uploadArtifact(ctx context.Context, hc *http.Client, opts Opts, editID string, a Artifact) (int, error) {
-	if a.Format == FormatAPK {
+// bundles alone (ADR-0036). An externally hosted APK sends no bytes: its
+// resource, already loaded and checked by loadHosted, rides
+// edits.apks.addexternallyhosted and joins the release like any upload (#546).
+func uploadArtifact(ctx context.Context, hc *http.Client, opts Opts, editID string, a Artifact, hosted json.RawMessage) (int, error) {
+	switch a.Format {
+	case FormatAPK:
 		return apks.Upload(ctx, hc, opts.Package, editID, a.Path)
+	case FormatExternallyHosted:
+		code, _, err := apks.AddExternallyHosted(ctx, hc, opts.Package, editID, hosted)
+		return code, err
 	}
 	return bundles.UploadWith(ctx, hc, opts.Package, editID, a.Path,
 		bundles.Options{DeviceTierConfigID: opts.DeviceTierConfig})
@@ -491,7 +506,69 @@ const TrackProduction = "production"
 const (
 	FormatBundle = "bundle"
 	FormatAPK    = "apk"
+	// FormatExternallyHosted marks an Artifact whose Path is a JSON
+	// ExternallyHostedApk resource, not a binary (#546).
+	FormatExternallyHosted = "externallyHosted"
 )
+
+// HostedError is the local refusal of an externally hosted APK resource: the
+// file cannot be read, is not a JSON object, or declares another app's
+// package (or a non-string one). It exits 20 (client-side validation, docs/DESIGN.md §9), like the
+// artifact preflight that guards the uploaded files of the same command.
+type HostedError struct {
+	Path string
+	Msg  string
+}
+
+func (e *HostedError) Error() string { return "externally hosted APK " + e.Path + ": " + e.Msg }
+func (e *HostedError) ExitCode() int { return 20 }
+
+// LoadExternallyHosted reads the ExternallyHostedApk resource at path and
+// applies the only checks gplay owns (#546): the file is a JSON object, and
+// its packageName, when present, is pkg. Every other field (URL, hashes,
+// certificates, versionCode) is Google's to accept or refuse verbatim. The
+// bytes are returned untouched, ready to send.
+func LoadExternallyHosted(path, pkg string) (json.RawMessage, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, &HostedError{Path: path, Msg: err.Error()}
+	}
+	if !json.Valid(data) {
+		return nil, &HostedError{Path: path, Msg: "not valid JSON (an ExternallyHostedApk resource; see gplay schema ExternallyHostedApk)"}
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(data, &probe); err != nil || probe == nil {
+		return nil, &HostedError{Path: path, Msg: "not a JSON object (an ExternallyHostedApk resource; see gplay schema ExternallyHostedApk)"}
+	}
+	if raw, ok := probe["packageName"]; ok {
+		var declared string
+		if err := json.Unmarshal(raw, &declared); err != nil {
+			return nil, &HostedError{Path: path, Msg: "packageName is not a string"}
+		}
+		if declared != pkg {
+			return nil, &HostedError{Path: path, Msg: "packageName is " + strconv.Quote(declared) + " but the package being released is " + strconv.Quote(pkg)}
+		}
+	}
+	return json.RawMessage(data), nil
+}
+
+// loadHosted loads every externally hosted artifact of opts, indexed like
+// opts.Artifacts (nil for an uploaded file), so the first bad resource fails
+// the call before anything is sent.
+func loadHosted(opts Opts) ([]json.RawMessage, error) {
+	hosted := make([]json.RawMessage, len(opts.Artifacts))
+	for i, a := range opts.Artifacts {
+		if a.Format != FormatExternallyHosted {
+			continue
+		}
+		raw, err := LoadExternallyHosted(a.Path, opts.Package)
+		if err != nil {
+			return nil, err
+		}
+		hosted[i] = raw
+	}
+	return hosted, nil
+}
 
 // dryRunDefaultLangPlaceholder satisfies notes.Load's DefaultLanguage
 // requirement during a dry-run so the loader's structural validation

@@ -308,11 +308,6 @@ var redundancies = []Redundant{
 // coverage row point at it.
 var parkings = []Parked{
 	{
-		MethodID: "androidpublisher.edits.apks.addexternallyhosted",
-		Issue:    546,
-		Reason:   "externally hosted APKs are a Managed Play only flow",
-	},
-	{
 		MethodID: "androidpublisher.systemapks.variants.create",
 		Issue:    296,
 		Reason:   "system APK variants are preload/OEM system-image material",

@@ -48,6 +48,8 @@ type uploadAPI struct {
 	// (1-based) artifact upload with a Google 400, so the all-or-nothing
 	// path can be driven. 0 (the default) lets every upload succeed.
 	failArtifact int
+	// hostedVersionCode answers edits.apks.addexternallyhosted (#546).
+	hostedVersionCode int
 }
 
 // newUploadTransport returns the Fake that records every call (so tests can
@@ -94,6 +96,8 @@ func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
 			return http.StatusOK, "", true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/deobfuscationFiles/"):
 			return http.StatusOK, `{"deobfuscationFile":{"symbolType":"proguard"}}`, true
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/apks/externallyHosted"):
+			return http.StatusOK, fmt.Sprintf(`{"externallyHostedApk":{"packageName":"com.example.app","versionCode":%d}}`, a.hostedVersionCode), true
 		case c.Method == http.MethodPut && (strings.HasSuffix(c.Path, "/bundles") || strings.HasSuffix(c.Path, "/apks")):
 			return http.StatusOK, uploaded(), true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/tracks/"):

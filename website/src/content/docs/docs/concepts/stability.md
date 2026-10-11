@@ -87,6 +87,10 @@ experimental in prose, where a whole-command label would be too blunt: APK
 (rather than AAB) upload on `gplay releases upload`, the icon fields on
 `gplay apps view`, and `--type` on `gplay metadata images list`.
 
+A single **flag** of a frozen command can also be experimental. Its usage line
+in `--help` starts with `[experimental]`, and the rest of the command stays
+frozen. Today that is `--externally-hosted` on `gplay releases upload`.
+
 ## How a command graduates
 
 An experimental command becomes frozen once its shape has survived real use:

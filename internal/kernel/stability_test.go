@@ -128,3 +128,50 @@ func TestIsExperimental_nilIsStable(t *testing.T) {
 		t.Error("IsExperimental(nil) = true, want false")
 	}
 }
+
+// TestExperimentalFlag_labelsOneFlag asserts the flag-level label: the marked
+// flag reports experimental and shows the tag in its usage, its frozen
+// siblings and the command itself stay frozen, and labelling twice does not
+// stack the tag.
+func TestExperimentalFlag_labelsOneFlag(t *testing.T) {
+	cmd := &cobra.Command{Use: "upload"}
+	cmd.Flags().String("young", "", "a new sub-feature")
+	cmd.Flags().String("track", "", "target track")
+	kernel.ExperimentalFlag(kernel.ExperimentalFlag(cmd, "young"), "young")
+
+	young, track := cmd.Flags().Lookup("young"), cmd.Flags().Lookup("track")
+	if !kernel.IsExperimentalFlag(cmd, young) {
+		t.Error("IsExperimentalFlag(young) = false, want true")
+	}
+	if kernel.IsExperimentalFlag(cmd, track) {
+		t.Error("IsExperimentalFlag(track) = true, want false: an unlabelled flag of a frozen command is frozen")
+	}
+	if kernel.IsExperimental(cmd) {
+		t.Error("IsExperimental(cmd) = true, want false: a flag label must not unfreeze its command")
+	}
+	if young.Usage != "[experimental] a new sub-feature" {
+		t.Errorf("usage = %q, want one [experimental] prefix", young.Usage)
+	}
+}
+
+// TestExperimentalFlag_inheritsFromCommand asserts every flag of an
+// experimental command is experimental, labelled or not.
+func TestExperimentalFlag_inheritsFromCommand(t *testing.T) {
+	cmd := &cobra.Command{Use: "pull", Short: "Pull"}
+	cmd.Flags().String("dir", "", "target dir")
+	kernel.Experimental(cmd)
+	if !kernel.IsExperimentalFlag(cmd, cmd.Flags().Lookup("dir")) {
+		t.Error("IsExperimentalFlag(dir) = false on an experimental command, want true")
+	}
+}
+
+// TestExperimentalFlag_unknownFlagPanics asserts a typo at registration fails
+// loudly instead of leaving the intended flag frozen.
+func TestExperimentalFlag_unknownFlagPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("ExperimentalFlag on an unknown flag did not panic")
+		}
+	}()
+	kernel.ExperimentalFlag(&cobra.Command{Use: "upload"}, "nope")
+}

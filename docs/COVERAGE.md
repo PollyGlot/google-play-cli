@@ -30,13 +30,13 @@ worth shipping.
 
 | Service | Methods | ✅ called | ⚪ redundant | ⚫️ excluded | 🔴 parked | 🔴 uncovered |
 |---|---:|---:|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 94 | 31 | 15 | 5 | 0 |
+| `androidpublisher` v3 | 145 | 95 | 31 | 15 | 4 | 0 |
 | `playdeveloperreporting` v1beta1 | 25 | 25 | 0 | 0 | 0 | 0 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 | 0 | 0 |
-| **Total** | **181** | **130** | **31** | **15** | **5** | **0** |
+| **Total** | **181** | **131** | **31** | **15** | **4** | **0** |
 
-Of the 166 admin methods (181 total minus the 15 excluded by nature), **130 are called**, **31 are redundant** with a called method, **5 are parked** behind an issue and **0 are uncovered**.
+Of the 166 admin methods (181 total minus the 15 excluded by nature), **131 are called**, **31 are redundant** with a called method, **4 are parked** behind an issue and **0 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -62,7 +62,7 @@ Of the 166 admin methods (181 total minus the 15 excluded by nature), **130 are 
 | `androidpublisher.appstoreappsreview.uploadimage` | ✅ | `gplay appstore image upload` |
 | `androidpublisher.appstorecatalog.recentappviews.get` | ✅ | `gplay appstore catalog view` |
 | `androidpublisher.appstorecatalog.recentupdateevents.list` | ✅ | `gplay appstore catalog events list` |
-| `androidpublisher.edits.apks.addexternallyhosted` | 🔴 | parked, [#546](https://github.com/PollyGlot/google-play-cli/issues/546): externally hosted APKs are a Managed Play only flow |
+| `androidpublisher.edits.apks.addexternallyhosted` | ✅ | `gplay releases upload`; --externally-hosted registers an APK served from the organisation's own host, Managed Play private apps only (#546) |
 | `androidpublisher.edits.apks.list` | ✅ | `gplay releases artifacts list`; the apk kind; read inside a read-only Edit or the pinned explicit one |
 | `androidpublisher.edits.apks.upload` | ✅ | `gplay releases upload`; an .apk payload rides releases upload (ADR-0036) |
 | `androidpublisher.edits.bundles.list` | ✅ | `gplay releases artifacts list`; the bundle kind; read inside a read-only Edit or the pinned explicit one |

@@ -38,6 +38,8 @@ type playAPI struct {
 	// these codes in order (a multi-artifact release, #666); empty answers
 	// every upload with versionCode.
 	versionCodes []int
+	// hostedVersionCode answers edits.apks.addexternallyhosted (#546).
+	hostedVersionCode int
 
 	// Optional handler overrides. nil → use the default happy-path
 	// response for that endpoint.
@@ -93,6 +95,10 @@ func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 				return override(a.deleteHandler, c)
 			}
 			return http.StatusNoContent, "", true
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/apks/externallyHosted"):
+			// A plain JSON POST: the resource is echoed back with the
+			// versionCode Google settled on.
+			return http.StatusOK, fmt.Sprintf(`{"externallyHostedApk":{"packageName":"com.example.app","versionCode":%d}}`, a.hostedVersionCode), true
 		case c.Method == http.MethodPost && strings.Contains(c.Path, "/bundles"):
 			if a.bundleHandler != nil {
 				return override(a.bundleHandler, c)
