@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+accepted; amended 2026-10-12 (per-flag label, see the amendment at the end)
 
 ## Context
 
@@ -136,3 +136,21 @@ consequence — flags and behavior may change in any release, pin an exact relea
 if you depend on it in CI. The website documents the contract in
 `docs/concepts/stability`, and `docs/guides/migrate-to-1-0` covers the single
 breaking change at the boundary (exit 2 → 3 on missing `--confirm`).
+
+## Amendment (2026-10-12): one flag can be experimental on a frozen command
+
+Decision 2 labels whole commands. A young sub-feature that rides an existing
+frozen command (`releases upload --externally-hosted`, #546) had no honest
+label: its flag sat in the surface golden as `frozen`, so its first reshaping
+would have read as a contract break.
+
+`kernel.ExperimentalFlag(cmd, name)` sets the same `gplay.stability`
+annotation on one flag and prefixes its usage with the `[experimental]` tag;
+`kernel.IsExperimentalFlag` reads it back (an experimental command still makes
+every one of its flags experimental). The surface golden writes such a flag as
+`experimental flag ...`, so the contract gate lets it change while the rest of
+the command stays frozen. Registering an unknown flag name panics, so a typo
+cannot freeze a flag silently. Moving an existing frozen flag to experimental
+rewrites a frozen golden line, which the gate still treats as a break: the
+label only loosens what is born under it.
+
