@@ -26,7 +26,7 @@ gplay games achievements list --application-id "$APP" --output json \
       gplay games achievements view "$id" --output json \
         | jq --arg n "$name" '.draft.name.translations |=
             (map(select(.locale != "fr-FR")) + [{locale: "fr-FR", value: $n}])' \
-        | gplay games achievements set "$id" --file - --dry-run
+        | gplay games achievements set "$id" --file - --dry-run --output json
     done
 ```
 
