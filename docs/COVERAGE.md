@@ -30,13 +30,13 @@ worth shipping.
 
 | Service | Methods | ✅ called | ⚪ redundant | ⚫️ excluded | 🔴 parked | 🔴 uncovered |
 |---|---:|---:|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 94 | 31 | 11 | 9 | 0 |
+| `androidpublisher` v3 | 145 | 94 | 31 | 15 | 5 | 0 |
 | `playdeveloperreporting` v1beta1 | 25 | 25 | 0 | 0 | 0 | 0 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 | 0 | 0 |
-| **Total** | **181** | **130** | **31** | **11** | **9** | **0** |
+| **Total** | **181** | **130** | **31** | **15** | **5** | **0** |
 
-Of the 170 admin methods (181 total minus the 11 excluded by nature), **130 are called**, **31 are redundant** with a called method, **9 are parked** behind an issue and **0 are uncovered**.
+Of the 166 admin methods (181 total minus the 15 excluded by nature), **130 are called**, **31 are redundant** with a called method, **5 are parked** behind an issue and **0 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -70,7 +70,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **130 are 
 | `androidpublisher.edits.commit` | ✅ | `gplay edits commit`; also called implicitly at the end of every mutating Edit-scoped command |
 | `androidpublisher.edits.countryavailability.get` | ✅ | `gplay tracks availability view` |
 | `androidpublisher.edits.delete` | ✅ | `gplay edits discard`; also called to drop the read-only Edit opened by list/view commands |
-| `androidpublisher.edits.deobfuscationfiles.upload` | ✅ | `gplay releases mappings upload` |
+| `androidpublisher.edits.deobfuscationfiles.upload` | ✅ | `gplay releases mappings upload`, `gplay releases upload`; releases upload calls it only with --mapping, in the same Edit |
 | `androidpublisher.edits.details.get` | ✅ | `gplay apps details view`, `gplay apps view`, `gplay apps audit` |
 | `androidpublisher.edits.details.patch` | ✅ | `gplay apps details set` |
 | `androidpublisher.edits.details.update` | ⚪ | redundant with `androidpublisher.edits.details.patch`: full-body `update` of App details; `apps details set` writes field by field through `patch` |
@@ -99,9 +99,9 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **130 are 
 | `androidpublisher.edits.tracks.patch` | ⚪ | redundant with `androidpublisher.edits.tracks.update`: partial write of a track; every release command sends the full track body through `update` |
 | `androidpublisher.edits.tracks.update` | ✅ | `gplay releases upload`, `gplay releases promote`, `gplay releases rollout`, `gplay releases halt`, `gplay releases resume`, `gplay releases complete`; the single write behind every release-state change (ADR-0002) |
 | `androidpublisher.edits.validate` | ✅ | `gplay edits validate` |
-| `androidpublisher.externaltransactions.createexternaltransaction` | 🔴 | parked, [#295](https://github.com/PollyGlot/google-play-cli/issues/295): alternative billing / DMA reporting: an external-transactions pipeline, not a catalog write |
-| `androidpublisher.externaltransactions.getexternaltransaction` | 🔴 | parked, [#295](https://github.com/PollyGlot/google-play-cli/issues/295): alternative billing / DMA reporting: an external-transactions pipeline, not a catalog read |
-| `androidpublisher.externaltransactions.refundexternaltransaction` | 🔴 | parked, [#295](https://github.com/PollyGlot/google-play-cli/issues/295): alternative billing / DMA reporting: money-moving on an external transaction |
+| `androidpublisher.externaltransactions.createexternaltransaction` | ⚫️ | runtime: the backend reports each alternative-billing transaction as it happens, not an admin operation |
+| `androidpublisher.externaltransactions.getexternaltransaction` | ⚫️ | runtime: reads back a transaction the backend reported, keyed by its own transaction id |
+| `androidpublisher.externaltransactions.refundexternaltransaction` | ⚫️ | runtime: the backend reports a refund of an alternative-billing transaction as it happens |
 | `androidpublisher.generatedapks.download` | ✅ | `gplay releases generated download`; binary body written to a file (ADR-0034) |
 | `androidpublisher.generatedapks.list` | ✅ | `gplay releases generated list` |
 | `androidpublisher.grants.create` | ✅ | `gplay team grants set` |
@@ -163,7 +163,7 @@ Of the 170 admin methods (181 total minus the 11 excluded by nature), **130 are 
 | `androidpublisher.orders.batchget` | ✅ | `gplay orders view`; the multi-id form of orders view |
 | `androidpublisher.orders.get` | ✅ | `gplay orders view` |
 | `androidpublisher.orders.refund` | ✅ | `gplay orders refund`; --confirm-gated, money-moving (ADR-0031) |
-| `androidpublisher.orders.reviewrefund` | 🔴 | parked, [#352](https://github.com/PollyGlot/google-play-cli/issues/352): chargeback refund review; slice-vs-park still to be grilled |
+| `androidpublisher.orders.reviewrefund` | ⚫️ | runtime: answers a refund review with a token delivered by a Real-time Developer Notification |
 | `androidpublisher.purchases.products.acknowledge` | ⚫️ | runtime: acknowledges a purchase token minted on-device, not an admin operation |
 | `androidpublisher.purchases.products.consume` | ⚫️ | runtime: consumes a purchase token minted on-device, not an admin operation |
 | `androidpublisher.purchases.products.get` | ⚫️ | runtime: server-side purchase-token verification |

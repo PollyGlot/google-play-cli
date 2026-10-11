@@ -83,6 +83,7 @@ var flagVocabulary = map[string]string{
 	"method":     "HTTP method filter for the API index",
 	"list":       "print the compact catalog",
 	"codes":      "print the diagnostic-code catalog",
+	"command":    "gplay command path whose API methods the API index shows",
 	"oldest":     "cutoff before which price cohorts migrate",
 	"describe":   "describe the metric set instead of querying it",
 
