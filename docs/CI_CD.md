@@ -1,9 +1,9 @@
 # CI/CD with gplay
 
 This guide covers the minimum to wire `gplay` into a CI pipeline. The
-canonical example uses GitHub Actions. The same patterns apply to any other
-provider (GitLab CI, Bitrise, CircleCI, Jenkins) — the only thing that
-changes is how secrets are injected.
+canonical example uses GitHub Actions; §2 also has minimal examples for
+[GitLab CI, Bitrise, CircleCI and Jenkins](#other-providers). The pattern is
+the same everywhere: only the secret injection and the install step change.
 
 ## 1. Create the service account
 
@@ -126,13 +126,191 @@ container:
 
 ```sh
 docker run --rm -e GPLAY_SERVICE_ACCOUNT \
-  ghcr.io/pollyglot/gplay:v2.0.0 tracks list --package com.example.myapp # x-release-please-version
+  ghcr.io/pollyglot/gplay:v2.1.0 tracks list --package com.example.myapp # x-release-please-version
 ```
 
 Mount the files a command reads (an AAB, a metadata directory) and work from
 there: `-v "$PWD:/work" -w /work`. The container runs as uid 65532, so add
 `--user "$(id -u):$(id -g)"` when a command writes into the mount (an explicit
 Edit pins itself in `.gplay/`).
+
+### Other providers
+
+Each example below does what the GitHub Actions job does: expose the key as
+`GPLAY_SERVICE_ACCOUNT`, check it with `gplay auth doctor`, then upload the AAB
+to the `internal` track. Two things change from one provider to the next:
+where the secret lives, and how `gplay` lands on the runner.
+
+- **The [container image](#container-image)** fits wherever a step can call
+  `docker run` (the CircleCI example). It cannot be the *job* image on a provider that runs your
+  script inside that container (GitLab's Docker executor, CircleCI's `docker`
+  executor, Jenkins `agent { docker { ... } }`): those need a shell, and the
+  distroless image has none.
+- **The install script** covers everything else. It verifies the archive
+  checksum and fails closed; `GPLAY_VERSION` pins the release, and
+  `GPLAY_INSTALL_DIR` picks the directory (default `$HOME/.local/bin`, often
+  absent from a runner's `PATH`).
+
+If a secret store mangles multi-line values, store the key on one line:
+`jq -c . key.json` prints the same JSON minified, and the private key keeps its
+`\n` escapes. Do not base64-encode it: gplay reads inline JSON or a file path,
+nothing else.
+
+#### GitLab CI
+
+Add `GPLAY_SERVICE_ACCOUNT` under *Settings → CI/CD → Variables* with the JSON
+as its value, and tick **Protected** so only protected branches and tags
+receive it (protect your release tags, or the job below runs without the key).
+A variable of type **File** works too: GitLab writes the value to a temporary
+file and sets the variable to its path, which gplay accepts.
+
+```yaml
+# .gitlab-ci.yml
+stages: [build, publish]
+
+build:
+  stage: build
+  image: your-android-build-image # JDK + Android SDK
+  script:
+    - ./gradlew bundleRelease
+  artifacts:
+    paths:
+      - app/build/outputs/bundle/release/app-release.aab
+
+publish-internal:
+  stage: publish
+  image: alpine:3.20
+  needs: [build]
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - apk add --no-cache curl
+    - curl -fsSL https://gplay.sh/install | GPLAY_VERSION=v2.1.0 GPLAY_INSTALL_DIR=/usr/local/bin sh # x-release-please-version
+    - gplay auth doctor --package com.example.myapp
+    - gplay releases upload app/build/outputs/bundle/release/app-release.aab --package com.example.myapp --track internal
+```
+
+#### Bitrise
+
+Add `GPLAY_SERVICE_ACCOUNT` in the workflow editor's **Secrets** tab and leave
+*Expose for Pull Requests* off. Bitrise hands secrets to every step as
+environment variables, and the `android-build` step exports the path of the AAB
+it built as `BITRISE_AAB_PATH`.
+
+```yaml
+# bitrise.yml
+format_version: "13"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+workflows:
+  release:
+    steps:
+      - git-clone@8: {}
+      - android-build@1:
+          inputs:
+            - variant: release
+            - build_type: aab
+      - script@1:
+          title: Upload to the internal track
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euo pipefail
+                curl -fsSL https://gplay.sh/install | GPLAY_VERSION=v2.1.0 sh # x-release-please-version
+                export PATH="$HOME/.local/bin:$PATH"
+                gplay auth doctor --package com.example.myapp
+                gplay releases upload "$BITRISE_AAB_PATH" --package com.example.myapp --track internal
+```
+
+#### CircleCI
+
+Add `GPLAY_SERVICE_ACCOUNT` under *Project Settings → Environment Variables*
+(or in a context restricted to your release jobs), as the one-line JSON from
+`jq -c`. The upload job uses the `machine` executor, which has a Docker
+daemon, so it runs the published image instead of installing anything;
+`-e GPLAY_SERVICE_ACCOUNT` forwards the variable without putting the key on the
+command line.
+
+```yaml
+# .circleci/config.yml
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: cimg/android:2026.08
+    steps:
+      - checkout
+      - run: ./gradlew bundleRelease
+      - persist_to_workspace:
+          root: app/build/outputs/bundle/release
+          paths: [app-release.aab]
+
+  publish-internal:
+    machine:
+      image: ubuntu-2404:current
+    environment:
+      GPLAY_IMAGE: ghcr.io/pollyglot/gplay:v2.1.0 # x-release-please-version
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Upload to the internal track
+          command: |
+            docker run --rm -e GPLAY_SERVICE_ACCOUNT "$GPLAY_IMAGE" \
+              auth doctor --package com.example.myapp
+            docker run --rm -e GPLAY_SERVICE_ACCOUNT -v "$PWD:/work" -w /work "$GPLAY_IMAGE" \
+              releases upload app-release.aab --package com.example.myapp --track internal
+
+workflows:
+  release:
+    jobs:
+      - build
+      - publish-internal:
+          requires: [build]
+```
+
+#### Jenkins
+
+Store the key file as a **Secret file** credential (here with the id
+`gplay-service-account`). The `file(...)` binding copies it to a temporary
+file for the duration of the block, sets `GPLAY_SERVICE_ACCOUNT` to that path,
+masks it in the log and deletes the file afterwards. Keep the `sh` script in
+single quotes so the shell, not Groovy, expands the variables.
+
+```groovy
+// Jenkinsfile
+pipeline {
+  agent any
+  environment {
+    GPLAY_VERSION = 'v2.1.0' // x-release-please-version
+  }
+  stages {
+    stage('Build') {
+      steps {
+        sh './gradlew bundleRelease'
+      }
+    }
+    stage('Upload to internal') {
+      when { buildingTag() }
+      steps {
+        withCredentials([file(credentialsId: 'gplay-service-account', variable: 'GPLAY_SERVICE_ACCOUNT')]) {
+          sh '''
+            set -eu
+            curl -fsSL https://gplay.sh/install | sh
+            export PATH="$HOME/.local/bin:$PATH"
+            gplay auth doctor --package com.example.myapp
+            gplay releases upload app/build/outputs/bundle/release/app-release.aab --package com.example.myapp --track internal
+          '''
+        }
+      }
+    }
+  }
+}
+```
+
+The install script reads `GPLAY_VERSION` from the pipeline's `environment`
+block. The agent needs `curl`, `tar` and `sha256sum` or `shasum`.
 
 ### Credential hygiene — env var, never a flag
 
