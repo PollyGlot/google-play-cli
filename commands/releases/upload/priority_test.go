@@ -17,7 +17,7 @@ func TestRun_updatePriority_sentOnTracksUpdate(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	if _, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t),
+		Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)},
 		UpdatePriority: 4, UpdatePrioritySet: true,
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -40,7 +40,7 @@ func TestRun_noUpdatePriority_fieldAbsentFromTracksUpdate(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-noprio", versionCode: 142})
 	rc, _ := newRC(t, transport)
 
-	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t)}); err != nil {
+	if _, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if bytes.Contains(trackUpdateReq(rt), []byte("inAppUpdatePriority")) {
@@ -55,7 +55,7 @@ func TestRun_updatePriorityZero_isSentExplicitly(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	if _, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t),
+		Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)},
 		UpdatePriority: 0, UpdatePrioritySet: true,
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -72,7 +72,7 @@ func TestRun_dryRun_updatePriority_golden(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	r, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t), DryRun: true,
+		Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)}, DryRun: true,
 		UpdatePriority: 4, UpdatePrioritySet: true,
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func TestRun_updatePriorityOutOfRange_exit2_noHTTP(t *testing.T) {
 		rc, _ := newRC(t, transport)
 
 		_, err := upload.Run(rc, upload.Input{
-			Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t),
+			Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)},
 			UpdatePriority: p, UpdatePrioritySet: true,
 		})
 		if got := exit.For(err); got != 2 {

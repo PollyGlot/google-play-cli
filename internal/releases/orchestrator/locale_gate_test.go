@@ -43,7 +43,7 @@ func TestUpload_invalidNotesLocale_failsBeforeAnyHTTP(t *testing.T) {
 	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: rt}, orchestrator.Opts{
 		Package:         "com.example.app",
 		Track:           "internal",
-		AABPath:         writeFakeAAB(t),
+		Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
 		ReleaseNotesDir: dir,
 	})
 	if err == nil {
@@ -101,7 +101,7 @@ func TestUpload_missingNotesDir_failsBeforeAnyHTTP(t *testing.T) {
 	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: rt}, orchestrator.Opts{
 		Package:         "com.example.app",
 		Track:           "internal",
-		AABPath:         writeFakeAAB(t),
+		Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
 		ReleaseNotesDir: missing,
 	})
 	if err == nil {
@@ -130,7 +130,7 @@ func TestUpload_validNotesLocales_passTheGate(t *testing.T) {
 	if _, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
 		Package:         "com.example.app",
 		Track:           "internal",
-		AABPath:         writeFakeAAB(t),
+		Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
 		ReleaseNotesDir: dir,
 	}); err != nil {
 		t.Fatalf("Upload with valid locales: %v, want nil", err)

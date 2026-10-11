@@ -17,7 +17,7 @@ func TestRun_releaseName_sentOnTracksUpdate(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	if _, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t), ReleaseName: "2.4.1",
+		Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)}, ReleaseName: "2.4.1",
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestRun_dryRun_releaseName_previewed(t *testing.T) {
 	rc, _ := newRC(t, transport)
 
 	r, err := upload.Run(rc, upload.Input{
-		Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t), DryRun: true, ReleaseName: "2.4.1",
+		Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)}, DryRun: true, ReleaseName: "2.4.1",
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -63,7 +63,7 @@ func TestRun_blankReleaseName_exit2_noHTTP(t *testing.T) {
 		rc, _ := newRC(t, transport)
 
 		_, err := upload.Run(rc, upload.Input{
-			Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t),
+			Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)},
 			ReleaseName: name, ReleaseNameSet: true,
 		})
 		if got := exit.For(err); got != 2 {

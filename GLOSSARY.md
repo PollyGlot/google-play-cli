@@ -76,6 +76,10 @@ _Avoid_: app-global availability
 The local check gplay runs on an upload's file before any byte leaves the machine: the container matches the resolved format and the declared package matches the target package.
 _Avoid_: validation (it never checks signatures, version codes or policy)
 
+**Retained version code**:
+A versionCode already uploaded to the app that a new track release keeps serving next to the artifacts uploaded with it. gplay passes it to Google unchecked.
+_Avoid_: kept, pinned, previous version
+
 **Mapping**:
 A ProGuard/R8 deobfuscation file uploaded to an Edit so Play can symbolicate crash stack traces. It is a publisher upload, hence under `releases`, not `vitals`.
 

@@ -51,15 +51,15 @@ or the workaround.
 | --- | --- | --- |
 | `aab` | `gplay releases upload <app.aab> --track <track>` | The artifact is a positional argument. |
 | `apk` | `gplay releases upload <app.apk> --track <track>` | Format detected from the extension (`--format apk` overrides). APK upload is experimental: Google requires an AAB for new apps. |
-| `aab_paths` | No equivalent | `releases upload` takes one artifact and writes a release holding only that versionCode, so two uploads in one explicit Edit do not add up to one release: a release with several artifacts cannot be built with gplay today. |
-| `apk_paths` | No equivalent | Same as `aab_paths`. |
+| `aab_paths` | `gplay releases upload <a.aab> <b.aab> --track <track>` | Every artifact is uploaded in one Edit and the release lists all their versionCodes, in one commit; if one upload fails, nothing ships. The release is named after the highest versionCode unless `--release-name` is passed. `--mapping` takes a single artifact: attach the others with `releases mappings upload`. |
+| `apk_paths` | `gplay releases upload <a.apk> <b.apk> --track <track>` | Same as `aab_paths`. The format is detected per file. |
 | `skip_upload_aab`, `skip_upload_apk` | Not needed | Each gplay surface is its own command: to skip the binary, do not run `releases upload`. |
 | `track` | `--track <track>` (`--from <track>` on `releases promote`) | Required: there is no default track, where supply defaults to `production` ([`options.rb`][fl-options]). Any Closed track name works. |
 | `release_status` | `--draft`, `--complete` or `--staged <fraction>` on `releases upload` and `releases promote`; `gplay releases halt` for `halted` | `inProgress` is a staged rollout (`--staged`). Without a flag, gplay uses `draft` on production and `completed` elsewhere. |
 | `rollout` | `--staged <fraction>` on `releases upload` / `releases promote`; `gplay releases rollout --track <track> --staged <fraction>` for a release already on the track | A rollout of `1` completes the release in supply ([`options.rb`][fl-options]); in gplay that is `gplay releases complete --track <track>` (or `--complete` at upload). On production, add `--confirm`. |
 | `version_code` | `--version-code N` on `releases promote`, `rollout`, `complete`, `halt`, `resume` and `releases mappings upload` | Picks the release (or the artifact) to act on when a track holds more than one. `--release-name <name>` is the other selector. |
 | `version_name` | `--release-name <name>` on `releases upload` | Without the flag, gplay names the new release after its versionCode, where supply uses `version_name` ([`uploader.rb`][fl-uploader]). gplay does not read the versionName from the artifact: pass it yourself. `releases promote` carries the source release's name over. |
-| `version_codes_to_retain` | No equivalent | gplay writes a release holding only the uploaded versionCode. |
+| `version_codes_to_retain` | `--retain-version-code N` on `releases upload`, repeatable | The codes are added to the new release after the uploaded ones. gplay does not check them: an unknown or inactive code fails with Google's error. |
 | `in_app_update_priority` | `--update-priority <0..5>` on `releases upload` and `releases promote` | Without the flag, `upload` leaves the field unset (Google's default, `0`) and `promote` carries the source release's priority over. |
 | `check_superseded_tracks` | Not needed | Deprecated in supply: "Google Play does this automatically now" ([`options.rb`][fl-options]). |
 | `deactivate_on_promote` | Not needed | Deprecated in supply for the same reason. |

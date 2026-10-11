@@ -1,0 +1,14 @@
+{
+  "versionCode": 143,
+  "track": "beta",
+  "releaseName": "143",
+  "status": "completed",
+  "userFraction": 1,
+  "uploadedVersionCodes": [
+    142,
+    143
+  ],
+  "retainedVersionCodes": [
+    41
+  ]
+}

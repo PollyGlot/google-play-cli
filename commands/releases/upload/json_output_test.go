@@ -31,7 +31,7 @@ func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
 	_, transport := newUploadTransport(uploadAPI{editID: "edit-xyz", versionCode: 142, trackUpdateRawResp: trackUpdateBody})
 	rc, _ := newRC(t, transport)
 
-	r, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t)})
+	r, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestRenderJSON_dryRun_golden(t *testing.T) {
 	_, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
 
-	r, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", AABPath: writeFakeAAB(t), DryRun: true})
+	r, err := upload.Run(rc, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)}, DryRun: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

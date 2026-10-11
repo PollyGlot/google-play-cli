@@ -39,7 +39,7 @@ func TestUpload_explicitEdit_reusesPinNoInsertNoCommit(t *testing.T) {
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:        "com.example.app",
 		Track:          "internal",
-		AABPath:        aab,
+		Artifacts:      []orchestrator.Artifact{{Path: aab}},
 		ExplicitEditID: "edit-pinned",
 	})
 	if err != nil {

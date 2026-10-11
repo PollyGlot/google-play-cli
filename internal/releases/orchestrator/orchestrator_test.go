@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
@@ -33,6 +34,10 @@ type playAPI struct {
 	versionCode        int
 	defaultLanguage    string // returned by the default details handler
 	trackUpdateRawResp string
+	// versionCodes, when set, answers the successive bundle uploads with
+	// these codes in order (a multi-artifact release, #666); empty answers
+	// every upload with versionCode.
+	versionCodes []int
 
 	// Optional handler overrides. nil → use the default happy-path
 	// response for that endpoint.
@@ -52,6 +57,20 @@ func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 	override := func(h handler, c testkit.Call) (int, string, bool) {
 		status, body := h(c)
 		return status, body, true
+	}
+	var (
+		mu      sync.Mutex
+		uploads int
+	)
+	nextCode := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		code := a.versionCode
+		if uploads < len(a.versionCodes) {
+			code = a.versionCodes[uploads]
+		}
+		uploads++
+		return code
 	}
 	f := testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -86,7 +105,7 @@ func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 			return http.StatusOK, "", true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/bundles"):
 			// Resumable chunk PUT (the final chunk carries the resource body).
-			return http.StatusOK, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, a.versionCode), true
+			return http.StatusOK, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, nextCode()), true
 		case c.Method == http.MethodPost && strings.Contains(c.Path, "/deobfuscationFiles/"):
 			if a.deobfHandler != nil {
 				return override(a.deobfHandler, c)
@@ -182,9 +201,9 @@ func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -247,9 +266,9 @@ func TestUpload_productionTrack_safeDefault_sendsDraftStatus(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "production",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "production",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
 		// Status: StatusUnspecified (default zero value) → safe-default applies.
 	})
 	if err != nil {
@@ -285,11 +304,11 @@ func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.
 	hc := &http.Client{Transport: transport}
 
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "production",
-		AABPath: aab,
-		Status:  orchestrator.StatusCompleted,
-		Confirm: true, // production publish gate (see confirmRequired)
+		Package:   "com.example.app",
+		Track:     "production",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
+		Status:    orchestrator.StatusCompleted,
+		Confirm:   true, // production publish gate (see confirmRequired)
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -321,7 +340,7 @@ func TestUpload_productionTrack_explicitStaged_sendsInProgressWithFraction(t *te
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:      "com.example.app",
 		Track:        "production",
-		AABPath:      aab,
+		Artifacts:    []orchestrator.Artifact{{Path: aab}},
 		Status:       orchestrator.StatusInProgress,
 		UserFraction: 0.05,
 		Confirm:      true, // production publish gate (see confirmRequired)
@@ -357,9 +376,9 @@ func TestUpload_bundleUploadFail_triggersEditDelete(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
 	})
 	if err == nil {
 		t.Fatal("Upload: want error after bundle failure, got nil")
@@ -399,7 +418,7 @@ func TestUpload_bundleUploadFail_keepOnFailure_doesNotDelete(t *testing.T) {
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:           "com.example.app",
 		Track:             "internal",
-		AABPath:           aab,
+		Artifacts:         []orchestrator.Artifact{{Path: aab}},
 		KeepEditOnFailure: true,
 	})
 	if err == nil {
@@ -438,9 +457,9 @@ func TestUpload_commitFail_triggersEditDelete(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
 	})
 	if err == nil {
 		t.Fatal("Upload: want error after commit failure, got nil")
@@ -479,7 +498,7 @@ func TestUpload_commitFail_keepOnFailure_carriesEditID(t *testing.T) {
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:           "com.example.app",
 		Track:             "internal",
-		AABPath:           aab,
+		Artifacts:         []orchestrator.Artifact{{Path: aab}},
 		KeepEditOnFailure: true,
 	})
 	if err == nil {
@@ -508,9 +527,9 @@ func TestUpload_insertEdit_403_returnsExit11Error(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
 	})
 	if err == nil {
 		t.Fatal("Upload: want error from 403 insert, got nil")
@@ -537,9 +556,9 @@ func TestUpload_insertEdit_409_returnsExit60Error(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
 	})
 	if err == nil {
 		t.Fatal("Upload: want error from 409 insert, got nil")
@@ -581,7 +600,7 @@ func TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet(t *testing.T
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:         "com.example.app",
 		Track:           "internal",
-		AABPath:         aab,
+		Artifacts:       []orchestrator.Artifact{{Path: aab}},
 		ReleaseNotesDir: notesDir,
 	})
 	if err != nil {
@@ -633,7 +652,7 @@ func TestUpload_withReleaseNotesDir_defaultTxt_fetchesDetailsGet(t *testing.T) {
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:         "com.example.app",
 		Track:           "internal",
-		AABPath:         aab,
+		Artifacts:       []orchestrator.Artifact{{Path: aab}},
 		ReleaseNotesDir: notesDir,
 	})
 	if err != nil {
@@ -673,11 +692,11 @@ func TestUpload_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "production",
-		AABPath: aab,
-		Status:  orchestrator.StatusCompleted,
-		Confirm: false,
+		Package:   "com.example.app",
+		Track:     "production",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
+		Status:    orchestrator.StatusCompleted,
+		Confirm:   false,
 	})
 	if err == nil {
 		t.Fatal("Upload(production+Completed without Confirm): want error, got nil")
@@ -707,9 +726,9 @@ func TestUpload_productionDraft_withoutConfirm_works(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "production",
-		AABPath: aab,
+		Package:   "com.example.app",
+		Track:     "production",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
 		// Status unspecified → safe-default = draft on production
 	})
 	if err != nil {
@@ -735,10 +754,10 @@ func TestUpload_dryRun_makesNoHTTPCalls(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: aab,
-		DryRun:  true,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
+		DryRun:    true,
 	})
 	if err != nil {
 		t.Fatalf("Upload(dry-run): %v", err)
@@ -763,10 +782,10 @@ func TestUpload_dryRun_productionSafeDefault(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "production",
-		AABPath: aab,
-		DryRun:  true,
+		Package:   "com.example.app",
+		Track:     "production",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
+		DryRun:    true,
 	})
 	if err != nil {
 		t.Fatalf("Upload(dry-run production): %v", err)
@@ -805,7 +824,7 @@ func TestUpload_withMapping_uploadsMappingInSameEdit(t *testing.T) {
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:     "com.example.app",
 		Track:       "internal",
-		AABPath:     aab,
+		Artifacts:   []orchestrator.Artifact{{Path: aab}},
 		MappingPath: mapping,
 	})
 	if err != nil {
@@ -850,7 +869,7 @@ func TestUpload_dryRun_withMapping_validatesMappingFile(t *testing.T) {
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:     "com.example.app",
 		Track:       "internal",
-		AABPath:     aab,
+		Artifacts:   []orchestrator.Artifact{{Path: aab}},
 		MappingPath: "/no/such/mapping.txt",
 		DryRun:      true,
 	})
@@ -871,7 +890,7 @@ func TestUpload_dryRun_withMapping_validatesMappingFile(t *testing.T) {
 	if _, err := orchestrator.Upload(context.Background(), hc2, orchestrator.Opts{
 		Package:     "com.example.app",
 		Track:       "internal",
-		AABPath:     aab,
+		Artifacts:   []orchestrator.Artifact{{Path: aab}},
 		MappingPath: mapping,
 		DryRun:      true,
 	}); err != nil {
@@ -903,7 +922,7 @@ func TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP(t *testing.T) {
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
 		Package:     "com.example.app",
 		Track:       "internal",
-		AABPath:     aab,
+		Artifacts:   []orchestrator.Artifact{{Path: aab}},
 		MappingPath: dir,
 		DryRun:      true,
 	})
@@ -929,10 +948,10 @@ func TestUpload_dryRun_aabIsDirectory_exit20_noHTTP(t *testing.T) {
 	rt, transport := newPlay(playAPI{})
 	hc := &http.Client{Transport: transport}
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package: "com.example.app",
-		Track:   "internal",
-		AABPath: dir,
-		DryRun:  true,
+		Package:   "com.example.app",
+		Track:     "internal",
+		Artifacts: []orchestrator.Artifact{{Path: dir}},
+		DryRun:    true,
 	})
 	if err == nil {
 		t.Fatal("dry-run accepted a directory AAB path")
