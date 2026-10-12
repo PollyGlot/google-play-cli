@@ -98,31 +98,31 @@ func TestSelect_accountWideReadsEveryExportOfTheMonth(t *testing.T) {
 	}
 }
 
-func TestFamilyDecode_zipMemberEncodingDetectedByBOM(t *testing.T) {
+func TestReaderRead_zipMemberEncodingDetectedByBOM(t *testing.T) {
 	csv := "Order Number,Product ID,Country of Buyer\nGPA.3300-0001,com.example.app,FR\n"
 	raw := buildZip(t,
 		member{name: "salesreport_202609.csv", body: string(encodeUTF16(csv, binary.LittleEndian, true))},
 		member{name: "salesreport_202609_part2.csv", body: "\uFEFFOrder Number,Product ID,Country of Buyer\nGPA.3300-0002,com.example.pro,DE\n"},
 	)
-	tbl, err := Sales.Decode("sales/salesreport_202609.zip", raw)
+	tbl, err := NewReader("").Read("sales/salesreport_202609.zip", raw)
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
 	if len(tbl.Columns) != 3 || tbl.Columns[1].Key != "productId" || len(tbl.Rows) != 2 ||
-		tbl.Rows[0]["orderNumber"] != "GPA.3300-0001" || tbl.Rows[1]["countryOfBuyer"] != "DE" {
+		tbl.Rows[0].Value("orderNumber") != "GPA.3300-0001" || tbl.Rows[1].Value("countryOfBuyer") != "DE" {
 		t.Fatalf("table = %+v", tbl)
 	}
 }
 
-func TestFamilyDecode_csvFamilyIsUnchanged(t *testing.T) {
-	tbl, err := Installs.Decode("stats/installs/installs_com.x_202609_overview.csv", []byte("Date,Daily Device Installs\n2026-09-01,4\n"))
-	if err != nil || len(tbl.Rows) != 1 || tbl.Rows[0]["dailyDeviceInstalls"] != "4" {
+func TestReaderRead_csvFamilyIsUnchanged(t *testing.T) {
+	tbl, err := NewReader("").Read("stats/installs/installs_com.x_202609_overview.csv", []byte("Date,Daily Device Installs\n2026-09-01,4\n"))
+	if err != nil || len(tbl.Rows) != 1 || tbl.Rows[0].Value("dailyDeviceInstalls") != "4" {
 		t.Fatalf("Decode = %+v, %v", tbl, err)
 	}
 }
 
-func TestFamilyDecode_zipRefusalPropagates(t *testing.T) {
-	_, err := Sales.Decode("sales/salesreport_202609.ZIP", []byte("not a zip"))
+func TestReaderRead_zipRefusalPropagates(t *testing.T) {
+	_, err := NewReader("").Read("sales/salesreport_202609.ZIP", []byte("not a zip"))
 	var ae *RefusedError
 	if !errors.As(err, &ae) {
 		t.Fatalf("err = %v, want the RefusedError", err)

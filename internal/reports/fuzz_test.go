@@ -2,12 +2,17 @@ package reports
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"encoding/csv"
+	"io"
+	"math/rand/v2"
 	"path"
 	"strings"
 	"testing"
+	"testing/iotest"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -42,8 +47,8 @@ func FuzzDecode(f *testing.F) {
 			declared[c.Key] = true
 		}
 		for _, r := range tbl.Rows {
-			for k := range r {
-				if !declared[k] {
+			for k := range r.l.pos {
+				if _, ok := r.Get(k); ok && !declared[k] {
 					t.Fatalf("Decode(%q) row key %q is not a column", raw, k)
 				}
 			}
@@ -80,8 +85,8 @@ func FuzzDecode(f *testing.F) {
 				t.Fatalf("encoding %d: Decode(%q) = %+v", i, doc.String(), tbl)
 			}
 			c := tbl.Columns[1]
-			if c.Header != header || tbl.Rows[0][c.Key] != value {
-				t.Fatalf("encoding %d: round trip lost data: header %q -> %q, value %q -> %q", i, header, c.Header, value, tbl.Rows[0][c.Key])
+			if c.Header != header || tbl.Rows[0].Value(c.Key) != value {
+				t.Fatalf("encoding %d: round trip lost data: header %q -> %q, value %q -> %q", i, header, c.Header, value, tbl.Rows[0].Value(c.Key))
 			}
 			if i == 0 {
 				key = c.Key
@@ -92,14 +97,13 @@ func FuzzDecode(f *testing.F) {
 	})
 }
 
-// FuzzExtractCSV fuzzes the report ZIP reader, which opens archives fetched
+// FuzzExtractCSV fuzzes the report ZIP reader (the .csv members of an archive), which opens archives fetched
 // from a bucket gplay does not control. Two properties:
 //
-//   - On arbitrary bytes ExtractCSV never panics, never returns members
-//     alongside an error, and whatever it returns is a .csv member within the
-//     per-member and total budgets.
-//   - A well-formed archive holding one CSV member gives that member back
-//     byte for byte.
+//   - On arbitrary bytes Read never panics and never returns a table
+//     alongside an error.
+//   - A well-formed archive holding one CSV member reads as that member
+//     decoded on its own.
 func FuzzExtractCSV(f *testing.F) {
 	f.Add([]byte{}, "earnings_202609.csv", "Description,Buyer Country\nGPA.1,FR\n")
 	f.Add([]byte("PK\x05\x06"+strings.Repeat("\x00", 18)), "salesreport_202609.csv", "")
@@ -107,22 +111,9 @@ func FuzzExtractCSV(f *testing.F) {
 	f.Add([]byte("not a zip"), "dir/", "x")
 
 	f.Fuzz(func(t *testing.T, raw []byte, name, body string) {
-		ms, err := ExtractCSV(raw)
-		if err != nil && ms != nil {
-			t.Fatalf("ExtractCSV returned members alongside error %v", err)
-		}
-		var total uint64
-		for _, m := range ms {
-			if !strings.EqualFold(path.Ext(m.Name), ".csv") {
-				t.Fatalf("returned a non-.csv member %q", m.Name)
-			}
-			if uint64(len(m.Data)) > MaxZipMemberBytes {
-				t.Fatalf("member %q is %d bytes, over the per-member cap", m.Name, len(m.Data))
-			}
-			total += uint64(len(m.Data))
-		}
-		if total > MaxZipTotalBytes {
-			t.Fatalf("returned %d bytes, over the total cap", total)
+		tbl, err := NewReader("").Read("earnings/earnings_202609.zip", raw)
+		if err != nil && (tbl.Rows != nil || tbl.Columns != nil) {
+			t.Fatalf("Read returned a table alongside error %v", err)
 		}
 
 		if !strings.EqualFold(path.Ext(name), ".csv") || strings.HasSuffix(name, "/") {
@@ -138,12 +129,80 @@ func FuzzExtractCSV(f *testing.F) {
 		if err := w.Close(); err != nil {
 			t.Fatalf("build fixture: %v", err)
 		}
-		ms, err = ExtractCSV(buf.Bytes())
-		if err != nil {
-			t.Fatalf("ExtractCSV rejected a well-formed archive (%q): %v", name, err)
+		got, err := NewReader("").Read("earnings/earnings_202609.zip", buf.Bytes())
+		want, wantErr := Decode([]byte(body))
+		if (err != nil) != (wantErr != nil) {
+			t.Fatalf("archive read err %v, member decoded alone err %v", err, wantErr)
 		}
-		if len(ms) != 1 || ms[0].Name != name || string(ms[0].Data) != body {
-			t.Fatalf("round trip lost data: %+v, want %q holding %q", ms, name, body)
+		if err != nil {
+			return
+		}
+		if !sameTable(got, want) {
+			t.Fatalf("round trip lost data: %+v, want %+v", got, want)
 		}
 	})
+}
+
+// TestUTF16Reader_matchesUnicodeUTF16 checks the streaming transcoder
+// against unicode/utf16 on the edge cases (pairs, lone surrogates, a high
+// surrogate last) and on random runs of code units, read one byte at a time
+// so a rune never fits whole.
+func TestUTF16Reader_matchesUnicodeUTF16(t *testing.T) {
+	cases := [][]byte{
+		{'a', 0, 0x3D, 0xD8, 0x89, 0xDF}, // 🎉 as a pair
+		{0x3D, 0xD8, 'a', 0},             // a lone high surrogate
+		{0x89, 0xDF, 'a', 0},             // a lone low surrogate
+		{'a', 0, 0x3D, 0xD8},             // a high surrogate last
+		{0x3D, 0xD8, 0x3D, 0xD8, 0x89, 0xDF},
+	}
+	rng := rand.New(rand.NewPCG(1, 2))
+	for range 2000 {
+		b := make([]byte, 2*rng.IntN(12))
+		for i := range b {
+			// Bias towards the surrogate range so pairs and strays both occur.
+			if i%2 == 1 && rng.IntN(2) == 0 {
+				b[i] = byte(0xD8 + rng.IntN(8))
+			} else {
+				b[i] = byte(rng.IntN(256))
+			}
+		}
+		cases = append(cases, b)
+	}
+	for _, raw := range cases {
+		units := make([]uint16, len(raw)/2)
+		for i := range units {
+			units[i] = binary.LittleEndian.Uint16(raw[2*i:])
+		}
+		got, err := io.ReadAll(iotest.OneByteReader(&utf16Reader{src: bufio.NewReader(bytes.NewReader(raw)), order: binary.LittleEndian}))
+		if err != nil {
+			t.Fatalf("read %x: %v", raw, err)
+		}
+		if want := string(utf16.Decode(units)); string(got) != want {
+			t.Fatalf("%x transcoded %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// sameTable compares two tables by columns and by the cells each row has.
+func sameTable(a, b Table) bool {
+	if len(a.Columns) != len(b.Columns) || len(a.Rows) != len(b.Rows) {
+		return false
+	}
+	for i := range a.Columns {
+		if a.Columns[i] != b.Columns[i] {
+			return false
+		}
+	}
+	for i := range a.Rows {
+		ra, rb := cellsOf(a.Rows[i], a.Columns), cellsOf(b.Rows[i], b.Columns)
+		if len(ra) != len(rb) {
+			return false
+		}
+		for k, v := range ra {
+			if w, ok := rb[k]; !ok || w != v {
+				return false
+			}
+		}
+	}
+	return true
 }

@@ -1,8 +1,10 @@
 package reports
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
@@ -29,10 +31,22 @@ type Report struct {
 	Table    Table
 }
 
-// MarshalJSON writes the envelope. A map would sort the row keys, so each row
-// is written by hand in column order; strings go through output.Marshal so
-// they stay verbatim (no HTML escaping).
+// MarshalJSON writes the envelope, as WriteJSON does.
 func (r Report) MarshalJSON() ([]byte, error) {
+	var b bytes.Buffer
+	if err := r.WriteJSON(&b); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
+}
+
+// WriteJSON streams the envelope to w, byte for byte what output.WriteJSON
+// prints for the Report (two-space indent, no HTML escaping, a final
+// newline), without building the document in memory first: a report of a
+// million rows would otherwise be held three times over (marshalled,
+// compacted, indented). A map would sort the row keys, so each row is
+// written by hand in column order.
+func (r Report) WriteJSON(w io.Writer) error {
 	id := r.Identity
 	id.Months = output.NonNil(id.Months)
 	id.Objects = output.NonNil(id.Objects)
@@ -41,46 +55,74 @@ func (r Report) MarshalJSON() ([]byte, error) {
 		Columns []Column `json:"columns"`
 	}{id, output.NonNil(r.Table.Columns)})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var b bytes.Buffer
-	b.Write(head[:len(head)-1]) // reopen the object to append "rows"
-	b.WriteString(`,"rows":[`)
+	var indented bytes.Buffer
+	if err := json.Indent(&indented, head, "", "  "); err != nil {
+		return err
+	}
+	bw := bufio.NewWriterSize(w, 64<<10)
+	// Reopen the object, "\n}" off, to append "rows".
+	_, _ = bw.Write(indented.Bytes()[:indented.Len()-2])
+	_, _ = bw.WriteString(",\n  \"rows\": [")
 	for i, row := range r.Table.Rows {
 		if i > 0 {
-			b.WriteByte(',')
+			_ = bw.WriteByte(',')
 		}
-		b.WriteByte('{')
+		_, _ = bw.WriteString("\n    {")
 		first := true
 		for _, c := range r.Table.Columns {
-			v, ok := row[c.Key]
+			v, ok := row.Get(c.Key)
 			if !ok {
 				continue
 			}
 			if !first {
-				b.WriteByte(',')
+				_ = bw.WriteByte(',')
 			}
 			first = false
-			if err := writeString(&b, c.Key); err != nil {
-				return nil, err
+			_, _ = bw.WriteString("\n      ")
+			if err := writeString(bw, c.Key); err != nil {
+				return err
 			}
-			b.WriteByte(':')
-			if err := writeString(&b, v); err != nil {
-				return nil, err
+			_, _ = bw.WriteString(": ")
+			if err := writeString(bw, v); err != nil {
+				return err
 			}
 		}
-		b.WriteByte('}')
+		if !first {
+			_, _ = bw.WriteString("\n    ")
+		}
+		_ = bw.WriteByte('}')
 	}
-	b.WriteString("]}")
-	return b.Bytes(), nil
+	if len(r.Table.Rows) > 0 {
+		_, _ = bw.WriteString("\n  ")
+	}
+	_, _ = bw.WriteString("]\n}\n")
+	return bw.Flush()
 }
 
-func writeString(b *bytes.Buffer, s string) error {
+// writeString writes s as a JSON string. Plain printable ASCII, the bulk of a
+// report, is written as is; anything else goes through output.Marshal, so
+// the escaping stays the encoder's (no HTML escaping).
+func writeString(w *bufio.Writer, s string) error {
+	plain := true
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x20 || c > 0x7E || c == '"' || c == '\\' {
+			plain = false
+			break
+		}
+	}
+	if plain {
+		_ = w.WriteByte('"')
+		_, _ = w.WriteString(s)
+		_ = w.WriteByte('"')
+		return nil
+	}
 	enc, err := output.Marshal(s)
 	if err != nil {
 		return err
 	}
-	b.Write(enc)
+	_, _ = w.Write(enc)
 	return nil
 }
 

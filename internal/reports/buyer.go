@@ -31,15 +31,23 @@ func MaskBuyerLocation(t Table) (Table, []Column) {
 	if len(hidden) == 0 {
 		return t, nil
 	}
+	// A row reads its cells through its export's layout: the masked rows
+	// share their cells with t but point to a layout without the hidden keys,
+	// so the hidden cells are unreachable without a copy of every row's text.
+	masked := map[*layout]*layout{}
 	out.Rows = make([]Row, len(t.Rows))
 	for i, r := range t.Rows {
-		kept := make(Row, len(r))
-		for k, v := range r {
-			if !drop[k] {
-				kept[k] = v
+		l, ok := masked[r.l]
+		if !ok && r.l != nil {
+			l = &layout{pos: make(map[string]int, len(r.l.pos)), header: r.l.header}
+			for k, p := range r.l.pos {
+				if !drop[k] {
+					l.pos[k] = p
+				}
 			}
+			masked[r.l] = l
 		}
-		out.Rows[i] = kept
+		out.Rows[i] = Row{l: l, cells: r.cells}
 	}
 	return out, hidden
 }
@@ -95,40 +103,22 @@ func headerWords(header string) []string {
 // the explicit spellings.
 var packageKeys = []string{"packageName", "packageId", "productId"}
 
-// FilterPackage keeps the rows of one app, matched on the package column the
-// header declares (packageKeys), never on a fixed position. A report with a
-// header but no such column cannot be filtered: NoPackageColumnError. An empty
-// export (no header at all) has nothing to filter and stays empty.
-func FilterPackage(t Table, pkg string) (Table, error) {
-	if len(t.Columns) == 0 {
-		return t, nil
-	}
-	key := ""
+// packageKey resolves the package column of an export's header (packageKeys
+// by preference), never a fixed position. A header with no such column cannot
+// be filtered: NoPackageColumnError.
+func packageKey(cols []Column) (string, error) {
 	for _, want := range packageKeys {
-		for _, c := range t.Columns {
+		for _, c := range cols {
 			if c.Key == want {
-				key = want
-				break
+				return want, nil
 			}
 		}
-		if key != "" {
-			break
-		}
 	}
-	if key == "" {
-		headers := make([]string, len(t.Columns))
-		for i, c := range t.Columns {
-			headers[i] = c.Header
-		}
-		return Table{}, &NoPackageColumnError{Headers: headers}
+	headers := make([]string, len(cols))
+	for i, c := range cols {
+		headers[i] = c.Header
 	}
-	out := Table{Columns: t.Columns}
-	for _, r := range t.Rows {
-		if strings.TrimSpace(r[key]) == pkg {
-			out.Rows = append(out.Rows, r)
-		}
-	}
-	return out, nil
+	return "", &NoPackageColumnError{Headers: headers}
 }
 
 // NoPackageColumnError means --package was asked of a report whose header

@@ -26,6 +26,10 @@ import (
 	reportbucket "github.com/PollyGlot/google-play-cli/internal/reports/bucket"
 )
 
+// limits is the budget of one command; the tests lower it to cross it with
+// small exports.
+var limits = reports.DefaultLimits
+
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package     string
@@ -54,7 +58,7 @@ type Payload struct {
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return output.RenderTable(w, p.Columns, p.Report.Table.Rows) },
-		JSON:     func(w io.Writer) error { return output.WriteJSON(w, p.Report) },
+		JSON:     p.Report.WriteJSON,
 		Markdown: func(w io.Writer) error { return output.RenderMarkdown(w, p.Columns, p.Report.Table.Rows) },
 	}
 }
@@ -129,7 +133,17 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 
 	tables := make([]reports.Table, 0, len(sel.Objects))
 	id := reports.Identity{Family: f.Name, Package: pkg, Product: product, Split: sel.Split}
-	read, kept := 0, 0 // rows before and after the --package filter
+	// One reader, so one budget, for every export of the command: a range is
+	// bounded as a whole (ADR-0050 §10). An account-wide family's --package
+	// filters each export on the package column its own header declares, as
+	// it is decoded: a range across a rename of that column (Product ID one
+	// month, Package Name the next) keeps every month, and the rows dropped
+	// never take memory.
+	filter := ""
+	if f.Scope == reports.AccountWide {
+		filter = pkg
+	}
+	rd := reports.NewReaderWithLimits(filter, limits)
 	for _, o := range sel.Objects {
 		raw, err := gcs.FetchObjectLimit(rc.Ctx, hc, bucket, o.Name, f.MaxObjectBytes)
 		if errors.Is(err, gcs.ErrTooLarge) {
@@ -149,19 +163,9 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		if err != nil {
 			return nil, reportbucket.Classify(bucket, f.Permission, f.Page, err)
 		}
-		t, err := f.Decode(o.Name, raw)
+		t, err := rd.Read(o.Name, raw)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", o.Name, err)
-		}
-		// Each export is filtered on the package column its own header
-		// declares, before the merge: a range across a rename of that column
-		// (Product ID one month, Package Name the next) keeps every month.
-		if f.Scope == reports.AccountWide && pkg != "" {
-			read += len(t.Rows)
-			if t, err = reports.FilterPackage(t, pkg); err != nil {
-				return nil, fmt.Errorf("%s: %w", o.Name, err)
-			}
-			kept += len(t.Rows)
 		}
 		tables = append(tables, t)
 		id.Objects = append(id.Objects, o.Name)
@@ -173,10 +177,10 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		// Every export of the range vanished after the listing.
 		return nil, noReport(f, pkg, product, bucket, months)
 	}
-	if read > 0 && kept == 0 {
+	if filter != "" && rd.RowsRead() > 0 && rd.RowsKept() == 0 {
 		// An empty result is a valid answer (the app sold nothing), but it is
 		// also what a typo in --package gives: say how much was read.
-		rc.Notef("0 of %d rows matched --package %s", read, pkg)
+		rc.Notef("0 of %d rows matched --package %s", rd.RowsRead(), pkg)
 	}
 	merged := reports.Merge(tables...)
 	if f.BuyerLocation && !in.IncludeBuyerLocation {
@@ -314,7 +318,7 @@ func tableColumns(f reports.Family, cols []reports.Column, spec string) ([]outpu
 		if header == "" {
 			header = key
 		}
-		all[i] = output.Column[reports.Row]{Key: key, Header: header, Value: func(r reports.Row) string { return r[key] }}
+		all[i] = output.Column[reports.Row]{Key: key, Header: header, Value: func(r reports.Row) string { return r.Value(key) }}
 	}
 	if strings.TrimSpace(spec) != "" {
 		return output.NewColumnSet(all...).Resolve(spec)
@@ -410,6 +414,10 @@ month with no report is skipped with a warning.
 "Daily Device Installs" is dailyDeviceInstalls), and every value is the
 CSV's string, verbatim (a deliberate exception to the verbatim API rule: the
 upstream is a CSV file). A column Google adds appears with no gplay release.
+One command reads at most 512 MiB of CSV and holds at most 24 Mi cells (a
+row counts as its cells plus two), every month of a range together: past a
+bound it fails with exit 20 naming it, never with a truncated report, and a
+narrower --since/--until reads.
 The table shows every column except these, which --columns can still pick:
 ` + strings.Join(f.TableHidden, ", ") + `.
 --output markdown renders a Markdown table.`
@@ -449,10 +457,9 @@ and the JSON alike, and a stderr notice says how many columns were hidden;
 `
 	}
 	if f.Container == reports.ZIP {
-		text += `The export is a ZIP read under fixed bounds: at most 128 MiB compressed,
-16 members, 1 GiB decompressed per member and in total. Only its .csv
-members are read, each decoded by its byte-order mark. An export over a
-bound fails with exit 20, never with a truncated report.
+		text += `The export is a ZIP read under fixed bounds: at most 128 MiB compressed and
+16 members. Only its .csv members are read, each decoded by its byte-order
+mark; an export named .csv is read as the CSV it is.
 
 `
 	}

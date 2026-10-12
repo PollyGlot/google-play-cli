@@ -20,20 +20,20 @@ func TestMerge_unionOfColumnsFirstSeen(t *testing.T) {
 	if got := keys(m.Columns); !equal(got, want) {
 		t.Fatalf("columns = %v, want %v", got, want)
 	}
-	if len(m.Rows) != 2 || m.Rows[0]["date"] != "2026-08-31" || m.Rows[1]["date"] != "2026-09-01" {
+	if len(m.Rows) != 2 || m.Rows[0].Value("date") != "2026-08-31" || m.Rows[1].Value("date") != "2026-09-01" {
 		t.Fatalf("rows not concatenated in order: %v", m.Rows)
 	}
-	if _, ok := m.Rows[0]["installEvents"]; ok {
+	if _, ok := m.Rows[0].Get("installEvents"); ok {
 		t.Errorf("August row gained a cell it never had: %v", m.Rows[0])
 	}
-	if m.Rows[1]["installEvents"] != "9" || m.Rows[1]["dailyDeviceInstalls"] != "5" {
+	if m.Rows[1].Value("installEvents") != "9" || m.Rows[1].Value("dailyDeviceInstalls") != "5" {
 		t.Errorf("September row misaligned: %v", m.Rows[1])
 	}
 }
 
 func TestMerge_firstHeaderWinsAndEmptyInputs(t *testing.T) {
 	a := Table{Columns: []Column{{Key: "date", Header: "Date"}}}
-	b := Table{Columns: []Column{{Key: "date", Header: "DATE"}}, Rows: []Row{{"date": "x"}}}
+	b := tableOf([]Column{{Key: "date", Header: "DATE"}}, map[string]string{"date": "x"})
 	m := Merge(a, Table{}, b)
 	if len(m.Columns) != 1 || m.Columns[0].Header != "Date" || len(m.Rows) != 1 {
 		t.Fatalf("merge = %+v", m)

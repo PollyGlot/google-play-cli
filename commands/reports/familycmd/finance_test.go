@@ -308,6 +308,32 @@ func TestRun_finance_oversizedExportRefusedBeforeTheFetch(t *testing.T) {
 	}
 }
 
+// TestRun_earnings_budgetSpansTheRange covers the per-command budget end to
+// end: each month passes alone, the range does not, so the command fails
+// with exit 20 naming the bound and the way out, never with a partial report.
+func TestRun_earnings_budgetSpansTheRange(t *testing.T) {
+	alone, _, _, err := runFinance(t, reports.Earnings, financeBucket(t), Input{Month: "2026-09"})
+	if err != nil || alone == "" {
+		t.Fatalf("one month under the production budget: %v", err)
+	}
+	defer func(l reports.Limits) { limits = l }(limits)
+	// August holds 2 rows of 6 cells, September 4 of 13 (header included):
+	// 16 and 60 cells, a row counting its cells plus two.
+	limits = reports.Limits{Bytes: 1 << 20, Cells: 70}
+	if _, _, _, err := runFinance(t, reports.Earnings, financeBucket(t), Input{Month: "2026-09"}); err != nil {
+		t.Fatalf("September alone (60 cells): %v", err)
+	}
+	_, _, _, err = runFinance(t, reports.Earnings, financeBucket(t), Input{Since: "2026-08", Until: "2026-09"})
+	if code := exitCodeOf(t, err); code != 20 {
+		t.Fatalf("exit = %d, want 20 (err: %v)", code, err)
+	}
+	for _, want := range []string{earningsObject, "70-cell budget of one command", "narrow --since/--until"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message should contain %q: %q", want, err)
+		}
+	}
+}
+
 func TestRun_finance_corruptArchiveIsExit20(t *testing.T) {
 	b := financeBucket(t)
 	b.Objects[salesObject] = []byte("Order Number\nGPA.1\n")

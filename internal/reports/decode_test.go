@@ -56,10 +56,10 @@ func TestDecode_encodingsDetectedByBOM(t *testing.T) {
 			if len(tbl.Rows) != 2 {
 				t.Fatalf("rows = %d, want 2", len(tbl.Rows))
 			}
-			if got := tbl.Rows[1]["country"]; got != "DE" {
+			if got := tbl.Rows[1].Value("country"); got != "DE" {
 				t.Errorf("row 2 country = %q, want DE", got)
 			}
-			if got := tbl.Rows[0]["dailyDeviceInstalls"]; got != "12" {
+			if got := tbl.Rows[0].Value("dailyDeviceInstalls"); got != "12" {
 				t.Errorf("row 1 dailyDeviceInstalls = %q, want 12", got)
 			}
 		})
@@ -75,21 +75,21 @@ func TestDecode_valuesVerbatimAndQuoted(t *testing.T) {
 		t.Fatalf("Decode: %v", err)
 	}
 	r := tbl.Rows[0]
-	if r["postcode"] != "00501" || r["productId"] != "007" {
+	if r.Value("postcode") != "00501" || r.Value("productId") != "007" {
 		t.Errorf("leading zeros lost: %v", r)
 	}
-	if r["note"] != "a, \"quoted\" note\nover two lines" {
-		t.Errorf("quoted field = %q", r["note"])
+	if r.Value("note") != "a, \"quoted\" note\nover two lines" {
+		t.Errorf("quoted field = %q", r.Value("note"))
 	}
 	r = tbl.Rows[1]
-	if r["postcode"] != "  01  " {
-		t.Errorf("value not verbatim: %q", r["postcode"])
+	if r.Value("postcode") != "  01  " {
+		t.Errorf("value not verbatim: %q", r.Value("postcode"))
 	}
-	if v, ok := r["productId"]; !ok || v != "" {
+	if v, ok := r.Get("productId"); !ok || v != "" {
 		t.Errorf("empty cell = %q (present %v), want an empty string", v, ok)
 	}
-	if r["note"] != "Très bien 🎉" {
-		t.Errorf("non-ASCII = %q", r["note"])
+	if r.Value("note") != "Très bien 🎉" {
+		t.Errorf("non-ASCII = %q", r.Value("note"))
 	}
 }
 
@@ -133,7 +133,7 @@ func TestDecode_duplicateAndBlankHeadersGetUniqueKeys(t *testing.T) {
 	if got := keys(tbl.Columns); !equal(got, want) {
 		t.Fatalf("keys = %v, want %v", got, want)
 	}
-	if tbl.Rows[0]["installs2"] != "3" || tbl.Rows[0]["installs22"] != "5" || tbl.Rows[0]["column4"] != "4" {
+	if tbl.Rows[0].Value("installs2") != "3" || tbl.Rows[0].Value("installs22") != "5" || tbl.Rows[0].Value("column4") != "4" {
 		t.Errorf("cells misaligned: %v", tbl.Rows[0])
 	}
 }
@@ -148,13 +148,13 @@ func TestDecode_raggedRows(t *testing.T) {
 	if got := keys(tbl.Columns); !equal(got, []string{"date", "country", "column3"}) {
 		t.Fatalf("keys = %v", got)
 	}
-	if _, ok := tbl.Rows[0]["country"]; ok {
+	if _, ok := tbl.Rows[0].Get("country"); ok {
 		t.Errorf("short row carries a country cell: %v", tbl.Rows[0])
 	}
-	if tbl.Rows[1]["column3"] != "surplus" {
+	if tbl.Rows[1].Value("column3") != "surplus" {
 		t.Errorf("extra cell lost: %v", tbl.Rows[1])
 	}
-	if _, ok := tbl.Rows[2]["column3"]; ok {
+	if _, ok := tbl.Rows[2].Get("column3"); ok {
 		t.Errorf("empty trailing cell kept: %v", tbl.Rows[2])
 	}
 }

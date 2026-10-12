@@ -89,7 +89,7 @@ func TestRun_storePerformanceQuotedCellsRoundTrip(t *testing.T) {
 	got := r.(Payload).Report.Table
 	terms := make([]string, len(got.Rows))
 	for i, row := range got.Rows {
-		terms[i] = row["searchTerm"]
+		terms[i] = row.Value("searchTerm")
 	}
 	want := []string{"photo, editor", "tab\there", "two\nlines \"quoted\""}
 	if strings.Join(terms, "|") != strings.Join(want, "|") {
