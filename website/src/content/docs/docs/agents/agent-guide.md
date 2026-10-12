@@ -44,6 +44,13 @@ read `retryable` to decide whether replaying the same command can succeed; and
 [output formats](/docs/concepts/output-formats/) and the
 [diagnostic codes](/docs/concepts/exit-codes/#diagnostic-codes).
 
+A verb or flag from an older gplay fails with exit `2` and `USAGE_ERROR`, and
+the envelope carries a `replacement` object (`kind`, `removed`, `use`,
+`removedIn`, and `note` when the change is not a pure rename). Replace
+`removed` by `use` in the command line you ran and re-run it: for a verb, `use`
+is the full new command path and keeps any argument the old verb held; for a
+flag, both are flag names on the same command. No message parsing is needed.
+
 ## The read-only authority boundary: `GPLAY_READONLY`
 
 `--confirm` and `--grant-admin` are *advisory*: an agent that holds the

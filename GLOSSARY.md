@@ -262,6 +262,10 @@ _Avoid_: exit code (the coarse bucket several diagnostic codes share), reason (G
 The target of a failed call as the JSON error envelope reports it: a kind of addressing axis and an id on it.
 _Avoid_: package (for a target that is not one)
 
+**Removed surface**:
+A verb or flag a Release removed without an alias. Calling it is still CLI misuse, but the error names its **replacement**, the verb or flag to use instead (ADR-0051).
+_Avoid_: deprecated (a deprecated surface still runs), alias
+
 **Public contract**:
 The part of gplay's interface a Release promises not to break without a major version bump.
 

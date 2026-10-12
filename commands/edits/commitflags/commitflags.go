@@ -52,9 +52,20 @@ func (f Flags) Options() edits.CommitOptions {
 // since an ignored `--changes-in-review error` is exactly the review
 // cancellation the caller asked to avoid.
 func (f Flags) For(rc *kernel.RunContext, explicitEditID string) edits.CommitOptions {
-	opts := f.Options()
-	if explicitEditID == "" || opts.IsZero() {
-		return opts
+	if explicitEditID == "" {
+		return f.Options()
+	}
+	f.WarnStaged(rc, explicitEditID)
+	return edits.CommitOptions{}
+}
+
+// WarnStaged emits For's "ignored: staged in open edit" warning on its own,
+// for a command that may stage nothing (`tracks create --if-exists skip`): it
+// calls it right before the staged write, so a skip never claims a change was
+// staged. A no-op without an explicit Edit or without a commit flag set.
+func (f Flags) WarnStaged(rc *kernel.RunContext, explicitEditID string) {
+	if explicitEditID == "" || f.Options().IsZero() {
+		return
 	}
 	var set []string
 	if f.ChangesInReview != edits.ChangesInReviewUnset {
@@ -65,7 +76,6 @@ func (f Flags) For(rc *kernel.RunContext, explicitEditID string) edits.CommitOpt
 	}
 	rc.Warnf("%s ignored: this change is staged in open edit %s, which only `gplay edits commit` commits; pass the flag there",
 		strings.Join(set, " and "), explicitEditID)
-	return edits.CommitOptions{}
 }
 
 // changesInReviewValue validates --changes-in-review while flags are parsed,

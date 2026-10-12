@@ -427,3 +427,73 @@ func TestWithReadOnlyEdit_panicInClosure_triggersDiscardAndRepropagates(t *testi
 		panic("simulated panic from read-only closure")
 	})
 }
+
+// TestWithEdit_nothingToCommit_discardsAndSucceeds asserts the no-op path a
+// create takes when its resource already exists (--if-exists skip): the
+// closure returns ErrNothingToCommit, the implicit Edit is discarded instead
+// of committed (an empty commit would burn a publish slot), and WithEdit
+// reports success. KeepOnFailure does not apply: nothing failed.
+func TestWithEdit_nothingToCommit_discardsAndSucceeds(t *testing.T) {
+	for _, keep := range []bool{false, true} {
+		rt := &editsRT{t: t, editID: "edit-noop"}
+		err := edits.WithEdit(context.Background(), rt.client(), "com.example.app", edits.Options{KeepOnFailure: keep}, func(string) error {
+			return fmt.Errorf("skipped: %w", edits.ErrNothingToCommit)
+		})
+		if err != nil {
+			t.Fatalf("keep=%v: WithEdit = %v, want nil", keep, err)
+		}
+		want := []string{
+			"POST /androidpublisher/v3/applications/com.example.app/edits",
+			"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-noop",
+		}
+		if got := rt.calls(); strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Errorf("keep=%v: calls = %v, want %v", keep, got, want)
+		}
+	}
+}
+
+// TestWithEdit_nothingToCommit_failedDiscard_reportsDanglingEdit asserts that
+// a no-op whose discard fails does not report success: the open Edit would
+// block the next publish with no ID to release it by, so the failure surfaces
+// as a *DanglingEditError carrying the Edit ID and the DELETE's cause, as
+// Validate does.
+func TestWithEdit_nothingToCommit_failedDiscard_reportsDanglingEdit(t *testing.T) {
+	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, `{"id":"edit-stuck"}`, true
+		case c.Method == http.MethodDelete:
+			return 403, `{"error":{"code":403,"message":"denied","status":"PERMISSION_DENIED"}}`, true
+		}
+		return 0, "", false
+	})
+	err := edits.WithEdit(context.Background(), &http.Client{Transport: fake}, "com.example.app", edits.Options{}, func(string) error {
+		return edits.ErrNothingToCommit
+	})
+	var dangling *edits.DanglingEditError
+	if !errors.As(err, &dangling) {
+		t.Fatalf("WithEdit = %v, want *DanglingEditError", err)
+	}
+	if dangling.EditID != "edit-stuck" {
+		t.Errorf("EditID = %q, want edit-stuck", dangling.EditID)
+	}
+	if got := exit.For(err); got != 11 {
+		t.Errorf("exit %d, want 11 (the DELETE's 403)", got)
+	}
+}
+
+// TestWithEdit_nothingToCommit_explicitEditUntouched asserts that in explicit
+// mode the pinned Edit is left alone (no commit, no discard) and the no-op
+// still reports success.
+func TestWithEdit_nothingToCommit_explicitEditUntouched(t *testing.T) {
+	rt := &editsRT{t: t, editID: "unused"}
+	err := edits.WithEdit(context.Background(), rt.client(), "com.example.app", edits.Options{ExplicitEditID: "edit-pinned"}, func(string) error {
+		return edits.ErrNothingToCommit
+	})
+	if err != nil {
+		t.Fatalf("WithEdit = %v, want nil", err)
+	}
+	if got := rt.calls(); len(got) != 0 {
+		t.Errorf("explicit Edit saw lifecycle calls %v, want none", got)
+	}
+}

@@ -644,6 +644,18 @@ branch on the failure without scraping stderr:
   API envelope was parsed; omitted otherwise.
 - `requires` names the missing safety flag on an exit-3 refusal (extends the
   ADR-0017 dry-run `requires` to failure time); omitted otherwise.
+- `replacement` names what replaced a verb or flag gplay removed, when the
+  usage error is a call to it ([ADR-0051](./adr/0051-removed-surface-names-its-replacement.md)):
+  `kind` (`command` or `flag`), `removed` and `use` (full command paths
+  starting with `gplay` for a command, flag names such as `--to` and `--staged`
+  for a flag, on the command that failed), `removedIn` (the gplay version), and
+  `note` when the change is not a pure rename (omitted otherwise). Substituting
+  `removed` by `use` in the failed command line is the recovery: a removed verb
+  that carried a value has it in `use` (the publish state, when the removed
+  verb was the state itself, ends `use` as the argument of `set`). The ADR
+  shows complete envelopes. Exact match on a removed path, or on a
+  removed flag of that very leaf, only; omitted on every other failure,
+  including a typo of a live verb, which keeps the "Did you mean" suggestion.
 
 The envelope also covers the CLI misuse cobra rejects before a command runs: an
 unknown or repeated flag, a wrong number of positional arguments, an unknown
@@ -863,8 +875,8 @@ the message.
 **Exit 2 owns the argument count.** A wrong number of positional arguments —
 missing *or* surplus — is CLI misuse (`2`), the same bucket as an unknown flag
 or an unknown subcommand. All four doors are closed centrally, never per
-command: flag-parse failures by the root's `FlagErrorFunc`, unknown subcommands
-by `kernel.GroupRunE`, positional-argument rejections by
+command: flag-parse failures by `kernel.FlagErrorFunc` (set on the root),
+unknown subcommands by `kernel.GroupRunE`, positional-argument rejections by
 `kernel.WrapArgErrors`, and repeated single-value flags by
 `kernel.RejectRepeatedFlags` — each a single walk over the assembled tree, the
 last statements of `newRootCmd`. Commands returned the generic `1` here for a while because cobra
@@ -874,6 +886,24 @@ the exit-3 harmonisation above, the fix *restores* this documented table rather
 than changing the frozen contract (ADR-0010), which is why it shipped as a
 `fix`. Never hand-roll an argument-count check in a command — declare the cobra
 validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
+
+**A removed verb or flag names its replacement.** A verb or flag gplay removed
+without an alias (the ADR-0019 renames, the 2.0.0 vocabulary pass of ADR-0048)
+is still an unknown command or flag, exit `2`, `USAGE_ERROR`, but the message
+ends with ``: removed in <version>, use `gplay <replacement>` `` (plus a short
+note when it is not a pure rename) and the JSON envelope carries `replacement`
+(§7). The old `--to` flag of `releases rollout` reads ``unknown flag: --to:
+removed in 2.0.0, use `gplay releases rollout --staged` ``. The source is one
+declarative table in `internal/kernel/removed.go`, looked up by
+`kernel.GroupRunE` and by `kernel.FlagErrorFunc` (a group parses flags before it
+sees the removed verb, so `gplay <group> <removed-verb> <id> --output json`
+would otherwise read `unknown flag: --output`; a flag typed before the verb is
+found through the raw argv `kernel.SetArgs` keeps). A flag row names the leaf that lost the flag, so
+`releases promote --to` keeps working. Renaming or removing a verb or flag adds
+its row in the same pull request; `TestRemovedSurface_table` fails on a row whose
+replacement does not resolve or refuses its declared arguments, or whose removed
+path or flag resolves again, alias included
+([ADR-0051](./adr/0051-removed-surface-names-its-replacement.md)).
 
 Every runnable leaf declares a validator, `cobra.NoArgs` when it takes no
 positional argument: cobra's default accepts any stray token and exits `0`
@@ -1013,11 +1043,34 @@ track**, **Tester**) for the domain terms.
   `TrackConfig.formFactor` to `DEFAULT` (phone, the default), `WEAR` or
   `AUTOMOTIVE`. Any other value is CLI misuse (exit 2) before any HTTP.
 - Creating a track that **already exists** surfaces the API error (exit
-  30); gplay does not fake idempotency. "Ensure exists" would be an
-  explicit future `--if-not-exists`.
+  30) by default (`--if-exists fail`). `--if-exists skip` makes a re-run
+  converge: the track is read (`edits.tracks.get`) in the same Edit as the
+  create, and only a 404 means absent. When it exists, no create is sent,
+  the command exits 0, stdout carries the `tracks.get` response verbatim
+  under `--output json`, stderr says it was skipped (no `✓`), and an
+  implicit Edit is discarded rather than committed; an explicit Edit gets
+  nothing added. `update` is refused (exit 2): a track's settings are its
+  releases. The flag is `[experimental]`; its rules are
+  [ADR-0050](./adr/0050-if-exists-read-before-create.md).
 - There is **no `tracks delete`** — the API exposes
   create/get/list/patch/update but no delete. Removing a track is a Play
   Console-only gesture.
+
+### Inviting a member who may already be one
+
+- `gplay team users add <email>` on an existing member fails with the
+  `users.create` conflict (exit 60, hint `team users set`) by default
+  (`--if-exists fail`, no lookup added). `--if-exists skip|update` looks the
+  member up first (`users.list`, case-insensitive email match, the read
+  `team users view` uses); absent means the invite runs as usual.
+- Present + `skip`: no write, exit 0, stdout carries the member as
+  `users.list` returned it, stderr says it was skipped (no `✓`).
+- Present + `update`: the `team users set` write (`users.patch`, the whole
+  account-wide permission set replaced), stdout carries its response.
+- The `--grant-admin` gate (exit 3) is checked before the lookup under every
+  policy, so the idempotent path never bypasses it; `--dry-run` stays
+  offline and reports a non-default policy as `ifExists`. Rules:
+  [ADR-0050](./adr/0050-if-exists-read-before-create.md).
 
 ### Managing testers
 

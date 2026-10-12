@@ -5,13 +5,17 @@
 // is no --type flag; --form-factor picks the TrackConfig form factor
 // (default, wear or automotive) and defaults to the phone one. A closed
 // test track is low-stakes and reversible, so there is no --confirm
-// (unlike a production rollout). See docs/DESIGN.md §10.
+// (unlike a production rollout). --if-exists skip makes a re-run converge:
+// the track is read in the same Edit first and, when present, nothing is
+// created (ADR-0050). See docs/DESIGN.md §10.
 package create
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -19,8 +23,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/edits/commitflags"
 	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/ifexists"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 )
@@ -34,7 +40,14 @@ type Input struct {
 	DryRun            bool
 	KeepEditOnFailure bool
 	Commit            commitflags.Flags
+	// IfExists is the --if-exists policy; the zero value is ifexists.Fail.
+	IfExists ifexists.Policy
 }
+
+// policies are the --if-exists values tracks create offers. A track has no
+// update path here (its settings are its releases, owned by the release
+// verbs), so update is refused rather than faked.
+var policies = []ifexists.Policy{ifexists.Skip, ifexists.Fail}
 
 // Payload satisfies output.Renderable. Raw carries the tracks.create
 // body for the ADR-0003 JSON pass-through; Name/Type/FormFactor/Kind are
@@ -50,6 +63,13 @@ type Payload struct {
 	Kind       string          `json:"-"`
 	DryRun     bool            `json:"-"`
 	Raw        json.RawMessage `json:"-"`
+	// IfExists is the policy shown in the dry-run preview when it is not the
+	// default, so a default preview keeps its exact bytes.
+	IfExists ifexists.Policy `json:"-"`
+	// Skipped marks an existing track left as is under --if-exists skip: Raw
+	// is then the tracks.get body, and only the name is known for the human
+	// views (tracks.get carries no type or form factor).
+	Skipped bool `json:"-"`
 }
 
 // Renderers satisfies output.Renderable with one renderer per Format.
@@ -66,18 +86,39 @@ func (p Payload) Renderers() output.Renderers {
 
 // renderTable writes the created track's fields as aligned human lines.
 // On the dry-run path it prepends a DRY-RUN context line so the operator
-// sees the create did not actually run.
+// sees the create did not actually run. A skipped create (--if-exists skip on
+// an existing track) shows a SKIPPED line and the name instead.
 func renderTable(w io.Writer, p Payload) error {
+	if p.Skipped {
+		_, err := fmt.Fprintf(w, "SKIPPED: track already exists, nothing created\ntrack:       %s\n", p.Name)
+		return err
+	}
 	if p.DryRun {
 		if _, err := fmt.Fprintln(w, "DRY-RUN: would create closed track"); err != nil {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w,
+	if _, err := fmt.Fprintf(w,
 		"track:       %s\ntype:        %s\nformFactor:  %s\nkind:        %s\n",
 		p.Name, p.Type, p.FormFactor, p.Kind,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	if policy := p.previewPolicy(); policy != "" {
+		_, err := fmt.Fprintf(w, "ifExists:    %s\n", policy)
+		return err
+	}
+	return nil
+}
+
+// previewPolicy is the --if-exists policy a dry-run preview reports, or ""
+// for the default, so a default preview keeps the bytes it had before the
+// flag.
+func (p Payload) previewPolicy() string {
+	if !p.DryRun || p.IfExists == "" || p.IfExists == ifexists.Fail {
+		return ""
+	}
+	return string(p.IfExists)
 }
 
 // renderJSON emits the raw tracks.create body verbatim (ADR-0003
@@ -96,23 +137,34 @@ func renderJSON(w io.Writer, p Payload) error {
 		Track      string `json:"track"`
 		Type       string `json:"type"`
 		FormFactor string `json:"formFactor"`
-	}{DryRun: p.DryRun, Track: p.Name, Type: p.Type, FormFactor: p.FormFactor})
+		IfExists   string `json:"ifExists,omitempty"`
+	}{DryRun: p.DryRun, Track: p.Name, Type: p.Type, FormFactor: p.FormFactor, IfExists: p.previewPolicy()})
 }
 
 // renderMarkdown writes the same fields as a Markdown bullet list, with
 // the dry-run marker as a leading line so a pasted report stands on its
 // own.
 func renderMarkdown(w io.Writer, p Payload) error {
+	if p.Skipped {
+		_, err := fmt.Fprintf(w, "SKIPPED: track already exists, nothing created\n\n- **track**: %s\n", p.Name)
+		return err
+	}
 	if p.DryRun {
 		if _, err := fmt.Fprintln(w, "DRY-RUN: would create closed track"); err != nil {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w,
+	if _, err := fmt.Fprintf(w,
 		"- **track**: %s\n- **type**: %s\n- **formFactor**: %s\n- **kind**: %s\n",
 		p.Name, p.Type, p.FormFactor, p.Kind,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	if policy := p.previewPolicy(); policy != "" {
+		_, err := fmt.Fprintf(w, "- **ifExists**: %s\n", policy)
+		return err
+	}
+	return nil
 }
 
 // formFactors maps the --form-factor values, lowercased, to the
@@ -139,6 +191,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !ok {
 		return nil, exit.Usagef("invalid --form-factor %q: pass default, wear or automotive", in.FormFactor)
 	}
+	policy, err := ifexists.Check(in.IfExists, policies...)
+	if err != nil {
+		return nil, err
+	}
 
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -155,6 +211,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			FormFactor: formFactor,
 			Kind:       "custom",
 			DryRun:     true,
+			IfExists:   policy,
 		}, nil
 	}
 
@@ -173,8 +230,27 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	var (
 		created *tracks.Track
 		raw     json.RawMessage
+		skipped bool
 	)
-	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
+	// Commit takes the flags verbatim rather than through Commit.For: WithEdit
+	// ignores Commit in explicit mode, and the "ignored: staged in open edit"
+	// warning waits for the create below, since a skip stages nothing.
+	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.Options()}, func(editID string) error {
+		// ADR-0050: existence is read in this same Edit (so a track created
+		// earlier in an explicit Edit counts), never inferred from the
+		// create's 400/409, whose meaning the API does not document. Only a
+		// 404 means absent; any other read failure stops before the create.
+		if policy == ifexists.Skip {
+			_, r, e := tracks.Get(rc.Ctx, httpClient, pkg, editID, in.Name)
+			switch {
+			case e == nil:
+				raw, skipped = r, true
+				return edits.ErrNothingToCommit
+			case !isNotFound(e):
+				return e
+			}
+		}
+		in.Commit.WarnStaged(rc, explicitEditID)
 		t, r, e := tracks.Create(rc.Ctx, httpClient, pkg, editID, in.Name, formFactor)
 		if e != nil {
 			return e
@@ -187,6 +263,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, apihint.ForPackage(pkg, err)
 	}
 
+	if skipped {
+		// Not a ✓: nothing was created, committed or staged.
+		rc.Logf("track %q already exists, skipped (--if-exists skip): nothing created", in.Name)
+		return Payload{Name: in.Name, Skipped: true, Raw: raw}, nil
+	}
+
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The
 	// --dry-run path returned above, so this only runs after a real create.
 	rc.ConfirmMutation(explicitEditID, "track %q created", created.Track)
@@ -197,6 +279,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Kind:       "custom",
 		Raw:        raw,
 	}, nil
+}
+
+// isNotFound reports whether a tracks.get failed with HTTP 404: the one
+// answer that means the track does not exist.
+func isNotFound(err error) bool {
+	var apiErr *api.Error
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
 }
 
 // NewCommand returns the cobra command for `gplay tracks create`.
@@ -214,8 +303,11 @@ The create endpoint supports exactly one type (CLOSED_TESTING), so there
 is no --type flag: every created track is closed. Open / internal track
 creation has no API path. --form-factor picks the devices the track
 targets: default (phone, the default), wear or automotive. Creating a
-track that already exists surfaces the API error (exit 30); gplay does
-not fake idempotency.
+track that already exists surfaces the API error (exit 30) by default.
+--if-exists skip reads the track first in the same Edit: when it exists,
+nothing is created, the existing track is printed (tracks.get, verbatim
+under --output json) and the implicit Edit is discarded, not committed.
+A re-run of the same create then succeeds without a change.
 
 Runs inside an implicit Edit (open → tracks.create → commit). --dry-run
 previews the TrackConfig without any HTTP; --keep-edit-on-failure skips
@@ -226,6 +318,9 @@ track is low-stakes and reversible.`,
 
   # Create a Closed track for Wear OS testers
   gplay tracks create beta-wear --form-factor wear
+
+  # Create the track unless it already exists (safe to re-run in CI)
+  gplay tracks create qa-team --if-exists skip
 
   # Preview the TrackConfig without any HTTP call
   gplay tracks create qa-team --dry-run --output json`,
@@ -248,5 +343,6 @@ track is low-stakes and reversible.`,
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the TrackConfig without any HTTP call")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	commitflags.Register(cmd, &in.Commit)
+	ifexists.Register(cmd, &in.IfExists, "track", policies...)
 	return cmd
 }
