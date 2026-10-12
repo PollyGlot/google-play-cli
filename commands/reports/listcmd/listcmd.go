@@ -41,7 +41,7 @@ type Entry struct {
 	Package string `json:"package,omitempty"`
 	Product string `json:"product,omitempty"` // subscription stats: the id --product takes
 	Month   string `json:"month"`             // YYYY-MM
-	Split   string `json:"split,omitempty"`
+	Split   string `json:"split,omitempty"`   // the --dimension value; per-package families only
 	Object  string `json:"object"`
 	Size    string `json:"size"`    // bytes, as the bucket listing reports them
 	Updated string `json:"updated"` // RFC 3339, as the bucket listing reports it
@@ -143,10 +143,17 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			if (since != "" && o.Month < since) || (until != "" && o.Month > until) {
 				continue
 			}
-			entries = append(entries, Entry{
-				Family: o.Family, Package: o.Package, Product: o.Product, Month: reports.DisplayMonth(o.Month), Split: o.Split,
+			e := Entry{
+				Family: o.Family, Package: o.Package, Product: o.Product, Month: reports.DisplayMonth(o.Month),
 				Object: o.Name, Size: o.Size, Updated: o.Updated,
-			})
+			}
+			// The dimension is what --dimension picks, and only a per-package
+			// family has one: the suffix of an earnings name (123456-0) is not
+			// one, and the object name already shows it.
+			if f.Scope == reports.PerPackage {
+				e.Split = o.Split
+			}
+			entries = append(entries, e)
 		}
 	}
 	// Nothing could be read at all: that is the access failure itself, with

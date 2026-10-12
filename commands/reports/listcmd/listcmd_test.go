@@ -47,6 +47,15 @@ func renderJSON(t *testing.T, r output.Renderable) string {
 	return buf.String()
 }
 
+func renderTable(t *testing.T, r output.Renderable) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := r.Renderers().Table(&buf); err != nil {
+		t.Fatalf("render table: %v", err)
+	}
+	return buf.String()
+}
+
 func exitCodeOf(t *testing.T, err error) int {
 	t.Helper()
 	var coder interface{ ExitCode() int }
@@ -102,7 +111,6 @@ func TestRun_listsEveryExportWithMetadata(t *testing.T) {
     {
       "family": "earnings",
       "month": "2026-09",
-      "split": "123-1",
       "object": "earnings/earnings_202609_123-1.zip",
       "size": "2",
       "updated": "2026-10-04T08:00:00.000Z"
@@ -180,8 +188,14 @@ func TestRun_accountWideFamilyListed(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	got := renderJSON(t, r)
-	if !strings.Contains(got, `"family": "earnings"`) || strings.Contains(got, `"package"`) || !strings.Contains(got, `"split": "123-1"`) {
+	// An account-wide family has no --dimension: the name suffix after the
+	// month (123-1) is no dimension to pick, so only the object name shows it.
+	if !strings.Contains(got, `"family": "earnings"`) || strings.Contains(got, `"package"`) || strings.Contains(got, `"split"`) ||
+		!strings.Contains(got, `"object": "earnings/earnings_202609_123-1.zip"`) {
 		t.Errorf("account-wide row:\n%s", got)
+	}
+	if table := renderTable(t, r); strings.Contains(table, "123-1") {
+		t.Errorf("the DIMENSION column shows an earnings name suffix:\n%s", table)
 	}
 }
 
