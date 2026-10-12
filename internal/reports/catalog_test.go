@@ -179,3 +179,99 @@ func TestSelect_noReport(t *testing.T) {
 		t.Errorf("month absent: err = %v, want ErrNoReport", err)
 	}
 }
+
+func TestCatalogue_statisticsFamilies(t *testing.T) {
+	// The four #695 families sit after installs, in `reports list` order, each
+	// with its bucket prefix and the permission its 403 names.
+	want := []struct {
+		name, prefix string
+		perm         string
+	}{
+		{"installs", "stats/installs/installs_", "View app information"},
+		{"ratings", "stats/ratings/ratings_", "View app information"},
+		{"crashes", "stats/crashes/crashes_", "View app information"},
+		{"store-performance", "stats/store_performance/store_performance_", "View app information"},
+		{"subscription-stats", "financial-stats/subscriptions/subscriptions_", "View financial data"},
+	}
+	cat := Catalogue()
+	if len(cat) < len(want) {
+		t.Fatalf("Catalogue() = %d families, want at least %d", len(cat), len(want))
+	}
+	for i, w := range want {
+		f := cat[i]
+		if f.Name != w.name || f.Prefix != w.prefix || string(f.Permission) != w.perm || f.Scope != PerPackage {
+			t.Errorf("family %d = %s %s %q scope %d, want %s %s %q per package", i, f.Name, f.Prefix, f.Permission, f.Scope, w.name, w.prefix, w.perm)
+		}
+	}
+	if StorePerformance.DefaultSplit != "" {
+		t.Errorf("store performance has no overview file, so no default split: %q", StorePerformance.DefaultSplit)
+	}
+	if !SubscriptionStats.PerProduct || Installs.PerProduct {
+		t.Error("only subscription stats carry a product id in their object names")
+	}
+}
+
+func TestObjects_productIDWithUnderscores(t *testing.T) {
+	// subscriptions_<package>_<productId>_<YYYYMM>_<dimension>.csv: a product
+	// id may hold underscores (and digits), so the parse anchors on the
+	// package when known, then on the month and the final dimension.
+	f := SubscriptionStats
+	const p = "financial-stats/subscriptions/subscriptions_"
+	objs, skipped := f.Objects(listing(
+		p+"com.example.app_premium_monthly_v2_202609_country.csv",
+		p+"com.example.app_promo_202401_202609_country.csv", // a product id ending in a month-like run
+		p+"com.example.app_gold_202608.csv",                 // no dimension segment
+		p+"com.example.app_202609_country.csv",              // no product segment
+	), "com.example.app")
+	if len(skipped) != 1 || !strings.HasSuffix(skipped[0], "app_202609_country.csv") {
+		t.Errorf("skipped = %v, want the name without a product", skipped)
+	}
+	want := []Object{
+		{Family: "subscription-stats", Package: "com.example.app", Product: "gold", Month: "202608", Split: ""},
+		{Family: "subscription-stats", Package: "com.example.app", Product: "premium_monthly_v2", Month: "202609", Split: "country"},
+		{Family: "subscription-stats", Package: "com.example.app", Product: "promo_202401", Month: "202609", Split: "country"},
+	}
+	if len(objs) != len(want) {
+		t.Fatalf("objects = %+v", objs)
+	}
+	for i, w := range want {
+		g := objs[i]
+		if g.Family != w.Family || g.Package != w.Package || g.Product != w.Product || g.Month != w.Month || g.Split != w.Split {
+			t.Errorf("object %d = %+v, want %+v", i, g, w)
+		}
+	}
+}
+
+func TestObjects_productPackageAnchor(t *testing.T) {
+	f := SubscriptionStats
+	const p = "financial-stats/subscriptions/subscriptions_"
+	// With the package known, an underscore in it is no ambiguity.
+	objs, _ := f.Objects(listing(p+"com.ex_ample_pro_yearly_202609_country.csv"), "com.ex_ample")
+	if len(objs) != 1 || objs[0].Package != "com.ex_ample" || objs[0].Product != "pro_yearly" {
+		t.Fatalf("anchored on the package: %+v", objs)
+	}
+	// Without it (an unfiltered inventory), the package ends at the first
+	// underscore: Android package names rarely hold one, product ids often do.
+	objs, _ = f.Objects(listing(p+"com.example.app_pro_yearly_202609_country.csv"), "")
+	if len(objs) != 1 || objs[0].Package != "com.example.app" || objs[0].Product != "pro_yearly" {
+		t.Fatalf("unanchored: %+v", objs)
+	}
+	if got := f.ProductListPrefix("com.example.app", "pro_yearly"); got != p+"com.example.app_pro_yearly_" {
+		t.Errorf("ProductListPrefix = %q", got)
+	}
+}
+
+func TestSelect_noDefaultSplitFamilyNamesThePresentOnes(t *testing.T) {
+	f := StorePerformance
+	const p = "stats/store_performance/store_performance_com.example.app_"
+	objs, _ := f.Objects(listing(p+"202609_country.csv", p+"202609_traffic_source.csv"), "com.example.app")
+	_, err := f.Select(objs, nil, "")
+	var se *SplitError
+	if !errors.As(err, &se) {
+		t.Fatalf("err = %v, want *SplitError", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "country, traffic_source") || !strings.Contains(msg, "--dimension") || strings.Contains(msg, `""`) {
+		t.Errorf("message = %q", msg)
+	}
+}

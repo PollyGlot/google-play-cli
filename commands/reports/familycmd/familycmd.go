@@ -28,6 +28,7 @@ import (
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package     string
+	Product     string // --product, PerProduct families only (subscription stats)
 	Month       string // --month YYYY-MM; "" with no range = the latest month present
 	Since       string // --since YYYY-MM, range start (with --until)
 	Until       string // --until YYYY-MM, range end (with --since)
@@ -66,6 +67,11 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 	if err != nil {
 		return nil, err
 	}
+	product := strings.TrimSpace(in.Product)
+	if f.PerProduct && product == "" {
+		return nil, exit.Usagef("%s needs --product <id>, the subscription product to read: "+
+			"gplay reports list --family %s --package %s shows the product ids present", f.Name, f.Name, pkg)
+	}
 	bucket, err := reportbucket.Resolve(rc, in.Bucket, in.DeveloperID)
 	if err != nil {
 		return nil, err
@@ -75,7 +81,11 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		return nil, err
 	}
 
-	listing, err := gcs.ListObjects(rc.Ctx, hc, bucket, f.ListPrefix(pkg))
+	prefix := f.ListPrefix(pkg)
+	if f.PerProduct {
+		prefix = f.ProductListPrefix(pkg, product)
+	}
+	listing, err := gcs.ListObjects(rc.Ctx, hc, bucket, prefix)
 	if err != nil {
 		return nil, reportbucket.Classify(bucket, f.Permission, f.Page, err)
 	}
@@ -83,11 +93,16 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 	for _, name := range skipped {
 		rc.Logf("ignoring %s: not a %s export name", name, f.Name)
 	}
+	if f.PerProduct {
+		// The product prefix also matches a longer id (gold_ and gold_trial):
+		// the parsed product decides, as the parsed package does.
+		objs = onlyProduct(objs, product)
+	}
 	sel, err := f.Select(objs, months, strings.TrimSpace(in.Dimension))
 	var splitErr *reports.SplitError
 	switch {
 	case errors.Is(err, reports.ErrNoReport):
-		return nil, noReport(f, pkg, bucket, months)
+		return nil, noReport(f, pkg, product, bucket, months)
 	case errors.As(err, &splitErr):
 		return nil, exit.Usagef("%s", err)
 	case err != nil:
@@ -98,7 +113,7 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 	}
 
 	tables := make([]reports.Table, 0, len(sel.Objects))
-	id := reports.Identity{Family: f.Name, Package: pkg, Split: sel.Split}
+	id := reports.Identity{Family: f.Name, Package: pkg, Product: product, Split: sel.Split}
 	for _, o := range sel.Objects {
 		raw, err := gcs.FetchObjectLimit(rc.Ctx, hc, bucket, o.Name, f.MaxObjectBytes)
 		if err != nil {
@@ -151,7 +166,7 @@ func requestedMonths(in Input) ([]string, error) {
 // exit 30 like `reviews history`: the report is absent, the command line is
 // well-formed (the fix is in --package, --month, --bucket, or in waiting for
 // Play to publish).
-func noReport(f reports.Family, pkg, bucket string, months []string) error {
+func noReport(f reports.Family, pkg, product, bucket string, months []string) error {
 	when := ""
 	switch len(months) {
 	case 0:
@@ -160,9 +175,24 @@ func noReport(f reports.Family, pkg, bucket string, months []string) error {
 	default:
 		when = " for " + reports.DisplayMonth(months[0]) + ".." + reports.DisplayMonth(months[len(months)-1])
 	}
+	what, check := pkg, "--package"
+	if product != "" {
+		what, check = pkg+" product "+product, "--package and --product"
+	}
 	return &noReportError{msg: fmt.Sprintf("no %s report for %s%s in bucket %s: Play publishes a month a few days after it ends; "+
-		"check --package, pick a published month (gplay reports list --family %s --package %s), "+
-		"or pass --bucket if the derived name is wrong", f.Name, pkg, when, bucket, f.Name, pkg)}
+		"check %s, pick a published month (gplay reports list --family %s --package %s), "+
+		"or pass --bucket if the derived name is wrong", f.Name, what, when, bucket, check, f.Name, pkg)}
+}
+
+// onlyProduct keeps the exports of one product.
+func onlyProduct(objs []reports.Object, product string) []reports.Object {
+	kept := objs[:0:0]
+	for _, o := range objs {
+		if o.Product == product {
+			kept = append(kept, o)
+		}
+	}
+	return kept
 }
 
 // noReportError carries exit 30 (an absent resource), the code `reviews
@@ -227,6 +257,9 @@ func NewCommand(boot kernel.Boot, f reports.Family) *cobra.Command {
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
+	if f.PerProduct {
+		cmd.Flags().StringVar(&in.Product, "product", "", "subscription product id to read (required; gplay reports list shows the ids present)")
+	}
 	cmd.Flags().StringVar(&in.Month, "month", "", "month to read as YYYY-MM (default: the latest month present in the bucket)")
 	cmd.Flags().StringVar(&in.Since, "since", "", "range start as YYYY-MM (with --until; mutually exclusive with --month)")
 	cmd.Flags().StringVar(&in.Until, "until", "", "range end as YYYY-MM (with --since; mutually exclusive with --month)")
@@ -285,11 +318,20 @@ func defaultSplitText(f reports.Family) string {
 }
 
 func example(f reports.Family) string {
-	return `  # The latest month present (the ` + f.DefaultSplit + ` file)
-  gplay reports ` + f.Name + `
+	sel := ""
+	if f.PerProduct {
+		sel = " --product premium_monthly"
+	}
+	first := `  # The latest month present (the ` + f.DefaultSplit + ` file)
+  gplay reports ` + f.Name + sel
+	if f.DefaultSplit == "" {
+		first = `  # The latest month present, by country
+  gplay reports ` + f.Name + sel + ` --dimension country`
+	}
+	return first + `
 
-  gplay reports ` + f.Name + ` --month 2026-09 --dimension country
+  gplay reports ` + f.Name + sel + ` --month 2026-09 --dimension country
 
   # Half a year merged into one result set, as JSON
-  gplay reports ` + f.Name + ` --since 2026-01 --until 2026-06 --dimension country --output json`
+  gplay reports ` + f.Name + sel + ` --since 2026-01 --until 2026-06 --dimension country --output json`
 }

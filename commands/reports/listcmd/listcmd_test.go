@@ -159,7 +159,7 @@ func TestRun_forbiddenFamilyIsAWarning(t *testing.T) {
 
 func TestRun_everyFamilyForbiddenFails(t *testing.T) {
 	b := fixture()
-	b.Deny = map[string]int{"stats/": 403}
+	b.Deny = map[string]int{"stats/": 403, "financial-stats/": 403}
 	_, _, _, err := run(t, b, nil, Input{})
 	if code := exitCodeOf(t, err); code != 11 {
 		t.Fatalf("exit = %d, want 11 (err: %v)", code, err)
@@ -200,5 +200,53 @@ func TestRun_badFlags_usageWithoutNetwork(t *testing.T) {
 	_, _, _, err := run(t, fixture(), nil, Input{Family: "earning"})
 	if !strings.Contains(err.Error(), "installs") {
 		t.Errorf("unknown --family should list the known ones: %q", err)
+	}
+}
+
+func TestRun_listsEveryStatisticsFamilyWithTheProduct(t *testing.T) {
+	b := fixture()
+	csv := []byte("Date\n2026-09-01\n")
+	b.Objects["stats/ratings/ratings_com.example.app_202609_overview.csv"] = csv
+	b.Objects["stats/crashes/crashes_com.example.app_202609_overview.csv"] = csv
+	b.Objects["stats/store_performance/store_performance_com.example.app_202609_traffic_source.csv"] = csv
+	b.Objects["financial-stats/subscriptions/subscriptions_com.example.app_premium_monthly_v2_202609_country.csv"] = csv
+	r, _, _, err := run(t, b, nil, Input{Package: "com.example.app", Since: "2026-09"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := renderJSON(t, r)
+	for _, want := range []string{
+		`"family": "ratings"`, `"family": "crashes"`,
+		`"family": "store-performance"`, `"split": "traffic_source"`,
+		`"family": "subscription-stats"`, `"product": "premium_monthly_v2"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("inventory lacks %s:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, `"product"`) != 1 {
+		t.Errorf("only the subscription-stats row carries a product:\n%s", got)
+	}
+	var tbl bytes.Buffer
+	if err := r.Renderers().Table(&tbl); err != nil {
+		t.Fatalf("table: %v", err)
+	}
+	if !strings.Contains(tbl.String(), "PRODUCT") || !strings.Contains(tbl.String(), "premium_monthly_v2") {
+		t.Errorf("the default table should show the product id to pass to --product:\n%s", tbl.String())
+	}
+}
+
+func TestRun_subscriptionStatsWithoutFinancialGrantIsAWarning(t *testing.T) {
+	b := fixture()
+	b.Deny = map[string]int{"financial-stats/": 403}
+	r, _, stderr, err := run(t, b, nil, Input{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := renderJSON(t, r); strings.Count(got, `"object"`) != 4 {
+		t.Errorf("the statistics inventory should still print:\n%s", got)
+	}
+	if !strings.Contains(stderr, "subscription-stats") || !strings.Contains(stderr, `"View financial data" (global)`) {
+		t.Errorf("stderr = %q", stderr)
 	}
 }

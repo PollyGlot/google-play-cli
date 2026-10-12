@@ -740,6 +740,10 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		// reports: Bulk report reads from the Reporting bucket (ADR-0050).
 		{[]string{"reports", "list"}, false},
 		{[]string{"reports", "installs"}, false},
+		{[]string{"reports", "ratings"}, false},
+		{[]string{"reports", "crashes"}, false},
+		{[]string{"reports", "store-performance"}, false},
+		{[]string{"reports", "subscription-stats"}, false},
 
 		// vitals: the whole namespace is read-only (Play Developer Reporting).
 		{[]string{"vitals", "query"}, false},
@@ -968,6 +972,10 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		// reports: columns derived from CSV headers Google owns (ADR-0050).
 		{[]string{"reports", "list"}, true},
 		{[]string{"reports", "installs"}, true},
+		{[]string{"reports", "ratings"}, true},
+		{[]string{"reports", "crashes"}, true},
+		{[]string{"reports", "store-performance"}, true},
+		{[]string{"reports", "subscription-stats"}, true},
 
 		// vitals: read-only, shipped early and stable since.
 		{[]string{"vitals", "query"}, false},
