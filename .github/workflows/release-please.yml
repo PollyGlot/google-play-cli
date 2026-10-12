@@ -68,6 +68,8 @@ jobs:
     # PAT needs to be passed explicitly.
     secrets:
       HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      T3_RELEASE_ANNOUNCE_WEBHOOK_URL: ${{ secrets.T3_RELEASE_ANNOUNCE_WEBHOOK_URL }}
+      T3_WEBHOOK_SECRET: ${{ secrets.T3_WEBHOOK_SECRET }}
     uses: ./.github/workflows/release.yml
     with:
       ref: ${{ needs.release-please.outputs.tag_name }}
