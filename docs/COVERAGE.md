@@ -97,7 +97,7 @@ Of the 166 admin methods (199 total minus the 33 excluded by nature), **131 are 
 | `androidpublisher.edits.testers.patch` | ⚪ | redundant with `androidpublisher.edits.testers.update`: partial write of a single-field resource; `testers set` replaces the whole group list through `update` |
 | `androidpublisher.edits.testers.update` | ✅ | `gplay testers set` |
 | `androidpublisher.edits.tracks.create` | ✅ | `gplay tracks create` |
-| `androidpublisher.edits.tracks.get` | ✅ | `gplay tracks view`, `gplay releases list`, `gplay releases promote`, `gplay releases rollout`; read-before-write: tracks.update replaces the whole releases array |
+| `androidpublisher.edits.tracks.get` | ✅ | `gplay tracks view`, `gplay tracks create`, `gplay releases list`, `gplay releases promote`, `gplay releases rollout`; read-before-write: tracks.update replaces the whole releases array; tracks create --if-exists skip reads before creating (ADR-0050) |
 | `androidpublisher.edits.tracks.list` | ✅ | `gplay tracks list`, `gplay apps audit` |
 | `androidpublisher.edits.tracks.patch` | ⚪ | redundant with `androidpublisher.edits.tracks.update`: partial write of a track; every release command sends the full track body through `update` |
 | `androidpublisher.edits.tracks.update` | ✅ | `gplay releases upload`, `gplay releases promote`, `gplay releases rollout`, `gplay releases halt`, `gplay releases resume`, `gplay releases complete`; the single write behind every release-state change (ADR-0002) |
@@ -188,8 +188,8 @@ Of the 166 admin methods (199 total minus the 33 excluded by nature), **131 are 
 | `androidpublisher.systemapks.variants.list` | 🔴 | parked, [#296](https://github.com/PollyGlot/google-play-cli/issues/296): system APK variants are preload/OEM system-image material |
 | `androidpublisher.users.create` | ✅ | `gplay team users add` |
 | `androidpublisher.users.delete` | ✅ | `gplay team users remove` |
-| `androidpublisher.users.list` | ✅ | `gplay team users list`, `gplay team users view`, `gplay team grants list` |
-| `androidpublisher.users.patch` | ✅ | `gplay team users set` |
+| `androidpublisher.users.list` | ✅ | `gplay team users list`, `gplay team users view`, `gplay team users add`, `gplay team grants list`; team users add --if-exists skip or update looks the member up before inviting (ADR-0050) |
+| `androidpublisher.users.patch` | ✅ | `gplay team users set`, `gplay team users add` |
 
 ## `playdeveloperreporting` v1beta1 (25 methods)
 

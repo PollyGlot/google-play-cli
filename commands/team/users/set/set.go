@@ -13,10 +13,8 @@ package set
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,8 +23,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
-	playteam "github.com/PollyGlot/google-play-cli/internal/play/team"
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
@@ -41,39 +37,6 @@ type Input struct {
 	Clear       bool
 	GrantAdmin  bool
 	DryRun      bool
-}
-
-type forbiddenError struct {
-	developerID string
-	cause       error
-}
-
-func (e *forbiddenError) Error() string {
-	return fmt.Sprintf("service account is not authorized to manage users on developer account %s: grant it Admin (manage-permissions) in the Play Console under Users & permissions: %v", e.developerID, e.cause)
-}
-func (e *forbiddenError) Unwrap() error { return e.cause }
-
-type notMemberError struct {
-	email string
-	cause error
-}
-
-func (e *notMemberError) Error() string {
-	return fmt.Sprintf("%s is not a member: use `gplay team users add %s` to invite them first: %v", e.email, e.email, e.cause)
-}
-func (e *notMemberError) Unwrap() error { return e.cause }
-
-func classifyError(developerID, email string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusForbidden:
-			return &forbiddenError{developerID: developerID, cause: err}
-		case http.StatusNotFound:
-			return &notMemberError{email: email, cause: err}
-		}
-	}
-	return err
 }
 
 // Payload renders what set did (or, on --dry-run, would do).
@@ -226,9 +189,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	raw, err := playteam.SetUserPermissions(rc.Ctx, httpClient, developerID, email, enums)
+	raw, err := teamcmd.SetUserPermissions(rc.Ctx, httpClient, developerID, email, enums)
 	if err != nil {
-		return nil, classifyError(developerID, email, err)
+		return nil, err
 	}
 	return Payload{Email: email, Permissions: enums, Raw: raw}, nil
 }
