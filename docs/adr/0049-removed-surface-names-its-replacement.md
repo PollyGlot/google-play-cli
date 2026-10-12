@@ -36,7 +36,10 @@ information to recover lived only in the website's migration guide.
    command (the root included), and `kernel.FlagErrorFunc`, the root's
    flag-error func: when a flag fails to parse on a **group** whose leading
    positional arguments are a removed verb, the removed-verb error wins over the
-   flag error.
+   flag error; when an unknown long flag fails on a **leaf**, the func looks up
+   a `flag` row for that exact leaf. pflag names the flag the same way for
+   `--to 0.1` and `--to=0.1`; no removed flag had a shorthand, so a shorthand
+   error never matches.
 3. **Exact match only.** The table answers "is this a path gplay removed", never
    "what did you probably mean". A typo of a live verb (`apps veiw`) keeps the
    existing suggestion, and so does a misspelled removed verb (`updat`).
@@ -69,10 +72,32 @@ information to recover lived only in the website's migration guide.
      }
    }
    ```
+
+   A removed flag reads the same way, `use` naming the full command in the
+   message and the bare flag in the envelope, since the command is the one that
+   failed:
+
+   ```json
+   {
+     "error": {
+       "code": "USAGE_ERROR",
+       "exitCode": 2,
+       "retryable": false,
+       "message": "unknown flag: --to: removed in 2.0.0, use `gplay releases rollout --staged`",
+       "replacement": {
+         "kind": "flag",
+         "removed": "--to",
+         "use": "--staged",
+         "removedIn": "2.0.0"
+       }
+     }
+   }
+   ```
 6. **The table cannot rot.** `TestRemovedSurface_table` (`cmd/gplay`) walks the
-   live command tree: every replacement resolves to a runnable leaf, every
-   removed path resolves to nothing, every group a removed verb hangs off still
-   exists. A row of a kind the test does not check fails it.
+   live command tree: every replacement resolves to a runnable leaf (a flag of
+   that leaf, for a flag row), every removed path or flag resolves to nothing,
+   every group or leaf a row hangs off still exists. A row of a kind the test
+   does not check fails it.
 7. **A rename ships its row.** Removing or renaming a verb or flag adds the row
    in the same pull request. The migration guide stays the human mirror; the
    table is the source the binary reads.
@@ -87,10 +112,10 @@ information to recover lived only in the website's migration guide.
   their group help and exit 0; they are not errors and stay out of the table.
 - `gplay <group> <removed-verb> --help` still prints the group help (exit 0)
   without a hint.
-- The table starts with verb rows. Removed flags take `flag` rows in the same
-  table, looked up on the leaf that lost the flag, so a flag removed from one
-  command (`releases rollout --to`) is never reported on another that keeps it
-  (`releases promote --to`).
+- Removed flags take `flag` rows in the same table, one per leaf that lost the
+  flag (the vitals `--version` rename is eight rows), so a flag removed from
+  one command (`releases rollout --to`) is never reported on another that keeps
+  it (`releases promote --to`).
 
 ## Alternatives rejected
 

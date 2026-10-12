@@ -638,13 +638,14 @@ branch on the failure without scraping stderr:
   API envelope was parsed; omitted otherwise.
 - `requires` names the missing safety flag on an exit-3 refusal (extends the
   ADR-0017 dry-run `requires` to failure time); omitted otherwise.
-- `replacement` names what replaced a verb gplay removed, when the usage error
-  is a call to it ([ADR-0049](./adr/0049-removed-surface-names-its-replacement.md)):
-  `kind` (`command`; `flag` is reserved for removed flags), `removed` and `use`
-  (full command paths starting with `gplay`), and `removedIn` (the gplay
-  version); the ADR shows a complete envelope. Exact match on a removed path
-  only; omitted on every other failure, including a typo of a live verb, which
-  keeps the "Did you mean" suggestion.
+- `replacement` names what replaced a verb or flag gplay removed, when the
+  usage error is a call to it ([ADR-0049](./adr/0049-removed-surface-names-its-replacement.md)):
+  `kind` (`command` or `flag`), `removed` and `use` (full command paths
+  starting with `gplay` for a command, flag names such as `--to` and `--staged`
+  for a flag, on the command that failed), and `removedIn` (the gplay version);
+  the ADR shows a complete envelope. Exact match on a removed path, or on a
+  removed flag of that very leaf, only; omitted on every other failure,
+  including a typo of a live verb, which keeps the "Did you mean" suggestion.
 
 The envelope also covers the CLI misuse cobra rejects before a command runs: an
 unknown or repeated flag, a wrong number of positional arguments, an unknown
@@ -876,17 +877,20 @@ than changing the frozen contract (ADR-0010), which is why it shipped as a
 `fix`. Never hand-roll an argument-count check in a command — declare the cobra
 validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
 
-**A removed verb names its replacement.** A verb gplay removed without an alias
-(the ADR-0019 renames, the 2.0.0 vocabulary pass of ADR-0048) is still an unknown
-command, exit `2`, `USAGE_ERROR`, but the message ends with
-``: removed in <version>, use `gplay <replacement>` `` (plus a short note when it
-is not a pure rename) and the JSON envelope carries `replacement` (§7). The
-source is one declarative table in `internal/kernel/removed.go`, looked up by
+**A removed verb or flag names its replacement.** A verb or flag gplay removed
+without an alias (the ADR-0019 renames, the 2.0.0 vocabulary pass of ADR-0048)
+is still an unknown command or flag, exit `2`, `USAGE_ERROR`, but the message
+ends with ``: removed in <version>, use `gplay <replacement>` `` (plus a short
+note when it is not a pure rename) and the JSON envelope carries `replacement`
+(§7). The old `--to` flag of `releases rollout` reads ``unknown flag: --to:
+removed in 2.0.0, use `gplay releases rollout --staged` ``. The source is one
+declarative table in `internal/kernel/removed.go`, looked up by
 `kernel.GroupRunE` and by `kernel.FlagErrorFunc` (a group parses flags before it
 sees the removed verb, so `gplay <group> <removed-verb> <id> --output json`
-would otherwise read `unknown flag: --output`). Renaming or removing a verb adds
+would otherwise read `unknown flag: --output`). A flag row names the leaf that lost the flag, so
+`releases promote --to` keeps working. Renaming or removing a verb or flag adds
 its row in the same pull request; `TestRemovedSurface_table` fails on a row whose
-replacement does not resolve or whose removed path resolves again
+replacement does not resolve or whose removed path or flag resolves again
 ([ADR-0049](./adr/0049-removed-surface-names-its-replacement.md)).
 
 Every runnable leaf declares a validator, `cobra.NoArgs` when it takes no

@@ -123,10 +123,11 @@ func TestRemovedVerb_movedBranch(t *testing.T) {
 }
 
 // TestRemovedSurface_table keeps the removed-surface table honest against the
-// live command tree (ADR-0049): every replacement resolves to a runnable leaf,
-// every removed path resolves to nothing (a removed path that still exists is a
-// table bug: the hint would shadow a live command, or never fire), and the
-// group a removed verb hangs off still exists, or the lookup could never run.
+// live command tree (ADR-0049): every replacement resolves to a runnable leaf
+// (a flag of the leaf, for a flag row), every removed path or flag resolves to
+// nothing (one that still exists is a table bug: the hint would shadow a live
+// command or flag, or never fire), and the group or leaf a row hangs off still
+// exists, or the lookup could never run.
 func TestRemovedSurface_table(t *testing.T) {
 	root := newRootCmd(kernel.Boot{})
 	// resolves reports whether path names an existing command of the tree,
@@ -160,8 +161,115 @@ func TestRemovedSurface_table(t *testing.T) {
 			if u, ok := resolves(r.Use); !ok || u.HasSubCommands() || !u.Runnable() {
 				t.Errorf("row %q: replacement %q is not a live leaf", key, r.Use)
 			}
+		case kernel.RemovedFlag:
+			// A flag row hangs off the leaf that lost the flag: Use must be a
+			// flag that leaf takes (its own or inherited), Token must not be,
+			// or the hint would shadow a live flag.
+			leaf, ok := resolves(r.Path)
+			if !ok || leaf.HasSubCommands() || !leaf.Runnable() {
+				t.Errorf("row %q: %q is not a live leaf", key, r.Path)
+				continue
+			}
+			flagName := func(token string) (string, bool) {
+				name, ok := strings.CutPrefix(token, "--")
+				return name, ok && name != ""
+			}
+			if name, ok := flagName(r.Token); !ok {
+				t.Errorf("row %q: removed %q is not a --long flag", key, r.Token)
+			} else if leaf.Flag(name) != nil {
+				t.Errorf("row %q: removed flag still exists on %q", key, r.Path)
+			}
+			if name, ok := flagName(r.Use); !ok || leaf.Flag(name) == nil {
+				t.Errorf("row %q: replacement %q is not a flag of %q", key, r.Use, r.Path)
+			}
 		default:
 			t.Errorf("row %q: kind %q has no integrity check", key, r.Kind)
+		}
+	}
+}
+
+// TestRemovedFlag_namesReplacement is #689: a flag 2.0.0 removed from a leaf
+// fails as before (exit 2, USAGE_ERROR, `unknown flag: --to`), then names the
+// flag that replaced it on that leaf, in text and in the JSON envelope. Both
+// spellings cobra accepts for a valued flag reach the same hint.
+func TestRemovedFlag_namesReplacement(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+	for _, argv := range [][]string{
+		{"releases", "rollout", "--track", "production", "--to", "0.1"},
+		{"releases", "rollout", "--track", "production", "--to=0.1"},
+	} {
+		stdout, code, err := runLikeMain(t, argv...)
+		if code != 2 {
+			t.Fatalf("%v: exit code = %d, want 2; err=%v", argv, code, err)
+		}
+		want := "unknown flag: --to: removed in 2.0.0, use `gplay releases rollout --staged`"
+		if err.Error() != want {
+			t.Errorf("%v: message = %q\nwant      %q", argv, err.Error(), want)
+		}
+		d := envelopeOf(t, stdout)
+		if d.Code != string(exit.CodeUsageError) || d.ExitCode != 2 {
+			t.Errorf("%v: envelope code/exitCode = %s/%d, want USAGE_ERROR/2", argv, d.Code, d.ExitCode)
+		}
+		if d.Replacement == nil {
+			t.Fatalf("%v: envelope has no replacement:\n%s", argv, stdout)
+		}
+		wantR := output.Replacement{Kind: "flag", Removed: "--to", Use: "--staged", RemovedIn: "2.0.0"}
+		if *d.Replacement != wantR {
+			t.Errorf("%v: replacement = %+v, want %+v", argv, *d.Replacement, wantR)
+		}
+	}
+}
+
+// TestRemovedFlag_scopedToItsLeaf: a flag row applies to the leaf that lost the
+// flag only. `--to` is still a live flag of `releases promote`, and on a leaf
+// that never had it, or for a flag gplay never shipped, the message stays
+// pflag's own, with no replacement in the envelope.
+func TestRemovedFlag_scopedToItsLeaf(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+
+	_, _, err := runLikeMain(t, "releases", "promote", "--from", "internal", "--to", "production")
+	if err != nil && (strings.Contains(err.Error(), "unknown flag") || strings.Contains(err.Error(), "removed in")) {
+		t.Errorf("releases promote --to: err = %q, want --to accepted", err.Error())
+	}
+
+	for _, tc := range []struct {
+		argv []string
+		want string
+	}{
+		{[]string{"releases", "rollout", "--bogus"}, "unknown flag: --bogus"},
+		{[]string{"releases", "halt", "--to", "0.1"}, "unknown flag: --to"},
+		{[]string{"vitals", "crashes", "-x"}, "unknown shorthand flag: 'x' in -x"},
+	} {
+		stdout, code, err := runLikeMain(t, tc.argv...)
+		if code != 2 {
+			t.Fatalf("%v: exit code = %d, want 2; err=%v", tc.argv, code, err)
+		}
+		if err.Error() != tc.want {
+			t.Errorf("%v: message = %q, want %q unchanged", tc.argv, err.Error(), tc.want)
+		}
+		if strings.Contains(stdout, "replacement") {
+			t.Errorf("%v: envelope carries a replacement key:\n%s", tc.argv, stdout)
+		}
+	}
+}
+
+// TestRemovedFlag_perLeafRename: the vitals `--version` flag became
+// `--version-code` on each of the eight vitals leaves, nested ones included.
+func TestRemovedFlag_perLeafRename(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+	for _, path := range []string{"vitals crashes", "vitals errors counts"} {
+		argv := append(strings.Fields(path), "--version", "3")
+		stdout, code, err := runLikeMain(t, argv...)
+		if code != 2 {
+			t.Fatalf("%v: exit code = %d, want 2; err=%v", argv, code, err)
+		}
+		want := "unknown flag: --version: removed in 2.0.0, use `gplay " + path + " --version-code`"
+		if err.Error() != want {
+			t.Errorf("%v: message = %q\nwant      %q", argv, err.Error(), want)
+		}
+		wantR := output.Replacement{Kind: "flag", Removed: "--version", Use: "--version-code", RemovedIn: "2.0.0"}
+		if d := envelopeOf(t, stdout); d.Replacement == nil || *d.Replacement != wantR {
+			t.Errorf("%v: envelope replacement = %+v, want %+v", argv, d.Replacement, wantR)
 		}
 	}
 }
