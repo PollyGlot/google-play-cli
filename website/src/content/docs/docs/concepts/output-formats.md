@@ -149,7 +149,7 @@ For example, a `gplay team users list` that the Play Console refuses:
 }
 ```
 
-The [2.0 migration guide](/docs/migration/2-0/) lists every removed verb and
+The [2.0 migration guide](/docs/migration/2.0/) lists every removed verb and
 flag.
 
 The envelope covers CLI misuse too (an unknown or repeated flag, a missing or
