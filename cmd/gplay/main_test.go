@@ -744,6 +744,8 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"reports", "crashes"}, false},
 		{[]string{"reports", "store-performance"}, false},
 		{[]string{"reports", "subscription-stats"}, false},
+		{[]string{"reports", "earnings"}, false},
+		{[]string{"reports", "sales"}, false},
 
 		// vitals: the whole namespace is read-only (Play Developer Reporting).
 		{[]string{"vitals", "query"}, false},
@@ -976,6 +978,8 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"reports", "crashes"}, true},
 		{[]string{"reports", "store-performance"}, true},
 		{[]string{"reports", "subscription-stats"}, true},
+		{[]string{"reports", "earnings"}, true},
+		{[]string{"reports", "sales"}, true},
 
 		// vitals: read-only, shipped early and stable since.
 		{[]string{"vitals", "query"}, false},

@@ -93,6 +93,9 @@ var flagVocabulary = map[string]string{
 	// Commerce reads.
 	"include-partial-refunds": "also list quantity-based partial refunds (voided purchases)",
 
+	// Bulk report reads.
+	"include-buyer-location": "show the buyer city, state and postcode a finance Bulk report hides by default (ADR-0050)",
+
 	// Safety and execution control.
 	"dry-run":              "plan and print without writing",
 	"confirm":              "consent to an irreversible or production-impacting write",
@@ -249,6 +252,8 @@ var verbPathExceptions = map[string]string{
 	"reports crashes":            "ADR-0050",
 	"reports store-performance":  "ADR-0050",
 	"reports subscription-stats": "ADR-0050",
+	"reports earnings":           "ADR-0050",
+	"reports sales":              "ADR-0050",
 }
 
 // verbDrift lists experimental leaves whose verb contradicts ADR-0019 (`set`

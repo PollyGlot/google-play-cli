@@ -4,6 +4,7 @@
 package reportstest
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -33,10 +34,13 @@ const DeveloperID = "123456"
 
 // Bucket is a fake Reporting bucket: its objects by key, and the HTTP status
 // forced on any call (list or fetch) whose object key or list prefix starts
-// with a Deny key.
+// with a Deny key. Sizes overrides the size the listing reports for an
+// object (its byte length otherwise), so a test can list an export too large
+// to build.
 type Bucket struct {
 	Objects map[string][]byte
 	Deny    map[string]int
+	Sizes   map[string]string
 }
 
 // Responder answers storage.objects.list (filtered by the prefix query, every
@@ -75,7 +79,11 @@ func (b Bucket) Responder() testkit.Responder {
 		items := []item{}
 		for name, body := range b.Objects {
 			if strings.HasPrefix(name, key) {
-				items = append(items, item{Name: name, Size: strconv.Itoa(len(body)), Updated: "2026-10-04T08:00:00.000Z"})
+				size := strconv.Itoa(len(body))
+				if s, ok := b.Sizes[name]; ok {
+					size = s
+				}
+				items = append(items, item{Name: name, Size: size, Updated: "2026-10-04T08:00:00.000Z"})
 			}
 		}
 		sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
@@ -93,6 +101,25 @@ func UTF16LE(s string) []byte {
 		var b [2]byte
 		binary.LittleEndian.PutUint16(b[:], u)
 		buf.Write(b[:])
+	}
+	return buf.Bytes()
+}
+
+// Zip packs one CSV member the way Play packs a finance export: a ZIP
+// holding the report file.
+func Zip(t *testing.T, member string, body []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	fw, err := w.Create(member)
+	if err != nil {
+		t.Fatalf("zip create %s: %v", member, err)
+	}
+	if _, err := fw.Write(body); err != nil {
+		t.Fatalf("zip write %s: %v", member, err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("zip close: %v", err)
 	}
 	return buf.Bytes()
 }

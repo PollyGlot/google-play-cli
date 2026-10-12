@@ -17,6 +17,7 @@ package gcs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -41,6 +42,11 @@ const (
 	maxListBodyRead = 4 * 1024 * 1024
 	MaxObjectRead   = 64 * 1024 * 1024
 )
+
+// ErrTooLarge is the cause of the *api.Error a read over its cap returns, so
+// a caller can tell "too large" from the upstream's own failures with
+// errors.Is. It changes neither the message nor the exit code.
+var ErrTooLarge = errors.New("object over the read cap")
 
 // Object is the sliver of a GCS object resource gplay reads: its name (the
 // full key under the bucket, e.g. "reviews/reviews_com.x_202606.csv"), and the
@@ -156,6 +162,7 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 			Resource:   bucketResource(bucket),
 			StatusCode: resp.StatusCode,
 			Message:    "response exceeds the size limit of " + strconv.FormatInt(maxRead, 10) + " bytes",
+			Cause:      ErrTooLarge,
 		}
 	}
 	return raw, nil

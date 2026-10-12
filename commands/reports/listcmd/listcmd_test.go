@@ -8,7 +8,6 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/reports"
-	"github.com/PollyGlot/google-play-cli/internal/reports/bucket"
 	"github.com/PollyGlot/google-play-cli/internal/reports/reportstest"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
@@ -22,17 +21,8 @@ func fixture() reportstest.Bucket {
 		"stats/installs/installs_com.other.app_202609_overview.csv":   csv,
 		"stats/installs/notes.txt":                                    []byte("not an export"),
 		"earnings/earnings_202609_123-1.zip":                          []byte("PK"),
+		"sales/salesreport_202609.zip":                                []byte("PK"),
 	}}
-}
-
-// earnings is a finance family the way #696 will declare it: in this slice
-// it only exists in tests, to drive the per-family 403 path.
-var earnings = reports.Family{
-	Name:       "earnings",
-	Prefix:     "earnings/earnings_",
-	Scope:      reports.AccountWide,
-	Permission: bucket.ViewFinancialData,
-	Page:       "Financial",
 }
 
 func run(t *testing.T, b reportstest.Bucket, families []reports.Family, in Input) (output.Renderable, *testkit.Fake, string, error) {
@@ -108,6 +98,21 @@ func TestRun_listsEveryExportWithMetadata(t *testing.T) {
       "object": "stats/installs/installs_com.other.app_202609_overview.csv",
       "size": "82",
       "updated": "2026-10-04T08:00:00.000Z"
+    },
+    {
+      "family": "earnings",
+      "month": "2026-09",
+      "split": "123-1",
+      "object": "earnings/earnings_202609_123-1.zip",
+      "size": "2",
+      "updated": "2026-10-04T08:00:00.000Z"
+    },
+    {
+      "family": "sales",
+      "month": "2026-09",
+      "object": "sales/salesreport_202609.zip",
+      "size": "2",
+      "updated": "2026-10-04T08:00:00.000Z"
     }
   ]
 }
@@ -143,7 +148,7 @@ func TestRun_filters(t *testing.T) {
 func TestRun_forbiddenFamilyIsAWarning(t *testing.T) {
 	b := fixture()
 	b.Deny = map[string]int{"earnings/": 403}
-	r, _, stderr, err := run(t, b, []reports.Family{reports.Installs, earnings}, Input{})
+	r, _, stderr, err := run(t, b, []reports.Family{reports.Installs, reports.Earnings}, Input{})
 	if err != nil {
 		t.Fatalf("Run: %v (a 403 on one family must not fail the inventory)", err)
 	}
@@ -159,7 +164,7 @@ func TestRun_forbiddenFamilyIsAWarning(t *testing.T) {
 
 func TestRun_everyFamilyForbiddenFails(t *testing.T) {
 	b := fixture()
-	b.Deny = map[string]int{"stats/": 403, "financial-stats/": 403}
+	b.Deny = map[string]int{"stats/": 403, "financial-stats/": 403, "earnings/": 403, "sales/": 403}
 	_, _, _, err := run(t, b, nil, Input{})
 	if code := exitCodeOf(t, err); code != 11 {
 		t.Fatalf("exit = %d, want 11 (err: %v)", code, err)
@@ -170,7 +175,7 @@ func TestRun_everyFamilyForbiddenFails(t *testing.T) {
 }
 
 func TestRun_accountWideFamilyListed(t *testing.T) {
-	r, _, _, err := run(t, fixture(), []reports.Family{reports.Installs, earnings}, Input{Family: "earnings"})
+	r, _, _, err := run(t, fixture(), []reports.Family{reports.Installs, reports.Earnings}, Input{Family: "earnings"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -238,7 +243,9 @@ func TestRun_listsEveryStatisticsFamilyWithTheProduct(t *testing.T) {
 
 func TestRun_subscriptionStatsWithoutFinancialGrantIsAWarning(t *testing.T) {
 	b := fixture()
-	b.Deny = map[string]int{"financial-stats/": 403}
+	// A service account without the financial grant reads none of the
+	// finance families: subscription stats, earnings and sales.
+	b.Deny = map[string]int{"financial-stats/": 403, "earnings/": 403, "sales/": 403}
 	r, _, stderr, err := run(t, b, nil, Input{})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -246,7 +253,37 @@ func TestRun_subscriptionStatsWithoutFinancialGrantIsAWarning(t *testing.T) {
 	if got := renderJSON(t, r); strings.Count(got, `"object"`) != 4 {
 		t.Errorf("the statistics inventory should still print:\n%s", got)
 	}
-	if !strings.Contains(stderr, "subscription-stats") || !strings.Contains(stderr, `"View financial data" (global)`) {
-		t.Errorf("stderr = %q", stderr)
+	for _, want := range []string{"subscription-stats reports skipped", "earnings reports skipped", "sales reports skipped", `"View financial data" (global)`} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr should contain %q: %q", want, stderr)
+		}
+	}
+}
+
+// TestRun_financeMonthsListed is #696's acceptance criterion: the inventory
+// shows the earnings and sales months, account-wide (no package), and a
+// --package narrows the per-package families without hiding the finance
+// exports, which hold every app's rows.
+func TestRun_financeMonthsListed(t *testing.T) {
+	b := fixture()
+	b.Objects["earnings/earnings_202608.zip"] = []byte("PK")
+	b.Objects["sales/salesreport_202610.zip"] = []byte("PK")
+	r, _, _, err := run(t, b, nil, Input{Package: "com.example.app", Since: "2026-08"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := renderJSON(t, r)
+	for _, want := range []string{
+		`"object": "earnings/earnings_202608.zip"`,
+		`"object": "earnings/earnings_202609_123-1.zip"`,
+		`"object": "sales/salesreport_202609.zip"`,
+		`"object": "sales/salesreport_202610.zip"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("inventory lacks %s:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "com.other.app") {
+		t.Errorf("--package should still narrow the per-package families:\n%s", got)
 	}
 }

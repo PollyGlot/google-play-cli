@@ -49,6 +49,12 @@ type Family struct {
 	// product id between the package and the month (subscription stats):
 	// <prefix><package>_<productId>_<YYYYMM>[_<split>].csv.
 	PerProduct bool
+	// Container is how an export is packaged: a plain CSV, or a ZIP holding
+	// the CSV (the finance families), read under ADR-0050's bounds.
+	Container Container
+	// BuyerLocation marks the exports that may carry the buyer's city, state
+	// and postcode: hidden unless --include-buyer-location (ADR-0050 §9).
+	BuyerLocation bool
 	// Permission is the global Console permission the exports require, named
 	// by the 403 message.
 	Permission bucket.Permission
@@ -172,8 +178,49 @@ gplay reports list --family subscription-stats --package <package> to see the
 product ids present.`,
 }
 
+// Earnings is the earnings family: every transaction Google paid out for the
+// month, account-wide, one ZIP holding the CSV. The file name may carry a
+// suffix after the month; every file of the month is read.
+var Earnings = Family{
+	Name:           "earnings",
+	Prefix:         "earnings/earnings_",
+	Scope:          AccountWide,
+	Container:      ZIP,
+	BuyerLocation:  true,
+	Permission:     bucket.ViewFinancialData,
+	Page:           "Financial",
+	MaxObjectBytes: MaxZipObjectBytes,
+	TableHidden:    []string{"transactionTime", "taxType", "refundType", "hardware", "currencyConversionRate", "basePlanId", "offerId", "groupId", "firstUsd1mEligible", "promotionId"},
+	Summary:        "Read the monthly earnings report of the developer account from the Reporting bucket",
+	About: `Read the monthly earnings report of the developer account (every charge,
+fee, tax and refund Google paid out, one row each, all apps together) from the
+Bulk report Play exports to gs://<bucket>/earnings/earnings_<YYYYMM>[_<suffix>].zip,
+a ZIP holding the CSV. Every file of the month is read, whatever its suffix.
+Play publishes a month around the 5th of the next one.`,
+}
+
+// Sales is the estimated sales family: every order of the month, account-wide,
+// one ZIP holding the CSV. Low latency, before the earnings are final.
+var Sales = Family{
+	Name:           "sales",
+	Prefix:         "sales/salesreport_",
+	Scope:          AccountWide,
+	Container:      ZIP,
+	BuyerLocation:  true,
+	Permission:     bucket.ViewFinancialData,
+	Page:           "Financial",
+	MaxObjectBytes: MaxZipObjectBytes,
+	TableHidden:    []string{"orderChargedTimestamp", "deviceModel", "basePlanId", "offerId", "groupId", "firstUsd1mEligible", "promotionId", "couponValue", "discountRate", "featuredProductId", "priceExperimentId"},
+	Summary:        "Read the monthly estimated sales report of the developer account from the Reporting bucket",
+	About: `Read the monthly estimated sales report of the developer account (every
+order, one row each, all apps together) from the Bulk report Play exports to
+gs://<bucket>/sales/salesreport_<YYYYMM>.zip, a ZIP holding the CSV. The
+figures are estimates published with low latency; gplay reports earnings has
+what Google paid out.`,
+}
+
 // catalogue is every family gplay reads, in `reports list` order.
-var catalogue = []Family{Installs, Ratings, Crashes, StorePerformance, SubscriptionStats}
+var catalogue = []Family{Installs, Ratings, Crashes, StorePerformance, SubscriptionStats, Earnings, Sales}
 
 // Catalogue returns every known family, in `reports list` order.
 func Catalogue() []Family { return append([]Family(nil), catalogue...) }
@@ -241,7 +288,9 @@ func (f Family) Objects(listing []gcs.Object, pkg string) (objs []Object, skippe
 		default:
 			obj.Month, obj.Split = m[1], m[2]
 		}
-		if pkg != "" && obj.Package != pkg {
+		// An account-wide export holds every app's rows: --package filters
+		// its rows, never the export.
+		if pkg != "" && f.Scope == PerPackage && obj.Package != pkg {
 			continue
 		}
 		objs = append(objs, obj)
@@ -334,6 +383,9 @@ func (f Family) Select(objs []Object, months []string, split string) (Selection,
 	if len(objs) == 0 {
 		return Selection{}, ErrNoReport
 	}
+	if f.Scope == AccountWide {
+		return selectAccountWide(objs, months)
+	}
 	if len(months) == 0 {
 		latest := ""
 		for _, o := range objs {
@@ -379,6 +431,41 @@ func (f Family) Select(objs []Object, months []string, split string) (Selection,
 		}
 		sel.Months = append(sel.Months, m)
 		sel.Objects = append(sel.Objects, o)
+	}
+	return sel, nil
+}
+
+// selectAccountWide picks every export of each month asked (the latest one
+// present when none is): an account-wide family has no split, and the name
+// suffix after the month is not a choice to make (the earnings suffix is
+// unconfirmed, so every file of the month is read, in name order).
+func selectAccountWide(objs []Object, months []string) (Selection, error) {
+	if len(months) == 0 {
+		latest := ""
+		for _, o := range objs {
+			if o.Month > latest {
+				latest = o.Month
+			}
+		}
+		months = []string{latest}
+	}
+	byMonth := map[string][]Object{}
+	for _, o := range objs {
+		byMonth[o.Month] = append(byMonth[o.Month], o)
+	}
+	var sel Selection
+	for _, m := range months {
+		found := byMonth[m]
+		if len(found) == 0 {
+			sel.Missing = append(sel.Missing, m)
+			continue
+		}
+		sort.SliceStable(found, func(i, j int) bool { return found[i].Name < found[j].Name })
+		sel.Months = append(sel.Months, m)
+		sel.Objects = append(sel.Objects, found...)
+	}
+	if len(sel.Objects) == 0 {
+		return Selection{}, ErrNoReport
 	}
 	return sel, nil
 }

@@ -50,23 +50,24 @@ type zipLimits struct {
 
 var defaultZipLimits = zipLimits{object: MaxZipObjectBytes, members: MaxZipMembers, member: MaxZipMemberBytes, total: MaxZipTotalBytes}
 
-// ArchiveError is a refused export: over a bound, or not the archive it
-// should be. It exits 20 (client-side validation, docs/DESIGN.md §9): the
-// bytes arrived, gplay declined to read them, and nothing is returned.
-type ArchiveError struct {
+// RefusedError is an export gplay declines to read: over a size bound (the
+// read cap, or one of the ZIP bounds), or not the archive it should be. It
+// exits 20 (client-side validation, docs/DESIGN.md §9): gplay refused the
+// bytes, and no truncated report is returned.
+type RefusedError struct {
 	Object string // the object key, or the member name, the refusal is about
 	Reason string
 }
 
-func (e *ArchiveError) Error() string {
+func (e *RefusedError) Error() string {
 	if e.Object == "" {
-		return "report archive refused: " + e.Reason
+		return "export refused: " + e.Reason
 	}
-	return "report archive refused: " + e.Object + ": " + e.Reason
+	return "export refused: " + e.Object + ": " + e.Reason
 }
 
 // ExitCode implements exit.Coder.
-func (e *ArchiveError) ExitCode() int { return 20 }
+func (e *RefusedError) ExitCode() int { return 20 }
 
 // Member is one CSV member of a report archive, decompressed.
 type Member struct {
@@ -85,14 +86,14 @@ func ExtractCSV(raw []byte) ([]Member, error) { return extractCSV(raw, defaultZi
 
 func extractCSV(raw []byte, lim zipLimits) ([]Member, error) {
 	if int64(len(raw)) > lim.object {
-		return nil, &ArchiveError{Reason: fmt.Sprintf("%d compressed bytes, over the %d-byte cap", len(raw), lim.object)}
+		return nil, &RefusedError{Reason: fmt.Sprintf("%d compressed bytes, over the %d-byte cap", len(raw), lim.object)}
 	}
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
-		return nil, &ArchiveError{Reason: "not a ZIP archive: " + err.Error()}
+		return nil, &RefusedError{Reason: "not a ZIP archive: " + err.Error()}
 	}
 	if len(zr.File) > lim.members {
-		return nil, &ArchiveError{Reason: fmt.Sprintf("%d members, over the %d-member cap", len(zr.File), lim.members)}
+		return nil, &RefusedError{Reason: fmt.Sprintf("%d members, over the %d-member cap", len(zr.File), lim.members)}
 	}
 	remaining := lim.total
 	var out []Member
@@ -107,7 +108,7 @@ func extractCSV(raw []byte, lim zipLimits) ([]Member, error) {
 		out = append(out, Member{Name: f.Name, Data: data})
 	}
 	if len(out) == 0 {
-		return nil, &ArchiveError{Reason: "no .csv member in the archive"}
+		return nil, &RefusedError{Reason: "no .csv member in the archive"}
 	}
 	return out, nil
 }
@@ -120,10 +121,10 @@ func extractCSV(raw []byte, lim zipLimits) ([]Member, error) {
 // does not rely on it.)
 func readMember(f *zip.File, perMember uint64, remaining *uint64, total uint64) ([]byte, error) {
 	if f.UncompressedSize64 > perMember {
-		return nil, &ArchiveError{Object: f.Name, Reason: fmt.Sprintf("member declares %d decompressed bytes, over the %d-byte per-member cap", f.UncompressedSize64, perMember)}
+		return nil, &RefusedError{Object: f.Name, Reason: fmt.Sprintf("member declares %d decompressed bytes, over the %d-byte per-member cap", f.UncompressedSize64, perMember)}
 	}
 	if f.UncompressedSize64 > *remaining {
-		return nil, &ArchiveError{Object: f.Name, Reason: fmt.Sprintf("member declares %d decompressed bytes, over what is left of the %d-byte total budget", f.UncompressedSize64, total)}
+		return nil, &RefusedError{Object: f.Name, Reason: fmt.Sprintf("member declares %d decompressed bytes, over what is left of the %d-byte total budget", f.UncompressedSize64, total)}
 	}
 	budget, which := perMember, "per-member"
 	if *remaining < budget {
@@ -131,7 +132,7 @@ func readMember(f *zip.File, perMember uint64, remaining *uint64, total uint64) 
 	}
 	rc, err := f.Open()
 	if err != nil {
-		return nil, &ArchiveError{Object: f.Name, Reason: "cannot open member: " + err.Error()}
+		return nil, &RefusedError{Object: f.Name, Reason: "cannot open member: " + err.Error()}
 	}
 	defer func() { _ = rc.Close() }()
 	data, err := readLimited(rc, f.Name, budget, which)
@@ -147,10 +148,33 @@ func readMember(f *zip.File, perMember uint64, remaining *uint64, total uint64) 
 func readLimited(r io.Reader, name string, budget uint64, which string) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(r, int64(budget)+1))
 	if err != nil {
-		return nil, &ArchiveError{Object: name, Reason: "cannot inflate member: " + err.Error()}
+		return nil, &RefusedError{Object: name, Reason: "cannot inflate member: " + err.Error()}
 	}
 	if uint64(len(data)) > budget {
-		return nil, &ArchiveError{Object: name, Reason: fmt.Sprintf("member expands past the %d-byte %s cap", budget, which)}
+		return nil, &RefusedError{Object: name, Reason: fmt.Sprintf("member expands past the %d-byte %s cap", budget, which)}
 	}
 	return data, nil
+}
+
+// Decode turns the bytes of one export of the family into a Table: a CSV
+// export is decoded as is; a ZIP export's .csv members are extracted under
+// ADR-0050's bounds, each decoded with its own encoding detected (by BOM),
+// and merged in archive order.
+func (f Family) Decode(raw []byte) (Table, error) {
+	if f.Container != ZIP {
+		return Decode(raw)
+	}
+	members, err := ExtractCSV(raw)
+	if err != nil {
+		return Table{}, err
+	}
+	tables := make([]Table, 0, len(members))
+	for _, m := range members {
+		t, err := Decode(m.Data)
+		if err != nil {
+			return Table{}, fmt.Errorf("%s: %w", m.Name, err)
+		}
+		tables = append(tables, t)
+	}
+	return Merge(tables...), nil
 }

@@ -58,9 +58,9 @@ func buildZip(t *testing.T, members ...member) []byte {
 // message carries every fragment.
 func boundError(t *testing.T, err error, fragments ...string) {
 	t.Helper()
-	var be *ArchiveError
+	var be *RefusedError
 	if !errors.As(err, &be) {
-		t.Fatalf("err = %v (%T), want an *ArchiveError", err, err)
+		t.Fatalf("err = %v (%T), want a *RefusedError", err, err)
 	}
 	if be.ExitCode() != 20 {
 		t.Errorf("exit = %d, want 20 (client-side validation)", be.ExitCode())

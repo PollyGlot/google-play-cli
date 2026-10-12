@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -36,6 +37,9 @@ type Input struct {
 	Bucket      string // --bucket override; "" = derive from the developer-id
 	DeveloperID string // --developer-id (feeds the default bucket name only)
 	Columns     string // --columns; "" = the family's default table columns
+	// IncludeBuyerLocation is --include-buyer-location: keep the buyer's
+	// city, state and postcode a BuyerLocation family hides by default.
+	IncludeBuyerLocation bool
 }
 
 // Payload satisfies output.Renderable: the merged report, and the columns the
@@ -59,7 +63,7 @@ func (p Payload) Renderers() output.Renderers {
 // exports for the package, selects the months and the split against what the
 // bucket holds, fetches and decodes each export and merges them.
 func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, error) {
-	pkg, err := rc.Package(in.Package)
+	pkg, err := packageOf(rc, f, in.Package)
 	if err != nil {
 		return nil, err
 	}
@@ -109,31 +113,82 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		return nil, err
 	}
 	for _, m := range sel.Missing {
+		if f.Scope == reports.AccountWide {
+			rc.Warnf("no %s report for %s: skipped", f.Name, reports.DisplayMonth(m))
+			continue
+		}
 		rc.Warnf("no %s report for %s with dimension %q: skipped", f.Name, reports.DisplayMonth(m), sel.Split)
+	}
+	// The listing gives each export's size: one over the read cap is refused
+	// before a byte of it is fetched (ADR-0050 §10).
+	for _, o := range sel.Objects {
+		if size, err := strconv.ParseInt(o.Size, 10, 64); err == nil && size > f.MaxObjectBytes {
+			return nil, tooLarge(o.Name, f.MaxObjectBytes)
+		}
 	}
 
 	tables := make([]reports.Table, 0, len(sel.Objects))
 	id := reports.Identity{Family: f.Name, Package: pkg, Product: product, Split: sel.Split}
+	for _, m := range sel.Months {
+		id.Months = append(id.Months, reports.DisplayMonth(m))
+	}
 	for _, o := range sel.Objects {
 		raw, err := gcs.FetchObjectLimit(rc.Ctx, hc, bucket, o.Name, f.MaxObjectBytes)
+		if errors.Is(err, gcs.ErrTooLarge) {
+			// The object grew past the cap since it was listed.
+			return nil, tooLarge(o.Name, f.MaxObjectBytes)
+		}
 		if err != nil {
 			return nil, reportbucket.Classify(bucket, f.Permission, f.Page, err)
 		}
-		t, err := reports.Decode(raw)
+		t, err := f.Decode(raw)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", o.Name, err)
 		}
 		tables = append(tables, t)
-		id.Months = append(id.Months, reports.DisplayMonth(o.Month))
 		id.Objects = append(id.Objects, o.Name)
 	}
-	report := reports.Report{Identity: id, Table: reports.Merge(tables...)}
+	merged := reports.Merge(tables...)
+	if f.Scope == reports.AccountWide && pkg != "" {
+		if merged, err = reports.FilterPackage(merged, pkg); err != nil {
+			return nil, err
+		}
+	}
+	if f.BuyerLocation && !in.IncludeBuyerLocation {
+		var hidden []reports.Column
+		merged, hidden = reports.MaskBuyerLocation(merged)
+		if len(hidden) > 0 {
+			headers := make([]string, len(hidden))
+			for i, c := range hidden {
+				headers[i] = c.Header
+			}
+			rc.Notef("%d buyer-location columns hidden (%s): pass --include-buyer-location to show them", len(hidden), strings.Join(headers, ", "))
+		}
+	}
+	report := reports.Report{Identity: id, Table: merged}
 
 	cols, err := tableColumns(f, report.Table.Columns, in.Columns)
 	if err != nil {
 		return nil, err
 	}
 	return Payload{Report: report, Columns: cols}, nil
+}
+
+// packageOf resolves the package a family reads. A per-package family needs
+// one (--package, else the Project pin). An account-wide family covers every
+// app: --package only filters its rows, so the pin, which says which app a
+// repository ships rather than which rows to read, does not apply.
+func packageOf(rc *kernel.RunContext, f reports.Family, flag string) (string, error) {
+	if f.Scope == reports.AccountWide {
+		return strings.TrimSpace(flag), nil
+	}
+	return rc.Package(flag)
+}
+
+// tooLarge is the refusal of an export over the family's read cap: exit 20,
+// like every other bound, never a truncated read.
+func tooLarge(object string, limit int64) error {
+	return &reports.RefusedError{Object: object, Reason: fmt.Sprintf("larger than the %d-byte read cap", limit)}
 }
 
 // requestedMonths validates the month flags: nil means "the latest month
@@ -174,6 +229,11 @@ func noReport(f reports.Family, pkg, product, bucket string, months []string) er
 		when = " for " + reports.DisplayMonth(months[0])
 	default:
 		when = " for " + reports.DisplayMonth(months[0]) + ".." + reports.DisplayMonth(months[len(months)-1])
+	}
+	if f.Scope == reports.AccountWide {
+		return &noReportError{msg: fmt.Sprintf("no %s report%s in bucket %s: Play publishes a month after it ends; "+
+			"pick a published month (gplay reports list --family %s), or pass --bucket if the derived name is wrong",
+			f.Name, when, bucket, f.Name)}
 	}
 	what, check := pkg, "--package"
 	if product != "" {
@@ -256,14 +316,23 @@ func NewCommand(boot kernel.Boot, f reports.Family) *cobra.Command {
 		},
 	}
 	output.RegisterFlag(cmd, &outputFlag)
-	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
+	if f.Scope == reports.AccountWide {
+		cmd.Flags().StringVar(&in.Package, "package", "", "keep only this Android package's rows, matched on the report's package column (default: every app; the .gplay/config.json pin does not apply)")
+	} else {
+		cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
+	}
 	if f.PerProduct {
 		cmd.Flags().StringVar(&in.Product, "product", "", "subscription product id to read (required; gplay reports list shows the ids present)")
 	}
 	cmd.Flags().StringVar(&in.Month, "month", "", "month to read as YYYY-MM (default: the latest month present in the bucket)")
 	cmd.Flags().StringVar(&in.Since, "since", "", "range start as YYYY-MM (with --until; mutually exclusive with --month)")
 	cmd.Flags().StringVar(&in.Until, "until", "", "range end as YYYY-MM (with --since; mutually exclusive with --month)")
-	cmd.Flags().StringVar(&in.Dimension, "dimension", "", dimensionHelp(f))
+	if f.Scope == reports.PerPackage {
+		cmd.Flags().StringVar(&in.Dimension, "dimension", "", dimensionHelp(f))
+	}
+	if f.BuyerLocation {
+		cmd.Flags().BoolVar(&in.IncludeBuyerLocation, "include-buyer-location", false, "show the buyer's city, state and postcode (hidden by default; the buyer's country is always shown)")
+	}
 	cmd.Flags().StringVar(&in.Bucket, "bucket", "", "Reporting bucket name override (default: pubsite_prod_rev_<developerId>)")
 	cmd.Flags().StringVar(&in.DeveloperID, "developer-id", "", "Play Console Developer account id used to derive the bucket (overrides the active Account's, env, and project-local)")
 	cmd.Flags().StringVar(&in.Columns, "columns", "", "comma-separated table columns to show, by JSON key (default: every column but "+strings.Join(f.TableHidden, ", ")+")")
@@ -290,17 +359,12 @@ when the Console-issued URI differs, pass it with --bucket (copy it with the
 "Copy Cloud Storage URI" button on the Console's Download reports > ` + f.Page + `
 page).
 
---month YYYY-MM reads one month; when omitted, the latest month present for
-the package. --since YYYY-MM --until YYYY-MM read every month of the range
-and merge them into one result set: the columns are the union of the
-months' columns, and a month with no report is skipped with a warning.
+--month YYYY-MM reads one month; when omitted, the latest month present` + forThePackage(f) + `.
+--since YYYY-MM --until YYYY-MM read every month of the range and merge them
+into one result set: the columns are the union of the months' columns, and a
+month with no report is skipped with a warning.
 
-Each month comes as one file per dimension. --dimension picks it and is
-checked against the bucket, so a dimension Google adds works the day it
-appears. ` + defaultSplitText(f) + `
-Run gplay reports list to see the months and dimensions present.
-
---output json emits {"report": {...}, "columns": [{"key", "header"}, ...],
+` + selectionText(f) + `--output json emits {"report": {...}, "columns": [{"key", "header"}, ...],
 "rows": [{...}]}. Keys derive from the CSV header (words lowerCamel-joined:
 "Daily Device Installs" is dailyDeviceInstalls), and every value is the
 CSV's string, verbatim (a deliberate exception to the verbatim API rule: the
@@ -308,6 +372,50 @@ upstream is a CSV file). A column Google adds appears with no gplay release.
 The table shows every column except these, which --columns can still pick:
 ` + strings.Join(f.TableHidden, ", ") + `.
 --output markdown renders a Markdown table.`
+}
+
+func forThePackage(f reports.Family) string {
+	if f.Scope == reports.AccountWide {
+		return ""
+	}
+	return " for\nthe package"
+}
+
+// selectionText is the --help part that differs by family shape: the
+// dimension of a per-package family; the row filter, the buyer-location
+// default and the ZIP bounds of an account-wide finance family.
+func selectionText(f reports.Family) string {
+	if f.Scope == reports.PerPackage {
+		return `Each month comes as one file per dimension. --dimension picks it and is
+checked against the bucket, so a dimension Google adds works the day it
+appears. ` + defaultSplitText(f) + `
+Run gplay reports list to see the months and dimensions present.
+
+`
+	}
+	text := `The report covers every app of the developer account. --package keeps the
+rows of one app, matched on the package column of the CSV header (Package
+Name, Package ID, or Product ID as the finance reports call it); the Project
+pin does not apply. Run gplay reports list --family ` + f.Name + ` to see the months
+present.
+
+`
+	if f.BuyerLocation {
+		text += `The buyer's city, state and postcode are hidden by default, from the table
+and the JSON alike, and a stderr notice says how many columns were hidden;
+--include-buyer-location shows them. The buyer's country always stays.
+
+`
+	}
+	if f.Container == reports.ZIP {
+		text += `The export is a ZIP read under fixed bounds: at most 128 MiB compressed,
+16 members, 1 GiB decompressed per member and in total. Only its .csv
+members are read, each decoded by its byte-order mark. An export over a
+bound fails with exit 20, never with a truncated report.
+
+`
+	}
+	return text
 }
 
 func defaultSplitText(f reports.Family) string {
@@ -318,6 +426,9 @@ func defaultSplitText(f reports.Family) string {
 }
 
 func example(f reports.Family) string {
+	if f.Scope == reports.AccountWide {
+		return accountWideExample(f)
+	}
 	sel := ""
 	if f.PerProduct {
 		sel = " --product premium_monthly"
@@ -334,4 +445,22 @@ func example(f reports.Family) string {
 
   # Half a year merged into one result set, as JSON
   gplay reports ` + f.Name + sel + ` --since 2026-01 --until 2026-06 --dimension country --output json`
+}
+
+func accountWideExample(f reports.Family) string {
+	one := `  # One app's rows of one month
+  gplay reports ` + f.Name + ` --month 2026-09 --package com.example.app`
+	if f.BuyerLocation {
+		one += `
+
+  # The same, with the buyer's city, state and postcode
+  gplay reports ` + f.Name + ` --month 2026-09 --package com.example.app --include-buyer-location`
+	}
+	return `  # The latest month present, every app
+  gplay reports ` + f.Name + `
+
+` + one + `
+
+  # Half a year merged into one result set, as JSON
+  gplay reports ` + f.Name + ` --since 2026-01 --until 2026-06 --output json`
 }

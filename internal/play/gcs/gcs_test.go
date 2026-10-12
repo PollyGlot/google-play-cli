@@ -134,4 +134,7 @@ func TestFetchObjectLimit_callerChosenCap(t *testing.T) {
 	if !errors.As(err, &apiErr) || !strings.Contains(apiErr.Message, "exceeds") || !strings.Contains(apiErr.Message, "9 bytes") {
 		t.Fatalf("over the cap: err = %v, want a size-limit *api.Error naming the cap", err)
 	}
+	if !errors.Is(err, ErrTooLarge) || apiErr.ExitCode() != 30 {
+		t.Errorf("over the cap: errors.Is(ErrTooLarge) = %v, exit %d; want true and the unchanged 30", errors.Is(err, ErrTooLarge), apiErr.ExitCode())
+	}
 }

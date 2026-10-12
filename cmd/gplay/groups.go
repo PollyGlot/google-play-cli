@@ -582,6 +582,8 @@ func newReportsGroup(boot kernel.Boot) *cobra.Command {
 		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Crashes), token.StorageReadOnlyScope),
 		kernel.WithScope(reportsfamily.NewCommand(boot, reports.StorePerformance), token.StorageReadOnlyScope),
 		kernel.WithScope(reportsfamily.NewCommand(boot, reports.SubscriptionStats), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Earnings), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Sales), token.StorageReadOnlyScope),
 	))
 }
 

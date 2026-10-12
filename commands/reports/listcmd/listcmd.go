@@ -205,7 +205,8 @@ with that permission and the "Copy Cloud Storage URI" hint for --bucket.
 
 --family, --package, --since YYYY-MM and --until YYYY-MM narrow the
 inventory (each bound may come alone). Without --package every package is
-listed: the Project pin does not apply to an inventory.
+listed: the Project pin does not apply to an inventory. --package never hides
+the account-wide exports (earnings, sales): they hold every app's rows.
 
 --output json emits {"reports": [{"family", "package", "product", "month",
 "split", "object", "size", "updated"}]}; product is present on subscription
