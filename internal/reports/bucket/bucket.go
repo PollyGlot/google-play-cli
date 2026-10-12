@@ -64,7 +64,7 @@ func (e *AccessError) Error() string {
 	return "cannot read the reporting bucket " + e.Bucket +
 		": grant the service account the \"" + string(e.Permission) + "\" (global) permission in the Play Console, " +
 		"and if the bucket name differs, copy the authoritative gs:// URI from the Console's Download reports > " + e.Page + " page " +
-		"(\"Copy Cloud Storage URI\" button) and pass its suffix via --bucket: " + e.Cause.Error()
+		"(\"Copy Cloud Storage URI\" button) and pass the bucket name (the URI without gs://) via --bucket: " + e.Cause.Error()
 }
 
 func (e *AccessError) Unwrap() error { return e.Cause }

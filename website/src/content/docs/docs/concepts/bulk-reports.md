@@ -87,7 +87,8 @@ a **global** permission in the Play Console:
 A `403` names the missing permission. The bucket name defaults to
 `pubsite_prod_rev_<developerId>`; when your Console-issued URI differs, copy
 it with the **Copy Cloud Storage URI** button on the Console's *Download
-reports* page and pass its suffix with `--bucket`. `reports list` turns a
+reports* page and pass the bucket name, the URI without `gs://` (for
+example `pubsite_prod_rev_123456`), with `--bucket`. `reports list` turns a
 `403` on one family into a warning, so a service account without the
 financial grant still sees its statistics.
 
