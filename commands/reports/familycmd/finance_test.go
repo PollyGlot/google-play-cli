@@ -174,6 +174,21 @@ func TestRun_finance_packageWithoutPackageColumn(t *testing.T) {
 	}
 }
 
+// TestRun_finance_emptyExportWithPackageIsAnEmptyReport covers an export with
+// no header at all: there is no column to miss, so --package reads an empty
+// report (exit 0). Exit 2 stays for a header that names no package column.
+func TestRun_finance_emptyExportWithPackageIsAnEmptyReport(t *testing.T) {
+	b := financeBucket(t)
+	b.Objects[salesObject] = reportstest.Zip(t, "salesreport_202609.csv", nil)
+	got, _, _, err := runFinance(t, reports.Sales, b, Input{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(got, `"columns": []`) || !strings.Contains(got, `"rows": []`) {
+		t.Errorf("want an empty report:\n%s", got)
+	}
+}
+
 func TestRun_finance_forbiddenNamesViewFinancialData(t *testing.T) {
 	b := financeBucket(t)
 	b.Deny = map[string]int{"sales/": 403}

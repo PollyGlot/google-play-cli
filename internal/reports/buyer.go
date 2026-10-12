@@ -96,9 +96,13 @@ func headerWords(header string) []string {
 var packageKeys = []string{"packageName", "packageId", "productId"}
 
 // FilterPackage keeps the rows of one app, matched on the package column the
-// header declares (packageKeys), never on a fixed position. A report with no
-// such column cannot be filtered: NoPackageColumnError.
+// header declares (packageKeys), never on a fixed position. A report with a
+// header but no such column cannot be filtered: NoPackageColumnError. An empty
+// export (no header at all) has nothing to filter and stays empty.
 func FilterPackage(t Table, pkg string) (Table, error) {
+	if len(t.Columns) == 0 {
+		return t, nil
+	}
 	key := ""
 	for _, want := range packageKeys {
 		for _, c := range t.Columns {
