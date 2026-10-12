@@ -156,12 +156,13 @@ func readLimited(r io.Reader, name string, budget uint64, which string) ([]byte,
 	return data, nil
 }
 
-// Decode turns the bytes of one export of the family into a Table: a CSV
-// export is decoded as is; a ZIP export's .csv members are extracted under
-// ADR-0050's bounds, each decoded with its own encoding detected (by BOM),
-// and merged in archive order.
-func (f Family) Decode(raw []byte) (Table, error) {
-	if f.Container != ZIP {
+// Decode turns the bytes of one export of the family into a Table. The
+// object's extension picks the decoding, not the family: a .zip export's .csv
+// members are extracted under ADR-0050's bounds, each decoded with its own
+// encoding detected (by BOM), and merged in archive order; any other export
+// (.csv, which the account-wide name shape also accepts) is decoded as is.
+func (f Family) Decode(object string, raw []byte) (Table, error) {
+	if !strings.EqualFold(path.Ext(object), ".zip") {
 		return Decode(raw)
 	}
 	members, err := ExtractCSV(raw)

@@ -104,7 +104,7 @@ func TestFamilyDecode_zipMemberEncodingDetectedByBOM(t *testing.T) {
 		member{name: "salesreport_202609.csv", body: string(encodeUTF16(csv, binary.LittleEndian, true))},
 		member{name: "salesreport_202609_part2.csv", body: "\uFEFFOrder Number,Product ID,Country of Buyer\nGPA.3300-0002,com.example.pro,DE\n"},
 	)
-	tbl, err := Sales.Decode(raw)
+	tbl, err := Sales.Decode("sales/salesreport_202609.zip", raw)
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
@@ -115,14 +115,14 @@ func TestFamilyDecode_zipMemberEncodingDetectedByBOM(t *testing.T) {
 }
 
 func TestFamilyDecode_csvFamilyIsUnchanged(t *testing.T) {
-	tbl, err := Installs.Decode([]byte("Date,Daily Device Installs\n2026-09-01,4\n"))
+	tbl, err := Installs.Decode("stats/installs/installs_com.x_202609_overview.csv", []byte("Date,Daily Device Installs\n2026-09-01,4\n"))
 	if err != nil || len(tbl.Rows) != 1 || tbl.Rows[0]["dailyDeviceInstalls"] != "4" {
 		t.Fatalf("Decode = %+v, %v", tbl, err)
 	}
 }
 
 func TestFamilyDecode_zipRefusalPropagates(t *testing.T) {
-	_, err := Sales.Decode([]byte("not a zip"))
+	_, err := Sales.Decode("sales/salesreport_202609.ZIP", []byte("not a zip"))
 	var ae *RefusedError
 	if !errors.As(err, &ae) {
 		t.Fatalf("err = %v, want the RefusedError", err)

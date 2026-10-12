@@ -212,6 +212,22 @@ func TestRun_earnings_packageMatchingNoRowSaysSo(t *testing.T) {
 	}
 }
 
+// TestRun_finance_plainCSVExportIsDecodedDirectly covers a finance export
+// named .csv: the name shape accepts it, so it is read as the CSV it is, not
+// refused as "not a ZIP archive". The extension picks the decoding.
+func TestRun_finance_plainCSVExportIsDecodedDirectly(t *testing.T) {
+	b := reportstest.Bucket{Objects: map[string][]byte{
+		"sales/salesreport_202609.csv": reportstest.UTF16LE(salesSep),
+	}}
+	got, _, _, err := runFinance(t, reports.Sales, b, Input{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(got, `"orderNumber": "GPA.3300-0000-0000-00001"`) || strings.Contains(got, "com.example.other") {
+		t.Errorf("plain CSV export:\n%s", got)
+	}
+}
+
 func TestRun_finance_packageWithoutPackageColumn(t *testing.T) {
 	b := financeBucket(t)
 	b.Objects[salesObject] = reportstest.Zip(t, "salesreport_202609.csv", []byte("Order Number,Charged Amount\nGPA.1,1\n"))

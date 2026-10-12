@@ -142,7 +142,7 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		if err != nil {
 			return nil, reportbucket.Classify(bucket, f.Permission, f.Page, err)
 		}
-		t, err := f.Decode(raw)
+		t, err := f.Decode(o.Name, raw)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", o.Name, err)
 		}
