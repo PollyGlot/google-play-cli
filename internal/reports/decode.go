@@ -45,7 +45,11 @@ type Table struct {
 // An empty file or a file with only a header is an empty report, not an error.
 // A malformed CSV fails and returns no rows.
 func Decode(raw []byte) (Table, error) {
-	text := strings.TrimPrefix(decodeText(raw), "\uFEFF")
+	text, err := decodeText(raw)
+	if err != nil {
+		return Table{}, err
+	}
+	text = strings.TrimPrefix(text, "\uFEFF")
 	if strings.TrimSpace(text) == "" {
 		return Table{}, nil
 	}
@@ -138,29 +142,38 @@ func uniqueKey(key string, pos int, used map[string]bool) string {
 // decodeText transcodes a report to UTF-8 by its BOM. Without a BOM, a first
 // code unit holding one NUL byte means UTF-16 (a UTF-8 CSV never starts with a
 // NUL): the side of the NUL gives the byte order. Everything else is UTF-8,
-// passed through untouched. A trailing odd byte of UTF-16 is dropped.
-func decodeText(b []byte) string {
+// passed through untouched. UTF-16 with an odd number of bytes was cut mid
+// code unit: it is refused, never decoded with its last character dropped.
+func decodeText(b []byte) (string, error) {
 	switch {
 	case len(b) >= 2 && b[0] == 0xFF && b[1] == 0xFE:
 		return decodeUTF16(b[2:], binary.LittleEndian)
 	case len(b) >= 2 && b[0] == 0xFE && b[1] == 0xFF:
 		return decodeUTF16(b[2:], binary.BigEndian)
 	case len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF:
-		return string(b[3:])
+		return string(b[3:]), nil
 	case len(b) >= 2 && b[0] != 0 && b[1] == 0:
 		return decodeUTF16(b, binary.LittleEndian)
 	case len(b) >= 2 && b[0] == 0 && b[1] != 0:
 		return decodeUTF16(b, binary.BigEndian)
 	}
-	return string(b)
+	return string(b), nil
 }
 
-func decodeUTF16(b []byte, order binary.ByteOrder) string {
+func decodeUTF16(b []byte, order binary.ByteOrder) (string, error) {
+	if len(b)%2 != 0 {
+		return "", oddUTF16()
+	}
 	u16 := make([]uint16, 0, len(b)/2)
 	for i := 0; i+1 < len(b); i += 2 {
 		u16 = append(u16, order.Uint16(b[i:i+2]))
 	}
-	return string(utf16.Decode(u16))
+	return string(utf16.Decode(u16)), nil
+}
+
+// oddUTF16 is the refusal of a UTF-16 export cut mid code unit.
+func oddUTF16() error {
+	return &RefusedError{Reason: "UTF-16 export with an odd number of bytes: the file is cut mid character"}
 }
 
 // Merge joins the tables of several monthly exports, in the order given, into

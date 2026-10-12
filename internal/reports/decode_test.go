@@ -200,3 +200,23 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+// TestDecode_oddUTF16IsRefused covers a UTF-16 export cut mid code unit: the
+// last byte cannot be decoded, so the report is refused (exit 20) rather than
+// returned with its last amount silently cut short.
+func TestDecode_oddUTF16IsRefused(t *testing.T) {
+	for name, raw := range map[string][]byte{
+		"LE with BOM":    append(encodeUTF16("Amount\n12", binary.LittleEndian, true), '3'),
+		"BE with BOM":    append(encodeUTF16("Amount\n12", binary.BigEndian, true), 0),
+		"LE without BOM": append(encodeUTF16("Amount\n12", binary.LittleEndian, false), '3'),
+		"BE without BOM": append(encodeUTF16("Amount\n12", binary.BigEndian, false), 0),
+	} {
+		t.Run(name, func(t *testing.T) {
+			tbl, err := Decode(raw)
+			if tbl.Rows != nil || tbl.Columns != nil {
+				t.Errorf("table %+v returned alongside the refusal", tbl)
+			}
+			boundError(t, err, "UTF-16", "odd number of bytes")
+		})
+	}
+}
