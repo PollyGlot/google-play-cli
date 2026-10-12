@@ -21,7 +21,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
@@ -113,8 +112,9 @@ func FetchObject(ctx context.Context, hc *http.Client, bucket, object string) ([
 }
 
 // FetchObjectLimit is FetchObject with a caller-chosen cap on the bytes read:
-// an object larger than maxBytes fails with an *api.Error naming the cap
-// instead of being truncated.
+// an object larger than maxBytes fails with an *api.Error whose cause is
+// ErrTooLarge instead of being truncated (the message is FetchObject's, so a
+// caller that wants the cap named names it).
 func FetchObjectLimit(ctx context.Context, hc *http.Client, bucket, object string, maxBytes int64) ([]byte, error) {
 	u := StorageBase + "/" + url.PathEscape(bucket) + "/o/" + url.PathEscape(object) + "?alt=media"
 	return doGet(ctx, hc, opObjectsGet, bucket, u, maxBytes)
@@ -161,7 +161,7 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 			Operation:  op,
 			Resource:   bucketResource(bucket),
 			StatusCode: resp.StatusCode,
-			Message:    "response exceeds the size limit of " + strconv.FormatInt(maxRead, 10) + " bytes",
+			Message:    "response exceeds size limit",
 			Cause:      ErrTooLarge,
 		}
 	}

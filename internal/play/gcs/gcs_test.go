@@ -131,8 +131,10 @@ func TestFetchObjectLimit_callerChosenCap(t *testing.T) {
 	}
 	_, err := FetchObjectLimit(context.Background(), client(r), "b", "o.csv", 9)
 	var apiErr *api.Error
-	if !errors.As(err, &apiErr) || !strings.Contains(apiErr.Message, "exceeds") || !strings.Contains(apiErr.Message, "9 bytes") {
-		t.Fatalf("over the cap: err = %v, want a size-limit *api.Error naming the cap", err)
+	// The message is the one `reviews history` has always printed: the
+	// caller-chosen cap changes no text (the reports name the cap themselves).
+	if !errors.As(err, &apiErr) || apiErr.Message != "response exceeds size limit" {
+		t.Fatalf("over the cap: err = %v, want the unchanged size-limit *api.Error", err)
 	}
 	if !errors.Is(err, ErrTooLarge) || apiErr.ExitCode() != 30 {
 		t.Errorf("over the cap: errors.Is(ErrTooLarge) = %v, exit %d; want true and the unchanged 30", errors.Is(err, ErrTooLarge), apiErr.ExitCode())
