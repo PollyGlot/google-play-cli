@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted, amends [ADR-0026](./0026-maximal-admin-api-coverage.md)
+accepted, amends [ADR-0026](./0026-maximal-admin-api-coverage.md); amended by [ADR-0049](./0049-user-auth-only-apis-excluded-by-nature.md) (a second exclusion ground: no service account can call the method)
 
 ## Context
 
