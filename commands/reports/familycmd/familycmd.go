@@ -145,15 +145,18 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", o.Name, err)
 		}
+		// Each export is filtered on the package column its own header
+		// declares, before the merge: a range across a rename of that column
+		// (Product ID one month, Package Name the next) keeps every month.
+		if f.Scope == reports.AccountWide && pkg != "" {
+			if t, err = reports.FilterPackage(t, pkg); err != nil {
+				return nil, fmt.Errorf("%s: %w", o.Name, err)
+			}
+		}
 		tables = append(tables, t)
 		id.Objects = append(id.Objects, o.Name)
 	}
 	merged := reports.Merge(tables...)
-	if f.Scope == reports.AccountWide && pkg != "" {
-		if merged, err = reports.FilterPackage(merged, pkg); err != nil {
-			return nil, err
-		}
-	}
 	if f.BuyerLocation && !in.IncludeBuyerLocation {
 		var hidden []reports.Column
 		merged, hidden = reports.MaskBuyerLocation(merged)

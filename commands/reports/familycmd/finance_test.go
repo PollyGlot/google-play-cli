@@ -165,6 +165,30 @@ func TestRun_earnings_rangeMergesAndWarnsOnGaps(t *testing.T) {
 	}
 }
 
+// TestRun_earnings_packageFiltersEachMonthOnItsOwnColumn covers a range across
+// a rename of the package column: August names it Product id, September
+// Package Name. Each month is filtered on the column its own header declares,
+// so August's rows are not lost to the column September introduced.
+func TestRun_earnings_packageFiltersEachMonthOnItsOwnColumn(t *testing.T) {
+	b := financeBucket(t)
+	b.Objects["earnings/earnings_202609_1234567890123456789-1.zip"] = reportstest.Zip(t, "earnings_202609.csv", []byte(
+		"Description,Transaction Date,Package Name,Product id,Amount (Merchant Currency)\n"+
+			"GPA.3300-0000-0000-00001,Sep 2 2026,com.example.app,premium_monthly,4.99\n"+
+			"GPA.3300-0000-0000-00002,Sep 3 2026,com.example.other,coins_100,0.91\n"))
+	got, _, _, err := runFinance(t, reports.Earnings, b, Input{Since: "2026-08", Until: "2026-09", Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, want := range []string{"GPA.3300-0000-0000-00000", "GPA.3300-0000-0000-00001"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("--package dropped %s:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "com.example.other") {
+		t.Errorf("--package kept another app's row:\n%s", got)
+	}
+}
+
 func TestRun_finance_packageWithoutPackageColumn(t *testing.T) {
 	b := financeBucket(t)
 	b.Objects[salesObject] = reportstest.Zip(t, "salesreport_202609.csv", []byte("Order Number,Charged Amount\nGPA.1,1\n"))
