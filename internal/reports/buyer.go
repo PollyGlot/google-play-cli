@@ -31,9 +31,10 @@ func MaskBuyerLocation(t Table) (Table, []Column) {
 	if len(hidden) == 0 {
 		return t, nil
 	}
-	// A row reads its cells through its export's layout: the masked rows
-	// share their cells with t but point to a layout without the hidden keys,
-	// so the hidden cells are unreachable without a copy of every row's text.
+	// A row reads its cells through its export's layout: a masked row shares
+	// its cells with t but points to a copy of the layout without the hidden
+	// keys, so the hidden cells become unreachable and no row's text is
+	// copied.
 	masked := map[*layout]*layout{}
 	out.Rows = make([]Row, len(t.Rows))
 	for i, r := range t.Rows {
