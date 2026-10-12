@@ -163,9 +163,32 @@ func removedVerbError(group *cobra.Command, r Removal) *exit.UsageError {
 // such flag, and the user would read `unknown flag: --output` for a command
 // that does take it. When the flags failed on a group whose leading positional
 // arguments are a removed verb, the removed-verb error wins (ADR-0051).
+//
+// Without the raw argv (see SetArgs) it only sees the positionals pflag read
+// before the failing flag, so a flag typed before the verb hides it.
 func FlagErrorFunc(cmd *cobra.Command, err error) error {
+	return flagError(cmd, err, nil)
+}
+
+// SetArgs hands argv to root, like cobra's own SetArgs, and keeps it for the
+// flag-error func: pflag stops on the first unknown flag, so in
+// `gplay games achievements --output json update <id>` the removed verb after
+// `--output` only exists in argv. main and the tests that drive the whole tree
+// call it instead of root.SetArgs.
+func SetArgs(root *cobra.Command, argv []string) {
+	root.SetArgs(argv)
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return flagError(cmd, err, argv)
+	})
+}
+
+func flagError(cmd *cobra.Command, err error, argv []string) error {
 	if cmd.HasSubCommands() {
-		if r, ok := removedVerb(cmd, cmd.Flags().Args()); ok {
+		args := cmd.Flags().Args()
+		if argv != nil {
+			args = positionalsAfter(cmd, argv)
+		}
+		if r, ok := removedVerb(cmd, args); ok {
 			return removedVerbError(cmd, r)
 		}
 	}
@@ -173,6 +196,44 @@ func FlagErrorFunc(cmd *cobra.Command, err error) error {
 		return removedFlagError(cmd, err, r)
 	}
 	return exit.Usagef("%s", err)
+}
+
+// positionalsAfter reads argv the way cobra's Find did to resolve cmd, and
+// returns the positional tokens that follow cmd's path. Like cobra, it treats a
+// "--flag" or "-f" without "=" as taking the next token unless the flag is a
+// known boolean, so an unknown flag eats its value (`--output json`) and that
+// value is never mistaken for a verb; and it stops at "--". The first
+// positionals are cmd's path (aliases included, hence counted, not compared).
+//
+// Limit (ADR-0051): an unknown flag that takes no value, typed before the
+// removed verb, eats the verb as cobra does, so that call keeps pflag's message.
+func positionalsAfter(cmd *cobra.Command, argv []string) []string {
+	flags := cmd.Flags()
+	var pos []string
+	for i := 0; i < len(argv); i++ {
+		s := argv[i]
+		switch {
+		case s == "--":
+			i = len(argv)
+		case strings.HasPrefix(s, "--") && !strings.Contains(s, "="):
+			if f := flags.Lookup(s[2:]); f == nil || f.NoOptDefVal == "" {
+				i++
+			}
+		case len(s) == 2 && s[0] == '-':
+			if f := flags.ShorthandLookup(s[1:]); f == nil || f.NoOptDefVal == "" {
+				i++
+			}
+		case s == "" || strings.HasPrefix(s, "-"):
+			// --flag=value, a shorthand group, or a bare "-": no separate value.
+		default:
+			pos = append(pos, s)
+		}
+	}
+	depth := len(strings.Fields(tablePath(cmd)))
+	if len(pos) < depth {
+		return nil
+	}
+	return pos[depth:]
 }
 
 // removedFlag looks up the unknown long flag err reports on cmd, the command

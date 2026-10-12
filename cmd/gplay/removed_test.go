@@ -55,6 +55,51 @@ func TestRemovedVerb_beforeAGroupUnknownFlag(t *testing.T) {
 	}
 }
 
+// TestRemovedVerb_afterAGroupUnknownFlag: the same quirk with the flag typed
+// before the removed verb. pflag stops on `--output` before it reaches the
+// verb, so the hint comes from the raw argv that follows the group's path,
+// read the way cobra resolved that path (a known valued flag and an unknown
+// one both consume the next token).
+func TestRemovedVerb_afterAGroupUnknownFlag(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+	for _, tc := range []struct {
+		argv []string
+		use  string
+	}{
+		{[]string{"games", "achievements", "--output", "json", "update", "x"}, "gplay games achievements set"},
+		{[]string{"games", "achievements", "--output=json", "update", "x"}, "gplay games achievements set"},
+		{[]string{"appstore", "upload", "--output", "json", "apk", "app.apk"}, "gplay appstore apk upload"},
+		{[]string{"--account", "ci", "games", "--output", "json", "achievements", "update", "x"}, "gplay games achievements set"},
+	} {
+		stdout, code, err := runLikeMain(t, tc.argv...)
+		if code != 2 {
+			t.Fatalf("%v: exit code = %d, want 2; err=%v", tc.argv, code, err)
+		}
+		if !strings.Contains(err.Error(), "use `"+tc.use+"`") {
+			t.Errorf("%v: message = %q, want the removed-verb hint", tc.argv, err.Error())
+		}
+		if d := envelopeOf(t, stdout); d.Replacement == nil || d.Replacement.Use != tc.use {
+			t.Errorf("%v: envelope replacement = %+v, want use %s", tc.argv, d.Replacement, tc.use)
+		}
+	}
+
+	// No false positive: the value of a flag is not a verb, and an unknown flag
+	// before a live verb or a never-shipped one keeps pflag's own message.
+	for _, argv := range [][]string{
+		{"games", "achievements", "--output", "update", "x"},
+		{"games", "achievements", "--output", "json", "bogus"},
+		{"apps", "--bogus", "json"},
+	} {
+		stdout, code, err := runLikeMain(t, argv...)
+		if code != 2 {
+			t.Fatalf("%v: exit code = %d, want 2; err=%v", argv, code, err)
+		}
+		if strings.Contains(err.Error(), "removed in") || strings.Contains(stdout, "replacement") {
+			t.Errorf("%v: err = %q, stdout = %s, want no replacement", argv, err.Error(), stdout)
+		}
+	}
+}
+
 // TestRemovedVerb_precedenceOverDidYouMean: on an exact removed path the table
 // replaces the Levenshtein suggestion (`apps info` used to suggest `init`); a
 // live typo keeps the suggestion and gets no replacement.

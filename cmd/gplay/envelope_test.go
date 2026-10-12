@@ -29,7 +29,7 @@ func runLikeMain(t *testing.T, args ...string) (string, int, error) {
 		KeystoreRoot: filepath.Join(dir, "accounts"),
 	})
 	var stdout bytes.Buffer
-	root.SetArgs(args)
+	kernel.SetArgs(root, args)
 	root.SetOut(&stdout)
 	root.SetErr(io.Discard)
 	var failure error

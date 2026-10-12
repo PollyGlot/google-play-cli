@@ -74,6 +74,9 @@ func main() {
 	// fails, when nothing else reached stdout (ADR-0023, #593).
 	envelope := func(err error) { writeFailureEnvelope(stdout, stdout.n > 0, os.Args[1:], err) }
 	prepareCompletion(root, os.Args[1:])
+	// The argv cobra would read anyway, also kept for the flag-error func: a
+	// flag typed before a removed verb hides that verb from pflag (ADR-0051).
+	kernel.SetArgs(root, os.Args[1:])
 	os.Exit(execute(context.Background(), root, stderr, envelope))
 }
 

@@ -36,7 +36,16 @@ information to recover lived only in the website's migration guide.
    command (the root included), and `kernel.FlagErrorFunc`, the root's
    flag-error func: when a flag fails to parse on a **group** whose leading
    positional arguments are a removed verb, the removed-verb error wins over the
-   flag error; when an unknown long flag fails on a **leaf**, the func looks up
+   flag error. The flag may sit before the verb (`gplay games achievements
+   --output json update <id>`): pflag stops on it and never reads the verb, so
+   the func reads the positionals of the raw argv (handed over by
+   `kernel.SetArgs`) that follow the group's path, skipping flags the way
+   cobra's own path resolution does: a valued flag, known or unknown, consumes
+   the next token, so a flag value is never taken for a verb. The remaining
+   limit is cobra's: an unknown flag that takes no value, typed before the
+   removed verb (`--bogus update`), swallows the verb, and the call keeps
+   pflag's `unknown flag` message. When an unknown long flag fails on a
+   **leaf**, the func looks up
    a `flag` row for that exact leaf. pflag names the flag the same way for
    `--to 0.1` and `--to=0.1`; no removed flag had a shorthand, so a shorthand
    error never matches.
