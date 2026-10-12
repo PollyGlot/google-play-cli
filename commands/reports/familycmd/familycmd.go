@@ -132,6 +132,7 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 	for _, m := range sel.Months {
 		id.Months = append(id.Months, reports.DisplayMonth(m))
 	}
+	read, kept := 0, 0 // rows before and after the --package filter
 	for _, o := range sel.Objects {
 		raw, err := gcs.FetchObjectLimit(rc.Ctx, hc, bucket, o.Name, f.MaxObjectBytes)
 		if errors.Is(err, gcs.ErrTooLarge) {
@@ -149,12 +150,19 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		// declares, before the merge: a range across a rename of that column
 		// (Product ID one month, Package Name the next) keeps every month.
 		if f.Scope == reports.AccountWide && pkg != "" {
+			read += len(t.Rows)
 			if t, err = reports.FilterPackage(t, pkg); err != nil {
 				return nil, fmt.Errorf("%s: %w", o.Name, err)
 			}
+			kept += len(t.Rows)
 		}
 		tables = append(tables, t)
 		id.Objects = append(id.Objects, o.Name)
+	}
+	if read > 0 && kept == 0 {
+		// An empty result is a valid answer (the app sold nothing), but it is
+		// also what a typo in --package gives: say how much was read.
+		rc.Notef("0 of %d rows matched --package %s", read, pkg)
 	}
 	merged := reports.Merge(tables...)
 	if f.BuyerLocation && !in.IncludeBuyerLocation {

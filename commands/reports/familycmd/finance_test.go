@@ -189,6 +189,29 @@ func TestRun_earnings_packageFiltersEachMonthOnItsOwnColumn(t *testing.T) {
 	}
 }
 
+// TestRun_earnings_packageMatchingNoRowSaysSo covers a --package that keeps
+// none of the rows a report holds (a typo, an app with no sale): the empty
+// result is still exit 0, and a NOTE says how many rows were read.
+func TestRun_earnings_packageMatchingNoRowSaysSo(t *testing.T) {
+	got, _, stderr, err := runFinance(t, reports.Earnings, financeBucket(t), Input{Month: "2026-09", Package: "com.example.typo", IncludeBuyerLocation: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(got, `"rows": []`) {
+		t.Errorf("want no row:\n%s", got)
+	}
+	if want := "NOTE: 0 of 3 rows matched --package com.example.typo\n"; stderr != want {
+		t.Errorf("stderr = %q, want %q", stderr, want)
+	}
+	// An export with no row at all: nothing was dropped, so no note.
+	b := financeBucket(t)
+	b.Objects[earningsObject] = reportstest.Zip(t, "earnings_202609.csv", []byte("Description,Product id\n"))
+	_, _, stderr, err = runFinance(t, reports.Earnings, b, Input{Month: "2026-09", Package: "com.example.typo"})
+	if err != nil || stderr != "" {
+		t.Errorf("empty export: err %v, stderr %q; want no note", err, stderr)
+	}
+}
+
 func TestRun_finance_packageWithoutPackageColumn(t *testing.T) {
 	b := financeBucket(t)
 	b.Objects[salesObject] = reportstest.Zip(t, "salesreport_202609.csv", []byte("Order Number,Charged Amount\nGPA.1,1\n"))
