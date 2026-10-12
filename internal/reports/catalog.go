@@ -311,6 +311,10 @@ func (f Family) Objects(listing []gcs.Object, pkg string) (objs []Object, skippe
 	return objs, skipped
 }
 
+// monthRE is the YYYYMM segment of an object name: a calendar month (01 to
+// 12), so a name like _202613_ is skipped rather than read as the latest month.
+const monthRE = `(\d{4}(?:0[1-9]|1[0-2]))`
+
 // nameRE matches the family's object names. For a per-package family the
 // greedy package group stops at the last _YYYYMM, so a package holding
 // underscores still parses. A PerProduct family has two free segments before
@@ -319,16 +323,16 @@ func (f Family) Objects(listing []gcs.Object, pkg string) (objs []Object, skippe
 // then stops at the last _YYYYMM, like the package of the other families.
 func (f Family) nameRE(pkg string) *regexp.Regexp {
 	if f.Scope == AccountWide {
-		return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + `(\d{6})(?:_([^/]+?))?\.(?i:csv|zip)$`)
+		return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + monthRE + `(?:_([^/]+?))?\.(?i:csv|zip)$`)
 	}
 	if f.PerProduct {
 		pkgRE := `([^_/]+)`
 		if pkg != "" {
 			pkgRE = `(` + regexp.QuoteMeta(pkg) + `)`
 		}
-		return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + pkgRE + `_([^/]+)_(\d{6})(?:_([^/]+?))?\.(?i:csv)$`)
+		return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + pkgRE + `_([^/]+)_` + monthRE + `(?:_([^/]+?))?\.(?i:csv)$`)
 	}
-	return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + `([^/]+)_(\d{6})(?:_([^/]+?))?\.(?i:csv)$`)
+	return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + `([^/]+)_` + monthRE + `(?:_([^/]+?))?\.(?i:csv)$`)
 }
 
 // ErrNoReport means the bucket holds no export matching the request: the

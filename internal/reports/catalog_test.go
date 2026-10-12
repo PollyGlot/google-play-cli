@@ -275,3 +275,31 @@ func TestSelect_noDefaultSplitFamilyNamesThePresentOnes(t *testing.T) {
 		t.Errorf("message = %q", msg)
 	}
 }
+
+// TestObjects_monthOutsideTheCalendarIsNotAnExport covers a name whose six
+// digits are no month (13, 00): it is skipped, never read as the latest month
+// present, whatever the family's name shape.
+func TestObjects_monthOutsideTheCalendarIsNotAnExport(t *testing.T) {
+	for _, tc := range []struct {
+		f     Family
+		pkg   string
+		valid string
+		bad   []string
+	}{
+		{Installs, "com.x", "stats/installs/installs_com.x_202609_overview.csv",
+			[]string{"stats/installs/installs_com.x_202613_overview.csv", "stats/installs/installs_com.x_202600_overview.csv"}},
+		{SubscriptionStats, "com.x", "financial-stats/subscriptions/subscriptions_com.x_gold_202609_country.csv",
+			[]string{"financial-stats/subscriptions/subscriptions_com.x_gold_202613_country.csv"}},
+		{Earnings, "", "earnings/earnings_202609_123-1.zip",
+			[]string{"earnings/earnings_202613_123-1.zip", "earnings/earnings_202600.zip"}},
+	} {
+		objs, skipped := tc.f.Objects(listing(append([]string{tc.valid}, tc.bad...)...), tc.pkg)
+		if len(objs) != 1 || objs[0].Name != tc.valid || len(skipped) != len(tc.bad) {
+			t.Errorf("%s: objects = %+v, skipped = %v; want only %s", tc.f.Name, objs, skipped, tc.valid)
+		}
+		sel, err := tc.f.Select(objs, nil, tc.f.DefaultSplit)
+		if err != nil || len(sel.Months) != 1 || sel.Months[0] != "202609" {
+			t.Errorf("%s: latest month = %v (%v), want 202609", tc.f.Name, sel.Months, err)
+		}
+	}
+}
