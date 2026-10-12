@@ -46,7 +46,10 @@ Two facts constrain the answer:
 5. **Edits.** For a resource inside an Edit the read runs in the same Edit as
    the create, so a resource staged earlier in an explicit Edit counts as
    existing. A skip in an implicit Edit discards the Edit instead of committing
-   it (`edits.ErrNothingToCommit`); in an explicit Edit it adds nothing.
+   it (`edits.ErrNothingToCommit`); if that discard fails, the skip reports
+   the Edit left open with its ID (a dangling-Edit error, the DELETE's exit
+   code) rather than exit 0. In an explicit Edit it adds nothing, and a commit
+   flag passed alongside is not reported as staged.
 6. **`--dry-run` stays offline.** The preview reports a non-default policy but
    does not resolve existence.
 7. **Scope rule for adopters.** A create may offer `--if-exists` only when the
