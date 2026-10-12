@@ -62,6 +62,7 @@ LABELS=(
   "area:games|5319e7|Play Games Services config: achievements and leaderboards (gamesConfiguration)"
   "area:site|c5def5|Public website (landing and docs): Astro/Starlight, served from the install Worker (ADR-0025)"
   "area:appstore|0e8a16|App store hosted apps (alternative distribution / DMA): appstoreappsreview"
+  "area:reports|5319e7|Bulk reports: monthly statistics and financial exports from the Reporting bucket (GCS)"
 
   # Priority
   "priority:high|b60205|Drop everything"
