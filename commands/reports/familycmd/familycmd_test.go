@@ -189,7 +189,7 @@ func TestRun_rangeMergesWithColumnUnionAndWarnsOnGaps(t *testing.T) {
 	}
 }
 
-func TestRun_noReport_usageNamesPackageFamilyBucket(t *testing.T) {
+func TestRun_noReport_notFoundNamesPackageFamilyBucket(t *testing.T) {
 	for name, in := range map[string]Input{
 		"empty bucket":   {Package: "com.other.app"},
 		"month absent":   {Package: pkg, Month: "2025-01"},
@@ -197,8 +197,8 @@ func TestRun_noReport_usageNamesPackageFamilyBucket(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, _, _, err := run(t, installsBucket(), in)
-			if code := exitCodeOf(t, err); code != 2 {
-				t.Fatalf("exit = %d, want 2 (err: %v)", code, err)
+			if code := exitCodeOf(t, err); code != 30 {
+				t.Fatalf("exit = %d, want 30 (err: %v)", code, err)
 			}
 			for _, want := range []string{in.Package, "installs", "pubsite_prod_rev_123456"} {
 				if !strings.Contains(err.Error(), want) {

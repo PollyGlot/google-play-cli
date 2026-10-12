@@ -147,9 +147,10 @@ func requestedMonths(in Input) ([]string, error) {
 }
 
 // noReport is the "nothing to read" error: the bucket answered, but holds no
-// export of the family for the package (and months) asked. ADR-0050 makes it
-// a usage error (exit 2): the fix is in the flags (--package, --month,
-// --bucket) or in waiting for Play to publish.
+// export of the family for the package (and months) asked. ADR-0050 gives it
+// exit 30 like `reviews history`: the report is absent, the command line is
+// well-formed (the fix is in --package, --month, --bucket, or in waiting for
+// Play to publish).
 func noReport(f reports.Family, pkg, bucket string, months []string) error {
 	when := ""
 	switch len(months) {
@@ -159,10 +160,17 @@ func noReport(f reports.Family, pkg, bucket string, months []string) error {
 	default:
 		when = " for " + reports.DisplayMonth(months[0]) + ".." + reports.DisplayMonth(months[len(months)-1])
 	}
-	return exit.Usagef("no %s report for %s%s in bucket %s: Play publishes a month a few days after it ends; "+
+	return &noReportError{msg: fmt.Sprintf("no %s report for %s%s in bucket %s: Play publishes a month a few days after it ends; "+
 		"check --package, pick a published month (gplay reports list --family %s --package %s), "+
-		"or pass --bucket if the derived name is wrong", f.Name, pkg, when, bucket, f.Name, pkg)
+		"or pass --bucket if the derived name is wrong", f.Name, pkg, when, bucket, f.Name, pkg)}
 }
+
+// noReportError carries exit 30 (an absent resource), the code `reviews
+// history` gives the same situation.
+type noReportError struct{ msg string }
+
+func (e *noReportError) Error() string { return e.msg }
+func (e *noReportError) ExitCode() int { return 30 }
 
 // tableColumns resolves --columns against the report's own columns. Without
 // it, the table shows every column but the family's hidden ones, so a column

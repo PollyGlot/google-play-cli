@@ -107,12 +107,11 @@ permission. Three findings shape the design:
    dimensions present. A month of a range with no export is skipped with a
    stderr warning.
 
-7. **"No report" is a usage error (exit 2)** naming the package, the family
-   and the bucket: the listing succeeded, so the fix is in the flags
-   (`--package`, `--month`, `--bucket`) or in waiting for Play to publish. A
-   bad `--dimension` or `--columns` is exit 2 as well. `reviews history` keeps
-   its exit 30 for the same situation: changing a shipped exit code is not
-   this decision's to make.
+7. **"No report" is exit 30 (absent resource)** naming the package, the
+   family and the bucket, the code `reviews history` gives the same
+   situation: the command line is well-formed, the export is not there (the
+   fix is in `--package`, `--month`, `--bucket`, or in waiting for Play to
+   publish). A bad `--dimension` or `--columns` is a usage error (exit 2).
 
 8. **A 403 names the permission of the family asked.** The access error
    names "View app information" (global) for statistics, "View financial

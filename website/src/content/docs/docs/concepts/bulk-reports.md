@@ -65,7 +65,7 @@ financial grant still sees its statistics.
 Statistics cover daily rows, published as a monthly file 3 to 7 days after
 the month ends. Earnings land around the 5th of the following month, and
 estimated sales are low latency. A month that is not published yet is
-"no report": exit `2`, with a message naming the package, the family and the
+"no report": exit `30`, with a message naming the package, the family and the
 bucket. Inside a range, a missing month is skipped with a warning.
 
 ## Output
