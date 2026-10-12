@@ -209,7 +209,8 @@ func flagError(cmd *cobra.Command, err error, argv []string) error {
 // returns the positional tokens that follow cmd's path. Like cobra, it treats a
 // "--flag" or "-f" without "=" as taking the next token unless the flag is a
 // known boolean, so an unknown flag eats its value (`--output json`) and that
-// value is never mistaken for a verb; and it stops at "--". The first
+// value is never mistaken for a verb; and, like pflag, it reads everything
+// after "--" and a bare "-" as positionals. The first
 // positionals are cmd's path (aliases included, hence counted, not compared).
 //
 // Limit (ADR-0051): an unknown flag that takes no value, typed before the
@@ -221,6 +222,8 @@ func positionalsAfter(cmd *cobra.Command, argv []string) []string {
 		s := argv[i]
 		switch {
 		case s == "--":
+			// pflag hands every token after "--" over as a positional.
+			pos = append(pos, argv[i+1:]...)
 			i = len(argv)
 		case strings.HasPrefix(s, "--") && !strings.Contains(s, "="):
 			if f := flags.Lookup(s[2:]); f == nil || f.NoOptDefVal == "" {
@@ -230,8 +233,11 @@ func positionalsAfter(cmd *cobra.Command, argv []string) []string {
 			if f := flags.ShorthandLookup(s[1:]); f == nil || f.NoOptDefVal == "" {
 				i++
 			}
+		case s == "-":
+			// pflag reads a bare "-" as a positional (stdin, by convention).
+			pos = append(pos, s)
 		case s == "" || strings.HasPrefix(s, "-"):
-			// --flag=value, a shorthand group, or a bare "-": no separate value.
+			// --flag=value or a shorthand group: no separate value.
 		default:
 			pos = append(pos, s)
 		}

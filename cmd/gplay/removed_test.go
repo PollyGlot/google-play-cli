@@ -71,6 +71,8 @@ func TestRemovedVerb_afterAGroupUnknownFlag(t *testing.T) {
 		{[]string{"games", "achievements", "--output=json", "update", "x"}, "gplay games achievements set"},
 		{[]string{"appstore", "upload", "--output", "json", "apk", "app.apk"}, "gplay appstore apk upload"},
 		{[]string{"--account", "ci", "games", "--output", "json", "achievements", "update", "x"}, "gplay games achievements set"},
+		// "--" ends flag parsing: what follows is positional, verb included.
+		{[]string{"games", "achievements", "--output", "json", "--", "update", "x"}, "gplay games achievements set"},
 	} {
 		stdout, code, err := runLikeMain(t, tc.argv...)
 		if code != 2 {
@@ -90,6 +92,8 @@ func TestRemovedVerb_afterAGroupUnknownFlag(t *testing.T) {
 		{"games", "achievements", "--output", "update", "x"},
 		{"games", "achievements", "--output", "json", "bogus"},
 		{"apps", "--bogus", "json"},
+		// A bare "-" is a positional (the unknown verb), not a flag.
+		{"games", "achievements", "-", "update", "--output", "json"},
 	} {
 		stdout, code, err := runLikeMain(t, argv...)
 		if code != 2 {
