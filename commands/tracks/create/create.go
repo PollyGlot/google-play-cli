@@ -232,7 +232,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		raw     json.RawMessage
 		skipped bool
 	)
-	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.For(rc, explicitEditID)}, func(editID string) error {
+	// Commit takes the flags verbatim rather than through Commit.For: WithEdit
+	// ignores Commit in explicit mode, and the "ignored: staged in open edit"
+	// warning waits for the create below, since a skip stages nothing.
+	if err := edits.WithEdit(rc.Ctx, httpClient, pkg, edits.Options{KeepOnFailure: in.KeepEditOnFailure, ExplicitEditID: explicitEditID, Commit: in.Commit.Options()}, func(editID string) error {
 		// ADR-0050: existence is read in this same Edit (so a track created
 		// earlier in an explicit Edit counts), never inferred from the
 		// create's 400/409, whose meaning the API does not document. Only a
@@ -247,6 +250,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 				return e
 			}
 		}
+		in.Commit.WarnStaged(rc, explicitEditID)
 		t, r, e := tracks.Create(rc.Ctx, httpClient, pkg, editID, in.Name, formFactor)
 		if e != nil {
 			return e

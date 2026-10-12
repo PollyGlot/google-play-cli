@@ -157,6 +157,41 @@ func TestRun_ifExistsSkip_explicitEdit_readsInPinUntouched(t *testing.T) {
 	assertCalls(t, api.calls(), "GET "+editsBase+"/edit-pinned/tracks/qa-team")
 }
 
+// A commit flag passed alongside an explicit Edit is only reported as
+// "staged in open edit" when the create was actually staged: a skipped create
+// stages nothing, so the warning would lie.
+func TestRun_ifExistsSkip_explicitEdit_commitFlagWarnsOnlyWhenStaged(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		getStatus int
+		wantWarn  bool
+	}{
+		{"existing track, skipped", 200, false},
+		{"absent track, staged", 0, true},
+	} {
+		api := &ifExistsAPI{getStatus: tc.getStatus, getResp: existingTrack}
+		rc, _ := newRC(t, api.serve(t))
+		fsys := configtest.NewMemFS("/repo", "/home")
+		if err := editpin.Write(fsys, "/repo/.gplay", "com.example.app", "edit-pinned"); err != nil {
+			t.Fatalf("editpin.Write: %v", err)
+		}
+		rc.FS = fsys
+		rc.Resolved = &config.Resolved{ProjectSharedPath: "/repo/.gplay/config.json"}
+		var stderr bytes.Buffer
+		rc.Stderr = &stderr
+
+		in := create.Input{Package: "com.example.app", Name: "qa-team", IfExists: ifexists.Skip}
+		in.Commit.ChangesNotSentForReview = true
+		if _, err := create.Run(rc, in); err != nil {
+			t.Fatalf("%s: Run: %v", tc.name, err)
+		}
+		gotWarn := strings.Contains(stderr.String(), "--changes-not-sent-for-review ignored: this change is staged in open edit edit-pinned")
+		if gotWarn != tc.wantWarn {
+			t.Errorf("%s: staged warning = %v, want %v; stderr = %q", tc.name, gotWarn, tc.wantWarn, stderr.String())
+		}
+	}
+}
+
 // A read that fails for another reason than 404 is surfaced and no create is
 // sent: existence is never guessed.
 func TestRun_ifExistsSkip_readFails_surfacedNoCreate(t *testing.T) {
