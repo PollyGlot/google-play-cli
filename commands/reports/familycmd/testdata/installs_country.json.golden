@@ -1,0 +1,75 @@
+{
+  "report": {
+    "family": "installs",
+    "package": "com.example.app",
+    "months": [
+      "2026-09"
+    ],
+    "split": "country",
+    "objects": [
+      "stats/installs/installs_com.example.app_202609_country.csv"
+    ]
+  },
+  "columns": [
+    {
+      "key": "date",
+      "header": "Date"
+    },
+    {
+      "key": "packageName",
+      "header": "Package Name"
+    },
+    {
+      "key": "country",
+      "header": "Country"
+    },
+    {
+      "key": "dailyDeviceInstalls",
+      "header": "Daily Device Installs"
+    },
+    {
+      "key": "dailyDeviceUninstalls",
+      "header": "Daily Device Uninstalls"
+    },
+    {
+      "key": "dailyUserInstalls",
+      "header": "Daily User Installs"
+    },
+    {
+      "key": "dailyUserUninstalls",
+      "header": "Daily User Uninstalls"
+    },
+    {
+      "key": "activeDeviceInstalls",
+      "header": "Active Device Installs"
+    },
+    {
+      "key": "installEvents",
+      "header": "Install events"
+    }
+  ],
+  "rows": [
+    {
+      "date": "2026-09-01",
+      "packageName": "com.example.app",
+      "country": "FR",
+      "dailyDeviceInstalls": "12",
+      "dailyDeviceUninstalls": "3",
+      "dailyUserInstalls": "11",
+      "dailyUserUninstalls": "2",
+      "activeDeviceInstalls": "1840",
+      "installEvents": "14"
+    },
+    {
+      "date": "2026-09-01",
+      "packageName": "com.example.app",
+      "country": "DE",
+      "dailyDeviceInstalls": "7",
+      "dailyDeviceUninstalls": "0",
+      "dailyUserInstalls": "7",
+      "dailyUserUninstalls": "0",
+      "activeDeviceInstalls": "912",
+      "installEvents": "8"
+    }
+  ]
+}

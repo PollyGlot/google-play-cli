@@ -77,6 +77,8 @@ var flagVocabulary = map[string]string{
 	"month":      "one calendar month to read (YYYY-MM), not a window",
 	"period":     "aggregation period",
 	"by":         "dimension to slice a timeline by",
+	"dimension":  "which per-dimension file of a Bulk report to read (country, device, ...), not a grouping",
+	"family":     "Bulk report family to keep in an inventory",
 	"dimensions": "dimensions of a raw metric query",
 	"metrics":    "metrics of a raw metric query",
 	"check":      "check to run (repeatable)",
@@ -240,6 +242,9 @@ var verbPathExceptions = map[string]string{
 	"vitals errors counts":   "ADR-0027",
 	"vitals errors issues":   "ADR-0027",
 	"vitals errors reports":  "ADR-0027",
+	// Bulk report families (ADR-0050): each leaf is named after the export
+	// it reads, like the vitals presets; there is no resource to view.
+	"reports installs": "ADR-0050",
 }
 
 // verbDrift lists experimental leaves whose verb contradicts ADR-0019 (`set`

@@ -1,0 +1,39 @@
+{
+  "report": {
+    "family": "installs",
+    "package": "com.example.app",
+    "months": [
+      "2026-09"
+    ],
+    "split": "country",
+    "objects": [
+      "stats/installs/installs_com.example.app_202609_country.csv"
+    ]
+  },
+  "columns": [
+    {
+      "key": "date",
+      "header": "Date"
+    },
+    {
+      "key": "country",
+      "header": "Country"
+    },
+    {
+      "key": "dailyDeviceInstalls",
+      "header": "Daily Device Installs"
+    },
+    {
+      "key": "brandNewMetric7Day",
+      "header": "Brand New Metric (7-day)"
+    }
+  ],
+  "rows": [
+    {
+      "date": "2026-09-01",
+      "country": "FR",
+      "dailyDeviceInstalls": "12",
+      "brandNewMetric7Day": "00042"
+    }
+  ]
+}

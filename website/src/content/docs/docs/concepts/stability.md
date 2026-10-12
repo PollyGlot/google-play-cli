@@ -71,6 +71,7 @@ Generated from the binary's own command registry, so it matches what
 - `gplay releases expansion-files`: Manage legacy OBB expansion files (superseded by Play Asset Delivery)
 - `gplay releases generated`: List and download the APKs Play generates from an AAB
 - `gplay releases sharing`: Upload builds to Internal App Sharing (private shareable links)
+- `gplay reports`: Read the monthly Bulk reports (installs, ...) from the Reporting bucket
 - `gplay reviews history`: Read the full review history for a package from the monthly CSV reports
 - `gplay schema`: Introspect the Android Publisher API surface offline
 - `gplay signing`: Manage Play App Signing with a self-hosted Cloud KMS key (enterprise key custody)
