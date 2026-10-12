@@ -317,8 +317,8 @@ func TestRun_earnings_budgetSpansTheRange(t *testing.T) {
 		t.Fatalf("one month under the production budget: %v", err)
 	}
 	defer func(l reports.Limits) { limits = l }(limits)
-	// August holds 2 rows of 6 cells, September 4 of 13 (header included):
-	// 16 and 60 cells, a row counting its cells plus two.
+	// August is a header and a row of 6 cells, September a header and three
+	// rows of 13: 16 and 60 cells, a row counting as its cells plus two.
 	limits = reports.Limits{Bytes: 1 << 20, Cells: 70}
 	if _, _, _, err := runFinance(t, reports.Earnings, financeBucket(t), Input{Month: "2026-09"}); err != nil {
 		t.Fatalf("September alone (60 cells): %v", err)

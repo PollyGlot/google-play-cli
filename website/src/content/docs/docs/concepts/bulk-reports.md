@@ -56,15 +56,21 @@ Two families differ:
   `premium_monthly_v2` is never cut short.
 - **Earnings and estimated sales** cover every app of the developer account,
   one ZIP per month holding the CSV, with no dimension. `--package` keeps the
-  rows of one app, matched on the package column of the CSV header (the
-  finance reports call it *Product ID*); the Project pin does not apply, so
-  without `--package` you get every app. The earnings file name may carry a
+  rows of one app, matched on the package column of each file's own CSV
+  header (*Package Name*, *Package ID*, or *Product ID* as the finance
+  reports call it), so a range across a rename of that column keeps every
+  month. The Project pin does not apply, so without `--package` you get every
+  app. When `--package` keeps none of the rows read, a stderr note says so
+  (`0 of N rows matched --package X`) and the exit stays `0`; a file with no
+  header at all is an empty report. The earnings file name may carry a
   suffix after the month: gplay reads every file of the month, whatever its
-  suffix.
+  suffix. A file named `.csv` instead of `.zip` is read as the CSV it is.
 
 `gplay reports list` shows every family, month and dimension the service
 account can see, with each file's size and last update, and the product id
-of each subscription statistics file.
+of each subscription statistics file. The dimension column is for the
+per-package families only: an earnings name suffix is no dimension, and the
+object name shows it.
 
 ## Permissions and the bucket
 
@@ -93,6 +99,11 @@ estimated sales are low latency. A month that is not published yet is
 "no report": exit `30`, with a message naming the family, the package (for a
 per-package family) and the bucket. Inside a range, a missing month is
 skipped with a warning.
+
+Play occasionally republishes an export: a file the listing has just named
+can be gone when gplay reads it. gplay then says so and asks you to run the
+command again (exit `30`); inside a range, that month is skipped with a
+warning like an unpublished one.
 
 ## Output
 
@@ -130,7 +141,8 @@ a column Google adds appears in your output without a gplay upgrade.
   rarely read counters); `--columns` picks any key.
 
 UTF-16 and UTF-8 files, with or without a byte-order mark, are decoded
-transparently.
+transparently. A UTF-16 file with an odd number of bytes was cut mid
+character: gplay refuses it (exit `20`) rather than drop the last byte.
 
 ## Buyer location
 
@@ -145,27 +157,37 @@ NOTE: 3 buyer-location columns hidden (City of Buyer, State of Buyer, Postal Cod
 ```
 
 `--include-buyer-location` shows them. The columns are recognised from their
-header text, not their position: a header with the word *buyer* and a place
-below the country (city, state, province, postcode, postal, zip) is hidden,
-so the masking survives a Google rename. CI logs and agent contexts thus
-never collect a buyer's location by accident.
+header text, not their position: a header naming the *buyer* and a place
+below the country (city, state, province, postcode or post code, postal,
+zip) is hidden, whatever separates the words (`Buyer City`, `BuyerCity`,
+`cityofbuyer`), so the masking survives a Google rename. A header naming the
+country alone stays; one naming the country next to a place
+(`Country / City of Buyer`) is hidden for the place. CI logs and agent
+contexts thus never collect a buyer's location by accident.
 
-## ZIP bounds
+## Bounds
 
-The finance exports are ZIP archives from a bucket gplay does not control.
-gplay reads them under fixed bounds and refuses, with exit `20`, any export
-that crosses one, rather than return a truncated report:
+The exports come from a bucket gplay does not control, and a range can span
+years. gplay reads them under fixed bounds and refuses, with exit `20` and an
+error naming the bound, anything that crosses one, rather than return a
+truncated report or exhaust memory:
 
 | Bound | Value |
 | --- | --- |
-| Compressed object | 128 MiB, checked on the listed size before the fetch |
-| Members in the archive | 16 |
-| Decompressed bytes per member | 1 GiB |
-| Decompressed bytes in total | 1 GiB |
+| Compressed finance object | 128 MiB, checked on the listed size before the fetch |
+| Members in a finance archive | 16 |
+| CSV read by one command | 512 MiB, every month of a range together |
+| Cells held by one command | 24 Mi, every month together; a row counts as its cells plus two |
 
-Only the `.csv` members are read, each decoded by its byte-order mark (UTF-16
-or UTF-8). A member's declared size is checked before anything is inflated,
-and the inflated bytes are counted too, since a declared size can lie.
+The last two bounds are per command, not per file: a range that crosses one
+fails as a whole, and a narrower `--since/--until` reads. Rows that
+`--package` drops are never held, so they count towards the bytes read only.
+At the cell bound, gplay holds about 700 MB of rows whatever their shape.
+
+Only the `.csv` members of an archive are read, each decoded by its
+byte-order mark (UTF-16 or UTF-8). A member's declared size is checked
+against what is left of the budget before anything is inflated, and the
+inflated bytes are counted too, since a declared size can lie.
 
 ## Related
 

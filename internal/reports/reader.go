@@ -16,10 +16,11 @@ import (
 // report takes: the decoded bytes (every byte read from a CSV, compressed
 // archives excepted) and the cells held (what the rows kept cost, whatever
 // their bytes: a file of one-byte rows is small on disk and large in memory).
-// Measured on the compact row (Row), a cell costs about 16 bytes of
-// bookkeeping plus its text, and a row about 32 bytes more, so a row counts
-// as its cells plus rowCells: at the cell bound, the rows held weigh at most
-// about 512 MiB plus the decoded text, whatever their shape.
+// Measured on the compact row (Row), a row costs about 32 bytes plus 16 a
+// cell plus its text; counting a row as its cells plus rowCells makes a cell
+// weigh about 28 bytes, text included, on one-cell rows as on 24-column
+// earnings rows, so at the cell bound the rows held weigh about 700 MB
+// whatever their shape (ADR-0050 §10 has the measures).
 const (
 	// MaxReportBytes caps the bytes one command decodes, every export
 	// together.

@@ -38,7 +38,10 @@ permission. Three findings shape the design:
    ([ADR-0010](./0010-versioning-public-contract-and-ga.md),
    [ADR-0042](./0042-one-zero-ga-and-stability-label-mechanism.md)). The
    columns are Google's, so the output cannot be frozen. `reports list` is the
-   inventory (family, package, month, dimension, size, updated). Every other
+   inventory (family, package, month, dimension, size, updated); the
+   dimension is filled for the per-package families only, since it is what
+   `--dimension` takes (an earnings name suffix stays in the object name).
+   Every other
    leaf reads one family and is named after it (`reports installs`, then
    `ratings`, `crashes`, `store-performance`, `subscription-stats`, `earnings`,
    `sales`): a documented exception to the verb grammar, of the same kind as
@@ -98,7 +101,9 @@ permission. Three findings shape the design:
 5. **Encoding is detected, never assumed.** A BOM selects UTF-16 LE, UTF-16
    BE or UTF-8. Without one, a NUL in the first code unit means UTF-16 (a
    UTF-8 CSV never starts with a NUL), its side giving the byte order; anything
-   else is UTF-8. The CSV is RFC 4180. The decoder is fuzzed.
+   else is UTF-8. UTF-16 with an odd number of bytes was cut mid character
+   and is refused (exit 20), never decoded with its last byte dropped. The
+   CSV is RFC 4180. The decoder is fuzzed.
 
 6. **Selection is checked against the bucket, never against a frozen list.**
    Without `--month` a family reads the latest month present for the package.
@@ -114,15 +119,25 @@ permission. Three findings shape the design:
    the package column the header names (`Package Name`, `Package ID`, or
    `Product ID`, the finance reports' name for it), never the export; the
    Project pin does not apply, since it names the app a repository ships, not
-   the rows to keep. A header with no package column makes `--package` a
-   usage error (exit 2).
+   the rows to keep. Each export is filtered on its own header, as it is
+   decoded, so a range across a rename of that column keeps every month.
+   A header with no package column makes `--package` a usage error (exit 2);
+   an export with no header at all is an empty report. When `--package`
+   keeps none of the rows read, a stderr note says so (`0 of N rows matched
+   --package X`), exit 0. The object's extension, not the family, picks the
+   decoding: the account-wide name shape accepts `.csv`, read as is, and
+   `.zip`, read under the bounds of §10. A name's month must be a calendar
+   month (01 to 12): `_202613_` is no export.
 
 7. **"No report" is exit 30 (absent resource)** naming the family, the
    package (for a per-package family) and the bucket, the code
    `reviews history` gives the same situation: the command line is
    well-formed, the export is not there (the fix is in `--package`,
    `--month`, `--bucket`, or in waiting for Play to publish). A bad
-   `--dimension` or `--columns` is a usage error (exit 2).
+   `--dimension` or `--columns` is a usage error (exit 2). A 404 on an export
+   the listing has just named is no access problem: Play republished it in
+   between, so the message says to run again (still exit 30), and a range
+   skips that month with a warning, like an unpublished one.
 
 8. **A 403 names the permission of the family asked.** The access error
    names "View app information" (global) for statistics, "View financial
@@ -142,29 +157,60 @@ permission. Three findings shape the design:
    locates no one). Masking is a pure filter on the header text,
    case-insensitive, on the header's words: "buyer" together with city,
    state, province, postcode (or "post code"), postal or zip, so it survives a
-   Google rename; a column naming the country is never masked. Province and
-   zip widen the documented spellings to the obvious renames, at no cost to
-   the country aggregate. A stderr notice says how many columns were hidden and names
+   Google rename. Words split on any non-alphanumeric character and at a
+   camelCase boundary, and a word glued to "buyer" (`buyercity`,
+   `cityofbuyer`) is judged on what remains. The country exempts a column
+   only when no place is named: `Country of Buyer` stays, `Country / City of
+   Buyer` is masked. Province and zip widen the documented spellings to the
+   obvious renames, at no cost to the country aggregate. A stderr notice says how many columns were hidden and names
    the flag. CI logs and agent contexts thus never collect a buyer's location
    by accident.
 
-10. **ZIP bounds (finance families)**, following the artifact preflight of
-    [ADR-0046](./0046-artifact-preflight-hand-rolled-manifest-readers.md): an
-    object over 128 MiB is refused before it is read: on the size the bucket
-    listing reports, then again by the read cap on the bytes fetched (an
-    object grown since the listing), both at exit 20;
-    an archive with more than 16 members is refused; only `.csv` members are
-    read; a member's declared uncompressed size is checked against the budget
-    before reading, and the decompression itself goes through a limited
-    reader, because a declared size can lie (archive/zip also stops at the
-    declared size; the limited reader does not rely on it). The member count
-    is taken once archive/zip has parsed the central directory, which the
-    object cap bounds: a 72 MiB archive of a million empty entries costs
-    about 200 MiB of heap (measured), less than the decompression budget, so
-    no hand-rolled pre-parse is warranted. The budget is 1 GiB per member
-    and 1 GiB in total, sized for a high-volume account's monthly earnings.
-    Crossing a bound fails with an error naming the bound, at exit 20
-    (client-side validation), never with a truncated report.
+10. **Bounds, per command.** The exports come from a bucket gplay does not
+    control and a range may span ten years, so every bound fails with an
+    error naming it, at exit 20 (client-side validation), never with a
+    truncated report nor an exhausted memory. Following the artifact
+    preflight of
+    [ADR-0046](./0046-artifact-preflight-hand-rolled-manifest-readers.md),
+    a finance object over 128 MiB is refused before it is read (on the size
+    the bucket listing reports, then again by the read cap on the bytes
+    fetched, for an object grown since the listing), and an archive with
+    more than 16 members is refused. The member count is taken once
+    archive/zip has parsed the central directory, which the object cap
+    bounds: a 72 MiB archive of a million empty entries costs about 200 MiB
+    of heap (measured), so no hand-rolled pre-parse is warranted. Only
+    `.csv` members are read.
+
+    What the exports decode to is bounded by **one budget for the whole
+    command**, not per file or per archive: a per-archive budget let a
+    twelve-month range hold twelve times its bound. Two quantities are
+    bounded, because neither alone bounds the memory:
+
+    - **512 MiB of CSV read**, every export together (the bytes of a plain
+      export, the inflated bytes of an archive member). A member's declared
+      size is checked against what is left before a byte is inflated, and
+      the bytes actually read are charged as they come, since a declared
+      size can lie.
+    - **24 Mi cells held**, a row counting as its cells plus two. Bytes alone
+      do not bound memory: a 20 MB archive of `A` then ten million `x` lines
+      grew past 3.7 GB under the per-archive budget (about 400 bytes a row,
+      one map each). Rows that `--package` drops are filtered as they are
+      decoded and never held, so they cost bytes, not cells.
+
+    The exports are decoded as they are read (UTF-16 transcoded on the fly,
+    ZIP members streamed, no text held whole), a row is its CSV record plus
+    a layout shared by its export rather than a map, and the JSON envelope
+    streams to stdout instead of being marshalled, compacted and indented in
+    memory (its bytes are unchanged). Measured on that representation, a
+    cell costs about 28 bytes, its text included, on one-cell rows as on
+    24-column earnings rows: hence the weight of two cells per row, and at
+    the bound about 700 MB of rows held whatever their shape. Peak resident
+    memory on `A` then N one-cell lines, before and after: 426 MB and 99 MB
+    for one million lines, 1.65 GB and 388 MB for four million, 3.7 GB and a
+    refusal at 1.1 GB for ten million. The cell bound reads about 950,000
+    rows of a 24-column earnings report (about 185 MB of CSV) in one
+    command; past it, a narrower `--since/--until` reads, which the error
+    says.
 
 ## Considered options
 
@@ -175,6 +221,8 @@ permission. Three findings shape the design:
   stop matching the header. Rows are written in column order instead.
 - **Typing the values** (numbers, dates). Rejected: it loses leading zeros and
   precision, and the column semantics are Google's to change.
+- **A budget per archive, or bytes only.** Rejected: a range multiplied the
+  first, and the second let a small file of short rows exhaust memory (§10).
 
 ## Consequences
 
