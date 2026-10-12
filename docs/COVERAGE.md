@@ -94,7 +94,7 @@ Of the 166 admin methods (181 total minus the 15 excluded by nature), **131 are 
 | `androidpublisher.edits.testers.patch` | ⚪ | redundant with `androidpublisher.edits.testers.update`: partial write of a single-field resource; `testers set` replaces the whole group list through `update` |
 | `androidpublisher.edits.testers.update` | ✅ | `gplay testers set` |
 | `androidpublisher.edits.tracks.create` | ✅ | `gplay tracks create` |
-| `androidpublisher.edits.tracks.get` | ✅ | `gplay tracks view`, `gplay releases list`, `gplay releases promote`, `gplay releases rollout`; read-before-write: tracks.update replaces the whole releases array |
+| `androidpublisher.edits.tracks.get` | ✅ | `gplay tracks view`, `gplay tracks create`, `gplay releases list`, `gplay releases promote`, `gplay releases rollout`; read-before-write: tracks.update replaces the whole releases array; tracks create --if-exists skip reads before creating (ADR-0050) |
 | `androidpublisher.edits.tracks.list` | ✅ | `gplay tracks list`, `gplay apps audit` |
 | `androidpublisher.edits.tracks.patch` | ⚪ | redundant with `androidpublisher.edits.tracks.update`: partial write of a track; every release command sends the full track body through `update` |
 | `androidpublisher.edits.tracks.update` | ✅ | `gplay releases upload`, `gplay releases promote`, `gplay releases rollout`, `gplay releases halt`, `gplay releases resume`, `gplay releases complete`; the single write behind every release-state change (ADR-0002) |

@@ -118,8 +118,8 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.edits.tracks.create", Commands: []string{"tracks create"}},
 	{
 		MethodID: "androidpublisher.edits.tracks.get",
-		Commands: []string{"tracks view", "releases list", "releases promote", "releases rollout"},
-		Note:     "read-before-write: tracks.update replaces the whole releases array",
+		Commands: []string{"tracks view", "tracks create", "releases list", "releases promote", "releases rollout"},
+		Note:     "read-before-write: tracks.update replaces the whole releases array; tracks create --if-exists skip reads before creating (ADR-0050)",
 	},
 	{MethodID: "androidpublisher.edits.tracks.list", Commands: []string{"tracks list", "apps audit"}},
 	{
