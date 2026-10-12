@@ -137,3 +137,28 @@ func TestReader_filteredRowsHoldNoBudget(t *testing.T) {
 		t.Fatalf("Read = %v, %v; want the one com.example.app row under an 8-cell budget", got.Rows, err)
 	}
 }
+
+// TestReader_cellsPastTheHeaderHoldBudget: a row wider than its header grows
+// the table by one positional column per extra cell. A dropped row must not
+// grow it at all, and a kept row's extra columns are charged to the cell
+// budget, so a single very wide row cannot bypass the bound.
+func TestReader_cellsPastTheHeaderHoldBudget(t *testing.T) {
+	wide := strings.Repeat(",x", 1000)
+	t.Run("dropped row adds no column", func(t *testing.T) {
+		csv := "Product ID\ncom.other" + wide + "\ncom.example.app\n"
+		rd := NewReaderWithLimits("com.example.app", Limits{Bytes: 1 << 20, Cells: 1 << 20})
+		got, err := rd.Read("sales/salesreport_202609.csv", []byte(csv))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Columns) != 1 {
+			t.Errorf("a row --package dropped added %d columns", len(got.Columns)-1)
+		}
+	})
+	t.Run("kept row's extra columns are charged", func(t *testing.T) {
+		csv := "Product ID\ncom.example.app" + wide + "\n"
+		rd := NewReaderWithLimits("com.example.app", Limits{Bytes: 1 << 20, Cells: 1500})
+		_, err := rd.Read("sales/salesreport_202609.csv", []byte(csv))
+		boundError(t, err, "1500-cell budget")
+	})
+}

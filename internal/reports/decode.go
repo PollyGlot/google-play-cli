@@ -146,6 +146,11 @@ func decodeStream(src io.Reader, b *budget, pkg string) (t Table, read int, err 
 			return Table{}, 0, csvError(err)
 		}
 		read++
+		row := Row{l: l, cells: rec}
+		if pkgKey != "" && strings.TrimSpace(row.Value(pkgKey)) != pkg {
+			continue // dropped before it can grow the table
+		}
+		added := 0
 		for i := len(header); i < len(rec); i++ {
 			if rec[i] == "" {
 				continue // a trailing separator past the header, not data
@@ -159,13 +164,12 @@ func decodeStream(src io.Reader, b *budget, pkg string) (t Table, read int, err 
 				keyAt[i] = uniqueKey("", i, used)
 				l.pos[keyAt[i]] = i
 				t.Columns = append(t.Columns, Column{Key: keyAt[i]})
+				added++
 			}
 		}
-		row := Row{l: l, cells: rec}
-		if pkgKey != "" && strings.TrimSpace(row.Value(pkgKey)) != pkg {
-			continue
-		}
-		if err := b.hold(len(rec)); err != nil {
+		// A positional column costs a cell of bookkeeping, like a header
+		// cell: charged so one very wide row cannot bypass the budget.
+		if err := b.hold(len(rec) + added); err != nil {
 			return Table{}, 0, err
 		}
 		t.Rows = append(t.Rows, row)
