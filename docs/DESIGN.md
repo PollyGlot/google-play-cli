@@ -1020,6 +1020,22 @@ track**, **Tester**) for the domain terms.
   create/get/list/patch/update but no delete. Removing a track is a Play
   Console-only gesture.
 
+### Inviting a member who may already be one
+
+- `gplay team users add <email>` on an existing member fails with the
+  `users.create` conflict (exit 60, hint `team users set`) by default
+  (`--if-exists fail`, no lookup added). `--if-exists skip|update` looks the
+  member up first (`users.list`, case-insensitive email match, the read
+  `team users view` uses); absent means the invite runs as usual.
+- Present + `skip`: no write, exit 0, stdout carries the member as
+  `users.list` returned it, stderr says it was skipped (no `✓`).
+- Present + `update`: the `team users set` write (`users.patch`, the whole
+  account-wide permission set replaced), stdout carries its response.
+- The `--grant-admin` gate (exit 3) is checked before the lookup under every
+  policy, so the idempotent path never bypasses it; `--dry-run` stays
+  offline and reports a non-default policy as `ifExists`. Rules:
+  [ADR-0050](./adr/0050-if-exists-read-before-create.md).
+
 ### Managing testers
 
 - The `edits.testers` resource exposes a **single** field, `googleGroups[]`,

@@ -18,6 +18,16 @@ gplay team users set dev@example.com --permissions reply-reviews
 gplay team users remove dev@example.com
 ```
 
+`users add` on someone who is already a member fails with exit `60` by
+default. In an onboarding script that may run twice, pass `--if-exists`:
+gplay looks the member up first and, when they are already there, either
+leaves them as they are (`skip`) or replaces their permissions the way
+`users set` does (`update`). The admin gate below applies either way.
+
+```sh
+gplay team users add dev@example.com --role release-manager --if-exists update
+```
+
 ## Grants: per-app access
 
 ```sh

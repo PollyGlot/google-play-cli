@@ -8,6 +8,10 @@
 // payload offline plus a machine-readable `requires` array, and the named
 // --grant-admin gate for admin-conferring writes. add itself is the routine
 // tier (no gate) unless it confers admin. CI=true never auto-confirms a gate.
+//
+// --if-exists skip|update makes a re-run converge: the member is looked up
+// first and, when present, left as is (skip) or given the `team users set`
+// write (update), behind the same gate (ADR-0050).
 package add
 
 import (
@@ -22,6 +26,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/team/teamcmd"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/ifexists"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -41,7 +46,13 @@ type Input struct {
 	PermsSet    bool
 	GrantAdmin  bool
 	DryRun      bool
+	// IfExists is the --if-exists policy; the zero value is ifexists.Fail.
+	IfExists ifexists.Policy
 }
+
+// policies are the --if-exists values add offers: update is the `team users
+// set` write, the one update path a member already has (ADR-0050).
+var policies = []ifexists.Policy{ifexists.Skip, ifexists.Update, ifexists.Fail}
 
 // forbiddenError / alreadyMemberError attach actionable hints to a 403 / 409 on
 // users.create, leaving the wrapped *api.Error to drive the exit code
@@ -90,6 +101,15 @@ type Payload struct {
 	Warnings    []string
 	DryRun      bool
 	Raw         json.RawMessage
+	// Skipped marks a member left as is under --if-exists skip: Raw is then
+	// the users.list object of the matched member.
+	Skipped bool
+	// Updated marks a member whose permissions were replaced under
+	// --if-exists update: Raw is then the users.patch response.
+	Updated bool
+	// IfExists is the policy a dry-run preview reports when it is not the
+	// default, so a default preview keeps its exact bytes.
+	IfExists ifexists.Policy
 }
 
 func (p Payload) Renderers() output.Renderers {
@@ -101,8 +121,13 @@ func (p Payload) Renderers() output.Renderers {
 }
 
 func (p Payload) verb() string {
-	if p.DryRun {
+	switch {
+	case p.DryRun:
 		return "would add"
+	case p.Skipped:
+		return "skipped (already a member)"
+	case p.Updated:
+		return "updated (already a member)"
 	}
 	return "added"
 }
@@ -123,7 +148,22 @@ func (p Payload) renderTable(w io.Writer) error {
 			return err
 		}
 	}
+	if policy := p.previewPolicy(); policy != "" {
+		if _, err := fmt.Fprintf(w, "ifExists: %s\n", policy); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// previewPolicy is the --if-exists policy a dry-run preview reports, or ""
+// for the default, so a default preview keeps the bytes it had before the
+// flag.
+func (p Payload) previewPolicy() string {
+	if !p.DryRun || p.IfExists == "" || p.IfExists == ifexists.Fail {
+		return ""
+	}
+	return string(p.IfExists)
 }
 
 func (p Payload) renderMarkdown(w io.Writer) error {
@@ -138,6 +178,9 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	}
 	if len(p.Requires) > 0 {
 		rows = append(rows, []string{"Requires", strings.Join(p.Requires, ", ")})
+	}
+	if policy := p.previewPolicy(); policy != "" {
+		rows = append(rows, []string{"If exists", policy})
 	}
 	if _, err := fmt.Fprintf(w, "## team users add%s\n\n", suffix); err != nil {
 		return err
@@ -154,6 +197,7 @@ type dryRunView struct {
 	Permissions []string `json:"permissions"`
 	Requires    []string `json:"requires"`
 	Warnings    []string `json:"warnings,omitempty"`
+	IfExists    string   `json:"ifExists,omitempty"`
 }
 
 func (p Payload) renderJSON(w io.Writer) error {
@@ -164,10 +208,11 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Permissions: teamcmd.NonNil(p.Permissions),
 			Requires:    teamcmd.NonNil(p.Requires),
 			Warnings:    p.Warnings,
+			IfExists:    p.previewPolicy(),
 		})
 	}
 	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw users.create payload for --output json")
+		return fmt.Errorf("missing raw API payload for --output json")
 	}
 	_, err := w.Write(p.Raw)
 	return err
@@ -192,6 +237,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("pass --role <bundle> or --permissions <alias,…> (run `gplay team permissions` to list them)")
 	}
 
+	policy, err := ifexists.Check(in.IfExists, policies...)
+	if err != nil {
+		return nil, err
+	}
+
 	enums, warnings, err := teamcmd.ResolvePerms(vocab.Account, in.Role, in.Permissions, false)
 	if err != nil {
 		return nil, err
@@ -207,6 +257,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			Requires:    gate.Requires(),
 			Warnings:    warnings,
 			DryRun:      true,
+			IfExists:    policy,
 		}, nil
 	}
 
@@ -223,6 +274,30 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	httpClient, err := rc.AuthedClient()
 	if err != nil {
 		return nil, err
+	}
+
+	// ADR-0050: existence comes from the users.list lookup `team users view`
+	// trusts, never from the create's 409, and only under skip or update:
+	// fail adds no request.
+	if policy != ifexists.Fail {
+		found, raw, ok, err := playteam.FindUserRaw(rc.Ctx, httpClient, developerID, email)
+		if err != nil {
+			return nil, classifyError(developerID, email, err)
+		}
+		switch {
+		case ok && policy == ifexists.Skip:
+			// Not a ✓: nothing was written.
+			rc.Logf("%s already exists, skipped (--if-exists skip): permissions unchanged", email)
+			return Payload{Email: email, Permissions: found.DeveloperAccountPermissions, Raw: raw, Skipped: true}, nil
+		case ok:
+			// update: the `team users set` write, gated above like the invite.
+			raw, err := teamcmd.SetUserPermissions(rc.Ctx, httpClient, developerID, email, enums)
+			if err != nil {
+				return nil, err
+			}
+			rc.Logf("%s already exists, updated (--if-exists update): permissions replaced", email)
+			return Payload{Email: email, Permissions: enums, Raw: raw, Updated: true}, nil
+		}
 	}
 
 	raw, err := playteam.CreateUser(rc.Ctx, httpClient, developerID, email, enums)
@@ -253,14 +328,24 @@ control is never silent.
 
 Use --dry-run to preview the resolved payload with no HTTP; with --output json
 it emits a ` + "`requires`" + ` array naming the safety flags the live write needs, so
-an agent can discover the gate before running it.`,
+an agent can discover the gate before running it.
+
+Inviting an existing member fails with the API conflict (exit 60) by default.
+--if-exists skip or update looks the member up first (users.list): when absent,
+the invite runs as usual. When present, skip writes nothing and prints the
+member as users.list returned it; update runs the ` + "`gplay team users set`" + ` write
+(users.patch, the whole permission set replaced) and prints its response. The
+--grant-admin gate applies before the lookup, whatever the policy.`,
 		Example: `  # Invite a release manager
   gplay team users add dev@example.com --role release-manager
 
   # Preview an admin invite: the JSON names the --grant-admin gate
   gplay team users add lead@example.com --role admin --dry-run --output json
 
-  gplay team users add lead@example.com --role admin --grant-admin`,
+  gplay team users add lead@example.com --role admin --grant-admin
+
+  # Converge a member's permissions whether invited yet or not (safe to re-run)
+  gplay team users add dev@example.com --role release-manager --if-exists update`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -279,5 +364,6 @@ an agent can discover the gate before running it.`,
 	cmd.Flags().StringSliceVar(&in.Permissions, "permissions", nil, "permission aliases or raw CAN_* enums (repeatable or comma-separated)")
 	cmd.Flags().BoolVar(&in.GrantAdmin, "grant-admin", false, "acknowledge conferring admin (required when the permission set includes admin)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "preview the resolved payload without any HTTP call")
+	ifexists.Register(cmd, &in.IfExists, "user", policies...)
 	return cmd
 }

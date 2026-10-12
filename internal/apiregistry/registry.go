@@ -204,8 +204,12 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.grants.patch", Commands: []string{"team grants set"}},
 	{MethodID: "androidpublisher.users.create", Commands: []string{"team users add"}},
 	{MethodID: "androidpublisher.users.delete", Commands: []string{"team users remove"}},
-	{MethodID: "androidpublisher.users.list", Commands: []string{"team users list", "team users view", "team grants list"}},
-	{MethodID: "androidpublisher.users.patch", Commands: []string{"team users set"}},
+	{
+		MethodID: "androidpublisher.users.list",
+		Commands: []string{"team users list", "team users view", "team users add", "team grants list"},
+		Note:     "team users add --if-exists skip or update looks the member up before inviting (ADR-0050)",
+	},
+	{MethodID: "androidpublisher.users.patch", Commands: []string{"team users set", "team users add"}},
 
 	// --- playdeveloperreporting -----------------------------------------
 	{MethodID: "playdeveloperreporting.anomalies.list", Commands: []string{"vitals anomalies"}},

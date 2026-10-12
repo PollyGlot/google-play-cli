@@ -596,6 +596,7 @@ frozen leaf "team users add" use="add <email>" mutating
 frozen flag "team users add" --developer-id type=string default=""
 frozen flag "team users add" --dry-run type=bool default="false"
 frozen flag "team users add" --grant-admin type=bool default="false"
+experimental flag "team users add" --if-exists type=skip|update|fail default="fail"
 frozen flag "team users add" --output type=string default=""
 frozen flag "team users add" --permissions type=stringSlice default="[]"
 frozen flag "team users add" --role type=string default=""

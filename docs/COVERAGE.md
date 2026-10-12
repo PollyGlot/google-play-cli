@@ -185,8 +185,8 @@ Of the 166 admin methods (181 total minus the 15 excluded by nature), **131 are 
 | `androidpublisher.systemapks.variants.list` | 🔴 | parked, [#296](https://github.com/PollyGlot/google-play-cli/issues/296): system APK variants are preload/OEM system-image material |
 | `androidpublisher.users.create` | ✅ | `gplay team users add` |
 | `androidpublisher.users.delete` | ✅ | `gplay team users remove` |
-| `androidpublisher.users.list` | ✅ | `gplay team users list`, `gplay team users view`, `gplay team grants list` |
-| `androidpublisher.users.patch` | ✅ | `gplay team users set` |
+| `androidpublisher.users.list` | ✅ | `gplay team users list`, `gplay team users view`, `gplay team users add`, `gplay team grants list`; team users add --if-exists skip or update looks the member up before inviting (ADR-0050) |
+| `androidpublisher.users.patch` | ✅ | `gplay team users set`, `gplay team users add` |
 
 ## `playdeveloperreporting` v1beta1 (25 methods)
 

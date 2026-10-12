@@ -60,6 +60,9 @@ Two facts constrain the answer:
    track's settings are its releases, owned by the release verbs, so there is
    nothing for `update` to apply. `team users add` offers `skip|update|fail`,
    `update` reusing the `team users set` write and its `--grant-admin` gate.
+   The gate is checked before the lookup under every policy, `skip` included:
+   whether the member exists is only known after the read, and an absent
+   member gets the invite, which needs the gate anyway.
 9. **Experimental flag on frozen leaves.** The flag is classified with
    `kernel.ExperimentalFlag` ([ADR-0042](./0042-one-zero-ga-and-stability-label-mechanism.md)):
    the leaves stay frozen Public, the value set may still grow.
