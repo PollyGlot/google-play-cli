@@ -10,10 +10,12 @@ import (
 // a finance report (ADR-0050 §9) and returns the columns it hid, in header
 // order; the input is left untouched. Columns are recognised from their
 // header text, never by position, so masking survives a Google rename: a
-// header is buyer location when one of its words is "buyer" and another a
-// place below the country (city, state, province, postcode, post code,
-// postal, zip). A header naming the country is never masked: revenue per
-// country is the common aggregate and locates no one.
+// header is buyer location when it names the buyer and a place below the
+// country (city, state, province, postcode, post code, postal, zip), whatever
+// separates the words (spaces, punctuation, camelCase, or none: BuyerCity,
+// cityofbuyer). The country alone locates no one (revenue per country is the
+// common aggregate), so a country column is kept; a header naming the country
+// next to a place (Country / City of Buyer) is masked for the place.
 func MaskBuyerLocation(t Table) (Table, []Column) {
 	var hidden []Column
 	drop := map[string]bool{}
@@ -47,12 +49,15 @@ func isBuyerLocation(header string) bool {
 	words := headerWords(header)
 	buyer, place := false, false
 	for i, w := range words {
-		switch w {
-		case "country":
-			return false
-		case "buyer", "buyers":
+		if strings.Contains(w, "buyer") {
 			buyer = true
-		case "city", "state", "province", "postcode", "postal", "zip", "zipcode":
+			// A word glued to "buyer" (buyercity, cityofbuyer, buyersstate)
+			// is judged on what is left once the buyer is taken out.
+			w = strings.Replace(strings.Replace(w, "buyers", "", 1), "buyer", "", 1)
+			w = strings.TrimSuffix(strings.TrimPrefix(w, "of"), "of")
+		}
+		switch w {
+		case "city", "state", "province", "postcode", "postal", "postalcode", "zip", "zipcode":
 			place = true
 		case "post":
 			place = place || (i+1 < len(words) && words[i+1] == "code")
@@ -61,11 +66,27 @@ func isBuyerLocation(header string) bool {
 	return buyer && place
 }
 
-// headerWords are a header's runs of letters and digits, lowercased: the
-// words of the key rule (keyFor), so "Buyer's Post-Code" gives buyer, s,
-// post, code.
+// headerWords are a header's words, lowercased: the runs of letters and
+// digits, each run further split at a camelCase boundary (a lower-case letter
+// or digit then an upper-case one, or an acronym then a capitalised word), so
+// "Buyer's Post-Code" gives buyer, s, post, code and "BuyerPostalCode" gives
+// buyer, postal, code.
 func headerWords(header string) []string {
-	return strings.FieldsFunc(strings.ToLower(header), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	var words []string
+	for _, run := range strings.FieldsFunc(header, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		rs := []rune(run)
+		start := 0
+		for i := 1; i < len(rs); i++ {
+			lowerThenUpper := (unicode.IsLower(rs[i-1]) || unicode.IsDigit(rs[i-1])) && unicode.IsUpper(rs[i])
+			acronymEnd := unicode.IsUpper(rs[i-1]) && unicode.IsUpper(rs[i]) && i+1 < len(rs) && unicode.IsLower(rs[i+1])
+			if lowerThenUpper || acronymEnd {
+				words = append(words, strings.ToLower(string(rs[start:i])))
+				start = i
+			}
+		}
+		words = append(words, strings.ToLower(string(rs[start:])))
+	}
+	return words
 }
 
 // packageKeys are the column keys that carry the app's package name, by

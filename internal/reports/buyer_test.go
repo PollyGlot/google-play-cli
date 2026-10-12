@@ -52,8 +52,14 @@ func TestMaskBuyerLocation_earningsSpelling(t *testing.T) {
 
 func TestMaskBuyerLocation_documentedAndRenamedVariants(t *testing.T) {
 	for _, h := range []string{
-		"City of Buyer", "Buyer State", "Buyer Postcode", "Postcode of Buyer",
-		"Buyer Postal Code", "BUYER_CITY", "Buyer's Post Code", "State / Province of Buyer", "buyer zip",
+		// The spellings ADR-0050 §9 documents.
+		"City of Buyer", "State of Buyer", "Postcode of Buyer", "Postal Code of Buyer",
+		"Buyer State", "Buyer Postcode", "Buyer Postal Code",
+		// Renames: other separators, camelCase, words glued together, and a
+		// country named next to a place (the place still locates the buyer).
+		"BUYER_CITY", "Buyer's Post Code", "State / Province of Buyer", "buyer zip",
+		"BuyerCity", "CityOfBuyer", "buyercity", "cityofbuyer", "BuyerPostalCode", "buyer_postcode", "buyersstate",
+		"Country / City of Buyer", "Buyer Country/State", "BuyerCountryCity",
 	} {
 		tbl := mustDecode(t, "Order Number,"+`"`+h+`"`+"\nGPA.1,x\n")
 		if _, hidden := MaskBuyerLocation(tbl); len(hidden) != 1 || hidden[0].Header != h {
@@ -61,7 +67,8 @@ func TestMaskBuyerLocation_documentedAndRenamedVariants(t *testing.T) {
 		}
 	}
 	for _, h := range []string{
-		"Country of Buyer", "Buyer Country", "Buyer Currency", "City", "Seller State", "Statement Date", "Country / City of Buyer",
+		"Country of Buyer", "Buyer Country", "Buyer Currency", "Amount (Buyer Currency)", "City", "Seller State", "Statement Date",
+		"BuyerCountry", "countryofbuyer", "Buyer Statement", "buyerstatement",
 	} {
 		tbl := mustDecode(t, "Order Number,"+`"`+h+`"`+"\nGPA.1,x\n")
 		if _, hidden := MaskBuyerLocation(tbl); len(hidden) != 0 {
