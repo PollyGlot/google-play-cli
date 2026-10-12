@@ -28,6 +28,11 @@ const (
 //     a whole branch moved ("upload apk"), or a flag name ("--to").
 //   - Use is the replacement: a command path without "gplay" for a verb, a
 //     flag name on the same Path for a flag.
+//   - UseArgs, optional and for a verb only, are the positional arguments the
+//     replacement needs to do what the removed verb did, when the verb itself
+//     carried a value (`publish-status published` is `set published`): the
+//     envelope's `use` ends with them, so substituting `removed` by `use` in a
+//     command keeps that value.
 //   - RemovedIn is the gplay version that removed it.
 //   - Note, optional, says what a pure rename would not (a domain verb, an
 //     argument that moved).
@@ -36,6 +41,7 @@ type Removal struct {
 	Path      string
 	Token     string
 	Use       string
+	UseArgs   string
 	RemovedIn string
 	Note      string
 }
@@ -60,12 +66,12 @@ var removedSurface = []Removal{
 		Note: "submit is the domain verb for sending the app to review, not a renamed update",
 	},
 	{
-		Kind: RemovedCommand, Path: "appstore publish-status", Token: "published", Use: "appstore publish-status set", RemovedIn: "2.0.0",
-		Note: "the state is now the argument of set: `gplay appstore publish-status set published`",
+		Kind: RemovedCommand, Path: "appstore publish-status", Token: "published", Use: "appstore publish-status set", UseArgs: "published", RemovedIn: "2.0.0",
+		Note: "the state is now the argument of set",
 	},
 	{
-		Kind: RemovedCommand, Path: "appstore publish-status", Token: "unpublished", Use: "appstore publish-status set", RemovedIn: "2.0.0",
-		Note: "the state is now the argument of set: `gplay appstore publish-status set unpublished`",
+		Kind: RemovedCommand, Path: "appstore publish-status", Token: "unpublished", Use: "appstore publish-status set", UseArgs: "unpublished", RemovedIn: "2.0.0",
+		Note: "the state is now the argument of set",
 	},
 	{Kind: RemovedCommand, Path: "appstore", Token: "upload apk", Use: "appstore apk upload", RemovedIn: "2.0.0"},
 	{Kind: RemovedCommand, Path: "appstore", Token: "upload image", Use: "appstore image upload", RemovedIn: "2.0.0"},
@@ -136,7 +142,7 @@ func removedVerb(group *cobra.Command, args []string) (Removal, bool) {
 // stderr and as a typed value for the JSON envelope.
 func removedVerbError(group *cobra.Command, r Removal) *exit.UsageError {
 	root := group.Root().Name()
-	use := root + " " + r.Use
+	use := strings.Join(append([]string{root, r.Use}, strings.Fields(r.UseArgs)...), " ")
 	msg := fmt.Sprintf("unknown command %q for %q: removed in %s, use `%s`",
 		strings.Fields(r.Token)[0], group.CommandPath(), r.RemovedIn, use)
 	if r.Note != "" {
@@ -149,6 +155,7 @@ func removedVerbError(group *cobra.Command, r Removal) *exit.UsageError {
 			Removed:   group.CommandPath() + " " + r.Token,
 			Use:       use,
 			RemovedIn: r.RemovedIn,
+			Note:      r.Note,
 		},
 	}
 }
@@ -272,6 +279,7 @@ func removedFlagError(cmd *cobra.Command, err error, r Removal) *exit.UsageError
 			Removed:   r.Token,
 			Use:       r.Use,
 			RemovedIn: r.RemovedIn,
+			Note:      r.Note,
 		},
 	}
 }

@@ -642,8 +642,12 @@ branch on the failure without scraping stderr:
   usage error is a call to it ([ADR-0051](./adr/0051-removed-surface-names-its-replacement.md)):
   `kind` (`command` or `flag`), `removed` and `use` (full command paths
   starting with `gplay` for a command, flag names such as `--to` and `--staged`
-  for a flag, on the command that failed), and `removedIn` (the gplay version);
-  the ADR shows a complete envelope. Exact match on a removed path, or on a
+  for a flag, on the command that failed), `removedIn` (the gplay version), and
+  `note` when the change is not a pure rename (omitted otherwise). Substituting
+  `removed` by `use` in the failed command line is the recovery: a removed verb
+  that carried a value has it in `use` (`gplay appstore publish-status set
+  published` for `gplay appstore publish-status published`). The ADR shows a
+  complete envelope. Exact match on a removed path, or on a
   removed flag of that very leaf, only; omitted on every other failure,
   including a typo of a live verb, which keeps the "Did you mean" suggestion.
 
@@ -887,10 +891,12 @@ removed in 2.0.0, use `gplay releases rollout --staged` ``. The source is one
 declarative table in `internal/kernel/removed.go`, looked up by
 `kernel.GroupRunE` and by `kernel.FlagErrorFunc` (a group parses flags before it
 sees the removed verb, so `gplay <group> <removed-verb> <id> --output json`
-would otherwise read `unknown flag: --output`). A flag row names the leaf that lost the flag, so
+would otherwise read `unknown flag: --output`; a flag typed before the verb is
+found through the raw argv `kernel.SetArgs` keeps). A flag row names the leaf that lost the flag, so
 `releases promote --to` keeps working. Renaming or removing a verb or flag adds
 its row in the same pull request; `TestRemovedSurface_table` fails on a row whose
-replacement does not resolve or whose removed path or flag resolves again
+replacement does not resolve or refuses its declared arguments, or whose removed
+path or flag resolves again, alias included
 ([ADR-0051](./adr/0051-removed-surface-names-its-replacement.md)).
 
 Every runnable leaf declares a validator, `cobra.NoArgs` when it takes no

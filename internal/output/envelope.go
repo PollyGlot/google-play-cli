@@ -82,12 +82,15 @@ type ErrorDetail struct {
 // Replacement is the envelope's `replacement` object (ADR-0051): kind is
 // "command" or "flag"; removed and use are full command paths starting with
 // "gplay" for a command, flag names on the same command for a flag; removedIn
-// is the gplay version.
+// is the gplay version; note, omitted when empty, says what a pure rename
+// would not. A command's use carries the arguments the removed verb held, so
+// substituting removed by use in a command line keeps them.
 type Replacement struct {
 	Kind      string `json:"kind"`
 	Removed   string `json:"removed"`
 	Use       string `json:"use"`
 	RemovedIn string `json:"removedIn"`
+	Note      string `json:"note,omitempty"`
 }
 
 // Resource is the envelope's `resource` object: the addressing axis of the
@@ -131,7 +134,7 @@ func WriteErrorEnvelope(w io.Writer, err error) error {
 	var usage *exit.UsageError
 	if errors.As(err, &usage) && usage.Replacement != nil {
 		r := usage.Replacement
-		d.Replacement = &Replacement{Kind: r.Kind, Removed: r.Removed, Use: r.Use, RemovedIn: r.RemovedIn}
+		d.Replacement = &Replacement{Kind: r.Kind, Removed: r.Removed, Use: r.Use, RemovedIn: r.RemovedIn, Note: r.Note}
 	}
 	return WriteJSON(w, ErrorEnvelope{Error: d})
 }

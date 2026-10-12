@@ -23,12 +23,14 @@ type UsageError struct {
 // Replacement names what replaced a removed verb or flag (ADR-0051). Kind is
 // "command" or "flag". For a command, Removed and Use are full command paths
 // starting with "gplay"; for a flag, flag names on the same command. RemovedIn
-// is the gplay version that removed it.
+// is the gplay version that removed it. Note, optional, says what a pure
+// rename would not (a domain verb, an argument that moved).
 type Replacement struct {
 	Kind      string
 	Removed   string
 	Use       string
 	RemovedIn string
+	Note      string
 }
 
 // Error returns the misuse message.

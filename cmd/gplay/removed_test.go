@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -150,6 +151,46 @@ func TestRemovedVerb_carriesItsNote(t *testing.T) {
 	}
 }
 
+// TestRemovedVerb_keepsItsArgument: `appstore publish-status published` became
+// `set published`, so `use` carries the argument the removed verb held: an
+// agent that substitutes `removed` by `use` in its command keeps the state.
+// The note, which says why, reaches the envelope too.
+func TestRemovedVerb_keepsItsArgument(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+	stdout, code, err := runLikeMain(t, "appstore", "publish-status", "published", "--store-package", "x", "--output", "json")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; err=%v", code, err)
+	}
+	want := "unknown command \"published\" for \"gplay appstore publish-status\": removed in 2.0.0, use `gplay appstore publish-status set published` (the state is now the argument of set)"
+	if err.Error() != want {
+		t.Errorf("message = %q\nwant      %q", err.Error(), want)
+	}
+	d := envelopeOf(t, stdout)
+	if d.Replacement == nil {
+		t.Fatalf("envelope has no replacement:\n%s", stdout)
+	}
+	wantR := output.Replacement{
+		Kind: "command", Removed: "gplay appstore publish-status published", Use: "gplay appstore publish-status set published",
+		RemovedIn: "2.0.0", Note: "the state is now the argument of set",
+	}
+	if *d.Replacement != wantR {
+		t.Errorf("replacement = %+v, want %+v", *d.Replacement, wantR)
+	}
+}
+
+// TestRemovedFlag_carriesItsNote: a flag row's note reaches the envelope.
+func TestRemovedFlag_carriesItsNote(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+	stdout, code, err := runLikeMain(t, "subscriptions", "prices", "migrate", "--region", "US")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; err=%v", code, err)
+	}
+	d := envelopeOf(t, stdout)
+	if d.Replacement == nil || d.Replacement.Use != "--regions" || d.Replacement.Note != "--regions takes a comma-separated list or a repeated flag: `--regions US,CA`" {
+		t.Errorf("envelope replacement = %+v, want use --regions with its note", d.Replacement)
+	}
+}
+
 // TestRemovedVerb_movedBranch: a verb whose whole branch moved
 // (`appstore upload apk` -> `appstore apk upload`) matches on its full path.
 func TestRemovedVerb_movedBranch(t *testing.T) {
@@ -168,43 +209,107 @@ func TestRemovedVerb_movedBranch(t *testing.T) {
 }
 
 // TestRemovedSurface_table keeps the removed-surface table honest against the
-// live command tree (ADR-0051): every replacement resolves to a runnable leaf
-// (a flag of the leaf, for a flag row), every removed path or flag resolves to
-// nothing (one that still exists is a table bug: the hint would shadow a live
-// command or flag, or never fire), and the group or leaf a row hangs off still
-// exists, or the lookup could never run.
+// live command tree (ADR-0051); removedSurfaceProblems holds the rules.
 func TestRemovedSurface_table(t *testing.T) {
-	root := newRootCmd(kernel.Boot{})
-	// resolves reports whether path names an existing command of the tree,
-	// consuming every word (cobra's Find stops at the first unknown word and
-	// returns the deepest command it reached).
+	for _, p := range removedSurfaceProblems(newRootCmd(kernel.Boot{}), kernel.RemovedSurface()) {
+		t.Error(p)
+	}
+}
+
+// TestRemovedSurface_tableCheck proves the integrity rules on a synthetic tree:
+// a row is accepted at the root, with declared trailing arguments its
+// replacement takes, and refused when its removed path resolves through an
+// alias or its trailing arguments do not fit the replacement.
+func TestRemovedSurface_tableCheck(t *testing.T) {
+	tree := func(viewAliases ...string) *cobra.Command {
+		root := &cobra.Command{Use: "gplay", Args: cobra.ArbitraryArgs, RunE: kernel.GroupRunE}
+		apps := &cobra.Command{Use: "apps", Args: cobra.ArbitraryArgs, RunE: kernel.GroupRunE}
+		noop := func(*cobra.Command, []string) error { return nil }
+		apps.AddCommand(
+			&cobra.Command{Use: "view", Aliases: viewAliases, Args: cobra.NoArgs, RunE: noop},
+			&cobra.Command{Use: "set <state>", Args: cobra.ExactArgs(1), RunE: noop},
+		)
+		root.AddCommand(apps)
+		return root
+	}
+	for _, tc := range []struct {
+		name    string
+		root    *cobra.Command
+		row     kernel.Removal
+		problem string // "" when the row must be accepted
+	}{
+		{"plain rename", tree(), kernel.Removal{Kind: kernel.RemovedCommand, Path: "apps", Token: "info", Use: "apps view", RemovedIn: "1.0.0"}, ""},
+		{"row at the root", tree(), kernel.Removal{Kind: kernel.RemovedCommand, Path: "", Token: "info", Use: "apps view", RemovedIn: "1.0.0"}, ""},
+		{"declared trailing argument", tree(), kernel.Removal{Kind: kernel.RemovedCommand, Path: "apps", Token: "published", Use: "apps set", UseArgs: "published", RemovedIn: "1.0.0"}, ""},
+		{"removed path is a live alias", tree("info"), kernel.Removal{Kind: kernel.RemovedCommand, Path: "apps", Token: "info", Use: "apps view", RemovedIn: "1.0.0"}, "removed path still resolves"},
+		{"trailing argument the leaf refuses", tree(), kernel.Removal{Kind: kernel.RemovedCommand, Path: "apps", Token: "info", Use: "apps view", UseArgs: "x", RemovedIn: "1.0.0"}, "does not accept"},
+	} {
+		got := strings.Join(removedSurfaceProblems(tc.root, []kernel.Removal{tc.row}), "\n")
+		if tc.problem == "" && got != "" {
+			t.Errorf("%s: problems = %q, want none", tc.name, got)
+		}
+		if tc.problem != "" && !strings.Contains(got, tc.problem) {
+			t.Errorf("%s: problems = %q, want %q", tc.name, got, tc.problem)
+		}
+	}
+}
+
+// removedSurfaceProblems walks rows against root's command tree: every
+// replacement resolves to a runnable leaf that accepts the row's declared
+// trailing arguments, when it has some, (a flag of the leaf, for a flag row), every removed path
+// or flag resolves to nothing, by name or by alias (one that still exists is a
+// table bug: the hint would shadow a live command or flag, or never fire), and
+// the group or leaf a row hangs off still exists (the root included), or the
+// lookup could never run.
+func removedSurfaceProblems(root *cobra.Command, rows []kernel.Removal) []string {
+	var problems []string
+	fail := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+	// resolves reports whether path names a command of the tree by its
+	// canonical name, consuming every word (cobra's Find stops at the first
+	// unknown word and returns the deepest command it reached).
 	resolves := func(path string) (*cobra.Command, bool) {
 		c, _, err := root.Find(strings.Fields(path))
-		if err != nil || c.CommandPath() != root.Name()+" "+path {
+		if err != nil || c.CommandPath() != strings.TrimSpace(root.Name()+" "+path) {
 			return nil, false
 		}
 		return c, true
 	}
+	// reaches reports whether cobra would run some command for path, aliases
+	// included: Find consumed every word.
+	reaches := func(path string) bool {
+		_, rest, err := root.Find(strings.Fields(path))
+		return err == nil && len(rest) == 0
+	}
 	seen := map[string]bool{}
-	for _, r := range kernel.RemovedSurface() {
+	for _, r := range rows {
 		key := r.Kind + "|" + r.Path + "|" + r.Token
 		if seen[key] {
-			t.Errorf("duplicate row %q", key)
+			fail("duplicate row %q", key)
 		}
 		seen[key] = true
 		if r.RemovedIn == "" {
-			t.Errorf("row %q: empty RemovedIn", key)
+			fail("row %q: empty RemovedIn", key)
 		}
 		switch r.Kind {
 		case kernel.RemovedCommand:
 			if g, ok := resolves(r.Path); !ok || !g.HasSubCommands() {
-				t.Errorf("row %q: %q is not a live group", key, r.Path)
+				fail("row %q: %q is not a live group", key, r.Path)
 			}
-			if _, ok := resolves(r.Path + " " + r.Token); ok {
-				t.Errorf("row %q: removed path still resolves", key)
+			if reaches(r.Path + " " + r.Token) {
+				fail("row %q: removed path still resolves", key)
 			}
-			if u, ok := resolves(r.Use); !ok || u.HasSubCommands() || !u.Runnable() {
-				t.Errorf("row %q: replacement %q is not a live leaf", key, r.Use)
+			u, ok := resolves(r.Use)
+			if !ok || u.HasSubCommands() || !u.Runnable() {
+				fail("row %q: replacement %q is not a live leaf", key, r.Use)
+				continue
+			}
+			// Declared arguments alone must fit the leaf: the user's own
+			// arguments after the removed verb (an id, a file) follow them.
+			if r.UseArgs == "" {
+				continue
+			}
+			if err := u.ValidateArgs(strings.Fields(r.UseArgs)); err != nil {
+				fail("row %q: replacement %q does not accept arguments %q: %v", key, r.Use, r.UseArgs, err)
 			}
 		case kernel.RemovedFlag:
 			// A flag row hangs off the leaf that lost the flag: Use must be a
@@ -212,25 +317,29 @@ func TestRemovedSurface_table(t *testing.T) {
 			// or the hint would shadow a live flag.
 			leaf, ok := resolves(r.Path)
 			if !ok || leaf.HasSubCommands() || !leaf.Runnable() {
-				t.Errorf("row %q: %q is not a live leaf", key, r.Path)
+				fail("row %q: %q is not a live leaf", key, r.Path)
 				continue
+			}
+			if r.UseArgs != "" {
+				fail("row %q: a flag row takes no trailing arguments", key)
 			}
 			flagName := func(token string) (string, bool) {
 				name, ok := strings.CutPrefix(token, "--")
 				return name, ok && name != ""
 			}
 			if name, ok := flagName(r.Token); !ok {
-				t.Errorf("row %q: removed %q is not a --long flag", key, r.Token)
+				fail("row %q: removed %q is not a --long flag", key, r.Token)
 			} else if leaf.Flag(name) != nil {
-				t.Errorf("row %q: removed flag still exists on %q", key, r.Path)
+				fail("row %q: removed flag still exists on %q", key, r.Path)
 			}
 			if name, ok := flagName(r.Use); !ok || leaf.Flag(name) == nil {
-				t.Errorf("row %q: replacement %q is not a flag of %q", key, r.Use, r.Path)
+				fail("row %q: replacement %q is not a flag of %q", key, r.Use, r.Path)
 			}
 		default:
-			t.Errorf("row %q: kind %q has no integrity check", key, r.Kind)
+			fail("row %q: kind %q has no integrity check", key, r.Kind)
 		}
 	}
+	return problems
 }
 
 // TestRemovedFlag_namesReplacement is #689: a flag 2.0.0 removed from a leaf

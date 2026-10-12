@@ -31,7 +31,9 @@ information to recover lived only in the website's migration guide.
    token (a verb, several words when a branch moved, or a flag name), the
    replacement, the version of removal and an optional one-line note for a
    change that is not a pure rename (`appstore update` became the domain verb
-   `appstore submit`).
+   `appstore submit`). A removed verb that carried a value
+   (`appstore publish-status published`) also declares the arguments its
+   replacement needs to keep it (`set published`).
 2. **Two lookup points.** `kernel.GroupRunE`, which already raises every unknown
    command (the root included), and `kernel.FlagErrorFunc`, the root's
    flag-error func: when a flag fails to parse on a **group** whose leading
@@ -60,7 +62,7 @@ information to recover lived only in the website's migration guide.
    `gplay <replacement>` `` and the note in parentheses. The error carries a
    typed `exit.Replacement`, which the JSON error envelope reads with
    `errors.As` into an additive, omitempty `replacement` object (`kind`,
-   `removed`, `use`, `removedIn`), the way `requires` is read from the
+   `removed`, `use`, `removedIn`, and `note` when the row has one), the way `requires` is read from the
    safety-flag error. The envelope stays append-only
    ([ADR-0023](./0023-json-error-envelope.md),
    [ADR-0044](./0044-structured-diagnostic-codes.md)).
@@ -79,6 +81,22 @@ information to recover lived only in the website's migration guide.
          "removedIn": "2.0.0"
        }
      }
+   }
+   ```
+
+   Substituting `removed` by `use` in the failed command line is the
+   recovery, with no prose to parse: `use` ends with the declared arguments,
+   so `gplay appstore publish-status published --store-package x` becomes
+   `gplay appstore publish-status set published --store-package x`, and the
+   note travels in the envelope rather than in `message` only:
+
+   ```json
+   "replacement": {
+     "kind": "command",
+     "removed": "gplay appstore publish-status published",
+     "use": "gplay appstore publish-status set published",
+     "removedIn": "2.0.0",
+     "note": "the state is now the argument of set"
    }
    ```
 
@@ -103,9 +121,10 @@ information to recover lived only in the website's migration guide.
    }
    ```
 6. **The table cannot rot.** `TestRemovedSurface_table` (`cmd/gplay`) walks the
-   live command tree: every replacement resolves to a runnable leaf (a flag of
-   that leaf, for a flag row), every removed path or flag resolves to nothing,
-   every group or leaf a row hangs off still exists. A row of a kind the test
+   live command tree: every replacement resolves to a runnable leaf that
+   accepts the row's declared arguments (a flag of that leaf, for a flag row),
+   every removed path or flag resolves to nothing, by name or through an alias,
+   every group or leaf a row hangs off still exists (the root included). A row of a kind the test
    does not check fails it.
 7. **A rename ships its row.** Removing or renaming a verb or flag adds the row
    in the same pull request. The migration guide stays the human mirror; the
@@ -113,8 +132,9 @@ information to recover lived only in the website's migration guide.
 
 ## Consequences
 
-- An agent recovers from a removed verb by reading `error.replacement.use`, with
-  no human and no prose parsing; a CI log names the fix in one line.
+- An agent recovers from a removed verb by substituting `error.replacement.removed`
+  by `error.replacement.use` in its command line, with no human and no prose
+  parsing; a CI log names the fix in one line.
 - Exit codes, diagnostic codes and the first line of the message are unchanged,
   so existing error handling keeps working.
 - Bare paths that became groups (`apps details`, `tracks availability`) print
