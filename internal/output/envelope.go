@@ -61,6 +61,9 @@ type ErrorEnvelope struct {
 //     the ADR-0017 dry-run `requires` preview (carried to failure time so
 //     exit-3 recovery stays deterministic). Omitted when the failure is not a
 //     safety refusal.
+//   - Replacement names what replaced the verb or flag the user called when the
+//     usage error is a call to removed surface (ADR-0049). Omitted on every
+//     other failure, including an unknown verb or flag gplay never shipped.
 type ErrorDetail struct {
 	Code      string    `json:"code"`
 	ExitCode  int       `json:"exitCode"`
@@ -71,6 +74,20 @@ type ErrorDetail struct {
 	Message   string    `json:"message"`
 	Reasons   []string  `json:"reasons,omitempty"`
 	Requires  []string  `json:"requires,omitempty"`
+	// Replacement is a pointer so an unmatched failure omits the key rather
+	// than emitting an empty object.
+	Replacement *Replacement `json:"replacement,omitempty"`
+}
+
+// Replacement is the envelope's `replacement` object (ADR-0049): kind is
+// "command" or "flag"; removed and use are full command paths starting with
+// "gplay" for a command, flag names on the same command for a flag; removedIn
+// is the gplay version.
+type Replacement struct {
+	Kind      string `json:"kind"`
+	Removed   string `json:"removed"`
+	Use       string `json:"use"`
+	RemovedIn string `json:"removedIn"`
 }
 
 // Resource is the envelope's `resource` object: the addressing axis of the
@@ -84,8 +101,9 @@ type Resource struct {
 // WriteErrorEnvelope serializes err as a single ErrorEnvelope to w using the
 // gplay-wide JSON shape (2-space indent, trailing newline). Every classified
 // field comes from exit.Classify, the single classifier, so this function holds
-// no failure taxonomy of its own; only requires[] is read here, because it is a
-// recovery hint about flags rather than a diagnosis. Callers gate this on the
+// no failure taxonomy of its own; only requires[] and replacement are read here,
+// because they are recovery hints (the flag to add, the verb or flag to use
+// instead) rather than a diagnosis. Callers gate this on the
 // resolved Format being FormatJSON; it does not check the format itself.
 //
 // Message and Operation are masked with redact.String: they are gplay-authored
@@ -109,6 +127,11 @@ func WriteErrorEnvelope(w io.Writer, err error) error {
 	var safety *exit.SafetyFlagError
 	if errors.As(err, &safety) && safety.Flag != "" {
 		d.Requires = []string{safety.Flag}
+	}
+	var usage *exit.UsageError
+	if errors.As(err, &usage) && usage.Replacement != nil {
+		r := usage.Replacement
+		d.Replacement = &Replacement{Kind: r.Kind, Removed: r.Removed, Use: r.Use, RemovedIn: r.RemovedIn}
 	}
 	return WriteJSON(w, ErrorEnvelope{Error: d})
 }

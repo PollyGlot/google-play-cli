@@ -72,6 +72,11 @@ func GroupRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return cmd.Help()
 	}
+	// A removed verb gets its authoritative replacement instead of the
+	// Levenshtein guess, which is silent or wrong on most renames (ADR-0049).
+	if r, ok := removedVerb(cmd, args); ok {
+		return removedVerbError(cmd, r)
+	}
 	return exit.Usagef("unknown command %q for %q%s", args[0], cmd.CommandPath(), suggestionsFor(cmd, args[0]))
 }
 

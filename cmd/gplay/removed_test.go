@@ -1,0 +1,167 @@
+package main
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/spf13/cobra"
+
+	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/output"
+)
+
+// TestRemovedVerb_namesReplacement is #688: a verb 2.0.0 removed still fails as
+// CLI misuse (exit 2, USAGE_ERROR), but the message and the JSON envelope name
+// the verb that replaced it, so a 1.x script or an agent can recover alone.
+func TestRemovedVerb_namesReplacement(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+	stdout, code, err := runLikeMain(t, "games", "achievements", "update", "x")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; err=%v", code, err)
+	}
+	want := "unknown command \"update\" for \"gplay games achievements\": removed in 2.0.0, use `gplay games achievements set`"
+	if err.Error() != want {
+		t.Errorf("message = %q\nwant      %q", err.Error(), want)
+	}
+	d := envelopeOf(t, stdout)
+	if d.Code != string(exit.CodeUsageError) || d.ExitCode != 2 {
+		t.Errorf("envelope code/exitCode = %s/%d, want USAGE_ERROR/2", d.Code, d.ExitCode)
+	}
+	if d.Replacement == nil {
+		t.Fatalf("envelope has no replacement:\n%s", stdout)
+	}
+	got := *d.Replacement
+	wantR := output.Replacement{Kind: "command", Removed: "gplay games achievements update", Use: "gplay games achievements set", RemovedIn: "2.0.0"}
+	if got != wantR {
+		t.Errorf("replacement = %+v, want %+v", got, wantR)
+	}
+}
+
+// TestRemovedVerb_beforeAGroupUnknownFlag covers the group-parses-flags-first
+// quirk: `update` is not a child, so cobra parses `--output` on the group,
+// which has no such flag. The removed verb, not the flag, is the real cause.
+func TestRemovedVerb_beforeAGroupUnknownFlag(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+	stdout, code, err := runLikeMain(t, "games", "achievements", "update", "x", "--output", "json")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; err=%v", code, err)
+	}
+	if !strings.Contains(err.Error(), "removed in 2.0.0, use `gplay games achievements set`") {
+		t.Errorf("message = %q, want the removed-verb hint", err.Error())
+	}
+	if d := envelopeOf(t, stdout); d.Replacement == nil || d.Replacement.Use != "gplay games achievements set" {
+		t.Errorf("envelope replacement = %+v, want use gplay games achievements set", d.Replacement)
+	}
+}
+
+// TestRemovedVerb_precedenceOverDidYouMean: on an exact removed path the table
+// replaces the Levenshtein suggestion (`apps info` used to suggest `init`); a
+// live typo keeps the suggestion and gets no replacement.
+func TestRemovedVerb_precedenceOverDidYouMean(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+
+	stdout, code, err := runLikeMain(t, "apps", "info")
+	if code != 2 {
+		t.Fatalf("apps info: exit code = %d, want 2; err=%v", code, err)
+	}
+	if !strings.Contains(err.Error(), "removed in 0.4.1, use `gplay apps view`") {
+		t.Errorf("apps info: message = %q, want the apps view hint", err.Error())
+	}
+	if strings.Contains(err.Error(), "Did you mean") {
+		t.Errorf("apps info: message = %q, still carries a did-you-mean", err.Error())
+	}
+	if d := envelopeOf(t, stdout); d.Replacement == nil || d.Replacement.Use != "gplay apps view" {
+		t.Errorf("apps info: envelope replacement = %+v", d.Replacement)
+	}
+
+	stdout, code, err = runLikeMain(t, "apps", "veiw")
+	if code != 2 {
+		t.Fatalf("apps veiw: exit code = %d, want 2; err=%v", code, err)
+	}
+	if !strings.Contains(err.Error(), "Did you mean this?\n    view") || strings.Contains(err.Error(), "removed in") {
+		t.Errorf("apps veiw: message = %q, want the did-you-mean and no removal", err.Error())
+	}
+	// Absent, not empty: the field is omitempty on an unmatched usage error.
+	if strings.Contains(stdout, "replacement") {
+		t.Errorf("apps veiw: envelope carries a replacement key:\n%s", stdout)
+	}
+}
+
+// TestRemovedVerb_carriesItsNote: appstore update became the domain verb
+// submit, not a pure rename, and the message says so.
+func TestRemovedVerb_carriesItsNote(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "table")
+	stdout, code, err := runLikeMain(t, "appstore", "update")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; err=%v", code, err)
+	}
+	want := "unknown command \"update\" for \"gplay appstore\": removed in 2.0.0, use `gplay appstore submit` (submit is the domain verb for sending the app to review, not a renamed update)"
+	if err.Error() != want {
+		t.Errorf("message = %q\nwant      %q", err.Error(), want)
+	}
+	if stdout != "" {
+		t.Errorf("stdout = %q, want empty under table", stdout)
+	}
+}
+
+// TestRemovedVerb_movedBranch: a verb whose whole branch moved
+// (`appstore upload apk` -> `appstore apk upload`) matches on its full path.
+func TestRemovedVerb_movedBranch(t *testing.T) {
+	t.Setenv(output.EnvDefaultOutput, "")
+	stdout, code, err := runLikeMain(t, "appstore", "upload", "apk", "app.apk")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; err=%v", code, err)
+	}
+	if !strings.Contains(err.Error(), "removed in 2.0.0, use `gplay appstore apk upload`") {
+		t.Errorf("message = %q", err.Error())
+	}
+	d := envelopeOf(t, stdout)
+	if d.Replacement == nil || d.Replacement.Removed != "gplay appstore upload apk" {
+		t.Errorf("envelope replacement = %+v, want removed gplay appstore upload apk", d.Replacement)
+	}
+}
+
+// TestRemovedSurface_table keeps the removed-surface table honest against the
+// live command tree (ADR-0049): every replacement resolves to a runnable leaf,
+// every removed path resolves to nothing (a removed path that still exists is a
+// table bug: the hint would shadow a live command, or never fire), and the
+// group a removed verb hangs off still exists, or the lookup could never run.
+func TestRemovedSurface_table(t *testing.T) {
+	root := newRootCmd(kernel.Boot{})
+	// resolves reports whether path names an existing command of the tree,
+	// consuming every word (cobra's Find stops at the first unknown word and
+	// returns the deepest command it reached).
+	resolves := func(path string) (*cobra.Command, bool) {
+		c, _, err := root.Find(strings.Fields(path))
+		if err != nil || c.CommandPath() != root.Name()+" "+path {
+			return nil, false
+		}
+		return c, true
+	}
+	seen := map[string]bool{}
+	for _, r := range kernel.RemovedSurface() {
+		key := r.Kind + "|" + r.Path + "|" + r.Token
+		if seen[key] {
+			t.Errorf("duplicate row %q", key)
+		}
+		seen[key] = true
+		if r.RemovedIn == "" {
+			t.Errorf("row %q: empty RemovedIn", key)
+		}
+		switch r.Kind {
+		case kernel.RemovedCommand:
+			if g, ok := resolves(r.Path); !ok || !g.HasSubCommands() {
+				t.Errorf("row %q: %q is not a live group", key, r.Path)
+			}
+			if _, ok := resolves(r.Path + " " + r.Token); ok {
+				t.Errorf("row %q: removed path still resolves", key)
+			}
+			if u, ok := resolves(r.Use); !ok || u.HasSubCommands() || !u.Runnable() {
+				t.Errorf("row %q: replacement %q is not a live leaf", key, r.Use)
+			}
+		default:
+			t.Errorf("row %q: kind %q has no integrity check", key, r.Kind)
+		}
+	}
+}
