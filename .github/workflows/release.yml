@@ -165,10 +165,12 @@ jobs:
     permissions:
       contents: read
     steps:
+      # The workflow's own ref, not the tag: a dispatch replaying an older tag
+      # would check out a tree without fire-t3-task.sh.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.ref || github.ref }}
+          sparse-checkout: .github/scripts
 
       - name: Fire the release-announce task
         env:
@@ -187,8 +189,11 @@ jobs:
           # The same fields a GitHub `release` delivery carries, read back from
           # the release GoReleaser just finished, so the task prompt keeps its
           # {{body.release.*}} placeholders.
-          code=$(gh api "repos/$REPO/releases/tags/$tag" \
-              --jq '{event: "release", action: "published", release: {tag_name, prerelease, draft, html_url}}' \
+          # Read into a variable first: on a 403/404 gh prints an error body,
+          # and piping it straight in would sign and send that body.
+          payload=$(gh api "repos/$REPO/releases/tags/$tag" \
+            --jq '{event: "release", action: "published", release: {tag_name, prerelease, draft, html_url}}')
+          code=$(printf '%s' "$payload" \
             | WEBHOOK_URL="$T3_URL" SIGNING_SECRET="$T3_SECRET" \
               .github/scripts/fire-t3-task.sh /tmp/announce-response.txt)
           if [ "${code:0:1}" != "2" ]; then
