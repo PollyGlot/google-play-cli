@@ -5,6 +5,15 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0](https://github.com/PollyGlot/google-play-cli/compare/v2.1.0...v2.2.0) (2026-10-11)
+
+
+### Features
+
+* **releases:** register externally hosted APKs on releases upload ([#684](https://github.com/PollyGlot/google-play-cli/issues/684)) ([4a3ac69](https://github.com/PollyGlot/google-play-cli/commit/4a3ac69c8c89668fcd1459023b647b0aceb5319d))
+* **releases:** ship several artifacts and retained versionCodes in one upload ([#683](https://github.com/PollyGlot/google-play-cli/issues/683)) ([ec7ed46](https://github.com/PollyGlot/google-play-cli/commit/ec7ed46aea6d9d44098c64b8674421b242d9b962))
+* **schema:** look the API surface up by gplay command with --command ([#680](https://github.com/PollyGlot/google-play-cli/issues/680)) ([0fc1837](https://github.com/PollyGlot/google-play-cli/commit/0fc183777f9932bc749b41e39cb96e0258daf967))
+
 ## [2.1.0](https://github.com/PollyGlot/google-play-cli/compare/v2.0.0...v2.1.0) (2026-10-06)
 
 
