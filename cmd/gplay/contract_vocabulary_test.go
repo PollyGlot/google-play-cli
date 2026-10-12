@@ -244,7 +244,11 @@ var verbPathExceptions = map[string]string{
 	"vitals errors reports":  "ADR-0027",
 	// Bulk report families (ADR-0050): each leaf is named after the export
 	// it reads, like the vitals presets; there is no resource to view.
-	"reports installs": "ADR-0050",
+	"reports installs":           "ADR-0050",
+	"reports ratings":            "ADR-0050",
+	"reports crashes":            "ADR-0050",
+	"reports store-performance":  "ADR-0050",
+	"reports subscription-stats": "ADR-0050",
 }
 
 // verbDrift lists experimental leaves whose verb contradicts ADR-0019 (`set`

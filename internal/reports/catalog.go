@@ -45,6 +45,10 @@ type Family struct {
 	// e.g. "stats/installs/installs_".
 	Prefix string
 	Scope  Scope
+	// PerProduct marks a per-package family whose object names carry a
+	// product id between the package and the month (subscription stats):
+	// <prefix><package>_<productId>_<YYYYMM>[_<split>].csv.
+	PerProduct bool
 	// Permission is the global Console permission the exports require, named
 	// by the 403 message.
 	Permission bucket.Permission
@@ -86,8 +90,90 @@ gs://<bucket>/stats/installs/installs_<package>_<YYYYMM>_<dimension>.csv.
 Play publishes a month 3 to 7 days after it ends.`,
 }
 
+// Ratings is the ratings statistics family: daily and cumulative average
+// ratings per package, split by one dimension per file.
+var Ratings = Family{
+	Name:           "ratings",
+	Prefix:         "stats/ratings/ratings_",
+	Scope:          PerPackage,
+	Permission:     bucket.ViewAppInformation,
+	Page:           "Statistics",
+	DefaultSplit:   "overview",
+	MaxObjectBytes: gcs.MaxObjectRead,
+	TableHidden:    []string{"packageName"},
+	Summary:        "Read the monthly ratings statistics of a package from the Reporting bucket",
+	About: `Read the daily ratings statistics of --package (the day's average rating
+and the cumulative one) from the monthly Bulk reports Play exports to
+gs://<bucket>/stats/ratings/ratings_<package>_<YYYYMM>_<dimension>.csv.
+Play publishes a month 3 to 7 days after it ends.`,
+}
+
+// Crashes is the crash statistics family: daily crash and ANR counts per
+// package, split by one dimension per file.
+var Crashes = Family{
+	Name:           "crashes",
+	Prefix:         "stats/crashes/crashes_",
+	Scope:          PerPackage,
+	Permission:     bucket.ViewAppInformation,
+	Page:           "Statistics",
+	DefaultSplit:   "overview",
+	MaxObjectBytes: gcs.MaxObjectRead,
+	TableHidden:    []string{"packageName"},
+	Summary:        "Read the monthly crash and ANR statistics of a package from the Reporting bucket",
+	About: `Read the daily crash and ANR counts of --package from the monthly Bulk
+reports Play exports to
+gs://<bucket>/stats/crashes/crashes_<package>_<YYYYMM>_<dimension>.csv.
+For clustered issues, rates and thresholds, gplay vitals reads the Play
+Developer Reporting API instead. Play publishes a month 3 to 7 days after it
+ends.`,
+}
+
+// StorePerformance is the Store listing acquisition family: visitors,
+// acquisitions and conversion per country or traffic source. Play exports no
+// overview file for it, so it has no default split.
+var StorePerformance = Family{
+	Name:           "store-performance",
+	Prefix:         "stats/store_performance/store_performance_",
+	Scope:          PerPackage,
+	Permission:     bucket.ViewAppInformation,
+	Page:           "Statistics",
+	MaxObjectBytes: gcs.MaxObjectRead,
+	TableHidden:    []string{"packageName"},
+	Summary:        "Read the monthly Store listing performance of a package from the Reporting bucket",
+	About: `Read the daily Store listing performance of --package (visitors,
+acquisitions and conversion rate) from the monthly Bulk reports Play exports
+to gs://<bucket>/stats/store_performance/store_performance_<package>_<YYYYMM>_<dimension>.csv,
+one file per breakdown: country, or traffic_source (with the search term and
+UTM fields). There is no overview file, so --dimension is required in
+practice. Play publishes a month 3 to 7 days after it ends.`,
+}
+
+// SubscriptionStats is the subscription statistics family: new, canceled and
+// active subscriptions of one subscription product, per country. Its exports
+// sit with the financial ones and need the financial permission.
+var SubscriptionStats = Family{
+	Name:           "subscription-stats",
+	Prefix:         "financial-stats/subscriptions/subscriptions_",
+	Scope:          PerPackage,
+	PerProduct:     true,
+	Permission:     bucket.ViewFinancialData,
+	Page:           "Financial",
+	DefaultSplit:   "country",
+	MaxObjectBytes: gcs.MaxObjectRead,
+	TableHidden:    []string{"packageName", "productId"},
+	Summary:        "Read the monthly statistics of a subscription product from the Reporting bucket",
+	About: `Read the daily statistics of the subscription product --product of
+--package (new, canceled and active subscriptions) from the monthly Bulk
+reports Play exports to
+gs://<bucket>/financial-stats/subscriptions/subscriptions_<package>_<productId>_<YYYYMM>_<dimension>.csv.
+The product id may hold underscores: the object name is read from the
+package, the month and the final dimension. Run
+gplay reports list --family subscription-stats --package <package> to see the
+product ids present.`,
+}
+
 // catalogue is every family gplay reads, in `reports list` order.
-var catalogue = []Family{Installs}
+var catalogue = []Family{Installs, Ratings, Crashes, StorePerformance, SubscriptionStats}
 
 // Catalogue returns every known family, in `reports list` order.
 func Catalogue() []Family { return append([]Family(nil), catalogue...) }
@@ -110,10 +196,18 @@ func (f Family) ListPrefix(pkg string) string {
 	return f.Prefix
 }
 
+// ProductListPrefix narrows ListPrefix to one product of a PerProduct
+// family. The prefix of gold also matches gold_trial, so the caller keeps the
+// exports whose parsed Object.Product is the one asked.
+func (f Family) ProductListPrefix(pkg, product string) string {
+	return f.ListPrefix(pkg) + product + "_"
+}
+
 // Object is one monthly export, as the bucket listing names it.
 type Object struct {
 	Family  string
 	Package string // "" for an account-wide family
+	Product string // the product id of a PerProduct family; "" otherwise
 	Month   string // YYYYMM
 	Split   string // the dimension (or name suffix); "" when the name has none
 	Name    string // the full object key
@@ -124,11 +218,14 @@ type Object struct {
 // Objects parses a bucket listing into the family's exports, sorted by
 // package, month and split. Names are read leniently: the package may hold
 // underscores (the month segment anchors the parse), the extension's case is
-// ignored, and the split is whatever follows the month. When pkg is set, only
+// ignored, and the split is whatever follows the month. A PerProduct family's
+// product id sits between the package and the month and may hold underscores
+// too: with pkg set the parse anchors on it, otherwise the package ends at
+// the first underscore. When pkg is set, only
 // that package's exports are kept: the list prefix for com.x also matches
 // com.x_y. Names that do not parse are returned in skipped, for a verbose log.
 func (f Family) Objects(listing []gcs.Object, pkg string) (objs []Object, skipped []string) {
-	re := f.nameRE()
+	re := f.nameRE(pkg)
 	for _, o := range listing {
 		m := re.FindStringSubmatch(o.Name)
 		if m == nil {
@@ -136,9 +233,12 @@ func (f Family) Objects(listing []gcs.Object, pkg string) (objs []Object, skippe
 			continue
 		}
 		obj := Object{Family: f.Name, Name: o.Name, Size: o.Size, Updated: o.Updated}
-		if f.Scope == PerPackage {
+		switch {
+		case f.Scope == PerPackage && f.PerProduct:
+			obj.Package, obj.Product, obj.Month, obj.Split = m[1], m[2], m[3], m[4]
+		case f.Scope == PerPackage:
 			obj.Package, obj.Month, obj.Split = m[1], m[2], m[3]
-		} else {
+		default:
 			obj.Month, obj.Split = m[1], m[2]
 		}
 		if pkg != "" && obj.Package != pkg {
@@ -151,6 +251,9 @@ func (f Family) Objects(listing []gcs.Object, pkg string) (objs []Object, skippe
 		if a.Package != b.Package {
 			return a.Package < b.Package
 		}
+		if a.Product != b.Product {
+			return a.Product < b.Product
+		}
 		if a.Month != b.Month {
 			return a.Month < b.Month
 		}
@@ -161,10 +264,20 @@ func (f Family) Objects(listing []gcs.Object, pkg string) (objs []Object, skippe
 
 // nameRE matches the family's object names. For a per-package family the
 // greedy package group stops at the last _YYYYMM, so a package holding
-// underscores still parses.
-func (f Family) nameRE() *regexp.Regexp {
+// underscores still parses. A PerProduct family has two free segments before
+// the month: the package is pkg when given (only its exports are kept
+// anyway), else the run up to the first underscore; the greedy product group
+// then stops at the last _YYYYMM, like the package of the other families.
+func (f Family) nameRE(pkg string) *regexp.Regexp {
 	if f.Scope == AccountWide {
 		return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + `(\d{6})(?:_([^/]+?))?\.(?i:csv|zip)$`)
+	}
+	if f.PerProduct {
+		pkgRE := `([^_/]+)`
+		if pkg != "" {
+			pkgRE = `(` + regexp.QuoteMeta(pkg) + `)`
+		}
+		return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + pkgRE + `_([^/]+)_(\d{6})(?:_([^/]+?))?\.(?i:csv)$`)
 	}
 	return regexp.MustCompile(`^` + regexp.QuoteMeta(f.Prefix) + `([^/]+)_(\d{6})(?:_([^/]+?))?\.(?i:csv)$`)
 }
@@ -193,6 +306,9 @@ func (e *SplitError) Error() string {
 		when = months[0] + ".." + months[len(months)-1]
 	}
 	avail := strings.Join(e.Available, ", ")
+	if e.Requested == "" && e.Default == "" {
+		return fmt.Sprintf("this report has no default dimension: pass --dimension with one of: %s (present for %s)", avail, when)
+	}
 	if e.Requested == "" {
 		return fmt.Sprintf("no %q report for %s, so no default dimension: pass --dimension with one of: %s", e.Default, when, avail)
 	}

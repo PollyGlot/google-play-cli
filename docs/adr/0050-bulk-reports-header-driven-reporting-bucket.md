@@ -72,11 +72,13 @@ permission. Three findings shape the design:
    `--output json` emits
 
    ```json
-   {"report": {"family", "package", "months", "split", "objects"},
+   {"report": {"family", "package", "product", "months", "split", "objects"},
     "columns": [{"key", "header"}],
     "rows": [{"<key>": "<value>"}]}
    ```
 
+   - `product` appears for subscription statistics only, whose exports are
+     per subscription product (`--product`).
    - **Key rule.** The words of a header are its runs of letters and digits;
      the first is lowercased, each next one gets an upper-case first letter and
      the rest lowercased: `Daily Device Installs` is `dailyDeviceInstalls`,

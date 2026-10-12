@@ -39,7 +39,8 @@ type Input struct {
 type Entry struct {
 	Family  string `json:"family"`
 	Package string `json:"package,omitempty"`
-	Month   string `json:"month"` // YYYY-MM
+	Product string `json:"product,omitempty"` // subscription stats: the id --product takes
+	Month   string `json:"month"`             // YYYY-MM
 	Split   string `json:"split,omitempty"`
 	Object  string `json:"object"`
 	Size    string `json:"size"`    // bytes, as the bucket listing reports them
@@ -49,6 +50,7 @@ type Entry struct {
 var columns = output.NewColumnSet(
 	output.Column[Entry]{Key: "family", Header: "FAMILY", Value: func(e Entry) string { return e.Family }},
 	output.Column[Entry]{Key: "package", Header: "PACKAGE", Value: func(e Entry) string { return e.Package }},
+	output.Column[Entry]{Key: "product", Header: "PRODUCT", Value: func(e Entry) string { return e.Product }},
 	output.Column[Entry]{Key: "month", Header: "MONTH", Value: func(e Entry) string { return e.Month }},
 	output.Column[Entry]{Key: "split", Header: "DIMENSION", Value: func(e Entry) string { return e.Split }},
 	output.Column[Entry]{Key: "size", Header: "SIZE", Value: func(e Entry) string { return e.Size }},
@@ -56,7 +58,7 @@ var columns = output.NewColumnSet(
 	output.Column[Entry]{Key: "object", Header: "OBJECT", Value: func(e Entry) string { return e.Object }},
 )
 
-const defaultColumns = "family,package,month,split,size,updated"
+const defaultColumns = "family,package,product,month,split,size,updated"
 
 // Payload satisfies output.Renderable.
 type Payload struct {
@@ -142,7 +144,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 				continue
 			}
 			entries = append(entries, Entry{
-				Family: o.Family, Package: o.Package, Month: reports.DisplayMonth(o.Month), Split: o.Split,
+				Family: o.Family, Package: o.Package, Product: o.Product, Month: reports.DisplayMonth(o.Month), Split: o.Split,
 				Object: o.Name, Size: o.Size, Updated: o.Updated,
 			})
 		}
@@ -190,9 +192,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "list",
 		Short: "List the Bulk reports the Reporting bucket holds (family, package, month, dimension)",
 		Long: `List the Bulk reports the Reporting bucket holds: one row per export, with
-its family, package, month, dimension, size and last update. It is the way to
-see which months and dimensions exist before reading one with
-gplay reports <family>.
+its family, package, product (subscription stats), month, dimension, size
+and last update. It is the way to see which months, dimensions and product
+ids exist before reading one with gplay reports <family>.
 
 Known families: ` + strings.Join(reports.Names(), ", ") + `.
 Each is listed with one Cloud Storage call (read-only scope,
@@ -205,9 +207,12 @@ with that permission and the "Copy Cloud Storage URI" hint for --bucket.
 inventory (each bound may come alone). Without --package every package is
 listed: the Project pin does not apply to an inventory.
 
---output json emits {"reports": [{"family", "package", "month", "split",
-"object", "size", "updated"}]}; size and updated are the bucket listing's
-strings, verbatim.`,
+--output json emits {"reports": [{"family", "package", "product", "month",
+"split", "object", "size", "updated"}]}; product is present on subscription
+stats rows only. size and updated are the bucket listing's strings, verbatim.
+Without --package, a subscription stats name is split at the first
+underscore after the prefix (package, then product id); pass --package when
+the package itself holds an underscore.`,
 		Example: `  # Everything the bucket holds
   gplay reports list
 

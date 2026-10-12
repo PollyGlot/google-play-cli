@@ -16,6 +16,8 @@ gplay reports list --package com.example.app        # what exists
 gplay reports installs                               # latest month, overview
 gplay reports installs --month 2026-09 --dimension country
 gplay reports installs --since 2026-01 --until 2026-06 --dimension country --output json
+gplay reports store-performance --dimension traffic_source
+gplay reports subscription-stats --product premium_monthly
 ```
 
 The whole `reports` group is `[experimental]`: the columns are Google's, so
@@ -25,9 +27,9 @@ gplay cannot freeze them (see [Stability](/docs/concepts/stability/)).
 
 A Bulk report is identified by three things:
 
-- **Family**: what it measures. Today `installs`; ratings, crashes, Store
-  performance, subscription statistics, earnings and estimated sales are
-  coming, on the same model.
+- **Family**: what it measures, one command each: `installs`, `ratings`,
+  `crashes`, `store-performance` and `subscription-stats`. Earnings and
+  estimated sales are coming, on the same model.
 - **Month**: one file per calendar month. Without `--month`, gplay reads the
   latest month present for the package; `--since` and `--until` read a range
   and merge it into one result set.
@@ -39,8 +41,21 @@ A Bulk report is identified by three things:
   `overview` is read when present; otherwise the error names the dimensions
   that exist for that month.
 
+Two families differ:
+
+- **Store performance** comes as one file per breakdown, `country` or
+  `traffic_source` (the latter with the search term and UTM fields), and has
+  no `overview` file: pass `--dimension`. Its cells are quoted, and a search
+  term holding a comma, a tab or a line break comes out as typed.
+- **Subscription statistics** are per subscription product:
+  `--product <id>` is required, and the export is split by `country` (read by
+  default). A product id may contain underscores; gplay reads the object name
+  from the package, the month and the final dimension, so
+  `premium_monthly_v2` is never cut short.
+
 `gplay reports list` shows every family, month and dimension the service
-account can see, with each file's size and last update.
+account can see, with each file's size and last update, and the product id
+of each subscription statistics file.
 
 ## Permissions and the bucket
 
@@ -50,8 +65,9 @@ a **global** permission in the Play Console:
 
 | Family | Permission |
 | --- | --- |
-| Statistics (installs; ratings, crashes and Store performance to come) | *View app information* |
-| Finances (earnings, sales and subscription statistics, to come) | *View financial data* |
+| Statistics (installs, ratings, crashes, Store performance) | *View app information* |
+| Subscription statistics | *View financial data* |
+| Finances (earnings and sales, to come) | *View financial data* |
 
 A `403` names the missing permission. The bucket name defaults to
 `pubsite_prod_rev_<developerId>`; when your Console-issued URI differs, copy

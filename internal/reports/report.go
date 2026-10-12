@@ -11,7 +11,8 @@ import (
 type Identity struct {
 	Family  string   `json:"family"`
 	Package string   `json:"package,omitempty"`
-	Months  []string `json:"months"` // YYYY-MM, chronological
+	Product string   `json:"product,omitempty"` // the product id of a PerProduct family
+	Months  []string `json:"months"`            // YYYY-MM, chronological
 	Split   string   `json:"split,omitempty"`
 	Objects []string `json:"objects"` // object keys read, in month order
 }

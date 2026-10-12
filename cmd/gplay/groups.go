@@ -578,6 +578,10 @@ func newReportsGroup(boot kernel.Boot) *cobra.Command {
 	return kernel.Experimental(kernel.Group("reports", "Read the monthly Bulk reports (installs, ...) from the Reporting bucket",
 		kernel.WithScope(reportslist.NewCommand(boot), token.StorageReadOnlyScope),
 		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Installs), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Ratings), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Crashes), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.StorePerformance), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.SubscriptionStats), token.StorageReadOnlyScope),
 	))
 }
 
