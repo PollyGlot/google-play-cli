@@ -427,3 +427,43 @@ func TestWithReadOnlyEdit_panicInClosure_triggersDiscardAndRepropagates(t *testi
 		panic("simulated panic from read-only closure")
 	})
 }
+
+// TestWithEdit_nothingToCommit_discardsAndSucceeds asserts the no-op path a
+// create takes when its resource already exists (--if-exists skip): the
+// closure returns ErrNothingToCommit, the implicit Edit is discarded instead
+// of committed (an empty commit would burn a publish slot), and WithEdit
+// reports success. KeepOnFailure does not apply: nothing failed.
+func TestWithEdit_nothingToCommit_discardsAndSucceeds(t *testing.T) {
+	for _, keep := range []bool{false, true} {
+		rt := &editsRT{t: t, editID: "edit-noop"}
+		err := edits.WithEdit(context.Background(), rt.client(), "com.example.app", edits.Options{KeepOnFailure: keep}, func(string) error {
+			return fmt.Errorf("skipped: %w", edits.ErrNothingToCommit)
+		})
+		if err != nil {
+			t.Fatalf("keep=%v: WithEdit = %v, want nil", keep, err)
+		}
+		want := []string{
+			"POST /androidpublisher/v3/applications/com.example.app/edits",
+			"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-noop",
+		}
+		if got := rt.calls(); strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Errorf("keep=%v: calls = %v, want %v", keep, got, want)
+		}
+	}
+}
+
+// TestWithEdit_nothingToCommit_explicitEditUntouched asserts that in explicit
+// mode the pinned Edit is left alone (no commit, no discard) and the no-op
+// still reports success.
+func TestWithEdit_nothingToCommit_explicitEditUntouched(t *testing.T) {
+	rt := &editsRT{t: t, editID: "unused"}
+	err := edits.WithEdit(context.Background(), rt.client(), "com.example.app", edits.Options{ExplicitEditID: "edit-pinned"}, func(string) error {
+		return edits.ErrNothingToCommit
+	})
+	if err != nil {
+		t.Fatalf("WithEdit = %v, want nil", err)
+	}
+	if got := rt.calls(); len(got) != 0 {
+		t.Errorf("explicit Edit saw lifecycle calls %v, want none", got)
+	}
+}

@@ -18,8 +18,14 @@ Closed testing is the only track type the API can create, so there is no
 `--type` flag. The new track is a phone track by default; pass
 `--form-factor wear` or `--form-factor automotive` for a Wear OS or
 Android Automotive closed track.
-Creating a track that already exists surfaces the API error (exit `30`);
-gplay doesn't fake idempotency.
+Creating a track that already exists surfaces the API error (exit `30`).
+In a pipeline that may run twice, pass `--if-exists skip`: gplay reads the
+track first and, when it is already there, creates nothing, exits `0` and
+prints the existing track.
+
+```sh
+gplay tracks create qa-team --if-exists skip
+```
 
 ## Declare the testers
 
