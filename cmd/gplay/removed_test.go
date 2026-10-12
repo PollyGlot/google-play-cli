@@ -381,9 +381,20 @@ func TestRemovedFlag_namesReplacement(t *testing.T) {
 func TestRemovedFlag_scopedToItsLeaf(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 
-	_, _, err := runLikeMain(t, "releases", "promote", "--from", "internal", "--to", "production")
-	if err != nil && (strings.Contains(err.Error(), "unknown flag") || strings.Contains(err.Error(), "removed in")) {
-		t.Errorf("releases promote --to: err = %q, want --to accepted", err.Error())
+	// Hermetic: --dry-run makes no HTTP call, --package and an empty cwd keep a
+	// .gplay/ pin out, and the credential variables are cleared, so the call
+	// succeeds offline or fails for a reason this test names.
+	t.Chdir(t.TempDir())
+	for _, v := range []string{"GPLAY_SERVICE_ACCOUNT", "GPLAY_ACCOUNT", "GPLAY_READONLY", "GOOGLE_APPLICATION_CREDENTIALS"} {
+		t.Setenv(v, "")
+	}
+	stdout, code, err := runLikeMain(t, "releases", "promote", "--from", "internal", "--to", "production",
+		"--package", "com.example.app", "--dry-run", "--output", "json")
+	if code != 0 || err != nil {
+		t.Fatalf("releases promote --to --dry-run: exit code = %d, err = %v, want 0", code, err)
+	}
+	if !strings.Contains(stdout, `"track": "production"`) {
+		t.Errorf("releases promote --to --dry-run: stdout = %s, want the production preview", stdout)
 	}
 
 	for _, tc := range []struct {
