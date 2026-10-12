@@ -114,7 +114,10 @@ before the rule was enforced; and the `vitals` presets (`vitals crashes`,
 `vitals anr`, …, `vitals anomalies`, `vitals errors counts|issues|reports`)
 plus `vitals query` are verb-less reads by design: there is no resource to
 `view`, only metric sets to query
-([ADR-0027](./adr/0027-vitals-second-service-scope-readonly.md)).
+([ADR-0027](./adr/0027-vitals-second-service-scope-readonly.md)). The
+`reports` family leaves (`reports installs`, ...) follow the same pattern:
+each is named after the Bulk report it reads, next to `reports list`
+([ADR-0050](./adr/0050-bulk-reports-header-driven-reporting-bucket.md)).
 
 **3. Reference / diagnostic / scaffold** — meta-commands outside the resource
 grammar, keeping their own names: `version`, `exit-codes`, `install-skills`
@@ -456,6 +459,9 @@ reports the error the serial walk would have hit first.
   has no server-side rating filter.
 - Long-history retrieval (CSV reports in the GCS bucket) ships as `reviews
   history --month` (ADR-0037).
+- The other monthly exports of the same bucket (installs, then ratings,
+  crashes, Store performance, finances) are `gplay reports`, with columns
+  taken from each CSV header (ADR-0050).
 
 ---
 

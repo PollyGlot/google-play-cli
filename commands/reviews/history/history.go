@@ -11,9 +11,7 @@
 package history
 
 import (
-	"errors"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -21,10 +19,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/gcs"
+	reportbucket "github.com/PollyGlot/google-play-cli/internal/reports/bucket"
 	"github.com/PollyGlot/google-play-cli/internal/reviews/history"
-	"github.com/PollyGlot/google-play-cli/internal/team/addressing"
 )
 
 // Input is the request-shaped struct cobra builds from flags.
@@ -137,26 +134,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	}{Reviews: rows})
 }
 
-// bucketAccessError wraps a 403/404 from the reporting bucket with the two
-// things an operator needs: where the authoritative bucket URI comes from (the
-// Play Console's "Copy Cloud Storage URI" button) and which global permission
-// the service account must hold ("View app information"). It carries no
-// ExitCode of its own so the wrapped *api.Error stays authoritative (403 → exit
-// 11, 404 → exit 30).
-type bucketAccessError struct {
-	bucket string
-	cause  error
-}
-
-func (e *bucketAccessError) Error() string {
-	return "cannot read the reporting bucket " + e.bucket +
-		": grant the service account the \"View app information\" (global) permission in the Play Console, " +
-		"and if the bucket name differs, copy the authoritative gs:// URI from the Console's Download reports > Reviews page " +
-		"(\"Copy Cloud Storage URI\" button) and pass its suffix via --bucket: " + e.cause.Error()
-}
-
-func (e *bucketAccessError) Unwrap() error { return e.cause }
-
 // noReportsError signals that no monthly reviews report exists for the package
 // in the bucket (an empty listing when --month was omitted). It is API-misuse
 // shaped (exit 30): the same class as an unknown package.
@@ -169,25 +146,11 @@ func (e *noReportsError) Error() string {
 }
 func (e *noReportsError) ExitCode() int { return 30 }
 
-// classify adds the reporting-bucket hint to a 403/404 while leaving the
-// wrapped *api.Error to drive the exit code; every other failure propagates
-// verbatim.
+// classify adds the reporting-bucket hint (permission and Console page) to a
+// 403/404 while leaving the wrapped *api.Error to drive the exit code; every
+// other failure propagates verbatim.
 func classify(bucket string, err error) error {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) {
-		switch apiErr.StatusCode {
-		case http.StatusForbidden, http.StatusNotFound:
-			return &bucketAccessError{bucket: bucket, cause: err}
-		}
-	}
-	return err
-}
-
-// isNotFound reports whether err is a 404 from the reporting bucket: a month
-// with no published report. In range mode that is a skipped warning, not a failure.
-func isNotFound(err error) bool {
-	var apiErr *api.Error
-	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
+	return reportbucket.Classify(bucket, reportbucket.ViewAppInformation, "Reviews", err)
 }
 
 // Run resolves the package, the reporting bucket, and the target month, fetches
@@ -213,13 +176,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Derive the bucket unless overridden. The developer-id is only needed for
 	// the default name, so --bucket lets an operator skip the developer-id
 	// cascade entirely.
-	bucket := strings.TrimSpace(in.Bucket)
-	if bucket == "" {
-		devID, err := addressing.ForRun(rc, in.DeveloperID)
-		if err != nil {
-			return nil, err
-		}
-		bucket = "pubsite_prod_rev_" + devID
+	bucket, err := reportbucket.Resolve(rc, in.Bucket, in.DeveloperID)
+	if err != nil {
+		return nil, err
 	}
 
 	// --month (single) and --since/--until (range) are mutually exclusive addressing
@@ -279,7 +238,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	for _, m := range months {
 		raw, err := gcs.FetchObject(rc.Ctx, hc, bucket, history.ObjectName(pkg, m))
 		if err != nil {
-			if rangeMode && isNotFound(err) {
+			if rangeMode && reportbucket.IsNotFound(err) {
 				rc.Warnf("no reviews report for %s-%s: skipped", m[:4], m[4:])
 				continue
 			}

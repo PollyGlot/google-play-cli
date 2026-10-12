@@ -227,6 +227,10 @@ The unit the Reporting API exposes per vital: named metrics queryable across dim
 **Reporting bucket**:
 The developer's Cloud Storage bucket where Play deposits its monthly CSV exports (reviews, stats, sales). Object storage, not an API.
 
+**Bulk report**:
+One monthly export Play deposits in the Reporting bucket, read by `gplay reports`: a **family** (installs, ratings, earnings, ...), a **month**, and for per-package families a **dimension** (the split: one file per country, device, ...). Its columns are whatever its CSV header says.
+_Avoid_: statistics API, stats report (for the whole family set), breakdown (use dimension)
+
 **Play Games Services Publishing API**:
 The admin service (`gamesConfiguration`) that configures a game's achievements and leaderboards as drafts, addressed by Play Games application ID.
 

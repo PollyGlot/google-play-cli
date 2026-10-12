@@ -112,3 +112,31 @@ func itoa(n int) string {
 	}
 	return "404"
 }
+
+func TestListObjects_carriesSizeAndUpdated(t *testing.T) {
+	r := bucketFake(`{"items":[{"name":"stats/installs/installs_com.x_202609_country.csv","size":"20480","updated":"2026-10-04T08:00:00.000Z","md5Hash":"x"}]}`, "")
+	objs, err := ListObjects(context.Background(), client(r), "b", "stats/installs/")
+	if err != nil {
+		t.Fatalf("ListObjects: %v", err)
+	}
+	if len(objs) != 1 || objs[0].Size != "20480" || objs[0].Updated != "2026-10-04T08:00:00.000Z" {
+		t.Fatalf("metadata lost: %+v", objs)
+	}
+}
+
+func TestFetchObjectLimit_callerChosenCap(t *testing.T) {
+	r := bucketFake("", "0123456789")
+	if got, err := FetchObjectLimit(context.Background(), client(r), "b", "o.csv", 10); err != nil || string(got) != "0123456789" {
+		t.Fatalf("at the cap: %q, %v", got, err)
+	}
+	_, err := FetchObjectLimit(context.Background(), client(r), "b", "o.csv", 9)
+	var apiErr *api.Error
+	// The message is the one `reviews history` has always printed: the
+	// caller-chosen cap changes no text (the reports name the cap themselves).
+	if !errors.As(err, &apiErr) || apiErr.Message != "response exceeds size limit" {
+		t.Fatalf("over the cap: err = %v, want the unchanged size-limit *api.Error", err)
+	}
+	if !errors.Is(err, ErrTooLarge) || apiErr.ExitCode() != 30 {
+		t.Errorf("over the cap: errors.Is(ErrTooLarge) = %v, exit %d; want true and the unchanged 30", errors.Is(err, ErrTooLarge), apiErr.ExitCode())
+	}
+}

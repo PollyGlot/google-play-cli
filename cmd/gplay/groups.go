@@ -83,6 +83,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
 	sharingupload "github.com/PollyGlot/google-play-cli/commands/releases/sharing/upload"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
+	reportsfamily "github.com/PollyGlot/google-play-cli/commands/reports/familycmd"
+	reportslist "github.com/PollyGlot/google-play-cli/commands/reports/listcmd"
 	reviewshistory "github.com/PollyGlot/google-play-cli/commands/reviews/history"
 	reviewslist "github.com/PollyGlot/google-play-cli/commands/reviews/list"
 	reviewsreply "github.com/PollyGlot/google-play-cli/commands/reviews/reply"
@@ -115,6 +117,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
+	"github.com/PollyGlot/google-play-cli/internal/reports"
 )
 
 func newAuthGroup(boot kernel.Boot) *cobra.Command {
@@ -561,6 +564,27 @@ func newReviewsGroup(boot kernel.Boot) *cobra.Command {
 		// its shape would be promising something gplay does not control.
 		kernel.Experimental(kernel.WithScope(reviewshistory.NewCommand(boot), token.StorageReadOnlyScope)),
 	)
+}
+
+// `gplay reports`: the Bulk reports Play exports monthly to the Reporting
+// bucket (statistics, then finances), read over the Cloud Storage API like
+// `reviews history`: every leaf mints a least-privilege devstorage.read_only
+// token via WithScope (ADR-0050). One leaf per family, built from the
+// catalogue in internal/reports, plus the inventory. [experimental]
+// (ADR-0010/ADR-0042) as a whole: the columns are Google's, derived from each
+// CSV header, so the output contract cannot be frozen. Read-only, nothing is
+// marked mutating.
+func newReportsGroup(boot kernel.Boot) *cobra.Command {
+	return kernel.Experimental(kernel.Group("reports", "Read the monthly Bulk reports (installs, ...) from the Reporting bucket",
+		kernel.WithScope(reportslist.NewCommand(boot), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Installs), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Ratings), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Crashes), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.StorePerformance), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.SubscriptionStats), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Earnings), token.StorageReadOnlyScope),
+		kernel.WithScope(reportsfamily.NewCommand(boot, reports.Sales), token.StorageReadOnlyScope),
+	))
 }
 
 // `gplay vitals`: read-only post-launch quality signals (crashes/ANR and the

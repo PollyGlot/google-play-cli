@@ -1,0 +1,79 @@
+{
+  "report": {
+    "family": "sales",
+    "months": [
+      "2026-09"
+    ],
+    "objects": [
+      "sales/salesreport_202609.zip"
+    ]
+  },
+  "columns": [
+    {
+      "key": "orderNumber",
+      "header": "Order Number"
+    },
+    {
+      "key": "orderChargedDate",
+      "header": "Order Charged Date"
+    },
+    {
+      "key": "productTitle",
+      "header": "Product Title"
+    },
+    {
+      "key": "productId",
+      "header": "Product ID"
+    },
+    {
+      "key": "productType",
+      "header": "Product Type"
+    },
+    {
+      "key": "skuId",
+      "header": "SKU ID"
+    },
+    {
+      "key": "currencyOfSale",
+      "header": "Currency of Sale"
+    },
+    {
+      "key": "itemPrice",
+      "header": "Item Price"
+    },
+    {
+      "key": "chargedAmount",
+      "header": "Charged Amount"
+    },
+    {
+      "key": "countryOfBuyer",
+      "header": "Country of Buyer"
+    }
+  ],
+  "rows": [
+    {
+      "orderNumber": "GPA.3300-0000-0000-00001",
+      "orderChargedDate": "2026-09-02",
+      "productTitle": "Example Pro (Example App)",
+      "productId": "com.example.app",
+      "productType": "subscription",
+      "skuId": "premium_monthly",
+      "currencyOfSale": "EUR",
+      "itemPrice": "4.99",
+      "chargedAmount": "4.99",
+      "countryOfBuyer": "FR"
+    },
+    {
+      "orderNumber": "GPA.3300-0000-0000-00002",
+      "orderChargedDate": "2026-09-03",
+      "productTitle": "Coins (Example Other)",
+      "productId": "com.example.other",
+      "productType": "inapp",
+      "skuId": "coins_100",
+      "currencyOfSale": "USD",
+      "itemPrice": "0.99",
+      "chargedAmount": "0.99",
+      "countryOfBuyer": "US"
+    }
+  ]
+}

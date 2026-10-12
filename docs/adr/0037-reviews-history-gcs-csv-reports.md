@@ -65,4 +65,7 @@ The decisions:
 - **Reviews only.** The same bucket serves stats/vitals/sales exports; those
   stay out of scope (vitals has a real API — [ADR-0027](0027-vitals-second-service-scope-readonly.md);
   stats/sales exports are their own future decision). The GCS client is
-  written resource-agnostic so a future surface reuses it.
+  written resource-agnostic so a future surface reuses it. That decision is
+  [ADR-0050](0050-bulk-reports-header-driven-reporting-bucket.md):
+  `gplay reports` reads the statistics and financial exports, with
+  header-driven columns, and shares this command's bucket plumbing.

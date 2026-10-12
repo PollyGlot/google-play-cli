@@ -786,11 +786,12 @@ the Actions tab.
 ### Fuzz smoke
 
 The `fuzz` job fuzzes every parser that takes untrusted bytes: API error
-bodies, JWT claims, `Retry-After`, the reply-batch TSV, the reviews-report and
-Data Safety CSVs, APK/AAB manifests, the credential redactor and the table cell
-sanitiser. Their seed corpora already run as ordinary tests in `test`; this job
-looks for crashers and broken properties in generated input. It is a smoke,
-not a campaign, and it is not a required check.
+bodies, JWT claims, `Retry-After`, the reply-batch TSV, the reviews-report,
+Bulk report and Data Safety CSVs, the Bulk report ZIPs, APK/AAB manifests,
+the credential redactor and the table cell sanitiser. Their seed corpora
+already run as ordinary tests in `test`; this job looks for crashers and
+broken properties in generated input. It is a smoke, not a campaign, and it is
+not a required check.
 
 - **Every target is listed.** The step fails when its target list and the
   `func Fuzz...` declarations in the tree differ, so a new target cannot end up
