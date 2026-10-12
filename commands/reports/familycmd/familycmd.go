@@ -129,15 +129,22 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 
 	tables := make([]reports.Table, 0, len(sel.Objects))
 	id := reports.Identity{Family: f.Name, Package: pkg, Product: product, Split: sel.Split}
-	for _, m := range sel.Months {
-		id.Months = append(id.Months, reports.DisplayMonth(m))
-	}
 	read, kept := 0, 0 // rows before and after the --package filter
 	for _, o := range sel.Objects {
 		raw, err := gcs.FetchObjectLimit(rc.Ctx, hc, bucket, o.Name, f.MaxObjectBytes)
 		if errors.Is(err, gcs.ErrTooLarge) {
 			// The object grew past the cap since it was listed.
 			return nil, tooLarge(o.Name, f.MaxObjectBytes)
+		}
+		if reportbucket.IsNotFound(err) {
+			// The listing named it a moment ago: the export was replaced
+			// (Play republishes one now and then), not denied. A range
+			// skips the month like one never published.
+			if in.Since != "" {
+				rc.Warnf("no %s report for %s: %s vanished between the listing and the read: skipped", f.Name, reports.DisplayMonth(o.Month), o.Name)
+				continue
+			}
+			return nil, &vanishedError{object: o.Name, bucket: bucket, cause: err}
 		}
 		if err != nil {
 			return nil, reportbucket.Classify(bucket, f.Permission, f.Page, err)
@@ -158,6 +165,13 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		}
 		tables = append(tables, t)
 		id.Objects = append(id.Objects, o.Name)
+		if m := reports.DisplayMonth(o.Month); len(id.Months) == 0 || id.Months[len(id.Months)-1] != m {
+			id.Months = append(id.Months, m)
+		}
+	}
+	if len(id.Objects) == 0 {
+		// Every export of the range vanished after the listing.
+		return nil, noReport(f, pkg, product, bucket, months)
 	}
 	if read > 0 && kept == 0 {
 		// An empty result is a valid answer (the app sold nothing), but it is
@@ -265,6 +279,22 @@ func onlyProduct(objs []reports.Object, product string) []reports.Object {
 	}
 	return kept
 }
+
+// vanishedError is a 404 on an export the listing has just named: Play
+// replaced it in between (it republishes an export now and then). It wraps
+// the *api.Error, which keeps the exit code (30), and says to run again
+// rather than blame a permission or the bucket name.
+type vanishedError struct {
+	object, bucket string
+	cause          error
+}
+
+func (e *vanishedError) Error() string {
+	return e.object + " vanished between the listing and the read of bucket " + e.bucket +
+		" (Play republishes an export now and then): run the command again: " + e.cause.Error()
+}
+
+func (e *vanishedError) Unwrap() error { return e.cause }
 
 // noReportError carries exit 30 (an absent resource), the code `reviews
 // history` gives the same situation.

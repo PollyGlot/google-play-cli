@@ -209,6 +209,49 @@ func TestRun_noReport_notFoundNamesPackageFamilyBucket(t *testing.T) {
 	}
 }
 
+// TestRun_exportVanishedAfterTheListing covers a 404 on an export the listing
+// has just named (Play republishes an export now and then): it is no missing
+// permission nor wrong bucket, so the message says what happened and to run
+// again, and the exit stays the 404's (30).
+func TestRun_exportVanishedAfterTheListing(t *testing.T) {
+	b := installsBucket()
+	b.Deny = map[string]int{prefix + "202609_country.csv": 404}
+	_, _, _, err := run(t, b, Input{Package: pkg, Month: "2026-09", Dimension: "country"})
+	if code := exitCodeOf(t, err); code != 30 {
+		t.Fatalf("exit = %d, want 30 (err: %v)", code, err)
+	}
+	msg := err.Error()
+	for _, want := range []string{prefix + "202609_country.csv", "vanished between the listing and the read", "republishes", "run the command again"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message should contain %q: %q", want, msg)
+		}
+	}
+	for _, wrong := range []string{"grant the service account", "--bucket"} {
+		if strings.Contains(msg, wrong) {
+			t.Errorf("message blames access (%q): %q", wrong, msg)
+		}
+	}
+}
+
+// TestRun_exportVanishedInARangeIsAMissingMonth covers the same 404 inside a
+// range: the month is skipped with a warning, like a month never published,
+// and the rest of the range is read.
+func TestRun_exportVanishedInARangeIsAMissingMonth(t *testing.T) {
+	b := installsBucket()
+	b.Deny = map[string]int{prefix + "202609_country.csv": 404}
+	r, _, stderr, err := run(t, b, Input{Package: pkg, Since: "2026-08", Until: "2026-09", Dimension: "country"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := renderJSON(t, r)
+	if !strings.Contains(got, "\"months\": [\n      \"2026-08\"\n    ]") || strings.Contains(got, "202609_country") {
+		t.Errorf("want August only:\n%s", got)
+	}
+	if !strings.Contains(stderr, "2026-09") || !strings.Contains(stderr, "vanished between the listing and the read") || !strings.Contains(stderr, "skipped") {
+		t.Errorf("stderr = %q", stderr)
+	}
+}
+
 func TestRun_forbidden_namesPermissionAndConsoleButton(t *testing.T) {
 	b := installsBucket()
 	b.Deny = map[string]int{"stats/": 403}
