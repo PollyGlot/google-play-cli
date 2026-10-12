@@ -309,7 +309,8 @@ func discardContext(parent context.Context) (context.Context, context.CancelFunc
 // when it decided to write nothing: a create whose resource already exists
 // under --if-exists skip (ADR-0050). WithEdit then discards the implicit Edit
 // instead of committing it (an empty commit is not a no-op: it counts against
-// Google's publish rate limit) and returns nil. KeepOnFailure does not apply,
+// Google's publish rate limit) and returns nil, or a *DanglingEditError
+// carrying the Edit ID when that discard fails. KeepOnFailure does not apply,
 // since nothing failed. In explicit mode the pinned Edit is left untouched.
 var ErrNothingToCommit = errors.New("edits: nothing to commit")
 
@@ -379,9 +380,15 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 
 	if fnErr := fn(editID); fnErr != nil {
 		if errors.Is(fnErr, ErrNothingToCommit) {
+			// Unlike handleFailure, no real cause would hide behind the
+			// discard error: swallowing it would report success (exit 0)
+			// over an open Edit with no ID, blocking the next publish.
+			// Same contract as Validate.
 			cleanupCtx, cancel := discardContext(ctx)
 			defer cancel()
-			_ = deleteEdit(cleanupCtx, hc, pkg, editID)
+			if delErr := deleteEdit(cleanupCtx, hc, pkg, editID); delErr != nil {
+				return &DanglingEditError{EditID: editID, Err: delErr}
+			}
 			return nil
 		}
 		return handleFailure(fnErr)

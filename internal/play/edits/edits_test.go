@@ -452,6 +452,36 @@ func TestWithEdit_nothingToCommit_discardsAndSucceeds(t *testing.T) {
 	}
 }
 
+// TestWithEdit_nothingToCommit_failedDiscard_reportsDanglingEdit asserts that
+// a no-op whose discard fails does not report success: the open Edit would
+// block the next publish with no ID to release it by, so the failure surfaces
+// as a *DanglingEditError carrying the Edit ID and the DELETE's cause, as
+// Validate does.
+func TestWithEdit_nothingToCommit_failedDiscard_reportsDanglingEdit(t *testing.T) {
+	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, `{"id":"edit-stuck"}`, true
+		case c.Method == http.MethodDelete:
+			return 403, `{"error":{"code":403,"message":"denied","status":"PERMISSION_DENIED"}}`, true
+		}
+		return 0, "", false
+	})
+	err := edits.WithEdit(context.Background(), &http.Client{Transport: fake}, "com.example.app", edits.Options{}, func(string) error {
+		return edits.ErrNothingToCommit
+	})
+	var dangling *edits.DanglingEditError
+	if !errors.As(err, &dangling) {
+		t.Fatalf("WithEdit = %v, want *DanglingEditError", err)
+	}
+	if dangling.EditID != "edit-stuck" {
+		t.Errorf("EditID = %q, want edit-stuck", dangling.EditID)
+	}
+	if got := exit.For(err); got != 11 {
+		t.Errorf("exit %d, want 11 (the DELETE's 403)", got)
+	}
+}
+
 // TestWithEdit_nothingToCommit_explicitEditUntouched asserts that in explicit
 // mode the pinned Edit is left alone (no commit, no discard) and the no-op
 // still reports success.
