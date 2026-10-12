@@ -343,6 +343,7 @@ jobs:
             "./internal/reviews/batch FuzzParse 230000x"
             "./internal/reviews/history FuzzHistoryParse 200000x"
             "./internal/reports FuzzDecode 100000x"
+            "./internal/reports FuzzExtractCSV 85000x"
             "./internal/artifact FuzzParseBinaryXMLPackage 70000x"
             "./internal/artifact FuzzParseProtoManifestPackage 90000x"
             "./internal/redact FuzzRedactString 8000x"

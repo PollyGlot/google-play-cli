@@ -1,9 +1,11 @@
 package reports
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/binary"
 	"encoding/csv"
+	"path"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -86,6 +88,62 @@ func FuzzDecode(f *testing.F) {
 			} else if c.Key != key {
 				t.Fatalf("encoding %d: key %q, want %q as in UTF-16 LE", i, c.Key, key)
 			}
+		}
+	})
+}
+
+// FuzzExtractCSV fuzzes the report ZIP reader, which opens archives fetched
+// from a bucket gplay does not control. Two properties:
+//
+//   - On arbitrary bytes ExtractCSV never panics, never returns members
+//     alongside an error, and whatever it returns is a .csv member within the
+//     per-member and total budgets.
+//   - A well-formed archive holding one CSV member gives that member back
+//     byte for byte.
+func FuzzExtractCSV(f *testing.F) {
+	f.Add([]byte{}, "earnings_202609.csv", "Description,Buyer Country\nGPA.1,FR\n")
+	f.Add([]byte("PK\x05\x06"+strings.Repeat("\x00", 18)), "salesreport_202609.csv", "")
+	f.Add([]byte("PK\x03\x04"), "a.CSV", "\xff\xfeO\x00r\x00")
+	f.Add([]byte("not a zip"), "dir/", "x")
+
+	f.Fuzz(func(t *testing.T, raw []byte, name, body string) {
+		ms, err := ExtractCSV(raw)
+		if err != nil && ms != nil {
+			t.Fatalf("ExtractCSV returned members alongside error %v", err)
+		}
+		var total uint64
+		for _, m := range ms {
+			if !strings.EqualFold(path.Ext(m.Name), ".csv") {
+				t.Fatalf("returned a non-.csv member %q", m.Name)
+			}
+			if uint64(len(m.Data)) > MaxZipMemberBytes {
+				t.Fatalf("member %q is %d bytes, over the per-member cap", m.Name, len(m.Data))
+			}
+			total += uint64(len(m.Data))
+		}
+		if total > MaxZipTotalBytes {
+			t.Fatalf("returned %d bytes, over the total cap", total)
+		}
+
+		if !strings.EqualFold(path.Ext(name), ".csv") || strings.HasSuffix(name, "/") {
+			return
+		}
+		var buf bytes.Buffer
+		w := zip.NewWriter(&buf)
+		fw, err := w.Create(name)
+		if err != nil {
+			return // a name archive/zip will not write is not a reader defect
+		}
+		_, _ = fw.Write([]byte(body))
+		if err := w.Close(); err != nil {
+			t.Fatalf("build fixture: %v", err)
+		}
+		ms, err = ExtractCSV(buf.Bytes())
+		if err != nil {
+			t.Fatalf("ExtractCSV rejected a well-formed archive (%q): %v", name, err)
+		}
+		if len(ms) != 1 || ms[0].Name != name || string(ms[0].Data) != body {
+			t.Fatalf("round trip lost data: %+v, want %q holding %q", ms, name, body)
 		}
 	})
 }
