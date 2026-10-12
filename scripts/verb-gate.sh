@@ -26,8 +26,10 @@
 #
 # Legitimate historical mentions are excluded: docs/adr/** (ADRs are
 # point-in-time records; ADR-0019 holds the rename table), CHANGELOG.md, and
-# migration guides (any path with a `migration/` directory), whose job is to
-# name the old spelling next to the new one.
+# migration guides (any path with a `migration/` directory), and the kernel's
+# removed-surface table with its test (internal/kernel/removed.go,
+# cmd/gplay/removed_test.go, ADR-0051), whose job is to name the old spelling
+# next to the new one.
 #
 # For the two group renames: a `gplay <group>` example must always carry a
 # verb, so only the `gplay `-prefixed form is checked. Prose may still refer
@@ -39,7 +41,7 @@ cd "$(git rev-parse --show-toplevel)"
 # Tracked files minus historical records, the vendor tree, and this script.
 list_files() {
 	git ls-files |
-		grep -vE '^(docs/adr/|CHANGELOG\.md$|vendor/|scripts/verb-gate\.sh$)|(^|/)migration/'
+		grep -vE '^(docs/adr/|CHANGELOG\.md$|vendor/|scripts/verb-gate\.sh$|internal/kernel/removed\.go$|cmd/gplay/removed_test\.go$)|(^|/)migration/'
 }
 
 # grep_all <extra-grep-args...> <pattern>: grep the file set, always

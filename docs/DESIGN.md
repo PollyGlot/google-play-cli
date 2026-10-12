@@ -638,6 +638,18 @@ branch on the failure without scraping stderr:
   API envelope was parsed; omitted otherwise.
 - `requires` names the missing safety flag on an exit-3 refusal (extends the
   ADR-0017 dry-run `requires` to failure time); omitted otherwise.
+- `replacement` names what replaced a verb or flag gplay removed, when the
+  usage error is a call to it ([ADR-0051](./adr/0051-removed-surface-names-its-replacement.md)):
+  `kind` (`command` or `flag`), `removed` and `use` (full command paths
+  starting with `gplay` for a command, flag names such as `--to` and `--staged`
+  for a flag, on the command that failed), `removedIn` (the gplay version), and
+  `note` when the change is not a pure rename (omitted otherwise). Substituting
+  `removed` by `use` in the failed command line is the recovery: a removed verb
+  that carried a value has it in `use` (the publish state, when the removed
+  verb was the state itself, ends `use` as the argument of `set`). The ADR
+  shows complete envelopes. Exact match on a removed path, or on a
+  removed flag of that very leaf, only; omitted on every other failure,
+  including a typo of a live verb, which keeps the "Did you mean" suggestion.
 
 The envelope also covers the CLI misuse cobra rejects before a command runs: an
 unknown or repeated flag, a wrong number of positional arguments, an unknown
@@ -857,8 +869,8 @@ the message.
 **Exit 2 owns the argument count.** A wrong number of positional arguments —
 missing *or* surplus — is CLI misuse (`2`), the same bucket as an unknown flag
 or an unknown subcommand. All four doors are closed centrally, never per
-command: flag-parse failures by the root's `FlagErrorFunc`, unknown subcommands
-by `kernel.GroupRunE`, positional-argument rejections by
+command: flag-parse failures by `kernel.FlagErrorFunc` (set on the root),
+unknown subcommands by `kernel.GroupRunE`, positional-argument rejections by
 `kernel.WrapArgErrors`, and repeated single-value flags by
 `kernel.RejectRepeatedFlags` — each a single walk over the assembled tree, the
 last statements of `newRootCmd`. Commands returned the generic `1` here for a while because cobra
@@ -868,6 +880,24 @@ the exit-3 harmonisation above, the fix *restores* this documented table rather
 than changing the frozen contract (ADR-0010), which is why it shipped as a
 `fix`. Never hand-roll an argument-count check in a command — declare the cobra
 validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
+
+**A removed verb or flag names its replacement.** A verb or flag gplay removed
+without an alias (the ADR-0019 renames, the 2.0.0 vocabulary pass of ADR-0048)
+is still an unknown command or flag, exit `2`, `USAGE_ERROR`, but the message
+ends with ``: removed in <version>, use `gplay <replacement>` `` (plus a short
+note when it is not a pure rename) and the JSON envelope carries `replacement`
+(§7). The old `--to` flag of `releases rollout` reads ``unknown flag: --to:
+removed in 2.0.0, use `gplay releases rollout --staged` ``. The source is one
+declarative table in `internal/kernel/removed.go`, looked up by
+`kernel.GroupRunE` and by `kernel.FlagErrorFunc` (a group parses flags before it
+sees the removed verb, so `gplay <group> <removed-verb> <id> --output json`
+would otherwise read `unknown flag: --output`; a flag typed before the verb is
+found through the raw argv `kernel.SetArgs` keeps). A flag row names the leaf that lost the flag, so
+`releases promote --to` keeps working. Renaming or removing a verb or flag adds
+its row in the same pull request; `TestRemovedSurface_table` fails on a row whose
+replacement does not resolve or refuses its declared arguments, or whose removed
+path or flag resolves again, alias included
+([ADR-0051](./adr/0051-removed-surface-names-its-replacement.md)).
 
 Every runnable leaf declares a validator, `cobra.NoArgs` when it takes no
 positional argument: cobra's default accepts any stray token and exits `0`
