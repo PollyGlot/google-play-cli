@@ -12,6 +12,12 @@ on:
       HOMEBREW_TAP_GITHUB_TOKEN:
         description: PAT with contents:write on PollyGlot/homebrew-tap.
         required: false
+      T3_RELEASE_ANNOUNCE_WEBHOOK_URL:
+        description: Relay URL of the t3code release-announce webhook task.
+        required: false
+      T3_WEBHOOK_SECRET:
+        description: HMAC key shared by the t3code webhook tasks.
+        required: false
   # Manual escape hatch. Deliberately NOT an auto `push: tags` trigger: now that
   # release-please uses a GitHub App token, its tag creation would fire push:tags
   # and race the workflow_call path with a duplicate GoReleaser run.
@@ -136,3 +142,62 @@ jobs:
           subject-name: ghcr.io/pollyglot/gplay
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
+
+  # Hands the published release to the release-announce agent, a t3code
+  # webhook task on the maintainer's always-on machine (skills PR + Typefully
+  # draft, never a publish). It replaces a repository webhook on `release`
+  # events: GitHub cannot filter those by action, so one release fired ten
+  # deliveries (published, released, created, then one `edited` per GoReleaser
+  # update), each opening its own thread and worktree. Here it fires once, and
+  # only after GoReleaser attached the binaries, so the announce never points
+  # at a release nothing can be installed from yet.
+  #
+  # Setup: the task is signed like the other t3 tasks (see discovery-watch.yml,
+  # step a) with T3_WEBHOOK_SECRET; its URL is the secret
+  # T3_RELEASE_ANNOUNCE_WEBHOOK_URL. Its prompt reads {{body.event}},
+  # {{body.action}} and {{body.release.*}}. An absent secret skips the call
+  # with a notice, never fails the release. A workflow_dispatch replay fires
+  # again; the agent reuses an existing Typefully draft for the tag.
+  announce:
+    name: Hand the release to the announce agent
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # The workflow's own ref, not the tag: a dispatch replaying an older tag
+      # would check out a tree without fire-t3-task.sh.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Fire the release-announce task
+        env:
+          T3_URL: ${{ secrets.T3_RELEASE_ANNOUNCE_WEBHOOK_URL }}
+          T3_SECRET: ${{ secrets.T3_WEBHOOK_SECRET }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          INPUT_REF: ${{ inputs.ref || github.ref }}
+        run: |
+          set -euo pipefail
+          if [ -z "${T3_URL:-}" ] || [ -z "${T3_SECRET:-}" ]; then
+            echo "::notice::Not calling the announce agent: T3_RELEASE_ANNOUNCE_WEBHOOK_URL or T3_WEBHOOK_SECRET is not set."
+            exit 0
+          fi
+          tag=${INPUT_REF#refs/tags/}
+          # The same fields a GitHub `release` delivery carries, read back from
+          # the release GoReleaser just finished, so the task prompt keeps its
+          # {{body.release.*}} placeholders.
+          # Read into a variable first: on a 403/404 gh prints an error body,
+          # and piping it straight in would sign and send that body.
+          payload=$(gh api "repos/$REPO/releases/tags/$tag" \
+            --jq '{event: "release", action: "published", release: {tag_name, prerelease, draft, html_url}}')
+          code=$(printf '%s' "$payload" \
+            | WEBHOOK_URL="$T3_URL" SIGNING_SECRET="$T3_SECRET" \
+              .github/scripts/fire-t3-task.sh /tmp/announce-response.txt)
+          if [ "${code:0:1}" != "2" ]; then
+            echo "::error::The announce task answered HTTP $code; replay with a workflow_dispatch of this workflow once fixed."
+            exit 1
+          fi
+          echo "Announce task fired for $tag (HTTP $code)."
