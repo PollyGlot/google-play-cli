@@ -645,9 +645,9 @@ branch on the failure without scraping stderr:
   for a flag, on the command that failed), `removedIn` (the gplay version), and
   `note` when the change is not a pure rename (omitted otherwise). Substituting
   `removed` by `use` in the failed command line is the recovery: a removed verb
-  that carried a value has it in `use` (`gplay appstore publish-status set
-  published` for `gplay appstore publish-status published`). The ADR shows a
-  complete envelope. Exact match on a removed path, or on a
+  that carried a value has it in `use` (the publish state, when the removed
+  verb was the state itself, ends `use` as the argument of `set`). The ADR
+  shows complete envelopes. Exact match on a removed path, or on a
   removed flag of that very leaf, only; omitted on every other failure,
   including a typo of a live verb, which keeps the "Did you mean" suggestion.
 

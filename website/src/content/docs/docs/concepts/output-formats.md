@@ -121,6 +121,36 @@ For example, a `gplay team users list` that the Play Console refuses:
   envelope was parsed; omitted otherwise.
 - `requires` names the missing safety flag on an exit-3 refusal; omitted
   otherwise.
+- `replacement` names what replaced a verb or flag gplay removed, when the
+  usage error is a call to one; omitted on every other failure, a typo of a
+  live verb included. It holds `kind` (`command` or `flag`), `removed`, `use`,
+  `removedIn` (the gplay version that removed it) and `note`, present only
+  when the change is not a pure rename. For a `command`, `removed` and `use`
+  are full command paths starting with `gplay`, and `use` already carries any
+  argument the removed verb held: replace `removed` by `use` in the failed
+  command line and keep the rest. For a `flag`, both are flag names on the
+  command that failed:
+
+```json
+{
+  "error": {
+    "code": "USAGE_ERROR",
+    "exitCode": 2,
+    "retryable": false,
+    "message": "unknown flag: --region: removed in 2.0.0, use `gplay subscriptions prices migrate --regions` (--regions takes a comma-separated list or a repeated flag: `--regions US,CA`)",
+    "replacement": {
+      "kind": "flag",
+      "removed": "--region",
+      "use": "--regions",
+      "removedIn": "2.0.0",
+      "note": "--regions takes a comma-separated list or a repeated flag: `--regions US,CA`"
+    }
+  }
+}
+```
+
+The [2.0 migration guide](/docs/migration/2-0/) lists every removed verb and
+flag.
 
 The envelope covers CLI misuse too (an unknown or repeated flag, a missing or
 stray argument, an unknown subcommand), with `"code": "USAGE_ERROR"` and exit
