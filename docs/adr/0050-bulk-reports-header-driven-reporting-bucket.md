@@ -107,13 +107,22 @@ permission. Three findings shape the design:
    asked, so a dimension Google adds works the day it appears. Without it,
    `overview` is read when present; otherwise the command fails naming the
    dimensions present. A month of a range with no export is skipped with a
-   stderr warning.
+   stderr warning. An account-wide family (earnings, sales) has no
+   dimension: every export of the month is read, in name order, whatever
+   follows the month in its name (the earnings suffix is unconfirmed, and
+   picking one file would drop the others). Its `--package` filters rows on
+   the package column the header names (`Package Name`, `Package ID`, or
+   `Product ID`, the finance reports' name for it), never the export; the
+   Project pin does not apply, since it names the app a repository ships, not
+   the rows to keep. A header with no package column makes `--package` a
+   usage error (exit 2).
 
-7. **"No report" is exit 30 (absent resource)** naming the package, the
-   family and the bucket, the code `reviews history` gives the same
-   situation: the command line is well-formed, the export is not there (the
-   fix is in `--package`, `--month`, `--bucket`, or in waiting for Play to
-   publish). A bad `--dimension` or `--columns` is a usage error (exit 2).
+7. **"No report" is exit 30 (absent resource)** naming the family, the
+   package (for a per-package family) and the bucket, the code
+   `reviews history` gives the same situation: the command line is
+   well-formed, the export is not there (the fix is in `--package`,
+   `--month`, `--bucket`, or in waiting for Play to publish). A bad
+   `--dimension` or `--columns` is a usage error (exit 2).
 
 8. **A 403 names the permission of the family asked.** The access error
    names "View app information" (global) for statistics, "View financial
@@ -125,24 +134,34 @@ permission. Three findings shape the design:
    can be read it fails with that error.
 
 9. **Buyer location is hidden by default (finance families).** Estimated
-   sales carry `City of Buyer`, `State of Buyer`, `Postcode of Buyer`;
-   earnings carry `Buyer State`, `Buyer Postcode`. City, state and postcode
+   sales carry `City of Buyer`, `State of Buyer`, `Postcode of Buyer` (or
+   `Postal Code of Buyer`); earnings carry `Buyer State`, `Buyer Postcode`
+   (or `Buyer Postal Code`). City, state and postcode
    are removed from the output unless `--include-buyer-location` is passed;
    the country stays visible (revenue per country is the common aggregate and
    locates no one). Masking is a pure filter on the header text,
-   case-insensitive, matching "buyer" together with city, state, postcode or
-   postal, so it survives a Google rename; a column naming the country is
-   never masked. A stderr notice says how many columns were hidden and names
+   case-insensitive, on the header's words: "buyer" together with city,
+   state, province, postcode (or "post code"), postal or zip, so it survives a
+   Google rename; a column naming the country is never masked. Province and
+   zip widen the documented spellings to the obvious renames, at no cost to
+   the country aggregate. A stderr notice says how many columns were hidden and names
    the flag. CI logs and agent contexts thus never collect a buyer's location
    by accident.
 
 10. **ZIP bounds (finance families)**, following the artifact preflight of
     [ADR-0046](./0046-artifact-preflight-hand-rolled-manifest-readers.md): an
-    object over 128 MiB is refused before it is read (the caller's read cap);
+    object over 128 MiB is refused before it is read: on the size the bucket
+    listing reports, then again by the read cap on the bytes fetched (an
+    object grown since the listing), both at exit 20;
     an archive with more than 16 members is refused; only `.csv` members are
     read; a member's declared uncompressed size is checked against the budget
     before reading, and the decompression itself goes through a limited
-    reader, because a declared size can lie. The budget is 1 GiB per member
+    reader, because a declared size can lie (archive/zip also stops at the
+    declared size; the limited reader does not rely on it). The member count
+    is taken once archive/zip has parsed the central directory, which the
+    object cap bounds: a 72 MiB archive of a million empty entries costs
+    about 200 MiB of heap (measured), less than the decompression budget, so
+    no hand-rolled pre-parse is warranted. The budget is 1 GiB per member
     and 1 GiB in total, sized for a high-volume account's monthly earnings.
     Crossing a bound fails with an error naming the bound, at exit 20
     (client-side validation), never with a truncated report.
