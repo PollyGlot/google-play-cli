@@ -12,7 +12,8 @@ import (
 // Paths relative to this package (go test runs with the package dir as cwd).
 // The embedded index is multi-service: it merges every committed snapshot
 // (androidpublisher v3 + playdeveloperreporting v1beta1 #49 +
-// gamesConfiguration v1configuration #241 + playcustomapp v1 #242), so the
+// gamesConfiguration v1configuration #241 + playcustomapp v1 #242 +
+// gamesManagement v1management #692, snapshotted but excluded), so the
 // freshness gate re-derives from all of them, in the same order
 // discovery.Services declares them.
 var (
@@ -21,6 +22,7 @@ var (
 		filepath.Join("..", "..", "docs", "discovery", "playdeveloperreporting_v1beta1.json"),
 		filepath.Join("..", "..", "docs", "discovery", "gamesConfiguration_v1configuration.json"),
 		filepath.Join("..", "..", "docs", "discovery", "playcustomapp_v1.json"),
+		filepath.Join("..", "..", "docs", "discovery", "gamesManagement_v1management.json"),
 	}
 	indexPath = filepath.Join("schema_index.json")
 )
@@ -31,7 +33,7 @@ var (
 const methodFloor = 120
 
 // sentinelMethods must survive any regeneration: a cheap guard against a
-// truncated or wrong-service index. They span all four snapshotted services so a
+// truncated or wrong-service index. They span all five snapshotted services so a
 // dropped service (or a wrong merge order) is caught.
 var sentinelMethods = []string{
 	"androidpublisher.edits.commit",
@@ -41,6 +43,7 @@ var sentinelMethods = []string{
 	"playdeveloperreporting.vitals.crashrate.query",
 	"gamesConfiguration.achievementConfigurations.list",
 	"playcustomapp.accounts.customApps.create",
+	"gamesManagement.players.hide",
 }
 
 // TestEmbeddedIndexMatchesSnapshot is the freshness gate (D10): the committed

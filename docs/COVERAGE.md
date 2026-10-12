@@ -10,7 +10,9 @@ lists), so a row cannot claim coverage the code does not have.
 
 Policy: under [ADR-0026](adr/0026-maximal-admin-api-coverage.md) **every Play
 admin API is in scope**; only *runtime* APIs (purchase-token verification, Play
-Integrity) are excluded by nature. [ADR-0047](adr/0047-coverage-dispositions-redundant-and-parked.md)
+Integrity) and APIs no service account can call (Play Games Services Management,
+[ADR-0049](adr/0049-user-auth-only-apis-excluded-by-nature.md)) are excluded by
+nature. [ADR-0047](adr/0047-coverage-dispositions-redundant-and-parked.md)
 adds two declared dispositions: a method is *redundant* when a called method
 already serves the same resource in another shape (the canonical is named on
 the row, and an offline test fails if it ever stops being called), and *parked*
@@ -34,9 +36,10 @@ worth shipping.
 | `playdeveloperreporting` v1beta1 | 25 | 25 | 0 | 0 | 0 | 0 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 | 0 | 0 |
-| **Total** | **181** | **131** | **31** | **15** | **4** | **0** |
+| `gamesManagement` v1management | 18 | 0 | 0 | 18 | 0 | 0 |
+| **Total** | **199** | **131** | **31** | **33** | **4** | **0** |
 
-Of the 166 admin methods (181 total minus the 15 excluded by nature), **131 are called**, **31 are redundant** with a called method, **4 are parked** behind an issue and **0 are uncovered**.
+Of the 166 admin methods (199 total minus the 33 excluded by nature), **131 are called**, **31 are redundant** with a called method, **4 are parked** behind an issue and **0 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -239,13 +242,37 @@ Of the 166 admin methods (181 total minus the 15 excluded by nature), **131 are 
 |---|---|---|
 | `playcustomapp.accounts.customApps.create` | ✅ | `gplay customapps create`; account-scoped, not package-scoped (ADR-0032) |
 
+## `gamesManagement` v1management (18 methods)
+
+| Method | State | Commands / reason |
+|---|---|---|
+| `gamesManagement.achievements.reset` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.achievements.resetAll` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.achievements.resetAllForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.achievements.resetForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.achievements.resetMultipleForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.applications.listHidden` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.events.reset` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.events.resetAll` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.events.resetAllForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.events.resetForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.events.resetMultipleForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.players.hide` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.players.unhide` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.scores.reset` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.scores.resetAll` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.scores.resetAllForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.scores.resetForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+| `gamesManagement.scores.resetMultipleForAllPlayers` | ⚫️ | user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account |
+
 ## Maintenance
 
 This file is output, not input. To change a row, change its source and
 regenerate:
 
 - a command starts (or stops) calling a method: edit `internal/apiregistry/registry.go`;
-- a method is runtime and will never be wrapped: edit `internal/apiregistry/exclusions.go`,
+- a method is runtime, or no service account can call it, and will never be
+  wrapped: edit `internal/apiregistry/exclusions.go`,
   with a one-line reason;
 - a method is another shape of a resource a called method already serves, or
   its decision is deferred to a `type:parking` issue: edit
