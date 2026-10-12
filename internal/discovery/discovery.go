@@ -35,12 +35,17 @@ type Service struct {
 // (Play Games Services Publishing, #241) and playcustomapp v1 (managed Google
 // Play private apps, #242) are further Play admin APIs (ADR-0026), each its own
 // host: declared here so agents can query their shapes offline before the
-// commands ship.
+// commands ship. gamesManagement v1management (Play Games Services Management,
+// #692) is the exception: gplay never wraps it, because its methods only accept
+// a user-delegated OAuth token and gplay authenticates with service accounts
+// alone (ADR-0049). It is snapshotted anyway so docs/COVERAGE.md shows its
+// methods as excluded rather than missing, and the Discovery watch sees it.
 var Services = []Service{
 	{Name: "androidpublisher", Host: "androidpublisher.googleapis.com", Version: "v3"},
 	{Name: "playdeveloperreporting", Host: "playdeveloperreporting.googleapis.com", Version: "v1beta1"},
 	{Name: "gamesConfiguration", Host: "gamesconfiguration.googleapis.com", Version: "v1configuration"},
 	{Name: "playcustomapp", Host: "playcustomapp.googleapis.com", Version: "v1"},
+	{Name: "gamesManagement", Host: "gamesmanagement.googleapis.com", Version: "v1management"},
 }
 
 // SnapshotFilename is the per-service snapshot file name, e.g.

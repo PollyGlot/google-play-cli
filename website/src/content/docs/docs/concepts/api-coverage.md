@@ -1,6 +1,6 @@
 ---
 title: API surfaces & coverage
-description: "The five Google Play developer APIs, what gplay covers today, and the coverage policy: every admin API in full, runtime APIs never."
+description: "The six Google Play developer APIs, what gplay covers today, and the coverage policy: every admin API in full, runtime and user-only APIs never."
 sidebar:
   order: 8
 ---
@@ -9,7 +9,7 @@ sidebar:
 one owns a capability tells you whether gplay covers it today, will cover it,
 or never will.
 
-## The five APIs
+## The six APIs
 
 | API | Service | What it owns | gplay |
 |---|---|---|---|
@@ -17,6 +17,7 @@ or never will.
 | Play Developer Reporting | `playdeveloperreporting` | Post-launch observability: crash/ANR rates, errors, slow start/rendering, wakeups/wakelocks | Covered (`vitals`) |
 | Play Games Services Publishing | `gamesConfiguration` | Achievements & leaderboards configuration for games | Covered (`games`, `[experimental]`) |
 | Play Custom App Publishing | `playcustomapp` | Private enterprise apps via managed Google Play, the only API that can *create* an app | Covered (`customapps`, `[experimental]`) |
+| Play Games Services Management | `gamesManagement` | Achievement, event and score resets for testers, hidden players | **Never** (see below) |
 | Play Integrity | `playintegrity` | Runtime device/binary verification | **Never** (see below) |
 
 A few things have **no API at all** (public app creation, content rating,
@@ -33,11 +34,18 @@ skills, no command is "too obscure to find": you ask in natural language. And
 because `--output json` is verbatim API pass-through, every wrapped endpoint
 doubles as a data source for your own dashboards and automations.
 
-The only exclusions are by **nature**, not priority: *runtime* APIs, the ones
-your app or backend calls while serving end users. Play Integrity is the
+The only exclusions are by **nature**, not priority. The first kind is
+*runtime* APIs, the ones your app or backend calls while serving end users. Play Integrity is the
 canonical case: its tokens are generated on-device and consumed server-side
 within minutes, so no terminal session could ever hold one. A CLI wrapper
 would be structurally unusable.
+
+The second kind is excluded by its **auth model**: an API no service account
+can call. The Play Games Services Management API only accepts a tester player or a
+Play Console user account, through a user-delegated OAuth scope, and gplay
+authenticates with service accounts alone. Its methods are still listed, as
+excluded, in the [coverage table](https://github.com/PollyGlot/google-play-cli/blob/main/docs/COVERAGE.md),
+so you can tell a decision from an oversight.
 
 New surfaces ship with the `[experimental]` stability label first and
 graduate into the public contract once their shape settles.

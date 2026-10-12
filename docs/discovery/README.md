@@ -14,6 +14,7 @@ reference.
 | `playdeveloperreporting_v1beta1.json` | Pinned, normalized snapshot of the Play Developer Reporting v1beta1 Discovery doc — the read-only crashes/ANR vitals service (#49), a distinct host and OAuth scope. |
 | `gamesConfiguration_v1configuration.json` | Pinned, normalized snapshot of the Play Games Services Publishing (`gamesConfiguration`) v1configuration Discovery doc — achievement & leaderboard configuration (#241), a distinct host. |
 | `playcustomapp_v1.json` | Pinned, normalized snapshot of the Play Custom App Publishing (`playcustomapp`) v1 Discovery doc — managed Google Play private-app creation (#242), a distinct host. |
+| `gamesManagement_v1management.json` | Pinned, normalized snapshot of the Play Games Services Management (`gamesManagement`) v1management Discovery doc: tester and player resets, hidden players (#692). Snapshotted so its methods show as excluded in COVERAGE.md; no service account can call them, so gplay never wraps them ([ADR-0049](../adr/0049-user-auth-only-apis-excluded-by-nature.md)). |
 | `paths.txt` | Derived existence-check index — one `id⇥method⇥path` line per API method, across **all** snapshotted services (ids carry their service prefix). |
 
 **Generated — do not hand-edit.** Both files are produced by
@@ -52,7 +53,8 @@ produces a minimal, reviewable diff.
   - `https://playdeveloperreporting.googleapis.com/$discovery/rest?version=v1beta1`
   - `https://gamesconfiguration.googleapis.com/$discovery/rest?version=v1configuration`
   - `https://playcustomapp.googleapis.com/$discovery/rest?version=v1`
-- **Last synced:** `androidpublisher_v3` revision `20260613`; `playdeveloperreporting_v1beta1` revision `20260611`; `gamesConfiguration_v1configuration` revision `20260604`; `playcustomapp_v1` revision `20260618`
+  - `https://gamesmanagement.googleapis.com/$discovery/rest?version=v1management`
+- **Last synced:** `androidpublisher_v3` revision `20260613`; `playdeveloperreporting_v1beta1` revision `20260611`; `gamesConfiguration_v1configuration` revision `20260604`; `playcustomapp_v1` revision `20260618`; `gamesManagement_v1management` revision `20261001`
 
 Freshness is **not** a per-PR gate — upstream drift is normal and must never
 block an unrelated PR. A human runs `make discovery-update` on demand. See
