@@ -112,3 +112,26 @@ func itoa(n int) string {
 	}
 	return "404"
 }
+
+func TestListObjects_carriesSizeAndUpdated(t *testing.T) {
+	r := bucketFake(`{"items":[{"name":"stats/installs/installs_com.x_202609_country.csv","size":"20480","updated":"2026-10-04T08:00:00.000Z","md5Hash":"x"}]}`, "")
+	objs, err := ListObjects(context.Background(), client(r), "b", "stats/installs/")
+	if err != nil {
+		t.Fatalf("ListObjects: %v", err)
+	}
+	if len(objs) != 1 || objs[0].Size != "20480" || objs[0].Updated != "2026-10-04T08:00:00.000Z" {
+		t.Fatalf("metadata lost: %+v", objs)
+	}
+}
+
+func TestFetchObjectLimit_callerChosenCap(t *testing.T) {
+	r := bucketFake("", "0123456789")
+	if got, err := FetchObjectLimit(context.Background(), client(r), "b", "o.csv", 10); err != nil || string(got) != "0123456789" {
+		t.Fatalf("at the cap: %q, %v", got, err)
+	}
+	_, err := FetchObjectLimit(context.Background(), client(r), "b", "o.csv", 9)
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) || !strings.Contains(apiErr.Message, "exceeds") || !strings.Contains(apiErr.Message, "9 bytes") {
+		t.Fatalf("over the cap: err = %v, want a size-limit *api.Error naming the cap", err)
+	}
+}

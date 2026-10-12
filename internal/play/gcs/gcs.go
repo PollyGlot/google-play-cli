@@ -4,7 +4,8 @@
 // reporting bucket: a third Google service reached the same way as the second
 // (raw HTTP, ADR-0007; a distinct read-only OAuth scope, ADR-0027). Only the
 // two operations gplay needs are implemented: list the objects under a prefix
-// and fetch one object's bytes. Both are reads: no mutating surface exists
+// and fetch one object's bytes. The bulk reports (`gplay reports`, ADR-0050)
+// read the same bucket through the same two calls. Both are reads: no mutating surface exists
 // here (read-only by scope construction, token.StorageReadOnlyScope).
 //
 // The *http.Client is injected by the caller (kernel.AuthedClient), so tests
@@ -19,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
@@ -31,18 +33,23 @@ const (
 	opObjectsList = "storage.objects.list"
 	opObjectsGet  = "storage.objects.get"
 
-	// maxListBodyRead / maxObjectRead bound the in-memory copy of a list page
+	// maxListBodyRead / MaxObjectRead bound the in-memory copy of a list page
 	// and a fetched object. Monthly review CSVs are well under 64 MB even for
 	// high-volume apps; the cap stops a hostile or misconfigured bucket from
-	// exhausting RAM.
+	// exhausting RAM. A caller that knows its objects better picks its own cap
+	// with FetchObjectLimit.
 	maxListBodyRead = 4 * 1024 * 1024
-	maxObjectRead   = 64 * 1024 * 1024
+	MaxObjectRead   = 64 * 1024 * 1024
 )
 
-// Object is the sliver of a GCS object resource gplay reads: just its name
-// (the full key under the bucket, e.g. "reviews/reviews_com.x_202606.csv").
+// Object is the sliver of a GCS object resource gplay reads: its name (the
+// full key under the bucket, e.g. "reviews/reviews_com.x_202606.csv"), and the
+// size and last update the listing reports. Size is a decimal string, as the
+// JSON API sends a uint64; Updated is RFC 3339. Both stay verbatim.
 type Object struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
+	Size    string `json:"size,omitempty"`
+	Updated string `json:"updated,omitempty"`
 }
 
 // ListObjects returns every object in bucket whose name starts with prefix,
@@ -96,8 +103,15 @@ func listPage(ctx context.Context, hc *http.Client, bucket, prefix, pageToken st
 // slashes ("reviews/..."), so the whole name is percent-encoded into one path
 // component rather than joined raw.
 func FetchObject(ctx context.Context, hc *http.Client, bucket, object string) ([]byte, error) {
+	return FetchObjectLimit(ctx, hc, bucket, object, MaxObjectRead)
+}
+
+// FetchObjectLimit is FetchObject with a caller-chosen cap on the bytes read:
+// an object larger than maxBytes fails with an *api.Error naming the cap
+// instead of being truncated.
+func FetchObjectLimit(ctx context.Context, hc *http.Client, bucket, object string, maxBytes int64) ([]byte, error) {
 	u := StorageBase + "/" + url.PathEscape(bucket) + "/o/" + url.PathEscape(object) + "?alt=media"
-	return doGet(ctx, hc, opObjectsGet, bucket, u, maxObjectRead)
+	return doGet(ctx, hc, opObjectsGet, bucket, u, maxBytes)
 }
 
 // doGet performs a GET and returns the 2xx body, or an *api.Error carrying the
@@ -141,7 +155,7 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 			Operation:  op,
 			Resource:   bucketResource(bucket),
 			StatusCode: resp.StatusCode,
-			Message:    "response exceeds size limit",
+			Message:    "response exceeds the size limit of " + strconv.FormatInt(maxRead, 10) + " bytes",
 		}
 	}
 	return raw, nil
