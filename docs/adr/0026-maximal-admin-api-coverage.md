@@ -4,6 +4,9 @@ Date: 2026-06-13
 Status: accepted. Amended by [ADR-0047](./0047-coverage-dispositions-redundant-and-parked.md):
 a non-called method may also be declared *redundant* (its canonical is called)
 or *parked* (traced to a `type:parking` issue), next to the nature exclusions.
+Amended by [ADR-0049](./0049-user-auth-only-apis-excluded-by-nature.md): an API
+no service account can call (Play Games Services Management) is excluded by
+nature too.
 
 ## Context
 

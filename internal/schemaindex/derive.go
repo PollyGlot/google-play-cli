@@ -118,7 +118,7 @@ func Derive(normalized []byte) (Index, error) {
 	walk(doc.Resources)
 
 	// Keyed by the service discriminator, i.e. the leading segment of every
-	// method id of the document, which equals doc.Name for all four snapshots.
+	// method id of the document, which equals doc.Name for every declared snapshot.
 	idx.Services = map[string]Service{
 		doc.Name: {RootURL: doc.RootURL, BasePath: prefix},
 	}
