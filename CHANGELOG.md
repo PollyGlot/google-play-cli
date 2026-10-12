@@ -5,6 +5,15 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0](https://github.com/PollyGlot/google-play-cli/compare/v2.2.0...v2.3.0) (2026-10-12)
+
+
+### Features
+
+* --if-exists skip|update|fail on tracks create and team users add ([#700](https://github.com/PollyGlot/google-play-cli/issues/700)) ([e74e52c](https://github.com/PollyGlot/google-play-cli/commit/e74e52c6b2be4d9c544d8b72e380de90864d6c8f))
+* removed verbs and flags name their replacement ([#703](https://github.com/PollyGlot/google-play-cli/issues/703)) ([98893a6](https://github.com/PollyGlot/google-play-cli/commit/98893a67a67e62a4e99b8290f97ceadd8a16075c))
+* **reports:** read Bulk reports (statistics and finances) from the Reporting bucket ([#699](https://github.com/PollyGlot/google-play-cli/issues/699)) ([df204c6](https://github.com/PollyGlot/google-play-cli/commit/df204c6f81661f85388adad82fb980635777fbf9))
+
 ## [2.2.0](https://github.com/PollyGlot/google-play-cli/compare/v2.1.0...v2.2.0) (2026-10-11)
 
 
