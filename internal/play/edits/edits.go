@@ -305,6 +305,15 @@ func discardContext(parent context.Context) (context.Context, context.CancelFunc
 	return context.WithTimeout(context.Background(), d)
 }
 
+// ErrNothingToCommit is what a WithEdit closure returns (possibly wrapped)
+// when it decided to write nothing: a create whose resource already exists
+// under --if-exists skip (ADR-0050). WithEdit then discards the implicit Edit
+// instead of committing it (an empty commit is not a no-op: it counts against
+// Google's publish rate limit) and returns nil, or a *DanglingEditError
+// carrying the Edit ID when that discard fails. KeepOnFailure does not apply,
+// since nothing failed. In explicit mode the pinned Edit is left untouched.
+var ErrNothingToCommit = errors.New("edits: nothing to commit")
+
 // WithEdit opens an Edit on pkg, invokes fn with the new Edit ID, and
 // commits on success. On any failure from fn OR from the final commit,
 // the Edit is automatically discarded (edits.delete) before the error
@@ -320,6 +329,9 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	// leaves the Edit open for a retry or an explicit discard.
 	if opts.ExplicitEditID != "" {
 		if err := fn(opts.ExplicitEditID); err != nil {
+			if errors.Is(err, ErrNothingToCommit) {
+				return nil
+			}
 			return explainStalePin(ctx, hc, pkg, opts.ExplicitEditID, err)
 		}
 		return nil
@@ -367,6 +379,18 @@ func WithEdit(ctx context.Context, hc *http.Client, pkg string, opts Options, fn
 	}()
 
 	if fnErr := fn(editID); fnErr != nil {
+		if errors.Is(fnErr, ErrNothingToCommit) {
+			// Unlike handleFailure, no real cause would hide behind the
+			// discard error: swallowing it would report success (exit 0)
+			// over an open Edit with no ID, blocking the next publish.
+			// Same contract as Validate.
+			cleanupCtx, cancel := discardContext(ctx)
+			defer cancel()
+			if delErr := deleteEdit(cleanupCtx, hc, pkg, editID); delErr != nil {
+				return &DanglingEditError{EditID: editID, Err: delErr}
+			}
+			return nil
+		}
 		return handleFailure(fnErr)
 	}
 	if commitErr := commitEdit(ctx, hc, pkg, editID, opts.Commit); commitErr != nil {

@@ -1037,11 +1037,34 @@ track**, **Tester**) for the domain terms.
   `TrackConfig.formFactor` to `DEFAULT` (phone, the default), `WEAR` or
   `AUTOMOTIVE`. Any other value is CLI misuse (exit 2) before any HTTP.
 - Creating a track that **already exists** surfaces the API error (exit
-  30); gplay does not fake idempotency. "Ensure exists" would be an
-  explicit future `--if-not-exists`.
+  30) by default (`--if-exists fail`). `--if-exists skip` makes a re-run
+  converge: the track is read (`edits.tracks.get`) in the same Edit as the
+  create, and only a 404 means absent. When it exists, no create is sent,
+  the command exits 0, stdout carries the `tracks.get` response verbatim
+  under `--output json`, stderr says it was skipped (no `✓`), and an
+  implicit Edit is discarded rather than committed; an explicit Edit gets
+  nothing added. `update` is refused (exit 2): a track's settings are its
+  releases. The flag is `[experimental]`; its rules are
+  [ADR-0050](./adr/0050-if-exists-read-before-create.md).
 - There is **no `tracks delete`** — the API exposes
   create/get/list/patch/update but no delete. Removing a track is a Play
   Console-only gesture.
+
+### Inviting a member who may already be one
+
+- `gplay team users add <email>` on an existing member fails with the
+  `users.create` conflict (exit 60, hint `team users set`) by default
+  (`--if-exists fail`, no lookup added). `--if-exists skip|update` looks the
+  member up first (`users.list`, case-insensitive email match, the read
+  `team users view` uses); absent means the invite runs as usual.
+- Present + `skip`: no write, exit 0, stdout carries the member as
+  `users.list` returned it, stderr says it was skipped (no `✓`).
+- Present + `update`: the `team users set` write (`users.patch`, the whole
+  account-wide permission set replaced), stdout carries its response.
+- The `--grant-admin` gate (exit 3) is checked before the lookup under every
+  policy, so the idempotent path never bypasses it; `--dry-run` stays
+  offline and reports a non-default policy as `ifExists`. Rules:
+  [ADR-0050](./adr/0050-if-exists-read-before-create.md).
 
 ### Managing testers
 

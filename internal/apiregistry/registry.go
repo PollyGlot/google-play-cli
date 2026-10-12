@@ -118,8 +118,8 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.edits.tracks.create", Commands: []string{"tracks create"}},
 	{
 		MethodID: "androidpublisher.edits.tracks.get",
-		Commands: []string{"tracks view", "releases list", "releases promote", "releases rollout"},
-		Note:     "read-before-write: tracks.update replaces the whole releases array",
+		Commands: []string{"tracks view", "tracks create", "releases list", "releases promote", "releases rollout"},
+		Note:     "read-before-write: tracks.update replaces the whole releases array; tracks create --if-exists skip reads before creating (ADR-0050)",
 	},
 	{MethodID: "androidpublisher.edits.tracks.list", Commands: []string{"tracks list", "apps audit"}},
 	{
@@ -204,8 +204,12 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.grants.patch", Commands: []string{"team grants set"}},
 	{MethodID: "androidpublisher.users.create", Commands: []string{"team users add"}},
 	{MethodID: "androidpublisher.users.delete", Commands: []string{"team users remove"}},
-	{MethodID: "androidpublisher.users.list", Commands: []string{"team users list", "team users view", "team grants list"}},
-	{MethodID: "androidpublisher.users.patch", Commands: []string{"team users set"}},
+	{
+		MethodID: "androidpublisher.users.list",
+		Commands: []string{"team users list", "team users view", "team users add", "team grants list"},
+		Note:     "team users add --if-exists skip or update looks the member up before inviting (ADR-0050)",
+	},
+	{MethodID: "androidpublisher.users.patch", Commands: []string{"team users set", "team users add"}},
 
 	// --- playdeveloperreporting -----------------------------------------
 	{MethodID: "playdeveloperreporting.anomalies.list", Commands: []string{"vitals anomalies"}},

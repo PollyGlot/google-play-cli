@@ -89,7 +89,8 @@ experimental in prose, where a whole-command label would be too blunt: APK
 
 A single **flag** of a frozen command can also be experimental. Its usage line
 in `--help` starts with `[experimental]`, and the rest of the command stays
-frozen. Today that is `--externally-hosted` on `gplay releases upload`.
+frozen. Today that is `--externally-hosted` on `gplay releases upload` and
+`--if-exists` on `gplay tracks create` and `gplay team users add`.
 
 ## How a command graduates
 
