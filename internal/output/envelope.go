@@ -62,7 +62,7 @@ type ErrorEnvelope struct {
 //     exit-3 recovery stays deterministic). Omitted when the failure is not a
 //     safety refusal.
 //   - Replacement names what replaced the verb or flag the user called when the
-//     usage error is a call to removed surface (ADR-0049). Omitted on every
+//     usage error is a call to removed surface (ADR-0051). Omitted on every
 //     other failure, including an unknown verb or flag gplay never shipped.
 type ErrorDetail struct {
 	Code      string    `json:"code"`
@@ -79,7 +79,7 @@ type ErrorDetail struct {
 	Replacement *Replacement `json:"replacement,omitempty"`
 }
 
-// Replacement is the envelope's `replacement` object (ADR-0049): kind is
+// Replacement is the envelope's `replacement` object (ADR-0051): kind is
 // "command" or "flag"; removed and use are full command paths starting with
 // "gplay" for a command, flag names on the same command for a flag; removedIn
 // is the gplay version.

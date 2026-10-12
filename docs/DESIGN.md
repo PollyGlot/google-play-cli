@@ -639,7 +639,7 @@ branch on the failure without scraping stderr:
 - `requires` names the missing safety flag on an exit-3 refusal (extends the
   ADR-0017 dry-run `requires` to failure time); omitted otherwise.
 - `replacement` names what replaced a verb or flag gplay removed, when the
-  usage error is a call to it ([ADR-0049](./adr/0049-removed-surface-names-its-replacement.md)):
+  usage error is a call to it ([ADR-0051](./adr/0051-removed-surface-names-its-replacement.md)):
   `kind` (`command` or `flag`), `removed` and `use` (full command paths
   starting with `gplay` for a command, flag names such as `--to` and `--staged`
   for a flag, on the command that failed), and `removedIn` (the gplay version);
@@ -891,7 +891,7 @@ would otherwise read `unknown flag: --output`). A flag row names the leaf that l
 `releases promote --to` keeps working. Renaming or removing a verb or flag adds
 its row in the same pull request; `TestRemovedSurface_table` fails on a row whose
 replacement does not resolve or whose removed path or flag resolves again
-([ADR-0049](./adr/0049-removed-surface-names-its-replacement.md)).
+([ADR-0051](./adr/0051-removed-surface-names-its-replacement.md)).
 
 Every runnable leaf declares a validator, `cobra.NoArgs` when it takes no
 positional argument: cobra's default accepts any stray token and exits `0`

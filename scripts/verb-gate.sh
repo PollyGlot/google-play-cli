@@ -28,7 +28,7 @@
 # point-in-time records; ADR-0019 holds the rename table), CHANGELOG.md, and
 # migration guides (any path with a `migration/` directory), and the kernel's
 # removed-surface table with its test (internal/kernel/removed.go,
-# cmd/gplay/removed_test.go, ADR-0049), whose job is to name the old spelling
+# cmd/gplay/removed_test.go, ADR-0051), whose job is to name the old spelling
 # next to the new one.
 #
 # For the two group renames: a `gplay <group>` example must always carry a

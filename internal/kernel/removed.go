@@ -12,13 +12,13 @@ import (
 )
 
 // Removal kinds, the `replacement.kind` vocabulary of the JSON error envelope
-// (ADR-0049). Append-only.
+// (ADR-0051). Append-only.
 const (
 	RemovedCommand = "command"
 	RemovedFlag    = "flag"
 )
 
-// Removal is one row of the removed-surface table (ADR-0049): a verb or flag
+// Removal is one row of the removed-surface table (ADR-0051): a verb or flag
 // gplay shipped, then removed without an alias, and what replaced it.
 //
 //   - Path is the command the removed token applied to, without the leading
@@ -41,7 +41,7 @@ type Removal struct {
 }
 
 // removedSurface is the table itself. Every rename or removal of a verb or flag
-// adds its row in the same pull request (ADR-0049); TestRemovedSurface_table in
+// adds its row in the same pull request (ADR-0051); TestRemovedSurface_table in
 // cmd/gplay fails on a row whose Use no longer resolves or whose removed path
 // resolves again. The human mirror is the website's migration guide.
 var removedSurface = []Removal{
@@ -115,7 +115,7 @@ func tablePath(cmd *cobra.Command) string {
 
 // removedVerb looks up the verb the user called on group: args are the
 // positional tokens cobra left over after resolving group, so the removed path
-// is group's path followed by a prefix of args. Exact match only (ADR-0049): a
+// is group's path followed by a prefix of args. Exact match only (ADR-0051): a
 // near miss is the Levenshtein suggestion's job, never the table's.
 func removedVerb(group *cobra.Command, args []string) (Removal, bool) {
 	path := tablePath(group)
@@ -162,7 +162,7 @@ func removedVerbError(group *cobra.Command, r Removal) *exit.UsageError {
 // `update` is not a child: cobra parses `--output` on the group, which has no
 // such flag, and the user would read `unknown flag: --output` for a command
 // that does take it. When the flags failed on a group whose leading positional
-// arguments are a removed verb, the removed-verb error wins (ADR-0049).
+// arguments are a removed verb, the removed-verb error wins (ADR-0051).
 func FlagErrorFunc(cmd *cobra.Command, err error) error {
 	if cmd.HasSubCommands() {
 		if r, ok := removedVerb(cmd, cmd.Flags().Args()); ok {

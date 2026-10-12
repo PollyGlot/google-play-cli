@@ -13,14 +13,14 @@ import "fmt"
 // that wraps it: to 2 without a dispatcher edit.
 //
 // Replacement is set when the misuse is a call to surface gplay removed (a
-// renamed verb or flag, ADR-0049): the error stays exit 2, and the JSON error
+// renamed verb or flag, ADR-0051): the error stays exit 2, and the JSON error
 // envelope reads the replacement from here with errors.As. Nil otherwise.
 type UsageError struct {
 	Msg         string
 	Replacement *Replacement
 }
 
-// Replacement names what replaced a removed verb or flag (ADR-0049). Kind is
+// Replacement names what replaced a removed verb or flag (ADR-0051). Kind is
 // "command" or "flag". For a command, Removed and Use are full command paths
 // starting with "gplay"; for a flag, flag names on the same command. RemovedIn
 // is the gplay version that removed it.

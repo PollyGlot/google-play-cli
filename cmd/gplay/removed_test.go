@@ -123,7 +123,7 @@ func TestRemovedVerb_movedBranch(t *testing.T) {
 }
 
 // TestRemovedSurface_table keeps the removed-surface table honest against the
-// live command tree (ADR-0049): every replacement resolves to a runnable leaf
+// live command tree (ADR-0051): every replacement resolves to a runnable leaf
 // (a flag of the leaf, for a flag row), every removed path or flag resolves to
 // nothing (one that still exists is a table bug: the hint would shadow a live
 // command or flag, or never fire), and the group or leaf a row hangs off still

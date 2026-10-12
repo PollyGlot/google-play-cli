@@ -73,7 +73,7 @@ func GroupRunE(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 	// A removed verb gets its authoritative replacement instead of the
-	// Levenshtein guess, which is silent or wrong on most renames (ADR-0049).
+	// Levenshtein guess, which is silent or wrong on most renames (ADR-0051).
 	if r, ok := removedVerb(cmd, args); ok {
 		return removedVerbError(cmd, r)
 	}

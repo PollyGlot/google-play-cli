@@ -259,7 +259,7 @@ The target of a failed call as the JSON error envelope reports it: a kind of add
 _Avoid_: package (for a target that is not one)
 
 **Removed surface**:
-A verb or flag a Release removed without an alias. Calling it is still CLI misuse, but the error names its **replacement**, the verb or flag to use instead (ADR-0049).
+A verb or flag a Release removed without an alias. Calling it is still CLI misuse, but the error names its **replacement**, the verb or flag to use instead (ADR-0051).
 _Avoid_: deprecated (a deprecated surface still runs), alias
 
 **Public contract**:

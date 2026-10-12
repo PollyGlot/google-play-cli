@@ -141,7 +141,7 @@ team). Designed to replace Fastlane on Android CI pipelines.`,
 	// at the root fixes the whole tree at once: cobra's FlagErrorFunc is
 	// inherited down the parent chain, so every leaf's parse error routes
 	// through kernel.FlagErrorFunc, which also names a removed verb masked by
-	// a group's flag error (ADR-0049). SilenceErrors on the root keeps the
+	// a group's flag error (ADR-0051). SilenceErrors on the root keeps the
 	// output to main's single "gplay: ..." line.
 	root.SetFlagErrorFunc(kernel.FlagErrorFunc)
 
