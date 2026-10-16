@@ -5,6 +5,13 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1](https://github.com/PollyGlot/google-play-cli/compare/v2.3.0...v2.3.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **build:** build on Go 1.27.2 to pick up the stdlib security fixes ([#707](https://github.com/PollyGlot/google-play-cli/issues/707)) ([f4c60e7](https://github.com/PollyGlot/google-play-cli/commit/f4c60e7707ddca16f2a198e67b9cdf2340b27fab))
+
 ## [2.3.0](https://github.com/PollyGlot/google-play-cli/compare/v2.2.0...v2.3.0) (2026-10-12)
 
 
