@@ -21,7 +21,7 @@ Canonical terms live in `GLOSSARY.md`; use them verbatim, no synonyms. The core 
 ## Issues and tickets
 
 Issue tracker, triage labels and domain docs: `docs/agents/`. `to-tickets`,
-`triage`, `to-spec`, `wayfinder` and `implement-spec` read their config there.
+`triage`, `to-spec` and `implement-spec` read their config there.
 
 ## Vérifier
 
