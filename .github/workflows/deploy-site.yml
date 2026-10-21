@@ -12,13 +12,18 @@ name: Deploy gplay.sh
 # here: the deploy token is scoped to Workers Scripts:Edit only and cannot edit
 # DNS or routes. See docs/adr/0009-install-distribution-vanity-domain.md and
 # docs/adr/0025-website-served-from-install-worker.md.
+#
+# A push to main deploys only once CI has passed on that exact commit: the
+# trigger is the completion of the CI workflow (workflow_run), and the job runs
+# only for a successful CI run started by a push to main of this repository. It
+# checks out workflow_run.head_sha, the commit CI tested, never the moving tip
+# of main. A push touching none of the site paths below is skipped by the
+# "Detect site changes" step (main is squash-merged: one commit per push).
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'website/**'
-      - 'deploy/gplay.sh/**'
-      - '.github/workflows/deploy-site.yml'
   release:
     types: [published]
   workflow_dispatch:
@@ -33,11 +38,37 @@ permissions:
 jobs:
   deploy:
     name: Build site and deploy Worker
+    if: >-
+      github.event_name != 'workflow_run' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The commit CI passed on; on release and dispatch, the event's own ref.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+
+      # workflow_run has no paths filter: decide here, on the tested commit.
+      # Release and dispatch always deploy.
+      - name: Detect site changes
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != workflow_run ] || ! git diff --quiet HEAD^ HEAD -- \
+              website deploy/gplay.sh .github/workflows/deploy-site.yml; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No site change in $(git rev-parse HEAD), skipping deploy."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # No dependency cache in this job, Go or npm: it deploys the Worker behind
       # https://gplay.sh/install with the Cloudflare token, and a main-scoped
@@ -45,11 +76,13 @@ jobs:
       # entry would ship straight into the install script users pipe into sh.
       # The price is a cold `go build` and `npm ci`, paid on deploys only.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.changes.outputs.deploy == 'true'
         with:
           go-version-file: go.mod
           cache: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.changes.outputs.deploy == 'true'
         with:
           node-version: '22'
           # setup-node v5+ turns the npm cache on by itself once a package.json
@@ -58,13 +91,16 @@ jobs:
           package-manager-cache: false
 
       - name: Build gplay (source of the generated CLI reference)
+        if: steps.changes.outputs.deploy == 'true'
         run: make build
 
       - name: Install site dependencies
+        if: steps.changes.outputs.deploy == 'true'
         working-directory: website
         run: npm ci
 
       - name: Build site
+        if: steps.changes.outputs.deploy == 'true'
         working-directory: website
         # Defaults already target the apex (astro.config.mjs), but pin them here
         # so the deployed build is explicit and self-documenting.
@@ -74,6 +110,7 @@ jobs:
         run: npm run build
 
       - name: Deploy Worker + static assets
+        if: steps.changes.outputs.deploy == 'true'
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           # Minimal scope: account-level `Workers Scripts:Edit` (covers the

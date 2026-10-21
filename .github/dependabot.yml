@@ -47,3 +47,25 @@ updates:
       golang-x:
         patterns:
           - "golang.org/x/*"
+
+  # npm packages of the website (Astro build, deployed to gplay.sh by
+  # deploy-site.yml). Same week of cooldown as the actions: the build runs with
+  # the Cloudflare token in scope, so a freshly hijacked package must not land
+  # the day it is published. Minor and patch bumps come as one PR; majors stay
+  # separate, to be read on their own.
+  - package-ecosystem: npm
+    directory: "/website"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      website-minor-patch:
+        update-types:
+          - minor
+          - patch

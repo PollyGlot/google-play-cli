@@ -11,3 +11,11 @@ rules:
       # nothing that ships. The workflows that do ship (release.yml,
       # deploy-site.yml) restore no cache at all.
       - release-rehearsal.yml
+  dangerous-triggers:
+    ignore:
+      # deploy-site.yml waits on CI through workflow_run so that a red commit
+      # never deploys. The usual hazard (running fork PR code with secrets)
+      # is closed by the job's `if`: success only, event push, head branch
+      # main, head repository this one. It checks out the head_sha CI tested,
+      # which is then a commit on main, and restores no cache.
+      - deploy-site.yml
