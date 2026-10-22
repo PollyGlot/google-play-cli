@@ -171,3 +171,31 @@ func assertExit(t *testing.T, err error, want int) {
 		t.Errorf("exit = %d, want %d", got, want)
 	}
 }
+
+// TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses covers a repo that
+// commits monetization/iap as a symlink out of the checkout: pull refuses
+// before any HTTP rather than sweeping the target's *.json files.
+func TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses(t *testing.T) {
+	victim := t.TempDir()
+	if err := os.WriteFile(filepath.Join(victim, "config.json"), []byte(`{"keep":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, "monetization"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(repo, "monetization", "iap")); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+	fake := testkit.NewFake((&iapLive{v2Body: `{"oneTimeProducts":[{"productId":"coins100"}]}`}).serve)
+
+	_, err := pullcmd.Run(newRC(t, fake), pullcmd.Input{Package: "com.example.app"})
+	assertExit(t, err, 2)
+	if _, statErr := os.Stat(filepath.Join(victim, "config.json")); statErr != nil {
+		t.Errorf("config.json outside the checkout must survive: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(victim, "coins100.json")); statErr == nil {
+		t.Error("coins100.json was written outside the checkout")
+	}
+}

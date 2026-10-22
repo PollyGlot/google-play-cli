@@ -273,3 +273,88 @@ func assertExit(t *testing.T, err error, want int) {
 		t.Errorf("exit = %d, want %d", got, want)
 	}
 }
+
+// checkoutLinkedTo builds a checkout whose monetization/subscriptions is a
+// symlink to target, as a cloned repo can commit it, and makes it the working
+// directory.
+func checkoutLinkedTo(t *testing.T, target string) {
+	t.Helper()
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, "monetization"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(repo, "monetization", "subscriptions")); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+}
+
+// victimDir stands for an operator directory outside the checkout holding
+// *.json files that are not catalog files (~/.gplay/config.json, a file
+// keystore's <account>.json).
+func victimDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range []string{"config.json", "acct.json"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{"keep":true}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses covers a repo that
+// commits its default catalog directory as a symlink out of the checkout: the
+// mirror sweep would delete every *.json there, so pull refuses before any
+// HTTP and leaves the target untouched.
+func TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses(t *testing.T) {
+	victim := victimDir(t)
+	checkoutLinkedTo(t, victim)
+	rt := &subsRT{}
+
+	_, err := pullcmd.Run(newRC(t, rt), pullcmd.Input{Package: "com.example.app"})
+	assertExit(t, err, 2)
+	if !strings.Contains(err.Error(), "--dir") {
+		t.Errorf("refusal %q should name --dir as the deliberate way out", err.Error())
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	}
+	entries, _ := os.ReadDir(victim)
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if got := strings.Join(names, ","); got != "acct.json,config.json" {
+		t.Errorf("victim directory holds %q, want it untouched (acct.json,config.json)", got)
+	}
+}
+
+// TestRun_explicitDirThroughASymlink_isFollowed keeps --dir the operator's
+// choice: the same symlinked path, named on purpose, is written through.
+func TestRun_explicitDirThroughASymlink_isFollowed(t *testing.T) {
+	target := t.TempDir()
+	checkoutLinkedTo(t, target)
+
+	if _, err := pullcmd.Run(newRC(t, &subsRT{}), pullcmd.Input{Package: "com.example.app", Dir: "monetization/subscriptions"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "premium.json")); err != nil {
+		t.Errorf("premium.json was not written through the explicit --dir: %v", err)
+	}
+}
+
+// TestRun_defaultDirInTheCheckout_isWritten covers the ordinary case: no
+// --dir, a plain directory in the checkout, created on first pull.
+func TestRun_defaultDirInTheCheckout_isWritten(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	if _, err := pullcmd.Run(newRC(t, &subsRT{}), pullcmd.Input{Package: "com.example.app"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, name := range []string{"premium.json", "pro.json"} {
+		if _, err := os.Stat(filepath.Join("monetization", "subscriptions", name)); err != nil {
+			t.Errorf("%s missing from the default directory: %v", name, err)
+		}
+	}
+}
