@@ -175,11 +175,26 @@ func AliasedPoolManifest(pkg string, utf16Pool bool, fillerLen, aliases int) []b
 	return binaryXMLDocument(stringPool([]string{"manifest", "package", pkg, filler}, utf16Pool, aliases))
 }
 
-func binaryXMLDocument(pool []byte) []byte {
+// RepeatedPoolManifest is BinaryXMLManifest preceded by pools more string
+// pools, each one filler string of fillerLen characters aliased aliases times.
+// A reader keeps only the last pool, so each earlier one is decoded and
+// dropped.
+func RepeatedPoolManifest(pkg string, pools, fillerLen, aliases int) []byte {
+	filler := stringPool([]string{strings.Repeat("x", fillerLen)}, false, aliases)
+	chunks := make([][]byte, 0, pools+1)
+	for range pools {
+		chunks = append(chunks, filler)
+	}
+	return binaryXMLDocument(append(chunks, stringPool([]string{"manifest", "package", pkg}, false, 0))...)
+}
+
+func binaryXMLDocument(pools ...[]byte) []byte {
 	elem := startElement(0 /*manifest*/, 1 /*package*/, 2 /*pkg*/)
 
 	var body bytes.Buffer
-	body.Write(pool)
+	for _, p := range pools {
+		body.Write(p)
+	}
 	body.Write(elem)
 
 	var out bytes.Buffer

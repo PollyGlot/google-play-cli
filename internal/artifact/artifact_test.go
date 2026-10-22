@@ -361,3 +361,22 @@ func TestInspect_readsAPoolWithAliasesUnderTheCap(t *testing.T) {
 		t.Errorf("Inspect = %+v, want package com.example.app and no Note", info)
 	}
 }
+
+// TestInspect_boundsTheDecodedBytesAcrossStringPools keeps the bound per
+// document, not per pool: a manifest may carry many pools, each under the
+// cap, that together decode past it.
+func TestInspect_boundsTheDecodedBytesAcrossStringPools(t *testing.T) {
+	manifest := artifacttest.RepeatedPoolManifest("com.example.app", 3, 0x7FFF, 64)
+	path := artifacttest.Zip(t, t.TempDir(), "pools.apk", map[string][]byte{"AndroidManifest.xml": manifest})
+
+	info, err := artifact.Inspect(path)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if info.Package != "" {
+		t.Errorf("Package = %q, want empty: the pools decode past the cap together", info.Package)
+	}
+	if want := "could not parse the APK binary XML manifest: string pool decodes more than 4194304 bytes; package name not verified"; info.Note != want {
+		t.Errorf("Note = %q, want %q", info.Note, want)
+	}
+}

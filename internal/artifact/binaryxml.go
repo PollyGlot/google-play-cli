@@ -41,9 +41,10 @@ const typeString = 0x03
 
 var errShortChunk = errors.New("truncated chunk")
 
-// maxPoolDecodeBytes caps the entry bytes one string pool may decode in total.
-// The member cap bounds the manifest's size, not its pool's decoded size: every
-// index may alias one long entry, and each index decodes its own copy.
+// maxPoolDecodeBytes caps the entry bytes the string pools of one document may
+// decode in total. The member cap bounds the manifest's size, not what its
+// pools decode to: every index may alias one long entry, each index decodes its
+// own copy, and a document may carry many pools.
 const maxPoolDecodeBytes = maxManifestBytes
 
 var errPoolBudget = fmt.Errorf("string pool decodes more than %d bytes", maxPoolDecodeBytes)
@@ -70,6 +71,7 @@ func parseBinaryXMLPackage(b []byte) (string, error) {
 	}
 
 	var pool []string
+	budget := maxPoolDecodeBytes
 	for off := headerSize; off+8 <= total; {
 		ctype := int(binary.LittleEndian.Uint16(b[off : off+2]))
 		csize := int(binary.LittleEndian.Uint32(b[off+4 : off+8]))
@@ -82,7 +84,7 @@ func parseBinaryXMLPackage(b []byte) (string, error) {
 
 		switch ctype {
 		case chunkTypeStringPool:
-			p, err := parseStringPool(chunk)
+			p, err := parseStringPool(chunk, &budget)
 			if err != nil {
 				return "", err
 			}
@@ -175,7 +177,7 @@ func parseStartElement(c []byte) (name uint32, attrs []xmlAttr, err error) {
 
 // parseStringPool reads a RES_STRING_POOL chunk into a flat slice. Style
 // spans are ignored: nothing here needs them.
-func parseStringPool(c []byte) ([]string, error) {
+func parseStringPool(c []byte, budget *int) ([]string, error) {
 	const poolHeader = 28
 	if len(c) < poolHeader {
 		return nil, errShortChunk
@@ -197,7 +199,6 @@ func parseStringPool(c []byte) ([]string, error) {
 	}
 	utf8 := flags&utf8Flag != 0
 
-	budget := maxPoolDecodeBytes
 	out := make([]string, count)
 	for i := range count {
 		off := int(binary.LittleEndian.Uint32(c[headerSize+i*4 : headerSize+i*4+4]))
@@ -209,9 +210,9 @@ func parseStringPool(c []byte) ([]string, error) {
 		}
 		var err error
 		if utf8 {
-			out[i], err = readUTF8String(c[at:], &budget)
+			out[i], err = readUTF8String(c[at:], budget)
 		} else {
-			out[i], err = readUTF16String(c[at:], &budget)
+			out[i], err = readUTF16String(c[at:], budget)
 		}
 		if err != nil {
 			return nil, err
