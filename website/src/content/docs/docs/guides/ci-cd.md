@@ -134,7 +134,7 @@ publish-internal:
     - if: $CI_COMMIT_TAG
   script:
     - apk add --no-cache curl
-    - curl -fsSL https://gplay.sh/install | GPLAY_VERSION=v2.3.1 GPLAY_INSTALL_DIR=/usr/local/bin sh # x-release-please-version
+    - curl -fsSL https://gplay.sh/install | GPLAY_VERSION=v2.3.2 GPLAY_INSTALL_DIR=/usr/local/bin sh # x-release-please-version
     - gplay auth doctor --package com.example.myapp
     - gplay releases upload app/build/outputs/bundle/release/app-release.aab --package com.example.myapp --track internal
 ```
@@ -165,7 +165,7 @@ workflows:
             - content: |-
                 #!/usr/bin/env bash
                 set -euo pipefail
-                curl -fsSL https://gplay.sh/install | GPLAY_VERSION=v2.3.1 sh # x-release-please-version
+                curl -fsSL https://gplay.sh/install | GPLAY_VERSION=v2.3.2 sh # x-release-please-version
                 export PATH="$HOME/.local/bin:$PATH"
                 gplay auth doctor --package com.example.myapp
                 gplay releases upload "$BITRISE_AAB_PATH" --package com.example.myapp --track internal
@@ -199,7 +199,7 @@ jobs:
     machine:
       image: ubuntu-2404:current
     environment:
-      GPLAY_IMAGE: ghcr.io/pollyglot/gplay:v2.3.1 # x-release-please-version
+      GPLAY_IMAGE: ghcr.io/pollyglot/gplay:v2.3.2 # x-release-please-version
     steps:
       - attach_workspace:
           at: .
@@ -232,7 +232,7 @@ single quotes so the shell, not Groovy, expands the variables.
 pipeline {
   agent any
   environment {
-    GPLAY_VERSION = 'v2.3.1' // x-release-please-version
+    GPLAY_VERSION = 'v2.3.2' // x-release-please-version
   }
   stages {
     stage('Build') {
@@ -318,7 +318,7 @@ archive and verify it before running anything:
       - name: Install and verify gplay
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: v2.3.1 # x-release-please-version
+          VERSION: v2.3.2 # x-release-please-version
         run: |
           set -euo pipefail
           base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"
