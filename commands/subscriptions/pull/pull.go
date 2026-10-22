@@ -26,7 +26,9 @@ import (
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
-	Dir     string
+	// Dir is the catalog directory; "" means the default one, which
+	// catalog.ResolveDefault keeps inside the working directory.
+	Dir string
 }
 
 // Payload renders what pull wrote. Raw is the merged ListSubscriptionsResponse
@@ -88,7 +90,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	dir := in.Dir
 	if dir == "" {
-		dir = subscriptionscmd.DefaultDir
+		if dir, err = catalog.ResolveDefault(subscriptionscmd.DefaultDir); err != nil {
+			return nil, err
+		}
 	}
 	httpClient, err := rc.AuthedClient()
 	if err != nil {
@@ -169,6 +173,9 @@ ListSubscriptionsResponse (offers travel in the files).`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !cmd.Flags().Changed("dir") {
+				in.Dir = ""
+			}
 			return kernel.RunCobra(cmd, boot, outputFlag, func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, in)
 			})

@@ -16,7 +16,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
 // Entry is one product to write: its ID (the filename stem) and the verbatim
@@ -60,6 +62,22 @@ func Read(dir string) (map[string]json.RawMessage, error) {
 		local[id] = json.RawMessage(b)
 	}
 	return local, nil
+}
+
+// ResolveDefault checks a pull's default catalog directory, rel to the working
+// directory, before Write mirrors into it: Write's sweep deletes every stale
+// *.json there, and a cloned repo can commit `monetization` as a symlink to
+// ~/.gplay. A directory a symlink carries out of the working directory is
+// refused. An explicit --dir is the operator's own choice and skips this.
+func ResolveDefault(rel string) (string, error) {
+	root, err := pathguard.Root(".")
+	if err != nil {
+		return "", err
+	}
+	if _, err := pathguard.Contain(root, rel); err != nil {
+		return "", exit.Usagef("%v Pass --dir to write the catalog there on purpose.", err)
+	}
+	return rel, nil
 }
 
 // Write lays down one pretty-printed <productId>.json per entry and removes any
