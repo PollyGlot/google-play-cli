@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -162,8 +163,19 @@ const (
 // selects the older UTF-16 string-pool encoding (both are valid and both
 // appear in the wild depending on the aapt generation).
 func BinaryXMLManifest(pkg string, utf16Pool bool) []byte {
-	strs := []string{"manifest", "package", pkg}
-	pool := stringPool(strs, utf16Pool)
+	return binaryXMLDocument(stringPool([]string{"manifest", "package", pkg}, utf16Pool, 0))
+}
+
+// AliasedPoolManifest is BinaryXMLManifest whose string pool also holds one
+// filler string of fillerLen characters, followed by aliases more pool indices
+// that all point at that same filler entry. aapt never emits it; it is the
+// shape of a crafted manifest whose pool decodes far more than its own size.
+func AliasedPoolManifest(pkg string, utf16Pool bool, fillerLen, aliases int) []byte {
+	filler := strings.Repeat("x", fillerLen)
+	return binaryXMLDocument(stringPool([]string{"manifest", "package", pkg, filler}, utf16Pool, aliases))
+}
+
+func binaryXMLDocument(pool []byte) []byte {
 	elem := startElement(0 /*manifest*/, 1 /*package*/, 2 /*pkg*/)
 
 	var body bytes.Buffer
@@ -206,8 +218,9 @@ func startElement(nameIdx, attrNameIdx, attrValueIdx uint32) []byte {
 	return out.Bytes()
 }
 
-// stringPool encodes a RES_STRING_POOL chunk holding strs.
-func stringPool(strs []string, utf16Pool bool) []byte {
+// stringPool encodes a RES_STRING_POOL chunk holding strs, plus aliases extra
+// indices pointing at the last string's entry.
+func stringPool(strs []string, utf16Pool bool, aliases int) []byte {
 	var (
 		data    bytes.Buffer
 		offsets = make([]uint32, len(strs))
@@ -228,18 +241,21 @@ func stringPool(strs []string, utf16Pool bool) []byte {
 		data.WriteString(s)
 		data.WriteByte(0)
 	}
+	for range aliases {
+		offsets = append(offsets, offsets[len(offsets)-1])
+	}
 	for data.Len()%4 != 0 {
 		data.WriteByte(0)
 	}
 
 	const headerSize = 28
-	stringsStart := headerSize + 4*len(strs)
+	stringsStart := headerSize + 4*len(offsets)
 
 	var out bytes.Buffer
 	writeU16(&out, stringPoolChunkType)
 	writeU16(&out, headerSize)
 	writeU32(&out, uint32(stringsStart+data.Len()))
-	writeU32(&out, uint32(len(strs)))
+	writeU32(&out, uint32(len(offsets)))
 	writeU32(&out, 0) // styleCount
 	if utf16Pool {
 		writeU32(&out, 0)

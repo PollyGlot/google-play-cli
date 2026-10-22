@@ -306,3 +306,58 @@ func TestInspect_readsAPackageNameOverTheOneByteLengthPrefix(t *testing.T) {
 		t.Errorf("Package = %q, want %q", got.Package, long)
 	}
 }
+
+// TestInspect_refusesAStringPoolThatDecodesPastTheManifestCap pins the bound
+// on the decoded side of the manifest. The member cap limits the bytes the
+// manifest occupies, not what its string pool decodes to: pool indices may
+// all alias one long entry, and decoding that entry once per index turns a
+// small manifest into gigabytes. Past the cap the preflight degrades to a
+// Note, as for any other manifest it cannot parse.
+func TestInspect_refusesAStringPoolThatDecodesPastTheManifestCap(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		utf16Pool bool
+		fillerLen int
+	}{
+		{"utf8 pool", false, 0x7FFF},
+		{"utf16 pool", true, 30000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manifest := artifacttest.AliasedPoolManifest("com.example.app", tc.utf16Pool, tc.fillerLen, 200)
+			if len(manifest) > 1<<20 {
+				t.Fatalf("fixture manifest is %d bytes, want it well under the 4 MiB member cap", len(manifest))
+			}
+			path := artifacttest.Zip(t, t.TempDir(), "aliased.apk", map[string][]byte{"AndroidManifest.xml": manifest})
+
+			info, err := artifact.Inspect(path)
+			if err != nil {
+				t.Fatalf("Inspect: %v", err)
+			}
+			if info.Kind != artifact.KindAPK {
+				t.Errorf("Kind = %q, want apk", info.Kind)
+			}
+			if info.Package != "" {
+				t.Errorf("Package = %q, want empty: the pool decodes past the cap", info.Package)
+			}
+			if want := "could not parse the APK binary XML manifest: string pool decodes more than 4194304 bytes; package name not verified"; info.Note != want {
+				t.Errorf("Note = %q, want %q", info.Note, want)
+			}
+		})
+	}
+}
+
+// TestInspect_readsAPoolWithAliasesUnderTheCap keeps the bound from turning
+// into a false refusal: a pool whose indices alias one entry is still read as
+// long as the total it decodes stays under the cap.
+func TestInspect_readsAPoolWithAliasesUnderTheCap(t *testing.T) {
+	manifest := artifacttest.AliasedPoolManifest("com.example.app", false, 0x7FFF, 100)
+	path := artifacttest.Zip(t, t.TempDir(), "aliased.apk", map[string][]byte{"AndroidManifest.xml": manifest})
+
+	info, err := artifact.Inspect(path)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if info.Package != "com.example.app" || info.Note != "" {
+		t.Errorf("Inspect = %+v, want package com.example.app and no Note", info)
+	}
+}
