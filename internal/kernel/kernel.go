@@ -649,7 +649,20 @@ func buildRunContext(boot Boot, in Inputs) (*RunContext, error) {
 		resolverInputs: in.Resolver,
 	}
 	warnTrackedLocalConfig(rc)
+	warnForeignProject(rc)
 	return rc, nil
+}
+
+// warnForeignProject says why a .gplay/ above the working directory changed
+// nothing: another user owns it, so the config loader skipped it (see
+// config.foreignProject). Without the line, an operator whose own project sits
+// in such a directory would only see commands lose their package pin.
+func warnForeignProject(rc *RunContext) {
+	if rc.Resolved == nil || rc.Resolved.ForeignProjectDir == "" {
+		return
+	}
+	rc.Warnf("ignoring %s: another user owns it, so its package, Account, developer id and Edit pin are not used. If the project is yours, take ownership of it (chown); otherwise pass --package and --account",
+		rc.Resolved.ForeignProjectDir)
 }
 
 // warnTrackedLocalConfig warns when the repo's .gplay/config.local.json is

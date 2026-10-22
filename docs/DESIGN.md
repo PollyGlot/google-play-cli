@@ -223,7 +223,11 @@ CLI flags                              (e.g. --account, --package, --service-acc
 The walk-up that finds `.gplay/` refuses to traverse into `$HOME` (or any
 ancestor of `$HOME`) so a stray `~/.gplay/config.json` cannot masquerade
 as a project pin. `gplay init` refuses to run when `cwd == $HOME` for
-the same reason.
+the same reason. A `.gplay/` the walk-up finds is adopted only when the
+current user owns it, or when it shares the owner of the working directory
+(a container running as its own uid on a mounted checkout). Otherwise
+another user planted it in a shared directory such as `/tmp`: gplay ignores
+it and says so on stderr.
 
 ### Field rules
 

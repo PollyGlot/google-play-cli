@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
@@ -222,6 +223,10 @@ type Resolved struct {
 	GlobalPath        string
 	ProjectSharedPath string
 	ProjectLocalPath  string
+
+	// ForeignProjectDir is the .gplay/ the walk-up found but did not adopt,
+	// because another user owns it (see foreignProject). Empty otherwise.
+	ForeignProjectDir string
 }
 
 // projectShared mirrors the on-disk shape of <repo>/.gplay/config.json.
@@ -274,6 +279,14 @@ func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 	}
 	if err == nil {
 		gplayDir := filepath.Join(repoRoot, ".gplay")
+		foreign, err := foreignProject(fsys, gplayDir, opts.StartDir)
+		if err != nil {
+			return nil, err
+		}
+		if foreign {
+			r.ForeignProjectDir = gplayDir
+			return r, nil
+		}
 		sharedPath := filepath.Join(gplayDir, "config.json")
 		ps, err := readProjectShared(fsys, sharedPath)
 		if err != nil {
@@ -311,6 +324,34 @@ func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 	}
 
 	return r, nil
+}
+
+// foreignProject reports whether gplayDir belongs to someone other than the
+// current user and the owner of startDir. The walk-up crosses directories
+// other users can write to (/tmp, /Users/Shared), so a .gplay/ planted there
+// would otherwise pick the package, Account and Edit pin of every command run
+// below it. The owner of startDir is trusted too: a container running as its
+// own uid on a mounted checkout (docs/CI_CD.md) works in a tree it does not
+// own, and the checkout's .gplay/ shares that tree's owner.
+func foreignProject(fsys FS, gplayDir, startDir string) (bool, error) {
+	fi, err := fsys.Stat(gplayDir)
+	if err != nil {
+		return false, err
+	}
+	owner, ok := fileOwner(fi)
+	if !ok || owner == os.Geteuid() {
+		return false, nil
+	}
+	start, err := filepath.Abs(startDir)
+	if err != nil {
+		return false, err
+	}
+	sfi, err := fsys.Stat(start)
+	if err != nil {
+		return false, err
+	}
+	startOwner, ok := fileOwner(sfi)
+	return !ok || startOwner != owner, nil
 }
 
 // LoadFromEnv builds Resolved using fsys's cwd and home for the walk-up

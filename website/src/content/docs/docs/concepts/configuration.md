@@ -33,7 +33,10 @@ explicit `--package` always overrides the pin.
 
 The walk-up refuses to traverse into `$HOME` or any of its ancestors, so a
 stray `~/.gplay/config.json` can never masquerade as a project pin, and
-`gplay init` refuses to run when the current directory *is* `$HOME`.
+`gplay init` refuses to run when the current directory *is* `$HOME`. It also
+ignores, with a warning, a `.gplay/` that belongs to another user, such as one
+planted in `/tmp`: gplay adopts a `.gplay/` only when you own it, or when it
+has the same owner as the directory you run from.
 
 ## What goes in `.gplay/`
 
