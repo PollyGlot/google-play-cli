@@ -225,9 +225,10 @@ ancestor of `$HOME`) so a stray `~/.gplay/config.json` cannot masquerade
 as a project pin. `gplay init` refuses to run when `cwd == $HOME` for
 the same reason. A `.gplay/` the walk-up finds is adopted only when the
 current user owns it, or when it shares the owner of the working directory
-(a container running as its own uid on a mounted checkout). Otherwise
-another user planted it in a shared directory such as `/tmp`: gplay ignores
-it and says so on stderr.
+(a container running as its own uid on a mounted checkout), and when it is
+not writable by every user. Otherwise another user could have planted it, or
+files in it, in a shared directory such as `/tmp`: gplay ignores it and says
+so on stderr.
 
 ### Field rules
 

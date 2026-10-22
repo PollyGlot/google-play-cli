@@ -36,7 +36,8 @@ stray `~/.gplay/config.json` can never masquerade as a project pin, and
 `gplay init` refuses to run when the current directory *is* `$HOME`. It also
 ignores, with a warning, a `.gplay/` that belongs to another user, such as one
 planted in `/tmp`: gplay adopts a `.gplay/` only when you own it, or when it
-has the same owner as the directory you run from.
+has the same owner as the directory you run from, and only when other users
+cannot write to it.
 
 ## What goes in `.gplay/`
 

@@ -89,3 +89,23 @@ func TestLoad_projectDirOwnedLikeTheWorkingDir_isAdopted(t *testing.T) {
 		t.Errorf("Pin = %q, ForeignProjectDir = %q, want com.example.app and empty", r.Pin, r.ForeignProjectDir)
 	}
 }
+
+// TestLoad_worldWritableProjectDir_isNotAdopted covers a .gplay/ any user can
+// drop files into, such as `.gplay -> .` planted in a world-writable shared
+// directory: its owner is no guarantee of who wrote its config.
+func TestLoad_worldWritableProjectDir_isNotAdopted(t *testing.T) {
+	f := newLoadFixture(t)
+	f.writeShared(t, `{"package":"com.example.planted"}`)
+	gplayDir := filepath.Dir(f.sharedPath)
+	if err := os.Chmod(gplayDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := config.Load(context.Background(), config.OSFS{}, f.loadOpts())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if r.Pin != "" || r.ForeignProjectDir != gplayDir {
+		t.Errorf("Pin = %q, ForeignProjectDir = %q, want empty and %q", r.Pin, r.ForeignProjectDir, gplayDir)
+	}
+}

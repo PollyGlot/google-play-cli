@@ -225,7 +225,8 @@ type Resolved struct {
 	ProjectLocalPath  string
 
 	// ForeignProjectDir is the .gplay/ the walk-up found but did not adopt,
-	// because another user owns it (see foreignProject). Empty otherwise.
+	// because another user owns it or every user can write to it (see
+	// foreignProject). Empty otherwise.
 	ForeignProjectDir string
 }
 
@@ -327,19 +328,28 @@ func Load(ctx context.Context, fsys FS, opts LoadOptions) (*Resolved, error) {
 }
 
 // foreignProject reports whether gplayDir belongs to someone other than the
-// current user and the owner of startDir. The walk-up crosses directories
-// other users can write to (/tmp, /Users/Shared), so a .gplay/ planted there
-// would otherwise pick the package, Account and Edit pin of every command run
-// below it. The owner of startDir is trusted too: a container running as its
-// own uid on a mounted checkout (docs/CI_CD.md) works in a tree it does not
-// own, and the checkout's .gplay/ shares that tree's owner.
+// current user and the owner of startDir, or is writable by every user. The
+// walk-up crosses directories other users can write to (/tmp, /Users/Shared),
+// so a .gplay/ planted there would otherwise pick the package, Account and
+// Edit pin of every command run below it. A world-writable .gplay/ takes files
+// from anyone whatever its owner, and `.gplay -> .` in a world-writable
+// directory resolves to exactly that. The owner of startDir is trusted too: a
+// container running as its own uid on a mounted checkout (docs/CI_CD.md) works
+// in a tree it does not own, and the checkout's .gplay/ shares that tree's
+// owner.
 func foreignProject(fsys FS, gplayDir, startDir string) (bool, error) {
 	fi, err := fsys.Stat(gplayDir)
 	if err != nil {
 		return false, err
 	}
 	owner, ok := fileOwner(fi)
-	if !ok || owner == os.Geteuid() {
+	if !ok {
+		return false, nil
+	}
+	if fi.Mode().Perm()&0o002 != 0 {
+		return true, nil
+	}
+	if owner == os.Geteuid() {
 		return false, nil
 	}
 	start, err := filepath.Abs(startDir)

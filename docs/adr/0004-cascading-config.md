@@ -58,7 +58,7 @@ global → project shared → project local → GPLAY_* env → CLI flags
 - `gplay init` refuses to run when `cwd == $HOME` for the same reason:
   it would create the very file the loader is designed to ignore.
 - Ignore, with a stderr warning, a `.gplay/` owned by neither the current
-  user nor the owner of cwd. The walk-up crosses directories other users
+  user nor the owner of cwd, or writable by every user. The walk-up crosses directories other users
   can write to (`/tmp`, `/Users/Shared`); the cwd-owner clause keeps a
   container that runs as its own uid on a mounted checkout working.
 
