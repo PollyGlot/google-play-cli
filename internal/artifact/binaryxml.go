@@ -41,6 +41,14 @@ const typeString = 0x03
 
 var errShortChunk = errors.New("truncated chunk")
 
+// maxPoolDecodeBytes caps the entry bytes the string pools of one document may
+// decode in total. The member cap bounds the manifest's size, not what its
+// pools decode to: every index may alias one long entry, each index decodes its
+// own copy, and a document may carry many pools.
+const maxPoolDecodeBytes = maxManifestBytes
+
+var errPoolBudget = fmt.Errorf("string pool decodes more than %d bytes", maxPoolDecodeBytes)
+
 // parseBinaryXMLPackage returns the `package` attribute of the root
 // <manifest> element of a compiled AndroidManifest.xml.
 func parseBinaryXMLPackage(b []byte) (string, error) {
@@ -63,6 +71,7 @@ func parseBinaryXMLPackage(b []byte) (string, error) {
 	}
 
 	var pool []string
+	budget := maxPoolDecodeBytes
 	for off := headerSize; off+8 <= total; {
 		ctype := int(binary.LittleEndian.Uint16(b[off : off+2]))
 		csize := int(binary.LittleEndian.Uint32(b[off+4 : off+8]))
@@ -75,7 +84,7 @@ func parseBinaryXMLPackage(b []byte) (string, error) {
 
 		switch ctype {
 		case chunkTypeStringPool:
-			p, err := parseStringPool(chunk)
+			p, err := parseStringPool(chunk, &budget)
 			if err != nil {
 				return "", err
 			}
@@ -168,7 +177,7 @@ func parseStartElement(c []byte) (name uint32, attrs []xmlAttr, err error) {
 
 // parseStringPool reads a RES_STRING_POOL chunk into a flat slice. Style
 // spans are ignored: nothing here needs them.
-func parseStringPool(c []byte) ([]string, error) {
+func parseStringPool(c []byte, budget *int) ([]string, error) {
 	const poolHeader = 28
 	if len(c) < poolHeader {
 		return nil, errShortChunk
@@ -199,32 +208,48 @@ func parseStringPool(c []byte) ([]string, error) {
 			// walk only needs "manifest" and "package" to resolve.
 			continue
 		}
+		var err error
 		if utf8 {
-			out[i] = readUTF8String(c[at:])
+			out[i], err = readUTF8String(c[at:], budget)
 		} else {
-			out[i] = readUTF16String(c[at:])
+			out[i], err = readUTF16String(c[at:], budget)
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
 }
 
 // readUTF8String reads aapt's UTF-8 pool entry: a varint character count, a
-// varint byte count, then that many bytes.
-func readUTF8String(b []byte) string {
+// varint byte count, then that many bytes. The bytes are debited from budget.
+func readUTF8String(b []byte, budget *int) (string, error) {
 	_, n := readLen8(b)
 	if n < 0 {
-		return ""
+		return "", nil
 	}
 	b = b[n:]
 	byteLen, n := readLen8(b)
 	if n < 0 {
-		return ""
+		return "", nil
 	}
 	b = b[n:]
 	if byteLen > len(b) {
 		byteLen = len(b)
 	}
-	return string(b[:byteLen])
+	if err := debit(budget, byteLen); err != nil {
+		return "", err
+	}
+	return string(b[:byteLen]), nil
+}
+
+// debit takes n bytes from budget before the caller allocates them.
+func debit(budget *int, n int) error {
+	if n > *budget {
+		return errPoolBudget
+	}
+	*budget -= n
+	return nil
 }
 
 // readLen8 reads the 1-or-2-byte length prefix of a UTF-8 pool entry,
@@ -243,16 +268,17 @@ func readLen8(b []byte) (int, int) {
 }
 
 // readUTF16String reads aapt's UTF-16 pool entry: a 1-or-2-word length
-// prefix, then that many UTF-16LE code units.
-func readUTF16String(b []byte) string {
+// prefix, then that many UTF-16LE code units. The units' bytes are debited
+// from budget.
+func readUTF16String(b []byte, budget *int) (string, error) {
 	if len(b) < 2 {
-		return ""
+		return "", nil
 	}
 	n := int(binary.LittleEndian.Uint16(b[0:2]))
 	b = b[2:]
 	if n&0x8000 != 0 {
 		if len(b) < 2 {
-			return ""
+			return "", nil
 		}
 		n = (n&0x7FFF)<<16 | int(binary.LittleEndian.Uint16(b[0:2]))
 		b = b[2:]
@@ -260,9 +286,12 @@ func readUTF16String(b []byte) string {
 	if n < 0 || n*2 > len(b) {
 		n = len(b) / 2
 	}
+	if err := debit(budget, n*2); err != nil {
+		return "", err
+	}
 	units := make([]uint16, n)
 	for i := range n {
 		units[i] = binary.LittleEndian.Uint16(b[i*2 : i*2+2])
 	}
-	return string(utf16.Decode(units))
+	return string(utf16.Decode(units)), nil
 }
