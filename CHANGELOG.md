@@ -5,6 +5,14 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2](https://github.com/PollyGlot/google-play-cli/compare/v2.3.1...v2.3.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **artifact:** cap the bytes an APK string pool decodes ([#717](https://github.com/PollyGlot/google-play-cli/issues/717)) ([d7ed649](https://github.com/PollyGlot/google-play-cli/commit/d7ed6494e1b25058f011d1d970953606907e66d1))
+* **config:** ignore a .gplay/ another user owns, contain the default catalog dir ([#718](https://github.com/PollyGlot/google-play-cli/issues/718)) ([5e003d3](https://github.com/PollyGlot/google-play-cli/commit/5e003d35eb25c11c991645134e69d09b69eb6c0c))
+
 ## [2.3.1](https://github.com/PollyGlot/google-play-cli/compare/v2.3.0...v2.3.1) (2026-10-16)
 
 
