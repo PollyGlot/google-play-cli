@@ -1,5 +1,5 @@
 {
-  "revision": "20261019",
+  "revision": "20261022",
   "services": {
     "androidpublisher": {
       "rootUrl": "https://androidpublisher.googleapis.com/",
@@ -6445,7 +6445,7 @@
         },
         "deliveryToken": {
           "type": "string",
-          "description": "The token used for delivery of the app with the Google Play Inline Install API."
+          "description": "The token used for delivery of the app with the Google Play Inline Install API. The token is unique per Play app and per third-party app store combination and has a limited validity period of 7 days."
         },
         "developerDetails": {
           "$ref": "DeveloperDetails",
@@ -8552,7 +8552,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. * Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100000; values above 100000 will be coerced to 100000."
+          "description": "Optional. * Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000."
         },
         "pageToken": {
           "type": "string",
@@ -8607,7 +8607,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100,000; values above 100,000 will be coerced to 100,000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10,000; values above 10,000 will be coerced to 10,000."
         },
         "pageToken": {
           "type": "string",
@@ -8662,7 +8662,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100000; values above 100000 will be coerced to 100000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000."
         },
         "pageToken": {
           "type": "string",
@@ -8717,7 +8717,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100,000; values above 100,000 will be coerced to 100,000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10,000; values above 10,000 will be coerced to 10,000."
         },
         "pageToken": {
           "type": "string",
@@ -8772,7 +8772,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100000; values above 100000 will be coerced to 100000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000."
         },
         "pageToken": {
           "type": "string",
@@ -8817,7 +8817,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100000; values above 100000 will be coerced to 100000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000."
         },
         "pageToken": {
           "type": "string",
@@ -8872,7 +8872,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100,000; values above 100,000 will be coerced to 100,000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10,000; values above 10,000 will be coerced to 10,000."
         },
         "pageToken": {
           "type": "string",
@@ -8927,7 +8927,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100000; values above 100000 will be coerced to 100000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000."
         },
         "pageToken": {
           "type": "string",
@@ -8982,7 +8982,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100000; values above 100000 will be coerced to 100000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000."
         },
         "pageToken": {
           "type": "string",
@@ -9037,7 +9037,7 @@
         },
         "pageSize": {
           "type": "integer",
-          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 100000; values above 100000 will be coerced to 100000."
+          "description": "Optional. Maximum size of the returned data. If unspecified, at most 1000 rows will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000."
         },
         "pageToken": {
           "type": "string",
@@ -9426,7 +9426,7 @@
         },
         "gracePeriod": {
           "type": "string",
-          "description": "Grace period of the subscription, specified in ISO 8601 format. Allows developers to give their subscribers a grace period when the payment for the new recurrence period is declined. Acceptable values are P0D (zero days), P3D (three days), P7D (seven days), P14D (14 days), and P30D (30 days)."
+          "description": "Deprecated: Subscriptions are no longer supported in the InAppProducts API. Use the Subscriptions API instead."
         },
         "listings": {
           "type": "object",
@@ -9468,15 +9468,15 @@
         },
         "subscriptionPeriod": {
           "type": "string",
-          "description": "Subscription period, specified in ISO 8601 format. Acceptable values are P1W (one week), P1M (one month), P3M (three months), P6M (six months), and P1Y (one year)."
+          "description": "Deprecated: Subscriptions are no longer supported in the InAppProducts API. Use the Subscriptions API instead."
         },
         "subscriptionTaxesAndComplianceSettings": {
           "$ref": "SubscriptionTaxAndComplianceSettings",
-          "description": "Details about taxes and legal compliance. Only applicable to subscription products."
+          "description": "Deprecated: Subscriptions are no longer supported in the InAppProducts API. Use the Subscriptions API instead."
         },
         "trialPeriod": {
           "type": "string",
-          "description": "Trial period, specified in ISO 8601 format. Acceptable values are anything between P7D (seven days) and P999D (999 days)."
+          "description": "Deprecated: Subscriptions are no longer supported in the InAppProducts API. Use the Subscriptions API instead."
         }
       }
     },
@@ -9486,7 +9486,7 @@
         "benefits": {
           "type": "string",
           "repeated": true,
-          "description": "Localized entitlement benefits for a subscription."
+          "description": "Deprecated: Subscriptions are no longer supported in the InAppProducts API. Use the Subscriptions API instead."
         },
         "description": {
           "type": "string",
@@ -10636,7 +10636,7 @@
         },
         "relativeDiscount": {
           "type": "number",
-          "description": "The fraction of the purchase option price that the user pays for this offer. For example, if the purchase option price for this region is $12, then a 50% discount would correspond to a price of $6. The discount must be specified as a fraction strictly larger than 0 and strictly smaller than 1. The resulting price will be rounded to the nearest billable unit (e.g. cents for USD). The relative discount is considered invalid if the discounted price ends up being smaller than the minimum price allowed in this region."
+          "description": "The percentage discount subtracted from the purchase option price, specified as a fraction strictly larger than `0` and strictly smaller than `1`. For example, a value of `0.8` represents an 80% discount, meaning that if the purchase option price is $100, the offer price will be $20. The resulting price will be rounded to the nearest billable unit (e.g. cents for USD). The relative discount is considered invalid if the discounted price ends up being smaller than the minimum price allowed in this region."
         }
       }
     },
@@ -11008,7 +11008,7 @@
       "properties": {
         "absoluteDiscounts": {
           "$ref": "OtherRegionsSubscriptionOfferPhasePrices",
-          "description": "The absolute amount of money subtracted from the base plan price prorated over the phase duration that the user pays for this offer phase. For example, if the base plan price for this region is $12 for a period of 1 year, then a $1 absolute discount for a phase of a duration of 3 months would correspond to a price of $2. The resulting price may not be smaller than the minimum price allowed for any new locations Play may launch in."
+          "description": "The absolute amount of money subtracted from the base plan price prorated over the phase duration. For example, if the base plan price for this region is $12 for a period of 1 year, then a $1 absolute discount for a phase of a duration of 3 months would correspond to a price of $2. The resulting price may not be smaller than the minimum price allowed for any new locations Play may launch in."
         },
         "free": {
           "$ref": "OtherRegionsSubscriptionOfferPhaseFreePriceOverride",
@@ -11020,7 +11020,7 @@
         },
         "relativeDiscount": {
           "type": "number",
-          "description": "The fraction of the base plan price prorated over the phase duration that the user pays for this offer phase. For example, if the base plan price for this region is $12 for a period of 1 year, then a 50% discount for a phase of a duration of 3 months would correspond to a price of $1.50. The discount must be specified as a fraction strictly larger than 0 and strictly smaller than 1. The resulting price will be rounded to the nearest billable unit (e.g. cents for USD). The relative discount is considered invalid if the discounted price ends up being smaller than the minimum price allowed in any new locations Play may launch in."
+          "description": "The percentage discount subtracted from the base plan price prorated over the phase duration, specified as a fraction strictly larger than `0` and strictly smaller than `1`. For example, a value of `0.8` represents an 80% discount, meaning that if the prorated base plan price is $100, the offer price will be $20. The resulting price will be rounded to the nearest billable unit (e.g. cents for USD). The relative discount is considered invalid if the discounted price ends up being smaller than the minimum price allowed in any new locations Play may launch in."
         }
       }
     },
@@ -11876,7 +11876,7 @@
       "properties": {
         "absoluteDiscount": {
           "$ref": "Money",
-          "description": "The absolute amount of money subtracted from the base plan price prorated over the phase duration that the user pays for this offer phase. For example, if the base plan price for this region is $12 for a period of 1 year, then a $1 absolute discount for a phase of a duration of 3 months would correspond to a price of $2. The resulting price may not be smaller than the minimum price allowed for this region."
+          "description": "The absolute amount of money subtracted from the base plan price prorated over the phase duration. For example, if the base plan price for this region is $12 for a period of 1 year, then a $1 absolute discount for a phase of a duration of 3 months would correspond to a price of $2. The resulting price may not be smaller than the minimum price allowed for this region."
         },
         "free": {
           "$ref": "RegionalSubscriptionOfferPhaseFreePriceOverride",
@@ -11892,7 +11892,7 @@
         },
         "relativeDiscount": {
           "type": "number",
-          "description": "The fraction of the base plan price prorated over the phase duration that the user pays for this offer phase. For example, if the base plan price for this region is $12 for a period of 1 year, then a 50% discount for a phase of a duration of 3 months would correspond to a price of $1.50. The discount must be specified as a fraction strictly larger than 0 and strictly smaller than 1. The resulting price will be rounded to the nearest billable unit (e.g. cents for USD). The relative discount is considered invalid if the discounted price ends up being smaller than the minimum price allowed in this region."
+          "description": "The percentage discount subtracted from the base plan price prorated over the phase duration, specified as a fraction strictly larger than `0` and strictly smaller than `1`. For example, a value of `0.8` represents an 80% discount, meaning that if the prorated base plan price is $100, the offer price will be $20. The resulting price will be rounded to the nearest billable unit (e.g. cents for USD). The relative discount is considered invalid if the discounted price ends up being smaller than the minimum price allowed in this region."
         }
       }
     },
