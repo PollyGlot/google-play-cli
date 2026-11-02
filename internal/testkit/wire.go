@@ -22,13 +22,18 @@ import (
 // included, which an in-process RoundTripper never sees) and the body. The
 // client it hands out dials a local TLS server whatever the URL's host, so
 // the registry's real https URLs are exercised unchanged.
+//
+// A request body that breaks a constraint Play documents (the rules table)
+// fails the test and gets the 400 Play would answer.
 type Wire struct {
+	t          testing.TB
 	srv        *httptest.Server
 	client     *http.Client
 	responders []Responder
 
-	mu    sync.Mutex
-	lines []string
+	mu      sync.Mutex
+	lines   []string
+	allowed map[string]bool
 }
 
 // NewWire starts a Wire whose server answers each request from the first
@@ -37,7 +42,7 @@ type Wire struct {
 // The server stops when the test ends.
 func NewWire(t testing.TB, responders ...Responder) *Wire {
 	t.Helper()
-	w := &Wire{responders: responders}
+	w := &Wire{t: t, responders: responders, allowed: map[string]bool{}}
 	w.srv = httptest.NewTLSServer(http.HandlerFunc(w.serve))
 	t.Cleanup(w.srv.Close)
 	addr := w.srv.Listener.Addr().String()
@@ -54,6 +59,16 @@ func NewWire(t testing.TB, responders ...Responder) *Wire {
 	// connections) rather than building one: testkit is not a _test file.
 	w.client = w.srv.Client()
 	w.client.Transport = tr
+	return w
+}
+
+// AllowInvalid lets bodies that break the named rules (`Schema.property`, as
+// the failure message names them) reach the responders: for a test that
+// sends a body Play refuses on purpose, to exercise the 400 path.
+func (w *Wire) AllowInvalid(rules ...string) *Wire {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	allowList(w.allowed, rules)
 	return w
 }
 
@@ -100,11 +115,18 @@ func (w *Wire) serve(rw http.ResponseWriter, r *http.Request) {
 		// golden reviewable.
 		fmt.Fprintf(&b, "\n<%d bytes, sha256 %x>\n", len(body), sha256.Sum256(body))
 	}
+	c := Call{Method: r.Method, Host: r.Host, Path: r.URL.Path, Query: r.URL.RawQuery, Header: r.Header.Clone(), Body: body, URL: "https://" + r.Host + r.RequestURI, ContentLength: r.ContentLength, Reply: http.Header{}}
 	w.mu.Lock()
 	w.lines = append(w.lines, b.String())
+	why := refusal(c, w.allowed)
 	w.mu.Unlock()
-
-	c := Call{Method: r.Method, Host: r.Host, Path: r.URL.Path, Query: r.URL.RawQuery, Header: r.Header.Clone(), Body: body, URL: "https://" + r.Host + r.RequestURI, ContentLength: r.ContentLength, Reply: http.Header{}}
+	if why != "" {
+		w.t.Error(why)
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(rw, `{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}`)
+		return
+	}
 	for _, resp := range w.responders {
 		if status, out, ok := resp(c); ok {
 			if status == 0 {
