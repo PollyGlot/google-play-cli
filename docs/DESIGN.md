@@ -306,7 +306,8 @@ Each transition is its own verb:
   `inProgress` if it wasn't already)
 - `gplay releases halt`
 - `gplay releases resume`
-- `gplay releases complete` — userFraction → 1.0, status → `completed`
+- `gplay releases complete` — status → `completed`, userFraction removed (a
+  completed release carries none)
 
 ### Sub-surfaces under `releases`
 
