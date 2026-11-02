@@ -2,7 +2,7 @@
 // `gplay releases promote`: open an Edit, read the source track, pick
 // the release to copy, attach it (same versionCode) to the destination
 // track, and commit. Inherits the ADR-0002 safe-default rule (via
-// statusPayload) and the auto-discard / DanglingEditError contract
+// ReleaseState.resolve) and the auto-discard / DanglingEditError contract
 // from edits.WithEdit, so production promotes default to draft, and
 // any failure mid-Edit cleans up the orphan unless --keep-edit-on-failure.
 package orchestrator
@@ -133,16 +133,17 @@ func (e *EmptyVersionCodesError) Error() string {
 func (e *EmptyVersionCodesError) ExitCode() int { return 60 }
 
 // PromoteOpts is the input contract for Promote. Mirrors Opts where
-// the semantics overlap (Status / UserFraction / ReleaseNotes /
-// Confirm / DryRun / KeepEditOnFailure) so callers of both flows can
-// share flag-parsing helpers.
+// the semantics overlap (State / ReleaseNotes / Confirm / DryRun /
+// KeepEditOnFailure) so callers of both flows can share flag-parsing
+// helpers.
 type PromoteOpts struct {
 	Package   string
 	FromTrack string
 	ToTrack   string
 
-	Status       Status
-	UserFraction float64
+	// State is the destination release's status and fraction; the zero
+	// value applies the ADR-0002 safe default for ToTrack.
+	State ReleaseState
 
 	// UpdatePriority, when non-nil, overrides the inAppUpdatePriority the
 	// source release carries; nil carries the source's value over (#664).
@@ -186,8 +187,8 @@ type PromoteOpts struct {
 // is what the destination release advertises; no AAB is re-uploaded.
 //
 // Safe-default rule from ADR-0002 applies to the destination: target
-// production with Status=Unspecified produces a draft release; every
-// other target defaults to completed/1.0. Explicit --draft / --complete
+// production with the zero State produces a draft release; every
+// other target defaults to completed. Explicit --draft / --complete
 // / --staged override the default.
 //
 // When the source track carries multiple coexisting releases, the
@@ -215,8 +216,8 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	// reach real users (Completed or InProgress) requires Confirm=true.
 	// Runs before any HTTP so a missing --confirm short-circuits without
 	// opening an Edit.
-	if requiresConfirm(opts.ToTrack, opts.Status) && !opts.Confirm {
-		return nil, confirmRequired(resolvedStatus(opts.ToTrack, opts.Status))
+	if requiresConfirm(opts.ToTrack, opts.State) && !opts.Confirm {
+		return nil, confirmRequired(opts.State.resolve(opts.ToTrack).Status())
 	}
 
 	result := &Result{Track: opts.ToTrack}
@@ -310,9 +311,6 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 // *InvalidOptsError (exit 2), never to a deeper-layer surprise like a
 // 404 or a panic.
 func validatePromoteOpts(opts PromoteOpts) error {
-	if err := validateStatusValue(opts.Status); err != nil {
-		return err
-	}
 	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
 		return err
 	}
@@ -327,13 +325,6 @@ func validatePromoteOpts(opts PromoteOpts) error {
 			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
 		}
 	}
-	if opts.Status == StatusInProgress {
-		if opts.UserFraction <= 0 || opts.UserFraction > 1.0 {
-			return &InvalidOptsError{
-				Message: "UserFraction must be in (0, 1] when Status is InProgress",
-			}
-		}
-	}
 	// Same pre-Edit locale gate as the upload path: a malformed `<locale>.txt`
 	// name is knowable offline, so it must not cost an edits.insert (#452).
 	if err := notes.ValidateDirLocales(opts.ReleaseNotesDir); err != nil {
@@ -344,17 +335,15 @@ func validatePromoteOpts(opts PromoteOpts) error {
 
 // dryRunPromoteResult previews what Promote would send for the given
 // opts, without any HTTP. The real VersionCode would come from
-// tracks.get on the source: synthesized as 0 here. The Status /
-// UserFraction reflect the ADR-0002 safe-default rule via
-// statusPayload so the preview shows exactly what the wire payload
-// would look like.
+// tracks.get on the source: synthesized as 0 here. Status and
+// UserFraction come from the resolved ReleaseState, as on the wire.
 func dryRunPromoteResult(opts PromoteOpts) *Result {
-	statusStr, userFraction := statusPayload(opts.ToTrack, opts.Status, opts.UserFraction)
+	state := opts.State.resolve(opts.ToTrack)
 	return &Result{
 		Track:        opts.ToTrack,
 		VersionCode:  0,
-		Status:       statusStr,
-		UserFraction: userFraction,
+		Status:       state.Status(),
+		UserFraction: state.UserFraction(),
 		// Only an explicit override is knowable offline: the source's own
 		// priority would come from tracks.get, which a dry-run never issues.
 		InAppUpdatePriority: opts.UpdatePriority,
@@ -445,21 +434,21 @@ func containsVersionCode(codes []string, want int) bool {
 
 // buildPromoteRelease translates a source release + PromoteOpts into
 // the tracks.Release payload sent on the destination track. Carries
-// over the source's versionCode and name; the ADR-0002 safe-default
-// rule and the status→userFraction mapping live in statusPayload,
-// shared with buildRelease. The source's inAppUpdatePriority carries over
-// unless opts.UpdatePriority overrides it: before #664 the typed rebuild
-// silently dropped a priority set in the Play Console.
+// over the source's versionCode and name; status and fraction come from
+// the resolved ReleaseState, as in buildRelease. The source's
+// inAppUpdatePriority carries over unless opts.UpdatePriority overrides it:
+// before #664 the typed rebuild silently dropped a priority set in the
+// Play Console.
 func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release {
-	statusStr, userFraction := statusPayload(opts.ToTrack, opts.Status, opts.UserFraction)
+	state := opts.State.resolve(opts.ToTrack)
 	priority := source.InAppUpdatePriority
 	if opts.UpdatePriority != nil {
 		priority = opts.UpdatePriority
 	}
 	return tracks.Release{
 		Name:                source.Name,
-		Status:              statusStr,
-		UserFraction:        userFraction,
+		Status:              state.Status(),
+		UserFraction:        state.UserFraction(),
 		VersionCodes:        source.VersionCodes,
 		InAppUpdatePriority: priority,
 	}

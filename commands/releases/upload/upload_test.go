@@ -278,6 +278,34 @@ func TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP(t *testing.T) {
 	}
 }
 
+// TestRun_stagedOne_exit2PointingAtComplete_noHTTP asserts #733: Play
+// refuses a fraction of 1.0, so --staged 1 is a usage error before any
+// upload byte or token exchange, and the message sends the operator to
+// --complete.
+func TestRun_stagedOne_exit2PointingAtComplete_noHTTP(t *testing.T) {
+	aab := writeFakeAAB(t)
+	rt, transport := newUploadTransport(uploadAPI{})
+	rc, _ := newRC(t, transport)
+
+	_, err := upload.Run(rc, upload.Input{
+		Package:           "com.example.app",
+		Track:             "production",
+		Artifacts:         []string{aab},
+		StagedFraction:    1.0,
+		StagedFractionSet: true,
+		Confirm:           true,
+	})
+	if got := exit.For(err); got != 2 {
+		t.Fatalf("exit.For(err) = %d, want 2; err=%v", got, err)
+	}
+	if !strings.Contains(err.Error(), "--complete") {
+		t.Errorf("err = %q, want it to point at --complete", err.Error())
+	}
+	if touched(rt) {
+		t.Errorf("RoundTripper saw %d calls on a usage error: %v", len(apiCalls(rt)), apiCalls(rt))
+	}
+}
+
 // TestRun_productionPublishWithoutConfirm_exit3_noHTTP asserts that a
 // production --complete without --confirm hits the orchestrator's confirm
 // guard before any HTTP: including the /token exchange. The oauth2 library
@@ -314,7 +342,7 @@ func TestRun_productionPublishWithoutConfirm_exit3_noHTTP(t *testing.T) {
 // TestRun_productionPublishWithConfirm_succeedsAndHitsAPI asserts that
 // --confirm unblocks the production publish and the RoundTripper sees
 // the full Edit lifecycle on the production track. The tracks.update
-// payload must carry status=completed and userFraction=1.0.
+// payload must carry status=completed and no userFraction.
 func TestRun_productionPublishWithConfirm_succeedsAndHitsAPI(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newUploadTransport(uploadAPI{

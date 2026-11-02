@@ -200,7 +200,7 @@ func TestRunResume_happyPath(t *testing.T) {
 	}
 }
 
-// TestRunComplete_happyPath asserts complete ramps to completed/1.0.
+// TestRunComplete_happyPath asserts complete ramps to completed, with no fraction.
 func TestRunComplete_happyPath(t *testing.T) {
 	rt := newStateFake(stateAPI{
 		editID:             "edit-complete-cli",
@@ -278,6 +278,29 @@ func TestRunRollout_outOfRangeStaged_returnsExit2(t *testing.T) {
 	assertExit(t, err, 2)
 	if touched(rt) {
 		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
+	}
+}
+
+// TestRunRollout_stagedOne_pointsAtComplete asserts #733: Play refuses a
+// fraction of 1.0, so --staged 1 is exit 2 before any HTTP, and the message
+// names the verb that does a full rollout.
+func TestRunRollout_stagedOne_pointsAtComplete(t *testing.T) {
+	rt := newStateFake(stateAPI{})
+	rc := newRC(t, rt)
+
+	_, err := rollout.RunRollout(rc, rollout.Input{
+		Package:           "com.example.app",
+		Track:             "production",
+		StagedFraction:    1.0,
+		StagedFractionSet: true,
+		Confirm:           true,
+	})
+	assertExit(t, err, 2)
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
+	}
+	if !strings.Contains(err.Error(), "gplay releases complete") {
+		t.Errorf("err = %q, want it to point at gplay releases complete", err.Error())
 	}
 }
 

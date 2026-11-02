@@ -293,6 +293,32 @@ func TestRun_mutuallyExclusiveStatusFlags_returnsExit2(t *testing.T) {
 	}
 }
 
+// TestRun_stagedOne_returnsExit2PointingAtComplete asserts #733: Play
+// refuses a fraction of 1.0, so --staged 1 is a usage error before any HTTP
+// that sends the operator to --complete.
+func TestRun_stagedOne_returnsExit2PointingAtComplete(t *testing.T) {
+	rt := newPromoteFake(promoteAPI{})
+	rc, _ := newRC(t, rt)
+
+	_, err := promote.Run(rc, promote.Input{
+		Package:           "com.example.app",
+		FromTrack:         "beta",
+		ToTrack:           "production",
+		StagedFraction:    1.0,
+		StagedFractionSet: true,
+		Confirm:           true,
+	})
+	if got := exit.For(err); got != 2 {
+		t.Fatalf("exit.For(err) = %d, want 2; err=%v", got, err)
+	}
+	if !strings.Contains(err.Error(), "--complete") {
+		t.Errorf("err = %q, want it to point at --complete", err.Error())
+	}
+	if touched(rt) {
+		t.Errorf("expected zero HTTP calls before usage error, saw: %v", apiCalls(rt))
+	}
+}
+
 // TestRun_happyPath_emitsConfirmationOnStderr asserts a committed promote
 // prints a single ✓ line on stderr (DESIGN §8) carrying the versionCode and
 // both tracks, alongside the stdout payload.

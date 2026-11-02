@@ -142,21 +142,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ReleaseNotes != "" && in.ReleaseNotesDir != "" {
 		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
-	statusFlags := 0
-	if in.Draft {
-		statusFlags++
-	}
-	if in.Complete {
-		statusFlags++
-	}
-	if in.StagedFractionSet {
-		statusFlags++
-	}
-	if statusFlags > 1 {
-		return nil, &exit.UsageError{Msg: "--draft, --complete, and --staged are mutually exclusive"}
-	}
-	if in.StagedFractionSet && (in.StagedFraction <= 0 || in.StagedFraction > 1.0) {
-		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1]"}
+	state, err := orchestrator.RequestedState(in.Draft, in.Complete, in.StagedFractionSet, in.StagedFraction)
+	if err != nil {
+		return nil, err
 	}
 	if in.UpdatePrioritySet && (in.UpdatePriority < 0 || in.UpdatePriority > orchestrator.MaxUpdatePriority) {
 		return nil, exit.Usagef("--update-priority must be in 0..%d, got %d", orchestrator.MaxUpdatePriority, in.UpdatePriority)
@@ -195,26 +183,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 
-	var status orchestrator.Status
-	switch {
-	case in.Draft:
-		status = orchestrator.StatusDraft
-	case in.Complete:
-		status = orchestrator.StatusCompleted
-	case in.StagedFractionSet:
-		status = orchestrator.StatusInProgress
-	default:
-		status = orchestrator.StatusUnspecified
-	}
-
 	result, err := orchestrator.Promote(rc.Ctx, httpClient, orchestrator.PromoteOpts{
 		Package:           pkg,
 		FromTrack:         in.FromTrack,
 		ToTrack:           in.ToTrack,
 		VersionCode:       in.VersionCode,
 		ReleaseName:       in.ReleaseName,
-		Status:            status,
-		UserFraction:      in.StagedFraction,
+		State:             state,
 		UpdatePriority:    updatePriority(in),
 		ReleaseNotes:      in.ReleaseNotes,
 		ReleaseNotesDir:   in.ReleaseNotesDir,
@@ -295,8 +270,8 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	cmd.Flags().StringVar(&in.ReleaseNotes, "release-notes", "", "override carry-over with this text (applied to the app's default language)")
 	cmd.Flags().StringVar(&in.ReleaseNotesDir, "release-notes-dir", "", "override carry-over with per-locale files (<locale>.txt in BCP 47, e.g. en-US.txt; optional default.txt)")
 	cmd.Flags().BoolVar(&in.Draft, "draft", false, "force the release status to draft on the destination")
-	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (1.0 user fraction)")
-	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f ≤ 1.0)")
+	cmd.Flags().BoolVar(&in.Complete, "complete", false, "force the release status to completed (a full rollout, no user fraction)")
+	cmd.Flags().Float64Var(&stagedFractionVar, "staged", 0, "start a staged rollout at this fraction (0 < f < 1; for 100% use --complete)")
 	cmd.Flags().IntVar(&in.UpdatePriority, "update-priority", 0, "in-app update priority on the destination, 0 to 5 (default: carry over the source release's priority)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	commitflags.Register(cmd, &in.Commit)
