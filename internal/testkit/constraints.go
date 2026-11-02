@@ -93,7 +93,7 @@ func openUnit(name string, v any) string {
 		f, err = strconv.ParseFloat(s, 64)
 		ok = err == nil
 	}
-	if !ok || f <= 0 || f >= 1 {
+	if !ok || !(f > 0 && f < 1) {
 		return fmt.Sprintf("%s is %v, not strictly between 0 and 1", name, v)
 	}
 	return ""

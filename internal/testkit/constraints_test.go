@@ -52,6 +52,7 @@ func TestFake_refusesBodiesPlayRefuses(t *testing.T) {
 		{"completed with a fraction (#731)", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","userFraction":1}]}`, "TrackRelease.userFraction"},
 		{"draft with a fraction", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"draft","userFraction":0.5}]}`, "TrackRelease.userFraction"},
 		{"inProgress at a full fraction", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"inProgress","userFraction":1}]}`, "TrackRelease.userFraction"},
+		{"NaN fraction as a string", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"inProgress","userFraction":"NaN"}]}`, "TrackRelease.userFraction"},
 		{"inProgress at zero", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"inProgress","userFraction":0}]}`, "TrackRelease.userFraction"},
 		{"second release broken", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"inProgress","userFraction":0.1},{"status":"completed","userFraction":1}]}`, "TrackRelease.userFraction"},
 		{"completed without a fraction", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed"}]}`, ""},
