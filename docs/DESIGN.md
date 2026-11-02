@@ -308,6 +308,7 @@ Each transition is its own verb:
 - `gplay releases resume`
 - `gplay releases complete` — status → `completed`, userFraction removed (a
   completed release carries none)
+<<<<<<< HEAD
 
 Every verb rewrites the target release inside the raw `tracks.get` body, so
 the other releases and the fields gplay does not model (`countryTargeting`)
@@ -317,6 +318,8 @@ release from the update (as the Play Console does, #734) and reports its
 versionCodes as superseded on the `✓` line and in the table view. `--output
 json` stays the `tracks.update` body (ADR-0003), and `--dry-run`, offline,
 cannot name them.
+=======
+>>>>>>> origin/main
 
 ### Sub-surfaces under `releases`
 
