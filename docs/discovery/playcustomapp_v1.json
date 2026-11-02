@@ -158,7 +158,7 @@
       }
     }
   },
-  "revision": "20261025",
+  "revision": "20261027",
   "rootUrl": "https://playcustomapp.googleapis.com/",
   "schemas": {
     "CustomApp": {
