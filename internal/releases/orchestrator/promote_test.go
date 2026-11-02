@@ -141,8 +141,8 @@ func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 	if !strings.Contains(body, `"status":"completed"`) {
 		t.Errorf("tracks.update body = %s, want status=completed", body)
 	}
-	if !strings.Contains(body, `"userFraction":1`) {
-		t.Errorf("tracks.update body = %s, want userFraction=1.0", body)
+	if strings.Contains(body, `"userFraction"`) {
+		t.Errorf("tracks.update body = %s, want no userFraction on a completed release", body)
 	}
 
 	// Result carries versionCode parsed from the source release.
@@ -978,8 +978,8 @@ func TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate(t *testi
 	if result.Status != "completed" {
 		t.Errorf("result.Status = %q, want completed", result.Status)
 	}
-	if result.UserFraction != 1.0 {
-		t.Errorf("result.UserFraction = %v, want 1.0", result.UserFraction)
+	if result.UserFraction != 0 {
+		t.Errorf("result.UserFraction = %v, want no fraction on a completed release", result.UserFraction)
 	}
 }
 

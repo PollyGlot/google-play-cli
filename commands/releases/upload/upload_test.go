@@ -347,8 +347,8 @@ func TestRun_productionPublishWithConfirm_succeedsAndHitsAPI(t *testing.T) {
 	if !strings.Contains(body, `"status":"completed"`) {
 		t.Errorf("tracks.update body = %s, want status=completed", body)
 	}
-	if !strings.Contains(body, `"userFraction":1`) {
-		t.Errorf("tracks.update body = %s, want userFraction=1.0", body)
+	if strings.Contains(body, `"userFraction"`) {
+		t.Errorf("tracks.update body = %s, want no userFraction on a completed release", body)
 	}
 }
 

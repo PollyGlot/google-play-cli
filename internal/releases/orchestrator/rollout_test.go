@@ -179,11 +179,11 @@ func TestComplete_rampsToFullRollout(t *testing.T) {
 	if !strings.Contains(body, `"status":"completed"`) {
 		t.Errorf("body = %s, want status=completed", body)
 	}
-	if !strings.Contains(body, `"userFraction":1`) {
-		t.Errorf("body = %s, want userFraction=1.0", body)
+	if strings.Contains(body, `"userFraction"`) {
+		t.Errorf("body = %s, want no userFraction on a completed release", body)
 	}
-	if result.Status != "completed" || result.UserFraction != 1.0 {
-		t.Errorf("result = (%q, %v), want (completed, 1.0)", result.Status, result.UserFraction)
+	if result.Status != "completed" || result.UserFraction != 0 {
+		t.Errorf("result = (%q, %v), want (completed, no fraction)", result.Status, result.UserFraction)
 	}
 }
 
@@ -337,9 +337,9 @@ func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 	if !strings.Contains(body, `"userFraction":0.1`) {
 		t.Errorf("body = %s, release 500's fraction 0.1 was not preserved", body)
 	}
-	// 501 ramped to completed/1.0.
-	if !strings.Contains(body, `"status":"completed"`) || !strings.Contains(body, `"userFraction":1`) {
-		t.Errorf("body = %s, want release 501 completed at 1.0", body)
+	// 501 ramped to completed, and its fraction removed with it.
+	if !strings.Contains(body, `"status":"completed"`) || strings.Contains(body, `"userFraction":1`) {
+		t.Errorf("body = %s, want release 501 completed with no fraction", body)
 	}
 	// 500 was halted and must stay halted.
 	if !strings.Contains(body, `"status":"halted"`) {
@@ -699,8 +699,8 @@ func TestComplete_dryRun_previewsCompleted(t *testing.T) {
 	if touched(rt) {
 		t.Errorf("dry-run made HTTP calls: %v", apiCalls(rt))
 	}
-	if result.Status != "completed" || result.UserFraction != 1.0 {
-		t.Errorf("result = (%q, %v), want (completed, 1.0)", result.Status, result.UserFraction)
+	if result.Status != "completed" || result.UserFraction != 0 {
+		t.Errorf("result = (%q, %v), want (completed, no fraction)", result.Status, result.UserFraction)
 	}
 }
 

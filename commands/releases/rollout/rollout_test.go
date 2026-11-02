@@ -217,8 +217,8 @@ func TestRunComplete_happyPath(t *testing.T) {
 		t.Fatalf("RunComplete: %v", err)
 	}
 	body := string(trackUpdateReq(rt))
-	if !strings.Contains(body, `"status":"completed"`) || !strings.Contains(body, `"userFraction":1`) {
-		t.Errorf("tracks.update body = %s, want completed at 1.0", body)
+	if !strings.Contains(body, `"status":"completed"`) || strings.Contains(body, `"userFraction"`) {
+		t.Errorf("tracks.update body = %s, want completed with no fraction", body)
 	}
 }
 
