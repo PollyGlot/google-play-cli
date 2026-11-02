@@ -5970,7 +5970,7 @@
       }
     }
   },
-  "revision": "20261029",
+  "revision": "20261102",
   "rootUrl": "https://androidpublisher.googleapis.com/",
   "schemas": {
     "Abi": {
