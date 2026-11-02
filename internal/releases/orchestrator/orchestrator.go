@@ -111,19 +111,27 @@ func requiresConfirm(track string, status Status) bool {
 // statusPayload resolves the (status, userFraction) pair the wire
 // payload must carry, given a caller-supplied Status + UserFraction and
 // the target Track. Applies the ADR-0002 safe-default rule when Status
-// is Unspecified (production → draft, others → completed/1.0). Shared
+// is Unspecified (production → draft, others → completed). Shared
 // by buildRelease (upload) and buildPromoteRelease (promote).
+//
+// A completed (or draft) release carries no fraction at all: per
+// TrackRelease.userFraction in docs/discovery/androidpublisher_v3.json it
+// "can only be set when status is inProgress or halted", and its range is
+// 0 < fraction < 1, so 1.0 is never a legal value. Returning 0 lets the
+// omitempty tag on tracks.Release.UserFraction drop the field; sending it
+// fails the whole tracks.update with "COMPLETED release must not have
+// fraction".
 func statusPayload(track string, status Status, userFraction float64) (string, float64) {
 	switch status {
 	case StatusUnspecified:
 		if track == TrackProduction {
 			return "draft", 0
 		}
-		return "completed", 1.0
+		return "completed", 0
 	case StatusDraft:
 		return "draft", 0
 	case StatusCompleted:
-		return "completed", 1.0
+		return "completed", 0
 	case StatusInProgress:
 		return "inProgress", userFraction
 	}

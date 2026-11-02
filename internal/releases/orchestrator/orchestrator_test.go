@@ -243,8 +243,8 @@ func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 	if !strings.Contains(body, `"status":"completed"`) {
 		t.Errorf("tracks.update body = %s, want status=completed", body)
 	}
-	if !strings.Contains(body, `"userFraction":1`) {
-		t.Errorf("tracks.update body = %s, want userFraction=1.0", body)
+	if strings.Contains(body, `"userFraction"`) {
+		t.Errorf("tracks.update body = %s, want no userFraction on a completed release", body)
 	}
 
 	// Result carries versionCode echoed by bundles.upload.
@@ -323,11 +323,11 @@ func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.
 	if !strings.Contains(body, `"status":"completed"`) {
 		t.Errorf("body = %s, want status=completed", body)
 	}
-	if !strings.Contains(body, `"userFraction":1`) {
-		t.Errorf("body = %s, want userFraction=1.0", body)
+	if strings.Contains(body, `"userFraction"`) {
+		t.Errorf("body = %s, want no userFraction on a completed release", body)
 	}
-	if result.Status != "completed" || result.UserFraction != 1.0 {
-		t.Errorf("result = (%q, %v), want (completed, 1.0)", result.Status, result.UserFraction)
+	if result.Status != "completed" || result.UserFraction != 0 {
+		t.Errorf("result = (%q, %v), want (completed, no fraction)", result.Status, result.UserFraction)
 	}
 }
 

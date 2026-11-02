@@ -141,22 +141,30 @@ func Resume(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, erro
 	return applyState(ctx, hc, opts, stateTransition{verb: "resume", status: "inProgress"})
 }
 
-// Complete ramps the release to a full rollout: userFraction=1.0 and
-// status=completed (AC4).
+// Complete ramps the release to a full rollout: status=completed and no
+// userFraction at all (AC4). The fraction the release carried while it was
+// inProgress has to be removed, not overwritten: per
+// TrackRelease.userFraction in docs/discovery/androidpublisher_v3.json it
+// "can only be set when status is inProgress or halted", so leaving one
+// behind fails the tracks.update with "COMPLETED release must not have
+// fraction".
 func Complete(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error) {
-	fraction := 1.0
-	return applyState(ctx, hc, opts, stateTransition{verb: "complete", status: "completed", fraction: &fraction})
+	return applyState(ctx, hc, opts, stateTransition{verb: "complete", status: "completed", clearFraction: true})
 }
 
 // stateTransition describes one verb's rewrite of the target release:
 // status is always set; fraction (nil → preserve the release's current
-// userFraction) is set only by rollout / complete. Applied by patching the
+// userFraction) is set only by rollout. clearFraction removes the key
+// outright, which only complete needs. Applied by patching the
 // raw release JSON (not by re-serializing a typed Release) so every other
 // field (and every other coexisting release on the track) is preserved.
 type stateTransition struct {
 	verb     string
 	status   string
 	fraction *float64
+	// clearFraction deletes userFraction from the target release instead of
+	// setting it. Mutually exclusive with fraction.
+	clearFraction bool
 }
 
 // applyState is the shared choreography behind all four verbs: validate →
@@ -197,7 +205,7 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 		// every field gplay does not model, survives byte-for-byte. A typed
 		// re-serialization would drop coexisting releases (tracks.update is a
 		// full replace) and unmodeled fields like countryTargeting.
-		body, err := patchTrackRelease(rawTrack, idx, tr.status, tr.fraction)
+		body, err := patchTrackRelease(rawTrack, idx, tr.status, tr.fraction, tr.clearFraction)
 		if err != nil {
 			return err
 		}
@@ -215,9 +223,12 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 		}
 		result.ReleaseName = target.Name
 		result.Status = tr.status
-		if tr.fraction != nil {
+		switch {
+		case tr.fraction != nil:
 			result.UserFraction = *tr.fraction
-		} else {
+		case tr.clearFraction:
+			result.UserFraction = 0 // completed: no fraction, and the renderer hides a zero
+		default:
 			result.UserFraction = target.UserFraction // preserved (halt / resume)
 		}
 		result.RawTrackResponse = raw
@@ -229,12 +240,13 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 	return result, nil
 }
 
-// patchTrackRelease rewrites the status (and, when fraction != nil, the
-// userFraction) of releases[idx] inside the raw tracks.get body, leaving all
-// other releases and all other fields untouched. Non-target releases keep
-// their exact bytes; the target keeps every field except the two the verb
-// changes. The result is the body for tracks.update.
-func patchTrackRelease(rawTrack json.RawMessage, idx int, status string, fraction *float64) ([]byte, error) {
+// patchTrackRelease rewrites the status of releases[idx] inside the raw
+// tracks.get body, and its userFraction when fraction != nil, or removes
+// that key when clearFraction is set (a completed release carries no
+// fraction), leaving all other releases and all other fields untouched.
+// Non-target releases keep their exact bytes; the target keeps every field
+// except the two the verb changes. The result is the body for tracks.update.
+func patchTrackRelease(rawTrack json.RawMessage, idx int, status string, fraction *float64, clearFraction bool) ([]byte, error) {
 	var track map[string]json.RawMessage
 	if err := json.Unmarshal(rawTrack, &track); err != nil {
 		return nil, fmt.Errorf("decode track for update: %w", err)
@@ -256,12 +268,15 @@ func patchTrackRelease(rawTrack json.RawMessage, idx int, status string, fractio
 		return nil, err
 	}
 	target["status"] = statusJSON
-	if fraction != nil {
+	switch {
+	case fraction != nil:
 		fractionJSON, err := json.Marshal(*fraction)
 		if err != nil {
 			return nil, err
 		}
 		target["userFraction"] = fractionJSON
+	case clearFraction:
+		delete(target, "userFraction")
 	}
 
 	patched, err := json.Marshal(target)

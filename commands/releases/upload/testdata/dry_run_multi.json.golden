@@ -4,7 +4,6 @@
   "track": "internal",
   "releaseName": "(dry-run)",
   "status": "completed",
-  "userFraction": 1,
   "retainedVersionCodes": [
     41
   ],
