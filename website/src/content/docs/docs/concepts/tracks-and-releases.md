@@ -52,6 +52,11 @@ gplay releases resume --track production              # continue
 gplay releases complete --track production            # → 100%, completed
 ```
 
+A track holds one completed release at most. During a staged rollout that
+is the previous full rollout, so `complete` replaces it in the same update,
+as the Play Console does, and names its versionCode as superseded. Halted
+and draft releases on the track are left untouched.
+
 ## Targeting a release
 
 - `releases upload <aab>` reads the versionCode **from the AAB**, never a

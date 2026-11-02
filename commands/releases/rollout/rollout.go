@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -74,8 +76,24 @@ func renderTable(w io.Writer, r *orchestrator.Result) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w, "releaseName:  %s\n", r.ReleaseName)
-	return err
+	if _, err := fmt.Fprintf(w, "releaseName:  %s\n", r.ReleaseName); err != nil {
+		return err
+	}
+	if len(r.SupersededVersionCodes) > 0 {
+		if _, err := fmt.Fprintf(w, "superseded:   %s\n", joinCodes(r.SupersededVersionCodes)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// joinCodes renders versionCodes as "140, 141".
+func joinCodes(codes []int) string {
+	s := make([]string, len(codes))
+	for i, c := range codes {
+		s[i] = strconv.Itoa(c)
+	}
+	return strings.Join(s, ", ")
 }
 
 func renderJSON(w io.Writer, r *orchestrator.Result) error {
@@ -99,8 +117,15 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w, "- **releaseName**: %s\n", r.ReleaseName)
-	return err
+	if _, err := fmt.Fprintf(w, "- **releaseName**: %s\n", r.ReleaseName); err != nil {
+		return err
+	}
+	if len(r.SupersededVersionCodes) > 0 {
+		if _, err := fmt.Fprintf(w, "- **superseded**: %s\n", joinCodes(r.SupersededVersionCodes)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // stateFunc is the orchestrator entry point shape shared by Rollout / Halt
@@ -166,6 +191,9 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		extra := ""
 		if result.Status == "inProgress" {
 			extra = ", userFraction " + output.Percent(result.UserFraction)
+		}
+		if len(result.SupersededVersionCodes) > 0 {
+			extra += ", superseded versionCode " + joinCodes(result.SupersededVersionCodes)
 		}
 		rc.ConfirmMutation(explicitEditID, "rollout %s on track %q (versionCode %d, status %s%s)",
 			action, in.Track, result.VersionCode, result.Status, extra)

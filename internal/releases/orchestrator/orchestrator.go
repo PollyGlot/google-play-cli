@@ -164,6 +164,14 @@ type Result struct {
 	// the single-artifact shape byte-identical (#666).
 	UploadedVersionCodes []int `json:"-"`
 	RetainedVersionCodes []int `json:"-"`
+
+	// SupersededVersionCodes lists the versionCodes of the completed
+	// releases `releases complete` removed from the track, since Play keeps
+	// one completed release per track (#734). Only a live transition knows
+	// them: a dry run reads no track. Out of the JSON like the two above;
+	// the tracks.update body the command emits already shows the track
+	// without them.
+	SupersededVersionCodes []int `json:"-"`
 }
 
 // Artifact is one file Upload sends into the Edit. Format selects its upload

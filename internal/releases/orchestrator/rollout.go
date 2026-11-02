@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -186,11 +187,13 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit relea
 		target := cur.Releases[idx]
 
 		// Build the tracks.update body by patching ONLY the target release
-		// in the raw tracks.get JSON: every other release on the track, and
-		// every field gplay does not model, survives byte-for-byte. A typed
+		// in the raw tracks.get JSON: every other release on the track (bar a
+		// superseded completed one), and every field gplay does not model,
+		// survives byte-for-byte. A typed
 		// re-serialization would drop coexisting releases (tracks.update is a
 		// full replace) and unmodeled fields like countryTargeting.
-		body, err := patchTrackRelease(rawTrack, idx, edit)
+		drop := superseded(cur.Releases, idx, edit)
+		body, err := patchTrackRelease(rawTrack, idx, edit, drop)
 		if err != nil {
 			return err
 		}
@@ -209,6 +212,13 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit relea
 		result.ReleaseName = target.Name
 		result.Status = edit.status()
 		result.UserFraction = edit.resultFraction(target.UserFraction)
+		for _, i := range drop {
+			for _, c := range cur.Releases[i].VersionCodes {
+				if vc, convErr := strconv.Atoi(c); convErr == nil {
+					result.SupersededVersionCodes = append(result.SupersededVersionCodes, vc)
+				}
+			}
+		}
 		result.RawTrackResponse = raw
 		return nil
 	})
@@ -218,12 +228,32 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit relea
 	return result, nil
 }
 
+// superseded lists the releases a transition retires along with the target
+// at idx: when the target ends completed, every other completed release on
+// the track. Play holds at most one completed release per track and refuses
+// a tracks.update that carries two ("Only one completed release is
+// allowed"), so completing a rollout replaces the previous full rollout, as
+// it does in the Play Console (#734). Halted, inProgress and draft releases
+// are never superseded.
+func superseded(releases []tracks.Release, idx int, edit releaseEdit) []int {
+	if edit.status() != "completed" {
+		return nil
+	}
+	var drop []int
+	for i, r := range releases {
+		if i != idx && r.Status == "completed" {
+			drop = append(drop, i)
+		}
+	}
+	return drop
+}
+
 // patchTrackRelease applies edit to releases[idx] inside the raw tracks.get
-// body, leaving all other releases and all other fields untouched.
-// Non-target releases keep their exact bytes; the target keeps every field
-// except the ones the edit rewrites. The result is the body for
-// tracks.update.
-func patchTrackRelease(rawTrack json.RawMessage, idx int, edit releaseEdit) ([]byte, error) {
+// body and removes the releases at the drop indexes, leaving all other
+// releases and all other fields untouched. Kept releases other than the
+// target keep their exact bytes; the target keeps every field except the
+// ones the edit rewrites. The result is the body for tracks.update.
+func patchTrackRelease(rawTrack json.RawMessage, idx int, edit releaseEdit, drop []int) ([]byte, error) {
 	var track map[string]json.RawMessage
 	if err := json.Unmarshal(rawTrack, &track); err != nil {
 		return nil, fmt.Errorf("decode track for update: %w", err)
@@ -249,7 +279,13 @@ func patchTrackRelease(rawTrack json.RawMessage, idx int, edit releaseEdit) ([]b
 		return nil, err
 	}
 	releases[idx] = patched
-	releasesJSON, err := json.Marshal(releases)
+	kept := make([]json.RawMessage, 0, len(releases))
+	for i, r := range releases {
+		if !slices.Contains(drop, i) {
+			kept = append(kept, r)
+		}
+	}
+	releasesJSON, err := json.Marshal(kept)
 	if err != nil {
 		return nil, err
 	}
