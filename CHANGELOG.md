@@ -5,6 +5,16 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.3](https://github.com/PollyGlot/google-play-cli/compare/v2.3.2...v2.3.3) (2026-11-02)
+
+
+### Bug Fixes
+
+* **build:** build on Go 1.27.3 to pick up the crypto/x509 fix ([#724](https://github.com/PollyGlot/google-play-cli/issues/724)) ([779a1a2](https://github.com/PollyGlot/google-play-cli/commit/779a1a2945e11e9da045e88898a4d0d510c7f7a4))
+* **releases:** drop userFraction from completed releases ([#732](https://github.com/PollyGlot/google-play-cli/issues/732)) ([982fe57](https://github.com/PollyGlot/google-play-cli/commit/982fe57b9bc99c3d9b8555e8fcba580bd257d60d))
+* **releases:** let releases complete supersede the previous completed release ([#739](https://github.com/PollyGlot/google-play-cli/issues/739)) ([f01b030](https://github.com/PollyGlot/google-play-cli/commit/f01b0307b1ecf7ba51b415b6521ba4e2aaa4859a))
+* **releases:** refuse --staged 1.0 and type the release status with its fraction ([#738](https://github.com/PollyGlot/google-play-cli/issues/738)) ([784b27d](https://github.com/PollyGlot/google-play-cli/commit/784b27d41427bb3cec8969e4995bd09ad8ed3d4e))
+
 ## [2.3.2](https://github.com/PollyGlot/google-play-cli/compare/v2.3.1...v2.3.2) (2026-10-22)
 
 
