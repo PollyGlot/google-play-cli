@@ -32,11 +32,13 @@ What status a new release gets depends on the target track:
 | Target track | Default status | Default userFraction |
 | --- | --- | --- |
 | `production` | **`draft`** | n/a |
-| `internal` / `alpha` / `beta` / closed | `completed` | `1.0` |
+| `internal` / `alpha` / `beta` / closed | `completed` | n/a |
 
 Shipping to real users is always explicit: `--complete` (100%) or
 `--staged <fraction>`, and on production those additionally require
-`--confirm`. Everything else defaults to the behavior you'd expect from a
+`--confirm`. A fraction exists only on a staged release and is strictly
+between 0 and 1: a completed release carries none, and `--staged 1.0` is
+refused in favor of `--complete`. Everything else defaults to the behavior you'd expect from a
 testing track.
 
 ## The rollout state machine

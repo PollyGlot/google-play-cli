@@ -95,7 +95,7 @@ func newPromoteFake(a promoteAPI) *testkit.Fake {
 // canonical four-call sequence (edits.insert → tracks.get(source) →
 // tracks.update(dest) → edits.commit) and that the dest update carries
 // the same versionCode as the source plus status=completed,
-// userFraction=1.0 (safe-default for non-production targets).
+// no userFraction (safe-default for non-production targets).
 func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote",
@@ -133,7 +133,7 @@ func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 		}
 	}
 
-	// Track update payload carries versionCode 142, status=completed, userFraction=1.0.
+	// Track update payload carries versionCode 142, status=completed, no userFraction.
 	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"versionCodes":["142"]`) {
 		t.Errorf("tracks.update body = %s, want versionCodes=[\"142\"]", body)
@@ -209,12 +209,11 @@ func TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction(t *test
 	hc := &http.Client{Transport: rt}
 
 	result, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
-		Package:      "com.example.app",
-		FromTrack:    "beta",
-		ToTrack:      "production",
-		Status:       orchestrator.StatusInProgress,
-		UserFraction: 0.05,
-		Confirm:      true,
+		Package:   "com.example.app",
+		FromTrack: "beta",
+		ToTrack:   "production",
+		State:     staged(t, 0.05),
+		Confirm:   true,
 	})
 	if err != nil {
 		t.Fatalf("Promote: %v", err)
@@ -741,7 +740,7 @@ func TestPromote_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 		Package:   "com.example.app",
 		FromTrack: "beta",
 		ToTrack:   "production",
-		Status:    orchestrator.StatusCompleted,
+		State:     orchestrator.Completed(),
 		Confirm:   false,
 	})
 	if err == nil {
@@ -851,20 +850,6 @@ func TestPromote_validateOpts_libraryCallers(t *testing.T) {
 				ReleaseNotes: "x", ReleaseNotesDir: "/tmp/notes",
 			},
 		},
-		{
-			name: "InProgress with UserFraction 0",
-			opts: orchestrator.PromoteOpts{
-				Package: "com.example.app", FromTrack: "internal", ToTrack: "beta",
-				Status: orchestrator.StatusInProgress, UserFraction: 0,
-			},
-		},
-		{
-			name: "InProgress with UserFraction > 1",
-			opts: orchestrator.PromoteOpts{
-				Package: "com.example.app", FromTrack: "internal", ToTrack: "beta",
-				Status: orchestrator.StatusInProgress, UserFraction: 1.5,
-			},
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -968,7 +953,7 @@ func TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate(t *testi
 		Package:   "com.example.app",
 		FromTrack: "beta",
 		ToTrack:   "production",
-		Status:    orchestrator.StatusCompleted,
+		State:     orchestrator.Completed(),
 		Confirm:   false,
 		DryRun:    true,
 	})
@@ -1006,44 +991,6 @@ func TestPromote_dryRun_invalidOptsStillCaught(t *testing.T) {
 	}
 	if coder.ExitCode() != 2 {
 		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
-	}
-}
-
-// TestPromote_unknownStatusValue_returnsExit2Error asserts that a
-// Status value outside the four declared constants is rejected with
-// *InvalidOptsError (exit 2) before any HTTP. Without this guard,
-// statusPayload's switch falls through to `return "", 0` and ships a
-// release with status=” that the API rejects opaquely, and a future
-// new Status constant added to the enum but not wired in statusPayload
-// would silently break.
-func TestPromote_unknownStatusValue_returnsExit2Error(t *testing.T) {
-	rt := newPromoteFake(promoteAPI{
-		editID: "should-not-open",
-		insertHandler: func(c testkit.Call) (int, string) {
-			t.Errorf("insert was called despite invalid Status: %s", c.Path)
-			return 500, ""
-		},
-	})
-	hc := &http.Client{Transport: rt}
-
-	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
-		Package:   "com.example.app",
-		FromTrack: "internal",
-		ToTrack:   "beta",
-		Status:    orchestrator.Status(99), // not a declared constant
-	})
-	if err == nil {
-		t.Fatal("Promote(unknown Status): want error, got nil")
-	}
-	var coder interface{ ExitCode() int }
-	if !errors.As(err, &coder) {
-		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
-	}
-	if coder.ExitCode() != 2 {
-		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
-	}
-	if touched(rt) {
-		t.Errorf("expected zero HTTP calls before Status validation, saw: %v", apiCalls(rt))
 	}
 }
 

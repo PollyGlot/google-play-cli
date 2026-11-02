@@ -265,9 +265,13 @@ so on stderr.
 | Target track | Default status | Default userFraction |
 |---|---|---|
 | `production` | `draft` | — |
-| `internal` / `alpha` / `beta` / closed | `completed` | `1.0` |
+| `internal` / `alpha` / `beta` / closed | `completed` | none (a completed release is a full rollout) |
 
 Explicit overrides: `--complete`, `--staged <fraction>`, `--draft`.
+`userFraction` exists only on `inProgress` and `halted` releases, strictly
+between 0 and 1 (`TrackRelease.userFraction` in the Discovery snapshot), so
+`--staged` refuses `1.0` with exit 2 and points to `--complete`; the
+orchestrator's `ReleaseState` is the one place that bound lives.
 
 ### `--track` is passthrough
 
@@ -302,7 +306,8 @@ Each transition is its own verb:
   `inProgress` if it wasn't already)
 - `gplay releases halt`
 - `gplay releases resume`
-- `gplay releases complete` — userFraction → 1.0, status → `completed`
+- `gplay releases complete` — status → `completed`, userFraction removed (a
+  completed release carries none)
 
 ### Sub-surfaces under `releases`
 

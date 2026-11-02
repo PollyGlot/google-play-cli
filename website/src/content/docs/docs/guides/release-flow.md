@@ -57,7 +57,7 @@ gplay releases rollout --track production --staged 0.05 --confirm
 gplay releases rollout --track production --staged 0.20 --confirm
 gplay releases rollout --track production --staged 0.50 --confirm
 
-# Finish: userFraction → 1.0, status → completed.
+# Finish: status → completed, userFraction removed (a full rollout).
 gplay releases complete --track production --confirm
 ```
 

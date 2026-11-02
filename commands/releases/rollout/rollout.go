@@ -173,14 +173,15 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 	return Payload{Result: result}, nil
 }
 
-// RunRollout validates the --staged fraction (AC6: required, in (0, 1]: every
-// misuse is exit 2 with a range hint) then drives orchestrator.Rollout.
+// RunRollout validates the --staged fraction (AC6: required, strictly between
+// 0 and 1: every misuse is exit 2 with a range hint) then drives
+// orchestrator.Rollout. A full rollout is `gplay releases complete`.
 func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.StagedFractionSet {
-		return nil, exit.Usagef("missing --staged: pass --staged <fraction> (0 < f ≤ 1.0, e.g. 0.05)")
+		return nil, exit.Usagef("missing --staged: pass --staged <fraction> (0 < f < 1, e.g. 0.05)")
 	}
-	if in.StagedFraction <= 0 || in.StagedFraction > 1.0 {
-		return nil, &exit.UsageError{Msg: "--staged fraction must be in (0, 1] (e.g. 0.05, 0.20)"}
+	if _, err := orchestrator.InProgress(in.StagedFraction); err != nil {
+		return nil, exit.Usagef("--staged: %v; for a full rollout run gplay releases complete", err)
 	}
 	return runState(rc, in, in.StagedFraction, "set", orchestrator.Rollout)
 }
@@ -261,6 +262,6 @@ one, otherwise the command refuses rather than guess.`,
 		},
 	}
 	bindCommonFlags(cmd, &in, &outputFlag)
-	cmd.Flags().Float64Var(&in.StagedFraction, "staged", 0, "target rollout fraction (0 < f ≤ 1.0), e.g. 0.05 (required)")
+	cmd.Flags().Float64Var(&in.StagedFraction, "staged", 0, "target rollout fraction (0 < f < 1), e.g. 0.05 (required; for 100% use gplay releases complete)")
 	return cmd
 }

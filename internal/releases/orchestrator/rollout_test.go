@@ -157,8 +157,8 @@ func TestResume_setsInProgressPreservesFraction(t *testing.T) {
 	}
 }
 
-// TestComplete_rampsToFullRollout is AC4: complete ramps userFraction to
-// 1.0 and sets status completed.
+// TestComplete_rampsToFullRollout is AC4: complete sets status completed
+// and removes the userFraction.
 func TestComplete_rampsToFullRollout(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-complete",
@@ -536,7 +536,7 @@ func TestState_trackGet404_returnsExit30(t *testing.T) {
 }
 
 // TestRollout_fractionOutOfRange_returnsExit2 asserts the CLI-misuse guard
-// from AC6: --staged 0, > 1, or otherwise out of (0, 1] is rejected before any
+// from AC6: --staged 0, 1, > 1, or otherwise outside (0, 1) is rejected before any
 // HTTP with exit 2 and a range hint.
 func TestRollout_fractionOutOfRange_returnsExit2(t *testing.T) {
 	cases := []struct {
@@ -544,6 +544,7 @@ func TestRollout_fractionOutOfRange_returnsExit2(t *testing.T) {
 		fraction float64
 	}{
 		{"zero", 0},
+		{"one: a full rollout is complete, not a staged fraction", 1.0},
 		{"above one", 1.5},
 		{"negative", -0.1},
 	}
@@ -714,7 +715,7 @@ func TestRollout_dryRun_makesNoHTTPCalls(t *testing.T) {
 }
 
 // TestComplete_dryRun_previewsCompleted asserts dry-run also previews the
-// terminal transitions (complete → completed/1.0) without HTTP.
+// terminal transitions (complete → completed, no fraction) without HTTP.
 func TestComplete_dryRun_previewsCompleted(t *testing.T) {
 	rt := newPromoteFake(stateAPI{})
 	hc := &http.Client{Transport: rt}

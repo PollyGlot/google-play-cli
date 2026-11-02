@@ -35,8 +35,8 @@ func confirmRequired(status string) error {
 	return exit.SafetyFlag("confirm", "production publish (status=%s) requires --confirm to prevent accidental rollouts", status)
 }
 
-// InvalidOptsError signals a caller-side validation failure: a Status /
-// UserFraction combination Google Play would reject, or any other
+// InvalidOptsError signals a caller-side validation failure: a staged
+// fraction Google Play would reject, or any other
 // orchestrator-level precondition. It maps to exit code 2 so the CLI
 // taxonomy stays consistent with the command-layer usage errors.
 type InvalidOptsError struct {
@@ -45,22 +45,6 @@ type InvalidOptsError struct {
 
 func (e *InvalidOptsError) Error() string { return e.Message }
 func (e *InvalidOptsError) ExitCode() int { return 2 }
-
-// validateStatusValue rejects any Status value outside the four
-// declared constants. Used by both validateOpts (upload) and
-// validatePromoteOpts (promote) so an out-of-band Status fails fast
-// with *InvalidOptsError (exit 2): without this, statusPayload and
-// resolvedStatus silently fall through to status="" and ship an
-// invalid wire payload.
-func validateStatusValue(status Status) error {
-	switch status {
-	case StatusUnspecified, StatusDraft, StatusCompleted, StatusInProgress:
-		return nil
-	}
-	return &InvalidOptsError{
-		Message: "Status value is not one of StatusUnspecified, StatusDraft, StatusCompleted, StatusInProgress",
-	}
-}
 
 // MaxUpdatePriority is the highest inAppUpdatePriority Google Play accepts;
 // the range is 0..MaxUpdatePriority.
@@ -75,85 +59,17 @@ func validateUpdatePriority(p *int) error {
 	return nil
 }
 
-// resolvedStatus reports the wire-format release status (draft /
-// completed / inProgress) a given Status + Track would produce after
-// applying the ADR-0002 safe-default rule. Shared by both the upload
-// and promote orchestrators so the rule is defined exactly once.
-func resolvedStatus(track string, status Status) string {
-	switch status {
-	case StatusUnspecified:
-		if track == TrackProduction {
-			return "draft"
-		}
-		return "completed"
-	case StatusDraft:
-		return "draft"
-	case StatusCompleted:
-		return "completed"
-	case StatusInProgress:
-		return "inProgress"
-	}
-	return ""
-}
-
 // requiresConfirm reports whether a release operation would publish to
 // real users on production. Draft operations (explicit or safe-default)
 // do not need confirmation. Non-production tracks affect only testers.
 // Shared by upload and promote.
-func requiresConfirm(track string, status Status) bool {
-	if track != TrackProduction {
-		return false
-	}
-	s := resolvedStatus(track, status)
-	return s == "completed" || s == "inProgress"
+func requiresConfirm(track string, state ReleaseState) bool {
+	return transitionReachesProdUsers(track, state.resolve(track).Status())
 }
-
-// statusPayload resolves the (status, userFraction) pair the wire
-// payload must carry, given a caller-supplied Status + UserFraction and
-// the target Track. Applies the ADR-0002 safe-default rule when Status
-// is Unspecified (production → draft, others → completed). Shared
-// by buildRelease (upload) and buildPromoteRelease (promote).
-//
-// A completed (or draft) release carries no fraction at all: per
-// TrackRelease.userFraction in docs/discovery/androidpublisher_v3.json it
-// "can only be set when status is inProgress or halted", and its range is
-// 0 < fraction < 1, so 1.0 is never a legal value. Returning 0 lets the
-// omitempty tag on tracks.Release.UserFraction drop the field; sending it
-// fails the whole tracks.update with "COMPLETED release must not have
-// fraction".
-func statusPayload(track string, status Status, userFraction float64) (string, float64) {
-	switch status {
-	case StatusUnspecified:
-		if track == TrackProduction {
-			return "draft", 0
-		}
-		return "completed", 0
-	case StatusDraft:
-		return "draft", 0
-	case StatusCompleted:
-		return "completed", 0
-	case StatusInProgress:
-		return "inProgress", userFraction
-	}
-	return "", 0
-}
-
-// Status drives the release status payload sent on the target track.
-// StatusUnspecified means "apply the safe-default rule" (ADR-0002) and
-// will be honored in Block 1 cycles 2-4. For the tracer bullet only
-// StatusUnspecified is exercised and currently coerces to Completed.
-type Status int
-
-const (
-	StatusUnspecified Status = iota
-	StatusDraft
-	StatusCompleted
-	StatusInProgress
-)
 
 // Opts is the input contract for Upload. The orchestrator owns the
-// ADR-0002 safe-default rule (production → draft when Status is
-// Unspecified) and the --confirm guard for production publishes.
+// ADR-0002 safe-default rule (production → draft when State is the zero
+// ReleaseState) and the --confirm guard for production publishes.
 type Opts struct {
 	Package string
 	Track   string
@@ -169,8 +85,9 @@ type Opts struct {
 	// Google's own error (ADR-0003), and no extra read call is made.
 	RetainVersionCodes []int
 
-	Status       Status
-	UserFraction float64
+	// State is the release's status and fraction; the zero value applies the
+	// ADR-0002 safe default for Track.
+	State ReleaseState
 	// UpdatePriority, when non-nil, sets the release's inAppUpdatePriority
 	// (0..5). nil leaves the field off the wire (#664).
 	UpdatePriority *int
@@ -205,7 +122,7 @@ type Opts struct {
 	DeviceTierConfig string
 
 	// Confirm gates production-impacting writes. Required when Track is
-	// "production" AND Status would publish to real users (Completed or
+	// "production" AND State would publish to real users (Completed or
 	// InProgress). Draft / safe-default production uploads do not need
 	// it (the release is not visible until promoted).
 	Confirm bool
@@ -298,8 +215,8 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		return dryRunResult(opts)
 	}
 
-	if requiresConfirm(opts.Track, opts.Status) && !opts.Confirm {
-		return nil, confirmRequired(resolvedStatus(opts.Track, opts.Status))
+	if requiresConfirm(opts.Track, opts.State) && !opts.Confirm {
+		return nil, confirmRequired(opts.State.resolve(opts.Track).Status())
 	}
 
 	result := &Result{Track: opts.Track}
@@ -418,12 +335,9 @@ func highest(codes []int) int {
 // these checks here keeps exit semantics stable across dry-run and live
 // paths: every misuse maps to *InvalidOptsError (exit 2), never to the
 // dry-run validation code (20) and never to a deeper-layer surprise.
-// Checks that depend on Track and Status interplay (safe-default rule)
+// Checks that depend on Track and State interplay (safe-default rule)
 // belong in buildRelease.
 func validateOpts(opts Opts) error {
-	if err := validateStatusValue(opts.Status); err != nil {
-		return err
-	}
 	if len(opts.Artifacts) == 0 {
 		return &InvalidOptsError{Message: "Artifacts must name at least one file to upload"}
 	}
@@ -442,13 +356,6 @@ func validateOpts(opts Opts) error {
 	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
 		return &InvalidOptsError{
 			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
-		}
-	}
-	if opts.Status == StatusInProgress {
-		if opts.UserFraction <= 0 || opts.UserFraction > 1.0 {
-			return &InvalidOptsError{
-				Message: "UserFraction must be in (0, 1] when Status is InProgress",
-			}
 		}
 	}
 	// Locale names in a release-notes dir are FILE NAMES, so they are knowable
@@ -477,12 +384,10 @@ func hasDefaultTxt(dir string) bool {
 // buildRelease translates Opts + the uploaded versionCodes into a
 // tracks.Release payload: the uploaded codes in argument order, then the
 // retained ones, unvalidated. The default name is the highest uploaded code
-// (the only one for a single artifact). The ADR-0002 safe-default rule and
-// the status→userFraction mapping live in statusPayload, shared with
-// buildPromoteRelease so the wire shape stays identical across upload
-// and promote.
+// (the only one for a single artifact). Status and fraction come from the
+// resolved ReleaseState, as in buildPromoteRelease.
 func buildRelease(uploaded []int, opts Opts) tracks.Release {
-	statusStr, userFraction := statusPayload(opts.Track, opts.Status, opts.UserFraction)
+	state := opts.State.resolve(opts.Track)
 	name := strconv.Itoa(highest(uploaded))
 	if opts.ReleaseName != "" {
 		name = opts.ReleaseName
@@ -496,8 +401,8 @@ func buildRelease(uploaded []int, opts Opts) tracks.Release {
 	}
 	return tracks.Release{
 		Name:                name,
-		Status:              statusStr,
-		UserFraction:        userFraction,
+		Status:              state.Status(),
+		UserFraction:        state.UserFraction(),
 		VersionCodes:        codes,
 		InAppUpdatePriority: opts.UpdatePriority,
 	}

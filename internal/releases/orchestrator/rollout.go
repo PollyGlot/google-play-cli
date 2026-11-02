@@ -88,9 +88,9 @@ type StateOpts struct {
 	VersionCode int
 	ReleaseName string
 
-	// UserFraction is the target rollout fraction in (0, 1]. Only Rollout
-	// reads it; Halt / Resume / Complete ignore it (they preserve or fix
-	// the fraction themselves).
+	// UserFraction is the target rollout fraction, strictly between 0 and 1
+	// (InProgress checks it). Only Rollout reads it; Halt / Resume keep the
+	// live fraction and Complete removes it.
 	UserFraction float64
 
 	KeepEditOnFailure bool
@@ -125,67 +125,52 @@ type StateOpts struct {
 // userFraction (AC1). Used both to start a staged rollout and to ramp an
 // in-progress one up to a larger fraction.
 func Rollout(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error) {
-	fraction := opts.UserFraction
-	return applyState(ctx, hc, opts, stateTransition{verb: "rollout", status: "inProgress", fraction: &fraction})
+	to, err := InProgress(opts.UserFraction)
+	if err != nil {
+		return nil, err
+	}
+	return applyState(ctx, hc, opts, writeState{to: to})
 }
 
 // Halt freezes the rollout: status=halted with the current userFraction
 // preserved (AC2), so a later Resume can pick up where it left off.
 func Halt(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error) {
-	return applyState(ctx, hc, opts, stateTransition{verb: "halt", status: "halted"})
+	return applyState(ctx, hc, opts, moveStatus{to: "halted"})
 }
 
 // Resume flips a halted release back to inProgress, leaving the userFraction
 // untouched (AC3): the rollout continues at the fraction it was halted at.
 func Resume(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error) {
-	return applyState(ctx, hc, opts, stateTransition{verb: "resume", status: "inProgress"})
+	return applyState(ctx, hc, opts, moveStatus{to: "inProgress"})
 }
 
 // Complete ramps the release to a full rollout: status=completed and no
 // userFraction at all (AC4). The fraction the release carried while it was
-// inProgress has to be removed, not overwritten: per
-// TrackRelease.userFraction in docs/discovery/androidpublisher_v3.json it
-// "can only be set when status is inProgress or halted", so leaving one
-// behind fails the tracks.update with "COMPLETED release must not have
-// fraction".
+// inProgress is removed, not overwritten: Play refuses a completed release
+// that carries one ("COMPLETED release must not have fraction").
 func Complete(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error) {
-	return applyState(ctx, hc, opts, stateTransition{verb: "complete", status: "completed", clearFraction: true})
-}
-
-// stateTransition describes one verb's rewrite of the target release:
-// status is always set; fraction (nil → preserve the release's current
-// userFraction) is set only by rollout. clearFraction removes the key
-// outright, which only complete needs. Applied by patching the
-// raw release JSON (not by re-serializing a typed Release) so every other
-// field (and every other coexisting release on the track) is preserved.
-type stateTransition struct {
-	verb     string
-	status   string
-	fraction *float64
-	// clearFraction deletes userFraction from the target release instead of
-	// setting it. Mutually exclusive with fraction.
-	clearFraction bool
+	return applyState(ctx, hc, opts, writeState{to: Completed()})
 }
 
 // applyState is the shared choreography behind all four verbs: validate →
-// (dry-run preview) → WithEdit{ tracks.get → pick → transition →
-// tracks.update } → commit. Centralizing it keeps the auto-discard and
-// exit-code semantics identical across the family.
-func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTransition) (*Result, error) {
-	if err := validateStateOpts(opts, tr.verb); err != nil {
-		return nil, err
+// (dry-run preview) → WithEdit{ tracks.get → pick → edit → tracks.update }
+// → commit. Centralizing it keeps the auto-discard and exit-code semantics
+// identical across the family.
+func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit releaseEdit) (*Result, error) {
+	if opts.Track == "" {
+		return nil, &InvalidOptsError{Message: "Track is required"}
 	}
 	// Dry-run is evaluated BEFORE the confirm gate so a production publish
 	// can be previewed without satisfying --confirm (mirrors upload/promote).
 	if opts.DryRun {
-		return dryRunStateResult(opts, tr), nil
+		return dryRunStateResult(opts, edit), nil
 	}
 	// Inherits ADR-0002's confirm guard: a transition that would reach real
 	// users on production (rollout / resume / complete, not halt) requires
 	// Confirm=true. Runs before any HTTP so a missing --confirm short-circuits
 	// without opening an Edit.
-	if transitionReachesProdUsers(opts.Track, tr.status) && !opts.Confirm {
-		return nil, confirmRequired(tr.status)
+	if transitionReachesProdUsers(opts.Track, edit.status()) && !opts.Confirm {
+		return nil, confirmRequired(edit.status())
 	}
 
 	result := &Result{Track: opts.Track}
@@ -205,7 +190,7 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 		// every field gplay does not model, survives byte-for-byte. A typed
 		// re-serialization would drop coexisting releases (tracks.update is a
 		// full replace) and unmodeled fields like countryTargeting.
-		body, err := patchTrackRelease(rawTrack, idx, tr.status, tr.fraction, tr.clearFraction)
+		body, err := patchTrackRelease(rawTrack, idx, edit)
 		if err != nil {
 			return err
 		}
@@ -222,15 +207,8 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 			}
 		}
 		result.ReleaseName = target.Name
-		result.Status = tr.status
-		switch {
-		case tr.fraction != nil:
-			result.UserFraction = *tr.fraction
-		case tr.clearFraction:
-			result.UserFraction = 0 // completed: no fraction, and the renderer hides a zero
-		default:
-			result.UserFraction = target.UserFraction // preserved (halt / resume)
-		}
+		result.Status = edit.status()
+		result.UserFraction = edit.resultFraction(target.UserFraction)
 		result.RawTrackResponse = raw
 		return nil
 	})
@@ -240,13 +218,12 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, tr stateTr
 	return result, nil
 }
 
-// patchTrackRelease rewrites the status of releases[idx] inside the raw
-// tracks.get body, and its userFraction when fraction != nil, or removes
-// that key when clearFraction is set (a completed release carries no
-// fraction), leaving all other releases and all other fields untouched.
+// patchTrackRelease applies edit to releases[idx] inside the raw tracks.get
+// body, leaving all other releases and all other fields untouched.
 // Non-target releases keep their exact bytes; the target keeps every field
-// except the two the verb changes. The result is the body for tracks.update.
-func patchTrackRelease(rawTrack json.RawMessage, idx int, status string, fraction *float64, clearFraction bool) ([]byte, error) {
+// except the ones the edit rewrites. The result is the body for
+// tracks.update.
+func patchTrackRelease(rawTrack json.RawMessage, idx int, edit releaseEdit) ([]byte, error) {
 	var track map[string]json.RawMessage
 	if err := json.Unmarshal(rawTrack, &track); err != nil {
 		return nil, fmt.Errorf("decode track for update: %w", err)
@@ -263,20 +240,8 @@ func patchTrackRelease(rawTrack json.RawMessage, idx int, status string, fractio
 	if err := json.Unmarshal(releases[idx], &target); err != nil {
 		return nil, fmt.Errorf("decode target release for update: %w", err)
 	}
-	statusJSON, err := json.Marshal(status)
-	if err != nil {
+	if err := edit.apply(target); err != nil {
 		return nil, err
-	}
-	target["status"] = statusJSON
-	switch {
-	case fraction != nil:
-		fractionJSON, err := json.Marshal(*fraction)
-		if err != nil {
-			return nil, err
-		}
-		target["userFraction"] = fractionJSON
-	case clearFraction:
-		delete(target, "userFraction")
 	}
 
 	patched, err := json.Marshal(target)
@@ -292,23 +257,6 @@ func patchTrackRelease(rawTrack json.RawMessage, idx int, status string, fractio
 	return json.Marshal(track)
 }
 
-// validateStateOpts enforces the orchestrator-level preconditions every
-// StateOpts caller (CLI, future MCP server, library user) must satisfy,
-// before any Edit is opened. Mirrors validateOpts / validatePromoteOpts.
-func validateStateOpts(opts StateOpts, verb string) error {
-	if opts.Track == "" {
-		return &InvalidOptsError{Message: "Track is required"}
-	}
-	if verb == "rollout" {
-		if opts.UserFraction <= 0 || opts.UserFraction > 1.0 {
-			return &InvalidOptsError{
-				Message: "rollout --staged fraction must be in (0, 1] (e.g. 0.05, 0.20)",
-			}
-		}
-	}
-	return nil
-}
-
 // transitionReachesProdUsers reports whether a transition to the given wire
 // status on the given track would expose the release to real production
 // users: the rollout-family analogue of requiresConfirm (upload / promote).
@@ -321,20 +269,16 @@ func transitionReachesProdUsers(track, status string) bool {
 }
 
 // dryRunStateResult previews the transition without HTTP. It can show the
-// status the verb sets and, for rollout / complete, the target fraction.
-// Halt / resume preserve the live fraction (unknown without tracks.get), so
-// the preview leaves UserFraction at 0: the renderer hides a zero fraction
-// rather than implying a 0% rollout.
-func dryRunStateResult(opts StateOpts, tr stateTransition) *Result {
-	var userFraction float64
-	if tr.fraction != nil {
-		userFraction = *tr.fraction
-	}
+// status the verb sets and, for rollout, the target fraction. Halt / resume
+// keep the live fraction (unknown without tracks.get), so the preview leaves
+// UserFraction at 0: the renderer hides a zero fraction rather than implying
+// a 0% rollout.
+func dryRunStateResult(opts StateOpts, edit releaseEdit) *Result {
 	return &Result{
 		Track:        opts.Track,
 		VersionCode:  0,
-		Status:       tr.status,
-		UserFraction: userFraction,
+		Status:       edit.status(),
+		UserFraction: edit.resultFraction(0),
 		ReleaseName:  "(dry-run)",
 	}
 }

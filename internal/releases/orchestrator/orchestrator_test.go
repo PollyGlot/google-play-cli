@@ -196,7 +196,7 @@ func writeFakeAAB(t *testing.T) string {
 // bullet for orchestrator.Upload: a complete vertical slice through the
 // upload flow on a non-production track. Asserts the canonical four-call
 // sequence (edits.insert → bundles.upload → tracks.update → edits.commit)
-// and that the track update carries status=completed and userFraction=1.0.
+// and that the track update carries status=completed and no userFraction.
 func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -238,7 +238,7 @@ func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 		}
 	}
 
-	// Track update payload carries status=completed, userFraction=1.0.
+	// Track update payload carries status=completed, no userFraction.
 	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"status":"completed"`) {
 		t.Errorf("tracks.update body = %s, want status=completed", body)
@@ -298,8 +298,8 @@ func TestUpload_productionTrack_safeDefault_sendsDraftStatus(t *testing.T) {
 }
 
 // TestUpload_productionTrack_explicitCompleted_sendsCompletedFull asserts
-// that --complete on production (Status=Completed) overrides the
-// safe-default and ships completed/1.0.
+// that --complete on production (State=Completed) overrides the
+// safe-default and ships completed, with no fraction.
 func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -313,7 +313,7 @@ func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.
 		Package:   "com.example.app",
 		Track:     "production",
 		Artifacts: []orchestrator.Artifact{{Path: aab}},
-		Status:    orchestrator.StatusCompleted,
+		State:     orchestrator.Completed(),
 		Confirm:   true, // production publish gate (see confirmRequired)
 	})
 	if err != nil {
@@ -344,12 +344,11 @@ func TestUpload_productionTrack_explicitStaged_sendsInProgressWithFraction(t *te
 	hc := &http.Client{Transport: transport}
 
 	result, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
-		Package:      "com.example.app",
-		Track:        "production",
-		Artifacts:    []orchestrator.Artifact{{Path: aab}},
-		Status:       orchestrator.StatusInProgress,
-		UserFraction: 0.05,
-		Confirm:      true, // production publish gate (see confirmRequired)
+		Package:   "com.example.app",
+		Track:     "production",
+		Artifacts: []orchestrator.Artifact{{Path: aab}},
+		State:     staged(t, 0.05),
+		Confirm:   true, // production publish gate (see confirmRequired)
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -701,7 +700,7 @@ func TestUpload_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 		Package:   "com.example.app",
 		Track:     "production",
 		Artifacts: []orchestrator.Artifact{{Path: aab}},
-		Status:    orchestrator.StatusCompleted,
+		State:     orchestrator.Completed(),
 		Confirm:   false,
 	})
 	if err == nil {
