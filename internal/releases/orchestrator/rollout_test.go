@@ -12,6 +12,7 @@ package orchestrator_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -334,16 +335,46 @@ func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 	if !strings.Contains(body, `"versionCodes":["500"]`) {
 		t.Errorf("body = %s, coexisting release 500 was dropped (data loss)", body)
 	}
-	if !strings.Contains(body, `"userFraction":0.1`) {
-		t.Errorf("body = %s, release 500's fraction 0.1 was not preserved", body)
+	// Decode per release rather than substring-match the whole body: 501
+	// holding on to its original 0.5 would be exactly as invalid as a 1.0,
+	// and a Contains check for one value would not notice the other.
+	var updated struct {
+		Releases []map[string]json.RawMessage `json:"releases"`
 	}
+	if err := json.Unmarshal(trackUpdateReq(rt), &updated); err != nil {
+		t.Fatalf("decode tracks.update body %s: %v", body, err)
+	}
+	byName := make(map[string]map[string]json.RawMessage, len(updated.Releases))
+	for _, rel := range updated.Releases {
+		var name string
+		if err := json.Unmarshal(rel["name"], &name); err != nil {
+			t.Fatalf("decode release name in %s: %v", body, err)
+		}
+		byName[name] = rel
+	}
+
 	// 501 ramped to completed, and its fraction removed with it.
-	if !strings.Contains(body, `"status":"completed"`) || strings.Contains(body, `"userFraction":1`) {
-		t.Errorf("body = %s, want release 501 completed with no fraction", body)
+	rel, ok := byName["501"]
+	if !ok {
+		t.Fatalf("body = %s, want release 501 in tracks.update", body)
 	}
-	// 500 was halted and must stay halted.
-	if !strings.Contains(body, `"status":"halted"`) {
-		t.Errorf("body = %s, want release 500 left halted", body)
+	if got := string(rel["status"]); got != `"completed"` {
+		t.Errorf("release 501 status = %s, want \"completed\"", got)
+	}
+	if raw, has := rel["userFraction"]; has {
+		t.Errorf("release 501 kept userFraction %s, want the key removed", raw)
+	}
+
+	// 500 was halted at 0.1 and must stay exactly that.
+	rel, ok = byName["500"]
+	if !ok {
+		t.Fatalf("body = %s, coexisting release 500 was dropped (data loss)", body)
+	}
+	if got := string(rel["status"]); got != `"halted"` {
+		t.Errorf("release 500 status = %s, want \"halted\"", got)
+	}
+	if got := string(rel["userFraction"]); got != "0.1" {
+		t.Errorf("release 500 userFraction = %s, want 0.1", got)
 	}
 }
 
