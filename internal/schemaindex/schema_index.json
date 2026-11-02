@@ -1,5 +1,5 @@
 {
-  "revision": "20261022",
+  "revision": "20261029",
   "services": {
     "androidpublisher": {
       "rootUrl": "https://androidpublisher.googleapis.com/",
@@ -2048,7 +2048,7 @@
           "in": "path",
           "type": "string",
           "required": true,
-          "description": "Required. The parent app (package name) for which the one-time products should be deleted. Must be equal to the package_name field on all the OneTimeProduct resources."
+          "description": "Required. The parent app (package name) for which the one-time products should be deleted. Must be equal to the package_name field on all the requests."
         }
       ],
       "request": "BatchDeleteOneTimeProductsRequest"
@@ -2063,7 +2063,7 @@
           "in": "path",
           "type": "string",
           "required": true,
-          "description": "Required. The parent app (package name) for which the products should be retrieved. Must be equal to the package_name field on all requests."
+          "description": "Required. The parent app (package name) for which the products should be retrieved."
         },
         {
           "name": "productIds",
@@ -2315,7 +2315,7 @@
           "in": "path",
           "type": "string",
           "required": true,
-          "description": "Required. The parent app (package name) of the offers to delete. Must be equal to the package_name field on all the OneTimeProductOffer resources."
+          "description": "Required. The parent app (package name) of the offers to delete. Must be equal to the package_name field on all the requests."
         },
         {
           "name": "productId",
@@ -2329,7 +2329,7 @@
           "in": "path",
           "type": "string",
           "required": true,
-          "description": "Required. The parent purchase option (ID) for which the offers should be deleted. May be specified as '-' to update offers from multiple purchase options."
+          "description": "Required. The parent purchase option (ID) for which the offers should be deleted. May be specified as '-' to delete offers from multiple purchase options."
         }
       ],
       "request": "BatchDeleteOneTimeProductOffersRequest"
@@ -2344,21 +2344,21 @@
           "in": "path",
           "type": "string",
           "required": true,
-          "description": "Required. The parent app (package name) of the updated offers. Must be equal to the package_name field on all the updated OneTimeProductOffer resources."
+          "description": "Required. The parent app (package name) of the offers to retrieve. Must be equal to the package_name field on all the requests."
         },
         {
           "name": "productId",
           "in": "path",
           "type": "string",
           "required": true,
-          "description": "Required. The product ID of the parent one-time product, if all updated offers belong to the same product. If this request spans multiple one-time products, set this field to \"-\"."
+          "description": "Required. The product ID of the parent one-time product, if all offers belong to the same product. If this request spans multiple one-time products, set this field to \"-\"."
         },
         {
           "name": "purchaseOptionId",
           "in": "path",
           "type": "string",
           "required": true,
-          "description": "Required. The parent purchase option (ID) for which the offers should be updated. May be specified as '-' to update offers from multiple purchase options."
+          "description": "Required. The parent purchase option (ID) for which the offers should be retrieved. May be specified as '-' to retrieve offers from multiple purchase options."
         }
       ],
       "request": "BatchGetOneTimeProductOffersRequest",
@@ -2520,7 +2520,7 @@
           "name": "pageToken",
           "in": "query",
           "type": "string",
-          "description": "Optional. A page token, received from a previous `ListOneTimeProductsOffers` call. Provide this to retrieve the subsequent page. When paginating, product_id, package_name and purchase_option_id provided to `ListOneTimeProductsOffersRequest` must match the call that provided the page token."
+          "description": "Optional. A page token, received from a previous `ListOneTimeProductOffers` call. Provide this to retrieve the subsequent page. When paginating, product_id, package_name and purchase_option_id provided to `ListOneTimeProductOffersRequest` must match the call that provided the page token."
         },
         {
           "name": "productId",
@@ -5984,7 +5984,7 @@
         "requests": {
           "$ref": "DeleteOneTimeProductOfferRequest",
           "repeated": true,
-          "description": "Required. A list of update requests of up to 100 elements. All requests must correspond to different offers."
+          "description": "Required. A list of delete requests of up to 100 elements. All requests must correspond to different offers."
         }
       }
     },
@@ -6024,7 +6024,7 @@
         "oneTimeProductOffers": {
           "$ref": "OneTimeProductOffer",
           "repeated": true,
-          "description": "The list of updated one-time product offers, in the same order as the request."
+          "description": "The list of requested one-time product offers, in the same order as the request."
         }
       }
     },
@@ -13311,7 +13311,7 @@
         },
         "deactivateOneTimeProductOfferRequest": {
           "$ref": "DeactivateOneTimeProductOfferRequest",
-          "description": "Deactivates an offer. Once deactivated, the offer is no longer available to users. This state transition is specific to discounted offers."
+          "description": "Deactivates an offer. Once deactivated, the offer is no longer available to users. This state transition is specific to discounted and game reward offers."
         }
       }
     },
