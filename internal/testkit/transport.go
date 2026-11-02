@@ -74,16 +74,33 @@ type Responder func(c Call) (status int, body string, ok bool)
 // from the first matching responder. A request no responder claims fails the
 // round trip, so an unexpected call surfaces as an error instead of a silent
 // empty 200.
+//
+// A request body that breaks a constraint Play documents (the rules table)
+// panics: the Fake holds no testing.TB, and a panic fails the test whatever
+// the code under test does with an error, which Play's 400 would not.
 type Fake struct {
 	responders []Responder
 
-	mu     sync.Mutex
-	calls  []Call
-	tokens int
+	mu      sync.Mutex
+	calls   []Call
+	tokens  int
+	allowed map[string]bool
 }
 
 // NewFake builds a Fake whose responders are tried in order per request.
-func NewFake(responders ...Responder) *Fake { return &Fake{responders: responders} }
+func NewFake(responders ...Responder) *Fake {
+	return &Fake{responders: responders, allowed: map[string]bool{}}
+}
+
+// AllowInvalid lets bodies that break the named rules (`Schema.property`, as
+// the failure message names them) reach the responders: for a test that
+// sends a body Play refuses on purpose, to exercise the 400 path.
+func (f *Fake) AllowInvalid(rules ...string) *Fake {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	allowList(f.allowed, rules)
+	return f
+}
 
 // RoundTrip implements http.RoundTripper.
 func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -119,7 +136,11 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	f.mu.Lock()
 	f.calls = append(f.calls, c)
+	why := refusal(c, f.allowed)
 	f.mu.Unlock()
+	if why != "" {
+		panic(why)
+	}
 	for _, r := range f.responders {
 		if status, b, ok := r(c); ok {
 			if status == 0 {
