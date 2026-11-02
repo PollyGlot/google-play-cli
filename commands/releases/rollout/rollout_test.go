@@ -457,6 +457,47 @@ func TestRunComplete_emitsConfirmation(t *testing.T) {
 	}
 }
 
+// TestRunComplete_reportsTheSupersededRelease asserts #734 at the command:
+// completing a rollout over the previous full rollout names the superseded
+// versionCode on the ✓ line and in the table, while --output json stays the
+// tracks.update body verbatim (ADR-0003).
+func TestRunComplete_reportsTheSupersededRelease(t *testing.T) {
+	const updated = `{"track":"production","releases":[{"name":"142","status":"completed","versionCodes":["142"]}]}`
+	rt := newStateFake(stateAPI{
+		editID: "edit-supersede-cli",
+		trackGetResp: `{"track":"production","releases":[` +
+			`{"name":"141","status":"completed","versionCodes":["141"]},` +
+			`{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.2}]}`,
+		trackUpdateRawResp: updated,
+	})
+	var payload output.Renderable
+	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
+		var err error
+		payload, err = rollout.RunComplete(rc, rollout.Input{Package: "com.example.app", Track: "production", VersionCode: 142, Confirm: true})
+		return err
+	})
+	if !strings.Contains(got, "superseded versionCode 141") {
+		t.Errorf("✓ line %q, want it to name the superseded versionCode 141", got)
+	}
+	if body := string(trackUpdateReq(rt)); strings.Contains(body, `"141"`) {
+		t.Errorf("tracks.update body = %s, want release 141 dropped", body)
+	}
+
+	var table, js bytes.Buffer
+	if err := output.Render(&table, output.FormatTable, payload.Renderers()); err != nil {
+		t.Fatalf("table render: %v", err)
+	}
+	if !strings.Contains(table.String(), "superseded:   141") {
+		t.Errorf("table = %q, want a superseded: 141 line", table.String())
+	}
+	if err := output.Render(&js, output.FormatJSON, payload.Renderers()); err != nil {
+		t.Fatalf("json render: %v", err)
+	}
+	if strings.TrimSpace(js.String()) != updated {
+		t.Errorf("json = %s, want the tracks.update body verbatim %s", js.String(), updated)
+	}
+}
+
 // TestRunRollout_dryRun_noConfirmation asserts --dry-run never emits a ✓.
 func TestRunRollout_dryRun_noConfirmation(t *testing.T) {
 	rt := newStateFake(stateAPI{editID: "edit-dry", trackGetResp: oneInProgressRelease})
