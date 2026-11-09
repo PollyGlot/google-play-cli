@@ -120,7 +120,7 @@ func TestResolveMatchesDiscoveryFlatPath(t *testing.T) {
 // well-formed but unregistered id, and a nonsense one.
 func TestResolveRejectsUnknownID(t *testing.T) {
 	for _, id := range []string{
-		"androidpublisher.systemapks.variants.create", // real method, deliberately not called by gplay (parked, #296)
+		"androidpublisher.monetization.subscriptions.get", // real method, deliberately not called by gplay (redundant, ADR-0047)
 		"not.a.method",
 		"",
 	} {

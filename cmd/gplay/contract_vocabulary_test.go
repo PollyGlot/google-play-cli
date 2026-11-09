@@ -45,6 +45,13 @@ var flagVocabulary = map[string]string{
 	"scope":              "permission scope: account or app",
 	"form-factor":        "device form factor a created track targets: default, wear or automotive",
 
+	// System APK variant device spec and build options (#296).
+	"abi":                      "ABI a built APK supports, as the platform reports it (repeatable, in order of preference)",
+	"screen-density":           "screen density in dpi a built APK targets",
+	"rotated-key":              "sign a built APK with the rotated app signing key",
+	"uncompressed-dex":         "store dex files uncompressed in a built APK",
+	"uncompressed-native-libs": "store native libraries uncompressed in a built APK",
+
 	// Release contents.
 	"retain-version-code": "Retained version code: an already-uploaded versionCode the release created keeps serving (repeatable)",
 	"externally-hosted":   "ExternallyHostedApk resource file: an APK served from the organisation's own host, added to the release instead of uploaded bytes",
@@ -271,10 +278,11 @@ var verbDrift = ratchet{
 // leavesWithoutOutputByDesign are the leaves docs/DESIGN.md section 7 exempts
 // from --output (no structured result, or a binary payload). Permanent.
 var leavesWithoutOutputByDesign = map[string]string{
-	"auth login":                  "DESIGN section 7: free-form human text, no structured result",
-	"auth logout":                 "DESIGN section 7: free-form human text, no structured result",
-	"releases generated download": "DESIGN section 7: raw binary bytes to --dest (ADR-0034)",
-	"exit-codes":                  "help topic (gplay help exit-codes), not a runnable command",
+	"auth login":                    "DESIGN section 7: free-form human text, no structured result",
+	"auth logout":                   "DESIGN section 7: free-form human text, no structured result",
+	"releases generated download":   "DESIGN section 7: raw binary bytes to --dest (ADR-0034)",
+	"releases system-apks download": "DESIGN section 7: raw binary bytes to --dest (ADR-0034)",
+	"exit-codes":                    "help topic (gplay help exit-codes), not a runnable command",
 }
 
 // leavesWithoutOutput are today's leaves with no --output that DESIGN section 7

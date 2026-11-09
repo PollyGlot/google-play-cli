@@ -321,7 +321,7 @@ cannot name them.
 ### Sub-surfaces under `releases`
 
 `releases` also hosts grouping nouns for non-track surfaces (ADR-0030;
-`generated` added in ADR-0034):
+`generated` added in ADR-0034, `system-apks` in #296):
 
 - **`releases sharing upload`** — Internal App Sharing: a non-track media upload
   (no Edit) returning a private shareable link (GLOSSARY.md "Internal App
@@ -337,9 +337,16 @@ cannot name them.
   an uploaded AAB (GLOSSARY.md "Generated APK"). **Read-only and Edit-free**
   (application-scoped, not under an Edit). `list` enumerates the artifacts for a
   `--version-code`; `download <downloadId>` streams one artifact's raw bytes to
-  `--dest PATH` (or `--dest -` for stdout) — gplay's only binary download-to-file
+  `--dest PATH` (or `--dest -` for stdout) — gplay's first binary download-to-file
   command, so it carries no `--output` flag
   ([ADR-0034](./adr/0034-generated-apks-binary-download-to-file.md)).
+- **`releases system-apks create/list/view/download`**: System APK variants,
+  APKs Play builds from an uploaded AAB for a device system image (GLOSSARY.md
+  "System APK variant"). Edit-free and keyed by `--version-code`, like
+  `generated`. `create` builds one variant from a device spec given as flags
+  (`--abi`, `--screen-density`, `--locale`) plus build options; it is the
+  ROUTINE tier (adds, never overwrites: `--dry-run`, no `--confirm`) and
+  MarkMutating. `download <variantId>` follows the ADR-0034 convention.
 
 ---
 
@@ -568,7 +575,8 @@ three Renderers, and forcing one would invent a schema with no consumer.
 Any future command in the same shape (side-effecting, no structured
 result) follows the same rule.
 
-`releases generated download` follows it for the opposite reason: its
+`releases generated download` and `releases system-apks download` follow it
+for the opposite reason: their
 payload is **raw binary bytes**, not a Renderable. It writes the bytes to
 `--dest PATH` (or `--dest -` for stdout) and names the byte count +
 destination on a `✓` stderr line (§8), sidestepping a confusing
@@ -751,7 +759,7 @@ seconds instead of stalling a CI job until the runner-level kill:
   `releases mappings`, `metadata images apply`, the
   `appstore apk|image|policy upload` and `customapps create` surfaces, and
   the APK bytes of
-  `releases generated download`) are **exempt from the default**: a
+  `releases generated download` and `releases system-apks download`) are **exempt from the default**: a
   multi-hundred-MB transfer is never killed by the short control-plane bound.
   The exemption is decided per request, so the same commands' Edit calls
   (`edits.insert`, `tracks.update`, `edits.commit`), the resumable initiate and

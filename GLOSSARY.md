@@ -99,6 +99,10 @@ _Avoid_: the AAB you uploaded
 The opaque handle of one Generated APK to download, not stable across regeneration.
 _Avoid_: version code, a durable identifier
 
+**System APK variant**:
+An APK Play builds from an uploaded AAB for inclusion in a device system image (preload / OEM), for one device spec (ABIs, screen density, locales) and set of build options. Addressed by its variantId under the bundle's version code; it lives outside any Edit.
+_Avoid_: Generated APK, system image
+
 **Internal App Sharing**:
 A Google Play channel that turns an uploaded APK or AAB into a private install link for testers, bypassing tracks, releases and Edits.
 _Avoid_: release

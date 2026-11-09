@@ -82,6 +82,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/releases/promote"
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
 	sharingupload "github.com/PollyGlot/google-play-cli/commands/releases/sharing/upload"
+	systemapkscreate "github.com/PollyGlot/google-play-cli/commands/releases/system-apks/create"
+	systemapksdownload "github.com/PollyGlot/google-play-cli/commands/releases/system-apks/download"
+	systemapkslist "github.com/PollyGlot/google-play-cli/commands/releases/system-apks/list"
+	systemapksview "github.com/PollyGlot/google-play-cli/commands/releases/system-apks/view"
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	reportsfamily "github.com/PollyGlot/google-play-cli/commands/reports/familycmd"
 	reportslist "github.com/PollyGlot/google-play-cli/commands/reports/listcmd"
@@ -206,6 +210,22 @@ func newReleasesGroup(boot kernel.Boot) *cobra.Command {
 		generateddownload.NewCommand(boot),
 	))
 
+	// `gplay releases system-apks`: System APK variants (systemapks.variants),
+	// APKs Play builds from an uploaded AAB for a device system image
+	// (preload / OEM). A sibling of `generated`: application-scoped, Edit-free,
+	// keyed by versionCode, with the ADR-0034 binary download. `create` is the
+	// only write (ROUTINE tier: it adds a variant, never overwrites one), so it
+	// alone is MarkMutating (GLOSSARY.md "System APK variant" / #296).
+	// [experimental] (ADR-0010/ADR-0042): shipped for coverage (ADR-0026) with
+	// no real preload pipeline driven through it yet; the create flags are the
+	// part most likely to move.
+	systemApks := kernel.Experimental(kernel.Group("system-apks", "Create, list and download system APK variants (device system images)",
+		kernel.MarkMutating(systemapkscreate.NewCommand(boot)),
+		systemapkslist.NewCommand(boot),
+		systemapksview.NewCommand(boot),
+		systemapksdownload.NewCommand(boot),
+	))
+
 	// `gplay releases artifacts`: the APKs and App Bundles uploaded to the app
 	// (edits.apks.list / edits.bundles.list), i.e. the version codes a promote
 	// or rollout can reference. Edit-scoped, so the leaf opens a read-only Edit
@@ -229,6 +249,7 @@ func newReleasesGroup(boot kernel.Boot) *cobra.Command {
 		sharing,
 		expansionFiles,
 		generated,
+		systemApks,
 		artifacts,
 	)
 }
