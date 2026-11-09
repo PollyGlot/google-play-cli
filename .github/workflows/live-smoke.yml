@@ -1,0 +1,68 @@
+name: Live read smoke
+
+# Runs the read paths of gplay against one real app every week (#736): the
+# offline suite cannot see behaviour that exists only on the live API (#731,
+# #741). GPLAY_READONLY=1 makes gplay refuse every write.
+#
+# Setup (maintainer, once):
+# 1. Create the environment "live-smoke" (Settings > Environments), with the
+#    deployment branch restricted to main.
+# 2. In it, store the secret GPLAY_SMOKE_SERVICE_ACCOUNT: the JSON key of a
+#    service account invited on ONE app only, with read permissions.
+# 3. In it, set the variable GPLAY_SMOKE_PACKAGE to that app's package name.
+# Until both exist the job skips and says so in its summary.
+#
+# Never triggered by pull requests: a fork must not reach the secret.
+
+on:
+  schedule:
+    - cron: '37 6 * * 1'  # Weekly, Monday 06:37 UTC, after discovery-watch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: live-smoke
+    timeout-minutes: 15
+    steps:
+      - name: Check configuration
+        id: config
+        env:
+          SA: ${{ secrets.GPLAY_SMOKE_SERVICE_ACCOUNT }}
+          PKG: ${{ vars.GPLAY_SMOKE_PACKAGE }}
+        run: |
+          if [[ -z "$SA" || -z "$PKG" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Live smoke skipped: GPLAY_SMOKE_SERVICE_ACCOUNT or GPLAY_SMOKE_PACKAGE is not set in the live-smoke environment." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.config.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - if: steps.config.outputs.ready == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build gplay
+        if: steps.config.outputs.ready == 'true'
+        run: go build -o "$RUNNER_TEMP/gplay" ./cmd/gplay
+
+      - name: Run the read smoke
+        if: steps.config.outputs.ready == 'true'
+        env:
+          GPLAY_SERVICE_ACCOUNT: ${{ secrets.GPLAY_SMOKE_SERVICE_ACCOUNT }}
+          PKG: ${{ vars.GPLAY_SMOKE_PACKAGE }}
+        run: scripts/live-smoke.sh "$RUNNER_TEMP/gplay" "$PKG"
