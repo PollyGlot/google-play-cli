@@ -1,0 +1,56 @@
+name: Dependabot merge
+
+# Lands routine Dependabot PRs so the maintainer never merges them by hand. The
+# decisions live in .github/scripts/dependabot-merge.sh: a PR that keeps every
+# major and has its required checks green on an up-to-date head is squash-merged
+# through scripts/merge-pr.sh, the rest stay open with the reason in the job
+# summary. One merge per run (a merge puts the other PRs behind main), so a
+# Monday batch of three lands over three runs.
+#
+# A schedule rather than an event on the PR: workflows triggered by Dependabot
+# run without repository secrets, and the merge needs the gplay App token (a
+# ruleset bypass actor, like the Discovery auto-merge). To stop it, disable the
+# workflow (gh workflow disable dependabot-merge.yml).
+#
+# Dependabot opens its weekly batch on Monday morning, hence the half-hourly
+# Monday runs. Security updates arrive any day, hence one daily run.
+on:
+  schedule:
+    - cron: '*/30 7-18 * * 1'
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Merge green Dependabot PRs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The App token, not GITHUB_TOKEN: an update-branch pushed with
+      # GITHUB_TOKEN starts no CI, and only the App may bypass the review rule.
+      # workflows:write because an actions bump edits .github/workflows/.
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.GPLAY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GPLAY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Merge or update
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: .github/scripts/dependabot-merge.sh
