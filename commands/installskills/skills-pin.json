@@ -1,7 +1,7 @@
 {
   "repo": "PollyGlot/google-play-cli-skills",
   "url": "https://github.com/PollyGlot/google-play-cli-skills.git",
-  "commit": "279de9cdbccc1c1ba68b6bd01551043b1b5623bd",
+  "commit": "488262d4eed6b0ceda219267369f4b77b9ae6155",
   "subdir": "skills",
   "skills": [
     "gplay-apps",
@@ -16,6 +16,7 @@
     "gplay-orders",
     "gplay-recovery",
     "gplay-release-flow",
+    "gplay-reports",
     "gplay-reviews",
     "gplay-setup",
     "gplay-signing",
