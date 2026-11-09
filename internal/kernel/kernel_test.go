@@ -596,7 +596,7 @@ func TestEnsureAccount_idempotent_memoisesInvalidError(t *testing.T) {
 // command is refused with exit 4 BEFORE its business function runs (so before
 // credential resolution and any network I/O), while read commands and --dry-run
 // of mutating commands still run. Refusal is driven by Inputs.{Readonly,
-// Mutating,DryRun}; the RunCobra test exercises the annotation + env wiring.
+// Mutating,Preview}; the RunCobra test exercises the annotation + env wiring.
 
 // TestRun_readonly_refusesMutatingCommand_exit4 proves the refusal fires before
 // fn (the fn would make a network call; it must never be reached), with the
@@ -638,7 +638,7 @@ func TestRun_readonly_jsonEnvelope_exitCode4(t *testing.T) {
 func TestRun_readonly_allowsDryRunOfMutatingCommand(t *testing.T) {
 	boot := newBoot(t)
 	called := false
-	err := kernel.Run(boot, kernel.Inputs{Readonly: true, Mutating: true, DryRun: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
+	err := kernel.Run(boot, kernel.Inputs{Readonly: true, Mutating: true, Preview: true}, func(rc *kernel.RunContext) (output.Renderable, error) {
 		called = true
 		return nil, nil
 	})
@@ -700,6 +700,30 @@ func TestRunCobra_readonly_marksAndEnforces(t *testing.T) {
 	}
 	if called {
 		t.Error("MarkMutating + GPLAY_READONLY must refuse before the fn runs")
+	}
+}
+
+// --plan reads the live state and writes nothing, so like --dry-run it runs
+// under GPLAY_READONLY on a command declared mutating (#740).
+func TestRunCobra_readonly_planOfMutatingCommandRuns(t *testing.T) {
+	t.Setenv(kernel.EnvReadonly, "1")
+	boot := newBoot(t)
+	cmd := kernel.MarkMutating(&cobra.Command{Use: "complete"})
+	cmd.Flags().Bool("plan", false, "")
+	if err := cmd.Flags().Set("plan", "true"); err != nil {
+		t.Fatal(err)
+	}
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	called := false
+	if err := kernel.RunCobra(cmd, boot, "", func(rc *kernel.RunContext) (output.Renderable, error) {
+		called = true
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("--plan of a mutating command under GPLAY_READONLY = %v, want allowed", err)
+	}
+	if !called {
+		t.Error("--plan must run the business fn under GPLAY_READONLY")
 	}
 }
 
