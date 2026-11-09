@@ -67,7 +67,7 @@ name: Discovery Watch
 #      it to the letter. Final message in French, three lines at most.
 #
 # b. Store its webhook URL as the secret T3_DISCOVERY_TRIAGE_WEBHOOK_URL and
-#    the signing secret as T3_WEBHOOK_SECRET (shared with slice-agent.yml).
+#    the signing secret as T3_WEBHOOK_SECRET.
 # c. Replay on a merged refresh PR (dispatch this workflow with "pr"), then set
 #    the variable AGENT_RUNTIME to "t3". Any other value, or none, calls the
 #    routine above: switching back is a variable edit.
