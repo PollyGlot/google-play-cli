@@ -316,7 +316,12 @@ survive the full-replace `tracks.update`. One exception: Play holds one
 release from the update (as the Play Console does, #734) and reports its
 versionCodes as superseded on the `✓` line and in the table view. `--output
 json` stays the `tracks.update` body (ADR-0003), and `--dry-run`, offline,
-cannot name them.
+cannot name them. `--plan` can (ADR-0052): it reads the live track (inside the
+pinned explicit Edit, else in a read-only Edit it always discards) and reports
+the target release, the state it would end in, and the releases superseded
+and kept, through the same picker and supersede rule as the write. It sends no
+`tracks.update`, so it needs no `--confirm`; an ambiguous track fails as the
+live path does (exit 60). Its JSON is gplay-shaped and carries `"plan": true`.
 
 ### Sub-surfaces under `releases`
 

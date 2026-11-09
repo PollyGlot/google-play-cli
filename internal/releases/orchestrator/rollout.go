@@ -120,6 +120,25 @@ type StateOpts struct {
 	// set, with VersionCode=0 and ReleaseName="(dry-run)". Runs BEFORE the
 	// confirm gate so a production publish can be previewed without --confirm.
 	DryRun bool
+
+	// Plan reads the live track and reports what the transition would do,
+	// without writing: the target release, the state it would end in, and
+	// the releases it would supersede or keep (#740). It reads inside
+	// ExplicitEditID when one is pinned, else in a read-only Edit that is
+	// always discarded. No tracks.update, no commit, so no confirm gate.
+	Plan bool
+}
+
+// TransitionPlan is the outcome a state transition would have on its track,
+// computed from the live track by the same picker and supersede rule the
+// write path uses, so a plan cannot disagree with the update it previews.
+type TransitionPlan struct {
+	Track        string           `json:"track"`
+	Target       tracks.Release   `json:"target"`
+	Status       string           `json:"status"`
+	UserFraction float64          `json:"userFraction,omitempty"`
+	Superseded   []tracks.Release `json:"superseded"`
+	Kept         []tracks.Release `json:"kept"`
 }
 
 // Rollout sets the target release to status=inProgress at the requested
@@ -166,6 +185,9 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit relea
 	if opts.DryRun {
 		return dryRunStateResult(opts, edit), nil
 	}
+	if opts.Plan {
+		return planState(ctx, hc, opts, edit)
+	}
 	// Inherits ADR-0002's confirm guard: a transition that would reach real
 	// users on production (rollout / resume / complete, not halt) requires
 	// Confirm=true. Runs before any HTTP so a missing --confirm short-circuits
@@ -202,22 +224,12 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit relea
 			return err
 		}
 
-		// VersionCode is informational (which build was affected). A draft
-		// placeholder may carry none; guard the index so we never panic.
-		if len(target.VersionCodes) > 0 {
-			if vc, convErr := strconv.Atoi(target.VersionCodes[0]); convErr == nil {
-				result.VersionCode = vc
-			}
-		}
+		result.VersionCode = firstVersionCode(target)
 		result.ReleaseName = target.Name
 		result.Status = edit.status()
 		result.UserFraction = edit.resultFraction(target.UserFraction)
 		for _, i := range drop {
-			for _, c := range cur.Releases[i].VersionCodes {
-				if vc, convErr := strconv.Atoi(c); convErr == nil {
-					result.SupersededVersionCodes = append(result.SupersededVersionCodes, vc)
-				}
-			}
+			result.SupersededVersionCodes = append(result.SupersededVersionCodes, versionCodes(cur.Releases[i])...)
 		}
 		result.RawTrackResponse = raw
 		return nil
@@ -226,6 +238,85 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit relea
 		return nil, err
 	}
 	return result, nil
+}
+
+// planState reads the track and describes the transition without writing.
+// The Result carries the plan, plus the target's versionCode, name and the
+// state it would end in, so callers read one shape for both paths.
+func planState(ctx context.Context, hc *http.Client, opts StateOpts, edit releaseEdit) (*Result, error) {
+	var plan *TransitionPlan
+	read := func(editID string) error {
+		cur, _, err := tracks.Get(ctx, hc, opts.Package, editID, opts.Track)
+		if err != nil {
+			return err
+		}
+		idx, err := pickTargetRelease(cur.Releases, opts)
+		if err != nil {
+			return err
+		}
+		drop := superseded(cur.Releases, idx, edit)
+		target := cur.Releases[idx]
+		plan = &TransitionPlan{
+			Track:        opts.Track,
+			Target:       target,
+			Status:       edit.status(),
+			UserFraction: edit.resultFraction(target.UserFraction),
+			Superseded:   []tracks.Release{},
+			Kept:         []tracks.Release{},
+		}
+		for i, r := range cur.Releases {
+			switch {
+			case i == idx:
+			case slices.Contains(drop, i):
+				plan.Superseded = append(plan.Superseded, r)
+			default:
+				plan.Kept = append(plan.Kept, r)
+			}
+		}
+		return nil
+	}
+	var err error
+	if opts.ExplicitEditID != "" {
+		err = read(opts.ExplicitEditID)
+	} else {
+		err = edits.WithReadOnlyEdit(ctx, hc, opts.Package, read)
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := &Result{
+		Track:        opts.Track,
+		ReleaseName:  plan.Target.Name,
+		Status:       plan.Status,
+		UserFraction: plan.UserFraction,
+		Plan:         plan,
+	}
+	result.VersionCode = firstVersionCode(plan.Target)
+	for _, r := range plan.Superseded {
+		result.SupersededVersionCodes = append(result.SupersededVersionCodes, versionCodes(r)...)
+	}
+	return result, nil
+}
+
+// firstVersionCode is the versionCode a release is reported under, 0 when it
+// carries none (a draft placeholder).
+func firstVersionCode(r tracks.Release) int {
+	if codes := versionCodes(r); len(codes) > 0 {
+		return codes[0]
+	}
+	return 0
+}
+
+// versionCodes parses a release's versionCodes, skipping any that are not
+// numeric.
+func versionCodes(r tracks.Release) []int {
+	var out []int
+	for _, c := range r.VersionCodes {
+		if vc, err := strconv.Atoi(c); err == nil {
+			out = append(out, vc)
+		}
+	}
+	return out
 }
 
 // superseded lists the releases a transition retires along with the target
