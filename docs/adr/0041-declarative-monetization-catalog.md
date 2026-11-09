@@ -117,6 +117,14 @@ Three realities shape the design:
    and applying with the explicit one-way **`--migrate`** flag (exit 3
    without it, its own `migrate` op in the plan) — once promoted, a
    product can never return to `inappproducts`.
+   **Amended 2026-11-09 (#741).** Google refuses the legacy list for an app
+   whose catalog it moved to v2, with a 403 whose only discriminant is its
+   message ("Please migrate to the new publishing API"). That refusal means
+   the legacy inventory is empty, not unreadable: `pull` and `apply` read v2
+   only and note it on stderr. A legacy file in the catalog is then refused
+   (its product now lives in v2, and planning without it would delete that
+   v2 product) until `pull` rewrites it. Any other 403 still fails as a
+   permission error.
 9. **`convertRegionPrices` folds into pricing** (slice #368), not a
    standalone top-level command: **`subscriptions prices convert --price
    --currency`** derives per-region prices from one base price, printing

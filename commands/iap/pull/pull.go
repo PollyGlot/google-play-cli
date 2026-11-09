@@ -113,9 +113,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, iapcmd.Classify(pkg, err)
 	}
-	legacy, err := iap.ListInAppProducts(rc.Ctx, httpClient, pkg)
+	legacy, retired, err := iapcmd.ListLegacy(rc.Ctx, httpClient, pkg)
 	if err != nil {
-		return nil, iapcmd.Classify(pkg, err)
+		return nil, err
+	}
+	if retired {
+		rc.Notef(iapcmd.LegacyRetiredNote, pkg)
 	}
 	// Mirror semantics make pull destructive locally: refuse to erase a
 	// populated directory on an unexpectedly-empty live catalog (the
@@ -191,7 +194,9 @@ catalog: one <productId>.json per product under --dir (default
 legacy row is its pre-migration shadow). A legacy file is recognizable by its
 "sku" field; "gplay iap apply" writes the v2 model only and never edits a
 legacy product in place. Stale .json files are removed so the directory
-mirrors Play; non-.json files are never touched.
+mirrors Play; non-.json files are never touched. When Google has retired the
+legacy API for the app ("Please migrate to the new publishing API"), its whole
+catalog lives in the v2 model: pull reads v2 only and says so on stderr.
 
 --output json is a composite of the two verbatim list envelopes
 ({"oneTimeProducts":[...],"inappproduct":[...]}).`,
