@@ -37,13 +37,14 @@ const liveOffers = `{"oneTimeProductOffers":[
 ]}`
 
 type iapRT struct {
-	mu         sync.Mutex
-	calls      []string
-	urls       []string
-	bodies     map[string]string
-	v2Body     string
-	legacyBody string
-	offersBody string
+	mu           sync.Mutex
+	calls        []string
+	urls         []string
+	bodies       map[string]string
+	v2Body       string
+	legacyBody   string
+	legacyStatus int
+	offersBody   string
 }
 
 func (r *iapRT) serve(req *http.Request) (*http.Response, error) {
@@ -69,6 +70,9 @@ func (r *iapRT) serve(req *http.Request) (*http.Response, error) {
 	case strings.Contains(req.URL.Path, "/purchaseOptions/-/offers"):
 		return testkit.Response(http.StatusOK, orDefault(r.offersBody, liveOffers)), nil
 	case strings.Contains(req.URL.Path, "/inappproducts"):
+		if r.legacyStatus != 0 {
+			return testkit.Response(r.legacyStatus, r.legacyBody), nil
+		}
 		return testkit.Response(http.StatusOK, orDefault(r.legacyBody, liveLegacy)), nil
 	default:
 		return testkit.Response(http.StatusOK, orDefault(r.v2Body, liveV2)), nil
@@ -670,5 +674,50 @@ func assertExit(t *testing.T, err error, want int) {
 	}
 	if got := c.ExitCode(); got != want {
 		t.Errorf("exit = %d, want %d", got, want)
+	}
+}
+
+const migrationRefusal = `{"error":{"code":403,"message":"Please migrate to the new publishing API.","status":"PERMISSION_DENIED"}}`
+
+// v2OnlyCatalog mirrors liveV2 and liveOffers with no legacy file, as a pull
+// against an app whose legacy API is retired writes it.
+func v2OnlyCatalog(t *testing.T) string {
+	t.Helper()
+	return writeCatalog(t, map[string]string{
+		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+	})
+}
+
+// TestRun_legacyRetired_plansAgainstV2 covers #741: a retired legacy API is an
+// empty legacy inventory, so apply plans the v2 catalog instead of failing.
+func TestRun_legacyRetired_plansAgainstV2(t *testing.T) {
+	rt := &iapRT{legacyStatus: http.StatusForbidden, legacyBody: migrationRefusal}
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+	if _, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: v2OnlyCatalog(t)}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("a catalog matching live must not mutate; got %v", m)
+	}
+	if !strings.Contains(stderr.String(), "retired the legacy inappproducts API") {
+		t.Errorf("stderr %q should explain the v2-only read", stderr.String())
+	}
+}
+
+// TestRun_legacyRetired_legacyFile_refuses asserts a legacy-shaped file is a
+// usage error once the legacy API is retired: its product now lives in v2, and
+// planning without it would delete that v2 product.
+func TestRun_legacyRetired_legacyFile_refuses(t *testing.T) {
+	rt := &iapRT{legacyStatus: http.StatusForbidden, legacyBody: migrationRefusal}
+	rc := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: matchedCatalog(t), Confirm: true})
+	assertExit(t, err, 2)
+	if !strings.Contains(err.Error(), "gplay iap pull") {
+		t.Errorf("refusal %q should point to gplay iap pull", err.Error())
+	}
+	if m := rt.mutations(); len(m) != 0 {
+		t.Errorf("refusal must not mutate; got %v", m)
 	}
 }

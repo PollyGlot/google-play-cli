@@ -3,6 +3,7 @@ package iap_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -177,5 +178,30 @@ func TestListInAppProducts_legacyTokenPaging(t *testing.T) {
 	}
 	if !strings.Contains(rt.Calls()[1].URL, "token=t2") {
 		t.Errorf("second url %q must carry the legacy token param", rt.Calls()[1].URL)
+	}
+}
+
+// TestListInAppProducts_migrationRefusal asserts the 403 Google returns once
+// it retired the legacy API for an app wraps ErrLegacyRetired (#741), while an
+// ordinary 403 stays a plain permission failure.
+func TestListInAppProducts_migrationRefusal(t *testing.T) {
+	cases := map[string]struct {
+		body    string
+		retired bool
+	}{
+		"migration refusal": {`{"error":{"code":403,"message":"Please migrate to the new publishing API.","status":"PERMISSION_DENIED"}}`, true},
+		"permission denied": {`{"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}`, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			rt := iapFake([]scripted{{http.StatusForbidden, tc.body}})
+			_, err := iap.ListInAppProducts(context.Background(), client(rt), "com.example.app")
+			if err == nil {
+				t.Fatal("want an error on a 403")
+			}
+			if got := errors.Is(err, iap.ErrLegacyRetired); got != tc.retired {
+				t.Errorf("errors.Is(err, ErrLegacyRetired) = %v, want %v (err: %v)", got, tc.retired, err)
+			}
+		})
 	}
 }

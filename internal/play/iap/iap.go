@@ -17,6 +17,7 @@ package iap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -345,10 +346,28 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchas
 	})
 }
 
+// ErrLegacyRetired reports that Google refuses the legacy inappproducts API
+// for this app and points to the v2 model instead (#741). The refusal is a
+// 403 that carries no discriminating reason, only its message, so the message
+// is the signal.
+var ErrLegacyRetired = errors.New("legacy inappproducts API retired by Google for this app")
+
+const legacyRetiredMessage = "migrate to the new publishing api"
+
 // ListInAppProducts reads the complete legacy inappproducts catalog, following
 // the legacy tokenPagination envelope to completion. Read-only: gplay never
-// writes the legacy surface in place (ADR-0041 §8).
+// writes the legacy surface in place (ADR-0041 §8). When Google refuses the
+// legacy API for the app, the error wraps ErrLegacyRetired.
 func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]LegacyItem, error) {
+	items, err := listInAppProducts(ctx, hc, pkg)
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden && strings.Contains(strings.ToLower(apiErr.Message), legacyRetiredMessage) {
+		return nil, errors.Join(ErrLegacyRetired, err)
+	}
+	return items, err
+}
+
+func listInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]LegacyItem, error) {
 	items, _, err := api.Paginate(api.Pager{Op: opLegacyList, Target: pkg, What: "inappproducts.list"},
 		func(token string, _ int) ([]LegacyItem, string, error) {
 			var q url.Values
