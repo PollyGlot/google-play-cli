@@ -105,6 +105,7 @@ var flagVocabulary = map[string]string{
 
 	// Safety and execution control.
 	"dry-run":              "plan and print without writing",
+	"plan":                 "read the live state and show what a write would change, without writing",
 	"confirm":              "consent to an irreversible or production-impacting write",
 	"grant-admin":          "consent to granting admin permissions",
 	"keep-edit-on-failure": "keep the Edit open on failure for debugging",

@@ -172,6 +172,10 @@ type Result struct {
 	// the tracks.update body the command emits already shows the track
 	// without them.
 	SupersededVersionCodes []int `json:"-"`
+
+	// Plan is set only by a state transition run with StateOpts.Plan: what
+	// the transition would do, read from the live track, nothing written.
+	Plan *TransitionPlan `json:"-"`
 }
 
 // Artifact is one file Upload sends into the Edit. Format selects its upload

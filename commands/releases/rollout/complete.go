@@ -24,12 +24,16 @@ rollout: the release reaches every user, and carries no userFraction.
 A track holds one completed release at most, so the release this replaces
 (the previous full rollout) leaves the track in the same update, as in the
 Play Console; its versionCodes are reported as superseded. Halted, other
-inProgress and draft releases on the track are kept unchanged.
+inProgress and draft releases on the track are kept unchanged. --plan reads
+the track and names that release before anything is sent.
 
 Targets the latest release on the track; when two releases coexist pass
 --version-code N or --release-name <name> to pick one.`,
 		RunComplete)
-	cmd.Example = `  # Ramp the production rollout to 100% of users
+	cmd.Example = `  # See which release a full rollout would replace, without sending it
+  gplay releases complete --track production --plan
+
+  # Ramp the production rollout to 100% of users
   gplay releases complete --track production --confirm
 
   # Complete one of two coexisting releases on a Closed track

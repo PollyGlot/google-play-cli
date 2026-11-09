@@ -20,6 +20,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/edits"
+	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
@@ -39,6 +41,7 @@ type Input struct {
 	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
+	Plan              bool
 }
 
 // Payload satisfies output.Renderable for the resulting state-transition
@@ -48,6 +51,13 @@ type Payload struct {
 }
 
 func (p Payload) Renderers() output.Renderers {
+	if plan := p.Result.Plan; plan != nil {
+		return output.Renderers{
+			Table:    func(w io.Writer) error { return renderPlan(w, plan, "%s:%s%s\n") },
+			JSON:     func(w io.Writer) error { return output.WriteJSON(w, planJSON{Plan: true, TransitionPlan: plan}) },
+			Markdown: func(w io.Writer) error { return renderPlan(w, plan, "- **%[1]s**: %[3]s\n") },
+		}
+	}
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p.Result) },
 		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result) },
@@ -85,6 +95,61 @@ func renderTable(w io.Writer, r *orchestrator.Result) error {
 		}
 	}
 	return nil
+}
+
+// planJSON is the --plan JSON shape: gplay-authored, never a tracks.update
+// body, and marked "plan": true so a script cannot mistake it for a result.
+type planJSON struct {
+	Plan bool `json:"plan"`
+	*orchestrator.TransitionPlan
+}
+
+// renderPlan writes one labelled line per plan field through line, a format
+// given the label, the table padding after its colon, and the value.
+func renderPlan(w io.Writer, p *orchestrator.TransitionPlan, line string) error {
+	becomes := p.Status
+	if showsUserFraction(p.UserFraction) {
+		becomes += fmt.Sprintf(", userFraction %v", p.UserFraction)
+	}
+	rows := [][2]string{
+		{"track", p.Track},
+		{"target", describeRelease(p.Target)},
+		{"becomes", becomes},
+		{"superseded", describeReleases(p.Superseded)},
+		{"kept", describeReleases(p.Kept)},
+	}
+	for _, r := range rows {
+		pad := strings.Repeat(" ", 11-len(r[0]))
+		if _, err := fmt.Fprintf(w, line, r[0], pad, r[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// describeRelease renders a release as "2.4.0 [versionCodes 143], inProgress,
+// userFraction 0.2".
+func describeRelease(r tracks.Release) string {
+	name := r.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+	s := fmt.Sprintf("%s [versionCodes %s], %s", name, strings.Join(r.VersionCodes, ", "), r.Status)
+	if showsUserFraction(r.UserFraction) {
+		s += fmt.Sprintf(", userFraction %v", r.UserFraction)
+	}
+	return s
+}
+
+func describeReleases(rs []tracks.Release) string {
+	if len(rs) == 0 {
+		return "none"
+	}
+	s := make([]string, len(rs))
+	for i, r := range rs {
+		s[i] = describeRelease(r)
+	}
+	return strings.Join(s, "; ")
 }
 
 // joinCodes renders versionCodes as "140, 141".
@@ -144,6 +209,9 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 	if err != nil {
 		return nil, err
 	}
+	if in.Plan && in.DryRun {
+		return nil, exit.Usagef("--plan and --dry-run are mutually exclusive: --dry-run stays offline, --plan reads the live track")
+	}
 	if in.Track == "" {
 		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
@@ -170,6 +238,12 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		}
 	}
 
+	// A plan commits nothing, so the commit flags have nothing to apply to:
+	// resolving them would warn that the change is staged in the pinned Edit.
+	var commit edits.CommitOptions
+	if !in.Plan {
+		commit = in.Commit.For(rc, explicitEditID)
+	}
 	result, err := call(rc.Ctx, httpClient, orchestrator.StateOpts{
 		Package:           pkg,
 		Track:             in.Track,
@@ -178,15 +252,20 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		UserFraction:      userFraction,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
-		Commit:            in.Commit.For(rc, explicitEditID),
+		Commit:            commit,
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
+		Plan:              in.Plan,
 	})
 	if err != nil {
 		return nil, err
 	}
+	if in.Plan {
+		rc.Notef("plan only: nothing was sent; run again without --plan to apply")
+		return Payload{Result: result}, nil
+	}
 	// DESIGN §8: a committed transition prints one ✓ line on stderr (never on a
-	// --dry-run). userFraction is shown only when status is inProgress.
+	// --dry-run or a --plan). userFraction is shown only when status is inProgress.
 	if !in.DryRun {
 		extra := ""
 		if result.Status == "inProgress" {
@@ -227,6 +306,8 @@ func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "required to roll out / resume / complete a release on production (reaches real users)")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the transition without any HTTP call")
+	cmd.Flags().BoolVar(&in.Plan, "plan", false, "read the live track and show the release this targets, the state it ends in, and the releases it supersedes or keeps, without changing anything (needs an Account)")
+	kernel.ExperimentalFlag(cmd, "plan")
 }
 
 // newStateCommand builds a cobra command for a no-extra-flags verb (halt /
@@ -270,12 +351,16 @@ Status becomes inProgress if it wasn't already.
 
 Targets the latest release on the track; when two releases coexist (e.g.
 inProgress + halted) pass --version-code N or --release-name <name> to pick
-one, otherwise the command refuses rather than guess.`,
+one, otherwise the command refuses rather than guess. --plan reads the
+track and shows that choice without changing anything.`,
 		Example: `  # Widen the production rollout to 20% of users
   gplay releases rollout --track production --staged 0.2 --confirm
 
   # Preview the change on one of two coexisting releases
-  gplay releases rollout --track production --staged 0.5 --version-code 1042 --dry-run`,
+  gplay releases rollout --track production --staged 0.5 --version-code 1042 --dry-run
+
+  # Read the track first: which release moves to 50%, which stay as they are
+  gplay releases rollout --track production --staged 0.5 --plan`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
