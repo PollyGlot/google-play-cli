@@ -41,7 +41,7 @@ vet:
 
 # Same file list as the "shellcheck install.sh" step of ci.yml.
 shellcheck:
-	shellcheck install.sh scripts/install-test.sh scripts/live-smoke.sh
+	shellcheck install.sh scripts/install-test.sh
 
 required-files:
 	@bash scripts/required-files.sh
