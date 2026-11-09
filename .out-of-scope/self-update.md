@@ -20,8 +20,8 @@ binary replaces itself, `brew` tracks a version that no longer exists on disk.
 In CI the pipeline pins the version, and a silent in-place upgrade is exactly
 what a pin forbids.
 
-The other distribution channels named in the same request (Scoop, Chocolatey,
-APT/RPM) stay open on that issue; only `self update` is out of scope here.
+The other distribution channels named in the same request are out of scope
+too, see [extra-distribution-channels.md](extra-distribution-channels.md).
 
 ## Prior requests
 
