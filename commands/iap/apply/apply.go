@@ -333,9 +333,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	for _, it := range items {
 		liveV2[it.ProductID] = it.Raw
 	}
-	liveLegacy, err := iap.ListInAppProducts(rc.Ctx, httpClient, pkg)
+	liveLegacy, retired, err := iapcmd.ListLegacy(rc.Ctx, httpClient, pkg)
 	if err != nil {
-		return nil, iapcmd.Classify(pkg, err)
+		return nil, err
+	}
+	if retired {
+		if len(localLegacy) > 0 {
+			return nil, exit.Usagef("catalog %q holds %d legacy file(s) (sku field) while Google retired the legacy inappproducts API for %q: its products now live in the v2 model; run gplay iap pull to rewrite the catalog in the v2 schema (it mirrors the live catalog into --dir, so commit or set aside local edits first), then re-apply them", dir, len(localLegacy), pkg)
+		}
+		rc.Notef(iapcmd.LegacyRetiredNote, pkg)
 	}
 
 	// Mis-pointed --dir guard (the subscriptions apply stance), against the
@@ -553,7 +559,10 @@ rewrite its file in the v2 schema (productId instead of sku) and apply with
 --migrate: the promotion to v2 is a ONE-WAY door (the product can never
 return to inappproducts), so it refuses without the flag (exit 3, naming it)
 and shows as a distinct "migrate" op in the plan. A legacy product shadowed
-by a live v2 product of the same ID is owned by the v2 file.
+by a live v2 product of the same ID is owned by the v2 file. When Google has
+retired the legacy API for the app ("Please migrate to the new publishing
+API"), the live catalog is v2 only: a note says so on stderr, and a legacy
+file in --dir is refused (exit 2) until gplay iap pull rewrites it in v2.
 
 A purchase option's or an offer's "state" field is reconciled through the
 dedicated state verbs, never a patch (omit the field to leave state
