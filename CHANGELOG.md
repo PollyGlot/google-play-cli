@@ -5,6 +5,20 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0](https://github.com/PollyGlot/google-play-cli/compare/v2.3.3...v2.4.0) (2026-11-09)
+
+
+### Features
+
+* **releases:** cover system APK variants, the last parked Android Publisher methods ([#750](https://github.com/PollyGlot/google-play-cli/issues/750)) ([c6b2d34](https://github.com/PollyGlot/google-play-cli/commit/c6b2d348622c2ab060ed635be8986596edeee061))
+* **releases:** preview a transition from the live track with --plan ([#754](https://github.com/PollyGlot/google-play-cli/issues/754)) ([f79dea8](https://github.com/PollyGlot/google-play-cli/commit/f79dea838cfeaa64c7ce5b0971dc2be14c508168))
+
+
+### Bug Fixes
+
+* **iap:** pull and apply read v2 only when Google retired the legacy API ([#748](https://github.com/PollyGlot/google-play-cli/issues/748)) ([70cd0e3](https://github.com/PollyGlot/google-play-cli/commit/70cd0e30467c76cfbfab215513bace7c64e10c4c))
+* **releases:** let --plan run under GPLAY_READONLY like --dry-run ([#755](https://github.com/PollyGlot/google-play-cli/issues/755)) ([1de99c4](https://github.com/PollyGlot/google-play-cli/commit/1de99c434c31506498bdd3d09536f954bbfde082))
+
 ## [2.3.3](https://github.com/PollyGlot/google-play-cli/compare/v2.3.2...v2.3.3) (2026-11-02)
 
 
