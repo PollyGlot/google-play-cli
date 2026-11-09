@@ -147,6 +147,10 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.reviews.get", Commands: []string{"reviews view"}},
 	{MethodID: "androidpublisher.reviews.list", Commands: []string{"reviews list"}},
 	{MethodID: "androidpublisher.reviews.reply", Commands: []string{"reviews reply"}},
+	{MethodID: "androidpublisher.systemapks.variants.create", Commands: []string{"releases system-apks create"}},
+	{MethodID: "androidpublisher.systemapks.variants.download", Commands: []string{"releases system-apks download"}, Note: "binary body written to a file (ADR-0034)"},
+	{MethodID: "androidpublisher.systemapks.variants.get", Commands: []string{"releases system-apks view"}},
+	{MethodID: "androidpublisher.systemapks.variants.list", Commands: []string{"releases system-apks list"}},
 
 	// --- androidpublisher: alternative app stores (DMA) -----------------
 	{MethodID: "androidpublisher.appstoreappsreview.createappstorehostedapp", Commands: []string{"appstore create"}},

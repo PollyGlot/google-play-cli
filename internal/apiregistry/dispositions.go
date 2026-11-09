@@ -306,25 +306,4 @@ var redundancies = []Redundant{
 // parkings is ordered by method id too. Every entry points at an open
 // `type:parking` issue: the decision lives there, this list only makes the
 // coverage row point at it.
-var parkings = []Parked{
-	{
-		MethodID: "androidpublisher.systemapks.variants.create",
-		Issue:    296,
-		Reason:   "system APK variants are preload/OEM system-image material",
-	},
-	{
-		MethodID: "androidpublisher.systemapks.variants.download",
-		Issue:    296,
-		Reason:   "system APK variants are preload/OEM system-image material",
-	},
-	{
-		MethodID: "androidpublisher.systemapks.variants.get",
-		Issue:    296,
-		Reason:   "system APK variants are preload/OEM system-image material",
-	},
-	{
-		MethodID: "androidpublisher.systemapks.variants.list",
-		Issue:    296,
-		Reason:   "system APK variants are preload/OEM system-image material",
-	},
-}
+var parkings = []Parked{}
