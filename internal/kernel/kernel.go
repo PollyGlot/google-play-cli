@@ -256,13 +256,13 @@ type Inputs struct {
 	// Readonly to enforce the GPLAY_READONLY policy (ADR-0024).
 	Mutating bool
 
-	// DryRun mirrors the command's --dry-run flag (false when the command has
-	// none). A --dry-run of a mutating command never writes, so it is exempt
-	// from the read-only refusal.
-	DryRun bool
+	// Preview is set when the command runs with --dry-run or --plan (false
+	// when it has neither). Neither writes, so a mutating command run either
+	// way is exempt from the read-only refusal.
+	Preview bool
 
 	// Readonly is the resolved GPLAY_READONLY environment policy (FromCobra
-	// reads the env). When true, a mutating, non-dry-run command is refused
+	// reads the env). When true, a mutating command without Preview is refused
 	// before credential resolution and any network I/O.
 	Readonly bool
 
@@ -417,14 +417,14 @@ func Run(boot Boot, in Inputs, fn func(*RunContext) (output.Renderable, error)) 
 	if err != nil {
 		return err
 	}
-	// GPLAY_READONLY policy (ADR-0024): refuse a mutating, non-dry-run command
+	// GPLAY_READONLY policy (ADR-0024): refuse a mutating command without Preview
 	// here, after the local config/format resolution buildRunContext does, but
 	// BEFORE fn runs, so before any credential bytes are loaded (EnsureAccount
 	// is lazy, reached only via fn → AuthedClient) and before any network I/O.
 	// The authority boundary is the environment, not the flags fn would parse.
-	if in.Readonly && in.Mutating && !in.DryRun {
+	if in.Readonly && in.Mutating && !in.Preview {
 		refusal := exit.Policyf(
-			"refused by %s: this command mutates Google Play state and is blocked by the read-only environment policy. This is not resolvable by adding a flag: unset %s to allow writes, or run with --dry-run to preview.",
+			"refused by %s: this command mutates Google Play state and is blocked by the read-only environment policy. This is not resolvable by adding a flag: unset %s to allow writes, or run with --dry-run (or --plan where offered) to preview.",
 			EnvReadonly, EnvReadonly)
 		rc.maybeWriteErrorEnvelope(refusal)
 		return refusal
@@ -1020,9 +1020,10 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 	acctFlag, _ := cmd.Flags().GetString("account")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	retry, _ := cmd.Flags().GetInt("retry")
-	// GetBool returns (false, err) when the command has no --dry-run flag; the
-	// error is ignored on purpose: "no dry-run flag" means "not a dry run".
+	// GetBool returns (false, err) when the command has no such flag; the
+	// error is ignored on purpose: no flag means no preview.
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	plan, _ := cmd.Flags().GetBool("plan")
 	return Inputs{
 		Ctx:      cmd.Context(),
 		Format:   output.Format(format),
@@ -1030,7 +1031,7 @@ func FromCobra(cmd *cobra.Command, format string) Inputs {
 		Timeout:  timeout,
 		Retry:    retry,
 		Mutating: IsMutating(cmd),
-		DryRun:   dryRun,
+		Preview:  dryRun || plan,
 		Readonly: envReadonlyEnforced(),
 		Scope:    ScopeFor(cmd),
 		Resolver: resolver.Inputs{

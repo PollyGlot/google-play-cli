@@ -813,8 +813,9 @@ model's flag choices:
   credential resolution and any network I/O, regardless of the flags passed.
   Exit 4 is distinct from exit 3 on purpose: it is **not** resolvable by adding
   a flag (the message says so); the caller must change the environment.
-- **Read commands and `--dry-run` of mutating commands still run**, so
-  dashboards and agents can observe and plan with a production credential.
+- **Read commands, and mutating commands run with `--dry-run` or `--plan`
+  (ADR-0052), still run**, so dashboards and agents can observe and plan with a
+  production credential.
 - Which commands mutate is a single registration-time annotation
   (`kernel.MarkMutating`), not an ad-hoc per-command check — see CONTRIBUTING.
 - Scope: the policy blocks **Google Play mutations**. Local-only operations

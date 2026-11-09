@@ -44,7 +44,8 @@ Add `GPLAY_READONLY`, read at kernel boot:
    `--confirm` — exactly the bypass the policy exists to prevent. The message
    names `GPLAY_READONLY`.
 5. **Reads and `--dry-run` still run.** Read commands are never marked; a
-   `--dry-run` of a mutating command never writes, so it is exempt. Dashboards
+   `--dry-run` of a mutating command never writes, so it is exempt, as is a
+   `--plan` (ADR-0052), which reads and never writes. Dashboards
    and agents keep working with a production credential.
 6. **Scope: Google Play mutations.** Local-only operations — credential
    management (`auth login`/`logout`) and the local app registry — are not Play

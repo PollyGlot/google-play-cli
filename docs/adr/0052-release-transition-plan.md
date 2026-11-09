@@ -30,6 +30,8 @@ The four state transitions gain `--plan`, an online, read-only preview:
   `userFraction`, `superseded`, `kept`), never a `tracks.update` body, and
   carries `"plan": true`.
 - `--plan` with `--dry-run` is a usage error (exit 2).
+- Like `--dry-run`, `--plan` runs under `GPLAY_READONLY` (ADR-0024): it
+  writes nothing.
 - The flag is experimental on otherwise frozen commands
   (`kernel.ExperimentalFlag`), so its output can still change.
 
