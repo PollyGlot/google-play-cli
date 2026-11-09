@@ -8,6 +8,7 @@
 package iapcmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,6 +70,25 @@ func Classify(pkg string, err error) error {
 	}
 	return err
 }
+
+// ListLegacy reads the live legacy catalog. When Google has retired the
+// legacy API for the app (#741), the whole one-time-product catalog lives in
+// the v2 model, so the legacy inventory is empty: it returns retired=true and
+// no error. Any other failure is classified as usual.
+func ListLegacy(ctx context.Context, hc *http.Client, pkg string) (items []iap.LegacyItem, retired bool, err error) {
+	items, err = iap.ListInAppProducts(ctx, hc, pkg)
+	if errors.Is(err, iap.ErrLegacyRetired) {
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, false, Classify(pkg, err)
+	}
+	return items, false, nil
+}
+
+// LegacyRetiredNote is the stderr note pull and apply print when ListLegacy
+// reports a retired legacy API.
+const LegacyRetiredNote = "Google retired the legacy inappproducts API for %q: its one-time-product catalog is read from the v2 model only"
 
 // IsLegacy reports whether a catalog file body is a legacy inappproducts
 // resource: recognizable by its `sku` field (the v2 resource carries

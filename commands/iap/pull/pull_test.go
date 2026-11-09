@@ -25,9 +25,10 @@ import (
 // iapLive holds the bodies the three list surfaces (v2 products, legacy
 // inappproducts, wildcard offers) answer with; serve routes a call to them.
 type iapLive struct {
-	v2Body     string
-	legacyBody string
-	offersBody string
+	v2Body       string
+	legacyBody   string
+	legacyStatus int
+	offersBody   string
 }
 
 func (l *iapLive) serve(c testkit.Call) (int, string, bool) {
@@ -35,6 +36,9 @@ func (l *iapLive) serve(c testkit.Call) (int, string, bool) {
 	case strings.Contains(c.Path, "/purchaseOptions/-/offers"):
 		return http.StatusOK, orBody(l.offersBody), true
 	case strings.Contains(c.Path, "/inappproducts"):
+		if l.legacyStatus != 0 {
+			return l.legacyStatus, l.legacyBody, true
+		}
 		return http.StatusOK, orBody(l.legacyBody), true
 	default:
 		return http.StatusOK, orBody(l.v2Body), true
@@ -198,4 +202,42 @@ func TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(victim, "coins100.json")); statErr == nil {
 		t.Error("coins100.json was written outside the checkout")
 	}
+}
+
+const migrationRefusal = `{"error":{"code":403,"message":"Please migrate to the new publishing API.","status":"PERMISSION_DENIED"}}`
+
+// TestRun_legacyRetired_pullsV2Only covers #741: when Google refuses the legacy
+// list with its migration message, pull writes the v2 catalog and says on
+// stderr why no legacy product was read, instead of failing on a 403.
+func TestRun_legacyRetired_pullsV2Only(t *testing.T) {
+	dir := t.TempDir()
+	live := &iapLive{
+		v2Body:       `{"oneTimeProducts":[{"productId":"coins100","packageName":"com.example.app","purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE"}]}]}`,
+		legacyStatus: http.StatusForbidden,
+		legacyBody:   migrationRefusal,
+	}
+	rc := newRC(t, testkit.NewFake(live.serve))
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+	if _, err := pullcmd.Run(rc, pullcmd.Input{Package: "com.example.app", Dir: dir}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "coins100.json")); err != nil {
+		t.Errorf("coins100.json must be written from the v2 catalog: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "retired the legacy inappproducts API") {
+		t.Errorf("stderr %q should explain the v2-only read", stderr.String())
+	}
+}
+
+// TestRun_legacyForbidden_stillFails asserts an ordinary 403 on the legacy
+// list keeps failing as a permission error (exit 11).
+func TestRun_legacyForbidden_stillFails(t *testing.T) {
+	live := &iapLive{
+		legacyStatus: http.StatusForbidden,
+		legacyBody:   `{"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}`,
+	}
+	rc := newRC(t, testkit.NewFake(live.serve))
+	_, err := pullcmd.Run(rc, pullcmd.Input{Package: "com.example.app", Dir: t.TempDir()})
+	assertExit(t, err, 11)
 }
