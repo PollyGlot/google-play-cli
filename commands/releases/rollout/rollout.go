@@ -20,6 +20,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
@@ -237,6 +238,12 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		}
 	}
 
+	// A plan commits nothing, so the commit flags have nothing to apply to:
+	// resolving them would warn that the change is staged in the pinned Edit.
+	var commit edits.CommitOptions
+	if !in.Plan {
+		commit = in.Commit.For(rc, explicitEditID)
+	}
 	result, err := call(rc.Ctx, httpClient, orchestrator.StateOpts{
 		Package:           pkg,
 		Track:             in.Track,
@@ -245,7 +252,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		UserFraction:      userFraction,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
-		Commit:            in.Commit.For(rc, explicitEditID),
+		Commit:            commit,
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
 		Plan:              in.Plan,

@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/rollout"
+	"github.com/PollyGlot/google-play-cli/internal/config"
+	"github.com/PollyGlot/google-play-cli/internal/config/configtest"
+	"github.com/PollyGlot/google-play-cli/internal/editpin"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
@@ -117,5 +120,30 @@ func TestRun_planWithDryRun_returnsExit2BeforeAnyHTTP(t *testing.T) {
 	assertExit(t, err, 2)
 	if touched(rt) {
 		t.Errorf("expected no HTTP, saw %v", apiCalls(rt))
+	}
+}
+
+// Inside a pinned Edit a plan reads in place and stages nothing, so a commit
+// flag passed with it must not be reported as staged in that Edit.
+func TestRunComplete_plan_pinnedEdit_readsInPlaceWithoutStagedWarning(t *testing.T) {
+	rt := newStateFake(stateAPI{trackGetResp: oneInProgressRelease})
+	stderr := confirmStderr(t, rt, func(rc *kernel.RunContext) error {
+		fsys := configtest.NewMemFS("/repo", "/home")
+		if err := editpin.Write(fsys, "/repo/.gplay", "com.example.app", "edit-pinned"); err != nil {
+			return err
+		}
+		rc.FS = fsys
+		rc.Resolved = &config.Resolved{ProjectSharedPath: "/repo/.gplay/config.json"}
+		in := rollout.Input{Package: "com.example.app", Track: "production", Plan: true}
+		in.Commit.ChangesNotSentForReview = true
+		_, err := rollout.RunComplete(rc, in)
+		return err
+	})
+	want := "GET /androidpublisher/v3/applications/com.example.app/edits/edit-pinned/tracks/production"
+	if got := apiCalls(rt); len(got) != 1 || got[0] != want {
+		t.Errorf("calls = %v, want only %q", got, want)
+	}
+	if strings.Contains(stderr, "staged in open edit") {
+		t.Errorf("stderr = %q, want no staged warning from a plan", stderr)
 	}
 }

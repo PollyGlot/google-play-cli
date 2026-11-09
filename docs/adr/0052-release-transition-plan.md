@@ -17,8 +17,9 @@ Public contract (ADR-0010, ADR-0042), and offline CI relies on it.
 The four state transitions gain `--plan`, an online, read-only preview:
 
 - It reads the track inside the pinned explicit Edit when there is one (so
-  it sees the changes staged there), else inside a read-only Edit that is
-  always discarded. It never sends `tracks.update` and never commits.
+  it sees the changes staged there), else inside a read-only Edit that it
+  discards, best effort, as `releases list` does (`edits.WithReadOnlyEdit`).
+  It never sends `tracks.update` and never commits.
 - It reports the target release, the status and fraction it would end with,
   and the releases it would supersede and keep. These come from the same
   `pickTargetRelease` and `superseded` the write path uses, so a plan cannot
