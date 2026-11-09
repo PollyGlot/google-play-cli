@@ -625,6 +625,10 @@ func TestMutatingRegistry_pinsWriteCommands(t *testing.T) {
 		{[]string{"releases", "expansion-files", "view"}, false},
 		{[]string{"releases", "generated", "list"}, false},
 		{[]string{"releases", "generated", "download"}, false},
+		{[]string{"releases", "system-apks", "create"}, true},
+		{[]string{"releases", "system-apks", "list"}, false},
+		{[]string{"releases", "system-apks", "view"}, false},
+		{[]string{"releases", "system-apks", "download"}, false},
 		{[]string{"releases", "artifacts", "list"}, false},
 
 		// tracks
@@ -867,7 +871,7 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"apps", "remove"}, false},
 
 		// releases: the core loop is frozen; the three side surfaces bolted on
-		// later (sharing, expansion-files, generated) are not.
+		// later (sharing, expansion-files, generated, system-apks) are not.
 		{[]string{"releases", "upload"}, false},
 		{[]string{"releases", "promote"}, false},
 		{[]string{"releases", "rollout"}, false},
@@ -882,6 +886,10 @@ func TestStabilityRegistry_pinsPublicContract(t *testing.T) {
 		{[]string{"releases", "expansion-files", "view"}, true},
 		{[]string{"releases", "generated", "list"}, true},
 		{[]string{"releases", "generated", "download"}, true},
+		{[]string{"releases", "system-apks", "create"}, true},
+		{[]string{"releases", "system-apks", "list"}, true},
+		{[]string{"releases", "system-apks", "view"}, true},
+		{[]string{"releases", "system-apks", "download"}, true},
 		{[]string{"releases", "artifacts", "list"}, true},
 
 		// tracks / testers: MVP surface, frozen.

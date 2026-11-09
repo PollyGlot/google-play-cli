@@ -32,14 +32,14 @@ worth shipping.
 
 | Service | Methods | ✅ called | ⚪ redundant | ⚫️ excluded | 🔴 parked | 🔴 uncovered |
 |---|---:|---:|---:|---:|---:|---:|
-| `androidpublisher` v3 | 145 | 95 | 31 | 15 | 4 | 0 |
+| `androidpublisher` v3 | 145 | 99 | 31 | 15 | 0 | 0 |
 | `playdeveloperreporting` v1beta1 | 25 | 25 | 0 | 0 | 0 | 0 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 | 0 | 0 |
 | `gamesManagement` v1management | 18 | 0 | 0 | 18 | 0 | 0 |
-| **Total** | **199** | **131** | **31** | **33** | **4** | **0** |
+| **Total** | **199** | **135** | **31** | **33** | **0** | **0** |
 
-Of the 166 admin methods (199 total minus the 33 excluded by nature), **131 are called**, **31 are redundant** with a called method, **4 are parked** behind an issue and **0 are uncovered**.
+Of the 166 admin methods (199 total minus the 33 excluded by nature), **135 are called**, **31 are redundant** with a called method, **0 are parked** behind an issue and **0 are uncovered**.
 
 ## `androidpublisher` v3 (145 methods)
 
@@ -182,10 +182,10 @@ Of the 166 admin methods (199 total minus the 33 excluded by nature), **131 are 
 | `androidpublisher.reviews.get` | ✅ | `gplay reviews view` |
 | `androidpublisher.reviews.list` | ✅ | `gplay reviews list` |
 | `androidpublisher.reviews.reply` | ✅ | `gplay reviews reply` |
-| `androidpublisher.systemapks.variants.create` | 🔴 | parked, [#296](https://github.com/PollyGlot/google-play-cli/issues/296): system APK variants are preload/OEM system-image material |
-| `androidpublisher.systemapks.variants.download` | 🔴 | parked, [#296](https://github.com/PollyGlot/google-play-cli/issues/296): system APK variants are preload/OEM system-image material |
-| `androidpublisher.systemapks.variants.get` | 🔴 | parked, [#296](https://github.com/PollyGlot/google-play-cli/issues/296): system APK variants are preload/OEM system-image material |
-| `androidpublisher.systemapks.variants.list` | 🔴 | parked, [#296](https://github.com/PollyGlot/google-play-cli/issues/296): system APK variants are preload/OEM system-image material |
+| `androidpublisher.systemapks.variants.create` | ✅ | `gplay releases system-apks create` |
+| `androidpublisher.systemapks.variants.download` | ✅ | `gplay releases system-apks download`; binary body written to a file (ADR-0034) |
+| `androidpublisher.systemapks.variants.get` | ✅ | `gplay releases system-apks view` |
+| `androidpublisher.systemapks.variants.list` | ✅ | `gplay releases system-apks list` |
 | `androidpublisher.users.create` | ✅ | `gplay team users add` |
 | `androidpublisher.users.delete` | ✅ | `gplay team users remove` |
 | `androidpublisher.users.list` | ✅ | `gplay team users list`, `gplay team users view`, `gplay team users add`, `gplay team grants list`; team users add --if-exists skip or update looks the member up before inviting (ADR-0050) |
