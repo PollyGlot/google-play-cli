@@ -275,6 +275,9 @@ func stateTransition(kind, productID, purchaseOptionID, offerID, declared, live 
 			return nil, exit.Usagef("%s %s declares state ACTIVE while live is CANCELLED: a cancelled offer never comes back; fix the state: field or declare a new offer", label, target)
 		}
 	case iap.StateInactive:
+		if live == iap.StateInactivePublished {
+			return nil, exit.Usagef("%s %s declares state INACTIVE while live is INACTIVE_PUBLISHED: Play migrated this option and it is already off sale; declare INACTIVE_PUBLISHED or omit the state: field", label, target)
+		}
 		if live != iap.StateActive {
 			return nil, exit.Usagef("%s %s declares state INACTIVE while live is %s: only an ACTIVE %s can be deactivated; fix the state: field or activate it first", label, target, live, label)
 		}

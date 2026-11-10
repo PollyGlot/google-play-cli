@@ -562,9 +562,9 @@ func TestRun_unreachableState_isUsageError(t *testing.T) {
 // INACTIVE_PUBLISHED, a purchase-option state Play sets only on automatically
 // migrated options and no verb reaches. Declared over itself it plans
 // nothing, and ACTIVE plans the usual activation. INACTIVE is refused before
-// any write (:deactivate needs an ACTIVE option), and so is declaring
-// INACTIVE_PUBLISHED over any other live state. internal/enumanchor records
-// the value as unhandled on the strength of this test.
+// any write, without the usual "activate it first" advice: following it would
+// put a migrated option back on sale. Declaring INACTIVE_PUBLISHED over any
+// other live state is refused too.
 func TestRun_inactivePublished_isNeverATarget(t *testing.T) {
 	const live = `{"oneTimeProducts":[
   {"productId":"coins100","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"INACTIVE_PUBLISHED"}]}
@@ -573,11 +573,12 @@ func TestRun_inactivePublished_isNeverATarget(t *testing.T) {
 	for name, tc := range map[string]struct {
 		live, declared string
 		wantExit       int
+		wantMsg        string
 		wantMutations  []string
 	}{
 		"unchanged":          {live: live, declared: "INACTIVE_PUBLISHED"},
 		"activate":           {live: live, declared: "ACTIVE", wantMutations: []string{batchStates}},
-		"deactivate refused": {live: live, declared: "INACTIVE", wantExit: 2},
+		"deactivate refused": {live: live, declared: "INACTIVE", wantExit: 2, wantMsg: "already off sale"},
 		"declared over live": {live: liveV2, declared: "INACTIVE_PUBLISHED", wantExit: 2},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -589,6 +590,9 @@ func TestRun_inactivePublished_isNeverATarget(t *testing.T) {
 			_, err := applycmd.Run(newRC(t, rt), applycmd.Input{Package: "com.example.app", Dir: dir})
 			if tc.wantExit != 0 {
 				assertExit(t, err, tc.wantExit)
+				if !strings.Contains(err.Error(), tc.wantMsg) || strings.Contains(err.Error(), "activate it first") {
+					t.Errorf("error = %q, want %q and no activation advice", err, tc.wantMsg)
+				}
 			} else if err != nil {
 				t.Fatalf("Run: %v", err)
 			}

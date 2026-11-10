@@ -68,12 +68,15 @@ var (
 // share DRAFT, ACTIVE and INACTIVE. ACTIVE, INACTIVE and CANCELLED are the
 // lifecycle targets a catalog file may declare (each maps to one unary verb in
 // SetOfferState); no verb reaches DRAFT, the state of a resource that has
-// never been activated.
+// never been activated. Play alone sets StateInactivePublished, on purchase
+// options it migrated automatically: off sale, but still exposed through the
+// Play Billing Library.
 const (
-	StateDraft     = "DRAFT"
-	StateActive    = "ACTIVE"
-	StateInactive  = "INACTIVE"
-	StateCancelled = "CANCELLED"
+	StateDraft             = "DRAFT"
+	StateActive            = "ACTIVE"
+	StateInactive          = "INACTIVE"
+	StateCancelled         = "CANCELLED"
+	StateInactivePublished = "INACTIVE_PUBLISHED"
 )
 
 const listPageSize = 100
