@@ -191,10 +191,7 @@ func anchors(t *testing.T) []anchor {
 		{
 			goList: "iap.State*",
 			src:    property{"OneTimeProductPurchaseOption", "state"},
-			code:   []string{iap.StateDraft, iap.StateActive, iap.StateInactive},
-			unhandled: map[string]string{
-				"INACTIVE_PUBLISHED": "set by Play on migrated options only, never a target; iap apply behavior pinned by TestRun_inactivePublished_isNeverATarget",
-			},
+			code:   []string{iap.StateDraft, iap.StateActive, iap.StateInactive, iap.StateInactivePublished},
 		},
 		{
 			goList: "appstorecatalog.UpdateType*",
