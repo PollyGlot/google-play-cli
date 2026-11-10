@@ -123,6 +123,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, &dirError{dir: dir, cause: err}
 	}
+	retired, err := imagetree.Retired(dir)
+	if err != nil {
+		return nil, &dirError{dir: dir, cause: err}
+	}
+	for _, p := range retired {
+		rc.Warnf("%s", imagetree.RetiredMessage(p))
+	}
 
 	if problems := imagevalidate.Validate(tr); len(problems) > 0 {
 		return nil, &ValidationError{Problems: problems}

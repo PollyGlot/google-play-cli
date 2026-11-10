@@ -62,13 +62,10 @@ const (
 )
 
 // rules is the canonical, versioned rule table (see RulesVersion / RulesDoc).
-// promoGraphic carries no exact-dimension rule: ADR-0013 §4 does not fix one
-// , so only its format, byte cap, and count are checked.
 var rules = map[images.Type]rule{
 	images.Icon:                 {exactW: 512, exactH: 512, maxCount: 1, maxBytes: 1 * mib},
 	images.FeatureGraphic:       {exactW: 1024, exactH: 500, maxCount: 1, maxBytes: 15 * mib},
 	images.TvBanner:             {exactW: 1280, exactH: 720, maxCount: 1, maxBytes: 15 * mib},
-	images.PromoGraphic:         {maxCount: 1, maxBytes: 15 * mib},
 	images.PhoneScreenshots:     {screenshot: true, maxCount: 8, maxBytes: 8 * mib},
 	images.SevenInchScreenshots: {screenshot: true, maxCount: 8, maxBytes: 8 * mib},
 	images.TenInchScreenshots:   {screenshot: true, maxCount: 8, maxBytes: 8 * mib},

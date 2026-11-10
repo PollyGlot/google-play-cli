@@ -241,12 +241,12 @@ func filterLocales(local imagetree.Tree, allow []string) []string {
 	return out
 }
 
-// filterTypes returns the 9 image types restricted to the --type allow-list
+// filterTypes returns the 8 image types restricted to the --type allow-list
 // (empty = all), in canonical order. An unknown --type value is silently
 // dropped (the command validates the flag and refuses unknown types upfront).
 func filterTypes(allow []string) []images.Type {
 	allowSet := toSet(allow)
-	out := make([]images.Type, 0, 9)
+	out := make([]images.Type, 0, len(images.Types()))
 	for _, ty := range images.Types() {
 		if len(allowSet) == 0 || allowSet[string(ty)] {
 			out = append(out, ty)

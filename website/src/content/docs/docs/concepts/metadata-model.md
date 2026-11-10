@@ -70,8 +70,10 @@ The images API has no caller-assigned keys: Google identifies each image by
 a server-assigned ID and a SHA-256 of its content. So `metadata images
 apply` reconciles each **slot** (a `(locale, type)` pair) by content:
 
-- **Singular slots** (`icon`, `featureGraphic`, `tvBanner`, `promoGraphic`)
-  hold one file, named by type.
+- **Singular slots** (`icon`, `featureGraphic`, `tvBanner`) hold one file,
+  named by type. Google removed `promoGraphic` from the API, so a
+  `promoGraphic` file is not uploaded: `apply` and `validate` print a warning
+  that names it.
 - **Gallery slots** (`phoneScreenshots`, `sevenInchScreenshots`,
   `tenInchScreenshots`, `tvScreenshots`, `wearScreenshots`) are directories
   whose files, **sorted by filename, define the display order** (the API

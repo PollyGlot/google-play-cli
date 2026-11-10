@@ -14,13 +14,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestRun_concurrentListKeepsSlotOrder: the 9 x L images.list reads run
+// TestRun_concurrentListKeepsSlotOrder: the 8 x L images.list reads run
 // fanout.Limit at a time and answer in a scrambled order, yet the slots come
 // out in (sorted locale, canonical type) order, the order a serial walk gives.
 func TestRun_concurrentListKeepsSlotOrder(t *testing.T) {
 	locales := []string{"de-DE", "en-US", "es-ES", "fr-FR", "it-IT"}
 	// Every slot but tvBanner holds one image, so an ordering slip anywhere in
-	// the 9 x 5 grid shows.
+	// the 8 x 5 grid shows.
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):

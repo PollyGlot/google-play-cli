@@ -3,7 +3,7 @@
 // tree on disk, under each locale's images/ sub-directory, alongside the text
 // Listing `.txt` files. It reads ONLY from Play, then writes additively:
 // resolve --package/--dir, open a read-only Edit, enumerate the app's locales,
-// list each of the 9 image slots, download each image's bytes from its API
+// list each of the 8 image slots, download each image's bytes from its API
 // url, and hand the resulting imagetree.Tree to imagetree.Write. The Edit is
 // opened and discarded via edits.WithReadOnlyEdit, never committed.
 //
@@ -258,7 +258,7 @@ func (e *imageTooLargeError) Error() string {
 }
 
 // appLocales returns the app's locale codes (those carrying a Listing), sorted,
-// inside the already-open Edit: the enumeration domain for the 9 image types.
+// inside the already-open Edit: the enumeration domain for the 8 image types.
 func appLocales(rc *kernel.RunContext, hc *http.Client, pkg, editID string) ([]string, error) {
 	parsed, _, err := listings.List(rc.Ctx, hc, pkg, editID)
 	if err != nil {

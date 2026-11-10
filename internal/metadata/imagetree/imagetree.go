@@ -7,7 +7,7 @@
 //
 // Disk layout (mirrors `fastlane supply`, minus the `android/` segment):
 //
-//	<dir>/<locale>/images/<type>.<ext>          (singular: icon, featureGraphic, tvBanner, promoGraphic)
+//	<dir>/<locale>/images/<type>.<ext>          (singular: icon, featureGraphic, tvBanner)
 //	<dir>/<locale>/images/<type>/1.<ext>…N.<ext> (gallery: phone/seven/ten-inch/tv/wear screenshots)
 //
 // The codec owns the ADR-0013 "missing == empty" rule on disk: an absent or
@@ -304,6 +304,55 @@ func readLocale(root, imgDir string) (map[images.Type][][]byte, error) {
 		slots[ty] = [][]byte{data}
 	}
 	return slots, nil
+}
+
+// Retired returns the image files under dir that name a slot Google removed
+// from AppImageType (images.Retired), joined onto dir, in sorted order:
+// `<dir>/en-US/images/promoGraphic.png`. Read skips them like any other
+// unrecognized file, so nothing would otherwise tell the operator that a file
+// carried over from a fastlane supply tree is no longer managed; the commands
+// that read a tree warn with this list (WarnRetired). An absent dir yields
+// none.
+func Retired(dir string) ([]string, error) {
+	locales, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []string
+	for _, l := range locales {
+		if !l.IsDir() {
+			continue
+		}
+		entries, err := os.ReadDir(filepath.Join(dir, l.Name(), imagesSubdir))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		for _, e := range entries {
+			stem := e.Name()
+			if !e.IsDir() {
+				var ext string
+				if stem, ext = splitExt(e.Name()); !recognizedExts[ext] {
+					continue
+				}
+			}
+			if images.Retired(stem) {
+				out = append(out, filepath.Join(dir, l.Name(), imagesSubdir, e.Name()))
+			}
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// RetiredMessage is the warning a command prints for one Retired path.
+func RetiredMessage(path string) string {
+	return path + ": not an image type Play accepts any more (Google removed it from the API's AppImageType), so gplay ignores it; delete the file"
 }
 
 // writeContained is os.WriteFile with the containment check in front of it,

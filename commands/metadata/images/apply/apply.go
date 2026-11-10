@@ -156,13 +156,20 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// silently applies nothing.
 	for _, t := range in.Types {
 		if _, ok := images.ParseType(t); !ok {
-			return nil, exit.Usagef("unknown --type %q (want one of: icon, featureGraphic, tvBanner, promoGraphic, phoneScreenshots, sevenInchScreenshots, tenInchScreenshots, tvScreenshots, wearScreenshots)", t)
+			return nil, exit.Usagef("unknown --type %q (want one of: %s)", t, images.Names())
 		}
 	}
 
 	local, err := imagetree.Read(dir)
 	if err != nil {
 		return nil, &dirError{dir: dir, cause: err}
+	}
+	retired, err := imagetree.Retired(dir)
+	if err != nil {
+		return nil, &dirError{dir: dir, cause: err}
+	}
+	for _, p := range retired {
+		rc.Warnf("%s", imagetree.RetiredMessage(p))
 	}
 
 	// Refuse a --locale absent from the on-disk tree, mirroring the --type
