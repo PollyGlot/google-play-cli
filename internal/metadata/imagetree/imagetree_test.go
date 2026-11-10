@@ -259,3 +259,55 @@ func summarize(tr imagetree.Tree) map[string]map[string]int {
 	}
 	return out
 }
+
+// TestRead_retiredSlotIsReportedNotRead asserts a promoGraphic file (common in
+// a fastlane supply tree) never becomes a slot, since Play refuses the type,
+// and that Retired names it so the commands can warn rather than drop it
+// silently. A same-named directory is reported too; other files are not.
+func TestRead_retiredSlotIsReportedNotRead(t *testing.T) {
+	dir := t.TempDir()
+	imgDir := filepath.Join(dir, "en-US", "images")
+	if err := os.MkdirAll(filepath.Join(dir, "fr-FR", "images", "promoGraphic"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(imgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{
+		"promoGraphic.png": pngBytes("promo"),
+		"promoGraphic.txt": []byte("not an image"),
+		"icon.png":         pngBytes("icon"),
+	} {
+		if err := os.WriteFile(filepath.Join(imgDir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tr, err := imagetree.Read(dir)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if got := summarize(tr); !reflect.DeepEqual(got, map[string]map[string]int{"en-US": {"icon": 1}}) {
+		t.Errorf("Read = %v, want only the en-US icon", got)
+	}
+
+	got, err := imagetree.Retired(dir)
+	if err != nil {
+		t.Fatalf("Retired: %v", err)
+	}
+	want := []string{
+		filepath.Join(dir, "en-US", "images", "promoGraphic.png"),
+		filepath.Join(dir, "fr-FR", "images", "promoGraphic"),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Retired = %v, want %v", got, want)
+	}
+}
+
+// TestRetired_absentDir_isEmptyNotError mirrors Read's missing == empty rule.
+func TestRetired_absentDir_isEmptyNotError(t *testing.T) {
+	got, err := imagetree.Retired(filepath.Join(t.TempDir(), "absent"))
+	if err != nil || len(got) != 0 {
+		t.Errorf("Retired(absent) = %v, %v; want none, nil", got, err)
+	}
+}

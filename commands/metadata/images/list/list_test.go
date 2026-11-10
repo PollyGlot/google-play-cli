@@ -1,7 +1,7 @@
 // Package imageslist_test exercises `gplay metadata images list` at the
 // kernel level: a RunContext built by hand, a RoundTripper injected via the
 // oauth2.HTTPClient context key, and Run invoked directly. The command is
-// READ-ONLY: it enumerates the 9 image types across the app's locales
+// READ-ONLY: it enumerates the 8 image types across the app's locales
 // inside one Edit that is opened and discarded, never committed. The
 // transport FAILS on any :commit, upload, or mutating DELETE.
 package imageslist_test
@@ -109,11 +109,11 @@ func twoLocales() (string, map[string]string) {
 	return listingsResp, slots
 }
 
-// TestRun_enumeratesNineTypesAcrossLocales is the tracer bullet: /token →
-// edits.insert → listings.list (locales) → 9 images.list per locale → Edit
+// TestRun_enumeratesEightTypesAcrossLocales is the tracer bullet: /token →
+// edits.insert → listings.list (locales) → 8 images.list per locale → Edit
 // discarded. The JSON output carries each non-empty slot with its verbatim
 // per-image sha256 (ADR-0003 pass-through), and never commits.
-func TestRun_enumeratesNineTypesAcrossLocales(t *testing.T) {
+func TestRun_enumeratesEightTypesAcrossLocales(t *testing.T) {
 	listingsResp, slots := twoLocales()
 	rt := newFake(t, imagesRT{editID: "edit-img", listingsResp: listingsResp, slots: slots})
 	rc := newRC(t, rt)
@@ -125,9 +125,16 @@ func TestRun_enumeratesNineTypesAcrossLocales(t *testing.T) {
 	if rt.TokenExchanges() == 0 {
 		t.Errorf("no /token exchange; calls=%v", calls(rt))
 	}
-	// 9 types × 2 locales = 18 slot reads.
-	if slotGETs(rt) != 18 {
-		t.Errorf("slot GETs = %d, want 18 (9 types × 2 locales)", slotGETs(rt))
+	// 8 types × 2 locales = 16 slot reads.
+	if slotGETs(rt) != 16 {
+		t.Errorf("slot GETs = %d, want 16 (8 types × 2 locales)", slotGETs(rt))
+	}
+	// promoGraphic left AppImageType; Play answers a read of it with a 400,
+	// which failed every list on a real app.
+	for _, c := range calls(rt) {
+		if strings.Contains(c, "/promoGraphic") {
+			t.Errorf("list read the retired promoGraphic slot: %q", c)
+		}
 	}
 	// Last call must be the Edit discard, never a :commit.
 	all := calls(rt)

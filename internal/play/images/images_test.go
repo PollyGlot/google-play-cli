@@ -15,10 +15,13 @@ import (
 	"image/jpeg"
 	"image/png"
 	"net/http"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
+	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
@@ -38,16 +41,17 @@ func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	return calls[0]
 }
 
-// TestTypes_modelsTheNineApiTypes asserts the package models exactly the 9
+// TestTypes_modelsTheEightApiTypes asserts the package models exactly the 8
 // AppImageType values the API exposes, with the singular/gallery split
-// explicit, and no Chromebook type (not in AppImageType).
-func TestTypes_modelsTheNineApiTypes(t *testing.T) {
+// explicit, no Chromebook type (never in AppImageType) and no promoGraphic
+// (removed from it: Play answers a request on that slot with a 400).
+func TestTypes_modelsTheEightApiTypes(t *testing.T) {
 	got := images.Types()
-	if len(got) != 9 {
-		t.Fatalf("got %d types, want 9: %v", len(got), got)
+	if len(got) != 8 {
+		t.Fatalf("got %d types, want 8: %v", len(got), got)
 	}
 	wantGallery := map[images.Type]bool{
-		images.Icon: false, images.FeatureGraphic: false, images.TvBanner: false, images.PromoGraphic: false,
+		images.Icon: false, images.FeatureGraphic: false, images.TvBanner: false,
 		images.PhoneScreenshots: true, images.SevenInchScreenshots: true, images.TenInchScreenshots: true,
 		images.TvScreenshots: true, images.WearScreenshots: true,
 	}
@@ -61,8 +65,66 @@ func TestTypes_modelsTheNineApiTypes(t *testing.T) {
 			t.Errorf("unexpected type %q in Types()", ty)
 		}
 	}
-	if _, ok := images.ParseType("chromebookScreenshots"); ok {
-		t.Errorf("chromebookScreenshots must not be an addressable type (not in AppImageType)")
+	for _, gone := range []string{"chromebookScreenshots", "promoGraphic"} {
+		if _, ok := images.ParseType(gone); ok {
+			t.Errorf("%s must not be an addressable type (not in AppImageType)", gone)
+		}
+	}
+	if !images.Retired("promoGraphic") {
+		t.Errorf(`Retired("promoGraphic") = false, want true`)
+	}
+	if images.Retired("icon") || images.Retired("chromebookScreenshots") {
+		t.Errorf("Retired must only name slots removed from AppImageType")
+	}
+}
+
+// TestTypes_matchDiscoveryEnum pins Types() to the imageType path-parameter
+// enum of every edits.images method in the embedded Discovery snapshot. The
+// type table is hand-written, so when Google removed promoGraphic from
+// AppImageType every images list/pull/apply kept requesting it and failed on
+// Play's 400. With this guard the weekly Discovery refresh turns red instead.
+func TestTypes_matchDiscoveryEnum(t *testing.T) {
+	idx, err := schemaindex.Embedded()
+	if err != nil {
+		t.Fatalf("Embedded: %v", err)
+	}
+	want := make([]string, 0, len(images.Types()))
+	for _, ty := range images.Types() {
+		want = append(want, string(ty))
+	}
+	sort.Strings(want)
+	for _, id := range []string{
+		"androidpublisher.edits.images.list",
+		"androidpublisher.edits.images.upload",
+		"androidpublisher.edits.images.delete",
+		"androidpublisher.edits.images.deleteall",
+	} {
+		m, ok := idx.Methods[id]
+		if !ok {
+			t.Errorf("%s: missing from the Schema index", id)
+			continue
+		}
+		var enum []string
+		found := false
+		for _, p := range m.Parameters {
+			if p.Name != "imageType" {
+				continue
+			}
+			found = true
+			for _, v := range p.Enum {
+				if v != "appImageTypeUnspecified" {
+					enum = append(enum, v)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no imageType parameter in the Schema index", id)
+			continue
+		}
+		sort.Strings(enum)
+		if !slices.Equal(enum, want) {
+			t.Errorf("%s imageType enum = %v, images.Types() = %v: update the type table in images.go", id, enum, want)
+		}
 	}
 }
 

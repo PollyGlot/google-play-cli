@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -87,5 +89,26 @@ func TestRun_missingDir_isExit20(t *testing.T) {
 	_, err := imagesvalidate.Run(newRC(t), imagesvalidate.Input{Dir: "/no/such/metadata/dir"})
 	if got := exitCodeOf(t, err); got != 20 {
 		t.Errorf("exit code = %d, want 20", got)
+	}
+}
+
+// TestRun_retiredPromoGraphic_warnsAndPasses asserts a leftover
+// images/promoGraphic.png (fastlane supply trees carry one) does not fail the
+// lint, since gplay never uploads it, but draws a stderr warning naming the
+// file so it is not dropped silently.
+func TestRun_retiredPromoGraphic_warnsAndPasses(t *testing.T) {
+	dir := writeTree(t, imagetree.Tree{"en-US": {images.Icon: {testkit.PNG(512, 512)}}})
+	promo := filepath.Join(dir, "en-US", "images", "promoGraphic.png")
+	if err := os.WriteFile(promo, testkit.PNG(180, 120), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	rc := kernel.NewForTest(context.Background(), kernel.Boot{Stdout: &stdout, Stderr: &stderr}, kernel.Inputs{Format: output.FormatJSON})
+
+	if _, err := imagesvalidate.Run(rc, imagesvalidate.Input{Dir: dir}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := stderr.String(); !strings.Contains(got, "warning: "+promo+": not an image type Play accepts") {
+		t.Errorf("stderr = %q, want a warning naming %s", got, promo)
 	}
 }

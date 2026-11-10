@@ -3,11 +3,11 @@
 // non-empty slot (a (locale, imageType) pair), showing the image count and
 // each image's content sha256. It reads ONLY from Play (never the local
 // tree): resolve --package, open a read-only Edit, enumerate the app's
-// locales via listings.list, then read each of the 9 AppImageType slots per
+// locales via listings.list, then read each of the 8 AppImageType slots per
 // locale via images.list. The Edit is opened and discarded via
 // edits.WithReadOnlyEdit, never committed.
 //
-// The API exposes no "list every image" endpoint, so list iterates the 9
+// The API exposes no "list every image" endpoint, so list iterates the 8
 // types × the app's locales (the locales are those carrying a Listing). The
 // API also carries no order field: display order is list order (ADR-0013),
 // so the per-image sha256 are reported in the order images.list returns them.
@@ -43,7 +43,7 @@ type Input struct {
 // validationError is a client-side flag-value failure (an unknown
 // --type); ExitCode()=20 per docs/DESIGN.md §9. Refused offline, before
 // any HTTP round-trip, so a typo like "iconn" surfaces a clear message
-// naming the nine valid AppImageType values rather than a downstream 404.
+// naming the eight valid AppImageType values rather than a downstream 404.
 type validationError struct{ msg string }
 
 func (e *validationError) Error() string { return e.msg }
@@ -181,7 +181,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if !ok {
 			return nil, &validationError{msg: fmt.Sprintf(
 				"metadata images list: %q is not a valid image type: one of: %s",
-				in.Type, joinTypes(images.Types()))}
+				in.Type, images.Names())}
 		}
 		types = []images.Type{ty}
 	}
@@ -226,20 +226,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Slots: slots}, nil
 }
 
-// joinTypes renders the nine AppImageType values as a comma-separated
-// list for the --type validation-error message, in canonical order.
-func joinTypes(ts []images.Type) string {
-	ss := make([]string, 0, len(ts))
-	for _, t := range ts {
-		ss = append(ss, string(t))
-	}
-	return strings.Join(ss, ", ")
-}
-
 // appLocales returns the app's locale codes (those carrying a Listing), in
 // sorted order, inside the already-open Edit. There is no list-by-locale
 // images endpoint, so the Listing locales are the enumeration domain for the
-// 9 image types.
+// 8 image types.
 func appLocales(rc *kernel.RunContext, hc *http.Client, pkg, editID string) ([]string, error) {
 	parsed, _, err := listings.List(rc.Ctx, hc, pkg, editID)
 	if err != nil {
@@ -267,15 +257,15 @@ one row per non-empty slot (a locale × image-type pair), showing the image
 count and each image's content sha256 in display order.
 
 Reads inside a read-only Edit (open → listings.list to enumerate the app's
-locales → images.list for each of the 9 image types per locale → discard);
+locales → images.list for each of the 8 image types per locale → discard);
 nothing is committed and nothing on disk is read. The API exposes no
-list-by-locale endpoint, so list walks the 9 types across every locale that
+list-by-locale endpoint, so list walks the 8 types across every locale that
 has a Listing.
 
 [experimental] --type <AppImageType> narrows the read to a single image
-type (one of: icon, featureGraphic, tvBanner, promoGraphic,
-phoneScreenshots, sevenInchScreenshots, tenInchScreenshots, tvScreenshots,
-wearScreenshots) across every locale, instead of walking all nine. An
+type (one of: icon, featureGraphic, tvBanner, phoneScreenshots,
+sevenInchScreenshots, tenInchScreenshots, tvScreenshots, wearScreenshots)
+across every locale, instead of walking all eight. An
 unknown value is refused client-side (exit 20) before any API call.
 --output json keeps its exact shape: --type only narrows which slots
 appear.
@@ -296,6 +286,6 @@ objects, id/url/sha1/sha256; --output markdown renders a Markdown table.)`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Type, "type", "", "[experimental] narrow to one AppImageType (icon, featureGraphic, phoneScreenshots, …); default: all nine")
+	cmd.Flags().StringVar(&in.Type, "type", "", "[experimental] narrow to one AppImageType (icon, featureGraphic, phoneScreenshots, …); default: all eight")
 	return cmd
 }

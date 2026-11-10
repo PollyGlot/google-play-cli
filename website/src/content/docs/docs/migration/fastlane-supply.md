@@ -274,8 +274,8 @@ gplay reads supply's tree as is: point `--dir` at `fastlane/metadata/android`.
 Within each locale directory the file names are the same:
 
 - `title.txt`, `short_description.txt`, `full_description.txt`, `video.txt`.
-- `images/icon.png`, `images/featureGraphic.png`, `images/tvBanner.png` and
-  `images/promoGraphic.png` for the singular images.
+- `images/icon.png`, `images/featureGraphic.png` and `images/tvBanner.png`
+  for the singular images.
 - `images/phoneScreenshots/`, `sevenInchScreenshots/`, `tenInchScreenshots/`,
   `tvScreenshots/` and `wearScreenshots/` for screenshots, in filename order.
 
@@ -290,8 +290,10 @@ The differences:
 - **Images are compared by content.** An unchanged slot is skipped; supply
   re-uploads every image unless `sync_image_upload` is set
   ([images docs][fl-images]).
-- **`promoGraphic` is managed.** supply's code only handles `featureGraphic`,
-  `icon` and `tvBanner` as singular images ([`supply.rb`][fl-supply]).
+- **`images/promoGraphic.png` is ignored, with a warning.** The Play API no
+  longer has a promo graphic slot, and supply's code only handles
+  `featureGraphic`, `icon` and `tvBanner` as singular images
+  ([`supply.rb`][fl-supply]). Delete the file to silence the warning.
 - **A real publish needs `--confirm`.** Listings and images go live when the
   Edit commits; `--dry-run` shows the per-locale delta first, and
   `gplay metadata validate` checks Google's length limits offline.

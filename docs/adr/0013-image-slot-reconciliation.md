@@ -9,9 +9,12 @@ accepted
 `gplay metadata images` extends the Store front (per-locale) surface from
 text Listings (`edits.listings`, ADR-0011) to store images
 (`edits.images`): the singular slots `icon`, `featureGraphic`,
-`tvBanner`, `promoGraphic` and the gallery slots `phoneScreenshots`,
+`tvBanner` and the gallery slots `phoneScreenshots`,
 `sevenInchScreenshots`, `tenInchScreenshots`, `tvScreenshots`,
-`wearScreenshots`. It reuses ADR-0011's stance — additive by default,
+`wearScreenshots`. (The decision first listed a fourth singular slot,
+`promoGraphic`. Google later removed it from the `AppImageType` enum and
+Play answers a request on it with a 400, so gplay dropped it; see the
+last consequence below.) It reuses ADR-0011's stance — additive by default,
 `--prune` to delete, one atomic Edit, online `--dry-run`, `--confirm`
 gate — but **cannot** reuse its reconciliation mechanics, and that
 divergence is surprising enough to record.
@@ -167,3 +170,14 @@ Two properties of `edits.images` break the text model:
   preferred over a local `sha256 → image id` manifest, which would add a
   hidden third source of truth and contradict "disk and Play are the
   only two authorities".
+- **The slot set follows the API enum, checked offline.** The type table
+  in `internal/play/images` is hand-written, so it once kept
+  `promoGraphic` after Google dropped it from `AppImageType`, and every
+  `images list`, `pull` and `apply` without `--type` failed on Play's 400.
+  A test now compares the table with the `imageType` enum of the
+  `edits.images` methods in the embedded Discovery snapshot, so the weekly
+  refresh fails instead. A removed slot stays known as *retired*: a file
+  named after it (a fastlane supply `images/promoGraphic.png`) is never
+  read as a slot, and `apply` and `validate` print a `warning:` naming it
+  rather than skipping it without a word, because the operator would
+  otherwise believe it is managed.

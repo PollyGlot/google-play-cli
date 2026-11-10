@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -43,10 +44,14 @@ var (
 	methodDeleteAll = apiregistry.MustResolve("androidpublisher.edits.images.deleteall")
 )
 
-// Type is one of the nine AppImageType values edits.images exposes. The
+// Type is one of the eight AppImageType values edits.images exposes. The
 // string value IS the API path segment (and the on-disk slot name). There is
 // no Chromebook type: androidpublisher v3's AppImageType enum does not
 // expose it (PRD #112 "Hors scope"), so it is deliberately not addressable.
+// Nor is promoGraphic: Google dropped it from the enum, and Play answers a
+// request on that slot with a 400, so it is a Retired slot (see Retired).
+// TestTypes_matchDiscoveryEnum pins this set to the bundled Discovery
+// snapshot, so the next enum change fails CI instead of every user's run.
 type Type string
 
 const (
@@ -54,7 +59,6 @@ const (
 	Icon           Type = "icon"
 	FeatureGraphic Type = "featureGraphic"
 	TvBanner       Type = "tvBanner"
-	PromoGraphic   Type = "promoGraphic"
 
 	// Gallery slots hold an ordered sequence (Play caps each at 8). Display
 	// order is upload order: the API carries no position field (ADR-0013).
@@ -75,14 +79,13 @@ type Spec struct {
 	Gallery bool
 }
 
-// specs is the canonical, ordered type table: the four singular slots first,
+// specs is the canonical, ordered type table: the three singular slots first,
 // then the five galleries. This order is the display order used by
 // `images list` and `images pull`.
 var specs = []Spec{
 	{Type: Icon, Gallery: false},
 	{Type: FeatureGraphic, Gallery: false},
 	{Type: TvBanner, Gallery: false},
-	{Type: PromoGraphic, Gallery: false},
 	{Type: PhoneScreenshots, Gallery: true},
 	{Type: SevenInchScreenshots, Gallery: true},
 	{Type: TenInchScreenshots, Gallery: true},
@@ -90,7 +93,7 @@ var specs = []Spec{
 	{Type: WearScreenshots, Gallery: true},
 }
 
-// Types returns the nine image Types in canonical display order.
+// Types returns the eight image Types in canonical display order.
 func Types() []Type {
 	out := make([]Type, len(specs))
 	for i, s := range specs {
@@ -99,7 +102,7 @@ func Types() []Type {
 	return out
 }
 
-// SpecOf returns the Spec for t and whether t is one of the nine known types.
+// SpecOf returns the Spec for t and whether t is one of the eight known types.
 func SpecOf(t Type) (Spec, bool) {
 	for _, s := range specs {
 		if s.Type == t {
@@ -117,8 +120,9 @@ func (t Type) Gallery() bool {
 }
 
 // ParseType maps a user-supplied --type value to a known Type. The second
-// return is false for anything outside the nine (e.g. "chromebookScreenshots"),
-// so the caller can refuse a typo rather than build an invalid API path.
+// return is false for anything outside the eight (e.g. "chromebookScreenshots"
+// or the Retired "promoGraphic"), so the caller can refuse a typo rather than
+// build an invalid API path.
 func ParseType(s string) (Type, bool) {
 	for _, sp := range specs {
 		if string(sp.Type) == s {
@@ -126,6 +130,35 @@ func ParseType(s string) (Type, bool) {
 		}
 	}
 	return "", false
+}
+
+// retired lists the slot names that were once AppImageType values and are no
+// longer: Play refuses them, so gplay never sends them, but a tree authored for
+// an older tool (a fastlane supply `images/promoGraphic.png`) can still carry
+// one. Callers use Retired to say so instead of dropping the file silently.
+var retired = []string{"promoGraphic"}
+
+// Retired reports whether s names a slot Google removed from AppImageType.
+func Retired(s string) bool {
+	for _, r := range retired {
+		if r == s {
+			return true
+		}
+	}
+	return false
+}
+
+// Names returns the eight Type values as a comma-separated list, in canonical
+// order, for the usage errors and help text that enumerate them.
+func Names() string {
+	var b strings.Builder
+	for i, s := range specs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(string(s.Type))
+	}
+	return b.String()
 }
 
 // Image is the API-shaped edits.images resource: one per stored image. The

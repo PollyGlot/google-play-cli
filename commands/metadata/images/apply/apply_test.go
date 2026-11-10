@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -371,5 +373,48 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}
+
+// TestRun_promoGraphicType_isUsageError asserts --type promoGraphic is refused
+// upfront like any unknown type: Google removed it from AppImageType, so the
+// request would only draw Play's 400.
+func TestRun_promoGraphicType_isUsageError(t *testing.T) {
+	rt := newFake(t, applyRT{editID: "e"})
+	rc := newRC(t, rt)
+	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), DryRun: true, Types: []string{"promoGraphic"}})
+	if got := exitCodeOf(t, err); got != 2 {
+		t.Errorf("exit = %d, want 2 for --type promoGraphic", got)
+	}
+	if len(calls(rt)) != 0 {
+		t.Errorf("--type promoGraphic must be refused before any network, saw %v", calls(rt))
+	}
+}
+
+// TestRun_retiredPromoGraphicFile_warnsAndIsNeverSent asserts a leftover
+// images/promoGraphic.png (a fastlane supply tree carries one) draws a stderr
+// warning naming the file, and that the apply never reads or uploads that
+// slot: before the fix every apply without --type failed on Play's 400.
+func TestRun_retiredPromoGraphicFile_warnsAndIsNeverSent(t *testing.T) {
+	dir := seedIcon(t)
+	promo := filepath.Join(dir, "en-US", "images", "promoGraphic.png")
+	if err := os.WriteFile(promo, testkit.PNG(180, 120), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rt := newFake(t, applyRT{editID: "e"})
+	rc := newRC(t, rt)
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+
+	if _, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: dir, DryRun: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := stderr.String(); !strings.Contains(got, "warning: "+promo+": not an image type Play accepts") {
+		t.Errorf("stderr = %q, want a warning naming %s", got, promo)
+	}
+	for _, c := range calls(rt) {
+		if strings.Contains(c, "/promoGraphic") {
+			t.Errorf("apply sent a request on the retired promoGraphic slot: %q", c)
+		}
 	}
 }
