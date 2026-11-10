@@ -176,7 +176,7 @@ func formatUserFraction(r TrackRow) string {
 		return ""
 	}
 	switch r.Status {
-	case "completed", "draft":
+	case tracks.StatusCompleted, tracks.StatusDraft:
 		return ""
 	}
 	return output.Percent(r.UserFraction)

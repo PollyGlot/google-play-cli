@@ -45,6 +45,15 @@ const (
 	FormFactorAutomotive   = "AUTOMOTIVE"
 )
 
+// The Status* values are the TrackRelease.status enum: what Release.Status
+// carries on the wire, both read and written.
+const (
+	StatusDraft      = "draft"
+	StatusInProgress = "inProgress"
+	StatusHalted     = "halted"
+	StatusCompleted  = "completed"
+)
+
 // LocalizedText mirrors the API's `LocalizedText` shape: one per locale
 // in a release's releaseNotes payload.
 type LocalizedText struct {

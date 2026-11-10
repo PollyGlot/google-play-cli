@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 )
 
 // ReleaseState is the status a release is sent with, together with the
@@ -25,10 +26,10 @@ type ReleaseState struct {
 }
 
 // Draft is a release that reaches no user until it is promoted.
-func Draft() ReleaseState { return ReleaseState{status: "draft"} }
+func Draft() ReleaseState { return ReleaseState{status: tracks.StatusDraft} }
 
 // Completed is a full rollout: every user, and no fraction on the wire.
-func Completed() ReleaseState { return ReleaseState{status: "completed"} }
+func Completed() ReleaseState { return ReleaseState{status: tracks.StatusCompleted} }
 
 // InProgress is a staged rollout reaching fraction of users. It is the one
 // place the (0, 1) bound is checked, for every command that takes --staged.
@@ -38,7 +39,7 @@ func InProgress(fraction float64) (ReleaseState, error) {
 			Message: "fraction must be strictly between 0 and 1, got " + strconv.FormatFloat(fraction, 'g', -1, 64),
 		}
 	}
-	return ReleaseState{status: "inProgress", fraction: fraction}, nil
+	return ReleaseState{status: tracks.StatusInProgress, fraction: fraction}, nil
 }
 
 // RequestedState maps the --draft / --complete / --staged flags of

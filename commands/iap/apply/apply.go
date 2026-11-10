@@ -210,7 +210,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 		for _, po := range frag.PurchaseOptions {
 			live, ok := liveOptionState[productID+"/"+po.PurchaseOptionID]
 			if !ok {
-				live = "DRAFT" // being created by this very plan
+				live = iap.StateDraft // being created by this very plan
 			}
 			sc, err := stateTransition("purchaseOption", productID, po.PurchaseOptionID, "", po.State, live)
 			if err != nil {
@@ -244,7 +244,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 		}
 		live, ok := liveOfferState[key]
 		if !ok {
-			live = "DRAFT" // being created by this very plan
+			live = iap.StateDraft // being created by this very plan
 		}
 		sc, err := stateTransition("offer", key.ProductID, key.PurchaseOptionID, key.OfferID, frag.State, live)
 		if err != nil {
@@ -270,19 +270,19 @@ func stateTransition(kind, productID, purchaseOptionID, offerID, declared, live 
 	sc := reconcile.StateChange{Kind: kind, ProductID: productID, PurchaseOptionID: purchaseOptionID, OfferID: offerID, From: live, To: declared}
 	label, target := stateKindLabel(kind), sc.Target()
 	switch declared {
-	case iap.OfferStateActive:
-		if live == iap.OfferStateCancelled {
+	case iap.StateActive:
+		if live == iap.StateCancelled {
 			return nil, exit.Usagef("%s %s declares state ACTIVE while live is CANCELLED: a cancelled offer never comes back; fix the state: field or declare a new offer", label, target)
 		}
-	case iap.OfferStateInactive:
-		if live != iap.OfferStateActive {
+	case iap.StateInactive:
+		if live != iap.StateActive {
 			return nil, exit.Usagef("%s %s declares state INACTIVE while live is %s: only an ACTIVE %s can be deactivated; fix the state: field or activate it first", label, target, live, label)
 		}
-	case iap.OfferStateCancelled:
+	case iap.StateCancelled:
 		if kind != "offer" {
 			return nil, exit.Usagef("%s %s declares state CANCELLED: only a pre-order offer can be cancelled (purchase options reach ACTIVE or INACTIVE); fix the state: field", label, target)
 		}
-		if live != iap.OfferStateActive {
+		if live != iap.StateActive {
 			return nil, exit.Usagef("%s %s declares state CANCELLED while live is %s: only an ACTIVE pre-order offer can be cancelled; fix the state: field", label, target, live)
 		}
 	default:
@@ -395,7 +395,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// --confirm gate.
 	cancels := 0
 	for _, s := range plan.StateChanges {
-		if s.To == iap.OfferStateCancelled {
+		if s.To == iap.StateCancelled {
 			cancels++
 		}
 	}
@@ -468,7 +468,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// ACTIVE under an active purchase option), children first when shrinking.
 	// Purchase options are grouped per product into one batchUpdateStates
 	// call, their only write path; offers ride their unary verbs.
-	for _, phase := range []string{iap.OfferStateActive, iap.OfferStateInactive, iap.OfferStateCancelled} {
+	for _, phase := range []string{iap.StateActive, iap.StateInactive, iap.StateCancelled} {
 		optionUpdates := map[string][]iap.PurchaseOptionStateUpdate{}
 		var (
 			productOrder []string
@@ -485,7 +485,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			if _, ok := optionUpdates[s.ProductID]; !ok {
 				productOrder = append(productOrder, s.ProductID)
 			}
-			optionUpdates[s.ProductID] = append(optionUpdates[s.ProductID], iap.PurchaseOptionStateUpdate{PurchaseOptionID: s.PurchaseOptionID, Activate: s.To == iap.OfferStateActive})
+			optionUpdates[s.ProductID] = append(optionUpdates[s.ProductID], iap.PurchaseOptionStateUpdate{PurchaseOptionID: s.PurchaseOptionID, Activate: s.To == iap.StateActive})
 		}
 		moveOptions := func() error {
 			for _, productID := range productOrder {
@@ -504,7 +504,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil
 		}
 		steps := []func() error{moveOffers, moveOptions}
-		if phase == iap.OfferStateActive {
+		if phase == iap.StateActive {
 			steps = []func() error{moveOptions, moveOffers}
 		}
 		for _, step := range steps {

@@ -69,9 +69,6 @@ const (
 // ProductionTrack is the track name the no-production-release check reads.
 const ProductionTrack = "production"
 
-// draftStatus is the API's release status for a build staged but not shipped.
-const draftStatus = "draft"
-
 // Snapshot is everything the checks need about one app: the raw material of
 // one sweep step. The command fills it from one read-only Edit per app
 // (tracks.list + listings.list); the checks never do I/O of their own.
@@ -256,7 +253,7 @@ func evalLingeringDrafts(s Snapshot, _ Context) []Finding {
 	for _, t := range s.Tracks {
 		var drafts []string
 		for _, r := range t.Releases {
-			if r.Status == draftStatus {
+			if r.Status == tracks.StatusDraft {
 				drafts = append(drafts, releaseLabel(r))
 			}
 		}
@@ -326,7 +323,7 @@ func evalEmptyReleaseNotes(s Snapshot, _ Context) []Finding {
 	var out []Finding
 	for _, t := range s.Tracks {
 		for _, r := range t.Releases {
-			if r.Status == draftStatus {
+			if r.Status == tracks.StatusDraft {
 				continue
 			}
 			blank := blankNoteLocales(r.ReleaseNotes)

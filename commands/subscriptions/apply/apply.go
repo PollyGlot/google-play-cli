@@ -136,7 +136,7 @@ func planStates(local map[string]json.RawMessage, liveItems []subscriptions.Item
 		for _, bp := range sub.BasePlans {
 			live, ok := liveBPState[productID+"/"+bp.BasePlanID]
 			if !ok {
-				live = "DRAFT" // being created by this very plan
+				live = subscriptions.StateDraft // being created by this very plan
 			}
 			sc, err := stateTransition("basePlan", productID, bp.BasePlanID, "", bp.State, live)
 			if err != nil {
@@ -170,7 +170,7 @@ func planStates(local map[string]json.RawMessage, liveItems []subscriptions.Item
 		}
 		live, ok := liveOfferState[key]
 		if !ok {
-			live = "DRAFT" // being created by this very plan
+			live = subscriptions.StateDraft // being created by this very plan
 		}
 		sc, err := stateTransition("offer", key.ProductID, key.BasePlanID, key.OfferID, frag.State, live)
 		if err != nil {
@@ -194,10 +194,10 @@ func stateTransition(kind, productID, basePlanID, offerID, declared, live string
 		target += "/" + offerID
 	}
 	switch declared {
-	case "ACTIVE":
+	case subscriptions.StateActive:
 		// reachable from DRAFT and INACTIVE via :activate
-	case "INACTIVE":
-		if live != "ACTIVE" {
+	case subscriptions.StateInactive:
+		if live != subscriptions.StateActive {
 			return nil, exit.Usagef("%s %s declares state INACTIVE while live is %s: only an ACTIVE %s can be deactivated; fix the state: field or activate it first", kind, target, live, kind)
 		}
 	default:
@@ -346,16 +346,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	// Activations before deactivations: an offer can only go ACTIVE under an
 	// active base plan, and nothing below depends on a deactivation.
-	for _, phase := range []string{"ACTIVE", "INACTIVE"} {
+	for _, phase := range []string{subscriptions.StateActive, subscriptions.StateInactive} {
 		for _, s := range plan.StateChanges {
 			if s.To != phase {
 				continue
 			}
 			var err error
 			if s.Kind == "basePlan" {
-				_, err = subscriptions.SetBasePlanState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.To == "ACTIVE")
+				_, err = subscriptions.SetBasePlanState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.To == subscriptions.StateActive)
 			} else {
-				_, err = subscriptions.SetOfferState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.OfferID, s.To == "ACTIVE")
+				_, err = subscriptions.SetOfferState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.OfferID, s.To == subscriptions.StateActive)
 			}
 			if err != nil {
 				return nil, subscriptionscmd.Classify(pkg, err)

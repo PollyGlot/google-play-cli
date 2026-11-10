@@ -64,13 +64,16 @@ var (
 	mLegacyList        = apiregistry.MustResolve("androidpublisher.inappproducts.list")
 )
 
-// Offer lifecycle targets a catalog file may declare in an offer's state:
-// field (OneTimeProductOffer.state minus DRAFT/UNSPECIFIED, which no verb can
-// reach). Each maps to one unary verb in SetOfferState.
+// The State* values are the OneTimeProductOffer.state enum; purchase options
+// share DRAFT, ACTIVE and INACTIVE. ACTIVE, INACTIVE and CANCELLED are the
+// lifecycle targets a catalog file may declare (each maps to one unary verb in
+// SetOfferState); no verb reaches DRAFT, the state of a resource that has
+// never been activated.
 const (
-	OfferStateActive    = "ACTIVE"
-	OfferStateInactive  = "INACTIVE"
-	OfferStateCancelled = "CANCELLED"
+	StateDraft     = "DRAFT"
+	StateActive    = "ACTIVE"
+	StateInactive  = "INACTIVE"
+	StateCancelled = "CANCELLED"
 )
 
 const listPageSize = 100
@@ -329,11 +332,11 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchas
 		op string
 	)
 	switch target {
-	case OfferStateActive:
+	case StateActive:
 		m, op = mOffersActivate, opOffersActivate
-	case OfferStateInactive:
+	case StateInactive:
 		m, op = mOffersDeactivate, opOffersDeactivate
-	case OfferStateCancelled:
+	case StateCancelled:
 		m, op = mOffersCancel, opOffersCancel
 	default:
 		return nil, &api.Error{Operation: opOffersActivate, Package: pkg, Message: "unsupported offer state target " + strconv.Quote(target)}

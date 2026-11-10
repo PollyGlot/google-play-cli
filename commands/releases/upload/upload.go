@@ -22,6 +22,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
@@ -223,10 +224,10 @@ func describeArtifacts(artifacts []orchestrator.Artifact) string {
 // "userFraction: 0" in that case). Draft / unspecified statuses always
 // hide it: matches the JSON view's omitempty contract.
 func showsUserFraction(status string, userFraction float64) bool {
-	if status == "inProgress" {
+	if status == tracks.StatusInProgress {
 		return true
 	}
-	if status == "completed" && userFraction > 0 {
+	if status == tracks.StatusCompleted && userFraction > 0 {
 		return true
 	}
 	return false
@@ -466,7 +467,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// one status where a partial rollout fraction informs.
 	if !in.DryRun {
 		extra := ""
-		if result.Status == "inProgress" {
+		if result.Status == tracks.StatusInProgress {
 			extra = ", userFraction " + output.Percent(result.UserFraction)
 		}
 		if result.MappingUploaded {

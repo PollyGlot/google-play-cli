@@ -118,7 +118,7 @@ func deriveKind(track string) string {
 // the table spots it at a glance. Every other status is left in its plain
 // API form, so the marker keeps meaning exactly "this rollout is halted".
 func markStatus(s string) string {
-	if s == "halted" {
+	if s == tracks.StatusHalted {
 		return "!" + strings.ToUpper(s)
 	}
 	return s

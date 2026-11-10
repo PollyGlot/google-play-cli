@@ -163,7 +163,7 @@ upload it as-is.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "the APK versionCode the expansion file attaches to (required)")
-	cmd.Flags().StringVar(&in.Type, "type", "main", "expansion file type: main or patch")
+	cmd.Flags().StringVar(&in.Type, "type", expansionfiles.TypeMain, "expansion file type: main or patch")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and the local file without any HTTP call")

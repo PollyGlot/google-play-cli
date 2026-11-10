@@ -106,6 +106,6 @@ through verbatim.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "the APK versionCode to read (required)")
-	cmd.Flags().StringVar(&in.Type, "type", "main", "expansion file type: main or patch")
+	cmd.Flags().StringVar(&in.Type, "type", expansionfiles.TypeMain, "expansion file type: main or patch")
 	return cmd
 }
