@@ -234,7 +234,7 @@ func (a anchor) mismatches(enum []string) []string {
 	for _, v := range e {
 		_, skipped := a.unhandled[v]
 		if !skipped && !slices.Contains(a.code, v) {
-			out = append(out, fmt.Sprintf("Discovery added %q: handle it in %s or add it to unhandled with the reason", v, a.goList))
+			out = append(out, fmt.Sprintf("Discovery lists %q but %s does not handle it: add it there, or to unhandled with the reason", v, a.goList))
 		}
 	}
 	for v := range a.unhandled {
