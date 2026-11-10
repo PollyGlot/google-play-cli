@@ -18,4 +18,9 @@
 // that value with the reason in unhandled. The row type documents the exact
 // and subset modes. Only scalar properties and method parameters carry an
 // enum in the index, never array items.
+//
+// A second test keeps the table complete: any string literal in shipped code
+// that equals a Discovery enum value must belong to an anchored row, or sit in
+// the coincidental list with the reason no row is needed. A list copied from
+// Discovery later therefore fails until it is anchored.
 package enumanchor
