@@ -268,7 +268,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 	// --dry-run or a --plan). userFraction is shown only when status is inProgress.
 	if !in.DryRun {
 		extra := ""
-		if result.Status == "inProgress" {
+		if result.Status == tracks.StatusInProgress {
 			extra = ", userFraction " + output.Percent(result.UserFraction)
 		}
 		if len(result.SupersededVersionCodes) > 0 {

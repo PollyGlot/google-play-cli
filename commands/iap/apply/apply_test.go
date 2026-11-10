@@ -558,6 +558,53 @@ func TestRun_unreachableState_isUsageError(t *testing.T) {
 	}
 }
 
+// TestRun_inactivePublished_isNeverATarget pins how apply treats
+// INACTIVE_PUBLISHED, a purchase-option state Play sets only on automatically
+// migrated options and no verb reaches. Declared over itself it plans
+// nothing, and ACTIVE plans the usual activation. INACTIVE is refused before
+// any write (:deactivate needs an ACTIVE option), and so is declaring
+// INACTIVE_PUBLISHED over any other live state. internal/enumanchor records
+// the value as unhandled on the strength of this test.
+func TestRun_inactivePublished_isNeverATarget(t *testing.T) {
+	const live = `{"oneTimeProducts":[
+  {"productId":"coins100","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"INACTIVE_PUBLISHED"}]}
+]}`
+	const batchStates = "/oneTimeProducts/coins100/purchaseOptions:batchUpdateStates"
+	for name, tc := range map[string]struct {
+		live, declared string
+		wantExit       int
+		wantMutations  []string
+	}{
+		"unchanged":          {live: live, declared: "INACTIVE_PUBLISHED"},
+		"activate":           {live: live, declared: "ACTIVE", wantMutations: []string{batchStates}},
+		"deactivate refused": {live: live, declared: "INACTIVE", wantExit: 2},
+		"declared over live": {live: liveV2, declared: "INACTIVE_PUBLISHED", wantExit: 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeCatalog(t, map[string]string{
+				"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"` + tc.declared + `","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+				"old_gems.json": `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`,
+			})
+			rt := &iapRT{v2Body: tc.live}
+			_, err := applycmd.Run(newRC(t, rt), applycmd.Input{Package: "com.example.app", Dir: dir})
+			if tc.wantExit != 0 {
+				assertExit(t, err, tc.wantExit)
+			} else if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			m := rt.mutations()
+			if len(m) != len(tc.wantMutations) {
+				t.Fatalf("mutations = %v, want %v", m, tc.wantMutations)
+			}
+			for i, suffix := range tc.wantMutations {
+				if !strings.HasSuffix(m[i], suffix) {
+					t.Errorf("mutation %d = %s, want suffix %s", i, m[i], suffix)
+				}
+			}
+		})
+	}
+}
+
 // liveOffersGameReward serves the live promo offer as a game reward offer
 // capped at 5 redemptions: the seed for the gameRewardOffer diff (#537).
 const liveOffersGameReward = `{"oneTimeProductOffers":[

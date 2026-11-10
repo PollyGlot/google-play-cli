@@ -155,13 +155,13 @@ func Rollout(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, err
 // Halt freezes the rollout: status=halted with the current userFraction
 // preserved (AC2), so a later Resume can pick up where it left off.
 func Halt(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error) {
-	return applyState(ctx, hc, opts, moveStatus{to: "halted"})
+	return applyState(ctx, hc, opts, moveStatus{to: tracks.StatusHalted})
 }
 
 // Resume flips a halted release back to inProgress, leaving the userFraction
 // untouched (AC3): the rollout continues at the fraction it was halted at.
 func Resume(ctx context.Context, hc *http.Client, opts StateOpts) (*Result, error) {
-	return applyState(ctx, hc, opts, moveStatus{to: "inProgress"})
+	return applyState(ctx, hc, opts, moveStatus{to: tracks.StatusInProgress})
 }
 
 // Complete ramps the release to a full rollout: status=completed and no
@@ -327,12 +327,12 @@ func versionCodes(r tracks.Release) []int {
 // it does in the Play Console (#734). Halted, inProgress and draft releases
 // are never superseded.
 func superseded(releases []tracks.Release, idx int, edit releaseEdit) []int {
-	if edit.status() != "completed" {
+	if edit.status() != tracks.StatusCompleted {
 		return nil
 	}
 	var drop []int
 	for i, r := range releases {
-		if i != idx && r.Status == "completed" {
+		if i != idx && r.Status == tracks.StatusCompleted {
 			drop = append(drop, i)
 		}
 	}
@@ -392,7 +392,7 @@ func transitionReachesProdUsers(track, status string) bool {
 	if track != TrackProduction {
 		return false
 	}
-	return status == "inProgress" || status == "completed"
+	return status == tracks.StatusInProgress || status == tracks.StatusCompleted
 }
 
 // dryRunStateResult previews the transition without HTTP. It can show the

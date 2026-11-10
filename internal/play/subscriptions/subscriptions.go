@@ -46,6 +46,15 @@ var (
 	mConvert = apiregistry.MustResolve("androidpublisher.monetization.convertRegionPrices")
 )
 
+// The State* values are the BasePlan.state and SubscriptionOffer.state enum.
+// ACTIVE and INACTIVE are the targets a catalog file may declare; DRAFT is
+// the state of a resource that has never been activated.
+const (
+	StateDraft    = "DRAFT"
+	StateActive   = "ACTIVE"
+	StateInactive = "INACTIVE"
+)
+
 // Money mirrors the Money schema: whole units (a decimal int64 string) plus
 // nano (10^-9) units, tagged with an ISO-4217 currency.
 type Money struct {

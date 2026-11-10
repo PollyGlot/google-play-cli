@@ -15,13 +15,10 @@ import (
 	"image/jpeg"
 	"image/png"
 	"net/http"
-	"slices"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
-	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
@@ -75,56 +72,6 @@ func TestTypes_modelsTheEightApiTypes(t *testing.T) {
 	}
 	if images.Retired("icon") || images.Retired("chromebookScreenshots") {
 		t.Errorf("Retired must only name slots removed from AppImageType")
-	}
-}
-
-// TestTypes_matchDiscoveryEnum pins Types() to the imageType path-parameter
-// enum of every edits.images method in the embedded Discovery snapshot. The
-// type table is hand-written, so when Google removed promoGraphic from
-// AppImageType every images list/pull/apply kept requesting it and failed on
-// Play's 400. With this guard the weekly Discovery refresh turns red instead.
-func TestTypes_matchDiscoveryEnum(t *testing.T) {
-	idx, err := schemaindex.Embedded()
-	if err != nil {
-		t.Fatalf("Embedded: %v", err)
-	}
-	want := make([]string, 0, len(images.Types()))
-	for _, ty := range images.Types() {
-		want = append(want, string(ty))
-	}
-	sort.Strings(want)
-	for _, id := range []string{
-		"androidpublisher.edits.images.list",
-		"androidpublisher.edits.images.upload",
-		"androidpublisher.edits.images.delete",
-		"androidpublisher.edits.images.deleteall",
-	} {
-		m, ok := idx.Methods[id]
-		if !ok {
-			t.Errorf("%s: missing from the Schema index", id)
-			continue
-		}
-		var enum []string
-		found := false
-		for _, p := range m.Parameters {
-			if p.Name != "imageType" {
-				continue
-			}
-			found = true
-			for _, v := range p.Enum {
-				if v != "appImageTypeUnspecified" {
-					enum = append(enum, v)
-				}
-			}
-		}
-		if !found {
-			t.Errorf("%s: no imageType parameter in the Schema index", id)
-			continue
-		}
-		sort.Strings(enum)
-		if !slices.Equal(enum, want) {
-			t.Errorf("%s imageType enum = %v, images.Types() = %v: update the type table in images.go", id, enum, want)
-		}
 	}
 }
 

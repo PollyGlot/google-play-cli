@@ -18,6 +18,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/mappings"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
@@ -186,7 +187,7 @@ To upload a mapping at the same time as the AAB (the common case), pass
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "APK versionCode the mapping belongs to (required)")
-	cmd.Flags().StringVar(&in.Type, "type", "proguard", "deobfuscation file type: proguard or nativeCode")
+	cmd.Flags().StringVar(&in.Type, "type", mappings.TypeProguard, "deobfuscation file type: proguard or nativeCode")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs without any HTTP call")

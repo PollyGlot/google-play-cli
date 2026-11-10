@@ -142,7 +142,7 @@ type Options struct {
 
 // ChangesInReview selects how a commit treats changes that are already in
 // Google's review: the changesInReviewBehavior query parameter of edits.commit.
-// The values are the CLI spellings; the wire enum is derived in query.
+// The values are the CLI spellings; Wire derives the wire enum.
 type ChangesInReview string
 
 const (
@@ -169,6 +169,20 @@ func ParseChangesInReview(s string) (ChangesInReview, error) {
 	return ChangesInReviewUnset, fmt.Errorf("must be %s or %s", ChangesInReviewCancel, ChangesInReviewError)
 }
 
+// Wire returns the changesInReviewBehavior enum value Discovery defines for c,
+// or "" for ChangesInReviewUnset, which sends no parameter so Google's default
+// (cancel the review and resubmit) applies.
+func (c ChangesInReview) Wire() string {
+	switch c {
+	case ChangesInReviewCancel:
+		return "CANCEL_IN_REVIEW_AND_SUBMIT"
+	case ChangesInReviewError:
+		return "ERROR_IF_IN_REVIEW"
+	default:
+		return ""
+	}
+}
+
 // CommitOptions are the optional query parameters of edits.commit. The zero
 // value sends none: the request is byte-identical to the one gplay has always
 // sent, which is what keeps these opt-ins additive.
@@ -187,13 +201,8 @@ func (o CommitOptions) IsZero() bool { return o == CommitOptions{} }
 // values are Discovery's (androidpublisher.edits.commit).
 func (o CommitOptions) query() url.Values {
 	q := url.Values{}
-	switch o.ChangesInReview {
-	case ChangesInReviewUnset:
-		// No parameter: Google's default (cancel the review and resubmit).
-	case ChangesInReviewCancel:
-		q.Set("changesInReviewBehavior", "CANCEL_IN_REVIEW_AND_SUBMIT")
-	case ChangesInReviewError:
-		q.Set("changesInReviewBehavior", "ERROR_IF_IN_REVIEW")
+	if v := o.ChangesInReview.Wire(); v != "" {
+		q.Set("changesInReviewBehavior", v)
 	}
 	if o.ChangesNotSentForReview {
 		q.Set("changesNotSentForReview", "true")

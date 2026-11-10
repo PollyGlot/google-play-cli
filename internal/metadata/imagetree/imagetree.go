@@ -311,7 +311,7 @@ func readLocale(root, imgDir string) (map[images.Type][][]byte, error) {
 // `<dir>/en-US/images/promoGraphic.png`. Read skips them like any other
 // unrecognized file, so nothing would otherwise tell the operator that a file
 // carried over from a fastlane supply tree is no longer managed; the commands
-// that read a tree warn with this list (WarnRetired). An absent dir yields
+// that read a tree warn with this list (RetiredMessage). An absent dir yields
 // none.
 func Retired(dir string) ([]string, error) {
 	locales, err := os.ReadDir(dir)

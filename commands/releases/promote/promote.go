@@ -17,6 +17,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
@@ -62,10 +63,10 @@ func (p Payload) Renderers() output.Renderers {
 // userFraction (the fraction IS the rollout percentage); completed
 // only shows it when non-zero; draft / unspecified hide it.
 func showsUserFraction(status string, userFraction float64) bool {
-	if status == "inProgress" {
+	if status == tracks.StatusInProgress {
 		return true
 	}
-	if status == "completed" && userFraction > 0 {
+	if status == tracks.StatusCompleted && userFraction > 0 {
 		return true
 	}
 	return false
@@ -209,7 +210,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// --dry-run). userFraction is shown only when status is inProgress.
 	if !in.DryRun {
 		extra := ""
-		if result.Status == "inProgress" {
+		if result.Status == tracks.StatusInProgress {
 			extra = ", userFraction " + output.Percent(result.UserFraction)
 		}
 		rc.ConfirmMutation(explicitEditID, "promoted versionCode %d: %s → %s (status %s%s)",

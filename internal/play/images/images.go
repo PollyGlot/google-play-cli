@@ -50,7 +50,7 @@ var (
 // expose it (PRD #112 "Hors scope"), so it is deliberately not addressable.
 // Nor is promoGraphic: Google dropped it from the enum, and Play answers a
 // request on that slot with a 400, so it is a Retired slot (see Retired).
-// TestTypes_matchDiscoveryEnum pins this set to the bundled Discovery
+// internal/enumanchor pins this set to the bundled Discovery
 // snapshot, so the next enum change fails CI instead of every user's run.
 type Type string
 

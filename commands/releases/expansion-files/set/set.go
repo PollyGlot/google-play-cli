@@ -150,7 +150,7 @@ without any HTTP call. GPLAY_READONLY refuses it.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().IntVar(&in.VersionCode, "version-code", 0, "the APK versionCode whose expansion config is being set (required)")
-	cmd.Flags().StringVar(&in.Type, "type", "main", "expansion file type: main or patch")
+	cmd.Flags().StringVar(&in.Type, "type", expansionfiles.TypeMain, "expansion file type: main or patch")
 	cmd.Flags().IntVar(&in.ReferencesVersion, "references-version", 0, "the APK versionCode whose already-uploaded expansion file to reference (required)")
 	cmd.Flags().BoolVar(&in.KeepEditOnFailure, "keep-edit-on-failure", false, "skip the auto-discard cleanup on failure (debug)")
 	commitflags.Register(cmd, &in.Commit)

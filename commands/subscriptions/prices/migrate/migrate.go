@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -124,6 +125,19 @@ var priceIncreaseTypes = map[string]string{
 	"opt-out":                     "PRICE_INCREASE_TYPE_OPT_OUT",
 	"PRICE_INCREASE_TYPE_OPT_IN":  "PRICE_INCREASE_TYPE_OPT_IN",
 	"PRICE_INCREASE_TYPE_OPT_OUT": "PRICE_INCREASE_TYPE_OPT_OUT",
+}
+
+// PriceIncreaseTypes lists the distinct API enum values --price-increase-type
+// can send, sorted.
+func PriceIncreaseTypes() []string {
+	var out []string
+	for _, v := range priceIncreaseTypes {
+		if v != "" && !slices.Contains(out, v) {
+			out = append(out, v)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // Run is the business function the kernel invokes. It validates offline,
