@@ -3,8 +3,8 @@
 // tree on disk, under each locale's images/ sub-directory, alongside the text
 // Listing `.txt` files. It reads ONLY from Play, then writes additively:
 // resolve --package/--dir, open a read-only Edit, enumerate the app's locales,
-// list each of the 8 image slots, download each image's bytes from its API
-// url, and hand the resulting imagetree.Tree to imagetree.Write. The Edit is
+// list each of the 8 image slots, download each image's original bytes, check
+// them against the API's sha256, and hand the resulting imagetree.Tree to imagetree.Write. The Edit is
 // opened and discarded via edits.WithReadOnlyEdit, never committed.
 //
 // Filename synthesis (ADR-0013): images.list returns no original filename, so
@@ -18,6 +18,8 @@ package imagespull
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -183,9 +185,17 @@ func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, loca
 	}
 	if err := fanout.Each(len(jobs), func(i int) error {
 		j := jobs[i]
-		b, err := download(rc.Ctx, hc, listed[j.slot][j.pos].URL)
+		img := listed[j.slot][j.pos]
+		u := images.OriginalURL(img.URL)
+		b, err := download(rc.Ctx, hc, u)
+		if err != nil {
+			return err
+		}
+		if err := checkSha256(img, u, b); err != nil {
+			return err
+		}
 		blobs[j.slot][j.pos] = b
-		return err
+		return nil
 	}); err != nil {
 		return err
 	}
@@ -207,7 +217,8 @@ func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, loca
 const opImagesDownload = "images.download"
 
 // download GETs the image bytes at url (the API gives no original filename, so
-// the bytes are downloaded from the url images.list returns) through the
+// the bytes are downloaded from the url images.list returns, sized to the
+// original by images.OriginalURL rather than the host's thumbnail) through the
 // executor's streaming download. It uses the authenticated client: Play's image
 // urls are Google-owned hosts, so carrying the androidpublisher token is
 // harmless, and caps the body at maxImageBytes.
@@ -233,6 +244,32 @@ func download(ctx context.Context, hc *http.Client, url string) ([]byte, error) 
 		return nil, &api.Error{Operation: opImagesDownload, Message: fmt.Sprintf("downloading %s: %v", url, tooBig), Cause: ae.Cause}
 	}
 	return nil, &api.Error{Operation: opImagesDownload, Message: fmt.Sprintf("downloading %s: read image: %v", url, ae.Cause), Cause: ae.Cause}
+}
+
+// checkSha256 refuses bytes that do not hash to the Image's sha256, the
+// content identity apply reconciles by (ADR-0013). A mismatch means the host
+// served something other than the stored file (a resized preview, should the
+// "=s0" size option ever stop meaning "original"), and writing it would make a
+// later apply replace the store image with it. An Image without a sha256 is
+// not checked: there is nothing to compare against.
+func checkSha256(img images.Image, url string, b []byte) error {
+	if img.Sha256 == "" {
+		return nil
+	}
+	sum := sha256.Sum256(b)
+	if got := hex.EncodeToString(sum[:]); !strings.EqualFold(got, img.Sha256) {
+		return &sha256MismatchError{id: img.ID, url: url, got: got, want: img.Sha256}
+	}
+	return nil
+}
+
+// sha256MismatchError is a download whose bytes are not the stored image. It
+// carries no exit code of its own (exit 1): neither the network nor the API
+// failed, and a retry would fetch the same bytes.
+type sha256MismatchError struct{ id, url, got, want string }
+
+func (e *sha256MismatchError) Error() string {
+	return fmt.Sprintf("image %s downloaded from %s hashes to sha256 %s, but images.list reports %s: the host served a copy, not the stored file, so pull wrote nothing", e.id, e.url, e.got, e.want)
 }
 
 // cappedBuffer collects a download and refuses the first byte past max rather

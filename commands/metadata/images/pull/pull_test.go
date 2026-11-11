@@ -9,6 +9,9 @@ package imagespull_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,6 +23,7 @@ import (
 
 	imagespull "github.com/PollyGlot/google-play-cli/commands/metadata/images/pull"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -105,18 +109,34 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 // graphic; tvBanner everywhere is empty (writes nothing).
 func fixture() (string, map[string]string, map[string][]byte) {
 	listingsResp := `{"listings":[{"language":"en-US","title":"My App"},{"language":"fr-FR","title":"Mon App"}]}`
-	slots := map[string]string{
-		"en-US/icon":             `{"images":[{"id":"i1","url":"https://play-lh.test/en/icon","sha256":"x"}]}`,
-		"en-US/phoneScreenshots": `{"images":[{"id":"p1","url":"https://play-lh.test/en/p1","sha256":"y"},{"id":"p2","url":"https://play-lh.test/en/p2","sha256":"z"}]}`,
-		"fr-FR/featureGraphic":   `{"images":[{"id":"f1","url":"https://play-lh.test/fr/feat","sha256":"w"}]}`,
-	}
 	blobs := map[string][]byte{
 		"https://play-lh.test/en/icon": png("icon"),
 		"https://play-lh.test/en/p1":   png("p1"),
 		"https://play-lh.test/en/p2":   jpg("p2"),
 		"https://play-lh.test/fr/feat": png("feat"),
 	}
+	slots := map[string]string{
+		"en-US/icon":             listed(blobs, "https://play-lh.test/en/icon"),
+		"en-US/phoneScreenshots": listed(blobs, "https://play-lh.test/en/p1", "https://play-lh.test/en/p2"),
+		"fr-FR/featureGraphic":   listed(blobs, "https://play-lh.test/fr/feat"),
+	}
 	return listingsResp, slots, blobs
+}
+
+// listed is the images.list body for urls, each Image carrying the sha256 of
+// the bytes blobs serves at that url, as Play reports it.
+func listed(blobs map[string][]byte, urls ...string) string {
+	imgs := make([]map[string]string, len(urls))
+	for i, u := range urls {
+		imgs[i] = map[string]string{"id": fmt.Sprintf("img%d", i+1), "url": u, "sha256": sum(blobs[u])}
+	}
+	b, _ := json.Marshal(map[string]any{"images": imgs})
+	return string(b)
+}
+
+func sum(b []byte) string {
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
 }
 
 // TestRun_writesLiveSlotsToDisk is the tracer bullet: pull downloads each
@@ -185,5 +205,73 @@ func TestRun_pullIsCodecRoundTrippable(t *testing.T) {
 	}
 	if !bytes.Equal(en[images.Icon][0], png("icon")) {
 		t.Errorf("icon bytes wrong after pull")
+	}
+}
+
+// TestRun_downloadsOriginalSize pins the size option on the download: the bare
+// googleusercontent url images.list returns serves a 512px thumbnail, so pull
+// must ask for "=s0" (the original) or a pull → apply round trip would upload
+// thumbnails over the store images.
+func TestRun_downloadsOriginalSize(t *testing.T) {
+	listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
+	const featURL, p1URL = "https://lh3.googleusercontent.com/feat", "https://play-lh.googleusercontent.com/p1=w512-h512"
+	blobs := map[string][]byte{
+		"https://lh3.googleusercontent.com/feat=s0":   png("feat original"),
+		"https://play-lh.googleusercontent.com/p1=s0": png("p1 original"),
+	}
+	slots := map[string]string{
+		"en-US/featureGraphic":   fmt.Sprintf(`{"images":[{"id":"f1","url":%q,"sha256":%q}]}`, featURL, sum(png("feat original"))),
+		"en-US/phoneScreenshots": fmt.Sprintf(`{"images":[{"id":"p1","url":%q,"sha256":%q}]}`, p1URL, sum(png("p1 original"))),
+	}
+	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
+	dir := t.TempDir()
+	if _, err := imagespull.Run(newRC(t, rt), imagespull.Input{Package: "com.example.app", Dir: dir}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if n := downloads(rt, blobs); n != 2 {
+		t.Errorf("original-size downloads = %d, want 2", n)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "en-US", "images", "featureGraphic.png"))
+	if err != nil || !bytes.Equal(got, png("feat original")) {
+		t.Errorf("featureGraphic.png = %q, %v; want the original-size bytes", got, err)
+	}
+}
+
+// TestRun_refusesBytesNotMatchingSha256 pins the content check: when the host
+// serves bytes that do not hash to the Image's sha256 (a resized preview), pull
+// fails without writing anything, so a later apply cannot upload the copy over
+// the store image (ADR-0013).
+func TestRun_refusesBytesNotMatchingSha256(t *testing.T) {
+	listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
+	const u = "https://play-lh.test/en/icon"
+	blobs := map[string][]byte{u: png("512px preview")}
+	slots := map[string]string{
+		"en-US/icon": fmt.Sprintf(`{"images":[{"id":"i1","url":%q,"sha256":%q}]}`, u, sum(png("original"))),
+	}
+	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
+	dir := t.TempDir()
+	_, err := imagespull.Run(newRC(t, rt), imagespull.Input{Package: "com.example.app", Dir: dir})
+	if err == nil || !strings.Contains(err.Error(), "sha256") {
+		t.Fatalf("Run err = %v, want a sha256 mismatch", err)
+	}
+	if code := exit.For(err); code != 1 {
+		t.Errorf("exit code = %d, want 1 (not retryable: a retry fetches the same bytes)", code)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("pull wrote %d entries after a mismatch, want none", len(entries))
+	}
+}
+
+// TestRun_uppercaseSha256Matches pins that the comparison ignores hex case.
+func TestRun_uppercaseSha256Matches(t *testing.T) {
+	listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
+	const u = "https://play-lh.test/en/icon"
+	blobs := map[string][]byte{u: png("icon")}
+	slots := map[string]string{
+		"en-US/icon": fmt.Sprintf(`{"images":[{"id":"i1","url":%q,"sha256":%q}]}`, u, strings.ToUpper(sum(png("icon")))),
+	}
+	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
+	if _, err := imagespull.Run(newRC(t, rt), imagespull.Input{Package: "com.example.app", Dir: t.TempDir()}); err != nil {
+		t.Fatalf("Run: %v", err)
 	}
 }
