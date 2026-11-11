@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted (supersedes the installer mechanism of [ADR-0028](0028-install-skills-command.md) §2, §3 and §4; ADR-0028's command shape, category and discoverability decisions stand)
+accepted (supersedes the installer mechanism of [ADR-0028](0028-install-skills-command.md) §2, §3 and §4; ADR-0028's command shape, category and discoverability decisions stand); amended by [ADR-0053](./0053-skills-pin-rides-the-next-release.md) (the repin is a `chore` that rides the next release; `npx skills add` is the current channel)
 
 ## Context
 

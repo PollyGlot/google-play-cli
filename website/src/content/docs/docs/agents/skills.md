@@ -12,14 +12,23 @@ runs, and the safety rails it enforces. They live in a companion repository:
 
 ## Install
 
+Install the current skills, updated after every gplay release:
+
+```sh
+npx skills add PollyGlot/google-play-cli-skills
+```
+
+Without Node, gplay installs them itself:
+
 ```sh
 gplay install-skills
 ```
 
-The skills are fetched with `git` from a commit pinned inside the gplay
-binary, so two runs of the same version install the same reviewed files.
+`install-skills` fetches the skills with `git` from a commit pinned inside the
+gplay binary, so two runs of the same version install the same reviewed files.
 Nothing else is executed: no Node, no package runner, no script from the
-skills repository. `git` is the only requirement.
+skills repository. `git` is the only requirement. The pin moves with the next
+gplay release, so this pack can lag one release behind `npx skills add`.
 
 They land in `~/.claude/skills`, user-wide, which Claude Code and the agent
 frameworks following that layout read. Use `--dir` to install elsewhere. Only
