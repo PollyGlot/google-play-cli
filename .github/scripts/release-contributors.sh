@@ -88,6 +88,14 @@ body=$(printf '%s' "$body" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
 # release-please writes "* **scope:** title ([#763](url)) ([sha](url))", and
 # " by @login" goes at the end. A line already credited is left alone.
 authors=$(printf '%s\n' "$prs" | awk -F'\t' 'NF == 2 { n = $2; sub(/.*\//, "", n); printf "%s=%s ", n, $1 }')
+# The generator skips some merged PRs (#547 in v1.5.0): look up any number
+# cited on a changelog line that it did not list. An issue number answers 404
+# and is skipped; a bot author is skipped too.
+for num in $(printf '%s\n' "$body" | grep '^\* ' | grep -o '(\[#[0-9]*\](' | tr -dc '0-9\n' | sort -u); do
+  case " $authors" in *" $num="*) continue ;; esac
+  login=$(gh api "repos/$REPO/pulls/$num" --jq 'select(.merged_at != null and .user.type == "User") | .user.login' 2>/dev/null || true)
+  [ -n "$login" ] && authors+="$num=$login "
+done
 body=$(printf '%s\n' "$body" | awk -v map="$authors" '
   BEGIN { n = split(map, kv, " "); for (i = 1; i <= n; i++) { split(kv[i], p, "="); who[p[1]] = p[2] } }
   # A line may cite its issue before its PR ("([#332](..)) ([#350](..))"):
