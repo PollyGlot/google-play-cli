@@ -8,7 +8,7 @@ import (
 
 func TestBuildBody_dailyIsDateOnly(t *testing.T) {
 	now := time.Date(2026, 6, 16, 13, 30, 0, 0, time.UTC)
-	body, err := buildBody([]string{"crashRate"}, []string{"versionCode"}, "DAILY", "", 28*24*time.Hour, now)
+	body, err := buildBody([]string{"crashRate"}, []string{"versionCode"}, "DAILY", "", 28*24*time.Hour, now, time.Time{})
 	if err != nil {
 		t.Fatalf("buildBody: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestBuildBody_dailyIsDateOnly(t *testing.T) {
 
 func TestBuildBody_hourlyCarriesHour_andFilter(t *testing.T) {
 	now := time.Date(2026, 6, 16, 13, 30, 0, 0, time.UTC)
-	body, err := buildBody([]string{"anrRate"}, nil, "HOURLY", "versionCode = 123", 24*time.Hour, now)
+	body, err := buildBody([]string{"anrRate"}, nil, "HOURLY", "versionCode = 123", 24*time.Hour, now, time.Time{})
 	if err != nil {
 		t.Fatalf("buildBody: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestBuildBody_hourlyCarriesHour_andFilter(t *testing.T) {
 // (which would send a date-only datetime for an HOURLY request).
 func TestBuildBody_hourlyMidnightKeepsZeroHour(t *testing.T) {
 	now := time.Date(2026, 6, 16, 0, 30, 0, 0, time.UTC) // 00:30 → end truncates to 00:00
-	body, err := buildBody([]string{"crashRate"}, nil, "HOURLY", "", time.Hour, now)
+	body, err := buildBody([]string{"crashRate"}, nil, "HOURLY", "", time.Hour, now, time.Time{})
 	if err != nil {
 		t.Fatalf("buildBody: %v", err)
 	}

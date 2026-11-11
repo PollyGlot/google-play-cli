@@ -165,7 +165,8 @@ func NewPresetCommand(boot kernel.Boot, spec PresetSpec) *cobra.Command {
 
 An opinionated preset over ` + "`gplay vitals query " + spec.Set + "`" + `: no
 metric or dimension knowledge required: the set's primary metric is reported
-over the default 28-day DAILY window.
+over the default 28-day DAILY window. The window ends at the latest time with
+data (the --describe freshness), so --since counts back from there.
 
 --by slices the timeline (` + ByChoices() + `); --version-code filters to one
 versionCode. This is a READ-ONLY surface on the Play Developer Reporting

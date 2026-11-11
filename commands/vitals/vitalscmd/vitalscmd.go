@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -128,12 +129,17 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 		return nil, err
 	}
 
-	body, err := buildBody(metrics, dimensions, period, p.Filter, since, time.Now().UTC())
+	httpClient, err := rc.AuthedClient()
 	if err != nil {
 		return nil, err
 	}
 
-	httpClient, err := rc.AuthedClient()
+	latest, err := latestEnd(rc, httpClient, p.Set, pkg, period)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := buildBody(metrics, dimensions, period, p.Filter, since, time.Now().UTC(), latest)
 	if err != nil {
 		return nil, err
 	}
@@ -212,16 +218,40 @@ type dateTime struct {
 	Hours *int `json:"hours,omitempty"`
 }
 
+// latestEnd reads the set's freshness for period through its `.get`: the API
+// rejects a timeline ending past it (#768). Zero when the descriptor has no
+// entry for period.
+func latestEnd(rc *kernel.RunContext, hc *http.Client, set vitals.MetricSet, pkg, period string) (time.Time, error) {
+	raw, err := vitals.Describe(rc.Ctx, hc, set, pkg)
+	if err != nil {
+		return time.Time{}, err
+	}
+	fresh, err := vitals.ParseFreshness(raw)
+	if err != nil {
+		return time.Time{}, err
+	}
+	for _, f := range fresh {
+		if f.Period == period {
+			return f.LatestEnd, nil
+		}
+	}
+	return time.Time{}, nil
+}
+
 // buildBody assembles the `:query` request body for the given window. endTime is
-// the period boundary at/after now (exclusive); startTime is endTime minus the
-// window. HOURLY carries the hour field; DAILY/FULL_RANGE are date-only.
-func buildBody(metrics, dimensions []string, period, filter string, since time.Duration, now time.Time) ([]byte, error) {
+// the period boundary at/after now (exclusive), capped at latest (the set's
+// freshness, ignored when zero); startTime is endTime minus the window. HOURLY
+// carries the hour field; DAILY/FULL_RANGE are date-only.
+func buildBody(metrics, dimensions []string, period, filter string, since time.Duration, now, latest time.Time) ([]byte, error) {
 	hourly := period == "HOURLY"
 	var end, start time.Time
 	if hourly {
 		end = now.Truncate(time.Hour)
 	} else {
 		end = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	}
+	if !latest.IsZero() && latest.Before(end) {
+		end = latest
 	}
 	start = end.Add(-since)
 
