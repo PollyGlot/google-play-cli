@@ -183,7 +183,7 @@ func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, loca
 	}
 	if err := fanout.Each(len(jobs), func(i int) error {
 		j := jobs[i]
-		b, err := download(rc.Ctx, hc, listed[j.slot][j.pos].URL)
+		b, err := download(rc.Ctx, hc, images.OriginalURL(listed[j.slot][j.pos].URL))
 		blobs[j.slot][j.pos] = b
 		return err
 	}); err != nil {
@@ -207,7 +207,8 @@ func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, loca
 const opImagesDownload = "images.download"
 
 // download GETs the image bytes at url (the API gives no original filename, so
-// the bytes are downloaded from the url images.list returns) through the
+// the bytes are downloaded from the url images.list returns, sized to the
+// original by images.OriginalURL rather than the host's thumbnail) through the
 // executor's streaming download. It uses the authenticated client: Play's image
 // urls are Google-owned hosts, so carrying the androidpublisher token is
 // harmless, and caps the body at maxImageBytes.

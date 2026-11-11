@@ -187,3 +187,31 @@ func TestRun_pullIsCodecRoundTrippable(t *testing.T) {
 		t.Errorf("icon bytes wrong after pull")
 	}
 }
+
+// TestRun_downloadsOriginalSize pins the size option on the download: the bare
+// googleusercontent url images.list returns serves a 512px thumbnail, so pull
+// must ask for "=s0" (the original) or a pull → apply round trip would upload
+// thumbnails over the store images.
+func TestRun_downloadsOriginalSize(t *testing.T) {
+	listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
+	slots := map[string]string{
+		"en-US/featureGraphic":   `{"images":[{"id":"f1","url":"https://lh3.googleusercontent.com/feat","sha256":"w"}]}`,
+		"en-US/phoneScreenshots": `{"images":[{"id":"p1","url":"https://play-lh.googleusercontent.com/p1=w512-h512","sha256":"y"}]}`,
+	}
+	blobs := map[string][]byte{
+		"https://lh3.googleusercontent.com/feat=s0":   png("feat original"),
+		"https://play-lh.googleusercontent.com/p1=s0": png("p1 original"),
+	}
+	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
+	dir := t.TempDir()
+	if _, err := imagespull.Run(newRC(t, rt), imagespull.Input{Package: "com.example.app", Dir: dir}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if n := downloads(rt, blobs); n != 2 {
+		t.Errorf("original-size downloads = %d, want 2", n)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "en-US", "images", "featureGraphic.png"))
+	if err != nil || !bytes.Equal(got, png("feat original")) {
+		t.Errorf("featureGraphic.png = %q, %v; want the original-size bytes", got, err)
+	}
+}

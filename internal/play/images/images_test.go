@@ -288,3 +288,28 @@ func TestSha256Soundness_uploadThenList(t *testing.T) {
 		t.Errorf("remote sha256 = %q, want sha256(local) = %q: content-hash identity is UNSOUND, use always-replace fallback (ADR-0013)", got[0].Sha256, wantHex)
 	}
 }
+
+// TestOriginalURL pins the size option pull asks googleusercontent for: the
+// bare url images.list returns serves a 512px thumbnail, "=s0" the original.
+func TestOriginalURL(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"bare url gains =s0", "https://lh3.googleusercontent.com/AbC-123_x", "https://lh3.googleusercontent.com/AbC-123_x=s0"},
+		{"size option replaced", "https://play-lh.googleusercontent.com/abc=w512-h512", "https://play-lh.googleusercontent.com/abc=s0"},
+		{"already original", "https://lh3.googleusercontent.com/abc=s0", "https://lh3.googleusercontent.com/abc=s0"},
+		{"nested path", "https://lh3.googleusercontent.com/d/abc=w100", "https://lh3.googleusercontent.com/d/abc=s0"},
+		{"query kept", "https://lh3.googleusercontent.com/abc=w512?authuser=0", "https://lh3.googleusercontent.com/abc=s0?authuser=0"},
+		{"fragment kept", "https://lh3.googleusercontent.com/abc#x", "https://lh3.googleusercontent.com/abc=s0#x"},
+		{"other host untouched", "https://play-lh.test/en/icon", "https://play-lh.test/en/icon"},
+		{"lookalike host untouched", "https://googleusercontent.com.evil.test/abc", "https://googleusercontent.com.evil.test/abc"},
+		{"no image id untouched", "https://lh3.googleusercontent.com/", "https://lh3.googleusercontent.com/"},
+		{"no path untouched", "https://lh3.googleusercontent.com", "https://lh3.googleusercontent.com"},
+		{"unparsable untouched", "://bad", "://bad"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := images.OriginalURL(c.in); got != c.want {
+				t.Errorf("OriginalURL(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}

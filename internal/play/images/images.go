@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -270,4 +271,34 @@ func decode(op, pkg string, raw json.RawMessage, out any) error {
 		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
 	}
 	return nil
+}
+
+// OriginalURL returns the url pull should download an Image's bytes from.
+// edits.images.list hands back a googleusercontent url with no size option,
+// and that host then serves a thumbnail scaled to 512px on its long edge, not
+// the uploaded file. The "=s0" option asks for the original size, whose bytes
+// hash to the Image's sha256, so a pulled tree reconciles with live (ADR-0013).
+// An option suffix already on the url ("=w512-h512") is replaced, not stacked.
+// A url on any other host is returned unchanged: the option is that host's
+// grammar only.
+func OriginalURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Opaque != "" || !strings.HasSuffix(u.Hostname(), ".googleusercontent.com") {
+		return raw
+	}
+	// Splice the raw string rather than re-serialise u, so every byte the API
+	// sent outside the size option survives as sent.
+	end := len(raw)
+	if q := strings.IndexAny(raw, "?#"); q >= 0 {
+		end = q
+	}
+	base, tail := raw[:end], raw[end:]
+	seg := strings.LastIndex(base, "/")
+	if seg < len(u.Scheme)+3+len(u.Host) || seg == len(base)-1 {
+		return raw // no image id in the path to size
+	}
+	if eq := strings.IndexByte(base[seg:], '='); eq >= 0 {
+		base = base[:seg+eq]
+	}
+	return base + "=s0" + tail
 }
