@@ -5,6 +5,15 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1](https://github.com/PollyGlot/google-play-cli/compare/v2.4.0...v2.4.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **iap:** stop advising activation of a migrated INACTIVE_PUBLISHED option ([#763](https://github.com/PollyGlot/google-play-cli/issues/763)) ([f90e06a](https://github.com/PollyGlot/google-play-cli/commit/f90e06a4c52b16721a4b0c3ee78a23a3965f6f5b))
+* **install-skills:** pin the skills for 2.4.0 and ship gplay-reports ([#756](https://github.com/PollyGlot/google-play-cli/issues/756)) ([03d416e](https://github.com/PollyGlot/google-play-cli/commit/03d416e8ce536ac78b425a057339b02e010698e9))
+* **metadata:** stop requesting the removed promoGraphic image slot ([#758](https://github.com/PollyGlot/google-play-cli/issues/758)) ([f7bd127](https://github.com/PollyGlot/google-play-cli/commit/f7bd1271713a2383dfb9e667a595536c22a07eb5))
+
 ## [2.4.0](https://github.com/PollyGlot/google-play-cli/compare/v2.3.3...v2.4.0) (2026-11-09)
 
 
