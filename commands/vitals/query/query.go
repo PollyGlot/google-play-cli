@@ -87,8 +87,10 @@ rejected.
 API schema; unknown values are rejected with the valid set listed (names are
 never invented: they come from the snapshot). With no --metrics the set's
 primary metric is used. Default window: --since 28d, --period DAILY (HOURLY
-opt-in). Supported periods are per metric set: the memory sets
-(anonrssandswapmemoryusage, bitmapmemoryusage) accept DAILY only.
+opt-in). The window ends at the latest time with data (the --describe
+freshness), so --since counts back from there. Supported periods are per metric
+set: the memory sets (anonrssandswapmemoryusage, bitmapmemoryusage) accept
+DAILY only.
 
 This is a READ-ONLY surface on a distinct Google service (Play Developer
 Reporting), requested with the least-privilege playdeveloperreporting scope.

@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -182,11 +183,13 @@ func Describe(ctx context.Context, hc *http.Client, set MetricSet, pkg string) (
 // aggregation period, the latest end time available for it (exclusive, as the
 // API documents it, so it can be reused verbatim as a TimelineSpec end_time),
 // and the timezone it is expressed in (the set's default: America/Los_Angeles
-// for DAILY, UTC for HOURLY).
+// for DAILY, UTC for HOURLY). LatestEnd carries the same instant as its civil
+// fields (year, month, day, hour) for windowing; its location is not TimeZone.
 type Freshness struct {
 	Period        string
 	LatestEndTime string
 	TimeZone      string
+	LatestEnd     time.Time
 }
 
 // ParseFreshness projects a `.get` descriptor body into its Freshness entries,
@@ -215,6 +218,7 @@ func ParseFreshness(body []byte) ([]Freshness, error) {
 			Period:        f.AggregationPeriod,
 			LatestEndTime: f.LatestEndTime.format(f.AggregationPeriod == "HOURLY"),
 			TimeZone:      f.LatestEndTime.TimeZone.ID,
+			LatestEnd:     f.LatestEndTime.civil(),
 		})
 	}
 	return out, nil
@@ -362,6 +366,15 @@ func (d apiDateTime) format(hourly bool) string {
 		s += fmt.Sprintf(" %02d:%02d", d.Hours, d.Minutes)
 	}
 	return s
+}
+
+// civil returns the datetime's civil fields as a time.Time (UTC location), the
+// zero time when unset.
+func (d apiDateTime) civil() time.Time {
+	if d.Year == 0 {
+		return time.Time{}
+	}
+	return time.Date(d.Year, time.Month(d.Month), d.Day, d.Hours, d.Minutes, 0, 0, time.UTC)
 }
 
 type apiDimensionValue struct {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 
@@ -68,10 +69,10 @@ func TestDescribe_getsDescriptorAndParsesFreshness(t *testing.T) {
 	if len(fresh) != 2 {
 		t.Fatalf("freshnesses = %d, want 2", len(fresh))
 	}
-	if fresh[0] != (vitals.Freshness{Period: "DAILY", LatestEndTime: "2026-09-12", TimeZone: "America/Los_Angeles"}) {
+	if fresh[0] != (vitals.Freshness{Period: "DAILY", LatestEndTime: "2026-09-12", TimeZone: "America/Los_Angeles", LatestEnd: time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)}) {
 		t.Errorf("DAILY = %+v", fresh[0])
 	}
-	if fresh[1] != (vitals.Freshness{Period: "HOURLY", LatestEndTime: "2026-09-13 06:00", TimeZone: "UTC"}) {
+	if fresh[1] != (vitals.Freshness{Period: "HOURLY", LatestEndTime: "2026-09-13 06:00", TimeZone: "UTC", LatestEnd: time.Date(2026, 9, 13, 6, 0, 0, 0, time.UTC)}) {
 		t.Errorf("HOURLY = %+v", fresh[1])
 	}
 }
