@@ -5,6 +5,14 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2](https://github.com/PollyGlot/google-play-cli/compare/v2.4.1...v2.4.2) (2026-11-11)
+
+
+### Bug Fixes
+
+* **install-skills:** pin the skills for 2.4.1 ([#765](https://github.com/PollyGlot/google-play-cli/issues/765)) ([1f4a2d8](https://github.com/PollyGlot/google-play-cli/commit/1f4a2d86b5362ba8bf710bb3220aa4e138568012))
+* **install-skills:** stop cutting a release for a skills repin ([#767](https://github.com/PollyGlot/google-play-cli/issues/767)) ([97bd9cd](https://github.com/PollyGlot/google-play-cli/commit/97bd9cd8e26200b1998d337045bb80b6af7b8a40))
+
 ## [2.4.1](https://github.com/PollyGlot/google-play-cli/compare/v2.4.0...v2.4.1) (2026-11-10)
 
 
