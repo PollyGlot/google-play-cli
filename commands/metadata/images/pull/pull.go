@@ -3,9 +3,10 @@
 // tree on disk, under each locale's images/ sub-directory, alongside the text
 // Listing `.txt` files. It reads ONLY from Play, then writes additively:
 // resolve --package/--dir, open a read-only Edit, enumerate the app's locales,
-// list each of the 8 image slots, download each image's original bytes, check
-// them against the API's sha256, and hand the resulting imagetree.Tree to imagetree.Write. The Edit is
-// opened and discarded via edits.WithReadOnlyEdit, never committed.
+// list each of the 8 image slots, stream each image's original bytes to a
+// staging file while checking them against the API's sha256, and hand the
+// resulting imagetree.Staged tree to imagetree.WriteStaged. The Edit is opened
+// and discarded via edits.WithReadOnlyEdit, never committed.
 //
 // Filename synthesis (ADR-0013): images.list returns no original filename, so
 // pull names singular slots `<type>.<ext>` and gallery slots `<type>/1.<ext>`…
@@ -16,7 +17,6 @@
 package imagespull
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,7 +47,7 @@ import (
 // DefaultDir matches the rest of the metadata family and `fastlane supply`.
 const DefaultDir = "./metadata"
 
-// maxImageBytes caps how many bytes pull holds in memory per downloaded image.
+// maxImageBytes caps how many bytes pull accepts per downloaded image.
 // Play's largest asset (a 3840px screenshot) stays well under this; the cap is
 // defence-in-depth against a runaway or hostile url.
 const maxImageBytes = 16 << 20 // 16 MiB
@@ -134,36 +136,45 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// tr is the staging tree: every byte lands here first and nothing touches
-	// dir until the last download succeeded. Pull stays all-or-nothing under
-	// concurrency: a failed or interrupted pull leaves no half-written tree
-	// that a later `images apply --prune` would read as deletions.
-	tr := make(imagetree.Tree)
+	// Every download streams into a file under staging first, and nothing
+	// touches dir until the last download succeeded. Pull stays all-or-nothing
+	// under concurrency: a failed or interrupted pull leaves no half-written
+	// tree that a later `images apply --prune` would read as deletions. Staging
+	// on disk rather than in memory keeps a pull of hundreds of full-size
+	// images to one copy buffer per in-flight download.
+	staging, err := os.MkdirTemp("", "gplay-images-pull-*")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(staging) }()
+
+	tr := make(imagetree.Staged)
 	if err := edits.WithReadOnlyEdit(rc.Ctx, httpClient, pkg, func(editID string) error {
 		locales, err := appLocales(rc, httpClient, pkg, editID)
 		if err != nil {
 			return err
 		}
-		return fetchSlots(rc, httpClient, pkg, editID, locales, tr)
+		return fetchSlots(rc, httpClient, pkg, editID, locales, staging, tr)
 	}); err != nil {
 		return nil, apihint.ForPackage(pkg, err)
 	}
 
-	if err := imagetree.Write(dir, tr); err != nil {
+	if err := imagetree.WriteStaged(dir, tr); err != nil {
 		return nil, err
 	}
 
 	return newPayload(pkg, dir, tr), nil
 }
 
-// fetchSlots fills tr with every non-empty (locale, type) slot, in two
+// fetchSlots fills tr with every non-empty (locale, type) slot, each image
+// staged as its own file under staging, in two
 // fanout.Limit-wide passes: list every slot, then download every image of
 // every slot. Two passes rather than one task per slot keep the pool busy when
 // one gallery holds eight screenshots and the other slots hold none. Every
 // result is written at its own index, so tr is identical to a serial walk's.
 // Any failure aborts before tr is touched; within a pass the error reported is
 // the lowest-index one, so the same responses always yield the same error.
-func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, locales []string, tr imagetree.Tree) error {
+func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, locales []string, staging string, tr imagetree.Staged) error {
 	types := images.Types()
 	listed := make([][]images.Image, len(locales)*len(types))
 	if err := fanout.Each(len(listed), func(i int) error {
@@ -176,9 +187,9 @@ func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, loca
 
 	type job struct{ slot, pos int }
 	var jobs []job
-	blobs := make([][][]byte, len(listed))
+	files := make([][]string, len(listed))
 	for s, imgs := range listed {
-		blobs[s] = make([][]byte, len(imgs))
+		files[s] = make([]string, len(imgs))
 		for p := range imgs {
 			jobs = append(jobs, job{slot: s, pos: p})
 		}
@@ -187,30 +198,45 @@ func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, loca
 		j := jobs[i]
 		img := listed[j.slot][j.pos]
 		u := images.OriginalURL(img.URL)
-		b, err := download(rc.Ctx, hc, u)
-		if err != nil {
+		path := filepath.Join(staging, strconv.Itoa(i))
+		if err := stage(rc.Ctx, hc, img, u, path); err != nil {
 			return err
 		}
-		if err := checkSha256(img, u, b); err != nil {
-			return err
-		}
-		blobs[j.slot][j.pos] = b
+		files[j.slot][j.pos] = path
 		return nil
 	}); err != nil {
 		return err
 	}
 
-	for s, seq := range blobs {
+	for s, seq := range files {
 		if len(seq) == 0 {
 			continue // empty slot writes nothing (missing == empty)
 		}
 		loc, ty := locales[s/len(types)], types[s%len(types)]
 		if tr[loc] == nil {
-			tr[loc] = make(map[images.Type][][]byte)
+			tr[loc] = make(map[images.Type][]string)
 		}
 		tr[loc][ty] = seq
 	}
 	return nil
+}
+
+// stage downloads img from url into a new file at path, hashing the bytes as
+// they stream, and refuses them (checkSha256) unless they are the stored file.
+func stage(ctx context.Context, hc *http.Client, img images.Image, url, path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	h := sha256.New()
+	err = download(ctx, hc, url, io.MultiWriter(f, h))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return checkSha256(img, url, hex.EncodeToString(h.Sum(nil)))
 }
 
 // opImagesDownload tags the errors of an image-bytes download.
@@ -221,43 +247,43 @@ const opImagesDownload = "images.download"
 // original by images.OriginalURL rather than the host's thumbnail) through the
 // executor's streaming download. It uses the authenticated client: Play's image
 // urls are Google-owned hosts, so carrying the androidpublisher token is
-// harmless, and caps the body at maxImageBytes.
-func download(ctx context.Context, hc *http.Client, url string) ([]byte, error) {
-	dst := &cappedBuffer{max: maxImageBytes}
+// harmless, and caps the body at maxImageBytes. The bytes stream into w, which
+// holds whatever arrived before a failure.
+func download(ctx context.Context, hc *http.Client, url string, w io.Writer) error {
+	dst := &cappedWriter{w: w, max: maxImageBytes}
 	_, err := api.Download(ctx, hc, api.Call{URL: url, Op: opImagesDownload}, dst)
 	if err == nil {
-		return dst.buf.Bytes(), nil
+		return nil
 	}
 	var ae *api.Error
 	if !errors.As(err, &ae) || ae.StatusCode == 0 {
-		return nil, err // no answer came back: the transport error as tagged
+		return err // no answer came back: the transport error as tagged
 	}
 	if ae.StatusCode < 200 || ae.StatusCode >= 300 {
 		// An image host does not answer with Google's error envelope: the
 		// status is the whole signal.
-		return nil, &api.Error{Operation: opImagesDownload, StatusCode: ae.StatusCode, Message: fmt.Sprintf("downloading %s: HTTP %d", url, ae.StatusCode)}
+		return &api.Error{Operation: opImagesDownload, StatusCode: ae.StatusCode, Message: fmt.Sprintf("downloading %s: HTTP %d", url, ae.StatusCode)}
 	}
 	// A 2xx that never arrived whole: cut mid-body, or past the cap. Neither is
 	// the API's answer, so neither carries its status (exit 50).
 	var tooBig *imageTooLargeError
 	if errors.As(ae.Cause, &tooBig) {
-		return nil, &api.Error{Operation: opImagesDownload, Message: fmt.Sprintf("downloading %s: %v", url, tooBig), Cause: ae.Cause}
+		return &api.Error{Operation: opImagesDownload, Message: fmt.Sprintf("downloading %s: %v", url, tooBig), Cause: ae.Cause}
 	}
-	return nil, &api.Error{Operation: opImagesDownload, Message: fmt.Sprintf("downloading %s: read image: %v", url, ae.Cause), Cause: ae.Cause}
+	return &api.Error{Operation: opImagesDownload, Message: fmt.Sprintf("downloading %s: read image: %v", url, ae.Cause), Cause: ae.Cause}
 }
 
-// checkSha256 refuses bytes that do not hash to the Image's sha256, the
+// checkSha256 refuses bytes whose hex sha256 got is not the Image's sha256, the
 // content identity apply reconciles by (ADR-0013). A mismatch means the host
 // served something other than the stored file (a resized preview, should the
 // "=s0" size option ever stop meaning "original"), and writing it would make a
 // later apply replace the store image with it. An Image without a sha256 is
 // not checked: there is nothing to compare against.
-func checkSha256(img images.Image, url string, b []byte) error {
+func checkSha256(img images.Image, url, got string) error {
 	if img.Sha256 == "" {
 		return nil
 	}
-	sum := sha256.Sum256(b)
-	if got := hex.EncodeToString(sum[:]); !strings.EqualFold(got, img.Sha256) {
+	if !strings.EqualFold(got, img.Sha256) {
 		return &sha256MismatchError{id: img.ID, url: url, got: got, want: img.Sha256}
 	}
 	return nil
@@ -272,19 +298,22 @@ func (e *sha256MismatchError) Error() string {
 	return fmt.Sprintf("image %s downloaded from %s hashes to sha256 %s, but images.list reports %s: the host served a copy, not the stored file, so pull wrote nothing", e.id, e.url, e.got, e.want)
 }
 
-// cappedBuffer collects a download and refuses the first byte past max rather
-// than silently truncating: a truncated image would be written to disk as a
-// corrupt file.
-type cappedBuffer struct {
-	buf bytes.Buffer
+// cappedWriter passes a download through to w and refuses the first byte past
+// max rather than silently truncating: a truncated image would be written to
+// disk as a corrupt file.
+type cappedWriter struct {
+	w   io.Writer
+	n   int64
 	max int64
 }
 
-func (c *cappedBuffer) Write(p []byte) (int, error) {
-	if int64(c.buf.Len())+int64(len(p)) > c.max {
+func (c *cappedWriter) Write(p []byte) (int, error) {
+	if c.n+int64(len(p)) > c.max {
 		return 0, &imageTooLargeError{max: c.max}
 	}
-	return c.buf.Write(p)
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // imageTooLargeError is the cap refusing an image.
@@ -311,7 +340,7 @@ func appLocales(rc *kernel.RunContext, hc *http.Client, pkg, editID string) ([]s
 
 // newPayload builds the summary from the written tree, in (locale, canonical
 // type) order.
-func newPayload(pkg, dir string, tr imagetree.Tree) Payload {
+func newPayload(pkg, dir string, tr imagetree.Staged) Payload {
 	pulled := make([]slotReport, 0)
 	files := 0
 	locales := make([]string, 0, len(tr))

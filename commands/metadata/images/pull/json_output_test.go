@@ -12,8 +12,8 @@ import (
 // by the real newPayload: slots in (locale, canonical type) order whatever the
 // map order, empty slots skipped, and the three totals a CI gate reads.
 func TestRenderJSON_pulled_golden(t *testing.T) {
-	png := []byte("png")
-	tr := imagetree.Tree{
+	const png = "1"
+	tr := imagetree.Staged{
 		"fr-FR": {images.PhoneScreenshots: {png}},
 		"en-US": {
 			images.PhoneScreenshots: {png, png, png},
@@ -28,5 +28,5 @@ func TestRenderJSON_pulled_golden(t *testing.T) {
 // TestRenderJSON_nothingPulled_golden pins an app with no image to
 // "pulled": [] (never null) and zero totals.
 func TestRenderJSON_nothingPulled_golden(t *testing.T) {
-	outputtest.GoldenJSON(t, "nothing_pulled.json.golden", newPayload("com.example.app", "./metadata", imagetree.Tree{}))
+	outputtest.GoldenJSON(t, "nothing_pulled.json.golden", newPayload("com.example.app", "./metadata", imagetree.Staged{}))
 }

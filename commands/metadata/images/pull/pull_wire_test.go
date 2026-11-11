@@ -1,6 +1,7 @@
 package imagespull
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"strings"
@@ -15,8 +16,11 @@ import (
 func TestWire_download(t *testing.T) {
 	const u = "https://play-lh.googleusercontent.com/abc=w512-h512"
 	send := []testkit.Send{{Name: "download", Fn: func(hc *http.Client) (any, error) {
-		b, err := download(context.Background(), hc, u)
-		return b, err
+		var b bytes.Buffer
+		if err := download(context.Background(), hc, u, &b); err != nil {
+			return nil, err
+		}
+		return b.Bytes(), nil
 	}}}
 	golden := testkit.Exchanges(send,
 		testkit.Answer{Name: "ok", Responders: []testkit.Responder{testkit.Any(http.StatusOK, "\x89PNG image bytes")}},

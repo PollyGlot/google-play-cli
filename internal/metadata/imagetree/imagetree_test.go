@@ -311,3 +311,58 @@ func TestRetired_absentDir_isEmptyNotError(t *testing.T) {
 		t.Errorf("Retired(absent) = %v, %v; want none, nil", got, err)
 	}
 }
+
+// TestWriteStaged_matchesWrite asserts WriteStaged lays out a tree of staged
+// files exactly as Write lays out the same bytes, leaving the staged files in
+// place.
+func TestWriteStaged_matchesWrite(t *testing.T) {
+	tr := imagetree.Tree{
+		"en-US": {
+			images.Icon:             {pngBytes("icon")},
+			images.PhoneScreenshots: {pngBytes("a"), jpgBytes("b")},
+		},
+		"fr-FR": {images.FeatureGraphic: {jpgBytes("fr-feat")}},
+	}
+	staging := t.TempDir()
+	st := make(imagetree.Staged)
+	n := 0
+	for loc, slots := range tr {
+		st[loc] = make(map[images.Type][]string)
+		for ty, seq := range slots {
+			for _, data := range seq {
+				p := filepath.Join(staging, string(rune('a'+n)))
+				n++
+				if err := os.WriteFile(p, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				st[loc][ty] = append(st[loc][ty], p)
+			}
+		}
+	}
+	dir := t.TempDir()
+	if err := imagetree.WriteStaged(dir, st); err != nil {
+		t.Fatalf("WriteStaged: %v", err)
+	}
+	got, err := imagetree.Read(dir)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if !reflect.DeepEqual(got, tr) {
+		t.Errorf("WriteStaged mismatch:\n got = %v\nwant = %v", summarize(got), summarize(tr))
+	}
+	if left, _ := os.ReadDir(staging); len(left) != n {
+		t.Errorf("staged files left = %d, want %d (WriteStaged must not move them)", len(left), n)
+	}
+}
+
+// TestWriteStaged_rejectsNonImage asserts a staged file that is neither PNG
+// nor JPEG fails the write, as Write does for such bytes.
+func TestWriteStaged_rejectsNonImage(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "x")
+	if err := os.WriteFile(p, []byte("<html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := imagetree.WriteStaged(t.TempDir(), imagetree.Staged{"en-US": {images.Icon: {p}}}); err == nil {
+		t.Fatal("WriteStaged accepted a non-image file")
+	}
+}

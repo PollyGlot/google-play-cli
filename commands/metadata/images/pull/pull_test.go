@@ -275,3 +275,70 @@ func TestRun_uppercaseSha256Matches(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 }
+
+// stagingDirs points the temp dir pull stages its downloads under at a fresh
+// directory and returns it, so a test can see what pull left behind there.
+func stagingDirs(t *testing.T) string {
+	t.Helper()
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	return tmp
+}
+
+// TestRun_failedDownloadLeavesDirAndStagingClean pins the all-or-nothing rule
+// with downloads staged on disk: when one image fails after others were
+// staged, the destination tree is exactly as it was and the staging files are
+// gone.
+func TestRun_failedDownloadLeavesDirAndStagingClean(t *testing.T) {
+	tmp := stagingDirs(t)
+	listingsResp, slots, blobs := fixture()
+	// fr-FR/featureGraphic sorts after every en-US slot, so the en-US images
+	// are staged before the failure.
+	slots["fr-FR/featureGraphic"] = fmt.Sprintf(`{"images":[{"id":"f1","url":%q,"sha256":%q}]}`, "https://play-lh.test/fr/feat", sum(png("original")))
+	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
+	dir := t.TempDir()
+	sentinel := filepath.Join(dir, "en-US", "images", "icon.png")
+	if err := os.MkdirAll(filepath.Dir(sentinel), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sentinel, png("old icon"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := imagespull.Run(newRC(t, rt), imagespull.Input{Package: "com.example.app", Dir: dir}); err == nil {
+		t.Fatal("Run succeeded with a failed download")
+	}
+	if n := downloads(rt, blobs); n != 4 {
+		t.Errorf("downloads = %d, want 4 (the failure must come after the en-US images were staged)", n)
+	}
+	var files []string
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, _ error) error {
+		if !d.IsDir() {
+			files = append(files, p)
+		}
+		return nil
+	})
+	if len(files) != 1 || files[0] != sentinel {
+		t.Errorf("files after a failed pull = %v, want only the untouched %s", files, sentinel)
+	}
+	if got, _ := os.ReadFile(sentinel); !bytes.Equal(got, png("old icon")) {
+		t.Errorf("a failed pull overwrote %s", sentinel)
+	}
+	if left, _ := os.ReadDir(tmp); len(left) != 0 {
+		t.Errorf("a failed pull left %d staging entries in the temp dir, want none", len(left))
+	}
+}
+
+// TestRun_successRemovesStaging pins that a successful pull leaves nothing in
+// the temp dir either.
+func TestRun_successRemovesStaging(t *testing.T) {
+	tmp := stagingDirs(t)
+	listingsResp, slots, blobs := fixture()
+	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
+	if _, err := imagespull.Run(newRC(t, rt), imagespull.Input{Package: "com.example.app", Dir: t.TempDir()}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if left, _ := os.ReadDir(tmp); len(left) != 0 {
+		t.Errorf("a pull left %d staging entries in the temp dir, want none", len(left))
+	}
+}
