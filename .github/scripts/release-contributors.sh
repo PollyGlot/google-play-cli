@@ -90,9 +90,16 @@ body=$(printf '%s' "$body" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
 authors=$(printf '%s\n' "$prs" | awk -F'\t' 'NF == 2 { n = $2; sub(/.*\//, "", n); printf "%s=%s ", n, $1 }')
 body=$(printf '%s\n' "$body" | awk -v map="$authors" '
   BEGIN { n = split(map, kv, " "); for (i = 1; i <= n; i++) { split(kv[i], p, "="); who[p[1]] = p[2] } }
-  /^\* / && !/ by @[A-Za-z0-9-]+$/ && match($0, /\(\[#[0-9]+\]\(/) {
-    num = substr($0, RSTART + 3, RLENGTH - 5)
-    if (num in who) $0 = $0 " by @" who[num]
+  # A line may cite its issue before its PR ("([#332](..)) ([#350](..))"):
+  # the first number that is a PR of this release wins.
+  /^\* / && !/ by @[A-Za-z0-9-]+$/ {
+    rest = $0; by = ""
+    while (by == "" && match(rest, /\(\[#[0-9]+\]\(/)) {
+      num = substr(rest, RSTART + 3, RLENGTH - 5)
+      if (num in who) by = who[num]
+      rest = substr(rest, RSTART + RLENGTH)
+    }
+    if (by != "") $0 = $0 " by @" by
   }
   { print }')
 new_body=$(printf '%s\n\n%s\n' "$body" "$section")
