@@ -26,7 +26,7 @@ cd "$(git rev-parse --show-toplevel)"
 repo=$(jq -r .repo "$pin")
 subdir=$(jq -r .subdir "$pin")
 
-if [[ "$(jq -r .commit "$pin")" == "$commit" ]]; then
+if [[ "$(git show "HEAD:$pin" | jq -r .commit)" == "$commit" ]]; then
   echo "repin-skills: $pin already pins $commit"
   exit 0
 fi
@@ -47,7 +47,6 @@ mv "$tmp" "$pin"
 go test ./commands/installskills/
 
 version=$(gh release view --json tagName --jq .tagName)
-git add "$pin"
-git commit -m "chore(install-skills): pin the skills for ${version#v}" \
-  -m "Moves the pin to $repo@$commit. Typed chore so it rides the next release instead of cutting one (ADR-0053)."
+git commit --only -m "chore(install-skills): pin the skills for ${version#v}" \
+  -m "Moves the pin to $repo@$commit. Typed chore so it rides the next release instead of cutting one (ADR-0053)." -- "$pin"
 echo "repin-skills: pinned $repo@$commit ($(jq '.skills | length' "$pin") skills)"
