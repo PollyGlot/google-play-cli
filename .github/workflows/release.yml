@@ -143,6 +143,35 @@ jobs:
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
 
+  # Appends a "Contributors" section (everyone whose PR shipped, then the
+  # first-time contributors) to the body release-please wrote, as t3code's
+  # releases do. Bots and Claude co-author trailers are left out; see the
+  # script header. Rerunnable: the section sits between markers and is
+  # replaced, never duplicated.
+  contributors:
+    name: Credit the release contributors
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      # Edit the release body and call generate-notes. Nothing else: a grant
+      # here must also be given by the caller (release-please.yml), and the
+      # first-PR lookup goes through the search API, open on a public repo.
+      contents: write
+    steps:
+      # The workflow's own ref, not the tag: a dispatch replaying an older tag
+      # would check out a tree without release-contributors.sh.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Write the Contributors section
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          INPUT_REF: ${{ inputs.ref || github.ref }}
+        run: .github/scripts/release-contributors.sh "${INPUT_REF#refs/tags/}" --apply
+
   # Hands the published release to the release-announce agent, a t3code
   # webhook task on the maintainer's always-on machine (skills PR + Typefully
   # draft, never a publish). It replaces a repository webhook on `release`
