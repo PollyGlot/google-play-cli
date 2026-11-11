@@ -122,7 +122,9 @@ The skills are fetched with git from ` + pinNote + `
 
 The commit is baked into this binary, never resolved from a branch or a tag, so
 two runs of the same gplay version always install the same reviewed files. A new
-pack ships through a normal reviewed gplay release. Nothing else is executed:
+pack ships with the next gplay release, so this pack can lag one release behind
+the skills repository, whose README gives the install of the current skills.
+Nothing else is executed:
 no Node, no package runner, no script from the skills repository, and no git
 hook (git runs with hooks and init templates disabled).
 

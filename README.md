@@ -110,18 +110,26 @@ the matching invocation, safe defaults included:
 > → the `gplay-release-flow` skill runs `gplay releases promote --from
 > internal --to beta` for you.
 
-Install them in one step. It needs `git` on your PATH, and nothing else:
+Install the current skills, updated after every gplay release:
+
+```bash
+npx skills add PollyGlot/google-play-cli-skills
+```
+
+Without Node, gplay installs them itself. It needs `git` on your PATH, and
+nothing else:
 
 ```bash
 gplay install-skills
 ```
 
-The skills are fetched with `git` from a commit pinned inside the binary, never
-from a branch, so two runs of the same gplay version install the same reviewed
-files. Every installed file is verified against that checkout, unrelated skills
-in the target directory are left alone, and a failed install is rolled back to
-its previous state. They land in `~/.claude/skills` by default (`--dir` moves
-them elsewhere). A new pack ships in a normal gplay release.
+`install-skills` fetches the skills with `git` from a commit pinned inside the
+binary, never from a branch, so two runs of the same gplay version install the
+same reviewed files. Every installed file is verified against that checkout,
+unrelated skills in the target directory are left alone, and a failed install
+is rolled back to its previous state. They land in `~/.claude/skills` by
+default (`--dir` moves them elsewhere). The pin moves with the next gplay
+release, so this pack can lag one release behind `npx skills add`.
 
 Skills live in a companion repo,
 [**PollyGlot/google-play-cli-skills**](https://github.com/PollyGlot/google-play-cli-skills).
