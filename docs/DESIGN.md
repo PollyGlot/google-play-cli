@@ -473,6 +473,10 @@ reports the error the serial walk would have hit first.
   the tree on disk is written only after the last download succeeded, so a
   failed or interrupted pull leaves nothing a later `apply --prune` would read
   as deletions.
+  Each image is downloaded at its original size (`=s0` on the
+  `googleusercontent` url, which serves a 512px preview without it) and must
+  hash to the `sha256` `images.list` reports, or the pull fails (exit `1`)
+  without writing (ADR-0013).
 - **Rate limits**: `--retry` stays opt-in. Without it, a `429` anywhere in the
   burst fails the run (exit `60`) exactly as a serial `429` would; with it,
   each request is replayed on its own ([Opt-in retry](#opt-in-retry---retry)).
@@ -524,8 +528,9 @@ language, read live via `edits.images.list` inside the same read-only Edit:
   (missing == empty, [ADR-0013](./adr/0013-image-slot-reconciliation.md)).
 - **`url` is a preview link — never persist it.** The `Image.url` has
   undocumented resolution, auth, and expiry; it is passed through verbatim but
-  must not be stored. To fetch the actual icon **bytes**, use
-  `gplay metadata images pull`.
+  must not be stored; bare, it serves a 512px preview. To fetch the actual
+  icon **bytes**, use `gplay metadata images pull`, which downloads the
+  original and checks it against `sha256`.
 - **Scope reality.** Reading the icon requires the full `androidpublisher` OAuth
   scope gplay already uses — Google exposes **no** narrower listings/images
   `.readonly` scope — so it confers no new permission beyond "the service

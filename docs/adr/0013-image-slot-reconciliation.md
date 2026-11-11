@@ -181,3 +181,15 @@ Two properties of `edits.images` break the text model:
   read as a slot, and `apply` and `validate` print a `warning:` naming it
   rather than skipping it without a word, because the operator would
   otherwise believe it is managed.
+- **Pull must download the stored file, and proves it did.** The
+  soundness check above covers what `apply` uploads, not what `pull`
+  downloads. `images.list` returns a `googleusercontent` preview url that,
+  bare, serves a copy scaled to 512px on its long edge; until #772, pull
+  wrote those copies, so a pull → apply round trip was never a no-op and
+  replaced 512px-or-larger screenshots with their 512px preview (the
+  feature graphic, at 512×250, only failed `validate`). Pull now asks the
+  host for the original (`=s0`, an undocumented option of that host) and
+  checks every downloaded file against the `sha256` `images.list`
+  reports: a mismatch fails the pull before anything is written, so if
+  the host's url grammar changes, pull fails instead of silently writing
+  previews again.
