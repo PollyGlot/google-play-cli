@@ -453,24 +453,41 @@ func RetiredMessage(path string) string {
 	return path + ": not an image type Play accepts any more (Google removed it from the API's AppImageType), so gplay ignores it; delete the file"
 }
 
-// writeContained is os.WriteFile with the containment check in front of it,
+// writeContained writes data to p with the containment check in front of it,
 // the write-side mirror of readContained: containing the directory is not
-// enough, because os.WriteFile follows a symlinked LEAF and an image file
-// pre-placed as a link would have its target overwritten by `images pull`.
+// enough, because writing follows a symlinked LEAF and an image file pre-placed
+// as a link would have its target overwritten by `images pull`.
+//
+// The bytes go to a temporary sibling first and are renamed over p only once
+// the copy succeeded, so a copy that fails partway (a staged file that cannot
+// be read back) leaves the existing image intact rather than truncated. The
+// temporary name ends in neither .png nor .jpg, so Read and the gallery prune
+// never mistake a leftover for an image.
 func writeContained(root, p string, data blob) error {
 	target, err := pathguard.ContainWrite(root, p)
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm)
+	f, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")
 	if err != nil {
 		return err
 	}
-	if err := data.copyTo(f); err != nil {
-		_ = f.Close()
+	tmp := f.Name()
+	err = data.copyTo(f)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, filePerm)
+	}
+	if err == nil {
+		err = os.Rename(tmp, target)
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
-	return f.Close()
+	return nil
 }
 
 // readContained is os.ReadFile with the containment check in front of it, so
