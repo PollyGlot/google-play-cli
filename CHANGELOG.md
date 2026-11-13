@@ -5,6 +5,17 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2](https://github.com/PollyGlot/google-play-cli/compare/v2.4.1...v2.4.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **install-skills:** pin the skills for 2.4.1 ([#765](https://github.com/PollyGlot/google-play-cli/issues/765)) ([1f4a2d8](https://github.com/PollyGlot/google-play-cli/commit/1f4a2d86b5362ba8bf710bb3220aa4e138568012))
+* **install-skills:** stop cutting a release for a skills repin ([#767](https://github.com/PollyGlot/google-play-cli/issues/767)) ([97bd9cd](https://github.com/PollyGlot/google-play-cli/commit/97bd9cd8e26200b1998d337045bb80b6af7b8a40))
+* **metadata:** pull original-size images, not 512px thumbnails ([#772](https://github.com/PollyGlot/google-play-cli/issues/772)) ([a18ab95](https://github.com/PollyGlot/google-play-cli/commit/a18ab95d1d8e0ef32af5bb0c4dca938a3ee7523d))
+* **metadata:** stage pulled images on disk, not in memory ([#773](https://github.com/PollyGlot/google-play-cli/issues/773)) ([5b2d361](https://github.com/PollyGlot/google-play-cli/commit/5b2d361929af2800f0c79221790f4b3878b95958))
+* **vitals:** end the query window at the metric set freshness ([#771](https://github.com/PollyGlot/google-play-cli/issues/771)) ([dc5f304](https://github.com/PollyGlot/google-play-cli/commit/dc5f304656b4d05247aab0d111e3ecdc77e0d9af))
+
 ## [2.4.1](https://github.com/PollyGlot/google-play-cli/compare/v2.4.0...v2.4.1) (2026-11-10)
 
 
