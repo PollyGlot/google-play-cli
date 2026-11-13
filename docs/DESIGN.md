@@ -469,10 +469,15 @@ reports the error the serial walk would have hit first.
 
 - **Writes inside one Edit stay sequential** (`images apply`, `metadata apply`):
   Google does not document concurrent writes to an Edit.
-- **`images pull` stays all-or-nothing**: every byte is staged in memory and
-  the tree on disk is written only after the last download succeeded, so a
-  failed or interrupted pull leaves nothing a later `apply --prune` would read
-  as deletions.
+- **`images pull` downloads are all-or-nothing**: each download streams to its
+  own file in a temporary staging directory, and the tree on disk is written
+  only after the last download succeeded, so a failed or interrupted download
+  leaves nothing a later `apply --prune` would read as deletions. The staging
+  directory is removed either way, and each image replaces its predecessor by
+  rename, so a write that fails partway never leaves a truncated image. The
+  write phase itself has no rollback: a failure there (disk full, a staged file
+  unreadable) leaves earlier images replaced and later ones unchanged, and
+  re-running `pull` converges.
   Each image is downloaded at its original size (`=s0` on the
   `googleusercontent` url, which serves a 512px preview without it) and must
   hash to the `sha256` `images.list` reports, or the pull fails (exit `1`)

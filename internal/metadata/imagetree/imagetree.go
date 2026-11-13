@@ -20,7 +20,9 @@
 package imagetree
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,6 +37,63 @@ import (
 // non-empty slots are present: an absent/empty slot is unmanaged and has no
 // entry (missing == empty).
 type Tree map[string]map[images.Type][][]byte
+
+// Staged is a Tree whose images live in files rather than in memory: locale →
+// (image type → ordered paths, each holding one image's bytes). WriteStaged
+// copies each file into place, so a caller staging large downloads on disk
+// never holds the whole tree in memory. The staged files are only read, never
+// moved or removed.
+type Staged map[string]map[images.Type][]string
+
+// blob is one image to write: its leading bytes for the extension sniff, and
+// its content copied into the destination file.
+type blob interface {
+	head() ([]byte, error)
+	copyTo(w io.Writer) error
+}
+
+type memBlob []byte
+
+func (b memBlob) head() ([]byte, error) { return b, nil }
+func (b memBlob) copyTo(w io.Writer) error {
+	_, err := w.Write(b)
+	return err
+}
+
+type fileBlob string
+
+func (p fileBlob) head() ([]byte, error) {
+	f, err := os.Open(string(p))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	b := make([]byte, 8)
+	n, err := io.ReadFull(f, b)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return b[:n], nil
+}
+
+func (p fileBlob) copyTo(w io.Writer) error {
+	f, err := os.Open(string(p))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	_, err = io.Copy(w, f)
+	return err
+}
+
+// blobExt sniffs b's extension (Ext) from its leading bytes.
+func blobExt(b blob) (string, error) {
+	h, err := b.head()
+	if err != nil {
+		return "", err
+	}
+	return Ext(h), nil
+}
 
 const (
 	dirPerm  os.FileMode = 0o755
@@ -81,6 +140,39 @@ var recognizedExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true}
 // additive stance of the text codec (removing an online-gone slot is apply's
 // job, not pull's).
 func Write(dir string, tr Tree) error {
+	bt := make(map[string]map[images.Type][]blob, len(tr))
+	for loc, slots := range tr {
+		bt[loc] = make(map[images.Type][]blob, len(slots))
+		for ty, seq := range slots {
+			bs := make([]blob, len(seq))
+			for i, data := range seq {
+				bs[i] = memBlob(data)
+			}
+			bt[loc][ty] = bs
+		}
+	}
+	return write(dir, bt)
+}
+
+// WriteStaged is Write for a Staged tree: the same layout, idempotency and
+// containment rules, with each image's bytes copied from its staged file
+// instead of held in memory.
+func WriteStaged(dir string, st Staged) error {
+	bt := make(map[string]map[images.Type][]blob, len(st))
+	for loc, slots := range st {
+		bt[loc] = make(map[images.Type][]blob, len(slots))
+		for ty, seq := range slots {
+			bs := make([]blob, len(seq))
+			for i, p := range seq {
+				bs[i] = fileBlob(p)
+			}
+			bt[loc][ty] = bs
+		}
+	}
+	return write(dir, bt)
+}
+
+func write(dir string, tr map[string]map[images.Type][]blob) error {
 	// The locale keys of tr come from the Play API on the pull path: a string
 	// gplay did not author, joined straight into a filesystem path. Establish
 	// the containment root up front (creating dir, since pull writes into a
@@ -129,8 +221,11 @@ func Write(dir string, tr Tree) error {
 	return nil
 }
 
-func writeSingular(root, imgDir string, ty images.Type, data []byte) error {
-	ext := Ext(data)
+func writeSingular(root, imgDir string, ty images.Type, data blob) error {
+	ext, err := blobExt(data)
+	if err != nil {
+		return err
+	}
 	if ext == "" {
 		return fmt.Errorf("imagetree: %s: image bytes are neither PNG nor JPEG", ty)
 	}
@@ -159,7 +254,7 @@ func writeSingular(root, imgDir string, ty images.Type, data []byte) error {
 	return nil
 }
 
-func writeGallery(root, galleryDir string, ty images.Type, seq [][]byte) error {
+func writeGallery(root, galleryDir string, ty images.Type, seq []blob) error {
 	if _, err := pathguard.Contain(root, galleryDir); err != nil {
 		return err
 	}
@@ -168,7 +263,10 @@ func writeGallery(root, galleryDir string, ty images.Type, seq [][]byte) error {
 	}
 	written := make(map[string]bool, len(seq))
 	for i, data := range seq {
-		ext := Ext(data)
+		ext, err := blobExt(data)
+		if err != nil {
+			return err
+		}
 		if ext == "" {
 			return fmt.Errorf("imagetree: %s[%d]: image bytes are neither PNG nor JPEG", ty, i)
 		}
@@ -355,16 +453,41 @@ func RetiredMessage(path string) string {
 	return path + ": not an image type Play accepts any more (Google removed it from the API's AppImageType), so gplay ignores it; delete the file"
 }
 
-// writeContained is os.WriteFile with the containment check in front of it,
+// writeContained writes data to p with the containment check in front of it,
 // the write-side mirror of readContained: containing the directory is not
-// enough, because os.WriteFile follows a symlinked LEAF and an image file
-// pre-placed as a link would have its target overwritten by `images pull`.
-func writeContained(root, p string, data []byte) error {
+// enough, because writing follows a symlinked LEAF and an image file pre-placed
+// as a link would have its target overwritten by `images pull`.
+//
+// The bytes go to a temporary sibling first and are renamed over p only once
+// the copy succeeded, so a copy that fails partway (a staged file that cannot
+// be read back) leaves the existing image intact rather than truncated. The
+// temporary name ends in neither .png nor .jpg, so Read and the gallery prune
+// never mistake a leftover for an image.
+func writeContained(root, p string, data blob) error {
 	target, err := pathguard.ContainWrite(root, p)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(target, data, filePerm)
+	f, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	err = data.copyTo(f)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, filePerm)
+	}
+	if err == nil {
+		err = os.Rename(tmp, target)
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // readContained is os.ReadFile with the containment check in front of it, so
@@ -429,7 +552,7 @@ func toLower(s string) string {
 
 // sortedLocales returns tr's locale keys in lexical order for deterministic
 // Write output.
-func sortedLocales(tr Tree) []string {
+func sortedLocales[V any](tr map[string]V) []string {
 	out := make([]string, 0, len(tr))
 	for loc := range tr {
 		out = append(out, loc)
