@@ -15,8 +15,9 @@ import (
 // match the table does not encode must be accounted for below. The bare
 // modals (#783) catch the sentences the phrase list missed, such as
 // "is only allowed to be set", "This prefix must match", "can not be
-// updated" and "will be rejected".
-var constraintWording = regexp.MustCompile(`(?i)\bonly\b|\bmust\b|\bimmutable\b|\bcan ?not\b|\bat most\b|\brejected\b|0 <|strictly (smaller|larger|greater|less)|required (when|if)|not be set|mutually exclusive|exactly one of`)
+// updated" and "will be rejected". The quantity wordings catch the limits
+// stated without a modal: "maximum length is 55 characters", "up to 20".
+var constraintWording = regexp.MustCompile(`(?i)\bonly\b|\bmust\b|\bimmutable\b|\bcan ?not\b|\bat most\b|\bup to\b|\bmaximum\b|\bno more than\b|\bat least\b|\brejected\b|0 <|strictly (smaller|larger|greater|less)|required (when|if)|not be set|mutually exclusive|exactly one of`)
 
 // fieldBehavior is the AIP annotation Discovery prefixes a description with.
 // "Immutable." there marks a create-time identifier; an immutability rule
@@ -43,7 +44,7 @@ const (
 	server    = "rests on Play's server-side data (minimum prices, region currencies), absent from Discovery"
 	account   = "constrains the developer account or the app's history, not the body"
 	civil     = "vitals fills it from a Go time.Time (toDateTime in commands/vitals/vitalscmd/vitalscmd.go), which cannot hold an out-of-range field; the TimelineSpec rules check its alignment"
-	noBatch   = "known defect, issue to open: commands/iap/apply/apply.go sends every change of one purchase option or product in a single batch call and never splits it at the 100 requests the description allows"
+	noBatch   = "known defect (#807): commands/iap/apply/apply.go sends every change of one purchase option or product in a single batch call and never splits it at the 100 requests the description allows"
 )
 
 // unenforced lists the properties gplay writes whose constraint the table
@@ -123,6 +124,22 @@ var unenforced = func() map[string]struct{ sentence, why string } {
 		"GoogleTypeDateTime.seconds":   {"Must normally be from 0 to 59, defaults to 0.", civil},
 		"GoogleTypeDateTime.nanos":     {"Must be from 0 to 999,999,999, defaults to 0.", civil},
 		"GoogleTypeDateTime.utcOffset": {"Must be whole seconds, between -18 hours and +18 hours.", "vitals never sets it, and the TimelineSpec rules refuse any zone but the one each aggregation period takes"},
+
+		// Quantity wordings ("up to", "maximum", "at least").
+		"OneTimeProductListing.title":                      {"The maximum length is 55 characters.", userInput},
+		"OneTimeProductListing.description":                {"The maximum length is 200 characters.", userInput},
+		"SubscriptionListing.description":                  {"Maximum length - 200 characters.", userInput},
+		"OneTimeProduct.offerTags":                         {"List of up to 20 custom tags specified for this one-time product", userInput},
+		"OneTimeProductPurchaseOption.offerTags":           {"List of up to 20 custom tags specified for this purchase option", userInput},
+		"OneTimeProductOffer.offerTags":                    {"List of up to 20 custom tags specified for this offer", userInput},
+		"BasePlan.offerTags":                               {"List of up to 20 custom tags specified for this base plan", userInput},
+		"SubscriptionOffer.offerTags":                      {"List of up to 20 custom tags specified for this offer", userInput},
+		"OneTimeProductBuyPurchaseOption.legacyCompatible": {"Up to one \"buy\" purchase option can be marked as backwards compatible.", userInput},
+		"UsesPermission.maxSdkVersion":                     {"the maximum SDK version for which the permission is required.", "names a bound the field carries, not a limit Play puts on the request"},
+		"ExternallyHostedApk.maximumSdk":                   {"The maximum SDK supported by this APK (optional).", "names a bound the field carries, not a limit Play puts on the request"},
+		"DeviceRam.maxBytes":                               {"Maximum RAM in bytes (bound excluded).", "names a bound the field carries, not a limit Play puts on the request"},
+		"LeaderboardConfiguration.scoreMax":                {"Maximum score that can be posted to this leaderboard.", "names a bound the field carries, not a limit Play puts on the request"},
+		"SafetyLabelsUpdateRequest.safetyLabels":           {"To download an up to date template", "the wording is about the template being current, not a limit"},
 	}
 	// The vitals `:query` requests share their wording across metric sets.
 	osBeta := map[string]bool{"AnrRate": true, "CrashRate": true, "LmkRate": true}
