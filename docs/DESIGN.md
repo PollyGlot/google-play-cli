@@ -773,12 +773,17 @@ seconds instead of stalling a CI job until the runner-level kill:
   `releases sharing upload`, `releases expansion-files upload`,
   `releases mappings`, `metadata images apply`, the
   `appstore apk|image|policy upload` and `customapps create` surfaces, and
-  the APK bytes of
-  `releases generated download` and `releases system-apks download`) are **exempt from the default**: a
+  the downloaded bytes of
+  `releases generated download`, `releases system-apks download`, `reports`
+  and `reviews history`) are **exempt from the default**: a
   multi-hundred-MB transfer is never killed by the short control-plane bound.
   The exemption is decided per request, so the same commands' Edit calls
   (`edits.insert`, `tracks.update`, `edits.commit`), the resumable initiate and
-  offset probe, and the token exchange keep the 60s bound.
+  offset probe, the Cloud Storage listings, and the token exchange keep the
+  60s bound.
+- A **download** (`alt=media`) is bounded by inactivity instead: it fails only
+  after 60s without receiving a byte (headers included), however long the whole
+  transfer takes.
 - Each **resumable chunk** (8 MiB) carries its own generous 5-minute bound: a
   connection that stops moving bytes without a reset is cut, then the upload
   probes the committed offset and resumes. After a failure the resume waits on
@@ -787,7 +792,8 @@ seconds instead of stalling a CI job until the runner-level kill:
   without progress end the upload.
 - The global **`--timeout <duration>`** flag (e.g. `--timeout 30s`,
   `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
-  Unset (`0`) means "60s for control-plane, unbounded for uploads".
+  Unset (`0`) means "60s for control-plane, 60s of inactivity for downloads,
+  unbounded for uploads".
 
 A deadline-exceeded failure is a transport-level error and maps to **exit 50**
 (network), the retry-safe bucket — so the same CI wrapper that retries a DNS
