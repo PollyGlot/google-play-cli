@@ -1,0 +1,7 @@
+# Write Examples that TestExamples_writeCommandsRunAgainstTheConstraints does
+# not run yet: one Example line per line, as its argv after `gplay` (the key
+# the test failure prints), under a `#` comment giving the reason.
+#
+# Every write Example runs today, so the list is empty. A line is only ever
+# added for a known defect, with the issue that tracks it, and the test fails
+# once the line runs or its Example is gone.
