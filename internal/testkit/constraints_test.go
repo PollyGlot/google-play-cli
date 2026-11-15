@@ -18,6 +18,7 @@ const (
 	subsCreateURL    = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?productId=p"
 	offerCreateURL   = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/p/basePlans/m/offers"
 	otpOffersURL     = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/p/purchaseOptions/o/offers:batchUpdate"
+	tracksCreateURL  = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/tracks"
 	otpPatchURL      = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/onetimeproducts/p"
 	bundleUploadURL  = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/e1/bundles"
 	unregisteredHost = "https://api.test/applications/com.example.app/edits/e1/tracks/production"
@@ -59,6 +60,12 @@ func TestFake_refusesBodiesPlayRefuses(t *testing.T) {
 		{"null fraction", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","userFraction":null}]}`, ""},
 		{"inProgress staged", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"inProgress","userFraction":0.1}]}`, ""},
 		{"halted staged", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"halted","userFraction":0.5}]}`, ""},
+
+		{"wear track without its prefix (#776)", http.MethodPost, tracksCreateURL, `{"track":"beta-wear","type":"CLOSED_TESTING","formFactor":"WEAR"}`, "TrackConfig.track"},
+		{"automotive track behind the wear prefix", http.MethodPost, tracksCreateURL, `{"track":"wear:beta","type":"CLOSED_TESTING","formFactor":"AUTOMOTIVE"}`, "TrackConfig.track"},
+		{"default track behind a prefix", http.MethodPost, tracksCreateURL, `{"track":"automotive:beta","type":"CLOSED_TESTING","formFactor":"DEFAULT"}`, "TrackConfig.track"},
+		{"wear track with its prefix", http.MethodPost, tracksCreateURL, `{"track":"wear:beta-wear","type":"CLOSED_TESTING","formFactor":"WEAR"}`, ""},
+		{"default track by its alias", http.MethodPost, tracksCreateURL, `{"track":"qa-team","type":"CLOSED_TESTING","formFactor":"DEFAULT"}`, ""},
 
 		{"new subscribers without a price", http.MethodPost, subsCreateURL, `{"basePlans":[{"regionalConfigs":[{"regionCode":"FR","newSubscriberAvailability":true}]}]}`, "RegionalBasePlanConfig.price"},
 		{"new subscribers with a price", http.MethodPost, subsCreateURL, `{"basePlans":[{"regionalConfigs":[{"regionCode":"FR","newSubscriberAvailability":true,"price":{"currencyCode":"EUR","units":"4"}}]}]}`, ""},

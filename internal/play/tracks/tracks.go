@@ -8,7 +8,9 @@ package tracks
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -91,6 +93,34 @@ type TrackConfig struct {
 	Track      string `json:"track"`
 	Type       string `json:"type"`
 	FormFactor string `json:"formFactor"`
+}
+
+// formFactorPrefixes are the TrackConfig.track prefixes Play requires on a
+// form factor track (`wear:production`); a default track carries none.
+var formFactorPrefixes = map[string]string{
+	FormFactorWear:       "wear:",
+	FormFactorAutomotive: "automotive:",
+}
+
+// QualifiedName returns the TrackConfig.track identifier Play knows a track
+// named name of formFactor by: the bare alias for a default track, the alias
+// behind the form factor's prefix otherwise (beta-wear becomes wear:beta-wear).
+// A name that already carries its own prefix is kept as is. One that carries
+// another form factor's prefix contradicts formFactor and is refused, since
+// Play rejects the mismatch and guessing which side the caller meant would
+// create the wrong track.
+func QualifiedName(name, formFactor string) (string, error) {
+	for ff, prefix := range formFactorPrefixes {
+		if ff != formFactor && strings.HasPrefix(name, prefix) {
+			return "", fmt.Errorf("track %q carries the %s prefix %q but the form factor is %s", name, ff, prefix, formFactor)
+		}
+	}
+	prefix := formFactorPrefixes[formFactor]
+	alias := strings.TrimPrefix(name, prefix)
+	if alias == "" {
+		return "", fmt.Errorf("track %q has no name after its %q prefix", name, prefix)
+	}
+	return prefix + alias, nil
 }
 
 // Get fetches the current Track resource at edits.tracks.get. The
