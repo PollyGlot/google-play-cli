@@ -38,6 +38,11 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # Same week of cooldown as the actions and npm: non-major module bumps
+    # merge without a human, so a freshly hijacked release must not land the
+    # day it is published.
+    cooldown:
+      default-days: 7
     labels:
       - dependencies
     commit-message:
