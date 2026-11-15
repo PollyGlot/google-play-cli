@@ -154,7 +154,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if err != nil {
 			return err
 		}
-		return fetchSlots(rc, httpClient, pkg, editID, locales, staging, tr)
+		return fetchSlots(rc, httpClient, rc.PublicClient(), pkg, editID, locales, staging, tr)
 	}); err != nil {
 		return nil, apihint.ForPackage(pkg, err)
 	}
@@ -174,7 +174,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 // result is written at its own index, so tr is identical to a serial walk's.
 // Any failure aborts before tr is touched; within a pass the error reported is
 // the lowest-index one, so the same responses always yield the same error.
-func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, locales []string, staging string, tr imagetree.Staged) error {
+// hc carries the images.list calls; media, without a credential, fetches the
+// image urls they return.
+func fetchSlots(rc *kernel.RunContext, hc, media *http.Client, pkg, editID string, locales []string, staging string, tr imagetree.Staged) error {
 	types := images.Types()
 	listed := make([][]images.Image, len(locales)*len(types))
 	if err := fanout.Each(len(listed), func(i int) error {
@@ -199,7 +201,7 @@ func fetchSlots(rc *kernel.RunContext, hc *http.Client, pkg, editID string, loca
 		img := listed[j.slot][j.pos]
 		u := images.OriginalURL(img.URL)
 		path := filepath.Join(staging, strconv.Itoa(i))
-		if err := stage(rc.Ctx, hc, img, u, path); err != nil {
+		if err := stage(rc.Ctx, media, img, u, path); err != nil {
 			return err
 		}
 		files[j.slot][j.pos] = path
@@ -245,10 +247,10 @@ const opImagesDownload = "images.download"
 // download GETs the image bytes at url (the API gives no original filename, so
 // the bytes are downloaded from the url images.list returns, sized to the
 // original by images.OriginalURL rather than the host's thumbnail) through the
-// executor's streaming download. It uses the authenticated client: Play's image
-// urls are Google-owned hosts, so carrying the androidpublisher token is
-// harmless, and caps the body at maxImageBytes. The bytes stream into w, which
-// holds whatever arrived before a failure.
+// executor's streaming download, and caps the body at maxImageBytes. hc must
+// be rc.PublicClient: the url serves a public preview, so the Account's token
+// has no business reaching its host or wherever it redirects. The bytes stream
+// into w, which holds whatever arrived before a failure.
 func download(ctx context.Context, hc *http.Client, url string, w io.Writer) error {
 	dst := &cappedWriter{w: w, max: maxImageBytes}
 	_, err := api.Download(ctx, hc, api.Call{URL: url, Op: opImagesDownload}, dst)
