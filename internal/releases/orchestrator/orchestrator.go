@@ -231,6 +231,13 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		return nil, confirmRequired(opts.State.resolve(opts.Track).Status())
 	}
 
+	// An empty or over-long note is knowable offline: refuse it before
+	// edits.insert rather than from notes.Load inside the Edit (#786). The
+	// dry-run branch above runs the same checks through dryRunResult.
+	if err := notes.Precheck(opts.ReleaseNotes, opts.ReleaseNotesDir); err != nil {
+		return nil, err
+	}
+
 	result := &Result{Track: opts.Track}
 
 	err = edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
@@ -495,12 +502,6 @@ func loadHosted(opts Opts) ([]json.RawMessage, error) {
 	return hosted, nil
 }
 
-// dryRunDefaultLangPlaceholder satisfies notes.Load's DefaultLanguage
-// requirement during a dry-run so the loader's structural validation
-// (mutual exclusion, file-size cap, missing dir) still runs. The real
-// DefaultLanguage is resolved at upload time via edits.details.get.
-const dryRunDefaultLangPlaceholder = "(default-language-at-upload-time)"
-
 // dryRunResult validates the inputs Upload would consume without any
 // HTTP and returns a preview Result describing the planned payload.
 // Caller-side mutual-exclusion / fraction-range checks already ran in
@@ -534,6 +535,14 @@ func dryRunResult(opts Opts) (*Result, error) {
 		}
 	}
 
+	// Text mode reads no file, so only the length and emptiness checks apply
+	// (#786); the locale it lands on is resolved at upload time.
+	if opts.ReleaseNotes != "" {
+		if err := notes.Precheck(opts.ReleaseNotes, ""); err != nil {
+			return nil, &dryRunError{msg: err.Error()}
+		}
+	}
+
 	var previewLocales []string
 	if opts.ReleaseNotesDir != "" {
 		st, err := os.Stat(opts.ReleaseNotesDir)
@@ -544,18 +553,18 @@ func dryRunResult(opts Opts) (*Result, error) {
 			return nil, &dryRunError{msg: "release-notes-dir is not a directory: " + opts.ReleaseNotesDir}
 		}
 		// Run the actual loader so the file-size cap, per-locale walk,
-		// and default.txt rules are all exercised. The placeholder
-		// DefaultLanguage satisfies notes.Load's API contract; the live
-		// upload resolves the real value via details.get.
+		// note length and default.txt rules are all exercised. The
+		// placeholder DefaultLanguage satisfies notes.Load's API contract;
+		// the live upload resolves the real value via details.get.
 		loaded, err := notes.Load(notes.Opts{
 			Dir:             opts.ReleaseNotesDir,
-			DefaultLanguage: dryRunDefaultLangPlaceholder,
+			DefaultLanguage: notes.OfflineDefaultLanguage,
 		})
 		if err != nil {
 			return nil, &dryRunError{msg: err.Error()}
 		}
 		for _, n := range loaded {
-			if n.Locale == dryRunDefaultLangPlaceholder {
+			if n.Locale == notes.OfflineDefaultLanguage {
 				previewLocales = append(previewLocales, "(default-language)")
 			} else {
 				previewLocales = append(previewLocales, n.Locale)

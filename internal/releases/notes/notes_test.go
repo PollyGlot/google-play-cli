@@ -305,10 +305,11 @@ func TestLoad_dirMode_defaultTxtExceedsCap_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestLoad_dirMode_atCapBoundary_loadsSuccessfully asserts that a file
-// exactly at MaxNoteFileSize loads cleanly: the cap is inclusive, so
-// `> cap` fails but `== cap` succeeds.
-func TestLoad_dirMode_atCapBoundary_loadsSuccessfully(t *testing.T) {
+// TestLoad_dirMode_atCapBoundary_passesTheByteCap asserts the byte cap is
+// inclusive: a file of exactly MaxNoteFileSize bytes is read, so the refusal
+// it gets is the 500-character note check (*NoteError, exit 20), not the
+// OOM-guard ValidationError (exit 2).
+func TestLoad_dirMode_atCapBoundary_passesTheByteCap(t *testing.T) {
 	dir := t.TempDir()
 	atLimit := make([]byte, notes.MaxNoteFileSize)
 	for i := range atLimit {
@@ -318,15 +319,104 @@ func TestLoad_dirMode_atCapBoundary_loadsSuccessfully(t *testing.T) {
 		t.Fatalf("WriteFile at-limit: %v", err)
 	}
 
-	got, err := notes.Load(notes.Opts{
+	_, err := notes.Load(notes.Opts{
 		Dir:             dir,
 		DefaultLanguage: "en-US",
 	})
-	if err != nil {
-		t.Fatalf("Load(at-cap): %v", err)
+	var noteErr *notes.NoteError
+	if !errors.As(err, &noteErr) {
+		t.Fatalf("Load(at-cap) err = %v (%T), want *notes.NoteError: the byte cap must let it through", err, err)
 	}
-	if len(got) != 1 || got[0].Locale != "en-US" || len(got[0].Text) != notes.MaxNoteFileSize {
-		t.Errorf("at-cap file should load: got %d entries, text len %d", len(got), len(got[0].Text))
+	if noteErr.Chars != notes.MaxNoteFileSize {
+		t.Errorf("Chars = %d, want %d", noteErr.Chars, notes.MaxNoteFileSize)
+	}
+}
+
+// TestLoad_noteLength covers #786: Play refuses an empty note and one over 500
+// Unicode characters, and used to do so only after the bundle was uploaded.
+// Length is counted in runes (an "é" is one character, two bytes), the refusal
+// is exit 20, and its message carries the locale, the source and the length.
+func TestLoad_noteLength(t *testing.T) {
+	accented := strings.Repeat("é", notes.MaxNoteChars) // 500 runes, 1000 bytes
+	cases := []struct {
+		name     string
+		opts     func(dir string) notes.Opts
+		wantErr  bool
+		wantText []string // substrings of the error message
+	}{
+		{
+			name: "text mode at the limit in runes loads",
+			opts: func(string) notes.Opts {
+				return notes.Opts{Text: accented, DefaultLanguage: "fr-FR"}
+			},
+		},
+		{
+			name: "text mode one rune over",
+			opts: func(string) notes.Opts {
+				return notes.Opts{Text: accented + "é", DefaultLanguage: "fr-FR"}
+			},
+			wantErr:  true,
+			wantText: []string{"fr-FR", "--release-notes", "501 characters", "at most 500"},
+		},
+		{
+			name: "text mode whitespace only is empty",
+			opts: func(string) notes.Opts {
+				return notes.Opts{Text: "  \n\t", DefaultLanguage: "en-US"}
+			},
+			wantErr:  true,
+			wantText: []string{"en-US", "--release-notes", "empty (0 characters)"},
+		},
+		{
+			name: "dir mode empty file",
+			opts: func(dir string) notes.Opts {
+				writeFile(t, dir, "en-US.txt", "Fine")
+				writeFile(t, dir, "fr-FR.txt", "\n")
+				return notes.Opts{Dir: dir}
+			},
+			wantErr:  true,
+			wantText: []string{"fr-FR", "fr-FR.txt", "empty (0 characters)"},
+		},
+		{
+			name: "dir mode over-long file",
+			opts: func(dir string) notes.Opts {
+				writeFile(t, dir, "de-DE.txt", strings.Repeat("a", 612))
+				return notes.Opts{Dir: dir}
+			},
+			wantErr:  true,
+			wantText: []string{"de-DE", "de-DE.txt", "612 characters"},
+		},
+		{
+			name: "dir mode over-long default.txt names the default language",
+			opts: func(dir string) notes.Opts {
+				writeFile(t, dir, "default.txt", strings.Repeat("a", 501))
+				return notes.Opts{Dir: dir, DefaultLanguage: notes.OfflineDefaultLanguage}
+			},
+			wantErr:  true,
+			wantText: []string{"the default language", "default.txt", "501 characters"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := notes.Load(tc.opts(t.TempDir()))
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("Load: %v", err)
+				}
+				return
+			}
+			var noteErr *notes.NoteError
+			if !errors.As(err, &noteErr) {
+				t.Fatalf("err = %v (%T), want *notes.NoteError", err, err)
+			}
+			if got := noteErr.ExitCode(); got != 20 {
+				t.Errorf("ExitCode() = %d, want 20 (client-side validation)", got)
+			}
+			for _, want := range tc.wantText {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("message %q does not contain %q", err.Error(), want)
+				}
+			}
+		})
 	}
 }
 

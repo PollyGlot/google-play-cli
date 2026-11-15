@@ -12,6 +12,7 @@ import (
 	"golang.org/x/oauth2"
 
 	discardcmd "github.com/PollyGlot/google-play-cli/commands/edits/discard"
+	"github.com/PollyGlot/google-play-cli/commands/edits/editscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/editpin"
@@ -49,16 +50,25 @@ func deleteCalls(f *testkit.Fake) int {
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, string) {
 	t.Helper()
+	rc, gplayDir, _ := newRCWithStderr(t, rt)
+	return rc, gplayDir
+}
+
+// newRCWithStderr is newRC plus the buffer behind rc.Stderr, for the tests that
+// read the confirmation line.
+func newRCWithStderr(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, string, *bytes.Buffer) {
+	t.Helper()
+	stderr := &bytes.Buffer{}
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
 	gplayDir := filepath.Join(t.TempDir(), ".gplay")
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
-	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}, kernel.Inputs{Format: output.FormatJSON})
+	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: stderr}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa
 	rc.Resolved = &config.Resolved{Pin: pkg, ProjectSharedPath: filepath.Join(gplayDir, "config.json")}
-	return rc, gplayDir
+	return rc, gplayDir, stderr
 }
 
 func exitOf(t *testing.T, err error) int {
@@ -127,6 +137,56 @@ func TestRun_discardServerError_clearsPinButReturnsError(t *testing.T) {
 	}
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); ok {
 		t.Error("the pin must be cleared even when the remote discard failed")
+	}
+}
+
+// TestRun_unreadablePin_removedWithoutNetwork is #786: a corrupt pin used to
+// make discard fail like every other command, leaving `rm` as the only way
+// out. Discard now removes it, sends nothing to Play (there is no Edit ID to
+// trust), and says so on stderr and in its payload.
+func TestRun_unreadablePin_removedWithoutNetwork(t *testing.T) {
+	fake := newDiscardFake(0)
+	rc, gplayDir, stderrBuf := newRCWithStderr(t, fake)
+	if err := (config.OSFS{}).MkdirAll(gplayDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := (config.OSFS{}).WriteFile(editpin.Path(gplayDir, pkg), []byte(`{"editId": `), 0o644); err != nil {
+		t.Fatalf("seed corrupt pin: %v", err)
+	}
+
+	got, err := discardcmd.Run(rc, discardcmd.Input{Package: pkg})
+	if err != nil {
+		t.Fatalf("Run on an unreadable pin: %v", err)
+	}
+	if n := len(fake.Calls()); n != 0 {
+		t.Errorf("calls = %d, want 0: an unreadable pin names no Edit to discard", n)
+	}
+	if _, err := (config.OSFS{}).Stat(editpin.Path(gplayDir, pkg)); err == nil {
+		t.Error("unreadable pin still on disk after discard")
+	}
+	if p, ok := got.(editscmd.Payload); !ok || p.Action != editscmd.ActionClearedUnreadable || p.Open {
+		t.Errorf("payload = %#v, want action %q, open false", got, editscmd.ActionClearedUnreadable)
+	}
+	stderr := stderrBuf.String()
+	if !strings.Contains(stderr, "removed unreadable pin") || !strings.Contains(stderr, "nothing was sent to Play") {
+		t.Errorf("stderr %q does not say the pin was removed without an API call", stderr)
+	}
+}
+
+// TestRun_pinThatCannotBeRead_isNotRemoved guards the other side: a pin that
+// fails to READ (here a directory where the file should be) is not corrupt
+// content, so discard must refuse rather than delete what it never inspected.
+func TestRun_pinThatCannotBeRead_isNotRemoved(t *testing.T) {
+	fake := newDiscardFake(0)
+	rc, gplayDir := newRC(t, fake)
+	if err := (config.OSFS{}).MkdirAll(editpin.Path(gplayDir, pkg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := discardcmd.Run(rc, discardcmd.Input{Package: pkg}); err == nil {
+		t.Fatal("a pin path that cannot be read must fail, not be cleared")
+	}
+	if _, err := (config.OSFS{}).Stat(editpin.Path(gplayDir, pkg)); err != nil {
+		t.Errorf("the unread pin path was removed: %v", err)
 	}
 }
 

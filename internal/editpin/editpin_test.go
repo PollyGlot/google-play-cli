@@ -3,11 +3,13 @@ package editpin_test
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
 	"github.com/PollyGlot/google-play-cli/internal/config/configtest"
 	"github.com/PollyGlot/google-play-cli/internal/editpin"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
 const pkg = "com.example.app"
@@ -111,35 +113,38 @@ func TestLookupMissingIsNotAnError(t *testing.T) {
 	}
 }
 
-func TestLookupCorruptIsAnError(t *testing.T) {
-	dir := t.TempDir()
-	if err := (config.OSFS{}).WriteFile(editpin.Path(dir, pkg), []byte("not json"), 0o644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if _, ok, err := editpin.Lookup(config.OSFS{}, dir, pkg); err == nil || ok {
-		t.Errorf("corrupt pin: ok=%v err=%v, want ok=false non-nil err", ok, err)
-	}
-}
-
-func TestLookupMissingEditIDIsAnError(t *testing.T) {
-	dir := t.TempDir()
-	if err := (config.OSFS{}).WriteFile(editpin.Path(dir, pkg), []byte(`{"package":"com.example.app"}`), 0o644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if _, ok, err := editpin.Lookup(config.OSFS{}, dir, pkg); err == nil || ok {
-		t.Errorf("pin without editId: ok=%v err=%v, want ok=false non-nil err", ok, err)
-	}
-}
-
-func TestLookupPackageMismatchIsAnError(t *testing.T) {
-	dir := t.TempDir()
-	// File is edit-com.example.app.json but its embedded package disagrees: a
-	// copied/renamed pin. Lookup must reject it as corruption.
-	if err := (config.OSFS{}).WriteFile(editpin.Path(dir, pkg), []byte(`{"editId":"e1","package":"com.other.app"}`), 0o644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if _, ok, err := editpin.Lookup(config.OSFS{}, dir, pkg); err == nil || ok {
-		t.Errorf("package mismatch: ok=%v err=%v, want ok=false non-nil err", ok, err)
+// TestLookupUnusablePinIsCorruptError covers the three ways a present pin is
+// unusable. Each must be a *CorruptError (exit 60) whose message names the way
+// out, `gplay edits discard --package <pkg>`: every other command refuses the
+// pin, so without that name the user is stuck (#786).
+func TestLookupUnusablePinIsCorruptError(t *testing.T) {
+	for name, body := range map[string]string{
+		"not JSON":       "not json",
+		"truncated":      `{"editId": `,
+		"missing editId": `{"package":"com.example.app"}`,
+		// A copied/renamed pin: the file name and the embedded package disagree.
+		"package mismatch": `{"editId":"e1","package":"com.other.app"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := (config.OSFS{}).WriteFile(editpin.Path(dir, pkg), []byte(body), 0o644); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			_, ok, err := editpin.Lookup(config.OSFS{}, dir, pkg)
+			if ok {
+				t.Fatal("ok = true on an unusable pin")
+			}
+			var corrupt *editpin.CorruptError
+			if !errors.As(err, &corrupt) {
+				t.Fatalf("err = %v (%T), want *editpin.CorruptError", err, err)
+			}
+			if got := exit.For(err); got != 60 {
+				t.Errorf("exit = %d, want 60", got)
+			}
+			if want := "gplay edits discard --package " + pkg; !strings.Contains(err.Error(), want) {
+				t.Errorf("message %q does not name %q", err.Error(), want)
+			}
+		})
 	}
 }
 

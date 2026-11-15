@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
@@ -69,6 +70,64 @@ type ValidationError struct {
 func (e *ValidationError) Error() string { return e.Message }
 func (e *ValidationError) ExitCode() int { return 2 }
 
+// MaxNoteChars is Google Play's per-locale release-notes limit, counted in
+// Unicode characters (runes), not bytes: "You can enter release notes using up
+// to 500 Unicode characters per language" (Play Console Help, "Prepare and roll
+// out a release", support.google.com/googleplay/android-developer/answer/9859348).
+// Discovery documents no limit on LocalizedText.text, so the number lives here.
+const MaxNoteChars = 500
+
+// NoteError is a release note Google Play would refuse: empty, or longer than
+// MaxNoteChars. It is client-side validation of the input's content, exit 20
+// (docs/DESIGN.md §9), not CLI misuse: the flags were well-formed. Source is
+// where the text came from (the file, or --release-notes) so the fix is one
+// look away; Chars is the counted length after trailing-whitespace trimming,
+// i.e. what would have been sent.
+type NoteError struct {
+	Locale string
+	Source string
+	Chars  int
+}
+
+func (e *NoteError) Error() string {
+	if e.Chars == 0 {
+		return fmt.Sprintf("release notes for %s (%s) are empty (0 characters): write them, or drop this locale", e.Locale, e.Source)
+	}
+	return fmt.Sprintf("release notes for %s (%s) are %d characters long: Google Play allows at most %d per locale", e.Locale, e.Source, e.Chars, MaxNoteChars)
+}
+func (e *NoteError) ExitCode() int { return 20 }
+
+// checkNote returns a *NoteError when text is empty or over MaxNoteChars. Every
+// note Load returns has passed it, so a caller holding a []LocaleNote never
+// ships one Play would reject after the bundle went up (#786). It checks
+// length only: whether Play serves the locale stays Play's call (no registry).
+func checkNote(locale, source, text string) error {
+	n := utf8.RuneCountInString(text)
+	if strings.TrimSpace(text) == "" {
+		n = 0
+	}
+	if n == 0 || n > MaxNoteChars {
+		return &NoteError{Locale: locale, Source: source, Chars: n}
+	}
+	return nil
+}
+
+// Precheck loads the notes offline, with a placeholder for the default
+// language, and returns the first error Load would raise. A caller runs it
+// before opening an Edit: Load itself only runs once details.get has resolved
+// the real default language, inside the Edit.
+func Precheck(text, dir string) error {
+	_, err := Load(Opts{Text: text, Dir: dir, DefaultLanguage: OfflineDefaultLanguage})
+	return err
+}
+
+// OfflineDefaultLanguage stands in for the app's default language before
+// edits.details.get has named it (Precheck, a dry-run). It reads naturally in a
+// NoteError ("release notes for the default language (--release-notes) ...")
+// and cannot collide with a `<locale>.txt` stem: it is not a BCP-47 tag, so
+// ValidateDirLocales refuses such a file.
+const OfflineDefaultLanguage = "the default language"
+
 // Load returns the list of (locale, text) pairs derived from opts.
 // In Text mode the single string is assigned to DefaultLanguage with
 // trailing whitespace trimmed, matching how Dir mode normalizes each
@@ -92,7 +151,11 @@ func Load(opts Opts) ([]LocaleNote, error) {
 				Message: "DefaultLanguage is required when using --release-notes (no locale to assign the text to)",
 			}
 		}
-		return []LocaleNote{{Locale: opts.DefaultLanguage, Text: trimTrailingWS(opts.Text)}}, nil
+		text := trimTrailingWS(opts.Text)
+		if err := checkNote(opts.DefaultLanguage, "--release-notes", text); err != nil {
+			return nil, err
+		}
+		return []LocaleNote{{Locale: opts.DefaultLanguage, Text: text}}, nil
 	}
 	if opts.Dir == "" {
 		return nil, nil
@@ -138,11 +201,16 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 			hasDefault = true
 			continue
 		}
-		text, err := readCapped(root, filepath.Join(dir, name))
+		path := filepath.Join(dir, name)
+		raw, err := readCapped(root, path)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, LocaleNote{Locale: locale, Text: trimTrailingWS(string(text))})
+		text := trimTrailingWS(string(raw))
+		if err := checkNote(locale, path, text); err != nil {
+			return nil, err
+		}
+		out = append(out, LocaleNote{Locale: locale, Text: text})
 	}
 	// Apply default.txt as the DefaultLanguage entry, but only if no
 	// explicit per-locale file already covers DefaultLanguage.
@@ -153,11 +221,16 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 			}
 		}
 		if !covers(out, defaultLang) {
-			text, err := readCapped(root, filepath.Join(dir, defaultLocaleFile+".txt"))
+			path := filepath.Join(dir, defaultLocaleFile+".txt")
+			raw, err := readCapped(root, path)
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, LocaleNote{Locale: defaultLang, Text: trimTrailingWS(string(text))})
+			text := trimTrailingWS(string(raw))
+			if err := checkNote(defaultLang, path, text); err != nil {
+				return nil, err
+			}
+			out = append(out, LocaleNote{Locale: defaultLang, Text: text})
 		}
 	}
 	return out, nil
