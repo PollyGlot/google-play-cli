@@ -72,7 +72,8 @@ func defaultRun(ctx context.Context, name string, args []string, dir string) (st
 	// CI's stdin would hang forever instead of failing.
 	// gitenv.Safe drops GIT_DIR and friends: from a hook or an alias they would
 	// point init/remote/checkout at the caller's repository, and the config
-	// injection pair could re-enable what hardenedGit disables.
+	// injection pair could re-enable what hardenedGit disables. It also drops
+	// every GPLAY_ variable, so git never holds an inline service-account key.
 	c.Env = append(gitenv.Safe(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=")
 	out, err := c.CombinedOutput()
 	return string(out), err
