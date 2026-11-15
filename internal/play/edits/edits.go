@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -268,26 +267,11 @@ func commitOutcomeUnknown(err error, pkg, editID string, explicit bool) error {
 	}
 	switch {
 	case apiErr.StatusCode >= 500:
-	case apiErr.StatusCode == 0 && !neverSent(apiErr.Cause):
+	case apiErr.StatusCode == 0 && !api.NeverSent(apiErr.Cause):
 	default:
 		return err
 	}
 	return &CommitOutcomeUnknownError{Package: pkg, EditID: editID, Explicit: explicit, Err: err}
-}
-
-// neverSent reports whether a transport-level cause proves the commit never
-// left the machine.
-func neverSent(cause error) bool {
-	var coder interface{ ExitCode() int }
-	if errors.As(cause, &coder) {
-		return true
-	}
-	var dnsErr *net.DNSError
-	if errors.As(cause, &dnsErr) {
-		return true
-	}
-	var opErr *net.OpError
-	return errors.As(cause, &opErr) && opErr.Op == "dial"
 }
 
 // Discard bounds. The cleanup DELETE never runs on the caller's ctx (a canceled

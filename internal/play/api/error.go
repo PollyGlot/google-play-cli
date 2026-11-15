@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 )
@@ -91,6 +92,26 @@ func (e *Error) ExitCode() int {
 		}
 	}
 	return StatusToExitCode(e.StatusCode)
+}
+
+// NeverSent reports whether the cause of a transport-level failure (an *Error
+// with no StatusCode) proves the request never left the machine: a refused
+// token exchange (the cause carries its own exit code), a DNS or a dial
+// failure. Any other transport failure may have reached Google's write path,
+// the line internal/transport.neverApplied draws before replaying a
+// non-idempotent write. Shared by the callers that must say whether a failed
+// write may have been applied (edits.commit, the iap batch calls).
+func NeverSent(cause error) bool {
+	var coder interface{ ExitCode() int }
+	if errors.As(cause, &coder) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(cause, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(cause, &opErr) && opErr.Op == "dial"
 }
 
 // StatusToExitCode maps a Google Play API HTTP status (or 0 for
