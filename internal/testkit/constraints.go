@@ -153,8 +153,11 @@ var rules = map[string]rule{
 			return ""
 		},
 	},
-	"OneTimeProductDiscountedOffer.redemptionLimit": redemptionLimit,
-	"OneTimeProductGameRewardOffer.redemptionLimit": redemptionLimit,
+	"BatchUpdateOneTimeProductOffersRequest.requests": batchOf100,
+	"BatchDeleteOneTimeProductOffersRequest.requests": batchOf100,
+	"BatchUpdatePurchaseOptionStatesRequest.requests": batchOf100,
+	"OneTimeProductDiscountedOffer.redemptionLimit":   redemptionLimit,
+	"OneTimeProductGameRewardOffer.redemptionLimit":   redemptionLimit,
 	"Money.nanos": {
 		sentence: "The value must be between -999,999,999 and +999,999,999 inclusive. If `units` is positive, `nanos` must be positive or zero. If `units` is zero, `nanos` can be positive, zero, or negative. If `units` is negative, `nanos` must be negative or zero.",
 		check: func(o map[string]any) string {
@@ -172,6 +175,19 @@ var rules = map[string]rule{
 			}
 			return ""
 		},
+	},
+}
+
+// batchOf100 holds the size limit alone. The "different offers" half of each
+// sentence needs no check: apply keys every change by its identity, so one
+// batch never names an offer or a purchase option twice.
+var batchOf100 = rule{
+	sentence: "of up to 100 elements.",
+	check: func(o map[string]any) string {
+		if requests, _ := o["requests"].([]any); len(requests) > 100 {
+			return fmt.Sprintf("requests holds %d entries, more than 100", len(requests))
+		}
+		return ""
 	},
 }
 
