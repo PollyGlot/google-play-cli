@@ -3,7 +3,7 @@ package vitalscmd
 import "github.com/PollyGlot/google-play-cli/internal/play/vitals"
 
 // The --period helps are written out rather than built from the embedded
-// index: parsing it at every start cost each command ~3 ms for a help string.
+// index: parsing it cost every command about 2 ms at start for a help string.
 // periodhelp_test.go fails when one of them names a period that
 // vitals.SupportedPeriods, the set Execute validates against, refuses for a
 // metric set, or leaves out one it accepts (#781: FULL_RANGE was advertised,
