@@ -56,8 +56,10 @@ const (
 	// CodeNotFound is an upstream 404: the package, track or Edit is not there.
 	CodeNotFound Code = "NOT_FOUND"
 	// CodeBasePlanNotDraft is the refused base plan delete in `subscriptions
-	// apply`: the API only deletes a DRAFT base plan, so a published one stays
-	// in the file with state: INACTIVE (removing it never converges, #778).
+	// apply`: the API would not delete a base plan that is not DRAFT (an
+	// INACTIVE one, which Discovery documents both as deletable and not), so
+	// the file keeps it with state: INACTIVE, the one file that converges
+	// (#778).
 	// Without its own code a 400 would fall into INVALID_ARGUMENT and an
 	// agent could not tell "malformed request" from "keep it as INACTIVE",
 	// which is precisely the case the hint exists for.
@@ -125,7 +127,7 @@ var codeCatalog = []CodeDoc{
 	{CodeValidationFailed, 20, false, "Client-side validation rejected the input before the API accepted it"},
 	{CodeInvalidArgument, 30, false, "The API rejected the request as malformed (400)"},
 	{CodeNotFound, 30, false, "The API found no such package, track, Edit or resource (404)"},
-	{CodeBasePlanNotDraft, 30, false, "The API only deletes a DRAFT base plan; keep a published one in the file with state: INACTIVE instead"},
+	{CodeBasePlanNotDraft, 30, false, "The API refused to delete a base plan that is not DRAFT; keep it in the file with state: INACTIVE instead"},
 	{CodeAPIError, 30, false, "Other API 4xx rejection"},
 	{CodeUpstreamUnavailable, 40, true, "The API is temporarily unhealthy (5xx); retry"},
 	{CodeNetworkError, 50, true, "Network failure with no HTTP response: timeout, DNS, refused"},

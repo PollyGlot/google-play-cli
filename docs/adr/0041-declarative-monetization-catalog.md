@@ -148,12 +148,16 @@ Three realities shape the design:
   gates intent, not just damage.
 - A base plan dropped from its subscription's file is a `basePlan` delete
   in the plan (slice #542), executed through `basePlans.delete` after the
-  parent patch: the patch alone never removes a plan its body omits. The
-  API only deletes a DRAFT plan, and a published one never returns to
-  DRAFT: the plan refuses dropping a plan the list shows ACTIVE or
-  INACTIVE (exit 2, before any write) with the one hint that converges,
-  keep it in the file with `state: INACTIVE` (#778). A refusal the list
-  could not predict (400/403) is reported through the ADR-0044 envelope
+  parent patch: the patch alone never removes a plan its body omits.
+  Discovery contradicts itself on which plans the API deletes:
+  `basePlans.delete` says "Can only be done for draft base plans", while
+  `BasePlan.state` says "Draft and inactive base plans can be activated or
+  deleted". Both readings refuse an ACTIVE plan, so the plan refuses
+  dropping a plan the list shows ACTIVE (exit 2, before any write) with
+  the hint that converges in both, keep it in the file with
+  `state: INACTIVE` (#778). An INACTIVE plan is sent to the API, which
+  settles the contradiction: gplay never blocks a delete Play might
+  accept. A refusal (400/403) is reported through the ADR-0044 envelope
   (operation `monetization.subscriptions.basePlans.delete`, the same hint)
   *after* running the plan's other changes, since it is independent of
   them.

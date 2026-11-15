@@ -188,26 +188,28 @@ func liveBasePlanStates(liveItems []subscriptions.Item) (map[string]string, erro
 	return states, nil
 }
 
-// refuseUndeletableBasePlans refuses, while planning, a base plan delete the
-// API is bound to refuse: basePlans.delete only deletes a DRAFT base plan,
-// and a published one never goes back to DRAFT, so removing it from the file
-// fails on every run (#778). The only file that converges keeps the plan
-// with state: INACTIVE. A plan whose live state is absent is left to the API.
-func refuseUndeletableBasePlans(deletes []reconcile.Change, liveBPState map[string]string) error {
-	var stuck []string
+// refuseActiveBasePlanDeletes refuses, while planning, dropping a base plan
+// the list shows ACTIVE: Discovery contradicts itself on which states
+// basePlans.delete takes (the method says DRAFT only, BasePlan.state says
+// DRAFT or INACTIVE), but neither reading deletes an ACTIVE plan, so that
+// file would fail on every run (#778). An INACTIVE plan, or one whose live
+// state is absent, is left to the API, which settles the contradiction.
+func refuseActiveBasePlanDeletes(deletes []reconcile.Change, liveBPState map[string]string) error {
+	var active []string
 	for _, c := range deletes {
-		if st := liveBPState[c.Key()]; st != "" && st != subscriptions.StateDraft {
-			stuck = append(stuck, fmt.Sprintf("%s (%s)", c.Key(), st))
+		if liveBPState[c.Key()] == subscriptions.StateActive {
+			active = append(active, c.Key())
 		}
 	}
-	if len(stuck) == 0 {
+	if len(active) == 0 {
 		return nil
 	}
-	return exit.Usagef("the catalog files drop %d base plan(s) the API cannot delete, since it only deletes a DRAFT base plan: %s; for each, %s", len(stuck), strings.Join(stuck, ", "), keepInactiveHint)
+	return exit.Usagef("the catalog files drop %d ACTIVE base plan(s): %s; basePlans.delete never takes an ACTIVE base plan (Discovery documents DRAFT, or at most DRAFT and INACTIVE), so for each, %s", len(active), strings.Join(active, ", "), keepInactiveHint)
 }
 
-// keepInactiveHint is the one action that converges for a published base
-// plan: deactivating it and then removing it still ends in a refused delete.
+// keepInactiveHint is the action that converges for a base plan the API will
+// not delete, whichever Discovery reading holds: the file keeps the plan, so
+// no delete is ever attempted again.
 const keepInactiveHint = "keep the base plan in its subscription file with state: INACTIVE instead (apply deactivates it if it is ACTIVE: new subscribers can no longer buy it, existing ones keep their subscription, and the next run has nothing to do)"
 
 // stateTransition validates one declared-vs-live state pair and returns the
@@ -318,7 +320,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := refuseUndeletableBasePlans(plan.BasePlanDeletes, liveBPState); err != nil {
+	if err := refuseActiveBasePlanDeletes(plan.BasePlanDeletes, liveBPState); err != nil {
 		return nil, err
 	}
 
@@ -347,10 +349,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// creates/patches, offer creates/patches, activations, deactivations,
 	// offer deletes, base-plan deletes, parent deletes. Not transactional (no
 	// batch spans these verbs); a failure surfaces immediately and a re-run
-	// converges. The one exception is a base-plan delete the API refuses
-	// although the list showed it DRAFT (published in between, or an account
-	// that answers 403): it is independent of every other change, so the run
-	// records it, finishes the plan, and reports it last.
+	// converges. The one exception is a base-plan delete the API refuses (an
+	// INACTIVE plan, which Discovery documents both as deletable and not, or
+	// one published after the list): it is independent of every other change,
+	// so the run records it, finishes the plan, and reports it last.
 	for _, c := range plan.Creates {
 		body, err := subscriptionscmd.StripOffersFromSubscription(local[c.ProductID])
 		if err != nil {
@@ -440,9 +442,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // basePlanDeleteError wraps the API's refusal to delete a base plan that is
 // not in DRAFT (400, or 403 on some accounts) with the resolution the user
-// actually needs: the API never deletes a published plan, so the file keeps
-// it with state: INACTIVE (keepInactiveHint). The planner already refuses a
-// plan it saw published; this covers one published after the list.
+// actually needs: the file keeps the plan with state: INACTIVE
+// (keepInactiveHint), the one file that converges. The planner already
+// refuses dropping a plan it saw ACTIVE; this covers an INACTIVE plan the API
+// would not delete, and one published after the list.
 // It carries no ExitCode of its own, so the wrapped *api.Error stays
 // authoritative for the exit code, the operation
 // (monetization.subscriptions.basePlans.delete) and the verbatim upstream
@@ -460,7 +463,7 @@ type basePlanDeleteError struct {
 }
 
 func (e *basePlanDeleteError) Error() string {
-	msg := fmt.Sprintf("cannot delete base plan %s/%s of %q: the API only deletes a DRAFT base plan, so %s; the rest of the plan was applied: %v", e.productID, e.basePlanID, e.pkg, keepInactiveHint, e.cause)
+	msg := fmt.Sprintf("cannot delete base plan %s/%s of %q: the API refused it (basePlans.delete documents DRAFT as the only deletable state, though BasePlan.state also lists INACTIVE), so %s; the rest of the plan was applied: %v", e.productID, e.basePlanID, e.pkg, keepInactiveHint, e.cause)
 	if e.others > 0 {
 		msg += fmt.Sprintf(" (%d more base plan delete(s) were refused, see stderr)", e.others)
 	}
@@ -493,10 +496,13 @@ subscriptions, base plans (config + per-territory prices), offers, and the
 declared lifecycle state, then execute it. The directory is the complete
 declared catalog: a live subscription, base plan or offer with no declaration
 is a delete in the plan (mirror semantics: deliberately not the additive
-stance of metadata apply). The API only deletes a DRAFT base plan: dropping a
-published one is refused while planning (exit 2, before any write); keep it in
+stance of metadata apply). The API never deletes an ACTIVE base plan:
+dropping one is refused while planning (exit 2, before any write); keep it in
 the file with state: INACTIVE instead, which stops new purchases and leaves
-the next run nothing to do.
+the next run nothing to do. Dropping an INACTIVE base plan is sent to the API,
+which decides (its reference documents DRAFT as the only deletable state in
+one place, DRAFT and INACTIVE in another): a refusal is reported after the
+rest of the plan has run, with the same keep-as-INACTIVE hint.
 
 --dry-run reads live Play and prints the plan without changing anything.
 Creates and patches run directly; a plan containing any delete refuses without
