@@ -84,7 +84,9 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 	if err != nil {
 		return nil, err
 	}
-	hc, err := rc.AuthedClient()
+	// UploadClient: an export can outlast the 60s control-plane total on a slow
+	// link, so its fetch is bounded by inactivity; the listing keeps the total.
+	hc, err := rc.UploadClient()
 	if err != nil {
 		return nil, err
 	}

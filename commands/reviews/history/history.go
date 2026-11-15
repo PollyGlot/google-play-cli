@@ -207,7 +207,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		months = []string{yyyymm}
 	}
 
-	hc, err := rc.AuthedClient()
+	// UploadClient: a month's CSV can outlast the 60s control-plane total on a
+	// slow link, so its fetch is bounded by inactivity; the listing keeps the total.
+	hc, err := rc.UploadClient()
 	if err != nil {
 		return nil, err
 	}
