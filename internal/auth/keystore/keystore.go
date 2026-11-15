@@ -67,6 +67,11 @@ func (b *FileBackend) Path(name string) string {
 
 // Save writes data to <root>/<name>.json with mode 0600, creating the parent
 // directory if needed.
+//
+// MkdirAll and OpenFile apply their mode only when they create the path, so
+// both are chmod-ed explicitly: a root or key file left loose by an older
+// build, a backup restore or a manual copy is tightened on the next write
+// (#795). The file is tightened before the key bytes land in it.
 func (b *FileBackend) Save(_ context.Context, name string, data []byte) error {
 	if err := validName(name); err != nil {
 		return err
@@ -74,7 +79,22 @@ func (b *FileBackend) Save(_ context.Context, name string, data []byte) error {
 	if err := os.MkdirAll(b.root, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(b.path(name), data, 0o600)
+	if err := os.Chmod(b.root, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(b.path(name), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // Load returns the bytes stored under name, or ErrNotFound.

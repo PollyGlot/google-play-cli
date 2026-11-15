@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -310,4 +311,38 @@ func readFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(b)
+}
+
+// defaultRun is the one place git is spawned. Running `env` through it shows
+// the exact environment git would inherit: none of gplay's own variables, the
+// inline service-account key first among them, while PATH, HOME and the proxy
+// git needs to reach the remote still pass (#795).
+func TestDefaultRun_childEnvHasNoGplayVariables(t *testing.T) {
+	envBin, err := exec.LookPath("env")
+	if err != nil {
+		t.Skipf("env not on PATH: %v", err)
+	}
+	t.Setenv("GPLAY_SERVICE_ACCOUNT", `{"type":"service_account","private_key":"secret"}`)
+	t.Setenv("GPLAY_ACCOUNT", "prod")
+	t.Setenv("GPLAY_DEVELOPER_ID", "1234567890")
+	t.Setenv("HTTPS_PROXY", "http://proxy.test:3128")
+	t.Setenv("HOME", t.TempDir())
+
+	out, err := defaultRun(t.Context(), envBin, nil, t.TempDir())
+	if err != nil {
+		t.Fatalf("env: %v\n%s", err, out)
+	}
+	seen := map[string]bool{}
+	for line := range strings.SplitSeq(out, "\n") {
+		name, _, _ := strings.Cut(line, "=")
+		seen[name] = true
+		if strings.HasPrefix(name, "GPLAY_") {
+			t.Errorf("git child inherits %s", name)
+		}
+	}
+	for _, need := range []string{"PATH", "HOME", "HTTPS_PROXY"} {
+		if !seen[need] {
+			t.Errorf("git child lost %s", need)
+		}
+	}
 }
