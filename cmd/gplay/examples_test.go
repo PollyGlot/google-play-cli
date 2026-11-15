@@ -168,9 +168,10 @@ func runExample(t *testing.T, leaf string, r exampleRun) string {
 	return ""
 }
 
-// editLifecycle matches edits.insert and the discard of an implicit Edit:
-// every Edit-based command sends them, so they prove no write of its own.
-var editLifecycle = regexp.MustCompile(`^(POST /androidpublisher/v3/applications/[^/]+/edits|DELETE /androidpublisher/v3/applications/[^/]+/edits/[^/]+)$`)
+// editLifecycle matches edits.insert, edits.commit and the discard of an
+// implicit Edit: every Edit-based command sends them, and none carries a body
+// the constraints table judges, so they prove no write of its own.
+var editLifecycle = regexp.MustCompile(`^(POST /androidpublisher/v3/applications/[^/]+/edits(/[^/]+:commit)?|DELETE /androidpublisher/v3/applications/[^/]+/edits/[^/]+)$`)
 
 // changedPlay reports whether calls hold a write of leaf's own. The Edit
 // lifecycle counts only for the edits leaves, whose write it is.
