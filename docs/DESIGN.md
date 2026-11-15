@@ -920,13 +920,19 @@ failure at hand. A caller that reads only the exit code must treat a `50` or
 
 **An interrupted command exits 50.** A command stopped by `SIGINT` or `SIGTERM`
 before it succeeded exits `50` whatever step it was on, after discarding its
-implicit Edit (§4). Re-running it is safe only if the signal landed before the
-commit was sent. A signal that lands while the commit is in flight leaves its
-outcome unknown, exactly like a timeout. An interrupt writes no error envelope
-(its exit code is fixed at `50`, which an envelope's own `exitCode` could only
-contradict), so the stderr line is the only signal there: when it says the
-commit "may have been applied", check the live state before re-running. A
-command that completed before the signal was handled keeps its `0`.
+implicit Edit (§4), and its last stderr line is `gplay: interrupted by SIGINT`
+(or `SIGTERM`). Under JSON output (`--output json`, or the default when stdout
+is not a terminal) it still writes the error envelope of the failure the
+signal caused, so `retryable` tells the two outcomes apart. A signal that
+cuts a request before the commit (an upload, say) yields `NETWORK_ERROR` with
+`retryable: true`: nothing was committed, re-running is safe. A signal that
+lands while the commit is in flight yields `COMMIT_OUTCOME_UNKNOWN` with
+`retryable: false`, the same envelope as a `--timeout` that expires or a
+connection the server cuts during the commit: the commit may be live, so
+check the live state before re-running. Under `--output table`, stdout stays
+empty and the stderr line above the interrupt line carries the same "may have
+been applied" message. A command that completed before the signal was handled
+keeps its `0`.
 
 **Exit 3 has no exceptions.** *Every* refusal for a missing safety-acknowledgment
 flag exits `3` — never `2` — whatever the command and however destructive the

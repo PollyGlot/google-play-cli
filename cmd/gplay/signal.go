@@ -9,10 +9,12 @@ import (
 )
 
 // exitInterrupted is the exit code of a command stopped by SIGINT or SIGTERM:
-// the network bucket of docs/DESIGN.md §9, retry-safe, because the implicit
-// Edit was discarded on the way out and nothing was committed. It is the code
-// a request cut by the canceled context already maps to; pinning it here keeps
-// the outcome stable whichever step the signal lands on.
+// the network bucket of docs/DESIGN.md §9. It is the code a request cut by the
+// canceled context already maps to; pinning it here keeps the outcome stable
+// whichever step the signal lands on. The code alone does not say whether a
+// re-run is safe: a signal during the commit leaves it possibly live, and the
+// JSON envelope the kernel still writes then says COMMIT_OUTCOME_UNKNOWN with
+// retryable false.
 const exitInterrupted = 50
 
 // interruptError is the cancel cause recording which signal stopped gplay.
