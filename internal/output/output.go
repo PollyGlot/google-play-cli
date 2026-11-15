@@ -116,22 +116,49 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 	return renderHuman(w, fn)
 }
 
-// renderHuman is the one boundary every human view crosses: it buffers what
-// the renderer writes and passes it through SanitizeText before it reaches w.
-// A hand-written renderer (a FIELD<TAB>VALUE header row, a summary line) that
-// prints an API string with Fprintf is then as safe as a Column cell, without
-// remembering to call SanitizeCell. The renderer's own layout survives: gplay
-// emits no escape sequence or control rune besides \n and \t. Buffering the
-// whole view, instead of filtering each Write, keeps a sequence or a
-// multi-byte rune split across two writes (tabwriter, bufio) intact for the
-// filter. What the renderer wrote before an error is still flushed, as a
-// direct write would have left it on w.
+// renderHuman is the one boundary every human view crosses: what the renderer
+// writes passes through SanitizeText before it reaches w. A hand-written
+// renderer (a FIELD<TAB>VALUE header row, a summary line) that prints an API
+// string with Fprintf is then as safe as a Column cell, without remembering to
+// call SanitizeCell. The renderer's own layout survives: gplay emits no escape
+// sequence or control rune besides \n and \t.
 func renderHuman(w io.Writer, fn func(io.Writer) error) error {
-	var buf bytes.Buffer
-	err := fn(&buf)
-	if _, werr := io.WriteString(w, SanitizeText(buf.String())); err == nil {
-		err = werr
+	sw := &sanitizingWriter{w: w}
+	err := fn(sw)
+	if ferr := sw.flush(); err == nil {
+		err = ferr
 	}
+	return err
+}
+
+// sanitizingWriter filters a human view line by line. Holding back the
+// unfinished line keeps a sequence or a multi-byte rune split across two
+// writes (tabwriter, bufio) whole for the filter, while a view of several
+// hundred MiB (a report in markdown) never sits in memory at once. An escape
+// sequence cannot survive a line break: its ESC is a control rune, dropped on
+// the line that holds it.
+type sanitizingWriter struct {
+	w    io.Writer
+	line []byte
+}
+
+func (s *sanitizingWriter) Write(p []byte) (int, error) {
+	s.line = append(s.line, p...)
+	end := bytes.LastIndexByte(s.line, '\n')
+	if end < 0 {
+		return len(p), nil
+	}
+	_, err := io.WriteString(s.w, SanitizeText(string(s.line[:end+1])))
+	s.line = append(s.line[:0], s.line[end+1:]...)
+	return len(p), err
+}
+
+func (s *sanitizingWriter) flush() error {
+	if len(s.line) == 0 {
+		return nil
+	}
+	_, err := io.WriteString(s.w, SanitizeText(string(s.line)))
+	s.line = nil
 	return err
 }
 
