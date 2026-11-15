@@ -115,7 +115,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringSliceVar(&in.Metrics, "metrics", nil, "metrics to aggregate (default: the set's primary metric); validated against the schema")
 	cmd.Flags().StringSliceVar(&in.Dimensions, "dimensions", nil, "dimensions to slice by (e.g. versionCode,countryCode); validated against the schema")
-	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, vitalscmd.QueryPeriodHelp())
+	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, vitalscmd.QueryPeriodHelp)
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().BoolVar(&in.Describe, vitalscmd.DescribeFlag, false, vitalscmd.DescribeHelp)
 	return cmd
