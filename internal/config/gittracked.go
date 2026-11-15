@@ -43,7 +43,15 @@ func GitTracked(ctx context.Context, path string) bool {
 	if err != nil {
 		return false
 	}
-	top, ok := worktreeRoot(filepath.Dir(path))
+	// The directory is resolved first: git refuses a pathspec that crosses a
+	// symlink, so a committed `.gplay -> payload` link would hide the file the
+	// index lists as payload/config.local.json.
+	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		return false
+	}
+	path = filepath.Join(dir, filepath.Base(path))
+	top, ok := worktreeRoot(dir)
 	if !ok {
 		return false
 	}

@@ -105,6 +105,32 @@ func TestGitTracked_gplayDirDisguisedAsBareRepo_stillTracked(t *testing.T) {
 	}
 }
 
+func TestGitTracked_gplayDirIsCommittedSymlink_stillTracked(t *testing.T) {
+	root := gitRepo(t)
+	payload := filepath.Join(root, "payload")
+	for _, dir := range []string{"objects", filepath.Join("refs", "heads")} {
+		if err := os.MkdirAll(filepath.Join(payload, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(payload, dir, ".keep"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(payload, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(payload, "config.local.json"), []byte(`{"account":"client-b"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("payload", filepath.Join(root, ".gplay")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	runGit(t, root, "add", "-f", "payload", ".gplay")
+	if !config.GitTracked(context.Background(), filepath.Join(root, ".gplay", "config.local.json")) {
+		t.Error("GitTracked = false: a committed .gplay symlink hid the tracked config.local.json")
+	}
+}
+
 func TestGitTracked_outsideAnyRepository_false(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
