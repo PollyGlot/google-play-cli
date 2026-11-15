@@ -2,14 +2,19 @@ package doctor_test
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"testing"
+	"testing/iotest"
 
 	"golang.org/x/oauth2"
 
@@ -204,8 +209,63 @@ func TestCheckOAuth2Mint_401_failsWithHint(t *testing.T) {
 	if r.ExitCode != 10 {
 		t.Errorf("ExitCode = %d, want 10", r.ExitCode)
 	}
-	if r.Hint == "" {
-		t.Errorf("Hint is empty; want actionable text")
+	if !strings.Contains(r.Hint, "has not been revoked") {
+		t.Errorf("Hint = %q, want the key advice for a refused exchange", r.Hint)
+	}
+}
+
+// A token endpoint that never answers is a network problem, not a key
+// problem: the hint points at the network and drops the revoked-key advice,
+// while the exit code stays 10 (#11, #787).
+func TestCheckOAuth2Mint_transportError_pointsToNetwork(t *testing.T) {
+	for name, cause := range map[string]error{
+		"dns":     &net.DNSError{Err: "no such host", Name: "oauth2.googleapis.com", IsNotFound: true},
+		"timeout": &net.OpError{Op: "dial", Net: "tcp", Err: context.DeadlineExceeded},
+		"tls":     &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := ctxWithRT(t, func(*http.Request) (*http.Response, error) { return nil, cause })
+
+			r := doctor.Run(ctx, makeSignedSA(t), nil, doctor.CheckOAuth2Mint())[0]
+			if r.Passed || r.ExitCode != 10 {
+				t.Errorf("result = %+v, want a failure with exit 10", r)
+			}
+			if !strings.Contains(r.Hint, "network") || strings.Contains(r.Hint, "revoked") {
+				t.Errorf("Hint = %q, want network advice without the key advice", r.Hint)
+			}
+		})
+	}
+}
+
+// Headers can arrive and the body still die on the wire (read timeout, reset
+// connection): RoundTrip succeeded, yet the endpoint never answered the
+// exchange, so the hint still points at the network (#787).
+func TestCheckOAuth2Mint_bodyReadError_pointsToNetwork(t *testing.T) {
+	ctx := ctxWithRT(t, func(*http.Request) (*http.Response, error) {
+		resp := testkit.Response(http.StatusOK, "")
+		resp.Body = io.NopCloser(iotest.ErrReader(&net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}))
+		return resp, nil
+	})
+
+	r := doctor.Run(ctx, makeSignedSA(t), nil, doctor.CheckOAuth2Mint())[0]
+	if r.Passed || r.ExitCode != 10 {
+		t.Errorf("result = %+v, want a failure with exit 10", r)
+	}
+	if !strings.Contains(r.Hint, "network") || strings.Contains(r.Hint, "revoked") {
+		t.Errorf("Hint = %q, want network advice without the key advice", r.Hint)
+	}
+}
+
+// A key that never reaches the wire is not a network failure either.
+func TestCheckOAuth2Mint_unparsableKey_isNotNetwork(t *testing.T) {
+	ctx := ctxWithRT(t, func(*http.Request) (*http.Response, error) {
+		t.Error("an unparsable key must not reach the token endpoint")
+		return nil, errors.New("unreachable")
+	})
+
+	r := doctor.Run(ctx, mustParseSA(t, validSAJSON), nil, doctor.CheckOAuth2Mint())[0]
+	if r.Passed || strings.Contains(r.Hint, "network") {
+		t.Errorf("result = %+v, want a failure that does not blame the network", r)
 	}
 }
 
