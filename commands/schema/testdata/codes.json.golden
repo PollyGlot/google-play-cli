@@ -61,6 +61,12 @@
       "meaning": "The API refused to delete a base plan that is not DRAFT; keep it in the file with state: INACTIVE instead"
     },
     {
+      "code": "OFFER_NOT_DRAFT",
+      "exitCode": 30,
+      "retryable": false,
+      "meaning": "The API refused to delete a subscription offer that is not DRAFT; keep it in the file with state: INACTIVE instead"
+    },
+    {
       "code": "API_ERROR",
       "exitCode": 30,
       "retryable": false,

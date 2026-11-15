@@ -203,6 +203,11 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	if err := validatePromoteOpts(opts); err != nil {
 		return nil, err
 	}
+	// Same offline note check as Upload, ahead of the dry-run branch so a
+	// preview cannot pass an override Play would refuse (#786).
+	if err := notes.Precheck(opts.ReleaseNotes, opts.ReleaseNotesDir); err != nil {
+		return nil, err
+	}
 
 	// Dry-run is evaluated BEFORE the --confirm guard so users can
 	// preview a production publish (e.g. --to production --complete)

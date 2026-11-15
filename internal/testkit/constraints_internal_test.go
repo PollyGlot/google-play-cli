@@ -44,7 +44,6 @@ const (
 	server    = "rests on Play's server-side data (minimum prices, region currencies), absent from Discovery"
 	account   = "constrains the developer account or the app's history, not the body"
 	civil     = "vitals fills it from a Go time.Time (toDateTime in commands/vitals/vitalscmd/vitalscmd.go), which cannot hold an out-of-range field; the TimelineSpec rules check its alignment"
-	noBatch   = "known defect (#807): commands/iap/apply/apply.go sends every change of one purchase option or product in a single batch call and never splits it at the 100 requests the description allows"
 )
 
 // unenforced lists the properties gplay writes whose constraint the table
@@ -113,9 +112,6 @@ var unenforced = func() map[string]struct{ sentence, why string } {
 		"OneTimeProductOffer.regionalPricingAndAvailabilityConfigs": {"Must not have duplicate entries with the same region_code.", userInput},
 		"OneTimeProductPurchaseOption.purchaseOptionId":             {"Must be unique within the one-time product.", stored},
 		"RegionalTaxConfig.eligibleForStreamingServiceTaxRate":      {"You must tell us if your app contains streaming products", userInput},
-		"BatchUpdateOneTimeProductOffersRequest.requests":           {"A list of update requests of up to 100 elements. All requests must update different offers.", noBatch},
-		"BatchDeleteOneTimeProductOffersRequest.requests":           {"A list of delete requests of up to 100 elements. All requests must correspond to different offers.", noBatch},
-		"BatchUpdatePurchaseOptionStatesRequest.requests":           {"The update request list of up to 100 elements. All requests must update different purchase options.", noBatch},
 
 		"GoogleTypeDateTime.year":      {"Must be from 1 to 9999, or 0 if specifying a datetime without a year.", civil},
 		"GoogleTypeDateTime.month":     {"Must be from 1 to 12, or 0 if specifying a datetime without a month.", civil},

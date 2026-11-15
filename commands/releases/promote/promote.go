@@ -18,6 +18,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
+	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
@@ -29,6 +30,7 @@ type Input struct {
 	VersionCode       int
 	ReleaseName       string
 	ReleaseNotes      string
+	ReleaseNotesSet   bool // explicit `--release-notes ""` is an empty note, refused (#786)
 	ReleaseNotesDir   string
 	Draft             bool
 	Complete          bool
@@ -140,8 +142,13 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 // combination, resolves the package, builds an authenticated HTTP
 // client from the active Account, then hands off to the orchestrator.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if in.ReleaseNotes != "" && in.ReleaseNotesDir != "" {
+	if (in.ReleaseNotesSet || in.ReleaseNotes != "") && in.ReleaseNotesDir != "" {
 		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
+	}
+	if in.ReleaseNotesSet {
+		if err := notes.CheckText(in.ReleaseNotes); err != nil {
+			return nil, err
+		}
 	}
 	state, err := orchestrator.RequestedState(in.Draft, in.Complete, in.StagedFractionSet, in.StagedFraction)
 	if err != nil {
@@ -257,6 +264,7 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 			in.StagedFractionSet = cmd.Flags().Changed("staged")
 			in.StagedFraction = stagedFractionVar
 			in.UpdatePrioritySet = cmd.Flags().Changed("update-priority")
+			in.ReleaseNotesSet = cmd.Flags().Changed("release-notes")
 			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, in)
 			})

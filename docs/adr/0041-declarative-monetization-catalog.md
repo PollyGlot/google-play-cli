@@ -161,6 +161,16 @@ Three realities shape the design:
   (operation `monetization.subscriptions.basePlans.delete`, the same hint)
   *after* running the plan's other changes, since it is independent of
   them.
+- An offer dropped from the file follows the same rule (#790).
+  `offers.delete` says "Can only be done for draft offers" and
+  `SubscriptionOffer.state` says nothing about deletion, so no Discovery
+  reading deletes an ACTIVE offer: the plan refuses dropping one the list
+  shows ACTIVE (exit 2, before any write), with the hint to keep it under
+  its base plan with `state: INACTIVE`. An INACTIVE offer is still sent to
+  the API: Discovery words `basePlans.delete` identically and contradicts
+  it elsewhere, so the sentence alone is not proof that Play refuses it. A
+  refusal is reported last like a base plan's, with its own diagnostic
+  code, `OFFER_NOT_DRAFT` on the 400 (ADR-0044).
 - Offer and base-plan state changes ride the **unary** verbs
   (`activate`/`deactivate`/`cancel`, one call per item, slice #551); the
   `batchUpdateStates` siblings are declared redundant in the registry

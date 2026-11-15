@@ -1,0 +1,9 @@
+{
+  "scoreOrder": "LARGER_IS_BETTER",
+  "scoreMin": "0",
+  "scoreMax": "1000000",
+  "draft": {
+    "name": {"translations": [{"locale": "en-US", "value": "High scores"}]},
+    "scoreFormat": {"numberFormatType": "NUMERIC"}
+  }
+}

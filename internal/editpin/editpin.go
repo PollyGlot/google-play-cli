@@ -83,8 +83,9 @@ func pinPath(gplayDir, pkg string) (path, root string, err error) {
 // Lookup reads the pin for pkg from gplayDir. It returns ok=false (with a nil
 // error) when no pin file exists: the common implicit-mode case a write
 // command treats as "open your own Edit". A present-but-corrupt file, or one
-// missing its editId, is an error: a broken pin must surface, not silently fall
-// back to opening a fresh (conflicting) Edit while the real one stays open.
+// missing its editId, is a *CorruptError: a broken pin must surface, not
+// silently fall back to opening a fresh (conflicting) Edit while the real one
+// stays open.
 func Lookup(fsys config.FS, gplayDir, pkg string) (Pin, bool, error) {
 	path, _, err := pinPath(gplayDir, pkg)
 	if err != nil {
@@ -99,21 +100,42 @@ func Lookup(fsys config.FS, gplayDir, pkg string) (Pin, bool, error) {
 	}
 	var p Pin
 	if err := json.Unmarshal(data, &p); err != nil {
-		return Pin{}, false, fmt.Errorf("editpin: %s: %w", path, err)
+		return Pin{}, false, &CorruptError{Path: path, Package: pkg, Reason: err.Error()}
 	}
 	p.EditID = strings.TrimSpace(p.EditID)
 	if p.EditID == "" {
-		return Pin{}, false, fmt.Errorf("editpin: %s: missing editId", path)
+		return Pin{}, false, &CorruptError{Path: path, Package: pkg, Reason: "missing editId"}
 	}
 	// A pin whose embedded package disagrees with the file it was read from is
 	// corruption (a copied/renamed file): reject it now rather than later
 	// reusing the Edit against the wrong package. An empty Package is tolerated
 	// (a minimal/older pin); the filename remains the authority.
 	if p.Package != "" && p.Package != pkg {
-		return Pin{}, false, fmt.Errorf("editpin: %s: package mismatch (%q != %q)", path, p.Package, pkg)
+		return Pin{}, false, &CorruptError{Path: path, Package: pkg, Reason: fmt.Sprintf("package mismatch (%q != %q)", p.Package, pkg)}
 	}
 	return p, true, nil
 }
+
+// CorruptError is a pin file that exists but cannot be used: not JSON, no
+// editId, or another package's pin. Lookup refuses it in every command, `edits
+// begin` included, so the message names `gplay edits discard`, the one command
+// that removes it (#786). Exit 60: local state conflicts with the request
+// (docs/DESIGN.md §9), like the other open/no-open Edit errors.
+//
+// Only the content makes a pin corrupt. A failed read (permissions) or a path
+// pathguard refuses is a different error and never matches, so discard removes
+// a file only after reading it and finding it unusable.
+type CorruptError struct {
+	Path    string
+	Package string
+	Reason  string
+}
+
+func (e *CorruptError) Error() string {
+	return fmt.Sprintf("editpin: %s: %s: run `gplay edits discard --package %s` to remove the unreadable pin", e.Path, e.Reason, e.Package)
+}
+
+func (e *CorruptError) ExitCode() int { return 60 }
 
 // Write persists the pin for pkg to gplayDir, creating gplayDir if it does not
 // yet exist (mirrors config.Init's 0755/0644 modes).

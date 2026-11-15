@@ -48,7 +48,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 				return err
 			},
 			verb: http.MethodGet,
-			want: base + "/oneTimeProducts?pageSize=100",
+			want: base + "/oneTimeProducts?pageSize=20",
 		},
 		{
 			name: "purchaseOptions.offers.list (wildcard walk)",
@@ -57,7 +57,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 				return err
 			},
 			verb: http.MethodGet,
-			want: base + "/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100",
+			want: base + "/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=20",
 		},
 		{
 			// The snapshot paths the v2 patch under LOWERCASE `onetimeproducts`
@@ -82,7 +82,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 		{
 			name: "offers.batchUpdate",
 			call: func(hc *http.Client) error {
-				return iap.BatchUpdateOffers(context.Background(), hc, "com.example.app", "coins", "buy", nil, "2022/02")
+				return iap.BatchUpdateOffers(context.Background(), hc, "com.example.app", "coins", "buy", []iap.OfferUpdate{{Offer: json.RawMessage(`{"offerId":"promo"}`)}}, "2022/02")
 			},
 			verb: http.MethodPost,
 			want: base + "/oneTimeProducts/coins/purchaseOptions/buy/offers:batchUpdate",
@@ -90,7 +90,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 		{
 			name: "offers.batchDelete",
 			call: func(hc *http.Client) error {
-				return iap.BatchDeleteOffers(context.Background(), hc, "com.example.app", "coins", "buy", nil)
+				return iap.BatchDeleteOffers(context.Background(), hc, "com.example.app", "coins", "buy", []string{"promo"})
 			},
 			verb: http.MethodPost,
 			want: base + "/oneTimeProducts/coins/purchaseOptions/buy/offers:batchDelete",
