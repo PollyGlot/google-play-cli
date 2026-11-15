@@ -11,15 +11,22 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// gitRepoWithLocalConfig creates a throwaway git repository holding
-// .gplay/config.local.json, untracked, and returns the file's path.
-func gitRepoWithLocalConfig(t *testing.T) string {
+// gitRepo creates an empty throwaway git repository and returns its root.
+func gitRepo(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	repo := t.TempDir()
 	runGit(t, repo, "init", "-q")
+	return repo
+}
+
+// gitRepoWithLocalConfig creates a throwaway git repository holding
+// .gplay/config.local.json, untracked, and returns the file's path.
+func gitRepoWithLocalConfig(t *testing.T) string {
+	t.Helper()
+	repo := gitRepo(t)
 	path := filepath.Join(repo, ".gplay", "config.local.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -71,6 +78,56 @@ func TestGitTracked_ignoresInheritedGitDir(t *testing.T) {
 	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "not-a-repo"))
 	if !config.GitTracked(context.Background(), path) {
 		t.Error("GitTracked followed an inherited GIT_DIR instead of the file's own repository")
+	}
+}
+
+// A repo that commits HEAD, objects/ and refs/ under .gplay/ makes that
+// directory look like a bare repository. Run from there, git discovers it
+// instead of the clone, answers "not tracked", and the #603 warning disappears
+// (#791). The answer must come from the repository the clone actually is.
+func TestGitTracked_gplayDirDisguisedAsBareRepo_stillTracked(t *testing.T) {
+	path := gitRepoWithLocalConfig(t)
+	gplayDir := filepath.Dir(path)
+	for _, dir := range []string{"objects", filepath.Join("refs", "heads")} {
+		if err := os.MkdirAll(filepath.Join(gplayDir, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(gplayDir, dir, ".keep"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(gplayDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, filepath.Dir(gplayDir), "add", "-f", ".gplay")
+	if !config.GitTracked(context.Background(), path) {
+		t.Error("GitTracked = false: a bare-repo disguise under .gplay/ redirected the check")
+	}
+}
+
+func TestGitTracked_gplayDirIsCommittedSymlink_stillTracked(t *testing.T) {
+	root := gitRepo(t)
+	payload := filepath.Join(root, "payload")
+	for _, dir := range []string{"objects", filepath.Join("refs", "heads")} {
+		if err := os.MkdirAll(filepath.Join(payload, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(payload, dir, ".keep"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(payload, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(payload, "config.local.json"), []byte(`{"account":"client-b"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("payload", filepath.Join(root, ".gplay")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	runGit(t, root, "add", "-f", "payload", ".gplay")
+	if !config.GitTracked(context.Background(), filepath.Join(root, ".gplay", "config.local.json")) {
+		t.Error("GitTracked = false: a committed .gplay symlink hid the tracked config.local.json")
 	}
 }
 

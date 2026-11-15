@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
 // Marker lines bound the gplay-managed block inside .gplay/.gitignore so
@@ -60,10 +61,32 @@ func Init(_ context.Context, fsys FS, repoRoot, homeDir, pkg string) error {
 	if err := fsys.MkdirAll(gplayDir, 0o755); err != nil {
 		return err
 	}
-	if err := writeConfigJSON(fsys, filepath.Join(gplayDir, "config.json"), pkg); err != nil {
+	cfgPath, err := containWrite(absRepo, filepath.Join(gplayDir, "config.json"))
+	if err != nil {
 		return err
 	}
-	return ensureGitignore(fsys, filepath.Join(gplayDir, ".gitignore"))
+	ignorePath, err := containWrite(absRepo, filepath.Join(gplayDir, ".gitignore"))
+	if err != nil {
+		return err
+	}
+	if err := writeConfigJSON(fsys, cfgPath, pkg); err != nil {
+		return err
+	}
+	return ensureGitignore(fsys, ignorePath)
+}
+
+// containWrite guards a file Init is about to write. Both files sit in a
+// directory a cloned repo controls, so either can arrive as a committed symlink
+// and a plain WriteFile would overwrite its target with the operator's rights
+// (#791); a symlinked .gplay/ pointing out of the repo is caught the same way.
+// Both are checked before either is written, so a refusal leaves nothing
+// half-initialised. As in Global.Save, a root that will not resolve means the
+// MemFS seam, with nothing on disk to contain against.
+func containWrite(repoRoot, path string) (string, error) {
+	if root, rootErr := pathguard.Root(repoRoot); rootErr == nil {
+		return pathguard.ContainWrite(root, path)
+	}
+	return path, nil
 }
 
 func validatePackage(pkg string) error {
