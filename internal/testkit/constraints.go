@@ -38,6 +38,23 @@ var rules = map[string]rule{
 			return openUnit("userFraction", f)
 		},
 	},
+	// Discovery names inProgress alone, yet halted counts too: a halted
+	// release is a paused staged rollout that keeps its targeting, and
+	// halt/resume must round-trip it (#779). The production-track half of the
+	// sentence is not checked: the rule sees the release, not its track, and
+	// gplay only ever carries countryTargeting over from tracks.get.
+	"TrackRelease.countryTargeting": {
+		sentence: "Note this is only allowed to be set for inProgress releases in the production track.",
+		check: func(o map[string]any) string {
+			if _, set := present(o, "countryTargeting"); !set {
+				return ""
+			}
+			if s := o["status"]; s != "inProgress" && s != "halted" {
+				return fmt.Sprintf("countryTargeting set on a release whose status is %s, not inProgress or halted", quoted(s))
+			}
+			return ""
+		},
+	},
 	"OneTimeProductOfferRegionalPricingAndAvailabilityConfig.relativeDiscount": relativeDiscount,
 	"OtherRegionsSubscriptionOfferPhaseConfig.relativeDiscount":                relativeDiscount,
 	"RegionalSubscriptionOfferPhaseConfig.relativeDiscount":                    relativeDiscount,
