@@ -20,6 +20,9 @@ const (
 	otpOffersURL     = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/p/purchaseOptions/o/offers:batchUpdate"
 	tracksCreateURL  = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/tracks"
 	otpPatchURL      = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/onetimeproducts/p"
+	reviewReplyURL   = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/reviews/r1:reply"
+	convertPricesURL = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/pricing:convertRegionPrices"
+	vitalsQueryURL   = "https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app/crashRateMetricSet:query"
 	bundleUploadURL  = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/e1/bundles"
 	unregisteredHost = "https://api.test/applications/com.example.app/edits/e1/tracks/production"
 )
@@ -85,6 +88,42 @@ func TestFake_refusesBodiesPlayRefuses(t *testing.T) {
 		{"discount as a string", http.MethodPost, offerCreateURL, `{"phases":[{"regionalConfigs":[{"regionCode":"FR","relativeDiscount":"0.8"}]}]}`, ""},
 		{"one-time offer discount above 1", http.MethodPost, otpOffersURL, `{"requests":[{"oneTimeProductOffer":{"regionalPricingAndAvailabilityConfigs":[{"regionCode":"FR","relativeDiscount":1.5}]}}]}`, "OneTimeProductOfferRegionalPricingAndAvailabilityConfig.relativeDiscount"},
 		{"one-time offer discount", http.MethodPost, otpOffersURL, `{"requests":[{"oneTimeProductOffer":{"regionalPricingAndAvailabilityConfigs":[{"regionCode":"FR","relativeDiscount":0.2}]}}]}`, ""},
+
+		{"update priority above 5", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","inAppUpdatePriority":6}]}`, "TrackRelease.inAppUpdatePriority"},
+		{"negative update priority", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","inAppUpdatePriority":-1}]}`, "TrackRelease.inAppUpdatePriority"},
+		{"highest update priority", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","inAppUpdatePriority":5}]}`, ""},
+		{"lowest update priority", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","inAppUpdatePriority":0}]}`, ""},
+
+		{"open testing track type", http.MethodPost, tracksCreateURL, `{"track":"qa-team","type":"OPEN_TESTING","formFactor":"DEFAULT"}`, "TrackConfig.type"},
+		{"unspecified track type", http.MethodPost, tracksCreateURL, `{"track":"qa-team","type":"TRACK_TYPE_UNSPECIFIED"}`, "TrackConfig.type"},
+
+		{"reply of 351 characters", http.MethodPost, reviewReplyURL, `{"replyText":"` + strings.Repeat("é", 351) + `"}`, "ReviewsReplyRequest.replyText"},
+		{"reply of 350 characters", http.MethodPost, reviewReplyURL, `{"replyText":"` + strings.Repeat("é", 350) + `"}`, ""},
+
+		{"hourly window with minutes", http.MethodPost, vitalsQueryURL, `{"timelineSpec":{"aggregationPeriod":"HOURLY","startTime":{"year":2026,"month":11,"day":1,"hours":3,"minutes":30},"endTime":{"year":2026,"month":11,"day":2,"hours":3}}}`, "GooglePlayDeveloperReportingV1beta1TimelineSpec.startTime"},
+		{"hourly window outside UTC", http.MethodPost, vitalsQueryURL, `{"timelineSpec":{"aggregationPeriod":"HOURLY","startTime":{"year":2026,"month":11,"day":1,"hours":3,"timeZone":{"id":"Europe/Paris"}},"endTime":{"year":2026,"month":11,"day":2,"hours":3,"timeZone":{"id":"Europe/Paris"}}}}`, "GooglePlayDeveloperReportingV1beta1TimelineSpec.startTime"},
+		{"daily window with an hour", http.MethodPost, vitalsQueryURL, `{"timelineSpec":{"aggregationPeriod":"DAILY","startTime":{"year":2026,"month":11,"day":1},"endTime":{"year":2026,"month":11,"day":2,"hours":7}}}`, "GooglePlayDeveloperReportingV1beta1TimelineSpec.endTime"},
+		{"daily window outside Los Angeles", http.MethodPost, vitalsQueryURL, `{"timelineSpec":{"aggregationPeriod":"DAILY","startTime":{"year":2026,"month":11,"day":1,"utcOffset":"3600s"},"endTime":{"year":2026,"month":11,"day":2,"utcOffset":"3600s"}}}`, "GooglePlayDeveloperReportingV1beta1TimelineSpec.startTime"},
+		{"hourly window ending outside UTC", http.MethodPost, vitalsQueryURL, `{"timelineSpec":{"aggregationPeriod":"HOURLY","startTime":{"year":2026,"month":11,"day":1,"hours":3},"endTime":{"year":2026,"month":11,"day":2,"hours":3,"utcOffset":"-14400s"}}}`, "GooglePlayDeveloperReportingV1beta1TimelineSpec.endTime"},
+		{"hourly window, one end explicitly UTC", http.MethodPost, vitalsQueryURL, `{"timelineSpec":{"aggregationPeriod":"HOURLY","startTime":{"year":2026,"month":11,"day":1,"hours":3},"endTime":{"year":2026,"month":11,"day":2,"hours":3,"timeZone":{"id":"UTC"}}}}`, ""},
+		{"hourly window", http.MethodPost, vitalsQueryURL, `{"timelineSpec":{"aggregationPeriod":"HOURLY","startTime":{"year":2026,"month":11,"day":1,"hours":3},"endTime":{"year":2026,"month":11,"day":2,"hours":0}}}`, ""},
+		{"daily window in Los Angeles", http.MethodPost, vitalsQueryURL, `{"timelineSpec":{"aggregationPeriod":"DAILY","startTime":{"year":2026,"month":11,"day":1,"timeZone":{"id":"America/Los_Angeles"}},"endTime":{"year":2026,"month":11,"day":2,"timeZone":{"id":"America/Los_Angeles"}}}}`, ""},
+
+		{"offer with three phases", http.MethodPost, offerCreateURL, `{"phases":[{},{},{}]}`, "SubscriptionOffer.phases"},
+		{"offer with no phase", http.MethodPost, offerCreateURL, `{"phases":[]}`, "SubscriptionOffer.phases"},
+		{"offer with two phases", http.MethodPost, offerCreateURL, `{"phases":[{},{}]}`, ""},
+		{"five benefits", http.MethodPost, subsCreateURL, `{"listings":[{"languageCode":"en-US","benefits":["a","b","c","d","e"]}]}`, "SubscriptionListing.benefits"},
+		{"four benefits", http.MethodPost, subsCreateURL, `{"listings":[{"languageCode":"en-US","benefits":["a","b","c","d"]}]}`, ""},
+
+		{"redemption limit of 51", http.MethodPost, otpOffersURL, `{"requests":[{"oneTimeProductOffer":{"discountedOffer":{"redemptionLimit":"51"}}}]}`, "OneTimeProductDiscountedOffer.redemptionLimit"},
+		{"game reward limit of 51", http.MethodPost, otpOffersURL, `{"requests":[{"oneTimeProductOffer":{"gameRewardOffer":{"redemptionLimit":"51"}}}]}`, "OneTimeProductGameRewardOffer.redemptionLimit"},
+		{"unlimited redemptions", http.MethodPost, otpOffersURL, `{"requests":[{"oneTimeProductOffer":{"discountedOffer":{"redemptionLimit":"0"}}}]}`, ""},
+		{"redemption limit of 50", http.MethodPost, otpOffersURL, `{"requests":[{"oneTimeProductOffer":{"discountedOffer":{"redemptionLimit":"50"}}}]}`, ""},
+
+		{"price with a negative fraction", http.MethodPost, convertPricesURL, `{"price":{"currencyCode":"EUR","units":"4","nanos":-500000000}}`, "Money.nanos"},
+		{"price with a billion nanos", http.MethodPost, convertPricesURL, `{"price":{"currencyCode":"EUR","units":"4","nanos":1000000000}}`, "Money.nanos"},
+		{"price of 4.99", http.MethodPost, convertPricesURL, `{"price":{"currencyCode":"EUR","units":"4","nanos":990000000}}`, ""},
+		{"negative price", http.MethodPost, convertPricesURL, `{"price":{"currencyCode":"EUR","units":"-1","nanos":-750000000}}`, ""},
 
 		{"media upload", http.MethodPost, bundleUploadURL, "PK\x03\x04", ""},
 		{"no Discovery method at that URL", http.MethodPut, unregisteredHost, `{"releases":[{"status":"completed","userFraction":1}]}`, ""},
