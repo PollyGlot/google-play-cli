@@ -816,8 +816,9 @@ seconds instead of stalling a CI job until the runner-level kill:
   unbounded for uploads".
 
 A deadline-exceeded failure is a transport-level error and maps to **exit 50**
-(network), the retry-safe bucket — so the same CI wrapper that retries a DNS
-blip retries a timeout.
+(network), the retry-safe bucket, so the same CI wrapper that retries a DNS
+blip retries a timeout. The exception is a timeout on an Edit commit, whose
+outcome is then unknown (`COMMIT_OUTCOME_UNKNOWN`, §4 and §9).
 
 ### Opt-in retry (`--retry`)
 
@@ -924,10 +925,30 @@ pointing at a shared translation):
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
 
+**The envelope's `retryable` field is the authority, not the exit code.** The
+Retry-safe column describes a bucket, and one failure can be narrower than its
+bucket: an Edit commit that fails after the request left the machine (a
+timeout, a reset, a `5xx`, an interrupt) may already be live, so it keeps exit
+`50` or `40` and is **not** safe to retry (`COMMIT_OUTCOME_UNKNOWN`, §4). Under
+`--output json`, the error envelope's `retryable` (§9.1) settles it for the
+failure at hand. A caller that reads only the exit code must treat a `50` or
+`40` from a commit as unknown and check the live state before re-running.
+
 **An interrupted command exits 50.** A command stopped by `SIGINT` or `SIGTERM`
 before it succeeded exits `50` whatever step it was on, after discarding its
-implicit Edit (§4), so re-running it is safe. A command that completed before
-the signal was handled keeps its `0`.
+implicit Edit (§4), and its last stderr line is `gplay: interrupted by SIGINT`
+(or `SIGTERM`). Under JSON output (`--output json`, or the default when stdout
+is not a terminal) it still writes the error envelope of the failure the
+signal caused, so `retryable` tells the two outcomes apart. A signal that
+cuts a request before the commit (an upload, say) yields `NETWORK_ERROR` with
+`retryable: true`: nothing was committed, re-running is safe. A signal that
+lands while the commit is in flight yields `COMMIT_OUTCOME_UNKNOWN` with
+`retryable: false`, the same envelope as a `--timeout` that expires or a
+connection the server cuts during the commit: the commit may be live, so
+check the live state before re-running. Under `--output table`, stdout stays
+empty and the stderr line above the interrupt line carries the same "may have
+been applied" message. A command that completed before the signal was handled
+keeps its `0`.
 
 **Exit 3 has no exceptions.** *Every* refusal for a missing safety-acknowledgment
 flag exits `3` — never `2` — whatever the command and however destructive the
