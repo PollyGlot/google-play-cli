@@ -134,7 +134,7 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 		return nil, err
 	}
 
-	latest, err := latestEnd(rc, httpClient, p.Set, pkg, period)
+	latest, err := LatestEnd(rc, httpClient, p.Set, pkg, period)
 	if err != nil {
 		return nil, err
 	}
@@ -218,10 +218,10 @@ type dateTime struct {
 	Hours *int `json:"hours,omitempty"`
 }
 
-// latestEnd reads the set's freshness for period through its `.get`: the API
-// rejects a timeline ending past it (#768). Zero when the descriptor has no
-// entry for period.
-func latestEnd(rc *kernel.RunContext, hc *http.Client, set vitals.MetricSet, pkg, period string) (time.Time, error) {
+// LatestEnd reads the set's freshness for period through its `.get`: the API
+// rejects a timeline ending past it (#768), and the errors searches end their
+// hour windows on it (#775). Zero when the descriptor has no entry for period.
+func LatestEnd(rc *kernel.RunContext, hc *http.Client, set vitals.MetricSet, pkg, period string) (time.Time, error) {
 	raw, err := vitals.Describe(rc.Ctx, hc, set, pkg)
 	if err != nil {
 		return time.Time{}, err
