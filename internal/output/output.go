@@ -110,7 +110,29 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 	if fn == nil {
 		return unsupportedFormat(f)
 	}
-	return fn(w)
+	if f == FormatJSON {
+		return fn(w)
+	}
+	return renderHuman(w, fn)
+}
+
+// renderHuman is the one boundary every human view crosses: it buffers what
+// the renderer writes and passes it through SanitizeText before it reaches w.
+// A hand-written renderer (a FIELD<TAB>VALUE header row, a summary line) that
+// prints an API string with Fprintf is then as safe as a Column cell, without
+// remembering to call SanitizeCell. The renderer's own layout survives: gplay
+// emits no escape sequence or control rune besides \n and \t. Buffering the
+// whole view, instead of filtering each Write, keeps a sequence or a
+// multi-byte rune split across two writes (tabwriter, bufio) intact for the
+// filter. What the renderer wrote before an error is still flushed, as a
+// direct write would have left it on w.
+func renderHuman(w io.Writer, fn func(io.Writer) error) error {
+	var buf bytes.Buffer
+	err := fn(&buf)
+	if _, werr := io.WriteString(w, SanitizeText(buf.String())); err == nil {
+		err = werr
+	}
+	return err
 }
 
 // WriteJSON streams v to w as indented JSON using the gplay-wide

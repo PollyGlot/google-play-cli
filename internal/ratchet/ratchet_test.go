@@ -137,6 +137,25 @@ var rules = []rule{
 		detect: detectHTTPClient,
 	},
 	{
+		id:           "stdout-bypass",
+		hasAllowlist: true,
+		what:         "stdout written outside output.Render",
+		fix:          "return an output.Renderable and let the kernel render it: output.Render runs every table and markdown view through output.SanitizeText, so an API string cannot carry a terminal escape sequence to the screen (output.WriteJSON for a JSON-only echo)",
+		exempt: []string{
+			"internal/output/", // the render boundary itself
+			"internal/kernel/", // hands rc.Stdout to output.Render
+			// The process root: wires os.Stdout into the Boot and prints the
+			// `version` line, which carries no API string.
+			"cmd/gplay/",
+			"internal/discovery/", // dev tool, see request-helper
+			// Stream a downloaded APK to stdout: binary bytes, not a view, so
+			// sanitising them would corrupt the file.
+			"commands/releases/generated/download/",
+			"commands/releases/system-apks/download/",
+		},
+		detect: detectStdoutBypass,
+	},
+	{
 		id:     "usage-error-type",
 		what:   "local usage-error type",
 		fix:    "return exit.UsageError (exit.Usagef) from internal/exit",
@@ -462,6 +481,84 @@ func detectHTTPClient(f *srcFile) []hit {
 	return hits
 }
 
+const outputPkg = "github.com/PollyGlot/google-play-cli/internal/output"
+
+// detectStdoutBypass finds a fmt.Print* call, or a stdout handle (os.Stdout,
+// a `.Stdout` field such as rc.Stdout, a cmd.OutOrStdout() call) used for
+// anything but wiring it into another `Stdout` (an assignment or a `Stdout:`
+// field) or handing it to the sanctioned sinks, output.Render and
+// output.WriteJSON. Every other use is a renderer writing to the terminal
+// without crossing the sanitising boundary. It does not follow a handle once
+// it is stored under another name (w := rc.Stdout is caught at the
+// assignment, a helper taking an io.Writer is not inspected).
+func detectStdoutBypass(f *srcFile) []hit {
+	var hits []hit
+	for _, decl := range f.ast.Decls {
+		symbol := "(package)"
+		if fd, ok := decl.(*ast.FuncDecl); ok {
+			symbol = funcSymbol(fd)
+		}
+		// Inspect visits a parent before its children, so the wiring and
+		// sink checks mark a handle before the handle itself is visited.
+		sanctioned := map[ast.Expr]bool{}
+		ast.Inspect(decl, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.AssignStmt:
+				for i, lhs := range x.Lhs {
+					if sel, ok := lhs.(*ast.SelectorExpr); ok && sel.Sel.Name == "Stdout" {
+						sanctioned[lhs] = true
+						if len(x.Rhs) == len(x.Lhs) {
+							sanctioned[x.Rhs[i]] = true
+						}
+					}
+				}
+			case *ast.KeyValueExpr:
+				if k, ok := x.Key.(*ast.Ident); ok && k.Name == "Stdout" {
+					sanctioned[x.Value] = true
+				}
+			case *ast.CallExpr:
+				if (f.isPkgSel(x.Fun, outputPkg, "Render") || f.isPkgSel(x.Fun, outputPkg, "WriteJSON")) && len(x.Args) > 0 {
+					sanctioned[x.Args[0]] = true
+				}
+				// fmt.Print* writes to os.Stdout without naming it.
+				for _, p := range []string{"Print", "Printf", "Println"} {
+					if f.isPkgSel(x.Fun, "fmt", p) {
+						hits = append(hits, f.hit(symbol, x.Pos()))
+					}
+				}
+			}
+			if e, ok := n.(ast.Expr); ok && f.isStdout(e) {
+				if !sanctioned[e] {
+					hits = append(hits, f.hit(symbol, e.Pos()))
+				}
+				return false
+			}
+			return true
+		})
+	}
+	return hits
+}
+
+// isStdout reports whether e is a stdout handle: os.Stdout, a `.Stdout`
+// field of a value (rc.Stdout, boot.Stdout), or a no-argument OutOrStdout()
+// call (cobra).
+func (f *srcFile) isStdout(e ast.Expr) bool {
+	switch x := e.(type) {
+	case *ast.SelectorExpr:
+		if x.Sel.Name != "Stdout" {
+			return false
+		}
+		if id, ok := x.X.(*ast.Ident); ok && f.isImportName(id.Name) {
+			return f.isPkgSel(x, "os", "Stdout")
+		}
+		return true
+	case *ast.CallExpr:
+		sel, ok := x.Fun.(*ast.SelectorExpr)
+		return ok && sel.Sel.Name == "OutOrStdout" && len(x.Args) == 0
+	}
+	return false
+}
+
 // usageErrorName matches usageError, usageErr, cliUsageError, ...: the local
 // copies #576 folded into exit.UsageError.
 var usageErrorName = regexp.MustCompile(`(?i)usage\w*err`)
@@ -525,6 +622,23 @@ func mk() { _ = &http.Client{Timeout: 1}; _ = new(http.Client) }`,
 		{"http-client", "commands/x/x_test.go", `package x
 import "net/http"
 func mk() { _ = &http.Client{} }`, nil},
+		{"stdout-bypass", "commands/x/x.go", `package x
+import ("fmt"; "os"; "github.com/PollyGlot/google-play-cli/internal/output")
+func view(rc *kernel.RunContext, name string) { fmt.Fprintf(rc.Stdout, "NAME\t%s\n", name) }
+func line(cmd *cobra.Command) { fmt.Fprintln(cmd.OutOrStdout(), "x") }
+func raw(b []byte) { os.Stdout.Write(b) }
+func say() { fmt.Println("x") }
+func ok(rc *kernel.RunContext, cmd *cobra.Command, b *kernel.Boot, r output.Renderers) {
+	_ = output.Render(rc.Stdout, rc.Format, r)
+	_ = output.WriteJSON(cmd.OutOrStdout(), r)
+	b.Stdout = cmd.OutOrStdout()
+	b.Stdout, b.Stderr = os.Stdout, os.Stderr
+	_ = kernel.Boot{Stdout: os.Stdout}
+	fmt.Fprintln(rc.Stderr, "log")
+}`,
+			[]string{"commands/x/x.go view", "commands/x/x.go line", "commands/x/x.go raw", "commands/x/x.go say"}},
+		{"stdout-bypass", "commands/releases/generated/download/x.go", `package download
+func dl(rc *kernel.RunContext) { copyTo(rc.Stdout) }`, nil},
 		{"usage-error-type", "commands/x/x.go", `package x
 type usageError struct{ msg string }
 type flagUsageErr = error

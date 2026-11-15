@@ -632,10 +632,14 @@ lets the caller override.
 ### Control-sequence sanitization (human formats only)
 
 API-returned strings are often user-generated (review text, store-listing
-copy). The **table and markdown** renderers strip ANSI escape sequences (CSI,
-OSC) and C0/C1 control characters from every cell, centrally at the render
-boundary — so a hostile value cannot inject color/cursor/title sequences into a
-terminal or CI log. The sanitization is rune-based: legitimate multi-byte
+copy). `output.Render` strips ANSI escape sequences (CSI, OSC) and C0/C1
+control characters, `\n` and `\t` excepted, from the whole **table and
+markdown** view, centrally at the render boundary — so a hostile value cannot
+inject color/cursor/title sequences into a terminal or CI log, even from a
+hand-written FIELD/VALUE renderer. Column and markdown-table cells additionally
+drop `\n` and `\t` (`output.SanitizeCell`), so a value cannot break the row. The
+`stdout-bypass` ratchet (`internal/ratchet`) fails on code that writes stdout
+around `output.Render`. The sanitization is rune-based: legitimate multi-byte
 content (accents, CJK, emoji) is untouched. **`--output json` is never
 sanitized** — machine consumers get the bytes verbatim (ADR-0003); fidelity
 lives on the JSON path, safety on the human path.
