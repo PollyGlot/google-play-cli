@@ -132,19 +132,28 @@ func tokenSource(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *htt
 // CheckOAuth2Mint asserts that an OAuth2 access token can be minted by
 // signing a JWT with the SA's private key and exchanging it at the
 // configured token_uri. Failure (non-2xx response, signature problem,
-// any transport error) is mapped to exit code 10. hc is the http.Client
-// the runner threads down: the doctor command wraps it with the scope
-// observer, but for this check that wrapping is invisible.
+// any transport error) is mapped to exit code 10 (#11); only the hint
+// tells a token endpoint that never answered (#787) from one that refused.
+// hc is the http.Client the runner threads down: the doctor command wraps
+// it with the scope observer, but for this check that wrapping is invisible.
 func CheckOAuth2Mint() Check {
 	return Check{
 		Name:     "OAuth2 access token can be minted",
 		ExitCode: exitAuth,
 		Run: func(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) CheckResult {
-			_, ts, fail := tokenSource(ctx, sa, hc)
+			probe := &transportProbe{}
+			_, ts, fail := tokenSource(ctx, sa, probe.wrap(ctx, hc))
 			if fail != nil {
 				return *fail
 			}
 			if _, err := ts.Token(); err != nil {
+				if probe.err != nil {
+					return CheckResult{
+						Passed:   false,
+						ExitCode: exitAuth,
+						Hint:     "could not reach the token endpoint (" + err.Error() + "); this is a network failure, not a key problem: check the connection, DNS, proxy and TLS settings, then retry",
+					}
+				}
 				return CheckResult{
 					Passed:   false,
 					ExitCode: exitAuth,
@@ -154,6 +163,43 @@ func CheckOAuth2Mint() Check {
 			return CheckResult{Passed: true}
 		},
 	}
+}
+
+// transportProbe records whether the HTTP transport itself failed, the same
+// split transport.WithRetry makes (a RoundTrip error, as opposed to an answer
+// with a status). The jwt flow flattens that error with %v before returning
+// it, so the error chain alone cannot tell "never answered" from a key that
+// failed to parse; watching the RoundTrip can.
+type transportProbe struct {
+	inner http.RoundTripper
+	err   error
+}
+
+func (p *transportProbe) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := p.inner.RoundTrip(req)
+	if err != nil {
+		p.err = err
+	}
+	return resp, err
+}
+
+// wrap returns a copy of the client the token exchange would use (hc, else
+// the one carried by ctx, else http.DefaultClient) with p around its
+// transport. The copy keeps Timeout and the rest; the original is untouched.
+func (p *transportProbe) wrap(ctx context.Context, hc *http.Client) *http.Client {
+	if hc == nil {
+		hc, _ = ctx.Value(oauth2.HTTPClient).(*http.Client)
+	}
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+	c := *hc
+	p.inner = c.Transport
+	if p.inner == nil {
+		p.inner = http.DefaultTransport
+	}
+	c.Transport = p
+	return &c
 }
 
 // CheckScope asserts that the OAuth2 JWT exchange driven by the token
