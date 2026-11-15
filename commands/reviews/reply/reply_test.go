@@ -370,6 +370,63 @@ func TestRun_batch_dryRun_noNetwork(t *testing.T) {
 	}
 }
 
+// A reply past the 350 characters Play documents is still sent, with a
+// stderr warning, in single mode and in --batch alike (#789). The limit counts
+// Unicode characters, not bytes: 350 "é" (700 bytes) stays silent. stdout
+// carries the same bytes with or without the warning (ADR-0003).
+func TestRun_overLongReply_warnsAndStillSends(t *testing.T) {
+	long := strings.Repeat("é", 351)
+	atLimit := strings.Repeat("é", 350)
+
+	run := func(t *testing.T, batch bool, text string) (fake *testkit.Fake, stdout, stderr string) {
+		t.Helper()
+		// The constraint table refuses a replyText over 350 characters; this
+		// test sends one on purpose, to pin that gplay does not refuse it.
+		fake = testkit.NewFake(testkit.Any(http.StatusOK, `{"result":{"replyText":"echo"}}`)).
+			AllowInvalid("ReviewsReplyRequest.replyText")
+		rc, out, errb := newRC(t, fake, output.FormatJSON, nil)
+		in := Input{Package: "com.example.app", ReviewID: "r1", Reply: text}
+		if batch {
+			in = Input{Package: "com.example.app", BatchSet: true, Batch: writeTSV(t, "r1\t"+text+"\n")}
+		}
+		if err := Run(rc, in); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		return fake, out.String(), errb.String()
+	}
+
+	for _, mode := range []struct {
+		name  string
+		batch bool
+	}{{"single", false}, {"batch", true}} {
+		t.Run(mode.name, func(t *testing.T) {
+			fake, longOut, longErr := run(t, mode.batch, long)
+			_, limitOut, limitErr := run(t, mode.batch, atLimit)
+
+			calls := fake.Calls()
+			if len(calls) != 1 {
+				t.Fatalf("calls = %d, want the over-long reply sent once", len(calls))
+			}
+			var body struct {
+				ReplyText string `json:"replyText"`
+			}
+			if err := json.Unmarshal(calls[0].Body, &body); err != nil || body.ReplyText != long {
+				t.Errorf("sent body = %s (%v), want the full 351-character reply", calls[0].Body, err)
+			}
+			want := "warning: reply on r1 is 351 characters, more than the 350 Play documents: Play may reject it\n"
+			if !strings.Contains(longErr, want) {
+				t.Errorf("stderr = %q, want it to contain %q", longErr, want)
+			}
+			if strings.Contains(limitErr, "warning:") {
+				t.Errorf("a 350-character reply must not warn; stderr = %q", limitErr)
+			}
+			if longOut != limitOut {
+				t.Errorf("stdout changed with the warning:\n got %q\nwant %q", longOut, limitOut)
+			}
+		})
+	}
+}
+
 func TestRun_batch_empty_exit2(t *testing.T) {
 	rt := &replyRT{t: t}
 	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
