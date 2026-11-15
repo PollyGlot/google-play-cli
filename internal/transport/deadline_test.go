@@ -94,3 +94,80 @@ func TestIsMediaTransfer(t *testing.T) {
 		}
 	}
 }
+
+// mediaServer answers a media download with the body body(req) builds, so a
+// test controls how fast its bytes arrive.
+func mediaServer(body func(*http.Request) io.ReadCloser) http.RoundTripper {
+	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		resp := testkit.Response(http.StatusOK, "")
+		resp.Body = body(req)
+		resp.Request = req
+		return resp, nil
+	})
+}
+
+func download(t *testing.T, rt http.RoundTripper) ([]byte, error) {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://storage.googleapis.com/storage/v1/b/bkt/o/x.csv?alt=media", nil)
+	resp, err := (&http.Client{Transport: rt}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return io.ReadAll(resp.Body)
+}
+
+// A media download that keeps moving bytes outlives the bound many times over:
+// the bound is inactivity, not total duration (#780).
+func TestControlPlaneDeadline_downloadBoundedByInactivityNotTotal(t *testing.T) {
+	const bound = 100 * time.Millisecond
+	want := []byte("0123456789") // 10 reads 30ms apart: about 3x the bound in total
+	rt := transport.WithControlPlaneDeadline(mediaServer(func(req *http.Request) io.ReadCloser {
+		return testkit.TrickleBody(req.Context(), want, 1, 30*time.Millisecond)
+	}), bound)
+
+	start := time.Now()
+	got, err := download(t, rt)
+	if err != nil {
+		t.Fatalf("slow but progressing download failed after %v: %v", time.Since(start), err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+	if d := time.Since(start); d < 2*bound {
+		t.Fatalf("download took %v, under 2x the bound: the test proves nothing", d)
+	}
+}
+
+// A media download whose body stops moving fails on the inactivity bound, with
+// an error that names the stall and still reads as a deadline.
+func TestControlPlaneDeadline_stalledDownloadFails(t *testing.T) {
+	const bound = 50 * time.Millisecond
+	rt := transport.WithControlPlaneDeadline(mediaServer(func(req *http.Request) io.ReadCloser {
+		return testkit.StalledBody(req.Context(), []byte("head"))
+	}), bound)
+
+	start := time.Now()
+	_, err := download(t, rt)
+	var idle *transport.IdleTimeoutError
+	if !errors.As(err, &idle) || idle.Idle != bound {
+		t.Fatalf("err = %v (%T), want *transport.IdleTimeoutError{Idle: %v}", err, err, bound)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("errors.Is(err, context.DeadlineExceeded) = false, want true")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("stalled download returned after %v", d)
+	}
+}
+
+// Waiting for the headers counts as inactivity: a download whose response
+// never starts fails on the bound too.
+func TestControlPlaneDeadline_downloadWithoutHeadersFails(t *testing.T) {
+	rt := transport.WithControlPlaneDeadline(hangOrAnswer(true), 50*time.Millisecond)
+	_, err := download(t, rt)
+	var idle *transport.IdleTimeoutError
+	if !errors.As(err, &idle) {
+		t.Fatalf("err = %v (%T), want *transport.IdleTimeoutError", err, err)
+	}
+}

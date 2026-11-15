@@ -148,12 +148,13 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 	// explicitly, rather than silently truncated into a confusing parse error.
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxRead+1))
 	if readErr != nil {
+		// Status 0, not the 2xx already received: a body cut mid-read (a reset,
+		// a stalled download) is a network failure, exit 50, retry-safe.
 		return nil, &api.Error{
-			Operation:  op,
-			Resource:   bucketResource(bucket),
-			StatusCode: resp.StatusCode,
-			Message:    "read response: " + readErr.Error(),
-			Cause:      readErr,
+			Operation: op,
+			Resource:  bucketResource(bucket),
+			Message:   "read response: " + readErr.Error(),
+			Cause:     readErr,
 		}
 	}
 	if int64(len(raw)) > maxRead {
