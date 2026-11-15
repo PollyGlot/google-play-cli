@@ -3,6 +3,7 @@ package testkit
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // rule is one constraint Play documents in prose on a request property and
@@ -45,6 +46,22 @@ var rules = map[string]rule{
 		check: func(o map[string]any) string {
 			if _, set := present(o, "price"); !set && o["newSubscriberAvailability"] == true {
 				return "newSubscriberAvailability is true but price is not set"
+			}
+			return ""
+		},
+	},
+	"TrackConfig.track": {
+		sentence: "This prefix must match the value of the `form_factor` field, if it is not a default track.",
+		check: func(o map[string]any) string {
+			track, _ := o["track"].(string)
+			ff, _ := o["formFactor"].(string)
+			for prefixed, prefix := range map[string]string{"WEAR": "wear:", "AUTOMOTIVE": "automotive:"} {
+				switch has := strings.HasPrefix(track, prefix); {
+				case ff == prefixed && !has:
+					return fmt.Sprintf("track %q lacks the %q prefix its formFactor %s requires", track, prefix, ff)
+				case ff != prefixed && has:
+					return fmt.Sprintf("track %q carries the %q prefix but formFactor is %s", track, prefix, quoted(o["formFactor"]))
+				}
 			}
 			return ""
 		},
