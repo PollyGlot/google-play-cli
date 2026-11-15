@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -174,6 +175,32 @@ func TestList_autoPaginates(t *testing.T) {
 	}
 }
 
+// Every page, the first included, asks for the documented maximum of 100 so
+// a walk over the 7-day window costs ten times fewer round trips than the
+// server default of 10 (#789).
+func TestList_everyPageAsksForMaxResults100(t *testing.T) {
+	page1 := `{"reviews":[{"reviewId":"r1"}],"tokenPagination":{"nextPageToken":"PAGE2"}}`
+	page2 := `{"reviews":[{"reviewId":"r2"}]}`
+	rt := testkit.NewFake(testkit.Sequence(page1, page2))
+
+	if _, err := List(context.Background(), &http.Client{Transport: rt}, "com.example.app"); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	calls := rt.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("made %d calls, want 2", len(calls))
+	}
+	for i, c := range calls {
+		q, err := url.ParseQuery(c.Query)
+		if err != nil {
+			t.Fatalf("call %d query %q: %v", i, c.Query, err)
+		}
+		if got := q.Get("maxResults"); got != "100" {
+			t.Errorf("call %d maxResults = %q, want 100 (query %q)", i, got, c.Query)
+		}
+	}
+}
+
 func TestList_singlePage(t *testing.T) {
 	body := `{"reviews":[
 		{"reviewId":"r1","comments":[{"userComment":{"text":"Great app\nsecond line","starRating":5,"reviewerLanguage":"en","lastModified":{"seconds":"1700000000","nanos":0}}}]},
@@ -191,7 +218,7 @@ func TestList_singlePage(t *testing.T) {
 	}
 
 	// The call lands on the reviews collection of the package, with no edit.
-	wantCall := "GET /androidpublisher/v3/applications/com.example.app/reviews?"
+	wantCall := "GET /androidpublisher/v3/applications/com.example.app/reviews?maxResults=100"
 	if calls := callLines(rt); len(calls) != 1 || calls[0] != wantCall {
 		t.Errorf("calls = %v, want exactly [%q]", calls, wantCall)
 	}
