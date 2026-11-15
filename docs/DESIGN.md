@@ -289,6 +289,16 @@ Two flags, mutually exclusive:
   ...). Optional `default.txt` is used as fallback for locales without a
   dedicated file.
 
+A note that is empty or longer than 500 Unicode characters (the Play Console
+limit, which Discovery does not carry) fails with exit `20` before any request,
+`--dry-run` included, naming the locale, the source and the length (#786).
+`--release-notes ""` counts as an empty note. One exception: a `default.txt`
+next to `<locale>.txt` files may never ship (one of them may cover the default
+language), so it is checked once `edits.details.get` has named that language,
+inside the Edit and before any artifact upload.
+Whether Play serves a locale stays Play's call: gplay checks length, not a
+locale registry.
+
 ### Targeting a release
 
 - `releases upload <aab>` → versionCode is read from the AAB; never a flag.
@@ -375,6 +385,12 @@ runner eviction) can still leave an Edit open.
 `.gplay/edit-<package>.json` so subsequent write commands in the same cwd
 reuse it. No auto-discard in this mode — explicit `commit` or `discard` is
 required.
+
+An unreadable pin (not JSON, no `editId`, another package's) is refused by
+every command with exit `60`, and the message names
+`gplay edits discard --package <pkg>`: discard removes such a pin without any
+API call and says so (#786). A pin that cannot be read at all (permissions) is
+not removed.
 
 Two read-only checks complete the lifecycle (#544):
 

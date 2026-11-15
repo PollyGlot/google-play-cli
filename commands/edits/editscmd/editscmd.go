@@ -74,6 +74,11 @@ type Payload struct {
 	Gone              bool   `json:"-"`
 }
 
+// ActionClearedUnreadable is the Payload action of `edits discard` when the pin
+// was unreadable: the file is gone, but no Edit ID was known, so none is
+// reported and nothing was discarded server-side (#786).
+const ActionClearedUnreadable = "cleared-unreadable-pin"
+
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return p.renderText(w, "") },
@@ -87,6 +92,8 @@ func (p Payload) Renderers() output.Renderers {
 func (p Payload) renderText(w io.Writer, prefix string) error {
 	var line string
 	switch {
+	case p.Action == ActionClearedUnreadable:
+		line = fmt.Sprintf("removed unreadable pin for %s (no edit discarded on Play)", p.Package)
 	case p.Action != "":
 		line = fmt.Sprintf("%s explicit edit %s for %s", p.Action, p.EditID, p.Package)
 	case p.Gone:
