@@ -1,0 +1,10 @@
+{
+  "appDetails": {"developerName": "Example", "contactEmail": "dev@example.com", "developerWebsite": "https://example.com"},
+  "activeApks": {"activeApkSets": [{"baseApkId": "apk-base"}]},
+  "activeLocalizedStoreListings": [
+    {"languageCode": "en-US", "appName": "Example Game", "fullDescription": "A game.", "appIconId": "img-icon", "screenshotId": ["img-1"]}
+  ],
+  "policyDeclarations": [
+    {"declarationId": "age-rating", "responses": [{"questionId": "q1", "documentResponse": {"documentId": "file-1"}}]}
+  ]
+}

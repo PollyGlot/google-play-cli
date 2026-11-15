@@ -81,10 +81,12 @@ type Responder func(c Call) (status int, body string, ok bool)
 type Fake struct {
 	responders []Responder
 
-	mu      sync.Mutex
-	calls   []Call
-	tokens  int
-	allowed map[string]bool
+	mu       sync.Mutex
+	calls    []Call
+	tokens   int
+	allowed  map[string]bool
+	collect  bool
+	refusals []string
 }
 
 // NewFake builds a Fake whose responders are tried in order per request.
@@ -100,6 +102,25 @@ func (f *Fake) AllowInvalid(rules ...string) *Fake {
 	defer f.mu.Unlock()
 	allowList(f.allowed, rules)
 	return f
+}
+
+// CollectRefusals makes a body that breaks a rule fail its round trip and
+// land in Refusals instead of panicking: for a test that runs whole commands
+// and reports the rule per case. A command that sends from a goroutine would
+// take the test binary down with the panic.
+func (f *Fake) CollectRefusals() *Fake {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.collect = true
+	return f
+}
+
+// Refusals returns, in order, the failure message of every body the Fake
+// refused under CollectRefusals, each naming the rule it breaks.
+func (f *Fake) Refusals() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.refusals...)
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -137,8 +158,15 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, c)
 	why := refusal(c, f.allowed)
+	collect := f.collect
+	if why != "" && collect {
+		f.refusals = append(f.refusals, why)
+	}
 	f.mu.Unlock()
 	if why != "" {
+		if collect {
+			return nil, fmt.Errorf("testkit: body refused by the constraints table")
+		}
 		panic(why)
 	}
 	for _, r := range f.responders {
