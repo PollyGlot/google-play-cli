@@ -115,10 +115,18 @@ func checkNote(locale, source, text string) error {
 // Precheck loads the notes offline, with a placeholder for the default
 // language, and returns the first error Load would raise. A caller runs it
 // before opening an Edit: Load itself only runs once details.get has resolved
-// the real default language, inside the Edit.
+// the real default language, inside the Edit. It refuses only what that load
+// would certainly send (see loadDir for default.txt).
 func Precheck(text, dir string) error {
 	_, err := Load(Opts{Text: text, Dir: dir, DefaultLanguage: OfflineDefaultLanguage})
 	return err
+}
+
+// CheckText checks a --release-notes value the caller knows was passed, even
+// empty: Opts cannot tell `--release-notes ""` from no flag, the command layer
+// can, and an explicit empty value is an empty note (#786).
+func CheckText(text string) error {
+	return checkNote(OfflineDefaultLanguage, "--release-notes", trimTrailingWS(text))
 }
 
 // OfflineDefaultLanguage stands in for the app's default language before
@@ -214,6 +222,15 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 	}
 	// Apply default.txt as the DefaultLanguage entry, but only if no
 	// explicit per-locale file already covers DefaultLanguage.
+	//
+	// Offline the language is unknown, so any `<locale>.txt` may be the one
+	// that covers it: default.txt is then left to the load inside the Edit,
+	// which knows the language, rather than refused here although it may
+	// never ship (#786). With no `<locale>.txt` it ships whatever the
+	// language, so it is checked now.
+	if hasDefault && defaultLang == OfflineDefaultLanguage && len(out) > 0 {
+		return out, nil
+	}
 	if hasDefault {
 		if defaultLang == "" {
 			return nil, &ValidationError{

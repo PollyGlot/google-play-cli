@@ -447,3 +447,30 @@ func TestLoad_dirMode_caseInsensitiveCoversDedupes(t *testing.T) {
 		t.Errorf("default.txt leaked into output: got text %q", got[0].Text)
 	}
 }
+
+// TestPrecheck_defaultTxt_refusedOnlyWhenCertainlySent pins the offline rule
+// for default.txt (#786): without the real default language, the precheck
+// refuses default.txt only when no `<locale>.txt` exists, the one layout where
+// it ships whatever the language. Otherwise the full check runs in Load once
+// details.get has named the language, and refuses it only if it is used.
+func TestPrecheck_defaultTxt_refusedOnlyWhenCertainlySent(t *testing.T) {
+	covered := t.TempDir()
+	writeFile(t, covered, "en-US.txt", "Bug fixes\n")
+	writeFile(t, covered, "default.txt", "")
+	if err := notes.Precheck("", covered); err != nil {
+		t.Errorf("Precheck(en-US.txt + empty default.txt) = %v, want nil: the default language may be en-US", err)
+	}
+	if _, err := notes.Load(notes.Opts{Dir: covered, DefaultLanguage: "en-US"}); err != nil {
+		t.Errorf("Load(default en-US) = %v, want nil: default.txt is unused", err)
+	}
+	var noteErr *notes.NoteError
+	if _, err := notes.Load(notes.Opts{Dir: covered, DefaultLanguage: "fr-FR"}); !errors.As(err, &noteErr) {
+		t.Errorf("Load(default fr-FR) = %v, want *notes.NoteError: default.txt ships as fr-FR", err)
+	}
+
+	alone := t.TempDir()
+	writeFile(t, alone, "default.txt", "")
+	if err := notes.Precheck("", alone); !errors.As(err, &noteErr) {
+		t.Errorf("Precheck(only empty default.txt) = %v, want *notes.NoteError", err)
+	}
+}

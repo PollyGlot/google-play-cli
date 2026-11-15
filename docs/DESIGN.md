@@ -292,6 +292,10 @@ Two flags, mutually exclusive:
 A note that is empty or longer than 500 Unicode characters (the Play Console
 limit, which Discovery does not carry) fails with exit `20` before any request,
 `--dry-run` included, naming the locale, the source and the length (#786).
+`--release-notes ""` counts as an empty note. One exception: a `default.txt`
+next to `<locale>.txt` files may never ship (one of them may cover the default
+language), so it is checked once `edits.details.get` has named that language,
+inside the Edit and before any artifact upload.
 Whether Play serves a locale stays Play's call: gplay checks length, not a
 locale registry.
 

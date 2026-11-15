@@ -23,6 +23,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
+	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
@@ -42,6 +43,7 @@ type Input struct {
 	Format            string // "" | "apk" | "bundle": overrides extension auto-detect
 	Mapping           string
 	ReleaseNotes      string
+	ReleaseNotesSet   bool // explicit `--release-notes ""` is an empty note, refused (#786)
 	ReleaseNotesDir   string
 	Draft             bool
 	Complete          bool
@@ -332,8 +334,13 @@ func renderMarkdown(w io.Writer, p Payload) error {
 // client from the active Account, then hands off to the orchestrator.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// Mutual exclusion validation (ADR-0002 / DESIGN §3 / §9).
-	if in.ReleaseNotes != "" && in.ReleaseNotesDir != "" {
+	if (in.ReleaseNotesSet || in.ReleaseNotes != "") && in.ReleaseNotesDir != "" {
 		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
+	}
+	if in.ReleaseNotesSet {
+		if err := notes.CheckText(in.ReleaseNotes); err != nil {
+			return nil, err
+		}
 	}
 	state, err := orchestrator.RequestedState(in.Draft, in.Complete, in.StagedFractionSet, in.StagedFraction)
 	if err != nil {
@@ -602,6 +609,7 @@ signs the APK.`,
 			in.StagedFraction = stagedFractionVar
 			in.UpdatePrioritySet = cmd.Flags().Changed("update-priority")
 			in.ReleaseNameSet = cmd.Flags().Changed("release-name")
+			in.ReleaseNotesSet = cmd.Flags().Changed("release-notes")
 			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
 				return Run(rc, in)
 			})
