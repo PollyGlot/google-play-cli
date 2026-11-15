@@ -67,9 +67,10 @@ func (e *trackNotFoundError) Unwrap() error { return e.cause }
 
 // Payload satisfies output.Renderable. Raw carries the testers.update body
 // for the ADR-0003 JSON pass-through (empty on --dry-run, which never hits
-// the API); Track and DryRun are gplay-derived context shown above the
-// group list: never in the JSON, which stays a faithful testers.update
-// pass-through. Groups is the audience that was (or would be) written.
+// the API and renders a dryRunView instead); Track and DryRun are
+// gplay-derived context shown above the group list, absent from the live
+// JSON, which stays a faithful testers.update pass-through. Groups is the
+// audience that was (or would be) written.
 type Payload struct {
 	Track  string          `json:"-"`
 	Groups []string        `json:"-"`
@@ -113,12 +114,24 @@ func renderTable(w io.Writer, p Payload) error {
 	return tw.Flush()
 }
 
+// dryRunView is the gplay-shaped --dry-run JSON: the testers.update body that
+// would be sent, tagged dryRun and addressed by its track (a path parameter,
+// not a body field), as `tracks create` and `expansion-files set` preview.
+type dryRunView struct {
+	DryRun       bool     `json:"dryRun"`
+	Track        string   `json:"track"`
+	GoogleGroups []string `json:"googleGroups"`
+}
+
 // renderJSON emits the raw testers.update body verbatim (ADR-0003
-// pass-through). On --dry-run no API call was made, so Raw is empty; we
-// error rather than emit zero bytes so the contract break is loud (a
-// dry-run preview belongs to the table/markdown views, not the JSON
-// pass-through).
+// pass-through). A --dry-run made no API call, yet JSON is the default in CI
+// and pipes, exactly where a rehearsal runs (#777): it prints the planned
+// body as a dryRunView instead. An empty Raw outside a dry-run is a contract
+// break, surfaced loudly rather than as zero bytes.
 func renderJSON(w io.Writer, p Payload) error {
+	if p.DryRun {
+		return output.WriteJSON(w, dryRunView{DryRun: true, Track: p.Track, GoogleGroups: output.NonNil(p.Groups)})
+	}
 	if len(p.Raw) == 0 {
 		return fmt.Errorf("missing raw testers.update payload for --output json")
 	}

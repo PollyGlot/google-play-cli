@@ -61,6 +61,12 @@ func TestFake_refusesBodiesPlayRefuses(t *testing.T) {
 		{"inProgress staged", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"inProgress","userFraction":0.1}]}`, ""},
 		{"halted staged", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"halted","userFraction":0.5}]}`, ""},
 
+		{"completed with country targeting (#779)", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","countryTargeting":{"countries":["DE"]}}]}`, "TrackRelease.countryTargeting"},
+		{"draft with country targeting", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"draft","countryTargeting":{"countries":["DE"]}}]}`, "TrackRelease.countryTargeting"},
+		{"inProgress with country targeting", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"inProgress","userFraction":0.1,"countryTargeting":{"countries":["DE"]}}]}`, ""},
+		{"halted with country targeting", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"halted","userFraction":0.1,"countryTargeting":{"countries":["DE"]}}]}`, ""},
+		{"null country targeting", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","countryTargeting":null}]}`, ""},
+
 		{"wear track without its prefix (#776)", http.MethodPost, tracksCreateURL, `{"track":"beta-wear","type":"CLOSED_TESTING","formFactor":"WEAR"}`, "TrackConfig.track"},
 		{"automotive track behind the wear prefix", http.MethodPost, tracksCreateURL, `{"track":"wear:beta","type":"CLOSED_TESTING","formFactor":"AUTOMOTIVE"}`, "TrackConfig.track"},
 		{"default track behind a prefix", http.MethodPost, tracksCreateURL, `{"track":"automotive:beta","type":"CLOSED_TESTING","formFactor":"DEFAULT"}`, "TrackConfig.track"},

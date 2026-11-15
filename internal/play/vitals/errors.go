@@ -24,12 +24,14 @@ func ErrorCountSet() MetricSet {
 
 // SearchOptions bounds an errors `:search` (issues or reports): an AIP-160
 // Filter, the [Start,End) interval, an OrderBy, and a total Limit (0 = every
-// page). The interval is sent as date-only datapoints in the metric set's
-// default timezone. The call auto-paginates to Limit (or to exhaustion).
+// page). The interval is sent as date-only datapoints, or with their hour when
+// Hourly is set (minutes are never sent, so a bound is read on its hour). The
+// call auto-paginates to Limit (or to exhaustion).
 type SearchOptions struct {
 	Filter  string
 	Start   time.Time
 	End     time.Time
+	Hourly  bool
 	Limit   int
 	OrderBy string
 }
@@ -80,20 +82,25 @@ func searchErrors(ctx context.Context, hc *http.Client, m apiregistry.Method, op
 		base.Set("orderBy", opts.OrderBy)
 	}
 	if !opts.Start.IsZero() {
-		setIntervalDate(base, "interval.startTime", opts.Start)
+		setIntervalDate(base, "interval.startTime", opts.Start, opts.Hourly)
 	}
 	if !opts.End.IsZero() {
-		setIntervalDate(base, "interval.endTime", opts.End)
+		setIntervalDate(base, "interval.endTime", opts.End, opts.Hourly)
 	}
 	return paginateGET(ctx, hc, m, op, pkg, base, itemsKey, pageSize, opts.Limit)
 }
 
-// setIntervalDate writes the date-only google.type.DateTime query params for an
-// interval endpoint (e.g. "interval.startTime.year=2026").
-func setIntervalDate(q url.Values, prefix string, t time.Time) {
+// setIntervalDate writes the google.type.DateTime query params for an interval
+// endpoint (e.g. "interval.startTime.year=2026"). An hourly bound carries its
+// hour, hour 0 included: the API reads a date-only bound as that day's midnight,
+// which turned `--since 6h` into the previous whole day (#775).
+func setIntervalDate(q url.Values, prefix string, t time.Time, hourly bool) {
 	q.Set(prefix+".year", strconv.Itoa(t.Year()))
 	q.Set(prefix+".month", strconv.Itoa(int(t.Month())))
 	q.Set(prefix+".day", strconv.Itoa(t.Day()))
+	if hourly {
+		q.Set(prefix+".hours", strconv.Itoa(t.Hour()))
+	}
 }
 
 // ErrorIssue is the render-ready subset of a clustered error issue.
