@@ -1,0 +1,1 @@
+Example App tracks your runs, offline first, and syncs when you are back online.
