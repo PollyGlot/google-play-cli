@@ -1,0 +1,11 @@
+{
+  "productId": "premium",
+  "listings": [{"languageCode": "en-US", "title": "Premium", "benefits": ["No ads"]}],
+  "basePlans": [{
+    "basePlanId": "monthly",
+    "autoRenewingBasePlanType": {"billingPeriodDuration": "P1M"},
+    "regionalConfigs": [
+      {"regionCode": "US", "newSubscriberAvailability": true, "price": {"currencyCode": "USD", "units": "4", "nanos": 990000000}}
+    ]
+  }]
+}
