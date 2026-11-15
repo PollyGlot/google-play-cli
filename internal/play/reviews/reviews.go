@@ -24,6 +24,18 @@ const (
 	opReviewsGet   = "reviews.get"
 )
 
+// MaxReplyChars is the reply length Play documents as its limit, counted in
+// Unicode characters: "at most 350 characters" in the Reply to Reviews guide,
+// "approximately 350" in Discovery's ReviewsReplyRequest.replyText. The bound
+// is approximate, so `reviews reply` warns past it instead of refusing (#789).
+const MaxReplyChars = 350
+
+// listPageSize is the largest reviews.list page. Discovery types maxResults
+// as a bare uint32 with no bound; the Reply to Reviews guide gives "up to 100
+// reviews per page" (server default 10). The full page cuts round trips and
+// leaves --limit alone, which the command applies after filtering (#61, #789).
+const listPageSize = "100"
+
 // Registry entries for the three methods this package calls. Resolving at init
 // turns an unregistered or vanished method into a CI panic rather than a
 // runtime surprise; verb and URL template then come from the Discovery
@@ -245,9 +257,9 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Review, error) {
 // nextPageToken ("" for the first call). It returns the page's reviews and
 // the nextPageToken to continue with ("" when the page is the last).
 func listPage(ctx context.Context, hc *http.Client, pkg, pageToken string) ([]Review, string, error) {
-	var q url.Values
+	q := url.Values{"maxResults": {listPageSize}}
 	if pageToken != "" {
-		q = url.Values{"token": {pageToken}}
+		q.Set("token", pageToken)
 	}
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: mReviewsList, Op: opReviewsList, Target: pkg,
