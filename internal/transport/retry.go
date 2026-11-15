@@ -121,11 +121,13 @@ func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // retryable reports whether a (resp, err) outcome warrants another attempt:
-// any transport error other than a refused token exchange, an HTTP 429, or
+// any transport error other than a refused token exchange or a refused
+// non-https URL (the same URL is refused again), an HTTP 429, or
 // any 5xx. A 2xx or a non-429 4xx is terminal.
 func retryable(resp *http.Response, err error) bool {
 	if err != nil {
-		return !isAuthRefusal(err)
+		var insecure *InsecureURLError
+		return !isAuthRefusal(err) && !errors.As(err, &insecure)
 	}
 	if resp == nil {
 		return false

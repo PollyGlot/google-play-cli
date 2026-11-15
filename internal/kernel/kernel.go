@@ -891,6 +891,24 @@ func (rc *RunContext) defaultTimeout() time.Duration {
 	return defaultControlPlaneTimeout
 }
 
+// PublicClient is the client for a URL the API hands back rather than an API
+// method (a Store image's preview url): it carries no credential, so the
+// Account's token never reaches that host or a host it redirects to, and it
+// refuses any URL or redirect that is not https (transport.HTTPSOnly). It keeps
+// AuthedClient's deadline and --retry, over the same test seam.
+func (rc *RunContext) PublicClient() *http.Client {
+	timeout := rc.controlPlaneTimeout()
+	// HTTPSOnly sits innermost: the retry middleware follows redirects with a
+	// client of its own, so a guard wrapped around it would never see the hops.
+	rt := transport.HTTPSOnly(baseHTTPClient(rc.Ctx).Transport)
+	if rc.Retry > 0 {
+		// The retry middleware owns the per-attempt deadline, as in authedClientFor.
+		rt = transport.WithRetry(rt, transport.RetryOptions{MaxRetries: rc.Retry, Timeout: timeout})
+		timeout = 0
+	}
+	return transport.NewClient(rt, timeout)
+}
+
 // scopes returns the OAuth scope list to mint a token for: a one-element slice
 // when the command requested a non-default scope via WithScope, else nil: the
 // signal token.Source reads as "default to androidpublisher". Keeping the empty

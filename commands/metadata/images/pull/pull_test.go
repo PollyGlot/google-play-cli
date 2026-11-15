@@ -37,10 +37,11 @@ func jpg(tag string) []byte { return append([]byte("\xff\xd8\xff\xe0"), tag...) 
 // pullFake routes the read-only pull sequence and serves image bytes keyed by
 // url. slots maps "<locale>/<type>" -> images.list body; blobs maps an image
 // url -> its bytes. A commit, any other mutation or an unknown request fails
-// t and is left unclaimed, so the round trip fails too.
-func pullFake(t *testing.T, editID, listingsResp string, slots map[string]string, blobs map[string][]byte) *testkit.Fake {
+// t and is left unclaimed, so the round trip fails too. first, when given,
+// answer before the routing.
+func pullFake(t *testing.T, editID, listingsResp string, slots map[string]string, blobs map[string][]byte, first ...testkit.Responder) *testkit.Fake {
 	t.Helper()
-	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+	return testkit.NewFake(append(first, func(c testkit.Call) (int, string, bool) {
 		// Image blob downloads: any GET whose full URL is a known blob url.
 		if b, ok := blobs[c.URL]; ok && c.Method == http.MethodGet {
 			return http.StatusOK, string(b), true
@@ -68,7 +69,14 @@ func pullFake(t *testing.T, editID, listingsResp string, slots map[string]string
 		}
 		t.Errorf("unexpected request: %s %s", c.Method, c.URL)
 		return 0, "", false
-	})
+	})...)
+}
+
+// redirect answers a GET of from with a 302 to to.
+func redirect(from, to string) testkit.Responder {
+	return testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
+		return http.StatusFound, "", c.Method == http.MethodGet && c.URL == from
+	}, "Location", func(testkit.Call, int) string { return to })
 }
 
 // committed reports whether the pull sent an Edit commit.
@@ -340,5 +348,82 @@ func TestRun_successRemovesStaging(t *testing.T) {
 	}
 	if left, _ := os.ReadDir(tmp); len(left) != 0 {
 		t.Errorf("a pull left %d staging entries in the temp dir, want none", len(left))
+	}
+}
+
+// TestRun_imageHostsGetNoCredential pins that the Account's token goes to the
+// Play API only: the image urls images.list returns are public previews, so
+// neither their host nor a host one redirects to may see an Authorization
+// header, while the images.list calls keep theirs.
+func TestRun_imageHostsGetNoCredential(t *testing.T) {
+	listingsResp, slots, blobs := fixture()
+	const moved = "https://cdn.elsewhere.test/icon"
+	blobs[moved] = blobs["https://play-lh.test/en/icon"]
+	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs, redirect("https://play-lh.test/en/icon", moved))
+	dir := t.TempDir()
+	if _, err := imagespull.Run(newRC(t, rt), imagespull.Input{Package: "com.example.app", Dir: dir}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "en-US", "images", "icon.png")); !bytes.Equal(got, png("icon")) {
+		t.Errorf("icon.png = %q, want the bytes served after the redirect", got)
+	}
+	var api, image int
+	for _, c := range rt.Calls() {
+		auth := c.Header.Get("Authorization")
+		if c.Host == "androidpublisher.googleapis.com" {
+			api++
+			if auth == "" {
+				t.Errorf("%s %s carried no Authorization: the Play API calls must stay authenticated", c.Method, c.URL)
+			}
+			continue
+		}
+		image++
+		if auth != "" {
+			t.Errorf("%s %s carried Authorization %q: the token leaked to an image host", c.Method, c.URL, auth)
+		}
+	}
+	if api == 0 || image != 5 {
+		t.Errorf("calls: %d to the API, %d to image hosts; want some and 5 (4 images + 1 redirect hop)", api, image)
+	}
+}
+
+// TestRun_refusesNonHTTPSImageURL pins that pull fetches image bytes over
+// https only, whether images.list returns a plain-http url or an https one
+// redirects to another scheme: the request is refused before it is sent,
+// exits 1 (a retry would be refused again) and writes nothing.
+func TestRun_refusesNonHTTPSImageURL(t *testing.T) {
+	const insecure = "http://play-lh.test/en/icon"
+	for _, tc := range []struct {
+		name  string
+		url   string
+		retry int
+		first []testkit.Responder
+	}{
+		{name: "listed url", url: insecure},
+		{name: "redirect", url: "https://play-lh.test/en/icon", first: []testkit.Responder{redirect("https://play-lh.test/en/icon", insecure)}},
+		{name: "redirect under --retry", url: "https://play-lh.test/en/icon", retry: 1, first: []testkit.Responder{redirect("https://play-lh.test/en/icon", insecure)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
+			blobs := map[string][]byte{insecure: png("icon")}
+			slots := map[string]string{"en-US/icon": fmt.Sprintf(`{"images":[{"id":"i1","url":%q,"sha256":%q}]}`, tc.url, sum(png("icon")))}
+			rt := pullFake(t, "edit-pull", listingsResp, slots, blobs, tc.first...)
+			dir := t.TempDir()
+			rc := newRC(t, rt)
+			rc.Retry = tc.retry
+			_, err := imagespull.Run(rc, imagespull.Input{Package: "com.example.app", Dir: dir})
+			if err == nil || !strings.Contains(err.Error(), "refusing non-https URL "+insecure) {
+				t.Fatalf("Run err = %v, want the non-https refusal", err)
+			}
+			if code := exit.For(err); code != 1 {
+				t.Errorf("exit code = %d, want 1", code)
+			}
+			if n := downloads(rt, blobs); n != 0 {
+				t.Errorf("%d requests reached %s, want none", n, insecure)
+			}
+			if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+				t.Errorf("pull wrote %d entries, want none", len(entries))
+			}
+		})
 	}
 }
