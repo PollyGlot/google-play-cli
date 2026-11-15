@@ -10,7 +10,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
@@ -68,4 +70,44 @@ func GoldenJSON(t testing.TB, name string, r output.Renderable) {
 		}
 	}
 	testkit.Golden(t, name, got)
+}
+
+// HostileJSON is an API string value, JSON-escaped for a fake response body,
+// that carries the two escape families a hostile value uses: an OSC
+// window-title set (ESC ] 0 ; ... BEL) and a CSI erase-screen (ESC [ 2 J).
+// Splice it into a fixture field that a human view prints.
+const HostileJSON = `\u001b]0;pwned\u0007\u001b[2J`
+
+// RenderHuman renders r in every human format it supports (table, markdown)
+// through output.Render, the path the kernel takes, and fails t when one of
+// them lets a control rune other than \n or \t through, or leaves the OSC
+// payload or the CSI parameters of HostileJSON behind. It returns the outputs
+// keyed by format, for the caller's own assertions.
+func RenderHuman(t testing.TB, r output.Renderable) map[output.Format]string {
+	t.Helper()
+	rs := r.Renderers()
+	out := map[output.Format]string{}
+	for f, fn := range map[output.Format]func(io.Writer) error{output.FormatTable: rs.Table, output.FormatMarkdown: rs.Markdown} {
+		if fn == nil {
+			continue
+		}
+		var buf bytes.Buffer
+		if err := output.Render(&buf, f, rs); err != nil {
+			t.Fatalf("outputtest: render %s: %v", f, err)
+		}
+		got := buf.String()
+		if i := strings.IndexFunc(got, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }); i >= 0 {
+			t.Errorf("outputtest: --output %s leaks control rune %q at byte %d:\n%q", f, []rune(got[i:])[0], i, got)
+		}
+		for _, litter := range []string{"pwned", "[2J"} {
+			if strings.Contains(got, litter) {
+				t.Errorf("outputtest: --output %s keeps %q of an escape sequence:\n%q", f, litter, got)
+			}
+		}
+		out[f] = got
+	}
+	if len(out) == 0 {
+		t.Fatalf("outputtest: %T has no human renderer", r)
+	}
+	return out
 }

@@ -27,6 +27,11 @@
 //     internal/transport, whose NewClient is the one constructor.
 //   - usage-error-type: a local usage-error type. Return exit.UsageError
 //     (exit.Usagef).
+//   - stdout-bypass: stdout written outside output.Render (a fmt.Print*
+//     call, or os.Stdout, rc.Stdout or cmd.OutOrStdout() used for anything
+//     but wiring or output.Render / output.WriteJSON). Return an
+//     output.Renderable: Render sanitises every human view, so an API string
+//     cannot carry a terminal escape sequence to the screen.
 //
 // `make ratchets` prints the allowlist size of every rule, for a before/after
 // report. The literal-API-path gate that this package generalises stays in
