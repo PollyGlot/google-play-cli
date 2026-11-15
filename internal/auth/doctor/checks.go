@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -169,7 +170,9 @@ func CheckOAuth2Mint() Check {
 // split transport.WithRetry makes (a RoundTrip error, as opposed to an answer
 // with a status). The jwt flow flattens that error with %v before returning
 // it, so the error chain alone cannot tell "never answered" from a key that
-// failed to parse; watching the RoundTrip can.
+// failed to parse; watching the RoundTrip can. RoundTrip returns once the
+// headers are in, so the body is watched too: a read that dies after a 200
+// (timeout, reset connection) is the same "never answered".
 type transportProbe struct {
 	inner http.RoundTripper
 	err   error
@@ -179,8 +182,25 @@ func (p *transportProbe) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := p.inner.RoundTrip(req)
 	if err != nil {
 		p.err = err
+		return resp, err
 	}
-	return resp, err
+	resp.Body = probedBody{ReadCloser: resp.Body, probe: p}
+	return resp, nil
+}
+
+// probedBody records on its probe any read error other than the clean end
+// of the body.
+type probedBody struct {
+	io.ReadCloser
+	probe *transportProbe
+}
+
+func (b probedBody) Read(buf []byte) (int, error) {
+	n, err := b.ReadCloser.Read(buf)
+	if err != nil && !errors.Is(err, io.EOF) {
+		b.probe.err = err
+	}
+	return n, err
 }
 
 // wrap returns a copy of the client the token exchange would use (hc, else

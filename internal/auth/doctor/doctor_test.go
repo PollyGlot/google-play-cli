@@ -8,10 +8,13 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"testing"
+	"testing/iotest"
 
 	"golang.org/x/oauth2"
 
@@ -231,6 +234,25 @@ func TestCheckOAuth2Mint_transportError_pointsToNetwork(t *testing.T) {
 				t.Errorf("Hint = %q, want network advice without the key advice", r.Hint)
 			}
 		})
+	}
+}
+
+// Headers can arrive and the body still die on the wire (read timeout, reset
+// connection): RoundTrip succeeded, yet the endpoint never answered the
+// exchange, so the hint still points at the network (#787).
+func TestCheckOAuth2Mint_bodyReadError_pointsToNetwork(t *testing.T) {
+	ctx := ctxWithRT(t, func(*http.Request) (*http.Response, error) {
+		resp := testkit.Response(http.StatusOK, "")
+		resp.Body = io.NopCloser(iotest.ErrReader(&net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}))
+		return resp, nil
+	})
+
+	r := doctor.Run(ctx, makeSignedSA(t), nil, doctor.CheckOAuth2Mint())[0]
+	if r.Passed || r.ExitCode != 10 {
+		t.Errorf("result = %+v, want a failure with exit 10", r)
+	}
+	if !strings.Contains(r.Hint, "network") || strings.Contains(r.Hint, "revoked") {
+		t.Errorf("Hint = %q, want network advice without the key advice", r.Hint)
 	}
 }
 
