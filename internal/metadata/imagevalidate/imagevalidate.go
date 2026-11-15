@@ -16,11 +16,12 @@
 package imagevalidate
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"image"
 	_ "image/jpeg" // register the JPEG decoder for image.DecodeConfig
 	_ "image/png"  // register the PNG decoder for image.DecodeConfig
+	"os"
 	"sort"
 
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
@@ -96,16 +97,20 @@ type Problem struct {
 // position) order, so a CI log shows the full picture in one run. An empty
 // tree (no images) yields no problems: required-slot minimums are Play's job
 // at commit, not this offline lint (ADR-0013 §4).
-func Validate(tr imagetree.Tree) []Problem {
+//
+// It opens one file at a time and reads only its size and its header, so a
+// tree of any size costs a few KiB of memory. The error is an unreadable
+// file, never a rule violation.
+func Validate(st imagetree.Staged) ([]Problem, error) {
 	var problems []Problem
-	locales := make([]string, 0, len(tr))
-	for loc := range tr {
+	locales := make([]string, 0, len(st))
+	for loc := range st {
 		locales = append(locales, loc)
 	}
 	sort.Strings(locales)
 
 	for _, loc := range locales {
-		slots := tr[loc]
+		slots := st[loc]
 		for _, ty := range images.Types() {
 			seq := slots[ty]
 			if len(seq) == 0 {
@@ -118,37 +123,51 @@ func Validate(tr imagetree.Tree) []Problem {
 					Message: fmt.Sprintf("slot has %d images; max %d", len(seq), r.maxCount),
 				})
 			}
-			for i, data := range seq {
-				problems = append(problems, checkImage(loc, ty, i, data, r)...)
+			for i, path := range seq {
+				ps, err := checkImage(loc, ty, i, path, r)
+				if err != nil {
+					return nil, err
+				}
+				problems = append(problems, ps...)
 			}
 		}
 	}
-	return problems
+	return problems, nil
 }
 
-// checkImage runs every per-image rule for one image, returning its
+// checkImage runs every per-image rule for the image at path, returning its
 // violations. A format failure short-circuits the dimension checks (we cannot
 // trust width/height from bytes we could not decode).
-func checkImage(loc string, ty images.Type, i int, data []byte, r rule) []Problem {
+func checkImage(loc string, ty images.Type, i int, path string, r rule) ([]Problem, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
 	var out []Problem
 	mk := func(ruleName, msg string) {
 		out = append(out, Problem{Locale: loc, ImageType: string(ty), Index: i, Rule: ruleName, Message: msg})
 	}
 
-	if r.maxBytes > 0 && int64(len(data)) > r.maxBytes {
-		mk("bytes", fmt.Sprintf("%d bytes exceeds the %d-byte cap", len(data), r.maxBytes))
+	if size := info.Size(); r.maxBytes > 0 && size > r.maxBytes {
+		mk("bytes", fmt.Sprintf("%d bytes exceeds the %d-byte cap", size, r.maxBytes))
 	}
 
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	cfg, format, err := image.DecodeConfig(bufio.NewReader(f))
 	if err != nil {
 		mk("format", "not a decodable PNG or JPEG image")
-		return out
+		return out, nil
 	}
 	if format != "png" && format != "jpeg" {
 		// Unreachable while only png/jpeg decoders are registered, but kept
 		// explicit so the format contract is enforced, not implied.
 		mk("format", fmt.Sprintf("format %q is not PNG or JPEG", format))
-		return out
+		return out, nil
 	}
 
 	if r.exactW > 0 && (cfg.Width != r.exactW || cfg.Height != r.exactH) {
@@ -168,5 +187,5 @@ func checkImage(loc string, ty images.Type, i int, data []byte, r rule) []Proble
 			mk("ratio", fmt.Sprintf("aspect ratio %d×%d exceeds the %.0f:1 bound", cfg.Width, cfg.Height, screenshotMaxRatio))
 		}
 	}
-	return out
+	return out, nil
 }

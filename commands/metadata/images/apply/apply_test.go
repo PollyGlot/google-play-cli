@@ -418,3 +418,39 @@ func TestRun_retiredPromoGraphicFile_warnsAndIsNeverSent(t *testing.T) {
 		}
 	}
 }
+
+// TestRun_localeWithoutListing_hintsMetadataApply: images.list answers 404
+// inside the open Edit, so the package resolved and only that language lacks
+// the Listing images attach to. The hint names `gplay metadata apply` for that
+// locale, not `gplay apps list`, and the exit code stays the 404's.
+func TestRun_localeWithoutListing_hintsMetadataApply(t *testing.T) {
+	notFound := `{"error":{"code":404,"message":"Listing not found."}}`
+	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
+		switch {
+		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
+			return 200, `{"id":"e"}`, true
+		case c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/en-US/"):
+			return 404, notFound, true
+		case c.Method == http.MethodDelete && strings.HasSuffix(c.Path, "/edits/e"):
+			return 204, "", true
+		}
+		t.Errorf("unexpected request: %s %s", c.Method, c.Path)
+		return 0, "", false
+	})
+	dir := seedIcon(t)
+	_, err := imagesapply.Run(newRC(t, fake), imagesapply.Input{Package: "com.example.app", Dir: dir, DryRun: true})
+	if err == nil {
+		t.Fatal("want the 404 to surface")
+	}
+	for _, want := range []string{`"en-US"`, "gplay metadata apply", filepath.Join(dir, "en-US")} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "gplay apps list") {
+		t.Errorf("error %q blames the package", err)
+	}
+	if got := exitCodeOf(t, err); got != 30 {
+		t.Errorf("exit = %d, want 30 (the 404's)", got)
+	}
+}

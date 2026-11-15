@@ -23,7 +23,7 @@ func deleteShas(changes []imagediff.SlotChange) []string {
 func TestPrune_pureDelete_deletesOnlineOnlyByID(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
-		Local: [][]byte{B("a")},
+		Local: local(B("a")),
 		Live:  []images.Image{img("id-a", B("a")), img("id-b", B("b"))},
 	}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, true)[0]
@@ -47,7 +47,7 @@ func TestPrune_pureDelete_deletesOnlineOnlyByID(t *testing.T) {
 func TestPrune_replaceAndDelete_rewrites(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
-		Local: [][]byte{B("a"), B("c")},
+		Local: local(B("a"), B("c")),
 		Live:  []images.Image{img("id-a", B("a")), img("id-b", B("b"))},
 	}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, true)[0]
@@ -88,7 +88,7 @@ func TestPrune_neverTouchesUnmanagedSlot(t *testing.T) {
 func TestPrune_offByDefault_keepsOnlineOnly(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
-		Local: [][]byte{B("a")},
+		Local: local(B("a")),
 		Live:  []images.Image{img("id-a", B("a")), img("id-b", B("b"))},
 	}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]

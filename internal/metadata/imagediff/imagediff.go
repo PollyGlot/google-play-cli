@@ -21,9 +21,6 @@
 package imagediff
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
@@ -44,10 +41,12 @@ type Kind int
 const (
 	// KindNone: nothing to do (unchanged or untouchedSlot).
 	KindNone Kind = iota
-	// KindAppend: upload each blob in Uploads (images.upload appends in order).
+	// KindAppend: upload each local image Uploads names (images.upload
+	// appends in order).
 	KindAppend
-	// KindRewrite: deleteall the slot, then upload each blob in Uploads (the
-	// full local sequence) in order: the only way to reorder or replace.
+	// KindRewrite: deleteall the slot, then upload each local image Uploads
+	// names (the full local sequence) in order: the only way to reorder or
+	// replace.
 	KindRewrite
 	// KindDeleteIDs: delete each live image id in DeleteIDs (a pure removal,
 	// order preserved): used only under --prune (#135).
@@ -91,12 +90,14 @@ func (r Result) HasChanges() bool {
 	return r.Summary.Upload+r.Summary.Delete+r.Summary.Reorder > 0
 }
 
-// SlotInput pairs one slot's local byte sequence (ordered, may be empty when
-// unmanaged) with its live images (ordered as images.list returned them).
+// SlotInput pairs one slot's local images, as the hex sha256 of each in
+// display order (empty when unmanaged), with its live images (ordered as
+// images.list returned them). The engine decides on content identity alone,
+// so the caller hashes the files and never has to hold their bytes here.
 type SlotInput struct {
 	Locale string
 	Type   images.Type
-	Local  [][]byte
+	Local  []string
 	Live   []images.Image
 }
 
@@ -107,7 +108,7 @@ type Plan struct {
 	Type      images.Type
 	Changes   []SlotChange
 	Kind      Kind
-	Uploads   [][]byte // KindAppend: blobs to append; KindRewrite: full local seq
+	Uploads   []int    // indices into SlotInput.Local: KindAppend the images to append, KindRewrite the full local seq
 	DeleteIDs []string // KindDeleteIDs: live image ids to delete (prune)
 }
 
@@ -154,7 +155,7 @@ func Aggregate(pkg string, plans []Plan) Result {
 // slot's online-only images (and reconciling it exactly to local).
 func reconcile(in SlotInput, prune bool) Plan {
 	p := Plan{Locale: in.Locale, Type: in.Type}
-	localShas := shasOf(in.Local)
+	localShas := in.Local
 	liveShas := liveShasOf(in.Live)
 
 	// Unmanaged: nothing on disk for this slot.
@@ -177,7 +178,7 @@ func reconcile(in SlotInput, prune bool) Plan {
 	// is a replace (deleteall + upload).
 	if !in.Type.Gallery() {
 		p.Kind = KindRewrite
-		p.Uploads = in.Local
+		p.Uploads = allIndices(localShas)
 		p.Changes = []SlotChange{{Locale: in.Locale, ImageType: string(in.Type), Op: OpUpload, Sha256: localShas[0], Position: 0}}
 		return p
 	}
@@ -191,14 +192,14 @@ func reconcile(in SlotInput, prune bool) Plan {
 			// Pure append, order preserved: upload only the tail.
 			p.Kind = KindAppend
 			for i := len(liveShas); i < len(localShas); i++ {
-				p.Uploads = append(p.Uploads, in.Local[i])
+				p.Uploads = append(p.Uploads, i)
 				p.Changes = append(p.Changes, uploadChange(in, localShas[i], i))
 			}
 			return p
 		}
 		// Order or content differs (set ⊆ local): rewrite = deleteall + reupload.
 		p.Kind = KindRewrite
-		p.Uploads = in.Local
+		p.Uploads = allIndices(localShas)
 		p.Changes = append(p.Changes, slotLevel(in, OpReorder))
 		for i, s := range localShas {
 			if !liveSet[s] {
@@ -218,7 +219,7 @@ func reconcile(in SlotInput, prune bool) Plan {
 	// (which would drop the online-only ones) is --prune.
 	for i, s := range localShas {
 		if !liveSet[s] {
-			p.Uploads = append(p.Uploads, in.Local[i])
+			p.Uploads = append(p.Uploads, i)
 			p.Changes = append(p.Changes, uploadChange(in, s, i))
 		}
 	}
@@ -266,7 +267,7 @@ func prunePlan(in SlotInput, localShas, liveShas []string, liveSet map[string]bo
 
 	// General rewrite: deleteall + re-upload the full local sequence.
 	p.Kind = KindRewrite
-	p.Uploads = in.Local
+	p.Uploads = allIndices(localShas)
 	if reordered {
 		p.Changes = append(p.Changes, slotLevel(in, OpReorder))
 	}
@@ -298,11 +299,11 @@ func uploadChange(in SlotInput, sha string, pos int) SlotChange {
 	return SlotChange{Locale: in.Locale, ImageType: string(in.Type), Op: OpUpload, Sha256: sha, Position: pos}
 }
 
-// shasOf hashes each local blob.
-func shasOf(seq [][]byte) []string {
-	out := make([]string, len(seq))
-	for i, b := range seq {
-		out[i] = hashOf(b)
+// allIndices names every local image, in display order.
+func allIndices(seq []string) []int {
+	out := make([]int, len(seq))
+	for i := range seq {
+		out[i] = i
 	}
 	return out
 }
@@ -313,11 +314,6 @@ func liveShasOf(live []images.Image) []string {
 		out[i] = img.Sha256
 	}
 	return out
-}
-
-func hashOf(b []byte) string {
-	s := sha256.Sum256(b)
-	return hex.EncodeToString(s[:])
 }
 
 func toSet(ss []string) map[string]bool {

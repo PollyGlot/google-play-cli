@@ -119,7 +119,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		dir = DefaultDir
 	}
 
-	tr, err := imagetree.Read(dir)
+	tr, err := imagetree.Scan(dir)
 	if err != nil {
 		return nil, &dirError{dir: dir, cause: err}
 	}
@@ -131,7 +131,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.Warnf("%s", imagetree.RetiredMessage(p))
 	}
 
-	if problems := imagevalidate.Validate(tr); len(problems) > 0 {
+	problems, err := imagevalidate.Validate(tr)
+	if err != nil {
+		return nil, &dirError{dir: dir, cause: err}
+	}
+	if len(problems) > 0 {
 		return nil, &ValidationError{Problems: problems}
 	}
 
@@ -140,7 +144,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 }
 
 // count returns the number of managed slots and total images in tr.
-func count(tr imagetree.Tree) (slots, imgs int) {
+func count(tr imagetree.Staged) (slots, imgs int) {
 	locales := make([]string, 0, len(tr))
 	for loc := range tr {
 		locales = append(locales, loc)

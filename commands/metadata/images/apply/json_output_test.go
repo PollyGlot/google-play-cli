@@ -17,6 +17,17 @@ import (
 // matches on sha256, so equal bytes are the same image.
 func blob(name string) []byte { return []byte("png:" + name) }
 
+// shas is a slot's local sequence as the diff engine takes it: one sha256 per
+// image.
+func shas(names ...[]byte) []string {
+	out := make([]string, len(names))
+	for i, b := range names {
+		sum := sha256.Sum256(b)
+		out[i] = hex.EncodeToString(sum[:])
+	}
+	return out
+}
+
 func live(id, name string) images.Image {
 	sum := sha256.Sum256(blob(name))
 	return images.Image{ID: id, Sha256: hex.EncodeToString(sum[:])}
@@ -28,11 +39,11 @@ func live(id, name string) images.Image {
 // --prune).
 func slots() []imagediff.SlotInput {
 	return []imagediff.SlotInput{
-		{Locale: "de-DE", Type: images.PhoneScreenshots, Local: [][]byte{blob("b"), blob("a")}, Live: []images.Image{live("1", "a"), live("2", "b")}},
-		{Locale: "en-US", Type: images.Icon, Local: [][]byte{blob("icon-v2")}, Live: []images.Image{live("3", "icon-v1")}},
-		{Locale: "en-US", Type: images.FeatureGraphic, Local: [][]byte{blob("feature")}, Live: []images.Image{live("4", "feature")}},
-		{Locale: "en-US", Type: images.PhoneScreenshots, Local: [][]byte{blob("s1"), blob("s2"), blob("s3")}, Live: []images.Image{live("5", "s1"), live("6", "s2")}},
-		{Locale: "en-US", Type: images.SevenInchScreenshots, Local: [][]byte{blob("t1")}, Live: []images.Image{live("7", "t1"), live("8", "t-old")}},
+		{Locale: "de-DE", Type: images.PhoneScreenshots, Local: shas(blob("b"), blob("a")), Live: []images.Image{live("1", "a"), live("2", "b")}},
+		{Locale: "en-US", Type: images.Icon, Local: shas(blob("icon-v2")), Live: []images.Image{live("3", "icon-v1")}},
+		{Locale: "en-US", Type: images.FeatureGraphic, Local: shas(blob("feature")), Live: []images.Image{live("4", "feature")}},
+		{Locale: "en-US", Type: images.PhoneScreenshots, Local: shas(blob("s1"), blob("s2"), blob("s3")), Live: []images.Image{live("5", "s1"), live("6", "s2")}},
+		{Locale: "en-US", Type: images.SevenInchScreenshots, Local: shas(blob("t1")), Live: []images.Image{live("7", "t1"), live("8", "t-old")}},
 		{Locale: "fr-FR", Type: images.PhoneScreenshots, Live: []images.Image{live("9", "fr1")}},
 	}
 }

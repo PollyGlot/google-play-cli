@@ -18,8 +18,12 @@
 package imagesapply
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"net/http"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,6 +69,39 @@ func (e *dirError) Error() string {
 }
 func (e *dirError) Unwrap() error { return e.cause }
 func (e *dirError) ExitCode() int { return 20 }
+
+// listingNotFoundError is the 404 of images.list inside an open Edit: the
+// package resolved, only that language has no Listing, and images attach to a
+// Listing. Pointing at `gplay apps list` there sent the operator after the
+// wrong cause.
+type listingNotFoundError struct {
+	locale string
+	dir    string
+	cause  error
+}
+
+func (e *listingNotFoundError) Error() string {
+	return fmt.Sprintf("no Listing for language %q on Play (the package itself was found): images attach to a Listing, so create the %q Listing first with `gplay metadata apply` (it reads title.txt and full_description.txt from %s), then rerun: %v",
+		e.locale, e.locale, filepath.Join(e.dir, e.locale), e.cause)
+}
+func (e *listingNotFoundError) Unwrap() error { return e.cause }
+
+// classifyApplyError adds the operator hints, leaving the wrapped error to
+// drive the exit code. A 404 tagged with a locale is that language's missing
+// Listing, not the package; an image file that cannot be read after the scan
+// (removed or unreadable) is the --dir failure it was when Read loaded the
+// whole tree upfront.
+func classifyApplyError(pkg, dir string, err error) error {
+	var locErr *imageorchestrator.LocaleError
+	if apihint.Status(err) == http.StatusNotFound && errors.As(err, &locErr) {
+		return &listingNotFoundError{locale: locErr.Locale, dir: dir, cause: err}
+	}
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return &dirError{dir: dir, cause: err}
+	}
+	return apihint.ForPackage(pkg, err)
+}
 
 // Payload renders an imageorchestrator.Result. The shape switches on
 // Result.DryRun: a dry-run renders the diff schema; a real apply renders what
@@ -160,7 +197,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 
-	local, err := imagetree.Read(dir)
+	local, err := imagetree.Scan(dir)
 	if err != nil {
 		return nil, &dirError{dir: dir, cause: err}
 	}
@@ -212,7 +249,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Commit:         in.Commit.For(rc, explicitEditID),
 	})
 	if err != nil {
-		return nil, apihint.ForPackage(pkg, err)
+		return nil, classifyApplyError(pkg, dir, err)
 	}
 	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
 	// --dry-run), reporting the upload/delete/reorder tally.
@@ -226,7 +263,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // managedLocales returns the locale codes the on-disk tree manages (has images
 // for), sorted: used to name the available locales when a --locale is unknown.
-func managedLocales(local imagetree.Tree) []string {
+func managedLocales(local imagetree.Staged) []string {
 	out := make([]string, 0, len(local))
 	for loc := range local {
 		out = append(out, loc)

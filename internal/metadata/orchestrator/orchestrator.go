@@ -87,6 +87,18 @@ type Result struct {
 	Patched map[string]json.RawMessage
 	Created []string
 	Pruned  []string
+	// Incomplete names each locale the apply creates (dry-run: would create)
+	// whose tree lacks a required field, sorted. The write still goes out:
+	// apply is additive and Discovery marks no Listing field required, so
+	// this is a warning for the command to print, never a refusal.
+	Incomplete []IncompleteLocale
+}
+
+// IncompleteLocale is a locale created on Play without the fields `metadata
+// validate` requires (title, fullDescription), keys in canonical order.
+type IncompleteLocale struct {
+	Locale  string
+	Missing []string
 }
 
 // LocaleError tags a failed per-locale write or delete with its locale, so
@@ -207,11 +219,12 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	if opts.DryRun {
 		// Read-only: open, fetch+diff+guard, discard. Never commits.
 		if err := edits.WithReadOnlyEdit(ctx, hc, opts.Package, func(editID string) error {
-			d, _, err := plan(ctx, hc, opts, editID, local)
+			d, online, err := plan(ctx, hc, opts, editID, local)
 			if err != nil {
 				return err
 			}
 			result.Diff = d
+			result.Incomplete = incompleteCreates(local, online, d)
 			return nil
 		}); err != nil {
 			return nil, err
@@ -237,6 +250,7 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 		if !d.HasChanges() {
 			return errNoChanges
 		}
+		result.Incomplete = incompleteCreates(local, online, d)
 		// Write every changed locale (sorted for determinism), then delete
 		// every pruned locale, all inside this one Edit. The verb is chosen
 		// per locale, not per field: a field-level `create` on a locale that
@@ -341,6 +355,31 @@ func blockingProblems(local listing.Tree, allow map[string]bool) []validate.Prob
 			continue
 		}
 		out = append(out, p)
+	}
+	return out
+}
+
+// incompleteCreates lists the locales d creates (changed, absent from online)
+// that miss a required field: the required-missing problems blockingProblems
+// drops are harmless on a live locale, whose online value stays, but a new
+// Listing is created without them.
+func incompleteCreates(local, online listing.Tree, d diff.Result) []IncompleteLocale {
+	created := make(map[string]bool)
+	for _, loc := range changedLocales(d) {
+		if _, live := online[loc]; !live {
+			created[loc] = true
+		}
+	}
+	var out []IncompleteLocale
+	for _, p := range validate.Validate(local, nil) {
+		if p.Kind != validate.KindRequiredMissing || !created[p.Locale] {
+			continue
+		}
+		if n := len(out); n > 0 && out[n-1].Locale == p.Locale {
+			out[n-1].Missing = append(out[n-1].Missing, p.Field)
+			continue
+		}
+		out = append(out, IncompleteLocale{Locale: p.Locale, Missing: []string{p.Field}})
 	}
 	return out
 }

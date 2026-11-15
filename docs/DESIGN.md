@@ -462,13 +462,19 @@ visible. It is the one known exception.
 
 A sweep that costs one round trip per slot or per app runs its reads **four at
 a time** (`internal/fanout`): `metadata images list` and `metadata images pull`
-(each `images.list` slot, then each image download) and `apps audit` (one
+(each `images.list` slot, then each image download), the planning of
+`metadata images apply` (each `images.list` slot) and `apps audit` (one
 read-only Edit per app). The limit is fixed, with no flag. Output order is the
 serial order (results land by index, never by completion), and a failure
 reports the error the serial walk would have hit first.
 
 - **Writes inside one Edit stay sequential** (`images apply`, `metadata apply`):
   Google does not document concurrent writes to an Edit.
+- **`images apply` and `images validate` hold one image at a time**: the tree
+  is scanned for paths, validation reads each file's size and header, the diff
+  hashes each file as a stream, and an upload reads its image just before
+  sending it, so `--locale`/`--type` decide what is read and memory does not
+  grow with the tree.
 - **`images pull` downloads are all-or-nothing**: each download streams to its
   own file in a temporary staging directory, and the tree on disk is written
   only after the last download succeeded, so a failed or interrupted download
