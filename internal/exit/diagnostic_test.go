@@ -200,7 +200,7 @@ func TestClassify_diagnoserRefinementWins(t *testing.T) {
 
 // TestCodeCatalog_basePlanNotDraft pins the row `subscriptions apply` refines
 // a refused base plan delete to (#555): same exit bucket as the 400 it wraps,
-// not retryable (the caller must deactivate the plan first).
+// not retryable (the caller must keep the plan in the file as INACTIVE).
 func TestCodeCatalog_basePlanNotDraft(t *testing.T) {
 	doc, ok := exit.LookupCode(exit.CodeBasePlanNotDraft)
 	if !ok {
@@ -210,7 +210,7 @@ func TestCodeCatalog_basePlanNotDraft(t *testing.T) {
 		t.Errorf("row = %+v, want exit 30 and not retryable", doc)
 	}
 	if !strings.Contains(doc.Meaning, "INACTIVE") {
-		t.Errorf("meaning %q must name the deactivate-first remedy", doc.Meaning)
+		t.Errorf("meaning %q must name the keep-as-INACTIVE remedy", doc.Meaning)
 	}
 }
 
