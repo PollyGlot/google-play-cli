@@ -8,6 +8,10 @@ issues:
   # that a new linter surfaces.
   max-issues-per-linter: 0
   max-same-issues: 0
+  # Same reason, one line at a time. The default folds every finding but the
+  # first on a line, which was the one thing `govet` here reported that a
+  # separate `go vet ./...` did not (a second copylocks hit on one line).
+  uniq-by-line: false
 
 linters:
   enable:

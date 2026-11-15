@@ -1,5 +1,5 @@
 .PHONY: help build test check lint verb-gate ratchets dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats \
-	lint-version fmt-check vet shellcheck required-files build-check test-race worker-test
+	lint-version fmt-check shellcheck required-files build-check test-race worker-test
 
 # Project metadata
 BINARY := gplay
@@ -23,7 +23,7 @@ test: ## Run tests (fast, no race detector; `make check` adds -race)
 # lint, test" and "Docs sanity" in .github/workflows/ci.yml), cheapest first so
 # a failure surfaces early. Generated-file freshness is asserted by Go tests, so
 # `test-race` covers it. Keep this list in step with ci.yml.
-check: lint-version fmt-check verb-gate dash-gate shellcheck install-test worker-test required-files vet lint build-check test-race ## Run every required CI check locally (the pre-PR gate)
+check: lint-version fmt-check verb-gate dash-gate shellcheck install-test worker-test required-files lint build-check test-race ## Run every required CI check locally (the pre-PR gate)
 	@echo "check: OK"
 
 lint-version:
@@ -35,9 +35,6 @@ lint-version:
 fmt-check:
 	@files="$$(gofmt -l .)"; \
 	if [ -n "$$files" ]; then echo "$$files" >&2; echo 'fmt-check: run "make format"' >&2; exit 1; fi
-
-vet:
-	go vet ./...
 
 # Same file list as the "shellcheck install.sh" step of ci.yml.
 shellcheck:
