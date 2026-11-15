@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -228,9 +229,55 @@ type OfferUpdate struct {
 	UpdateMask   []string
 }
 
-// BatchUpdateOffers creates/edits the given offers of one purchase option in
-// one offers:batchUpdate call: the only write path the API exposes for
-// offers.
+// maxBatchRequests is the request count each one-time-product batch body
+// takes: Discovery documents its `requests` list "of up to 100 elements".
+const maxBatchRequests = 100
+
+// BatchError reports a batch write gplay split into calls of at most
+// maxBatchRequests that failed part-way. Applied names the items of the calls
+// Play accepted, Pending those of the failing call and of the calls never
+// sent. It wraps the failing call's error, so the exit code and the envelope
+// stay the API's.
+type BatchError struct {
+	Op      string // REST method id
+	Target  string // productId, or productId/purchaseOptionId
+	Applied []string
+	Pending []string
+	Cause   error
+}
+
+func (e *BatchError) Error() string {
+	total := len(e.Applied) + len(e.Pending)
+	applied := "none"
+	if len(e.Applied) > 0 {
+		applied = strings.Join(e.Applied, ", ")
+	}
+	return fmt.Sprintf("%s on %s failed after %d of %d request(s) were applied in calls of at most %d (applied: %s; not applied: %s): %v",
+		e.Op, e.Target, len(e.Applied), total, maxBatchRequests, applied, strings.Join(e.Pending, ", "), e.Cause)
+}
+
+func (e *BatchError) Unwrap() error { return e.Cause }
+
+// sendInBatches sends ids in order, at most maxBatchRequests per call:
+// send(lo, hi) writes ids[lo:hi]. A batch that fits one call fails with the
+// call's own error; a split one fails with a *BatchError naming what Play
+// already applied.
+func sendInBatches(op, target string, ids []string, send func(lo, hi int) error) error {
+	for lo := 0; lo < len(ids); lo += maxBatchRequests {
+		hi := min(lo+maxBatchRequests, len(ids))
+		if err := send(lo, hi); err != nil {
+			if len(ids) <= maxBatchRequests {
+				return err
+			}
+			return &BatchError{Op: op, Target: target, Applied: ids[:lo], Pending: ids[lo:], Cause: err}
+		}
+	}
+	return nil
+}
+
+// BatchUpdateOffers creates/edits the given offers of one purchase option
+// through offers:batchUpdate, the only write path the API exposes for offers,
+// in calls of at most maxBatchRequests.
 func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, updates []OfferUpdate, regionsVersion string) error {
 	type updateReq struct {
 		OneTimeProductOffer json.RawMessage `json:"oneTimeProductOffer"`
@@ -241,23 +288,32 @@ func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 		} `json:"regionsVersion"`
 	}
 	reqs := make([]updateReq, 0, len(updates))
+	ids := make([]string, 0, len(updates))
 	for _, upd := range updates {
 		r := updateReq{OneTimeProductOffer: upd.Offer, AllowMissing: upd.AllowMissing, UpdateMask: strings.Join(upd.UpdateMask, ",")}
 		r.RegionsVersion.Version = regionsVersion
 		reqs = append(reqs, r)
+		var offer struct {
+			OfferID string `json:"offerId"`
+		}
+		_ = json.Unmarshal(upd.Offer, &offer) // names the offer in a BatchError only
+		ids = append(ids, offer.OfferID)
 	}
-	_, err := api.Do(ctx, hc, api.Call{
-		Method: mOffersBatchUpdate, Op: opOffersBatchUpdate, Target: pkg,
-		Params: map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID},
-		Body: struct {
-			Requests []updateReq `json:"requests"`
-		}{Requests: reqs},
+	return sendInBatches(opOffersBatchUpdate, productID+"/"+purchaseOptionID, ids, func(lo, hi int) error {
+		_, err := api.Do(ctx, hc, api.Call{
+			Method: mOffersBatchUpdate, Op: opOffersBatchUpdate, Target: pkg,
+			Params: map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID},
+			Body: struct {
+				Requests []updateReq `json:"requests"`
+			}{Requests: reqs[lo:hi]},
+		})
+		return err
 	})
-	return err
 }
 
-// BatchDeleteOffers deletes the given offers of one purchase option in one
-// offers:batchDelete call, naming each offer's full identity.
+// BatchDeleteOffers deletes the given offers of one purchase option through
+// offers:batchDelete, naming each offer's full identity, in calls of at most
+// maxBatchRequests.
 func BatchDeleteOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, offerIDs []string) error {
 	type deleteReq struct {
 		PackageName      string `json:"packageName"`
@@ -269,14 +325,16 @@ func BatchDeleteOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 	for _, id := range offerIDs {
 		reqs = append(reqs, deleteReq{PackageName: pkg, ProductID: productID, PurchaseOptionID: purchaseOptionID, OfferID: id})
 	}
-	_, err := api.Do(ctx, hc, api.Call{
-		Method: mOffersBatchDelete, Op: opOffersBatchDelete, Target: pkg,
-		Params: map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID},
-		Body: struct {
-			Requests []deleteReq `json:"requests"`
-		}{Requests: reqs},
+	return sendInBatches(opOffersBatchDelete, productID+"/"+purchaseOptionID, offerIDs, func(lo, hi int) error {
+		_, err := api.Do(ctx, hc, api.Call{
+			Method: mOffersBatchDelete, Op: opOffersBatchDelete, Target: pkg,
+			Params: map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID},
+			Body: struct {
+				Requests []deleteReq `json:"requests"`
+			}{Requests: reqs[lo:hi]},
+		})
+		return err
 	})
-	return err
 }
 
 // PurchaseOptionStateUpdate is one entry of a BatchUpdatePurchaseOptionStates
@@ -288,12 +346,13 @@ type PurchaseOptionStateUpdate struct {
 }
 
 // BatchUpdatePurchaseOptionStates moves the given purchase options of one
-// product in one purchaseOptions:batchUpdateStates call: the only state write
-// path the API exposes for purchase options (no unary verb exists, unlike
-// offers). The body is the oneof shape of UpdatePurchaseOptionStateRequest:
-// one of activatePurchaseOptionRequest / deactivatePurchaseOptionRequest per
-// entry, each echoing the identity the schema requires.
-func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, productID string, updates []PurchaseOptionStateUpdate) (json.RawMessage, error) {
+// product through purchaseOptions:batchUpdateStates, in calls of at most
+// maxBatchRequests: the only state write path the API exposes for purchase
+// options (no unary verb exists, unlike offers). The body is the oneof shape
+// of UpdatePurchaseOptionStateRequest: one of activatePurchaseOptionRequest /
+// deactivatePurchaseOptionRequest per entry, each echoing the identity the
+// schema requires.
+func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, productID string, updates []PurchaseOptionStateUpdate) error {
 	type identity struct {
 		PackageName      string `json:"packageName"`
 		ProductID        string `json:"productId"`
@@ -304,6 +363,7 @@ func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, 
 		Deactivate *identity `json:"deactivatePurchaseOptionRequest,omitempty"`
 	}
 	reqs := make([]stateReq, 0, len(updates))
+	ids := make([]string, 0, len(updates))
 	for _, upd := range updates {
 		id := &identity{PackageName: pkg, ProductID: productID, PurchaseOptionID: upd.PurchaseOptionID}
 		if upd.Activate {
@@ -311,13 +371,17 @@ func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, 
 		} else {
 			reqs = append(reqs, stateReq{Deactivate: id})
 		}
+		ids = append(ids, upd.PurchaseOptionID)
 	}
-	return api.Do(ctx, hc, api.Call{
-		Method: mOptionStates, Op: opOptionStates, Target: pkg,
-		Params: map[string]string{"packageName": pkg, "productId": productID},
-		Body: struct {
-			Requests []stateReq `json:"requests"`
-		}{Requests: reqs},
+	return sendInBatches(opOptionStates, productID, ids, func(lo, hi int) error {
+		_, err := api.Do(ctx, hc, api.Call{
+			Method: mOptionStates, Op: opOptionStates, Target: pkg,
+			Params: map[string]string{"packageName": pkg, "productId": productID},
+			Body: struct {
+				Requests []stateReq `json:"requests"`
+			}{Requests: reqs[lo:hi]},
+		})
+		return err
 	})
 }
 

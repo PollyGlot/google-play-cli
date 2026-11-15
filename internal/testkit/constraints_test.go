@@ -18,6 +18,8 @@ const (
 	subsCreateURL    = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?productId=p"
 	offerCreateURL   = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/p/basePlans/m/offers"
 	otpOffersURL     = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/p/purchaseOptions/o/offers:batchUpdate"
+	otpDeleteURL     = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/p/purchaseOptions/o/offers:batchDelete"
+	otpStatesURL     = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/oneTimeProducts/p/purchaseOptions:batchUpdateStates"
 	tracksCreateURL  = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/e1/tracks"
 	otpPatchURL      = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/onetimeproducts/p"
 	reviewReplyURL   = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/reviews/r1:reply"
@@ -120,6 +122,13 @@ func TestFake_refusesBodiesPlayRefuses(t *testing.T) {
 		{"unlimited redemptions", http.MethodPost, otpOffersURL, `{"requests":[{"oneTimeProductOffer":{"discountedOffer":{"redemptionLimit":"0"}}}]}`, ""},
 		{"redemption limit of 50", http.MethodPost, otpOffersURL, `{"requests":[{"oneTimeProductOffer":{"discountedOffer":{"redemptionLimit":"50"}}}]}`, ""},
 
+		{"101 offer updates (#807)", http.MethodPost, otpOffersURL, batch(101, `{"oneTimeProductOffer":{}}`), "BatchUpdateOneTimeProductOffersRequest.requests"},
+		{"100 offer updates", http.MethodPost, otpOffersURL, batch(100, `{"oneTimeProductOffer":{}}`), ""},
+		{"101 offer deletes", http.MethodPost, otpDeleteURL, batch(101, `{"offerId":"x"}`), "BatchDeleteOneTimeProductOffersRequest.requests"},
+		{"100 offer deletes", http.MethodPost, otpDeleteURL, batch(100, `{"offerId":"x"}`), ""},
+		{"101 purchase option state changes", http.MethodPost, otpStatesURL, batch(101, `{"activatePurchaseOptionRequest":{}}`), "BatchUpdatePurchaseOptionStatesRequest.requests"},
+		{"100 purchase option state changes", http.MethodPost, otpStatesURL, batch(100, `{"activatePurchaseOptionRequest":{}}`), ""},
+
 		{"price with a negative fraction", http.MethodPost, convertPricesURL, `{"price":{"currencyCode":"EUR","units":"4","nanos":-500000000}}`, "Money.nanos"},
 		{"price with a billion nanos", http.MethodPost, convertPricesURL, `{"price":{"currencyCode":"EUR","units":"4","nanos":1000000000}}`, "Money.nanos"},
 		{"price of 4.99", http.MethodPost, convertPricesURL, `{"price":{"currencyCode":"EUR","units":"4","nanos":990000000}}`, ""},
@@ -143,6 +152,11 @@ func TestFake_refusesBodiesPlayRefuses(t *testing.T) {
 			}
 		})
 	}
+}
+
+// batch is a `{"requests":[...]}` body holding n copies of entry.
+func batch(n int, entry string) string {
+	return `{"requests":[` + strings.TrimSuffix(strings.Repeat(entry+",", n), ",") + `]}`
 }
 
 // The failure a test author reads names the request, where the property sits
