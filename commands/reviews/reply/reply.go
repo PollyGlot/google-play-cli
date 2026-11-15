@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -82,6 +83,7 @@ func Run(rc *kernel.RunContext, in Input) error {
 // body is echoed to stdout; the human-facing confirmation always goes to
 // stderr.
 func runSingle(rc *kernel.RunContext, pkg, reviewID, text string, dryRun bool, hc *http.Client) error {
+	warnIfLong(rc, reviewID, text)
 	if dryRun {
 		rc.Logf("DRY-RUN would reply on %s", reviewID)
 		return nil
@@ -95,6 +97,17 @@ func runSingle(rc *kernel.RunContext, pkg, reviewID, text string, dryRun bool, h
 		return writeRaw(rc.Stdout, raw)
 	}
 	return nil
+}
+
+// warnIfLong flags a reply past the length Play documents. The bound is
+// "approximately 350" characters, so gplay sends the reply anyway and lets
+// Play decide (#789); --dry-run warns too, since a rehearsal is where the
+// author can still shorten it.
+func warnIfLong(rc *kernel.RunContext, reviewID, text string) {
+	if n := utf8.RuneCountInString(text); n > reviews.MaxReplyChars {
+		rc.Warnf("reply on %s is %d characters, more than the %d Play documents: Play may reject it",
+			reviewID, n, reviews.MaxReplyChars)
+	}
 }
 
 // rowResult is one entry of the --output json batch envelope.
@@ -149,6 +162,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 			continue
 		}
 		id := ln.Record.ReviewID
+		warnIfLong(rc, id, ln.Record.Reply)
 		if in.DryRun {
 			rc.Logf("DRY-RUN would reply on %s", id)
 			results = append(results, rowResult{ReviewID: id, Status: "planned"})
