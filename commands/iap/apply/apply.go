@@ -424,7 +424,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	// Execution order: grow before shrinking: product upserts, offer batch
 	// upserts, offer batch deletes, product deletes. Not transactional; a
-	// failure surfaces immediately and a re-run converges.
+	// failure surfaces immediately and a re-run converges. A batch over the
+	// API's 100 requests goes out in several calls (#807), and a failing one
+	// names what the calls before it applied (iap.BatchError).
 	for _, c := range plan.Creates {
 		body, err := iapcmd.StripOffersFromProduct(localV2[c.ProductID])
 		if err != nil {
@@ -492,7 +494,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 		moveOptions := func() error {
 			for _, productID := range productOrder {
-				if _, err := iap.BatchUpdatePurchaseOptionStates(rc.Ctx, httpClient, pkg, productID, optionUpdates[productID]); err != nil {
+				if err := iap.BatchUpdatePurchaseOptionStates(rc.Ctx, httpClient, pkg, productID, optionUpdates[productID]); err != nil {
 					return iapcmd.Classify(pkg, err)
 				}
 			}
