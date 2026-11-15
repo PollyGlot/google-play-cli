@@ -9,7 +9,8 @@ rules:
       # non-publishing by construction (--snapshot, publish and sign skipped,
       # contents: read, no secret), so a poisoned cache it restores feeds
       # nothing that ships. The workflows that do ship (release.yml,
-      # deploy-site.yml) restore no cache at all.
+      # deploy-site.yml) restore no cache at all, nor does the watch job of
+      # discovery-watch.yml, which holds the App token that auto-merges.
       - release-rehearsal.yml
   dangerous-triggers:
     ignore:

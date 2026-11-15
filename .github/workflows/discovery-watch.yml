@@ -118,10 +118,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # cache: false on purpose. This job runs Go code and later holds the App
+      # token (a ruleset bypass actor that can auto-merge), and setup-go's
+      # cache is main-scoped, i.e. writable by any workflow that runs on main.
+      # A poisoned entry restored here would run next to that token.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       # The "pr" dispatch input means "wake the routine on that PR again", not
       # "look at Google": everything that produces a diff is skipped, and the job
