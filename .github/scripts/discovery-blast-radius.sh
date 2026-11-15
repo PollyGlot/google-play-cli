@@ -54,9 +54,11 @@ assert_head
 #   - Otherwise the header is `diff --git a/<p> b/<p>` with one name twice,
 #     which splits unambiguously by length even when <p> contains " b/".
 #   - Any other header (a quoted path, say) is printed raw: it matches no
-#     allowed prefix, so the guard fails closed.
+#     allowed prefix, so the guard fails closed. A rename header stays pending
+#     until both its `from` and its `to` line are seen, so a patch cut between
+#     them fails closed too.
 files=$(printf '%s\n' "$patch" | awk '
-  function flush() { if (pending != "") print pending; pending = "" }
+  function flush() { if (pending != "") print pending; pending = ""; from = to = 0 }
   /^diff --git / {
     flush()
     rest = substr($0, 12)
@@ -66,7 +68,11 @@ files=$(printf '%s\n' "$patch" | awk '
     else pending = $0
     next
   }
-  /^(rename|copy) (from|to) / { pending = ""; sub(/^[a-z]+ [a-z]+ /, ""); print }
+  /^(rename|copy) (from|to) / {
+    if ($2 == "from") from = 1; else to = 1
+    if (from && to) pending = ""
+    sub(/^[a-z]+ [a-z]+ /, ""); print
+  }
   END { flush() }
 ')
 
