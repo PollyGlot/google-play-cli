@@ -98,7 +98,7 @@ func (p Payload) Renderers() output.Renderers {
 // declared state the endpoints cannot reach (DRAFT from anything, INACTIVE
 // from DRAFT) is a usage error naming the impossible transition; a file that
 // omits state declares nothing (missing = unmanaged, the metadata stance).
-func planStates(local map[string]json.RawMessage, liveBPState map[string]string, liveOffers []subscriptions.OfferItem, localOffers map[subscriptionscmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
+func planStates(local map[string]json.RawMessage, liveBPState map[string]string, liveOfferState map[subscriptionscmd.OfferKey]string, localOffers map[subscriptionscmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
 	deletedProducts := map[string]bool{}
 	for _, c := range plan.Deletes {
 		deletedProducts[c.ProductID] = true
@@ -132,16 +132,6 @@ func planStates(local map[string]json.RawMessage, liveBPState map[string]string,
 		}
 	}
 
-	liveOfferState := map[subscriptionscmd.OfferKey]string{}
-	for _, o := range liveOffers {
-		var frag struct {
-			State string `json:"state"`
-		}
-		if err := json.Unmarshal(o.Raw, &frag); err != nil {
-			return fmt.Errorf("decode live offer %s/%s/%s: %w", o.ProductID, o.BasePlanID, o.OfferID, err)
-		}
-		liveOfferState[subscriptionscmd.OfferKey{ProductID: o.ProductID, BasePlanID: o.BasePlanID, OfferID: o.OfferID}] = frag.State
-	}
 	for _, key := range subscriptionscmd.SortedOfferKeys(localOffers) {
 		if deletedProducts[key.ProductID] {
 			continue
@@ -187,6 +177,45 @@ func liveBasePlanStates(liveItems []subscriptions.Item) (map[string]string, erro
 	}
 	return states, nil
 }
+
+// liveOfferStates indexes the live state of every offer, as the offers list
+// returned it.
+func liveOfferStates(liveOffers []subscriptions.OfferItem) (map[subscriptionscmd.OfferKey]string, error) {
+	states := map[subscriptionscmd.OfferKey]string{}
+	for _, o := range liveOffers {
+		var frag struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(o.Raw, &frag); err != nil {
+			return nil, fmt.Errorf("decode live offer %s/%s/%s: %w", o.ProductID, o.BasePlanID, o.OfferID, err)
+		}
+		states[subscriptionscmd.OfferKey{ProductID: o.ProductID, BasePlanID: o.BasePlanID, OfferID: o.OfferID}] = frag.State
+	}
+	return states, nil
+}
+
+// refuseActiveOfferDeletes refuses, while planning, dropping an offer the list
+// shows ACTIVE: offers.delete documents DRAFT as the only deletable state, so
+// that file would fail on every run (#790). The same sentence refuses an
+// INACTIVE offer, but that one is left to the API like an INACTIVE base plan:
+// Play words basePlans.delete identically and contradicts it in
+// BasePlan.state, so gplay does not block a delete Play might accept.
+func refuseActiveOfferDeletes(deletes []reconcile.Change, liveOfferState map[subscriptionscmd.OfferKey]string) error {
+	var active []string
+	for _, c := range deletes {
+		if liveOfferState[subscriptionscmd.OfferKey{ProductID: c.ProductID, BasePlanID: c.ParentID, OfferID: c.OfferID}] == subscriptions.StateActive {
+			active = append(active, c.Key())
+		}
+	}
+	if len(active) == 0 {
+		return nil
+	}
+	return exit.Usagef("the catalog files drop %d ACTIVE offer(s): %s; offers.delete only takes a DRAFT offer, so for each, %s", len(active), strings.Join(active, ", "), keepOfferInactiveHint)
+}
+
+// keepOfferInactiveHint is keepInactiveHint for an offer: the file keeps it
+// under its base plan, so no delete is ever attempted again.
+const keepOfferInactiveHint = "keep the offer under its base plan in the subscription file with state: INACTIVE instead (apply deactivates it if it is ACTIVE: new subscribers can no longer get it, existing ones keep it, and the next run has nothing to do)"
 
 // refuseActiveBasePlanDeletes refuses, while planning, dropping a base plan
 // the list shows ACTIVE: Discovery contradicts itself on which states
@@ -324,7 +353,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	if err := planStates(local, liveBPState, liveOffers, localOffers, &plan); err != nil {
+	liveOfferState, err := liveOfferStates(liveOffers)
+	if err != nil {
+		return nil, err
+	}
+	if err := refuseActiveOfferDeletes(plan.OfferDeletes, liveOfferState); err != nil {
+		return nil, err
+	}
+
+	if err := planStates(local, liveBPState, liveOfferState, localOffers, &plan); err != nil {
 		return nil, err
 	}
 
@@ -349,10 +386,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// creates/patches, offer creates/patches, activations, deactivations,
 	// offer deletes, base-plan deletes, parent deletes. Not transactional (no
 	// batch spans these verbs); a failure surfaces immediately and a re-run
-	// converges. The one exception is a base-plan delete the API refuses (an
-	// INACTIVE plan, which Discovery documents both as deletable and not, or
-	// one published after the list): it is independent of every other change,
-	// so the run records it, finishes the plan, and reports it last.
+	// converges. The one exception is an offer or base-plan delete the API
+	// refuses (an INACTIVE one, or one published after the list): it is
+	// independent of every other change, so the run records it, finishes the
+	// plan, and reports it last.
 	for _, c := range plan.Creates {
 		body, err := subscriptionscmd.StripOffersFromSubscription(local[c.ProductID])
 		if err != nil {
@@ -399,27 +436,33 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			}
 		}
 	}
-	for _, c := range plan.OfferDeletes {
-		if err := subscriptions.DeleteOffer(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID, c.OfferID); err != nil {
-			return nil, subscriptionscmd.Classify(pkg, err)
-		}
-	}
-	var refused []*basePlanDeleteError
-	for _, c := range plan.BasePlanDeletes {
-		pid, bid := c.ProductID, c.ParentID
-		err := subscriptions.DeleteBasePlan(rc.Ctx, httpClient, pkg, pid, bid)
-		if err == nil {
-			continue
-		}
+	var refused []*deleteRefusedError
+	// record keeps the non-DRAFT refusal (400, or 403 on some accounts) for
+	// the end of the run. Transport, 5xx, 404 are not that refusal: they abort
+	// like any other write so a re-run converges.
+	record := func(err error, refusal deleteRefusedError) error {
 		var apiErr *api.Error
 		if !errors.As(err, &apiErr) || (apiErr.StatusCode != http.StatusBadRequest && apiErr.StatusCode != http.StatusForbidden) {
-			// Transport, 5xx, 404: not the published-plan refusal; abort like
-			// any other write so a re-run converges.
-			return nil, subscriptionscmd.Classify(pkg, err)
+			return subscriptionscmd.Classify(pkg, err)
 		}
-		bpErr := &basePlanDeleteError{pkg: pkg, productID: pid, basePlanID: bid, cause: err}
-		rc.Warnf("%v", bpErr)
-		refused = append(refused, bpErr)
+		refusal.pkg, refusal.cause = pkg, err
+		rc.Warnf("%v", &refusal)
+		refused = append(refused, &refusal)
+		return nil
+	}
+	for _, c := range plan.OfferDeletes {
+		if err := subscriptions.DeleteOffer(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID, c.OfferID); err != nil {
+			if err := record(err, deleteRefusedError{kind: "offer", target: c.Key(), documented: "offers.delete documents DRAFT as the only deletable state", hint: keepOfferInactiveHint, code: exit.CodeOfferNotDraft}); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, c := range plan.BasePlanDeletes {
+		if err := subscriptions.DeleteBasePlan(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID); err != nil {
+			if err := record(err, deleteRefusedError{kind: "base plan", target: c.Key(), documented: "basePlans.delete documents DRAFT as the only deletable state, though BasePlan.state also lists INACTIVE", hint: keepInactiveHint, code: exit.CodeBasePlanNotDraft}); err != nil {
+				return nil, err
+			}
+		}
 	}
 	for _, c := range plan.Deletes {
 		if err := subscriptions.Delete(rc.Ctx, httpClient, pkg, c.ProductID); err != nil {
@@ -440,43 +483,46 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Dir: dir, Plan: plan}, nil
 }
 
-// basePlanDeleteError wraps the API's refusal to delete a base plan that is
-// not in DRAFT (400, or 403 on some accounts) with the resolution the user
-// actually needs: the file keeps the plan with state: INACTIVE
-// (keepInactiveHint), the one file that converges. The planner already
-// refuses dropping a plan it saw ACTIVE; this covers an INACTIVE plan the API
-// would not delete, and one published after the list.
+// deleteRefusedError wraps the API's refusal to delete an offer or a base
+// plan that is not in DRAFT (400, or 403 on some accounts) with the
+// resolution the user actually needs: the file keeps it with state: INACTIVE
+// (the kind's hint), the one file that converges. The planner already refuses
+// dropping one it saw ACTIVE; this covers an INACTIVE one the API would not
+// delete, and one published after the list.
 // It carries no ExitCode of its own, so the wrapped *api.Error stays
-// authoritative for the exit code, the operation
-// (monetization.subscriptions.basePlans.delete) and the verbatim upstream
-// reasons. It does declare its own diagnostic code (exit.Diagnoser,
-// ADR-0044): on the 400 the envelope says BASE_PLAN_NOT_DRAFT (exit 30)
-// rather than the generic INVALID_ARGUMENT, so an agent can branch on
-// "keep it as INACTIVE" without regexing the message. A 403 is left to the
-// classifier (exit 11 / PERMISSION_DENIED): the wrapper hedges that it may be
-// the same refusal on some accounts, but it cannot rule out a genuine
-// permission problem, and the hint text still travels in the message.
-type basePlanDeleteError struct {
-	pkg, productID, basePlanID string
-	others                     int
-	cause                      error
+// authoritative for the exit code, the operation (offers.delete or
+// basePlans.delete) and the verbatim upstream reasons. It does declare its own
+// diagnostic code (exit.Diagnoser, ADR-0044): on the 400 the envelope says
+// OFFER_NOT_DRAFT or BASE_PLAN_NOT_DRAFT (exit 30) rather than the generic
+// INVALID_ARGUMENT, so an agent can branch on "keep it as INACTIVE" without
+// regexing the message. A 403 is left to the classifier (exit 11 /
+// PERMISSION_DENIED): it may be the same refusal on some accounts, but it
+// cannot rule out a genuine permission problem, and the hint text still
+// travels in the message.
+type deleteRefusedError struct {
+	pkg, kind, target string
+	// documented is what Discovery says about the deletable states.
+	documented, hint string
+	code             exit.Code
+	others           int
+	cause            error
 }
 
-func (e *basePlanDeleteError) Error() string {
-	msg := fmt.Sprintf("cannot delete base plan %s/%s of %q: the API refused it (basePlans.delete documents DRAFT as the only deletable state, though BasePlan.state also lists INACTIVE), so %s; the rest of the plan was applied: %v", e.productID, e.basePlanID, e.pkg, keepInactiveHint, e.cause)
+func (e *deleteRefusedError) Error() string {
+	msg := fmt.Sprintf("cannot delete %s %s of %q: the API refused it (%s), so %s; the rest of the plan was applied: %v", e.kind, e.target, e.pkg, e.documented, e.hint, e.cause)
 	if e.others > 0 {
-		msg += fmt.Sprintf(" (%d more base plan delete(s) were refused, see stderr)", e.others)
+		msg += fmt.Sprintf(" (%d more delete(s) were refused, see stderr)", e.others)
 	}
 	return msg
 }
-func (e *basePlanDeleteError) Unwrap() error { return e.cause }
+func (e *deleteRefusedError) Unwrap() error { return e.cause }
 
-// DiagnosticCode implements exit.Diagnoser: BASE_PLAN_NOT_DRAFT on the 400
+// DiagnosticCode implements exit.Diagnoser: the kind's code on the 400
 // refusal, empty otherwise so the wrapped *api.Error keeps its own code.
-func (e *basePlanDeleteError) DiagnosticCode() exit.Code {
+func (e *deleteRefusedError) DiagnosticCode() exit.Code {
 	var apiErr *api.Error
 	if errors.As(e.cause, &apiErr) && apiErr.StatusCode == http.StatusBadRequest {
-		return exit.CodeBasePlanNotDraft
+		return e.code
 	}
 	return ""
 }
@@ -502,7 +548,9 @@ the file with state: INACTIVE instead, which stops new purchases and leaves
 the next run nothing to do. Dropping an INACTIVE base plan is sent to the API,
 which decides (its reference documents DRAFT as the only deletable state in
 one place, DRAFT and INACTIVE in another): a refusal is reported after the
-rest of the plan has run, with the same keep-as-INACTIVE hint.
+rest of the plan has run, with the same keep-as-INACTIVE hint. Offers follow
+the same rule: dropping an ACTIVE offer is refused while planning, and an
+INACTIVE offer Play refuses to delete is reported last (OFFER_NOT_DRAFT).
 
 --dry-run reads live Play and prints the plan without changing anything.
 Creates and patches run directly; a plan containing any delete refuses without

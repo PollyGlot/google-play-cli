@@ -45,7 +45,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 			name: "subscriptions.list",
 			call: func(hc *http.Client) error { _, err := subscriptions.List(ctx, hc, "com.example.app"); return err },
 			verb: http.MethodGet,
-			want: base + "/subscriptions?pageSize=100",
+			want: base + "/subscriptions?pageSize=20",
 		},
 		{
 			name: "subscriptions.create",
@@ -87,7 +87,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 				return err
 			},
 			verb: http.MethodGet,
-			want: base + "/subscriptions/-/basePlans/-/offers?pageSize=100",
+			want: base + "/subscriptions/-/basePlans/-/offers?pageSize=20",
 		},
 		{
 			name: "basePlans.offers.create",

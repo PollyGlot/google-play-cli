@@ -79,7 +79,12 @@ const (
 	StateInactivePublished = "INACTIVE_PUBLISHED"
 )
 
-const listPageSize = 100
+// listPageSize is the page size of the v2 product list and offers walk. It
+// is sized against api.MaxAPISuccessBodyRead: Play pretty-prints, and a
+// product with a buy and a rent option priced in every region weighs about
+// 90 KB, so 100 of them came to 9 MB, past the 4 MiB cap; 20 stay near 1.8 MB
+// (bodycap_test.go, #790).
+const listPageSize = 20
 
 // Item is one live v2 one-time product: parsed ID + verbatim resource.
 type Item struct {

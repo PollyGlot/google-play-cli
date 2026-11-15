@@ -198,19 +198,22 @@ func TestClassify_diagnoserRefinementWins(t *testing.T) {
 	}
 }
 
-// TestCodeCatalog_basePlanNotDraft pins the row `subscriptions apply` refines
-// a refused base plan delete to (#555): same exit bucket as the 400 it wraps,
-// not retryable (the caller must keep the plan in the file as INACTIVE).
-func TestCodeCatalog_basePlanNotDraft(t *testing.T) {
-	doc, ok := exit.LookupCode(exit.CodeBasePlanNotDraft)
-	if !ok {
-		t.Fatal("BASE_PLAN_NOT_DRAFT missing from the catalog")
-	}
-	if doc.ExitCode != 30 || doc.Retryable {
-		t.Errorf("row = %+v, want exit 30 and not retryable", doc)
-	}
-	if !strings.Contains(doc.Meaning, "INACTIVE") {
-		t.Errorf("meaning %q must name the keep-as-INACTIVE remedy", doc.Meaning)
+// TestCodeCatalog_notDraft pins the rows `subscriptions apply` refines a
+// refused base plan delete (#555) and a refused offer delete (#790) to: same
+// exit bucket as the 400 they wrap, not retryable (the caller must keep the
+// resource in the file as INACTIVE).
+func TestCodeCatalog_notDraft(t *testing.T) {
+	for _, code := range []exit.Code{exit.CodeBasePlanNotDraft, exit.CodeOfferNotDraft} {
+		doc, ok := exit.LookupCode(code)
+		if !ok {
+			t.Fatalf("%s missing from the catalog", code)
+		}
+		if doc.ExitCode != 30 || doc.Retryable {
+			t.Errorf("row = %+v, want exit 30 and not retryable", doc)
+		}
+		if !strings.Contains(doc.Meaning, "INACTIVE") {
+			t.Errorf("%s meaning %q must name the keep-as-INACTIVE remedy", code, doc.Meaning)
+		}
 	}
 }
 

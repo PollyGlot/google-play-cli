@@ -48,7 +48,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 				return err
 			},
 			verb: http.MethodGet,
-			want: base + "/oneTimeProducts?pageSize=100",
+			want: base + "/oneTimeProducts?pageSize=20",
 		},
 		{
 			name: "purchaseOptions.offers.list (wildcard walk)",
@@ -57,7 +57,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 				return err
 			},
 			verb: http.MethodGet,
-			want: base + "/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=100",
+			want: base + "/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=20",
 		},
 		{
 			// The snapshot paths the v2 patch under LOWERCASE `onetimeproducts`
