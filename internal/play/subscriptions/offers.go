@@ -163,7 +163,7 @@ func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, base
 // base-plan diff, since the parent subscription patch never removes a plan
 // its body omits. The API only deletes a DRAFT base plan: a plan that was ever
 // published (ACTIVE, or INACTIVE after activation) is refused server-side,
-// and the caller surfaces that refusal with the deactivate-first hint rather
+// and the caller surfaces that refusal with the keep-as-INACTIVE hint rather
 // than retrying.
 func DeleteBasePlan(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string) error {
 	_, err := api.Do(ctx, hc, api.Call{

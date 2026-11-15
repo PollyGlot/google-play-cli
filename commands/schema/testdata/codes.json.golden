@@ -58,7 +58,7 @@
       "code": "BASE_PLAN_NOT_DRAFT",
       "exitCode": 30,
       "retryable": false,
-      "meaning": "The API only deletes a DRAFT base plan; deactivate it first (state: INACTIVE), apply, then remove it"
+      "meaning": "The API only deletes a DRAFT base plan; keep a published one in the file with state: INACTIVE instead"
     },
     {
       "code": "API_ERROR",

@@ -645,7 +645,7 @@ func TestRun_basePlanDelete_plannedAndGated(t *testing.T) {
 // delete, is warned on stderr, and drives the final error: exit 30 with the
 // dedicated BASE_PLAN_NOT_DRAFT diagnostic code (not the generic
 // INVALID_ARGUMENT bucket, #555) on the basePlans.delete operation and the
-// deactivate-first hint (ADR-0044).
+// keep-as-INACTIVE hint (ADR-0044).
 func TestRun_basePlanDelete_refusedByAPI_continues(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
@@ -666,7 +666,7 @@ func TestRun_basePlanDelete_refusedByAPI_continues(t *testing.T) {
 	if len(d.Reasons) != 1 || d.Reasons[0] != "badRequest" {
 		t.Errorf("reasons = %v, want the verbatim upstream reason", d.Reasons)
 	}
-	for _, want := range []string{"premium/trial", "DRAFT", "state: INACTIVE", "rest of the plan was applied"} {
+	for _, want := range []string{"premium/trial", "DRAFT", "keep the base plan", "state: INACTIVE", "rest of the plan was applied"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err.Error(), want)
 		}
@@ -735,6 +735,90 @@ func TestRun_basePlanDelete_serverError_aborts(t *testing.T) {
 	assertExit(t, err, 40)
 	if rt.saw("DELETE", "/subscriptions/gone") {
 		t.Errorf("calls = %v, a 5xx must abort before the subscription delete", rt.calls)
+	}
+}
+
+// liveWithPublishedPlans is a premium subscription whose monthly plan is
+// ACTIVE and yearly plan INACTIVE: neither is DRAFT, so basePlans.delete
+// refuses both (#778).
+const liveWithPublishedPlans = `{"subscriptions":[
+  {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"yearly","state":"INACTIVE"}]}
+]}`
+
+// TestRun_basePlanDelete_notDraft_refusedAtPlan asserts a non-DRAFT base plan
+// dropped from the file is refused while planning, from the state the list
+// already returned: exit 2 before any write, under --dry-run and --confirm
+// alike, naming every such plan and the converging action (keep it, declare
+// state: INACTIVE) rather than one that ends in BASE_PLAN_NOT_DRAFT (#778).
+func TestRun_basePlanDelete_notDraft_refusedAtPlan(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}]}`,
+	})
+	for _, in := range []applycmd.Input{
+		{Package: "com.example.app", Dir: dir, DryRun: true},
+		{Package: "com.example.app", Dir: dir, Confirm: true},
+	} {
+		rt := &subsRT{}
+		rc, _ := newRCWithLive(t, rt, liveWithPublishedPlans)
+		_, err := applycmd.Run(rc, in)
+		assertExit(t, err, 2)
+		if m := rt.mutations(); len(m) != 0 {
+			t.Errorf("dryRun=%v: refusal must precede every write; got %v", in.DryRun, m)
+		}
+		for _, want := range []string{"premium/monthly (ACTIVE)", "premium/yearly (INACTIVE)", "DRAFT", "keep", "state: INACTIVE"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("dryRun=%v: error %q missing %q", in.DryRun, err.Error(), want)
+			}
+		}
+		if strings.Contains(err.Error(), "then remove it") {
+			t.Errorf("error %q still advises removing the plan after deactivating it", err.Error())
+		}
+	}
+}
+
+// TestRun_basePlanDelete_followingHint_converges follows the plan-time hint:
+// the file keeps the published plan with state: INACTIVE. The next run
+// deactivates it (no delete, exit 0), and once Play reports it INACTIVE the
+// run after that has nothing to do: the file converged (#778).
+func TestRun_basePlanDelete_followingHint_converges(t *testing.T) {
+	const liveActive = `{"subscriptions":[
+  {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}
+]}`
+	const liveInactive = `{"subscriptions":[
+  {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"INACTIVE"}]}
+]}`
+
+	dropped := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}]}`,
+	})
+	rt := &subsRT{}
+	rc, _ := newRCWithLive(t, rt, liveActive)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dropped, Confirm: true})
+	assertExit(t, err, 2)
+
+	kept := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"INACTIVE"}]}`,
+	})
+	rt2 := &subsRT{}
+	rc2, _ := newRCWithLive(t, rt2, liveActive)
+	if _, err := applycmd.Run(rc2, applycmd.Input{Package: "com.example.app", Dir: kept}); err != nil {
+		t.Fatalf("run following the hint: %v", err)
+	}
+	if m := rt2.mutations(); len(m) != 1 || !strings.HasSuffix(m[0], "/basePlans/monthly:deactivate") {
+		t.Fatalf("mutations = %v, want the monthly deactivation alone", m)
+	}
+
+	rt3 := &subsRT{}
+	rc3, _ := newRCWithLive(t, rt3, liveInactive)
+	r, err := applycmd.Run(rc3, applycmd.Input{Package: "com.example.app", Dir: kept})
+	if err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	if m := rt3.mutations(); len(m) != 0 {
+		t.Errorf("second run must not write; got %v", m)
+	}
+	if p := r.(applycmd.Payload); p.Plan.HasChanges() {
+		t.Errorf("second run plan = %+v, want no changes", p.Plan)
 	}
 }
 

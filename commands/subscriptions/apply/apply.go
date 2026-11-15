@@ -98,26 +98,10 @@ func (p Payload) Renderers() output.Renderers {
 // declared state the endpoints cannot reach (DRAFT from anything, INACTIVE
 // from DRAFT) is a usage error naming the impossible transition; a file that
 // omits state declares nothing (missing = unmanaged, the metadata stance).
-func planStates(local map[string]json.RawMessage, liveItems []subscriptions.Item, liveOffers []subscriptions.OfferItem, localOffers map[subscriptionscmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
+func planStates(local map[string]json.RawMessage, liveBPState map[string]string, liveOffers []subscriptions.OfferItem, localOffers map[subscriptionscmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
 	deletedProducts := map[string]bool{}
 	for _, c := range plan.Deletes {
 		deletedProducts[c.ProductID] = true
-	}
-
-	liveBPState := map[string]string{} // productId/basePlanId → state
-	for _, it := range liveItems {
-		var sub struct {
-			BasePlans []struct {
-				BasePlanID string `json:"basePlanId"`
-				State      string `json:"state"`
-			} `json:"basePlans"`
-		}
-		if err := json.Unmarshal(it.Raw, &sub); err != nil {
-			return fmt.Errorf("decode live subscription %q: %w", it.ProductID, err)
-		}
-		for _, bp := range sub.BasePlans {
-			liveBPState[it.ProductID+"/"+bp.BasePlanID] = bp.State
-		}
 	}
 
 	for productID, raw := range local {
@@ -182,6 +166,49 @@ func planStates(local map[string]json.RawMessage, liveItems []subscriptions.Item
 	}
 	return nil
 }
+
+// liveBasePlanStates indexes the live state of every base plan by its
+// productId/basePlanId display key, as the list returned it.
+func liveBasePlanStates(liveItems []subscriptions.Item) (map[string]string, error) {
+	states := map[string]string{}
+	for _, it := range liveItems {
+		var sub struct {
+			BasePlans []struct {
+				BasePlanID string `json:"basePlanId"`
+				State      string `json:"state"`
+			} `json:"basePlans"`
+		}
+		if err := json.Unmarshal(it.Raw, &sub); err != nil {
+			return nil, fmt.Errorf("decode live subscription %q: %w", it.ProductID, err)
+		}
+		for _, bp := range sub.BasePlans {
+			states[it.ProductID+"/"+bp.BasePlanID] = bp.State
+		}
+	}
+	return states, nil
+}
+
+// refuseUndeletableBasePlans refuses, while planning, a base plan delete the
+// API is bound to refuse: basePlans.delete only deletes a DRAFT base plan,
+// and a published one never goes back to DRAFT, so removing it from the file
+// fails on every run (#778). The only file that converges keeps the plan
+// with state: INACTIVE. A plan whose live state is absent is left to the API.
+func refuseUndeletableBasePlans(deletes []reconcile.Change, liveBPState map[string]string) error {
+	var stuck []string
+	for _, c := range deletes {
+		if st := liveBPState[c.Key()]; st != "" && st != subscriptions.StateDraft {
+			stuck = append(stuck, fmt.Sprintf("%s (%s)", c.Key(), st))
+		}
+	}
+	if len(stuck) == 0 {
+		return nil
+	}
+	return exit.Usagef("the catalog files drop %d base plan(s) the API cannot delete, since it only deletes a DRAFT base plan: %s; for each, %s", len(stuck), strings.Join(stuck, ", "), keepInactiveHint)
+}
+
+// keepInactiveHint is the one action that converges for a published base
+// plan: deactivating it and then removing it still ends in a refused delete.
+const keepInactiveHint = "keep the base plan in its subscription file with state: INACTIVE instead (apply deactivates it if it is ACTIVE: new subscribers can no longer buy it, existing ones keep their subscription, and the next run has nothing to do)"
 
 // stateTransition validates one declared-vs-live state pair and returns the
 // planned change (nil when nothing to do).
@@ -287,8 +314,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if plan.BasePlanDeletes, err = reconcile.BasePlanDeletes(local, live); err != nil {
 		return nil, err
 	}
+	liveBPState, err := liveBasePlanStates(items)
+	if err != nil {
+		return nil, err
+	}
+	if err := refuseUndeletableBasePlans(plan.BasePlanDeletes, liveBPState); err != nil {
+		return nil, err
+	}
 
-	if err := planStates(local, items, liveOffers, localOffers, &plan); err != nil {
+	if err := planStates(local, liveBPState, liveOffers, localOffers, &plan); err != nil {
 		return nil, err
 	}
 
@@ -314,8 +348,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	// offer deletes, base-plan deletes, parent deletes. Not transactional (no
 	// batch spans these verbs); a failure surfaces immediately and a re-run
 	// converges. The one exception is a base-plan delete the API refuses
-	// (only DRAFT plans are deletable): it is independent of every other
-	// change, so the run records it, finishes the plan, and reports it last.
+	// although the list showed it DRAFT (published in between, or an account
+	// that answers 403): it is independent of every other change, so the run
+	// records it, finishes the plan, and reports it last.
 	for _, c := range plan.Creates {
 		body, err := subscriptionscmd.StripOffersFromSubscription(local[c.ProductID])
 		if err != nil {
@@ -405,15 +440,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 // basePlanDeleteError wraps the API's refusal to delete a base plan that is
 // not in DRAFT (400, or 403 on some accounts) with the resolution the user
-// actually needs: a published plan must be deactivated first (declare
-// state: INACTIVE, apply, then drop it), the API never deletes it outright.
+// actually needs: the API never deletes a published plan, so the file keeps
+// it with state: INACTIVE (keepInactiveHint). The planner already refuses a
+// plan it saw published; this covers one published after the list.
 // It carries no ExitCode of its own, so the wrapped *api.Error stays
 // authoritative for the exit code, the operation
 // (monetization.subscriptions.basePlans.delete) and the verbatim upstream
 // reasons. It does declare its own diagnostic code (exit.Diagnoser,
 // ADR-0044): on the 400 the envelope says BASE_PLAN_NOT_DRAFT (exit 30)
 // rather than the generic INVALID_ARGUMENT, so an agent can branch on
-// "deactivate it first" without regexing the message. A 403 is left to the
+// "keep it as INACTIVE" without regexing the message. A 403 is left to the
 // classifier (exit 11 / PERMISSION_DENIED): the wrapper hedges that it may be
 // the same refusal on some accounts, but it cannot rule out a genuine
 // permission problem, and the hint text still travels in the message.
@@ -424,7 +460,7 @@ type basePlanDeleteError struct {
 }
 
 func (e *basePlanDeleteError) Error() string {
-	msg := fmt.Sprintf("cannot delete base plan %s/%s of %q: the API only deletes a DRAFT base plan; a plan that was ever published must be deactivated first (declare state: INACTIVE, apply, then remove it from the file); the rest of the plan was applied: %v", e.productID, e.basePlanID, e.pkg, e.cause)
+	msg := fmt.Sprintf("cannot delete base plan %s/%s of %q: the API only deletes a DRAFT base plan, so %s; the rest of the plan was applied: %v", e.productID, e.basePlanID, e.pkg, keepInactiveHint, e.cause)
 	if e.others > 0 {
 		msg += fmt.Sprintf(" (%d more base plan delete(s) were refused, see stderr)", e.others)
 	}
@@ -457,10 +493,10 @@ subscriptions, base plans (config + per-territory prices), offers, and the
 declared lifecycle state, then execute it. The directory is the complete
 declared catalog: a live subscription, base plan or offer with no declaration
 is a delete in the plan (mirror semantics: deliberately not the additive
-stance of metadata apply). The API only deletes a DRAFT base plan: a plan that
-was ever published must be deactivated first (declare state: INACTIVE and
-apply, then drop it from the file); a refused base plan delete is reported
-after the rest of the plan has run.
+stance of metadata apply). The API only deletes a DRAFT base plan: dropping a
+published one is refused while planning (exit 2, before any write); keep it in
+the file with state: INACTIVE instead, which stops new purchases and leaves
+the next run nothing to do.
 
 --dry-run reads live Play and prints the plan without changing anything.
 Creates and patches run directly; a plan containing any delete refuses without

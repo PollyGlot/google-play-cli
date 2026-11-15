@@ -149,11 +149,14 @@ Three realities shape the design:
 - A base plan dropped from its subscription's file is a `basePlan` delete
   in the plan (slice #542), executed through `basePlans.delete` after the
   parent patch: the patch alone never removes a plan its body omits. The
-  API only deletes a DRAFT plan; a published one is refused server-side
-  (400/403), and `apply` reports that refusal through the ADR-0044
-  envelope (operation `monetization.subscriptions.basePlans.delete`, with
-  the deactivate-first hint) *after* running the plan's other changes,
-  since the refusal is independent of them.
+  API only deletes a DRAFT plan, and a published one never returns to
+  DRAFT: the plan refuses dropping a plan the list shows ACTIVE or
+  INACTIVE (exit 2, before any write) with the one hint that converges,
+  keep it in the file with `state: INACTIVE` (#778). A refusal the list
+  could not predict (400/403) is reported through the ADR-0044 envelope
+  (operation `monetization.subscriptions.basePlans.delete`, the same hint)
+  *after* running the plan's other changes, since it is independent of
+  them.
 - Offer and base-plan state changes ride the **unary** verbs
   (`activate`/`deactivate`/`cancel`, one call per item, slice #551); the
   `batchUpdateStates` siblings are declared redundant in the registry
