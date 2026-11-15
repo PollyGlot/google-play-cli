@@ -1,7 +1,8 @@
 // Package gitenv strips the inherited environment variables that would point a
-// git child process at another repository than the directory gplay hands it.
-// It is shared by every place gplay runs git: `install-skills` (clone into a
-// disposable directory) and the config loader's tracked-file check (#603).
+// git child process at another repository than the directory gplay hands it,
+// and gplay's own GPLAY_ variables, credentials included. It is shared by
+// every place gplay runs git: `install-skills` (clone into a disposable
+// directory) and the config loader's tracked-file check (#603).
 package gitenv
 
 import "strings"
@@ -36,18 +37,24 @@ var locationVars = map[string]bool{
 	"GIT_CONFIG_PARAMETERS":            true,
 }
 
-// configVarPrefixes cover the numbered GIT_CONFIG_KEY_<n> /
-// GIT_CONFIG_VALUE_<n> pairs, which are the environment form of `-c`.
-var configVarPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
+// droppedPrefixes cover the numbered GIT_CONFIG_KEY_<n> / GIT_CONFIG_VALUE_<n>
+// pairs, which are the environment form of `-c`, and every GPLAY_ variable.
+// The latter carry gplay's credentials (GPLAY_SERVICE_ACCOUNT may hold the
+// inline key JSON, GPLAY_ACCOUNT and GPLAY_DEVELOPER_ID name what it unlocks)
+// and git reads none of them, so a git child, its credential helpers and hooks
+// get no copy (#795). The whole prefix goes, not a list: a credential variable
+// added later is covered without anyone remembering this file.
+var droppedPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_", "GPLAY_"}
 
 // Safe returns env without the variables that would redirect git away from
-// the directory it is run in. Everything else is passed through: PATH, proxy
-// and TLS settings, and the user's own git configuration all still apply.
+// the directory it is run in, and without gplay's own variables. Everything
+// else is passed through: PATH, HOME, proxy and TLS settings, and the user's
+// own git configuration all still apply.
 func Safe(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
-		if locationVars[name] || hasAnyPrefix(name, configVarPrefixes) {
+		if locationVars[name] || hasAnyPrefix(name, droppedPrefixes) {
 			continue
 		}
 		out = append(out, kv)
