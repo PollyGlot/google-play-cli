@@ -53,6 +53,44 @@ func TestFileBackend_save_writesMode0600(t *testing.T) {
 	}
 }
 
+// os.WriteFile and os.MkdirAll apply their mode only when they create the path,
+// so a key file or directory left loose by an older build, a restore or a manual
+// copy kept its mode across every later Save (#795).
+func TestFileBackend_save_tightensExistingLoosePaths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX file modes do not apply on Windows")
+	}
+	root := filepath.Join(t.TempDir(), "keys")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "ci.json")
+	if err := os.WriteFile(file, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Chmod after the fact: the umask may have trimmed the modes asked above.
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(file, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := keystore.NewFileBackend(root).Save(context.Background(), "ci", []byte("{}")); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	for path, want := range map[string]os.FileMode{file: 0o600, root: 0o700} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("Stat: %v", err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Errorf("%s mode = %o, want %o", path, got, want)
+		}
+	}
+}
+
 func TestFileBackend_load_missing_returnsErrNotFound(t *testing.T) {
 	be, _ := newFileBackend(t)
 	_, err := be.Load(context.Background(), "nope")
