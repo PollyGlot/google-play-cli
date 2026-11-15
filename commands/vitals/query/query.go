@@ -30,7 +30,7 @@ type Input struct {
 	Package    string   // --package
 	Metrics    []string // --metrics (empty → the set's primary metric)
 	Dimensions []string // --dimensions (empty → no slicing, one row per period)
-	Period     string   // --period DAILY|HOURLY|FULL_RANGE
+	Period     string   // --period, per set: see vitalscmd.QueryPeriodHelp
 	Since      string   // --since 28d, 24h, …
 	Describe   bool     // --describe: the set's `.get` (freshness) instead of `:query`
 	// WindowFlags is the ChangedFlags list of the query-shaping flags, recorded
@@ -86,11 +86,10 @@ rejected.
 --metrics, --dimensions and --period are validated OFFLINE against the embedded
 API schema; unknown values are rejected with the valid set listed (names are
 never invented: they come from the snapshot). With no --metrics the set's
-primary metric is used. Default window: --since 28d, --period DAILY (HOURLY
-opt-in). The window ends at the latest time with data (the --describe
-freshness), so --since counts back from there. Supported periods are per metric
-set: the memory sets (anonrssandswapmemoryusage, bitmapmemoryusage) accept
-DAILY only.
+primary metric is used. Default window: --since 28d, --period DAILY. The
+window ends at the latest time with data (the --describe freshness), so --since
+counts back from there. Supported periods are per metric set: --period lists
+which sets accept each one.
 
 This is a READ-ONLY surface on a distinct Google service (Play Developer
 Reporting), requested with the least-privilege playdeveloperreporting scope.
@@ -116,7 +115,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringSliceVar(&in.Metrics, "metrics", nil, "metrics to aggregate (default: the set's primary metric); validated against the schema")
 	cmd.Flags().StringSliceVar(&in.Dimensions, "dimensions", nil, "dimensions to slice by (e.g. versionCode,countryCode); validated against the schema")
-	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, "aggregation period: DAILY, HOURLY, or FULL_RANGE (per metric set; memory sets are DAILY-only)")
+	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, vitalscmd.QueryPeriodHelp())
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().BoolVar(&in.Describe, vitalscmd.DescribeFlag, false, vitalscmd.DescribeHelp)
 	return cmd
