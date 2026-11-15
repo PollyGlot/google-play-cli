@@ -1,0 +1,8 @@
+# Writes to stdout outside output.Render (rule stdout-bypass). Neither prints
+# an API string in a human view, but each is a path a renderer could copy.
+# This list only shrinks.
+#
+# Echoes the reviews.reply body on --output json only, verbatim (ADR-0003).
+commands/reviews/reply/reply.go runSingle
+# Prints the installed skill directories: local paths gplay built.
+commands/installskills/installskills.go run

@@ -250,3 +250,23 @@ func TestResolve_UnknownValue_ReturnsErrorMentioningValidSet(t *testing.T) {
 		}
 	}
 }
+
+func TestRender_humanViewIsSanitizedAcrossWrites(t *testing.T) {
+	var out bytes.Buffer
+	err := output.Render(&out, output.FormatTable, output.Renderers{
+		Table: func(w io.Writer) error {
+			for _, chunk := range []string{"a\x1b", "[2Jb\nc\x1b]0;x", "\x07d\né", "\x1b[31m!"} {
+				if _, err := io.WriteString(w, chunk); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := out.String(), "ab\ncd\né!"; got != want {
+		t.Errorf("rendered %q, want %q", got, want)
+	}
+}
