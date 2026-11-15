@@ -1,0 +1,8 @@
+{
+  "deviceGroups": [
+    {"name": "high", "deviceSelectors": [{"deviceRam": {"minBytes": "4000000000"}}]}
+  ],
+  "deviceTierSet": {
+    "deviceTiers": [{"deviceGroupNames": ["high"], "level": 1}]
+  }
+}
