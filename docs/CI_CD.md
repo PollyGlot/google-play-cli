@@ -827,15 +827,21 @@ executions is a quarter of the generated inputs, so an input that only the
 deeper tail of one run's walk would have reached is less likely to show up on
 the PR. Three things catch it:
 
-- The seed corpora, and every input `testdata/fuzz/` has ever recorded, still
-  run as ordinary cases in `test`, at full `-race`, on every PR. A crasher
-  found once is a regression test forever, not a lottery ticket.
+- The seed corpora, and every input **committed** under `testdata/fuzz/`, run
+  as ordinary cases in `test`, at full `-race`, on every PR. A crasher becomes
+  a regression test once someone commits the input the step printed. That step
+  is manual: the smoke keeps no corpus, and the runner checkout goes away with
+  the runner.
 - The push to `main` runs every count in full on the merge commit, minutes
-  after the merge and well before any release tag. Nothing ships on the PR's
-  shorter smoke.
-- Nothing gates on the smoke in the first place: `fuzz` is not a required
-  check, so a crasher it finds is read by a human either way. Finding it on
-  `main` instead of on the PR costs a follow-up commit, not a bad release.
+  after the merge. In practice that lands long before a release, which waits on
+  the release-please PR being merged, but nothing enforces the order:
+  `release-please.yml` triggers on a push to `main` and its `release` job waits
+  only on `release-please`, never on `fuzz`.
+- Nothing gates on the smoke in the first place. `fuzz` is not a required
+  check, so `scripts/merge-pr.sh` merges without it and a crasher it finds is
+  read by a human either way. That was already true of the full-count smoke:
+  the shorter PR budget changes when a crasher is likely to surface, not
+  whether anything stops for it.
 
 The target list and the per-target counts are the same on both events, so a
 missing target still fails the step on a PR.
