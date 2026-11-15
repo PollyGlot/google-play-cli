@@ -46,6 +46,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	pin, ok, err := editpin.Lookup(rc.FS, gplayDir, pkg)
+	var corrupt *editpin.CorruptError
+	if errors.As(err, &corrupt) {
+		return clearUnreadable(rc, gplayDir, pkg, corrupt)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +88,17 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return editscmd.Payload{Package: pkg, EditID: pin.EditID, Open: false, Action: "discarded"}, nil
 }
 
+// clearUnreadable removes a pin Lookup could not use (#786). There is no Edit ID
+// to trust in it, so nothing is sent to Play: an Edit it may have named expires
+// there on its own, which is what a discard of a vanished Edit accepts too.
+func clearUnreadable(rc *kernel.RunContext, gplayDir, pkg string, corrupt *editpin.CorruptError) (output.Renderable, error) {
+	if err := editpin.Clear(rc.FS, gplayDir, pkg); err != nil {
+		return nil, fmt.Errorf("failed to remove the unreadable pin %s (%s), remove it manually: %w", corrupt.Path, corrupt.Reason, err)
+	}
+	rc.Confirmf("removed unreadable pin %s (%s) for %s: nothing was sent to Play, an Edit it named expires there on its own", corrupt.Path, corrupt.Reason, pkg)
+	return editscmd.Payload{Package: pkg, Open: false, Action: editscmd.ActionClearedUnreadable}, nil
+}
+
 // NewCommand returns the cobra command for `gplay edits discard`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
@@ -99,6 +114,10 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 The pin is cleared regardless of the API outcome: an Edit that has already
 expired or been discarded server-side (404) is the end state a discard wants,
 so the local pin is never left behind to block the next ` + "`gplay edits begin`" + `.
+
+An unreadable pin (not JSON, no editId, another package's) is removed without
+any API call, and the confirmation says so: it is the way out other commands
+name when they refuse such a pin.
 
 With no open Edit, discard fails with exit 60. The package defaults to the
 repo's .gplay/config.json pin when --package is omitted.`,
