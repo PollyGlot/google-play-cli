@@ -96,6 +96,10 @@ func (s ReleaseState) resolve(track string) ReleaseState {
 // fraction, complete removes it), moveStatus changes the status and keeps the
 // live fraction (halt, resume). Keeping, setting and removing the fraction
 // therefore exclude one another by construction.
+//
+// countryTargeting follows the fraction: TrackRelease.countryTargeting is
+// only allowed on an inProgress release, so the state that drops the fraction
+// drops the targeting too (#779), and halt and resume keep both.
 type releaseEdit interface {
 	status() string
 	// apply rewrites the target release's fields in place.
@@ -115,6 +119,7 @@ func (w writeState) apply(release map[string]json.RawMessage) error {
 	}
 	if w.to.fraction == 0 {
 		delete(release, "userFraction")
+		delete(release, "countryTargeting")
 		return nil
 	}
 	raw, err := json.Marshal(w.to.fraction)
