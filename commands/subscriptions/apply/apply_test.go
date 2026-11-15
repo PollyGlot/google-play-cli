@@ -478,14 +478,29 @@ func TestRun_offerCreateAndStates(t *testing.T) {
 	}
 }
 
-// TestRun_offerDelete_gated asserts omitting a live offer is destructive: exit
-// 3 without --confirm, the DELETE runs with it.
-func TestRun_offerDelete_gated(t *testing.T) {
-	dir := writeCatalog(t, map[string]string{
+// liveOfferIn is the wildcard offers body with the intro offer of
+// premium/monthly in the given live state.
+func liveOfferIn(state string) string {
+	return `{"subscriptionOffers":[
+  {"packageName":"com.example.app","productId":"premium","basePlanId":"monthly","offerId":"intro","state":"` + state + `","phases":[{"duration":"P1W"}]}
+]}`
+}
+
+// droppedIntroCatalog keeps premium/monthly and gone but drops the intro
+// offer: the only destructive change is the offer delete.
+func droppedIntroCatalog(t *testing.T) string {
+	t.Helper()
+	return writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
 		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
 	})
-	rt := &subsRT{offersBody: liveOffers}
+}
+
+// TestRun_offerDelete_gated asserts omitting a live DRAFT offer is
+// destructive: exit 3 without --confirm, the DELETE runs with it.
+func TestRun_offerDelete_gated(t *testing.T) {
+	dir := droppedIntroCatalog(t)
+	rt := &subsRT{offersBody: liveOfferIn("DRAFT")}
 	rc, _ := newRC(t, rt)
 	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir})
 	assertExit(t, err, 3)
@@ -493,13 +508,141 @@ func TestRun_offerDelete_gated(t *testing.T) {
 		t.Errorf("refusal must not mutate; got %v", m)
 	}
 
-	rt2 := &subsRT{offersBody: liveOffers}
+	rt2 := &subsRT{offersBody: liveOfferIn("DRAFT")}
 	rc2, _ := newRC(t, rt2)
 	if _, err := applycmd.Run(rc2, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true}); err != nil {
 		t.Fatalf("Run --confirm: %v", err)
 	}
 	if !rt2.saw("DELETE", "/offers/intro") {
 		t.Errorf("calls = %v, want the offer DELETE", rt2.calls)
+	}
+}
+
+// TestRun_offerDelete_active_refusedAtPlan asserts an ACTIVE offer dropped
+// from the file is refused while planning, from the state the offers list
+// already returned: exit 2 before any write, under --dry-run and --confirm
+// alike, with the converging action (keep it, declare state: INACTIVE).
+// offers.delete documents DRAFT as the only deletable state (#790).
+func TestRun_offerDelete_active_refusedAtPlan(t *testing.T) {
+	dir := droppedIntroCatalog(t)
+	for _, in := range []applycmd.Input{
+		{Package: "com.example.app", Dir: dir, DryRun: true},
+		{Package: "com.example.app", Dir: dir, Confirm: true},
+	} {
+		rt := &subsRT{offersBody: liveOfferIn("ACTIVE")}
+		rc, _ := newRC(t, rt)
+		_, err := applycmd.Run(rc, in)
+		assertExit(t, err, 2)
+		if m := rt.mutations(); len(m) != 0 {
+			t.Errorf("dryRun=%v: refusal must precede every write; got %v", in.DryRun, m)
+		}
+		for _, want := range []string{"1 ACTIVE offer(s)", "premium/monthly/intro", "keep the offer", "state: INACTIVE"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("dryRun=%v: error %q missing %q", in.DryRun, err.Error(), want)
+			}
+		}
+	}
+}
+
+// TestRun_offerDelete_inactive_acceptedByAPI asserts an INACTIVE offer
+// dropped from the file is not refused while planning: the DELETE is sent,
+// and when Play accepts it the run exits 0.
+func TestRun_offerDelete_inactive_acceptedByAPI(t *testing.T) {
+	rt := &subsRT{offersBody: liveOfferIn("INACTIVE")}
+	rc, _ := newRC(t, rt)
+	if _, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: droppedIntroCatalog(t), Confirm: true}); err != nil {
+		t.Fatalf("Run --confirm: %v", err)
+	}
+	if !rt.saw("DELETE", "/offers/intro") {
+		t.Errorf("calls = %v, want the INACTIVE offer DELETE", rt.calls)
+	}
+}
+
+// TestRun_offerDelete_refusedByAPI_continues asserts a 400 on the offer
+// DELETE (an INACTIVE offer Play will not delete) does not abort the
+// independent subscription delete, is warned on stderr, and drives the final
+// error: exit 30 with the dedicated OFFER_NOT_DRAFT code (not the generic
+// INVALID_ARGUMENT) on the offers.delete operation, with the
+// keep-as-INACTIVE hint (#790, ADR-0044).
+func TestRun_offerDelete_refusedByAPI_continues(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+	}) // intro dropped AND gone dropped: one offer delete, one subscription delete
+	rt := &subsRT{offersBody: liveOfferIn("INACTIVE"), refuse: map[string]scriptedRefusal{
+		"DELETE /offers/intro": {400, `{"error":{"code":400,"message":"Offer is not in draft state","errors":[{"reason":"badRequest"}]}}`},
+	}}
+	rc, stderr := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	assertExit(t, err, 30)
+	if !rt.saw("DELETE", "/offers/intro") || !rt.saw("DELETE", "/subscriptions/gone") {
+		t.Fatalf("calls = %v, want the refused offer DELETE and the subscription DELETE that follows it", rt.calls)
+	}
+	d := exit.Classify(err)
+	if d.Code != exit.CodeOfferNotDraft || d.ExitCode != 30 || d.Retryable || d.Operation != "monetization.subscriptions.basePlans.offers.delete" || d.Package != "com.example.app" {
+		t.Errorf("diagnostic = %+v, want OFFER_NOT_DRAFT (exit 30, not retryable) on offers.delete for the package", d)
+	}
+	if len(d.Reasons) != 1 || d.Reasons[0] != "badRequest" {
+		t.Errorf("reasons = %v, want the verbatim upstream reason", d.Reasons)
+	}
+	for _, want := range []string{"premium/monthly/intro", "DRAFT", "keep the offer", "state: INACTIVE", "rest of the plan was applied"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
+	}
+	if !strings.Contains(stderr.String(), "premium/monthly/intro") {
+		t.Errorf("stderr %q should warn about the refused offer delete", stderr.String())
+	}
+}
+
+// TestRun_offerDelete_notFound_aborts asserts a 404 on the offer DELETE is
+// not the non-DRAFT refusal: the run aborts (exit 30, NOT_FOUND) before the
+// subscription delete, so OFFER_NOT_DRAFT is reserved for the 400.
+func TestRun_offerDelete_notFound_aborts(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+	})
+	rt := &subsRT{offersBody: liveOfferIn("INACTIVE"), refuse: map[string]scriptedRefusal{
+		"DELETE /offers/intro": {404, `{"error":{"code":404,"message":"Offer not found","errors":[{"reason":"notFound"}]}}`},
+	}}
+	rc, _ := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	assertExit(t, err, 30)
+	if d := exit.Classify(err); d.Code != exit.CodeNotFound {
+		t.Errorf("diagnostic = %+v, want NOT_FOUND", d)
+	}
+	if rt.saw("DELETE", "/subscriptions/gone") {
+		t.Errorf("calls = %v, a 404 must abort before the subscription delete", rt.calls)
+	}
+}
+
+// TestRun_offerDelete_followingHint_converges follows the hint from both
+// refusals: the file keeps the offer with state: INACTIVE. From ACTIVE, the
+// next run deactivates it (no delete) and the run after that has nothing to
+// do; from INACTIVE (refused by the API), the next run has nothing to do at
+// once (#790).
+func TestRun_offerDelete_followingHint_converges(t *testing.T) {
+	kept := offersCatalog(t, `{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"INACTIVE","phases":[{"duration":"P1W"}]}`)
+
+	rt := &subsRT{offersBody: liveOfferIn("ACTIVE")}
+	rc, _ := newRC(t, rt)
+	if _, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: kept}); err != nil {
+		t.Fatalf("run following the hint from ACTIVE: %v", err)
+	}
+	if m := rt.mutations(); len(m) != 1 || !strings.HasSuffix(m[0], "/offers/intro:deactivate") {
+		t.Errorf("mutations = %v, want the single offer deactivate", m)
+	}
+
+	rt2 := &subsRT{offersBody: liveOfferIn("INACTIVE")}
+	rc2, _ := newRC(t, rt2)
+	r, err := applycmd.Run(rc2, applycmd.Input{Package: "com.example.app", Dir: kept})
+	if err != nil {
+		t.Fatalf("run on the INACTIVE offer: %v", err)
+	}
+	if m := rt2.mutations(); len(m) != 0 {
+		t.Errorf("run on the INACTIVE offer must not write; got %v", m)
+	}
+	if p := r.(applycmd.Payload); p.Plan.HasChanges() {
+		t.Errorf("run on the INACTIVE offer = %+v, want no changes", p.Plan)
 	}
 }
 
@@ -717,6 +860,57 @@ func TestRun_basePlanDelete_forbidden_keepsPermissionDenied(t *testing.T) {
 	}
 	if !rt.saw("DELETE", "/subscriptions/gone") {
 		t.Errorf("calls = %v, a 403 refusal must still continue with the subscription delete", rt.calls)
+	}
+}
+
+// TestRun_mixedDeleteRefusals_permissionWins drives an offer delete and a base
+// plan delete that Play both refuses, for different reasons, in both orders:
+// the 403 (exit 11, PERMISSION_DENIED) drives the final error whether it came
+// first or last, because a missing grant cannot be resolved by the file and a
+// re-run would hit it again, while the 400 state refusal (exit 30) has its
+// keep-as-INACTIVE hint on stderr. The count still names the other refusal.
+func TestRun_mixedDeleteRefusals_permissionWins(t *testing.T) {
+	const (
+		badRequest = `{"error":{"code":400,"message":"not in draft state","errors":[{"reason":"badRequest"}]}}`
+		forbidden  = `{"error":{"code":403,"message":"forbidden","errors":[{"reason":"forbidden"}]}}`
+	)
+	for _, tc := range []struct {
+		name          string
+		offer, plan   scriptedRefusal
+		wantOperation string
+		wantInMessage string
+	}{
+		{"offer400ThenPlan403", scriptedRefusal{400, badRequest}, scriptedRefusal{403, forbidden}, "monetization.subscriptions.basePlans.delete", "premium/trial"},
+		{"offer403ThenPlan400", scriptedRefusal{403, forbidden}, scriptedRefusal{400, badRequest}, "monetization.subscriptions.basePlans.offers.delete", "premium/monthly/intro"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := writeCatalog(t, map[string]string{
+				"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+			}) // intro, trial and gone dropped: one offer, one base plan, one subscription delete
+			rt := &subsRT{offersBody: liveOfferIn("INACTIVE"), refuse: map[string]scriptedRefusal{
+				"DELETE /offers/intro":                          tc.offer,
+				"DELETE /subscriptions/premium/basePlans/trial": tc.plan,
+			}}
+			rc, stderr := newRCWithLive(t, rt, liveWithDraftPlan)
+			_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+			assertExit(t, err, 11)
+			if !rt.saw("DELETE", "/offers/intro") || !rt.saw("DELETE", "/basePlans/trial") || !rt.saw("DELETE", "/subscriptions/gone") {
+				t.Fatalf("calls = %v, want both refused DELETEs and the subscription DELETE", rt.calls)
+			}
+			if d := exit.Classify(err); d.Code != exit.CodePermissionDenied || d.Operation != tc.wantOperation {
+				t.Errorf("diagnostic = %+v, want PERMISSION_DENIED on %s", d, tc.wantOperation)
+			}
+			for _, want := range []string{tc.wantInMessage, "1 more delete(s) were refused"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q missing %q", err.Error(), want)
+				}
+			}
+			for _, want := range []string{"premium/monthly/intro", "premium/trial"} {
+				if !strings.Contains(stderr.String(), want) {
+					t.Errorf("stderr %q should warn about %s", stderr.String(), want)
+				}
+			}
+		})
 	}
 }
 

@@ -64,6 +64,13 @@ const (
 	// agent could not tell "malformed request" from "keep it as INACTIVE",
 	// which is precisely the case the hint exists for.
 	CodeBasePlanNotDraft Code = "BASE_PLAN_NOT_DRAFT"
+	// CodeOfferNotDraft is the refused subscription offer delete in
+	// `subscriptions apply`: offers.delete documents DRAFT as the only
+	// deletable state, so the file keeps an offer Play will not delete with
+	// state: INACTIVE, the one file that converges (#790). Same reason as
+	// BASE_PLAN_NOT_DRAFT for its own code: a 400 alone reads as a malformed
+	// request.
+	CodeOfferNotDraft Code = "OFFER_NOT_DRAFT"
 	// CodeAPIError is the residual upstream 4xx bucket.
 	CodeAPIError Code = "API_ERROR"
 	// CodeUpstreamUnavailable is an upstream 5xx: Google is unhealthy, retry.
@@ -128,6 +135,7 @@ var codeCatalog = []CodeDoc{
 	{CodeInvalidArgument, 30, false, "The API rejected the request as malformed (400)"},
 	{CodeNotFound, 30, false, "The API found no such package, track, Edit or resource (404)"},
 	{CodeBasePlanNotDraft, 30, false, "The API refused to delete a base plan that is not DRAFT; keep it in the file with state: INACTIVE instead"},
+	{CodeOfferNotDraft, 30, false, "The API refused to delete a subscription offer that is not DRAFT; keep it in the file with state: INACTIVE instead"},
 	{CodeAPIError, 30, false, "Other API 4xx rejection"},
 	{CodeUpstreamUnavailable, 40, true, "The API is temporarily unhealthy (5xx); retry"},
 	{CodeNetworkError, 50, true, "Network failure with no HTTP response: timeout, DNS, refused"},
