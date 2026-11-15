@@ -863,6 +863,57 @@ func TestRun_basePlanDelete_forbidden_keepsPermissionDenied(t *testing.T) {
 	}
 }
 
+// TestRun_mixedDeleteRefusals_permissionWins drives an offer delete and a base
+// plan delete that Play both refuses, for different reasons, in both orders:
+// the 403 (exit 11, PERMISSION_DENIED) drives the final error whether it came
+// first or last, because a missing grant cannot be resolved by the file and a
+// re-run would hit it again, while the 400 state refusal (exit 30) has its
+// keep-as-INACTIVE hint on stderr. The count still names the other refusal.
+func TestRun_mixedDeleteRefusals_permissionWins(t *testing.T) {
+	const (
+		badRequest = `{"error":{"code":400,"message":"not in draft state","errors":[{"reason":"badRequest"}]}}`
+		forbidden  = `{"error":{"code":403,"message":"forbidden","errors":[{"reason":"forbidden"}]}}`
+	)
+	for _, tc := range []struct {
+		name          string
+		offer, plan   scriptedRefusal
+		wantOperation string
+		wantInMessage string
+	}{
+		{"offer400ThenPlan403", scriptedRefusal{400, badRequest}, scriptedRefusal{403, forbidden}, "monetization.subscriptions.basePlans.delete", "premium/trial"},
+		{"offer403ThenPlan400", scriptedRefusal{403, forbidden}, scriptedRefusal{400, badRequest}, "monetization.subscriptions.basePlans.offers.delete", "premium/monthly/intro"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := writeCatalog(t, map[string]string{
+				"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+			}) // intro, trial and gone dropped: one offer, one base plan, one subscription delete
+			rt := &subsRT{offersBody: liveOfferIn("INACTIVE"), refuse: map[string]scriptedRefusal{
+				"DELETE /offers/intro":                          tc.offer,
+				"DELETE /subscriptions/premium/basePlans/trial": tc.plan,
+			}}
+			rc, stderr := newRCWithLive(t, rt, liveWithDraftPlan)
+			_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+			assertExit(t, err, 11)
+			if !rt.saw("DELETE", "/offers/intro") || !rt.saw("DELETE", "/basePlans/trial") || !rt.saw("DELETE", "/subscriptions/gone") {
+				t.Fatalf("calls = %v, want both refused DELETEs and the subscription DELETE", rt.calls)
+			}
+			if d := exit.Classify(err); d.Code != exit.CodePermissionDenied || d.Operation != tc.wantOperation {
+				t.Errorf("diagnostic = %+v, want PERMISSION_DENIED on %s", d, tc.wantOperation)
+			}
+			for _, want := range []string{tc.wantInMessage, "1 more delete(s) were refused"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q missing %q", err.Error(), want)
+				}
+			}
+			for _, want := range []string{"premium/monthly/intro", "premium/trial"} {
+				if !strings.Contains(stderr.String(), want) {
+					t.Errorf("stderr %q should warn about %s", stderr.String(), want)
+				}
+			}
+		})
+	}
+}
+
 // TestRun_basePlanDelete_serverError_aborts asserts a 5xx on the base plan
 // DELETE is not the published-plan refusal: it aborts the run like any other
 // write (exit 40) and the subscription delete after it does not run.

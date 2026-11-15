@@ -470,11 +470,22 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 	if len(refused) > 0 {
-		// Every independent change ran; the plan still did not converge. The
-		// first refusal drives the envelope (its *api.Error keeps the exit code
-		// and the diagnostic code, ADR-0044); the count says how many more.
-		refused[0].others = len(refused) - 1
-		return nil, refused[0]
+		// Every independent change ran; the plan still did not converge. One
+		// refusal drives the envelope (its *api.Error keeps the exit code and
+		// the diagnostic code, ADR-0044); the count says how many more. All are
+		// non-retryable, so ADR-0040's rule alone keeps the first; it is
+		// refined here: a 403 (exit 11) outranks a state refusal (exit 30),
+		// whatever the order. The file resolves the state refusal (its hint is
+		// on stderr), not a missing grant, which a re-run would hit again.
+		lead := refused[0]
+		for _, r := range refused {
+			if r.DiagnosticCode() == "" {
+				lead = r
+				break
+			}
+		}
+		lead.others = len(refused) - 1
+		return nil, lead
 	}
 	rc.Confirmf("subscriptions applied to %q (%d created, %d patched, %d deleted; %d base plan(s) deleted; offers: %d created, %d patched, %d deleted; %d state change(s))", pkg,
 		len(plan.Creates), len(plan.Patches), len(plan.Deletes), len(plan.BasePlanDeletes),
