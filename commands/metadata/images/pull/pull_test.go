@@ -396,10 +396,12 @@ func TestRun_refusesNonHTTPSImageURL(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		url   string
+		retry int
 		first []testkit.Responder
 	}{
 		{name: "listed url", url: insecure},
 		{name: "redirect", url: "https://play-lh.test/en/icon", first: []testkit.Responder{redirect("https://play-lh.test/en/icon", insecure)}},
+		{name: "redirect under --retry", url: "https://play-lh.test/en/icon", retry: 1, first: []testkit.Responder{redirect("https://play-lh.test/en/icon", insecure)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
@@ -407,7 +409,9 @@ func TestRun_refusesNonHTTPSImageURL(t *testing.T) {
 			slots := map[string]string{"en-US/icon": fmt.Sprintf(`{"images":[{"id":"i1","url":%q,"sha256":%q}]}`, tc.url, sum(png("icon")))}
 			rt := pullFake(t, "edit-pull", listingsResp, slots, blobs, tc.first...)
 			dir := t.TempDir()
-			_, err := imagespull.Run(newRC(t, rt), imagespull.Input{Package: "com.example.app", Dir: dir})
+			rc := newRC(t, rt)
+			rc.Retry = tc.retry
+			_, err := imagespull.Run(rc, imagespull.Input{Package: "com.example.app", Dir: dir})
 			if err == nil || !strings.Contains(err.Error(), "refusing non-https URL "+insecure) {
 				t.Fatalf("Run err = %v, want the non-https refusal", err)
 			}

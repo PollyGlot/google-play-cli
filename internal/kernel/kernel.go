@@ -878,13 +878,15 @@ func (rc *RunContext) UploadClient() (*http.Client, error) {
 // AuthedClient's deadline and --retry, over the same test seam.
 func (rc *RunContext) PublicClient() *http.Client {
 	timeout := rc.controlPlaneTimeout()
-	rt := baseHTTPClient(rc.Ctx).Transport
+	// HTTPSOnly sits innermost: the retry middleware follows redirects with a
+	// client of its own, so a guard wrapped around it would never see the hops.
+	rt := transport.HTTPSOnly(baseHTTPClient(rc.Ctx).Transport)
 	if rc.Retry > 0 {
 		// The retry middleware owns the per-attempt deadline, as in authedClientFor.
 		rt = transport.WithRetry(rt, transport.RetryOptions{MaxRetries: rc.Retry, Timeout: timeout})
 		timeout = 0
 	}
-	return transport.NewClient(transport.HTTPSOnly(rt), timeout)
+	return transport.NewClient(rt, timeout)
 }
 
 // scopes returns the OAuth scope list to mint a token for: a one-element slice
