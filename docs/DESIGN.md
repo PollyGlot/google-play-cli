@@ -800,8 +800,9 @@ seconds instead of stalling a CI job until the runner-level kill:
   unbounded for uploads".
 
 A deadline-exceeded failure is a transport-level error and maps to **exit 50**
-(network), the retry-safe bucket — so the same CI wrapper that retries a DNS
-blip retries a timeout.
+(network), the retry-safe bucket, so the same CI wrapper that retries a DNS
+blip retries a timeout. The exception is a timeout on an Edit commit, whose
+outcome is then unknown (`COMMIT_OUTCOME_UNKNOWN`, §4 and §9).
 
 ### Opt-in retry (`--retry`)
 
@@ -908,10 +909,24 @@ pointing at a shared translation):
 
 Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
 
+**The envelope's `retryable` field is the authority, not the exit code.** The
+Retry-safe column describes a bucket, and one failure can be narrower than its
+bucket: an Edit commit that fails after the request left the machine (a
+timeout, a reset, a `5xx`, an interrupt) may already be live, so it keeps exit
+`50` or `40` and is **not** safe to retry (`COMMIT_OUTCOME_UNKNOWN`, §4). Under
+`--output json`, the error envelope's `retryable` (§9.1) settles it for the
+failure at hand. A caller that reads only the exit code must treat a `50` or
+`40` from a commit as unknown and check the live state before re-running.
+
 **An interrupted command exits 50.** A command stopped by `SIGINT` or `SIGTERM`
 before it succeeded exits `50` whatever step it was on, after discarding its
-implicit Edit (§4), so re-running it is safe. A command that completed before
-the signal was handled keeps its `0`.
+implicit Edit (§4). Re-running it is safe only if the signal landed before the
+commit was sent. A signal that lands while the commit is in flight leaves its
+outcome unknown, exactly like a timeout. An interrupt writes no error envelope
+(its exit code is fixed at `50`, which an envelope's own `exitCode` could only
+contradict), so the stderr line is the only signal there: when it says the
+commit "may have been applied", check the live state before re-running. A
+command that completed before the signal was handled keeps its `0`.
 
 **Exit 3 has no exceptions.** *Every* refusal for a missing safety-acknowledgment
 flag exits `3` — never `2` — whatever the command and however destructive the

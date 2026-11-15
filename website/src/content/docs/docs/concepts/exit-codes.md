@@ -92,7 +92,8 @@ refund) only when the request provably never reached Google, so it is safe to
 leave on. `Retry-After` is honoured up to the 30s maximum backoff. `--timeout` defaults to 60s for
 control-plane calls and is unbounded for uploads; with `--retry` it becomes
 a per-attempt bound. A deadline-exceeded failure maps to exit `50`, so the
-same wrapper that retries a network blip retries a timeout.
+same wrapper that retries a network blip retries a timeout, except a timeout
+on an Edit commit, whose outcome is unknown (below).
 
 ## Hand-rolled retry across commands
 
@@ -125,6 +126,18 @@ it is not a blind retry: the error says the commit may be live, and the
 was most likely committed). Re-running an upload that did publish fails on
 the already-used version code, which the loop above would report as a failed
 release.
+
+So the exit code alone is not the authority on retrying: under
+`--output json`, the envelope's `retryable` field is, for the failure at
+hand. A script that reads only the exit code must treat a `50` or `40` from a
+commit as unknown.
+
+The same holds for an interrupted command. `SIGINT` or `SIGTERM` makes gplay
+discard its implicit Edit and exit `50`, and re-running is safe only if the
+signal landed before the commit was sent. A signal that lands while the commit
+is in flight leaves its outcome unknown, like a timeout. An interrupt writes
+no JSON envelope, so read the stderr line: when it says the commit "may have
+been applied", check the live state before re-running.
 
 ## Exit 3: machine-resolvable refusals
 
