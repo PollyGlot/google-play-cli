@@ -20,6 +20,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
@@ -321,5 +322,69 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run emitted a ✓ confirmation; stderr=%q", stderr.String())
+	}
+}
+
+// TestRun_dryRun_jsonPreview_golden drives the --dry-run in JSON, the default
+// format in CI and in a pipe (#777): no testers.update ran, so instead of the
+// API pass-through it prints the planned body tagged dryRun, in the shape of
+// the other dry-run previews (`tracks create`, `expansion-files set`). Before
+// the fix it failed with "missing raw testers.update payload".
+func TestRun_dryRun_jsonPreview_golden(t *testing.T) {
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
+
+	r, err := set.Run(rc, set.Input{
+		Package:   "com.example.app",
+		Track:     "qa-team",
+		Groups:    []string{"a@googlegroups.com", " b@googlegroups.com "},
+		GroupsSet: true,
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(api.calls()) != 0 {
+		t.Errorf("expected zero HTTP calls on --dry-run, saw: %v", api.calls())
+	}
+	outputtest.GoldenJSON(t, "dry_run.json.golden", r)
+}
+
+// TestRun_dryRun_clear_jsonPreview_golden pins the --clear preview: an empty
+// audience encodes as [] (never null), so a consumer iterates it unguarded.
+func TestRun_dryRun_clear_jsonPreview_golden(t *testing.T) {
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
+
+	r, err := set.Run(rc, set.Input{Package: "com.example.app", Track: "qa-team", Clear: true, DryRun: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	outputtest.GoldenJSON(t, "dry_run_clear.json.golden", r)
+}
+
+// TestRun_dryRun_tablePreview pins the human view of the same dry-run: the
+// track line carries the (dry-run) marker and every planned group is listed.
+func TestRun_dryRun_tablePreview(t *testing.T) {
+	api := &setAPI{}
+	rc, _ := newRC(t, api.serve(t))
+
+	r, err := set.Run(rc, set.Input{
+		Package:   "com.example.app",
+		Track:     "qa-team",
+		Groups:    []string{"a@googlegroups.com", "b@googlegroups.com"},
+		GroupsSet: true,
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var out bytes.Buffer
+	if err := r.Renderers().Table(&out); err != nil {
+		t.Fatalf("Table render: %v", err)
+	}
+	want := "Track: qa-team (dry-run)\nGROUP\na@googlegroups.com\nb@googlegroups.com\n"
+	if out.String() != want {
+		t.Errorf("table = %q, want %q", out.String(), want)
 	}
 }

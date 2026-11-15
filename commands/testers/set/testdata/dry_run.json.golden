@@ -1,0 +1,8 @@
+{
+  "dryRun": true,
+  "track": "qa-team",
+  "googleGroups": [
+    "a@googlegroups.com",
+    "b@googlegroups.com"
+  ]
+}
