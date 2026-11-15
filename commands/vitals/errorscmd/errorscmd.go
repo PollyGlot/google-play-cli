@@ -15,6 +15,7 @@ package errorscmd
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -55,16 +56,42 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 
 // --- shared helpers --------------------------------------------------------
 
-// window resolves a --since spec into the [start, end) date interval the search
-// is bounded by: end is today (date-only, UTC), start is end minus the window.
-func window(since string) (time.Time, time.Time, error) {
-	d, err := vitalscmd.ParseSince(since)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
+// windowHelp and sinceHelp state the window granularity in each search view's
+// --help.
+const (
+	windowHelp = `--since sets the window. A window in days (7d) covers whole UTC days ending
+today at 00:00 UTC. Any other window (6h, 24h) is counted in whole hours back
+from the newest hour of error data (the errorCount set's HOURLY freshness).`
+	sinceHelp = "window length: whole UTC days (e.g. 28d) or whole hours back from the newest data (e.g. 6h)"
+)
+
+// inHours reports whether a --since spec asks for an hour window: anything but
+// a day count, the flag default included.
+func inHours(since string) bool {
+	s := strings.TrimSpace(since)
+	return s != "" && !strings.HasSuffix(s, "d")
+}
+
+// window resolves a parsed --since into the [Start, End) search interval. A
+// day window ends today at 00:00 UTC, date-only. An hour window ends on the
+// current hour, capped at the errorCount set's HOURLY freshness: the newest
+// hour the reporting pipeline has published, read through the same `.get` the
+// metric-set queries anchor on (#768, #775).
+func window(rc *kernel.RunContext, hc *http.Client, pkg string, since time.Duration, hourly bool) (vitals.SearchOptions, error) {
 	now := time.Now().UTC()
-	end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	return end.Add(-d), end, nil
+	if !hourly {
+		end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		return vitals.SearchOptions{Start: end.Add(-since), End: end}, nil
+	}
+	end := now.Truncate(time.Hour)
+	latest, err := vitalscmd.LatestEnd(rc, hc, vitals.ErrorCountSet(), pkg, "HOURLY")
+	if err != nil {
+		return vitals.SearchOptions{}, err
+	}
+	if !latest.IsZero() && latest.Before(end) {
+		end = latest
+	}
+	return vitals.SearchOptions{Start: end.Add(-since), End: end, Hourly: true}, nil
 }
 
 // emptyWarn is the stderr line for an empty result; for a non-empty one the
@@ -186,7 +213,7 @@ func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error)
 	if err != nil {
 		return nil, err
 	}
-	start, end, err := window(in.Since)
+	since, err := vitalscmd.ParseSince(in.Since)
 	if err != nil {
 		return nil, err
 	}
@@ -194,9 +221,12 @@ func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error)
 	if err != nil {
 		return nil, err
 	}
-	raw, truncated, err := vitals.SearchErrorIssues(rc.Ctx, hc, pkg, vitals.SearchOptions{
-		Filter: in.Filter, Start: start, End: end, Limit: in.Limit, OrderBy: in.OrderBy,
-	})
+	opts, err := window(rc, hc, pkg, since, inHours(in.Since))
+	if err != nil {
+		return nil, err
+	}
+	opts.Filter, opts.Limit, opts.OrderBy = in.Filter, in.Limit, in.OrderBy
+	raw, truncated, err := vitals.SearchErrorIssues(rc.Ctx, hc, pkg, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -222,6 +252,8 @@ func newIssuesCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Search the clustered error issues: crashes and ANRs grouped by cause and
 location: over a window.
 
+` + windowHelp + `
+
 ` + mappingsNote + `
 
 Read-only; --output json mirrors the API response verbatim.`,
@@ -241,7 +273,7 @@ Read-only; --output json mirrors the API response verbatim.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
+	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, sinceHelp)
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "AIP-160 filter, e.g. \"errorIssueType = CRASH\" or \"versionCode = 123\"")
 	cmd.Flags().StringVar(&in.OrderBy, "order-by", "", "sort order, e.g. \"errorReportCount desc\"")
 	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max issues to return (0 = all, no cap); a capped list warns on stderr")
@@ -283,7 +315,7 @@ func runReports(rc *kernel.RunContext, in reportsInput) (output.Renderable, erro
 	if err != nil {
 		return nil, err
 	}
-	start, end, err := window(in.Since)
+	since, err := vitalscmd.ParseSince(in.Since)
 	if err != nil {
 		return nil, err
 	}
@@ -291,9 +323,12 @@ func runReports(rc *kernel.RunContext, in reportsInput) (output.Renderable, erro
 	if err != nil {
 		return nil, err
 	}
-	raw, truncated, err := vitals.SearchErrorReports(rc.Ctx, hc, pkg, vitals.SearchOptions{
-		Filter: in.Filter, Start: start, End: end, Limit: in.Limit,
-	})
+	opts, err := window(rc, hc, pkg, since, inHours(in.Since))
+	if err != nil {
+		return nil, err
+	}
+	opts.Filter, opts.Limit = in.Filter, in.Limit
+	raw, truncated, err := vitals.SearchErrorReports(rc.Ctx, hc, pkg, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -319,6 +354,8 @@ func newReportsCommand(boot kernel.Boot) *cobra.Command {
 		Long: `Search individual error reports (the platform-produced stack traces) over a
 window.
 
+` + windowHelp + `
+
 ` + mappingsNote + `
 
 The full report text is in --output json; the table shows the first line.
@@ -338,7 +375,7 @@ Read-only; --output json mirrors the API response verbatim.`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
+	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, sinceHelp)
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "AIP-160 filter, e.g. \"versionCode = 123\"")
 	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max reports to return (0 = all, no cap); a capped list warns on stderr")
 	return cmd
