@@ -43,8 +43,32 @@ assert_head() {
 assert_head
 # Captured on its own line, not piped into grep: a failed `gh pr diff` must fail
 # the guard, never read as an empty (hence clean) file list.
-files=$(gh pr diff "$PR" --name-only)
+patch=$(gh pr diff "$PR" --color never)
 assert_head
+
+# Not `gh pr diff --name-only`: it prints only the new name of a renamed or
+# copied file, so moving any file into docs/discovery/ read as a snapshot
+# change. Both names come from git's extended headers instead. Content lines
+# always start with a space, + or -, so these patterns only match headers.
+#   - `rename|copy from|to <path>` carries each name whole.
+#   - Otherwise the header is `diff --git a/<p> b/<p>` with one name twice,
+#     which splits unambiguously by length even when <p> contains " b/".
+#   - Any other header (a quoted path, say) is printed raw: it matches no
+#     allowed prefix, so the guard fails closed.
+files=$(printf '%s\n' "$patch" | awk '
+  function flush() { if (pending != "") print pending; pending = "" }
+  /^diff --git / {
+    flush()
+    rest = substr($0, 12)
+    n = (length(rest) - 5) / 2
+    name = substr(rest, 3, n)
+    if (n == int(n) && rest == "a/" name " b/" name) print name
+    else pending = $0
+    next
+  }
+  /^(rename|copy) (from|to) / { pending = ""; sub(/^[a-z]+ [a-z]+ /, ""); print }
+  END { flush() }
+')
 
 stray=$(printf '%s\n' "$files" | grep -vE "^($allowed)" | grep -v '^$' || true)
 if [ -n "$stray" ]; then
