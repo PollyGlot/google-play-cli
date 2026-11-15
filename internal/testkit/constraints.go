@@ -2,8 +2,10 @@ package testkit
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // rule is one constraint Play documents in prose on a request property and
@@ -85,6 +87,147 @@ var rules = map[string]rule{
 	},
 	"OneTimeProductTaxAndComplianceSettings.regionalProductAgeRatingInfos": usOnlyAgeRating,
 	"SubscriptionTaxAndComplianceSettings.regionalProductAgeRatingInfos":   usOnlyAgeRating,
+	// The immutability half of the description needs the release Play
+	// stores, which a body rule does not see.
+	"TrackRelease.inAppUpdatePriority": {
+		sentence: "Can take values in the range [0, 5], with 5 the highest priority.",
+		check: func(o map[string]any) string {
+			if p, set := present(o, "inAppUpdatePriority"); set {
+				return between("inAppUpdatePriority", p, 0, 5)
+			}
+			return ""
+		},
+	},
+	"TrackConfig.type": {
+		sentence: "Currently, the only supported value is closedTesting.",
+		check: func(o map[string]any) string {
+			if t, set := present(o, "type"); set && t != "CLOSED_TESTING" {
+				return fmt.Sprintf("type is %s, not CLOSED_TESTING", quoted(t))
+			}
+			return ""
+		},
+	},
+	// Play says "approximately": the rule holds the documented figure, so a
+	// test that needs a longer reply is one that exercises the refusal.
+	"ReviewsReplyRequest.replyText": {
+		sentence: "Replies of more than approximately 350 characters will be rejected.",
+		check: func(o map[string]any) string {
+			if s, _ := o["replyText"].(string); utf8.RuneCountInString(s) > 350 {
+				return fmt.Sprintf("replyText is %d characters long, more than 350", utf8.RuneCountInString(s))
+			}
+			return ""
+		},
+	},
+	"GooglePlayDeveloperReportingV1beta1TimelineSpec.startTime": {
+		sentence: `* HOURLY: the 'minutes', 'seconds' and 'nanos' fields must be unset. The time_zone can be left unset (defaults to UTC) or set explicitly to "UTC". Setting any other utc_offset or timezone id will result in a validation error. * DAILY: the 'hours', 'minutes', 'seconds' and 'nanos' fields must be unset.`,
+		check: func(o map[string]any) string {
+			return aligned("startTime", o)
+		},
+	},
+	"GooglePlayDeveloperReportingV1beta1TimelineSpec.endTime": {
+		sentence: "See start_time for restrictions. The timezone of the end point must match the timezone of the start point.",
+		// Each aggregation period takes a single zone, so two aligned ends
+		// share it: the zone match needs no check of its own.
+		check: func(o map[string]any) string {
+			return aligned("endTime", o)
+		},
+	},
+	"SubscriptionOffer.phases": {
+		sentence: "Must contain at least one and at most two entries.",
+		check: func(o map[string]any) string {
+			// A patch that leaves phases out keeps the stored ones.
+			if v, set := present(o, "phases"); set {
+				if phases, _ := v.([]any); len(phases) < 1 || len(phases) > 2 {
+					return fmt.Sprintf("phases holds %d entries, not one or two", len(phases))
+				}
+			}
+			return ""
+		},
+	},
+	"SubscriptionListing.benefits": {
+		sentence: "Ordered list of at most four benefits.",
+		check: func(o map[string]any) string {
+			if benefits, _ := o["benefits"].([]any); len(benefits) > 4 {
+				return fmt.Sprintf("benefits holds %d entries, more than four", len(benefits))
+			}
+			return ""
+		},
+	},
+	"OneTimeProductDiscountedOffer.redemptionLimit": redemptionLimit,
+	"OneTimeProductGameRewardOffer.redemptionLimit": redemptionLimit,
+	"Money.nanos": {
+		sentence: "The value must be between -999,999,999 and +999,999,999 inclusive. If `units` is positive, `nanos` must be positive or zero. If `units` is zero, `nanos` can be positive, zero, or negative. If `units` is negative, `nanos` must be negative or zero.",
+		check: func(o map[string]any) string {
+			v, set := present(o, "nanos")
+			if !set {
+				return ""
+			}
+			if why := between("nanos", v, -999_999_999, 999_999_999); why != "" {
+				return why
+			}
+			nanos, _ := number(v)
+			units, _ := number(o["units"])
+			if units > 0 && nanos < 0 || units < 0 && nanos > 0 {
+				return fmt.Sprintf("nanos %v has the opposite sign of units %v", v, o["units"])
+			}
+			return ""
+		},
+	},
+}
+
+var redemptionLimit = rule{
+	sentence: "If unset or set to 0, allows for unlimited offer redemptions. Otherwise must be a number between 1 and 50 inclusive.",
+	check: func(o map[string]any) string {
+		if v, set := present(o, "redemptionLimit"); set {
+			return between("redemptionLimit", v, 0, 50)
+		}
+		return ""
+	},
+}
+
+// aligned checks one end of a TimelineSpec against its aggregation period.
+// proto3 JSON writes an unset integer as 0 or leaves it out, so only a
+// non-zero value breaks "must be unset".
+func aligned(end string, spec map[string]any) string {
+	dt, _ := spec[end].(map[string]any)
+	if dt == nil {
+		return ""
+	}
+	var unset []string
+	switch spec["aggregationPeriod"] {
+	case "HOURLY":
+		unset = []string{"minutes", "seconds", "nanos"}
+		if z := zone(dt); z != "" && z != "UTC" {
+			return fmt.Sprintf("%s is in time zone %q on an HOURLY timeline, which takes UTC alone", end, z)
+		}
+	case "DAILY":
+		// Every metric set's timelineSpec says America/Los_Angeles is the
+		// only DAILY zone.
+		unset = []string{"hours", "minutes", "seconds", "nanos"}
+		if z := zone(dt); z != "" && z != "America/Los_Angeles" {
+			return fmt.Sprintf("%s is in time zone %q on a DAILY timeline, which takes America/Los_Angeles alone", end, z)
+		}
+	}
+	for _, field := range unset {
+		if n, _ := number(dt[field]); n != 0 {
+			return fmt.Sprintf("%s.%s is %v on a %s timeline, where it must be unset", end, field, dt[field], spec["aggregationPeriod"])
+		}
+	}
+	return ""
+}
+
+// zone names the time zone of a google.type.DateTime: its IANA id, its UTC
+// offset when set instead, "" when neither is.
+func zone(dt map[string]any) string {
+	if tz, _ := dt["timeZone"].(map[string]any); tz != nil {
+		if id, _ := tz["id"].(string); id != "" {
+			return id
+		}
+	}
+	if off, _ := dt["utcOffset"].(string); off != "" && off != "0s" {
+		return "UTC" + off
+	}
+	return ""
 }
 
 var relativeDiscount = rule{
@@ -118,17 +261,29 @@ func present(o map[string]any, key string) (any, bool) {
 	return v, ok && v != nil
 }
 
-// openUnit requires v to be a number strictly between 0 and 1. proto3 JSON
-// also accepts a double written as a string, so "0.8" counts as 0.8.
-func openUnit(name string, v any) string {
-	f, ok := v.(float64)
+// number reads a JSON number. proto3 JSON also accepts a number written as a
+// string (an int64 always is), so "0.8" counts as 0.8.
+func number(v any) (float64, bool) {
 	if s, isString := v.(string); isString {
-		var err error
-		f, err = strconv.ParseFloat(s, 64)
-		ok = err == nil
+		f, err := strconv.ParseFloat(s, 64)
+		return f, err == nil
 	}
-	if !ok || !(f > 0 && f < 1) {
+	f, ok := v.(float64)
+	return f, ok
+}
+
+// openUnit requires v to be a number strictly between 0 and 1.
+func openUnit(name string, v any) string {
+	if f, ok := number(v); !ok || !(f > 0 && f < 1) {
 		return fmt.Sprintf("%s is %v, not strictly between 0 and 1", name, v)
+	}
+	return ""
+}
+
+// between requires v to be an integer from lo to hi inclusive.
+func between(name string, v any, lo, hi float64) string {
+	if f, ok := number(v); !ok || f != math.Trunc(f) || f < lo || f > hi {
+		return fmt.Sprintf("%s is %v, not an integer from %v to %v", name, v, lo, hi)
 	}
 	return ""
 }
