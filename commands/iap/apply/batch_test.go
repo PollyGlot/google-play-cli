@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
+	"testing/iotest"
 
 	applycmd "github.com/PollyGlot/google-play-cli/commands/iap/apply"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
@@ -20,12 +22,13 @@ const overLimit = 101
 
 // batchRT serves the live catalog of iapRT and records the identities each
 // batch call carries, in call order. failCall, when set, answers that batch
-// call (1-based) with a 500.
+// call (1-based) with failWith, or with a 500 when failWith is nil.
 type batchRT struct {
 	iapRT
 	mu       sync.Mutex
 	batches  []batchCall
 	failCall int
+	failWith func() *http.Response
 }
 
 type batchCall struct {
@@ -61,6 +64,12 @@ func (r *batchRT) serve(req *http.Request) (*http.Response, error) {
 	r.batches = append(r.batches, call)
 	n := len(r.batches)
 	r.mu.Unlock()
+	if n == r.failCall && r.failWith != nil {
+		return r.failWith(), nil
+	}
+	if n == r.failCall && r.failWith != nil {
+		return r.failWith(), nil
+	}
 	if n == r.failCall {
 		return testkit.Response(http.StatusInternalServerError, `{"error":{"code":500,"message":"backend error","status":"INTERNAL"}}`), nil
 	}
@@ -160,8 +169,9 @@ func TestRun_offerDeletes_splitAtTheBatchLimit(t *testing.T) {
 	assertChunks(t, rt.batches, "batchDelete", offerIDs[:100], offerIDs[100:])
 }
 
-// A failing second chunk leaves the first one applied on Play: the error says
-// which offers went through and which did not, and keeps the API's failure.
+// A second chunk that came back 5xx leaves the first one applied and its own
+// outcome open: Play may have written it before failing. The error keeps the
+// API's failure and says so instead of declaring it not applied.
 func TestRun_failedChunk_reportsWhatWasApplied(t *testing.T) {
 	offerIDs := ids("o", overLimit)
 	rt := &batchRT{iapRT: iapRT{offersBody: `{}`}, failCall: 2}
@@ -174,16 +184,86 @@ func TestRun_failedChunk_reportsWhatWasApplied(t *testing.T) {
 	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusInternalServerError {
 		t.Errorf("err %v must keep the API's 500 for the exit code and the envelope", err)
 	}
-	msg := err.Error()
-	for _, want := range []string{
+	assertMessage(t, err, []string{
 		"100 of 101",
 		"applied: " + strings.Join(offerIDs[:100], ", "),
-		"not applied: o100",
+		"outcome unknown (Play may have applied them): o100;",
+		"not sent: none",
 		"coins100/buy",
-	} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("error lacks %q:\n%s", want, msg)
+	}, "not applied")
+	assertChunks(t, rt.batches, "batchUpdate", offerIDs[:100], offerIDs[100:])
+}
+
+// offerDeletes201 serves 201 live offers under coins100/buy that the catalog
+// drops: three batchDelete calls of 100, 100 and 1.
+func offerDeletes201(t *testing.T, rt *batchRT) ([]string, applycmd.Input) {
+	t.Helper()
+	offerIDs := ids("o", 2*100+1)
+	rt.offersBody = `{"oneTimeProductOffers":[` +
+		joinObjects(len(offerIDs), `{"packageName":"com.example.app","productId":"coins100","purchaseOptionId":"buy","offerId":%q}`, offerIDs) + `]}`
+	dir := writeCatalog(t, map[string]string{
+		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy"}]}`,
+		"old_gems.json": legacyFile,
+	})
+	return offerIDs, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true}
+}
+
+// A second chunk Play answered 200 but whose body broke mid-read was accepted:
+// its 100 deletions must not be reported as not applied (#807 review).
+func TestRun_chunkAcceptedButBodyUnreadable_isNotReportedNotApplied(t *testing.T) {
+	rt := &batchRT{failCall: 2, failWith: func() *http.Response {
+		resp := testkit.Response(http.StatusOK, "")
+		resp.Body = io.NopCloser(iotest.ErrReader(errors.New("connection reset by peer")))
+		return resp
+	}}
+	offerIDs, in := offerDeletes201(t, rt)
+	_, err := applycmd.Run(newRCServing(t, rt.serve), in)
+	if err == nil {
+		t.Fatal("Run succeeded, want the second chunk's read failure")
+	}
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusOK || apiErr.ExitCode() != 50 {
+		t.Errorf("err %v must keep the API error (HTTP 200, exit 50) for the exit code and the envelope", err)
+	}
+	assertMessage(t, err, []string{
+		"100 of 201",
+		"applied: " + strings.Join(offerIDs[:100], ", ") + ";",
+		"outcome unknown (Play may have applied them): " + strings.Join(offerIDs[100:200], ", ") + ";",
+		"not sent: o200",
+		"--dry-run",
+	}, "not applied")
+	assertChunks(t, rt.batches, "batchDelete", offerIDs[:100], offerIDs[100:200])
+}
+
+// A second chunk Play refused with a 400 wrote nothing: it and the chunk never
+// sent are both not applied.
+func TestRun_chunkRefused_isReportedNotApplied(t *testing.T) {
+	rt := &batchRT{failCall: 2, failWith: func() *http.Response {
+		return testkit.Response(http.StatusBadRequest, `{"error":{"code":400,"message":"invalid offer","status":"INVALID_ARGUMENT"}}`)
+	}}
+	offerIDs, in := offerDeletes201(t, rt)
+	_, err := applycmd.Run(newRCServing(t, rt.serve), in)
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("err %v must keep the API's 400 for the exit code and the envelope", err)
+	}
+	assertMessage(t, err, []string{
+		"100 of 201",
+		"applied: " + strings.Join(offerIDs[:100], ", ") + ";",
+		"not applied: " + strings.Join(offerIDs[100:], ", ") + ")",
+	}, "outcome unknown")
+	assertChunks(t, rt.batches, "batchDelete", offerIDs[:100], offerIDs[100:200])
+}
+
+func assertMessage(t *testing.T, err error, want []string, absent string) {
+	t.Helper()
+	msg := err.Error()
+	for _, w := range want {
+		if !strings.Contains(msg, w) {
+			t.Errorf("error lacks %q:\n%s", w, msg)
 		}
 	}
-	assertChunks(t, rt.batches, "batchUpdate", offerIDs[:100], offerIDs[100:])
+	if strings.Contains(msg, absent) {
+		t.Errorf("error must not say %q:\n%s", absent, msg)
+	}
 }

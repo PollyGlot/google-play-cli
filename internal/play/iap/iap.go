@@ -235,28 +235,55 @@ const maxBatchRequests = 100
 
 // BatchError reports a batch write gplay split into calls of at most
 // maxBatchRequests that failed part-way. Applied names the items of the calls
-// Play accepted, Pending those of the failing call and of the calls never
-// sent. It wraps the failing call's error, so the exit code and the envelope
-// stay the API's.
+// Play accepted, Failed those of the failing call, NotSent those of the calls
+// never sent. OutcomeUnknown says whether the failing call may have been
+// applied all the same (a 5xx, a transport failure once the request left, a
+// 2xx whose body broke): only a 4xx or a request that never left proves it
+// was not. It wraps the failing call's error, so the exit code and the
+// envelope stay the API's.
 type BatchError struct {
-	Op      string // REST method id
-	Target  string // productId, or productId/purchaseOptionId
-	Applied []string
-	Pending []string
-	Cause   error
+	Op             string // REST method id
+	Target         string // productId, or productId/purchaseOptionId
+	Applied        []string
+	Failed         []string
+	NotSent        []string
+	OutcomeUnknown bool
+	Cause          error
 }
 
 func (e *BatchError) Error() string {
-	total := len(e.Applied) + len(e.Pending)
-	applied := "none"
-	if len(e.Applied) > 0 {
-		applied = strings.Join(e.Applied, ", ")
+	list := func(ids []string) string {
+		if len(ids) == 0 {
+			return "none"
+		}
+		return strings.Join(ids, ", ")
 	}
-	return fmt.Sprintf("%s on %s failed after %d of %d request(s) were applied in calls of at most %d (applied: %s; not applied: %s): %v",
-		e.Op, e.Target, len(e.Applied), total, maxBatchRequests, applied, strings.Join(e.Pending, ", "), e.Cause)
+	total := len(e.Applied) + len(e.Failed) + len(e.NotSent)
+	detail := "not applied: " + list(append(append([]string{}, e.Failed...), e.NotSent...))
+	if e.OutcomeUnknown {
+		detail = "outcome unknown (Play may have applied them): " + list(e.Failed) +
+			"; not sent: " + list(e.NotSent) + "; `gplay iap apply --dry-run` shows what is still pending"
+	}
+	return fmt.Sprintf("%s on %s failed after %d of %d request(s) were applied in calls of at most %d (applied: %s; %s): %v",
+		e.Op, e.Target, len(e.Applied), total, maxBatchRequests, list(e.Applied), detail, e.Cause)
 }
 
 func (e *BatchError) Unwrap() error { return e.Cause }
+
+// refused reports whether a failed batch call provably wrote nothing: Play
+// answered 4xx (429 included: refused before the write path), or the request
+// never left the machine (api.NeverSent, the line edits.commit draws for
+// COMMIT_OUTCOME_UNKNOWN). Anything else may have landed.
+func refused(err error) bool {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.StatusCode == 0 {
+		return api.NeverSent(apiErr.Cause)
+	}
+	return apiErr.StatusCode >= 400 && apiErr.StatusCode < 500
+}
 
 // sendInBatches sends ids in order, at most maxBatchRequests per call:
 // send(lo, hi) writes ids[lo:hi]. A batch that fits one call fails with the
@@ -269,7 +296,7 @@ func sendInBatches(op, target string, ids []string, send func(lo, hi int) error)
 			if len(ids) <= maxBatchRequests {
 				return err
 			}
-			return &BatchError{Op: op, Target: target, Applied: ids[:lo], Pending: ids[lo:], Cause: err}
+			return &BatchError{Op: op, Target: target, Applied: ids[:lo], Failed: ids[lo:hi], NotSent: ids[hi:], OutcomeUnknown: !refused(err), Cause: err}
 		}
 	}
 	return nil
