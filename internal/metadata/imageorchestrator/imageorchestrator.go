@@ -19,11 +19,15 @@ package imageorchestrator
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/fanout"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagediff"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagevalidate"
@@ -34,6 +38,12 @@ import (
 // Opts is the input contract for Apply.
 type Opts struct {
 	Package string
+
+	// Dir is the directory imagetree.Scan walked to build the local tree. Every
+	// file is opened against it again (imagetree.Open) when it is hashed and
+	// when it is uploaded, so a file swapped out of the tree after the scan is
+	// refused, not read.
+	Dir string
 
 	// DryRun computes the diff against live Play without committing (a
 	// read-only Edit). It does NOT require Confirm.
@@ -103,6 +113,19 @@ func (e *ValidationError) Error() string {
 }
 func (e *ValidationError) ExitCode() int { return 20 }
 
+// LocaleError tags a failed images.list with its locale: inside an open Edit
+// the package is known, so a 404 there means the language has no Listing to
+// attach images to, and the command says so instead of blaming the package.
+// Error() stays the wrapped error's text and Unwrap keeps the *api.Error
+// reachable, so the exit code and the JSON error envelope are unchanged.
+type LocaleError struct {
+	Locale string
+	Err    error
+}
+
+func (e *LocaleError) Error() string { return e.Err.Error() }
+func (e *LocaleError) Unwrap() error { return e.Err }
+
 // errNoChanges is an internal sentinel: returned from the write Edit's closure
 // when the diff is a no-op so edits.WithEdit auto-discards instead of
 // committing an empty Edit (quota conservation). It never escapes Apply.
@@ -112,11 +135,16 @@ func (noChanges) Error() string { return "metadata images: no changes to apply" 
 
 var errNoChanges = noChanges{}
 
-// Apply reconciles the local image tree against live Play per opts.
-func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts) (*Result, error) {
+// Apply reconciles the local image tree against live Play per opts. local
+// names files (imagetree.Scan): only the slots in scope are read, one image
+// at a time, so memory does not grow with the tree.
+func Apply(ctx context.Context, hc *http.Client, local imagetree.Staged, opts Opts) (*Result, error) {
 	// 1. Confirm gate (real writes only), before any network.
 	if !opts.DryRun && !opts.Confirm {
 		return nil, confirmRequired()
+	}
+	if opts.Dir == "" {
+		return nil, exit.Usagef("internal: metadata images apply called without the scanned directory")
 	}
 
 	locales := filterLocales(local, opts.Locales)
@@ -126,7 +154,11 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 	// managed slots in scope are validated. Runs in dry-run and real mode so an
 	// invalid tree never reaches the diff or a write.
 	if !opts.NoValidate {
-		if problems := imagevalidate.Validate(scopedTree(local, locales, types)); len(problems) > 0 {
+		problems, err := imagevalidate.Validate(scopedTree(local, locales, types))
+		if err != nil {
+			return nil, err
+		}
+		if len(problems) > 0 {
 			return nil, &ValidationError{Problems: problems}
 		}
 	}
@@ -135,7 +167,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 
 	if opts.DryRun {
 		if err := edits.WithReadOnlyEdit(ctx, hc, opts.Package, func(editID string) error {
-			plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types, opts.Prune)
+			plans, _, err := planSlots(ctx, hc, opts.Package, editID, opts.Dir, local, locales, types, opts.Prune)
 			if err != nil {
 				return err
 			}
@@ -154,7 +186,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 	// and never commits or discards: staged changes wait for `gplay edits
 	// commit`/`discard`.
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
-		plans, err := planSlots(ctx, hc, opts.Package, editID, local, locales, types, opts.Prune)
+		plans, inputs, err := planSlots(ctx, hc, opts.Package, editID, opts.Dir, local, locales, types, opts.Prune)
 		if err != nil {
 			return err
 		}
@@ -162,8 +194,8 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 		if !result.Diff.HasChanges() {
 			return errNoChanges
 		}
-		for _, p := range plans {
-			if err := executePlan(ctx, hc, opts.Package, editID, p); err != nil {
+		for i, p := range plans {
+			if err := executePlan(ctx, hc, opts.Package, editID, opts.Dir, local[p.Locale][p.Type], inputs[i].Local, p, !opts.NoValidate); err != nil {
 				return err
 			}
 		}
@@ -176,37 +208,72 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Tree, opts Opts
 }
 
 // planSlots fetches live images for every considered (locale, type) slot inside
-// the open Edit and reconciles each against the local tree.
-func planSlots(ctx context.Context, hc *http.Client, pkg, editID string, local imagetree.Tree, locales []string, types []images.Type, prune bool) ([]imagediff.Plan, error) {
+// the open Edit, hashes the slot's local files, and reconciles each slot
+// against the local tree. The reads run fanout.Limit at a time; each slot
+// fills only its own input, so the plan keeps (locale, type) order and the
+// error returned is the one the serial loop would have hit first. The inputs
+// come back beside the plans, index for index: their Local hashes are what an
+// upload must find again in the file it sends.
+func planSlots(ctx context.Context, hc *http.Client, pkg, editID, dir string, local imagetree.Staged, locales []string, types []images.Type, prune bool) ([]imagediff.Plan, []imagediff.SlotInput, error) {
 	inputs := make([]imagediff.SlotInput, 0, len(locales)*len(types))
 	for _, loc := range locales {
 		for _, ty := range types {
-			live, _, err := images.List(ctx, hc, pkg, editID, loc, ty)
-			if err != nil {
-				return nil, err
-			}
-			inputs = append(inputs, imagediff.SlotInput{
-				Locale: loc, Type: ty,
-				Local: local[loc][ty],
-				Live:  live,
-			})
+			inputs = append(inputs, imagediff.SlotInput{Locale: loc, Type: ty})
 		}
 	}
-	return imagediff.Plans(inputs, prune), nil
+	err := fanout.Each(len(inputs), func(i int) error {
+		in := &inputs[i]
+		live, _, err := images.List(ctx, hc, pkg, editID, in.Locale, in.Type)
+		if err != nil {
+			return &LocaleError{Locale: in.Locale, Err: err}
+		}
+		shas, err := hashFiles(dir, local[in.Locale][in.Type])
+		if err != nil {
+			return err
+		}
+		in.Live, in.Local = live, shas
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return imagediff.Plans(inputs, prune), inputs, nil
 }
 
-// executePlan runs one slot's plan inside the open Edit.
-func executePlan(ctx context.Context, hc *http.Client, pkg, editID string, p imagediff.Plan) error {
+// hashFiles returns the hex sha256 of each file, streamed so no image is held
+// whole in memory.
+func hashFiles(dir string, paths []string) ([]string, error) {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		f, err := imagetree.Open(dir, p)
+		if err != nil {
+			return nil, err
+		}
+		h := sha256.New()
+		_, err = io.Copy(h, f)
+		_ = f.Close()
+		if err != nil {
+			return nil, err
+		}
+		out[i] = hex.EncodeToString(h.Sum(nil))
+	}
+	return out, nil
+}
+
+// executePlan runs one slot's plan inside the open Edit. files are the slot's
+// local images and shas their planned hashes, both indexed by the plan's
+// Uploads. validate runs the pre-check's rules on each buffer uploaded.
+func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool) error {
 	switch p.Kind {
 	case imagediff.KindNone:
 		return nil
 	case imagediff.KindAppend:
-		return uploadAll(ctx, hc, pkg, editID, p)
+		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p, validate)
 	case imagediff.KindRewrite:
 		if err := images.DeleteAll(ctx, hc, pkg, editID, p.Locale, p.Type); err != nil {
 			return err
 		}
-		return uploadAll(ctx, hc, pkg, editID, p)
+		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p, validate)
 	case imagediff.KindDeleteIDs:
 		for _, id := range p.DeleteIDs {
 			if err := images.Delete(ctx, hc, pkg, editID, p.Locale, p.Type, id); err != nil {
@@ -218,8 +285,28 @@ func executePlan(ctx context.Context, hc *http.Client, pkg, editID string, p ima
 	return nil
 }
 
-func uploadAll(ctx context.Context, hc *http.Client, pkg, editID string, p imagediff.Plan) error {
-	for _, data := range p.Uploads {
+// uploadAll reads each image just before its upload, so one image at a time
+// is in memory however large the slot. The buffer read is the buffer sent, and
+// it goes out only if its hash is the planned one (ChangedError otherwise) and,
+// unless validate is off, it passes the pre-check's rules itself
+// (ValidationError otherwise). The pre-check and the plan each read the file
+// on their own, so neither proves what an upload holds: a file rewritten
+// between them would be planned unvalidated.
+func uploadAll(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool) error {
+	for _, i := range p.Uploads {
+		data, err := readContained(dir, files[i])
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(data)
+		if got := hex.EncodeToString(sum[:]); got != shas[i] {
+			return &ChangedError{Path: files[i], Planned: shas[i], Got: got}
+		}
+		if validate {
+			if problems := imagevalidate.CheckImage(p.Locale, p.Type, i, data); len(problems) > 0 {
+				return &ValidationError{Problems: problems}
+			}
+		}
 		if _, err := images.Upload(ctx, hc, pkg, editID, p.Locale, p.Type, data); err != nil {
 			return err
 		}
@@ -227,9 +314,29 @@ func uploadAll(ctx context.Context, hc *http.Client, pkg, editID string, p image
 	return nil
 }
 
+func readContained(dir, p string) ([]byte, error) {
+	f, err := imagetree.Open(dir, p)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return io.ReadAll(f)
+}
+
+// ChangedError is a local image whose content is no longer the one the plan
+// hashed: it was edited or replaced while the apply ran. Nothing of it was
+// uploaded. It maps to exit 20, the code of a local image refused before
+// upload.
+type ChangedError struct{ Path, Planned, Got string }
+
+func (e *ChangedError) Error() string {
+	return e.Path + " changed during the apply (planned sha256 " + e.Planned + ", now " + e.Got + "): refusing to upload content other than the planned one; rerun the apply"
+}
+func (e *ChangedError) ExitCode() int { return 20 }
+
 // filterLocales returns the managed local locales restricted to the --locale
 // allow-list (empty = all), sorted.
-func filterLocales(local imagetree.Tree, allow []string) []string {
+func filterLocales(local imagetree.Staged, allow []string) []string {
 	allowSet := toSet(allow)
 	out := make([]string, 0, len(local))
 	for loc := range local {
@@ -257,19 +364,19 @@ func filterTypes(allow []string) []images.Type {
 
 // scopedTree builds the subset of local restricted to the considered
 // locales/types: the managed slots the validator should check.
-func scopedTree(local imagetree.Tree, locales []string, types []images.Type) imagetree.Tree {
+func scopedTree(local imagetree.Staged, locales []string, types []images.Type) imagetree.Staged {
 	tySet := make(map[images.Type]bool, len(types))
 	for _, ty := range types {
 		tySet[ty] = true
 	}
-	out := make(imagetree.Tree)
+	out := make(imagetree.Staged)
 	for _, loc := range locales {
 		for ty, seq := range local[loc] {
 			if !tySet[ty] || len(seq) == 0 {
 				continue
 			}
 			if out[loc] == nil {
-				out[loc] = make(map[images.Type][][]byte)
+				out[loc] = make(map[images.Type][]string)
 			}
 			out[loc][ty] = seq
 		}

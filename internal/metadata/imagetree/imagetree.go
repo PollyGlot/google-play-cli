@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
@@ -41,8 +42,9 @@ type Tree map[string]map[images.Type][][]byte
 // Staged is a Tree whose images live in files rather than in memory: locale →
 // (image type → ordered paths, each holding one image's bytes). WriteStaged
 // copies each file into place, so a caller staging large downloads on disk
-// never holds the whole tree in memory. The staged files are only read, never
-// moved or removed.
+// never holds the whole tree in memory. Scan returns the on-disk tree in the
+// same shape, so a reader opens one image at a time. The files are only read,
+// never moved or removed.
 type Staged map[string]map[images.Type][]string
 
 // blob is one image to write: its leading bytes for the extension sniff, and
@@ -312,15 +314,41 @@ func pruneStaleGallery(root, galleryDir string, keep map[string]bool) error {
 	return nil
 }
 
-// Read loads the Store-image tree rooted at dir. It scans `<dir>/<locale>/
-// images/` for each first-level locale directory: a recognized image file
-// whose stem names a singular type is a singular slot; a sub-directory whose
-// name is a gallery type is a gallery slot (its image files read in
-// filename-sorted display order). Everything else (a README, an unknown
-// extension, a stray empty directory, a non-locale dir) is ignored. An absent
-// dir or absent images/ subtree yields an empty (non-nil) Tree, not an error.
+// Read is Scan with every image loaded into memory, for a tree known to be
+// small (a test, a fixture). A command reading the operator's tree uses Scan:
+// that tree has no size bound.
 func Read(dir string) (Tree, error) {
-	tr := make(Tree)
+	st, err := Scan(dir)
+	if err != nil {
+		return nil, err
+	}
+	tr := make(Tree, len(st))
+	for loc, slots := range st {
+		tr[loc] = make(map[images.Type][][]byte, len(slots))
+		for ty, paths := range slots {
+			seq := make([][]byte, len(paths))
+			for i, p := range paths {
+				if seq[i], err = os.ReadFile(p); err != nil {
+					return nil, err
+				}
+			}
+			tr[loc][ty] = seq
+		}
+	}
+	return tr, nil
+}
+
+// Scan finds the Store-image tree rooted at dir without reading any image. It
+// scans `<dir>/<locale>/images/` for each first-level locale directory: a
+// recognized image file whose stem names a singular type is a singular slot; a
+// sub-directory whose name is a gallery type is a gallery slot (its image
+// files in filename-sorted display order). Everything else (a README, an
+// unknown extension, a stray empty directory, a non-locale dir) is ignored. An
+// absent images/ subtree yields an empty (non-nil) tree, not an error. Every
+// path returned has passed the containment check, so the caller opens it as
+// is, one image at a time.
+func Scan(dir string) (Staged, error) {
+	st := make(Staged)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -339,21 +367,21 @@ func Read(dir string) (Tree, error) {
 			continue
 		}
 		locale := e.Name()
-		slots, err := readLocale(root, filepath.Join(dir, locale, imagesSubdir))
+		slots, err := scanLocale(root, filepath.Join(dir, locale, imagesSubdir))
 		if err != nil {
 			return nil, err
 		}
 		if len(slots) > 0 {
-			tr[locale] = slots
+			st[locale] = slots
 		}
 	}
-	return tr, nil
+	return st, nil
 }
 
-// readLocale reads one locale's images/ directory into a slot map. A missing
-// images/ dir yields an empty map (the locale has only text, or nothing). Only
-// non-empty slots are returned.
-func readLocale(root, imgDir string) (map[images.Type][][]byte, error) {
+// scanLocale scans one locale's images/ directory into a slot map of paths. A
+// missing images/ dir yields an empty map (the locale has only text, or
+// nothing). Only non-empty slots are returned.
+func scanLocale(root, imgDir string) (map[images.Type][]string, error) {
 	// The read side uses ContainUserPath throughout: every name below was found
 	// by walking the operator's own tree, so `en-US/images` symlinked at a
 	// shared asset directory is a layout they can opt into
@@ -369,14 +397,14 @@ func readLocale(root, imgDir string) (map[images.Type][][]byte, error) {
 		}
 		return nil, err
 	}
-	slots := make(map[images.Type][][]byte)
+	slots := make(map[images.Type][]string)
 	for _, e := range entries {
 		if e.IsDir() {
 			ty, ok := images.ParseType(e.Name())
 			if !ok || !ty.Gallery() {
 				continue // stray dir, or a singular type named as a dir: ignore
 			}
-			seq, err := readGallery(root, filepath.Join(imgDir, e.Name()))
+			seq, err := scanGallery(root, filepath.Join(imgDir, e.Name()))
 			if err != nil {
 				return nil, err
 			}
@@ -395,11 +423,11 @@ func readLocale(root, imgDir string) (map[images.Type][][]byte, error) {
 		if !ok || ty.Gallery() {
 			continue // unknown stem, or a gallery type as a flat file: ignore
 		}
-		data, err := readContained(root, filepath.Join(imgDir, e.Name()))
+		p, err := contained(root, filepath.Join(imgDir, e.Name()))
 		if err != nil {
 			return nil, err
 		}
-		slots[ty] = [][]byte{data}
+		slots[ty] = []string{p}
 	}
 	return slots, nil
 }
@@ -490,18 +518,59 @@ func writeContained(root, p string, data blob) error {
 	return nil
 }
 
-// readContained is os.ReadFile with the containment check in front of it, so
-// no image file is opened before it has been proved to live inside root.
-func readContained(root, p string) ([]byte, error) {
+// contained returns p once it has been proved to live inside root, so no image
+// file a caller opens from a Scan escapes the tree.
+func contained(root, p string) (string, error) {
 	if _, err := pathguard.ContainUserPath(root, p); err != nil {
-		return nil, err
+		return "", err
 	}
-	return os.ReadFile(p)
+	return p, nil
 }
 
-// readGallery reads a gallery directory's recognized image files in
-// filename-sorted (display) order, returning their bytes.
-func readGallery(root, galleryDir string) ([][]byte, error) {
+// Open opens p, a path Scan(dir) returned, and proves that the file it opened
+// is still inside dir. Scan's check describes the tree at scan time; a file a
+// caller opens later (to hash it, to upload it) can have been swapped for a
+// symlink out of the tree since. So containment is checked again AFTER the
+// open, and the opened file must be the one the contained name designates
+// (os.SameFile): a link swapped between the check and the open is refused
+// rather than read.
+func Open(dir, p string) (*os.File, error) {
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	if err := sameContainedFile(root, p, f); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+func sameContainedFile(root, p string, f *os.File) error {
+	if _, err := pathguard.ContainUserPath(root, p); err != nil {
+		return err
+	}
+	opened, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	named, err := os.Stat(p)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(opened, named) {
+		return exit.Usagef("refusing to use %q: it was replaced while gplay was opening it", p)
+	}
+	return nil
+}
+
+// scanGallery lists a gallery directory's recognized image files in
+// filename-sorted (display) order.
+func scanGallery(root, galleryDir string) ([]string, error) {
 	if _, err := pathguard.ContainUserPath(root, galleryDir); err != nil {
 		return nil, err
 	}
@@ -519,13 +588,13 @@ func readGallery(root, galleryDir string) ([][]byte, error) {
 		}
 	}
 	sort.Strings(names) // filename sort == display order (ADR-0013)
-	seq := make([][]byte, 0, len(names))
+	seq := make([]string, 0, len(names))
 	for _, name := range names {
-		data, err := readContained(root, filepath.Join(galleryDir, name))
+		p, err := contained(root, filepath.Join(galleryDir, name))
 		if err != nil {
 			return nil, err
 		}
-		seq = append(seq, data)
+		seq = append(seq, p)
 	}
 	return seq, nil
 }

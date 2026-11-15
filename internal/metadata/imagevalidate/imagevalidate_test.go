@@ -1,10 +1,13 @@
 // Package imagevalidate_test exercises the offline Store-image rule engine:
-// the image analog of the text char-limit validator. Every check is pure and
-// offline: dimensions and format come from image.DecodeConfig (header only),
-// the rest from a versioned in-code table (ADR-0013 §4).
+// the image analog of the text char-limit validator. Every check is offline:
+// dimensions and format come from image.DecodeConfig (header only), the rest
+// from a versioned in-code table (ADR-0013 §4).
 package imagevalidate_test
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/metadata/imagetree"
@@ -14,6 +17,32 @@ import (
 )
 
 func slot(data ...[]byte) [][]byte { return data }
+
+// validate writes each blob of tr to its own file, raw (a non-image blob must
+// reach the format rule, which imagetree.Write would refuse first), and
+// validates the files.
+func validate(t *testing.T, tr imagetree.Tree) []imagevalidate.Problem {
+	t.Helper()
+	dir := t.TempDir()
+	st := make(imagetree.Staged, len(tr))
+	for loc, slots := range tr {
+		st[loc] = make(map[images.Type][]string, len(slots))
+		for ty, seq := range slots {
+			for i, data := range seq {
+				p := filepath.Join(dir, fmt.Sprintf("%s-%s-%d", loc, ty, i))
+				if err := os.WriteFile(p, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				st[loc][ty] = append(st[loc][ty], p)
+			}
+		}
+	}
+	ps, err := imagevalidate.Validate(st)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	return ps
+}
 
 // rulesByType indexes problems by rule for assertion.
 func hasProblem(ps []imagevalidate.Problem, ty images.Type, rule string) bool {
@@ -36,7 +65,7 @@ func TestValidate_validTree_noProblems(t *testing.T) {
 			images.PhoneScreenshots: slot(testkit.PNG(1080, 1920), testkit.JPEG(1080, 1920)),
 		},
 	}
-	if ps := imagevalidate.Validate(tr); len(ps) != 0 {
+	if ps := validate(t, tr); len(ps) != 0 {
 		t.Fatalf("valid tree produced problems: %+v", ps)
 	}
 }
@@ -45,7 +74,7 @@ func TestValidate_validTree_noProblems(t *testing.T) {
 // size is a dimensions violation (icon must be 512×512).
 func TestValidate_exactDimensions(t *testing.T) {
 	tr := imagetree.Tree{"en-US": {images.Icon: slot(testkit.PNG(500, 500))}}
-	ps := imagevalidate.Validate(tr)
+	ps := validate(t, tr)
 	if !hasProblem(ps, images.Icon, "dimensions") {
 		t.Errorf("500×500 icon should violate exact dimensions: %+v", ps)
 	}
@@ -55,7 +84,7 @@ func TestValidate_exactDimensions(t *testing.T) {
 // [320,3840] is a side violation.
 func TestValidate_screenshotSideRange(t *testing.T) {
 	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: slot(testkit.PNG(200, 400))}}
-	ps := imagevalidate.Validate(tr)
+	ps := validate(t, tr)
 	if !hasProblem(ps, images.PhoneScreenshots, "side") {
 		t.Errorf("200px side should violate the screenshot side range: %+v", ps)
 	}
@@ -65,7 +94,7 @@ func TestValidate_screenshotSideRange(t *testing.T) {
 // exceeds 2× the short side is a ratio violation.
 func TestValidate_screenshotAspectRatio(t *testing.T) {
 	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: slot(testkit.PNG(400, 1600))}} // 4:1
-	ps := imagevalidate.Validate(tr)
+	ps := validate(t, tr)
 	if !hasProblem(ps, images.PhoneScreenshots, "ratio") {
 		t.Errorf("4:1 screenshot should violate the aspect ratio bound: %+v", ps)
 	}
@@ -75,7 +104,7 @@ func TestValidate_screenshotAspectRatio(t *testing.T) {
 // format violation.
 func TestValidate_format(t *testing.T) {
 	tr := imagetree.Tree{"en-US": {images.Icon: slot([]byte("GIF89a not really an image"))}}
-	ps := imagevalidate.Validate(tr)
+	ps := validate(t, tr)
 	if !hasProblem(ps, images.Icon, "format") {
 		t.Errorf("non-image bytes should violate format: %+v", ps)
 	}
@@ -89,7 +118,7 @@ func TestValidate_perSlotCount(t *testing.T) {
 		imgs[i] = testkit.PNG(1080, 1920)
 	}
 	tr := imagetree.Tree{"en-US": {images.PhoneScreenshots: imgs}}
-	ps := imagevalidate.Validate(tr)
+	ps := validate(t, tr)
 	if !hasProblem(ps, images.PhoneScreenshots, "count") {
 		t.Errorf("9 screenshots should violate the per-slot count (max 8): %+v", ps)
 	}
@@ -102,7 +131,7 @@ func TestValidate_perImageByteCap(t *testing.T) {
 	icon := testkit.PNG(512, 512)
 	oversized := append(icon, make([]byte, imagevalidate.MaxBytesFor(images.Icon)+1)...)
 	tr := imagetree.Tree{"en-US": {images.Icon: slot(oversized)}}
-	ps := imagevalidate.Validate(tr)
+	ps := validate(t, tr)
 	if !hasProblem(ps, images.Icon, "bytes") {
 		t.Errorf("oversized icon should violate the byte cap: %+v", ps)
 	}
@@ -117,5 +146,29 @@ func TestRulesVersion_isDatestampedAndCitesDoc(t *testing.T) {
 	}
 	if imagevalidate.RulesDoc == "" {
 		t.Error("RulesDoc must cite the Google asset-spec URL")
+	}
+}
+
+// TestCheckImage_matchesValidate: the in-memory check an upload runs reports,
+// image for image, what Validate reports on the same bytes read from disk.
+func TestCheckImage_matchesValidate(t *testing.T) {
+	oversized := append(testkit.PNG(512, 512), make([]byte, imagevalidate.MaxBytesFor(images.Icon))...)
+	cases := []struct {
+		ty   images.Type
+		data []byte
+	}{
+		{images.Icon, testkit.PNG(512, 512)},
+		{images.Icon, testkit.PNG(1024, 512)},
+		{images.Icon, oversized},
+		{images.Icon, []byte("not an image")},
+		{images.PhoneScreenshots, testkit.PNG(400, 1600)},
+		{images.PhoneScreenshots, testkit.JPEG(1080, 1920)},
+	}
+	for _, c := range cases {
+		want := validate(t, imagetree.Tree{"en-US": {c.ty: slot(c.data)}})
+		got := imagevalidate.CheckImage("en-US", c.ty, 0, c.data)
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s (%d bytes): CheckImage = %v, Validate = %v", c.ty, len(c.data), got, want)
+		}
 	}
 }

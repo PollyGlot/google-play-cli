@@ -23,6 +23,15 @@ func img(id string, b []byte) images.Image { return images.Image{ID: id, Sha256:
 
 func B(tag string) []byte { return []byte("png-" + tag) }
 
+// local is a slot's local sequence as the engine takes it: one sha256 per image.
+func local(bs ...[]byte) []string {
+	out := make([]string, len(bs))
+	for i, b := range bs {
+		out[i] = sha(b)
+	}
+	return out
+}
+
 // changeFor returns the first change matching (type, op).
 func opsOf(changes []imagediff.SlotChange) []string {
 	out := make([]string, 0, len(changes))
@@ -46,7 +55,7 @@ func hasOp(changes []imagediff.SlotChange, op imagediff.Op) bool {
 func TestUnchanged_isNoOp(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
-		Local: [][]byte{B("a"), B("b")},
+		Local: local(B("a"), B("b")),
 		Live:  []images.Image{img("1", B("a")), img("2", B("b"))},
 	}
 	plans := imagediff.Plans([]imagediff.SlotInput{in}, false)
@@ -61,7 +70,7 @@ func TestUnchanged_isNoOp(t *testing.T) {
 // TestSingular_upload_whenLiveEmpty: a managed singular slot with no live image
 // uploads.
 func TestSingular_upload_whenLiveEmpty(t *testing.T) {
-	in := imagediff.SlotInput{Locale: "en-US", Type: images.Icon, Local: [][]byte{B("icon")}}
+	in := imagediff.SlotInput{Locale: "en-US", Type: images.Icon, Local: local(B("icon"))}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
 	if p.Kind != imagediff.KindRewrite || len(p.Uploads) != 1 {
 		t.Errorf("singular upload should rewrite with 1 upload, got kind=%v uploads=%d", p.Kind, len(p.Uploads))
@@ -76,7 +85,7 @@ func TestSingular_upload_whenLiveEmpty(t *testing.T) {
 func TestSingular_replace_whenContentDiffers(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.Icon,
-		Local: [][]byte{B("new-icon")},
+		Local: local(B("new-icon")),
 		Live:  []images.Image{img("old", B("old-icon"))},
 	}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
@@ -93,7 +102,7 @@ func TestSingular_replace_whenContentDiffers(t *testing.T) {
 func TestGallery_pureAppend_uploadsTail(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
-		Local: [][]byte{B("a"), B("b"), B("c")},
+		Local: local(B("a"), B("b"), B("c")),
 		Live:  []images.Image{img("1", B("a")), img("2", B("b"))},
 	}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
@@ -113,7 +122,7 @@ func TestGallery_pureAppend_uploadsTail(t *testing.T) {
 func TestGallery_reorder_whenOrderDiffers_noLoss(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
-		Local: [][]byte{B("b"), B("a")},
+		Local: local(B("b"), B("a")),
 		Live:  []images.Image{img("1", B("a")), img("2", B("b"))},
 	}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
@@ -135,7 +144,7 @@ func TestGallery_reorder_whenOrderDiffers_noLoss(t *testing.T) {
 func TestGallery_additive_keepsOnlineOnly(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
-		Local: [][]byte{B("a"), B("new")},
+		Local: local(B("a"), B("new")),
 		Live:  []images.Image{img("1", B("a")), img("2", B("extra"))},
 	}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
@@ -171,8 +180,8 @@ func TestUntouchedSlot_whenLocalEmpty(t *testing.T) {
 // §5 shape and a flat counter summary; HasChanges keys the CI gate.
 func TestAggregate_summaryAndSchema(t *testing.T) {
 	slots := []imagediff.SlotInput{
-		{Locale: "en-US", Type: images.Icon, Local: [][]byte{B("icon")}},                                                                            // upload
-		{Locale: "en-US", Type: images.PhoneScreenshots, Local: [][]byte{B("b"), B("a")}, Live: []images.Image{img("1", B("a")), img("2", B("b"))}}, // reorder
+		{Locale: "en-US", Type: images.Icon, Local: local(B("icon"))},                                                                            // upload
+		{Locale: "en-US", Type: images.PhoneScreenshots, Local: local(B("b"), B("a")), Live: []images.Image{img("1", B("a")), img("2", B("b"))}}, // reorder
 	}
 	res := imagediff.Aggregate("com.example.app", imagediff.Plans(slots, false))
 	if res.Package != "com.example.app" {

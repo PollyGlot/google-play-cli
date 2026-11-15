@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +37,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/apihint"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/diff"
+	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/orchestrator"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/tree"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -293,6 +295,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, classifyApplyError(pkg, err)
 	}
+	verb := "creates"
+	if in.DryRun {
+		verb = "would create"
+	}
+	for _, inc := range res.Incomplete {
+		rc.Warnf("this apply %s locale %q on Play without %s, which `gplay metadata validate` requires: add %s under %s",
+			verb, inc.Locale, strings.Join(inc.Missing, " and "), missingFiles(inc.Missing), filepath.Join(dir, inc.Locale))
+	}
 	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
 	// --dry-run), reporting how many locales were patched (and created or
 	// pruned, if any). Created locales are counted apart, not as patched.
@@ -307,6 +317,17 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.ConfirmMutation(explicitEditID, "metadata applied to %q (%s)", res.Package, detail)
 	}
 	return Payload{Result: res}, nil
+}
+
+// missingFiles names the tree files that carry the given field keys.
+func missingFiles(keys []string) string {
+	files := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if spec, ok := listing.SpecByKey(k); ok {
+			files = append(files, spec.File)
+		}
+	}
+	return strings.Join(files, " and ")
 }
 
 // NewCommand returns the cobra command for `gplay metadata apply`.
