@@ -82,7 +82,9 @@ func TestApply_planningReadsInParallel_planUnchanged(t *testing.T) {
 			return time.Duration(1+h.Sum32()%6) * time.Millisecond
 		})
 
-		res, err := imageorchestrator.Apply(context.Background(), &http.Client{Transport: rt}, stage(t, tr), imageorchestrator.Opts{
+		dir, local := stage(t, tr)
+		res, err := imageorchestrator.Apply(context.Background(), &http.Client{Transport: rt}, local, imageorchestrator.Opts{
+			Dir:     dir,
 			Package: "com.example.app", DryRun: dryRun, Confirm: !dryRun, NoValidate: true,
 		})
 		if err != nil {

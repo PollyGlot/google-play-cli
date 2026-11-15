@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
@@ -524,6 +525,47 @@ func contained(root, p string) (string, error) {
 		return "", err
 	}
 	return p, nil
+}
+
+// Open opens p, a path Scan(dir) returned, and proves that the file it opened
+// is still inside dir. Scan's check describes the tree at scan time; a file a
+// caller opens later (to hash it, to upload it) can have been swapped for a
+// symlink out of the tree since. So containment is checked again AFTER the
+// open, and the opened file must be the one the contained name designates
+// (os.SameFile): a link swapped between the check and the open is refused
+// rather than read.
+func Open(dir, p string) (*os.File, error) {
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	if err := sameContainedFile(root, p, f); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+func sameContainedFile(root, p string, f *os.File) error {
+	if _, err := pathguard.ContainUserPath(root, p); err != nil {
+		return err
+	}
+	opened, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	named, err := os.Stat(p)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(opened, named) {
+		return exit.Usagef("refusing to use %q: it was replaced while gplay was opening it", p)
+	}
+	return nil
 }
 
 // scanGallery lists a gallery directory's recognized image files in

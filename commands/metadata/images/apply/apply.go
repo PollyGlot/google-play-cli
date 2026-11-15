@@ -239,6 +239,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	res, err := imageorchestrator.Apply(rc.Ctx, httpClient, local, imageorchestrator.Opts{
 		Package:        pkg,
+		Dir:            dir,
 		DryRun:         in.DryRun,
 		Confirm:        in.Confirm,
 		Prune:          in.Prune,

@@ -25,8 +25,8 @@ func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:
 
 // stage writes each blob of tr to its own file, raw (these tests skip the
 // pre-check, so a blob need not be an image), and returns the tree of paths
-// Apply takes.
-func stage(t *testing.T, tr imagetree.Tree) imagetree.Staged {
+// Apply takes, with the directory they live in (Opts.Dir).
+func stage(t *testing.T, tr imagetree.Tree) (string, imagetree.Staged) {
 	t.Helper()
 	dir := t.TempDir()
 	st := make(imagetree.Staged, len(tr))
@@ -42,7 +42,7 @@ func stage(t *testing.T, tr imagetree.Tree) imagetree.Staged {
 			}
 		}
 	}
-	return st
+	return dir, st
 }
 
 // orchRT configures a testkit.Fake with a per-slot live body and a toggle to
@@ -142,9 +142,10 @@ func (f orchFake) singleDeletes() int { return f.listingDeletes(true) }
 func TestApply_perSlotFailure_discardsEdit(t *testing.T) {
 	rt := newOrch(t, orchRT{editID: "e", failUpload: true})
 	hc := &http.Client{Transport: rt}
-	local := stage(t, imagetree.Tree{"en-US": {images.Icon: {[]byte("icon-bytes")}}})
+	dir, local := stage(t, imagetree.Tree{"en-US": {images.Icon: {[]byte("icon-bytes")}}})
 
 	_, err := imageorchestrator.Apply(context.Background(), hc, local, imageorchestrator.Opts{
+		Dir:     dir,
 		Package: "com.example.app", Confirm: true, Types: []string{"icon"}, NoValidate: true,
 	})
 	if err == nil {
@@ -166,9 +167,10 @@ func TestApply_noOp_discardsWithoutCommit(t *testing.T) {
 	live := fmt.Sprintf(`{"images":[{"id":"x","sha256":%q}]}`, sha(iconBytes))
 	rt := newOrch(t, orchRT{editID: "e", liveBody: live})
 	hc := &http.Client{Transport: rt}
-	local := stage(t, imagetree.Tree{"en-US": {images.Icon: {iconBytes}}})
+	dir, local := stage(t, imagetree.Tree{"en-US": {images.Icon: {iconBytes}}})
 
 	res, err := imageorchestrator.Apply(context.Background(), hc, local, imageorchestrator.Opts{
+		Dir:     dir,
 		Package: "com.example.app", Confirm: true, Types: []string{"icon"}, NoValidate: true,
 	})
 	if err != nil {
@@ -192,9 +194,10 @@ func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))
 	rt := newOrch(t, orchRT{editID: "e", liveBody: live})
 	hc := &http.Client{Transport: rt}
-	local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}}) // keep only a; b is online-only
+	dir, local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}}) // keep only a; b is online-only
 
 	res, err := imageorchestrator.Apply(context.Background(), hc, local, imageorchestrator.Opts{
+		Dir:     dir,
 		Package: "com.example.app", Confirm: true, Prune: true, Types: []string{"phoneScreenshots"}, NoValidate: true,
 	})
 	if err != nil {
@@ -221,9 +224,10 @@ func TestApply_prune_offWithoutFlag_keepsOnlineOnly(t *testing.T) {
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))
 	rt := newOrch(t, orchRT{editID: "e", liveBody: live})
 	hc := &http.Client{Transport: rt}
-	local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}})
+	dir, local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}})
 
 	_, err := imageorchestrator.Apply(context.Background(), hc, local, imageorchestrator.Opts{
+		Dir:     dir,
 		Package: "com.example.app", Confirm: true, Types: []string{"phoneScreenshots"}, NoValidate: true,
 	})
 	if err != nil {
@@ -245,9 +249,10 @@ func TestApply_prune_belowRequiredMinimum_rejectedAtCommit(t *testing.T) {
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))
 	rt := newOrch(t, orchRT{editID: "e", liveBody: live, failCommit: true})
 	hc := &http.Client{Transport: rt}
-	local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}})
+	dir, local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}})
 
 	_, err := imageorchestrator.Apply(context.Background(), hc, local, imageorchestrator.Opts{
+		Dir:     dir,
 		Package: "com.example.app", Confirm: true, Prune: true, Types: []string{"phoneScreenshots"}, NoValidate: true,
 	})
 	if err == nil {
