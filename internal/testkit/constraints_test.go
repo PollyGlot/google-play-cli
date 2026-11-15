@@ -188,6 +188,28 @@ func TestFake_AllowInvalid_letsADeliberate400Through(t *testing.T) {
 	}
 }
 
+func TestFake_CollectRefusals_failsTheRoundTripInsteadOfPanicking(t *testing.T) {
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`)).CollectRefusals()
+	if got := sendRecovering(t, fake, http.MethodPost, tracksCreateURL, "application/json", `{"track":"qa-team","type":"CLOSED_TESTING","formFactor":"DEFAULT"}`); got != "" {
+		t.Fatalf("an accepted body panicked:\n%s", got)
+	}
+	if got := fake.Refusals(); len(got) != 0 {
+		t.Fatalf("an accepted body was refused: %q", got)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, tracksCreateURL, strings.NewReader(`{"track":"beta-wear","type":"CLOSED_TESTING","formFactor":"WEAR"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp, err := (&http.Client{Transport: fake}).Do(req); err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("a refused body reached a responder")
+	}
+	got := fake.Refusals()
+	if len(got) != 1 || !strings.Contains(got[0], "TrackConfig.track") {
+		t.Errorf("Refusals() = %q, want one naming TrackConfig.track", got)
+	}
+}
+
 func TestFake_AllowInvalid_refusesAnUnknownRule(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), `AllowInvalid("TrackRelease.fraction"): no such rule`) {

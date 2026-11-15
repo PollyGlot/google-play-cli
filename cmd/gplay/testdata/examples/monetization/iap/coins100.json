@@ -1,0 +1,11 @@
+{
+  "productId": "coins100",
+  "listings": [{"languageCode": "en-US", "title": "100 coins"}],
+  "purchaseOptions": [{
+    "purchaseOptionId": "buy",
+    "buyOption": {"legacyCompatible": true},
+    "regionalPricingAndAvailabilityConfigs": [
+      {"regionCode": "US", "price": {"currencyCode": "USD", "units": "0", "nanos": 990000000}, "availability": "AVAILABLE"}
+    ]
+  }]
+}
