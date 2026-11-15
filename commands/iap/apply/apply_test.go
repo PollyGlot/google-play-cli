@@ -120,11 +120,17 @@ func signedSAJSON(t *testing.T) []byte {
 
 func newRC(t *testing.T, rt *iapRT) *kernel.RunContext {
 	t.Helper()
+	return newRCServing(t, rt.serve)
+}
+
+// newRCServing is newRC for a test that wraps iapRT's answers.
+func newRCServing(t *testing.T, serve func(*http.Request) (*http.Response, error)) *kernel.RunContext {
+	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(rt.serve)})
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: testkit.RoundTripFunc(serve)})
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Account = sa
 	return rc

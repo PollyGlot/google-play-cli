@@ -63,10 +63,14 @@ type Money struct {
 	Nanos        int32  `json:"nanos,omitempty"`
 }
 
-// listPageSize is the page size subscriptions.list requests; List follows
-// nextPageToken to completion regardless (reconciliation needs the whole
-// catalog, silent truncation would surface as phantom deletes in a plan).
-const listPageSize = 100
+// listPageSize is the page size subscriptions.list and the offers walk
+// request; List follows nextPageToken to completion regardless
+// (reconciliation needs the whole catalog, silent truncation would surface as
+// phantom deletes in a plan). It is sized against api.MaxAPISuccessBodyRead:
+// Play pretty-prints, and a subscription with three base plans priced in
+// every region weighs about 140 KB, so 100 of them came to 13 MB, past the
+// 4 MiB cap; 20 stay near 2.8 MB (bodycap_test.go, #790).
+const listPageSize = 20
 
 // Item is one live subscription: the parsed product ID plus the verbatim
 // resource bytes (the unit `pull` writes to a catalog file, ADR-0003 spirit).

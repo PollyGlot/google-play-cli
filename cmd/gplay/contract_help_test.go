@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"regexp"
 	"strings"
@@ -113,13 +114,32 @@ func subcommand(c *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-// exampleInvocations extracts the gplay invocations of an Example: comment
-// and blank lines are skipped, a trailing backslash continues a line, leading
-// VAR=value assignments are dropped, and a pipe, redirect or command list
-// ends the invocation. Lines running another program (jq, apksigner) are not
-// gplay's to check. Each result is the argv after "gplay".
+// exampleInvocations is the argv after "gplay" of each exampleRun.
 func exampleInvocations(example string) [][]string {
 	var out [][]string
+	for _, r := range exampleRuns(example) {
+		out = append(out, r.args)
+	}
+	return out
+}
+
+// exampleRun is one gplay invocation of an Example, with what the shell
+// would hand it besides its argv.
+type exampleRun struct {
+	args  []string          // argv after "gplay", $NAMEs the block sets expanded
+	stdin string            // the file a `< file` redirect reads, "" for none
+	env   map[string]string // NAME=value lines above it in the block
+	unset []string          // $NAMEs it reads that no line above sets
+}
+
+// exampleRuns extracts the gplay invocations of an Example: comment and
+// blank lines are skipped, a trailing backslash continues a line, leading
+// VAR=value assignments are dropped (a line of assignments alone sets them
+// for the lines below), and a pipe, redirect or command list ends the
+// invocation. Lines running another program (jq, apksigner) are not gplay's
+// to check.
+func exampleRuns(example string) []exampleRun {
+	var out []exampleRun
 	var logical []string
 	var cur strings.Builder
 	for _, line := range strings.Split(example, "\n") {
@@ -138,27 +158,66 @@ func exampleInvocations(example string) [][]string {
 	if cur.Len() > 0 {
 		logical = append(logical, cur.String())
 	}
+	vars := map[string]string{}
 	for _, l := range logical {
 		words := shellWords(l)
-		for len(words) > 0 && envAssignment.MatchString(words[0]) {
+		if len(words) > 0 && words[0] == "export" {
 			words = words[1:]
 		}
-		if len(words) == 0 || words[0] != "gplay" {
+		n := 0
+		for n < len(words) && envAssignment.MatchString(words[n]) {
+			n++
+		}
+		if n == len(words) {
+			for _, w := range words {
+				name, value, _ := strings.Cut(w, "=")
+				vars[name] = value
+			}
 			continue
+		}
+		prefix := words[:n]
+		words = words[n:]
+		if words[0] != "gplay" {
+			continue
+		}
+		run := exampleRun{env: maps.Clone(vars)}
+		for _, w := range prefix {
+			name, value, _ := strings.Cut(w, "=")
+			run.env[name] = value
 		}
 		args := words[1:]
 		for i, w := range args {
 			if w == "|" || w == "||" || w == "&&" || w == ";" || strings.HasPrefix(w, ">") || strings.HasPrefix(w, "<") || strings.HasPrefix(w, "2>") {
+				if w == "<" && i+1 < len(args) {
+					run.stdin = args[i+1]
+				}
 				args = args[:i]
 				break
 			}
 		}
-		out = append(out, args)
+		for i, w := range args {
+			args[i] = shellVar.ReplaceAllStringFunc(w, func(ref string) string {
+				name := strings.Trim(ref, "${}")
+				if v, ok := vars[name]; ok {
+					return v
+				}
+				run.unset = append(run.unset, name)
+				return ref
+			})
+		}
+		run.args = args
+		out = append(out, run)
 	}
 	return out
 }
 
-var envAssignment = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=`)
+var (
+	envAssignment = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=`)
+	// shellVar is a $NAME or ${NAME} reference. The tokenizer has already
+	// dropped the quotes, so a single-quoted $ would expand too: no Example
+	// writes one.
+	shellVar = regexp.MustCompile(`\$\{?[A-Za-z_][A-Za-z0-9_]*\}?`)
+)
 
 // shellWords splits a line the way a POSIX shell would for the subset an
 // Example uses: whitespace separates words, single quotes are literal, double
@@ -229,6 +288,31 @@ func TestExampleParser_selfCheck(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("exampleInvocations:\n got %q\nwant %q", got, want)
+	}
+
+	runs := exampleRuns(`  KEY=projects/p/keys/k
+  export GPLAY_APP_STORE_PACKAGE=com.example.store
+  gplay signing enroll --kms-key "$KEY" --dry-run
+  GPLAY_READONLY=1 gplay signing rotate --kms-key "${NEW_KEY}"
+  gplay reviews reply --batch - < replies.tsv`)
+	wantRuns := []exampleRun{
+		{
+			args: []string{"signing", "enroll", "--kms-key", "projects/p/keys/k", "--dry-run"},
+			env:  map[string]string{"KEY": "projects/p/keys/k", "GPLAY_APP_STORE_PACKAGE": "com.example.store"},
+		},
+		{
+			args:  []string{"signing", "rotate", "--kms-key", "${NEW_KEY}"},
+			env:   map[string]string{"KEY": "projects/p/keys/k", "GPLAY_APP_STORE_PACKAGE": "com.example.store", "GPLAY_READONLY": "1"},
+			unset: []string{"NEW_KEY"},
+		},
+		{
+			args:  []string{"reviews", "reply", "--batch", "-"},
+			stdin: "replies.tsv",
+			env:   map[string]string{"KEY": "projects/p/keys/k", "GPLAY_APP_STORE_PACKAGE": "com.example.store"},
+		},
+	}
+	if !reflect.DeepEqual(runs, wantRuns) {
+		t.Fatalf("exampleRuns:\n got %+v\nwant %+v", runs, wantRuns)
 	}
 
 	// The checker itself must reject what it exists to catch.
