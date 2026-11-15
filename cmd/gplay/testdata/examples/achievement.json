@@ -1,0 +1,9 @@
+{
+  "achievementType": "STANDARD",
+  "initialState": "REVEALED",
+  "draft": {
+    "name": {"translations": [{"locale": "en-US", "value": "First win"}]},
+    "description": {"translations": [{"locale": "en-US", "value": "Win your first match"}]},
+    "pointValue": 10
+  }
+}
