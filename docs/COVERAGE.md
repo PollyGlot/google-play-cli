@@ -144,7 +144,7 @@ Of the 166 admin methods (199 total minus the 33 excluded by nature), **135 are 
 | `androidpublisher.monetization.subscriptions.basePlans.batchMigratePrices` | ⚪ | redundant with `androidpublisher.monetization.subscriptions.basePlans.migratePrices`: multi-plan form; `subscriptions prices migrate` gates one base plan per call (ADR-0041) |
 | `androidpublisher.monetization.subscriptions.basePlans.batchUpdateStates` | ⚪ | redundant with `androidpublisher.monetization.subscriptions.basePlans.activate`: batch state verb; `subscriptions apply` drives the unary `activate`/`deactivate` verbs, one base plan per call (ADR-0041) |
 | `androidpublisher.monetization.subscriptions.basePlans.deactivate` | ✅ | `gplay subscriptions apply` |
-| `androidpublisher.monetization.subscriptions.basePlans.delete` | ✅ | `gplay subscriptions apply`; --confirm-gated; the API only deletes a DRAFT base plan |
+| `androidpublisher.monetization.subscriptions.basePlans.delete` | ✅ | `gplay subscriptions apply`; --confirm-gated; an ACTIVE base plan is refused while planning, the API decides for an INACTIVE one |
 | `androidpublisher.monetization.subscriptions.basePlans.migratePrices` | ✅ | `gplay subscriptions prices migrate`; --confirm-gated, reprices live subscribers |
 | `androidpublisher.monetization.subscriptions.basePlans.offers.activate` | ✅ | `gplay subscriptions apply` |
 | `androidpublisher.monetization.subscriptions.basePlans.offers.batchGet` | ⚪ | redundant with `androidpublisher.monetization.subscriptions.basePlans.offers.list`: multi-id read; `subscriptions pull` reads every offer of a base plan through `list` |
