@@ -162,3 +162,81 @@ func TestInit_inHomeDir_writesNoFiles(t *testing.T) {
 		t.Errorf("Init in $HOME must not create files; stat err = %v", err)
 	}
 }
+
+// A cloned repo can commit .gplay/config.json or .gplay/.gitignore as a
+// symlink. Init writes both, so without the guard `gplay init` overwrites the
+// link's target with the operator's rights (#791). The refusal is the one
+// Global.Save gives for its staging file (pathguard.ContainWrite): a link out
+// of the repo is refused as an escape, a link back inside it as a symlink.
+func TestInit_refusesToWriteThroughCommittedSymlink(t *testing.T) {
+	for _, file := range []string{"config.json", ".gitignore"} {
+		for _, tc := range []struct {
+			where, wantMsg string
+		}{
+			{"outside", "outside"},
+			{"inside", "it is a symlink"},
+		} {
+			t.Run(file+"/target-"+tc.where, func(t *testing.T) {
+				repo := gitRepo(t)
+				victimDir := t.TempDir()
+				if tc.where == "inside" {
+					victimDir = repo
+				}
+				victim := filepath.Join(victimDir, "victim.txt")
+				const victimContent = "VICTIM-ORIGINAL"
+				if err := os.WriteFile(victim, []byte(victimContent), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(filepath.Join(repo, ".gplay"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(victim, filepath.Join(repo, ".gplay", file)); err != nil {
+					t.Skipf("symlinks unavailable: %v", err)
+				}
+				runGit(t, repo, "add", "-A")
+
+				err := config.Init(context.Background(), config.OSFS{}, repo, t.TempDir(), "com.example.app")
+				var ue *exit.UsageError
+				if !errors.As(err, &ue) {
+					t.Errorf("want a usage error (exit 2), got %T: %v", err, err)
+				} else if !strings.Contains(err.Error(), tc.wantMsg) || !strings.Contains(err.Error(), file) {
+					t.Errorf("want a refusal naming %s (%q), got %v", file, tc.wantMsg, err)
+				}
+				assertUnchanged(t, victim, victimContent)
+			})
+		}
+	}
+}
+
+// A symlinked .gplay/ itself, pointing out of the repo, must not become the
+// place Init writes the pin and .gitignore into.
+func TestInit_refusesSymlinkedGplayDirOutsideRepo(t *testing.T) {
+	repo := gitRepo(t)
+	elsewhere := t.TempDir()
+	if err := os.Symlink(elsewhere, filepath.Join(repo, ".gplay")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	err := config.Init(context.Background(), config.OSFS{}, repo, t.TempDir(), "com.example.app")
+	var ue *exit.UsageError
+	if !errors.As(err, &ue) {
+		t.Errorf("want a usage error (exit 2), got %T: %v", err, err)
+	}
+	entries, readErr := os.ReadDir(elsewhere)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("Init wrote %d file(s) through the symlinked .gplay/", len(entries))
+	}
+}
+
+func assertUnchanged(t *testing.T, path, want string) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the victim file is gone: %v", err)
+	}
+	if string(got) != want {
+		t.Errorf("Init wrote through the symlink:\n%s", got)
+	}
+}

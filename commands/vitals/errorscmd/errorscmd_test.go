@@ -50,11 +50,17 @@ func saJSON(t *testing.T) []byte {
 
 func newRC(t *testing.T, body string) (*kernel.RunContext, *testkit.Fake, *bytes.Buffer) {
 	t.Helper()
+	return newFakeRC(t, testkit.NewFake(testkit.Any(http.StatusOK, body)))
+}
+
+// newFakeRC wires a RunContext onto fake, for a test whose fake answers each
+// call differently.
+func newFakeRC(t *testing.T, fake *testkit.Fake) (*kernel.RunContext, *testkit.Fake, *bytes.Buffer) {
+	t.Helper()
 	sa, err := serviceaccount.Parse(saJSON(t))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	fake := testkit.NewFake(testkit.Any(http.StatusOK, body))
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fake})
 	var stderr bytes.Buffer
 	rc := kernel.NewForTest(ctx, kernel.Boot{Stdout: &bytes.Buffer{}, Stderr: &stderr}, kernel.Inputs{Format: output.FormatJSON})
