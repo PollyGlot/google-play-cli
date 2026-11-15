@@ -28,7 +28,8 @@ func releasesSent(t *testing.T, body []byte) []json.RawMessage {
 // release, and Play refuses an update that carries two ("Only one completed
 // release is allowed"). Completing the rollout drops the previous completed
 // release, keeps the halted and draft ones byte for byte, keeps the
-// target's unmodelled fields, and reports the superseded versionCode.
+// target's unmodelled fields bar countryTargeting, which Play allows on an
+// inProgress release only (#779), and reports the superseded versionCode.
 func TestComplete_supersedesThePreviousCompletedRelease(t *testing.T) {
 	const (
 		previous = `{"name":"400","status":"completed","versionCodes":["400"]}`
@@ -74,8 +75,8 @@ func TestComplete_supersedesThePreviousCompletedRelease(t *testing.T) {
 	if raw, has := completed["userFraction"]; has {
 		t.Errorf("target kept userFraction %s, want the key removed", raw)
 	}
-	if got := string(completed["countryTargeting"]); got != `{"countries":["DE"]}` {
-		t.Errorf("target countryTargeting = %s, want it kept", got)
+	if raw, has := completed["countryTargeting"]; has {
+		t.Errorf("target kept countryTargeting %s, want the key removed (#779)", raw)
 	}
 	if got := string(completed["inAppUpdatePriority"]); got != "3" {
 		t.Errorf("target inAppUpdatePriority = %s, want it kept", got)
@@ -127,6 +128,54 @@ func TestState_onlyCompleteSupersedes(t *testing.T) {
 			}
 			if len(result.SupersededVersionCodes) != 0 {
 				t.Errorf("SupersededVersionCodes = %v, want none", result.SupersededVersionCodes)
+			}
+		})
+	}
+}
+
+// TestState_keepsCountryTargetingUntilCompleted is the other half of #779:
+// rollout, halt and resume leave the release inProgress or halted, so the
+// target's countryTargeting travels with it byte for byte.
+func TestState_keepsCountryTargetingUntilCompleted(t *testing.T) {
+	const targeting = `{"countries":["DE"],"includeRestOfWorld":true}`
+	verbs := []struct {
+		name, from, want string
+		run              func(context.Context, *http.Client, orchestrator.StateOpts) (*orchestrator.Result, error)
+	}{
+		{"rollout", "inProgress", `"inProgress"`, orchestrator.Rollout},
+		{"halt", "inProgress", `"halted"`, orchestrator.Halt},
+		{"resume", "halted", `"inProgress"`, orchestrator.Resume},
+	}
+	for _, v := range verbs {
+		t.Run(v.name, func(t *testing.T) {
+			rt := newPromoteFake(stateAPI{
+				editID:             "edit-" + v.name,
+				sourceTrackGetResp: `{"track":"production","releases":[{"name":"401","status":"` + v.from + `","versionCodes":["401"],"userFraction":0.2,"countryTargeting":` + targeting + `}]}`,
+				trackUpdateRawResp: `{"track":"production","releases":[]}`,
+			})
+			hc := &http.Client{Transport: rt}
+
+			if _, err := v.run(context.Background(), hc, orchestrator.StateOpts{
+				Package:      "com.example.app",
+				Track:        "production",
+				UserFraction: 0.5,
+				Confirm:      true,
+			}); err != nil {
+				t.Fatalf("%s: %v", v.name, err)
+			}
+			sent := releasesSent(t, trackUpdateReq(rt))
+			if len(sent) != 1 {
+				t.Fatalf("tracks.update carries %d releases, want 1: %s", len(sent), trackUpdateReq(rt))
+			}
+			var release map[string]json.RawMessage
+			if err := json.Unmarshal(sent[0], &release); err != nil {
+				t.Fatalf("decode release %s: %v", sent[0], err)
+			}
+			if got := string(release["status"]); got != v.want {
+				t.Errorf("status = %s, want %s", got, v.want)
+			}
+			if got := string(release["countryTargeting"]); got != targeting {
+				t.Errorf("countryTargeting = %s, want it kept as %s", got, targeting)
 			}
 		})
 	}
