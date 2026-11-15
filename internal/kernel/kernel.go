@@ -371,6 +371,9 @@ type RunContext struct {
 	// accountDone so a repeat call returns the same result without a second
 	// keyring probe.
 	accountErr error
+	// controlPlaneDefault replaces defaultControlPlaneTimeout when > 0; only
+	// SetControlPlaneDefaultForTest sets it.
+	controlPlaneDefault time.Duration
 }
 
 // NewForTest returns a base RunContext wired from boot+in with NO
@@ -856,19 +859,36 @@ func (rc *RunContext) AuthedClient() (*http.Client, error) {
 }
 
 // UploadClient is AuthedClient for commands that move media (bundles, APKs,
-// images, generated APK downloads): a multi-hundred-MB transfer must not be
-// killed by the short control-plane default, yet the same command's Edit calls
-// (edits.insert, tracks.update, edits.commit) and its token exchange still owe
-// the 60s bound of docs/DESIGN.md §8. The returned client therefore decides per
-// request: a media transfer (transport.IsMediaTransfer) runs without a
-// deadline, everything else gets defaultControlPlaneTimeout. An explicit global
+// images, generated APK downloads, Cloud Storage report objects): a
+// multi-hundred-MB transfer must not be killed by the short control-plane
+// default, yet the same command's Edit calls (edits.insert, tracks.update,
+// edits.commit), its bucket listings and its token exchange still owe the 60s
+// bound of docs/DESIGN.md §8. The returned client therefore decides per
+// request: a media upload runs without a deadline, a media download
+// (alt=media) fails only after defaultControlPlaneTimeout without a byte, and
+// everything else gets defaultControlPlaneTimeout in total. An explicit global
 // --timeout (rc.Timeout) bounds every request, the transfer included. Same auth
 // handshake and test seam as AuthedClient.
 func (rc *RunContext) UploadClient() (*http.Client, error) {
 	if rc.Timeout > 0 {
 		return rc.authedClient(rc.Timeout)
 	}
-	return rc.authedClientFor(defaultControlPlaneTimeout, true)
+	return rc.authedClientFor(rc.defaultTimeout(), true)
+}
+
+// SetControlPlaneDefaultForTest replaces the 60s default (control-plane total,
+// media-download inactivity) on a NewForTest RunContext, so a test can prove a
+// download outlives the bound without waiting a minute.
+func (rc *RunContext) SetControlPlaneDefaultForTest(d time.Duration) {
+	rc.controlPlaneDefault = d
+}
+
+// defaultTimeout is defaultControlPlaneTimeout unless a test shortened it.
+func (rc *RunContext) defaultTimeout() time.Duration {
+	if rc.controlPlaneDefault > 0 {
+		return rc.controlPlaneDefault
+	}
+	return defaultControlPlaneTimeout
 }
 
 // PublicClient is the client for a URL the API hands back rather than an API
@@ -906,7 +926,7 @@ func (rc *RunContext) controlPlaneTimeout() time.Duration {
 	if rc.Timeout > 0 {
 		return rc.Timeout
 	}
-	return defaultControlPlaneTimeout
+	return rc.defaultTimeout()
 }
 
 // authedClient is the shared body of AuthedClient / UploadClient. timeout==0
