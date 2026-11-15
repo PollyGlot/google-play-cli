@@ -148,3 +148,27 @@ func TestRulesVersion_isDatestampedAndCitesDoc(t *testing.T) {
 		t.Error("RulesDoc must cite the Google asset-spec URL")
 	}
 }
+
+// TestCheckImage_matchesValidate: the in-memory check an upload runs reports,
+// image for image, what Validate reports on the same bytes read from disk.
+func TestCheckImage_matchesValidate(t *testing.T) {
+	oversized := append(testkit.PNG(512, 512), make([]byte, imagevalidate.MaxBytesFor(images.Icon))...)
+	cases := []struct {
+		ty   images.Type
+		data []byte
+	}{
+		{images.Icon, testkit.PNG(512, 512)},
+		{images.Icon, testkit.PNG(1024, 512)},
+		{images.Icon, oversized},
+		{images.Icon, []byte("not an image")},
+		{images.PhoneScreenshots, testkit.PNG(400, 1600)},
+		{images.PhoneScreenshots, testkit.JPEG(1080, 1920)},
+	}
+	for _, c := range cases {
+		want := validate(t, imagetree.Tree{"en-US": {c.ty: slot(c.data)}})
+		got := imagevalidate.CheckImage("en-US", c.ty, 0, c.data)
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s (%d bytes): CheckImage = %v, Validate = %v", c.ty, len(c.data), got, want)
+		}
+	}
+}

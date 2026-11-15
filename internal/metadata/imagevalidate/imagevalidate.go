@@ -17,10 +17,12 @@ package imagevalidate
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"image"
 	_ "image/jpeg" // register the JPEG decoder for image.DecodeConfig
 	_ "image/png"  // register the PNG decoder for image.DecodeConfig
+	"io"
 	"os"
 	"sort"
 
@@ -135,9 +137,16 @@ func Validate(st imagetree.Staged) ([]Problem, error) {
 	return problems, nil
 }
 
+// CheckImage runs the per-image rules of Validate on an image already in
+// memory. `images apply` runs it on the buffer it is about to upload, so the
+// bytes sent are the bytes validated, whatever the file became after the
+// pre-check read it. Index is the image's position in its slot.
+func CheckImage(loc string, ty images.Type, i int, data []byte) []Problem {
+	return checkContent(loc, ty, i, int64(len(data)), bytes.NewReader(data), rules[ty])
+}
+
 // checkImage runs every per-image rule for the image at path, returning its
-// violations. A format failure short-circuits the dimension checks (we cannot
-// trust width/height from bytes we could not decode).
+// violations.
 func checkImage(loc string, ty images.Type, i int, path string, r rule) ([]Problem, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -148,26 +157,32 @@ func checkImage(loc string, ty images.Type, i int, path string, r rule) ([]Probl
 	if err != nil {
 		return nil, err
 	}
+	return checkContent(loc, ty, i, info.Size(), bufio.NewReader(f), r), nil
+}
 
+// checkContent applies rule r to an image of size bytes whose content starts
+// at src. A format failure short-circuits the dimension checks (we cannot
+// trust width/height from bytes we could not decode).
+func checkContent(loc string, ty images.Type, i int, size int64, src io.Reader, r rule) []Problem {
 	var out []Problem
 	mk := func(ruleName, msg string) {
 		out = append(out, Problem{Locale: loc, ImageType: string(ty), Index: i, Rule: ruleName, Message: msg})
 	}
 
-	if size := info.Size(); r.maxBytes > 0 && size > r.maxBytes {
+	if r.maxBytes > 0 && size > r.maxBytes {
 		mk("bytes", fmt.Sprintf("%d bytes exceeds the %d-byte cap", size, r.maxBytes))
 	}
 
-	cfg, format, err := image.DecodeConfig(bufio.NewReader(f))
+	cfg, format, err := image.DecodeConfig(src)
 	if err != nil {
 		mk("format", "not a decodable PNG or JPEG image")
-		return out, nil
+		return out
 	}
 	if format != "png" && format != "jpeg" {
 		// Unreachable while only png/jpeg decoders are registered, but kept
 		// explicit so the format contract is enforced, not implied.
 		mk("format", fmt.Sprintf("format %q is not PNG or JPEG", format))
-		return out, nil
+		return out
 	}
 
 	if r.exactW > 0 && (cfg.Width != r.exactW || cfg.Height != r.exactH) {
@@ -187,5 +202,5 @@ func checkImage(loc string, ty images.Type, i int, path string, r rule) ([]Probl
 			mk("ratio", fmt.Sprintf("aspect ratio %d×%d exceeds the %.0f:1 bound", cfg.Width, cfg.Height, screenshotMaxRatio))
 		}
 	}
-	return out, nil
+	return out
 }

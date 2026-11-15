@@ -474,7 +474,11 @@ reports the error the serial walk would have hit first.
   is scanned for paths, validation reads each file's size and header, the diff
   hashes each file as a stream, and an upload reads its image just before
   sending it, so `--locale`/`--type` decide what is read and memory does not
-  grow with the tree.
+  grow with the tree. Each of these reads opens the file again, so the upload
+  checks the buffer it sends: its sha256 must be the planned one, and unless
+  `--skip-preflight` is set it must pass the same rules as the validation.
+  Either check failing refuses the upload (exit 20), so what reaches Play is
+  the content planned and, with validation on, the content validated.
 - **`images pull` downloads are all-or-nothing**: each download streams to its
   own file in a temporary staging directory, and the tree on disk is written
   only after the last download succeeded, so a failed or interrupted download

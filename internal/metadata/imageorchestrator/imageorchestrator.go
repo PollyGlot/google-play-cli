@@ -195,7 +195,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Staged, opts Op
 			return errNoChanges
 		}
 		for i, p := range plans {
-			if err := executePlan(ctx, hc, opts.Package, editID, opts.Dir, local[p.Locale][p.Type], inputs[i].Local, p); err != nil {
+			if err := executePlan(ctx, hc, opts.Package, editID, opts.Dir, local[p.Locale][p.Type], inputs[i].Local, p, !opts.NoValidate); err != nil {
 				return err
 			}
 		}
@@ -262,18 +262,18 @@ func hashFiles(dir string, paths []string) ([]string, error) {
 
 // executePlan runs one slot's plan inside the open Edit. files are the slot's
 // local images and shas their planned hashes, both indexed by the plan's
-// Uploads.
-func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan) error {
+// Uploads. validate runs the pre-check's rules on each buffer uploaded.
+func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool) error {
 	switch p.Kind {
 	case imagediff.KindNone:
 		return nil
 	case imagediff.KindAppend:
-		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p)
+		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p, validate)
 	case imagediff.KindRewrite:
 		if err := images.DeleteAll(ctx, hc, pkg, editID, p.Locale, p.Type); err != nil {
 			return err
 		}
-		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p)
+		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p, validate)
 	case imagediff.KindDeleteIDs:
 		for _, id := range p.DeleteIDs {
 			if err := images.Delete(ctx, hc, pkg, editID, p.Locale, p.Type, id); err != nil {
@@ -286,11 +286,13 @@ func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, 
 }
 
 // uploadAll reads each image just before its upload, so one image at a time
-// is in memory however large the slot. The bytes sent are the buffer just
-// hashed: an upload goes out only if that buffer is the content validated and
-// planned (ChangedError otherwise), so a file edited or swapped after the plan
-// never reaches Play under the plan's verdict.
-func uploadAll(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan) error {
+// is in memory however large the slot. The buffer read is the buffer sent, and
+// it goes out only if its hash is the planned one (ChangedError otherwise) and,
+// unless validate is off, it passes the pre-check's rules itself
+// (ValidationError otherwise). The pre-check and the plan each read the file
+// on their own, so neither proves what an upload holds: a file rewritten
+// between them would be planned unvalidated.
+func uploadAll(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool) error {
 	for _, i := range p.Uploads {
 		data, err := readContained(dir, files[i])
 		if err != nil {
@@ -299,6 +301,11 @@ func uploadAll(ctx context.Context, hc *http.Client, pkg, editID, dir string, fi
 		sum := sha256.Sum256(data)
 		if got := hex.EncodeToString(sum[:]); got != shas[i] {
 			return &ChangedError{Path: files[i], Planned: shas[i], Got: got}
+		}
+		if validate {
+			if problems := imagevalidate.CheckImage(p.Locale, p.Type, i, data); len(problems) > 0 {
+				return &ValidationError{Problems: problems}
+			}
 		}
 		if _, err := images.Upload(ctx, hc, pkg, editID, p.Locale, p.Type, data); err != nil {
 			return err
@@ -317,13 +324,13 @@ func readContained(dir, p string) ([]byte, error) {
 }
 
 // ChangedError is a local image whose content is no longer the one the plan
-// hashed (and the pre-check validated): it was edited or replaced while the
-// apply ran. Nothing of it was uploaded. It maps to exit 20, the code of the
-// validation the new content never went through.
+// hashed: it was edited or replaced while the apply ran. Nothing of it was
+// uploaded. It maps to exit 20, the code of a local image refused before
+// upload.
 type ChangedError struct{ Path, Planned, Got string }
 
 func (e *ChangedError) Error() string {
-	return e.Path + " changed during the apply (planned sha256 " + e.Planned + ", now " + e.Got + "): refusing to upload content that was not validated; rerun the apply"
+	return e.Path + " changed during the apply (planned sha256 " + e.Planned + ", now " + e.Got + "): refusing to upload content other than the planned one; rerun the apply"
 }
 func (e *ChangedError) ExitCode() int { return 20 }
 
