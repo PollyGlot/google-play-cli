@@ -327,6 +327,9 @@ func TestRun_dryRun_formFactorWear(t *testing.T) {
 	if !strings.Contains(out.String(), `"formFactor": "WEAR"`) {
 		t.Errorf("dry-run JSON = %s, want formFactor WEAR", out.String())
 	}
+	if !strings.Contains(out.String(), `"track": "wear:beta-wear"`) {
+		t.Errorf("dry-run JSON = %s, want the prefixed track wear:beta-wear", out.String())
+	}
 }
 
 // TestRun_formFactorAutomotive_sentInBody asserts the chosen form factor
@@ -334,7 +337,7 @@ func TestRun_dryRun_formFactorWear(t *testing.T) {
 func TestRun_formFactorAutomotive_sentInBody(t *testing.T) {
 	api := &createAPI{
 		editID:          "edit-create-cli",
-		trackCreateResp: `{"track":"beta-car","releases":[]}`,
+		trackCreateResp: `{"track":"automotive:beta-car","releases":[]}`,
 	}
 	rc, _ := newRC(t, api.serve(t))
 
@@ -351,6 +354,62 @@ func TestRun_formFactorAutomotive_sentInBody(t *testing.T) {
 	}
 	if !strings.Contains(table.String(), "formFactor:  AUTOMOTIVE") {
 		t.Errorf("table output = %q, want formFactor AUTOMOTIVE", table.String())
+	}
+	if !strings.Contains(table.String(), "track:       automotive:beta-car") {
+		t.Errorf("table output = %q, want the prefixed track automotive:beta-car", table.String())
+	}
+}
+
+// TestRun_helpExample_formFactorTrackIsPrefixed runs the --help example
+// (`gplay tracks create beta-wear --form-factor wear`) and a name that
+// already carries its prefix: both send wear:beta-wear, the identifier
+// TrackConfig.track requires for a Wear track, never wear:wear:beta-wear.
+// The Fake refuses a body that breaks the prefix rule (#776).
+func TestRun_helpExample_formFactorTrackIsPrefixed(t *testing.T) {
+	for _, name := range []string{"beta-wear", "wear:beta-wear"} {
+		api := &createAPI{editID: "edit-create-cli", trackCreateResp: `{"track":"wear:beta-wear","releases":[]}`}
+		rc, _ := newRC(t, api.serve(t))
+
+		r, err := create.Run(rc, create.Input{Package: "com.example.app", Name: name, FormFactor: "wear"})
+		if err != nil {
+			t.Fatalf("%s: Run: %v", name, err)
+		}
+		want := `{"track":"wear:beta-wear","type":"CLOSED_TESTING","formFactor":"WEAR"}`
+		if got := strings.TrimSpace(string(api.trackCreateReq())); got != want {
+			t.Errorf("%s: create request body = %s, want %s", name, got, want)
+		}
+		var md bytes.Buffer
+		if err := r.Renderers().Markdown(&md); err != nil {
+			t.Fatalf("%s: Markdown render: %v", name, err)
+		}
+		if !strings.Contains(md.String(), "- **track**: wear:beta-wear\n") {
+			t.Errorf("%s: markdown output = %q, want track wear:beta-wear", name, md.String())
+		}
+	}
+}
+
+// TestRun_contradictoryPrefix_exit2NoHTTP asserts a name whose prefix names
+// another form factor than --form-factor is CLI misuse, refused before any
+// request, with or without --dry-run.
+func TestRun_contradictoryPrefix_exit2NoHTTP(t *testing.T) {
+	for _, tc := range []struct{ name, formFactor string }{
+		{"automotive:beta", "wear"},
+		{"wear:beta", "automotive"},
+		{"wear:beta", "default"},
+		{"wear:", "wear"},
+	} {
+		for _, dryRun := range []bool{false, true} {
+			api := &createAPI{editID: "edit-create-cli"}
+			rc, _ := newRC(t, api.serve(t))
+
+			_, err := create.Run(rc, create.Input{Package: "com.example.app", Name: tc.name, FormFactor: tc.formFactor, DryRun: dryRun})
+			if got := exit.For(err); got != 2 {
+				t.Fatalf("%s --form-factor %s dryRun=%v: exit.For(err) = %d, want 2; err=%v", tc.name, tc.formFactor, dryRun, got, err)
+			}
+			if calls := api.calls(); len(calls) != 0 {
+				t.Errorf("%s --form-factor %s dryRun=%v: expected zero HTTP calls, saw: %v", tc.name, tc.formFactor, dryRun, calls)
+			}
+		}
 	}
 }
 

@@ -191,6 +191,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !ok {
 		return nil, exit.Usagef("invalid --form-factor %q: pass default, wear or automotive", in.FormFactor)
 	}
+	// Qualified once, here: the preview, the --if-exists read, the create
+	// body and every render then name the track as Play knows it.
+	qualified, err := tracks.QualifiedName(in.Name, formFactor)
+	if err != nil {
+		return nil, exit.Usagef("%v: pass the bare name, or the --form-factor its prefix names", err)
+	}
+	in.Name = qualified
 	policy, err := ifexists.Check(in.IfExists, policies...)
 	if err != nil {
 		return nil, err
@@ -302,8 +309,13 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 The create endpoint supports exactly one type (CLOSED_TESTING), so there
 is no --type flag: every created track is closed. Open / internal track
 creation has no API path. --form-factor picks the devices the track
-targets: default (phone, the default), wear or automotive. Creating a
-track that already exists surfaces the API error (exit 30) by default.
+targets: default (phone, the default), wear or automotive. A wear or
+automotive track is named behind its form factor prefix, as Play
+requires: beta-wear is created as wear:beta-wear, a name that already
+carries the prefix is kept, and another form factor's prefix exits 2.
+
+Creating a track that already exists surfaces the API error (exit 30)
+by default.
 --if-exists skip reads the track first in the same Edit: when it exists,
 nothing is created, the existing track is printed (tracks.get, verbatim
 under --output json) and the implicit Edit is discarded, not committed.
@@ -316,7 +328,7 @@ track is low-stakes and reversible.`,
 		Example: `  # Create a Closed track for an internal QA group
   gplay tracks create qa-team
 
-  # Create a Closed track for Wear OS testers
+  # Create a Closed track for Wear OS testers (created as wear:beta-wear)
   gplay tracks create beta-wear --form-factor wear
 
   # Create the track unless it already exists (safe to re-run in CI)
