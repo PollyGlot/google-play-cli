@@ -32,17 +32,50 @@ const gitTrackedTimeout = 2 * time.Second
 // inherited GIT_DIR (set for every git hook), which would make the check
 // answer for the caller's repository, and the `-c` injection variables that
 // could turn fsmonitor back on.
+//
+// git does not run from the file's own directory: committing HEAD, objects/ and
+// refs/ under .gplay/ makes that directory pass for a bare repository, which
+// git's discovery would find first and answer "untracked" for (#791). It runs
+// from the nearest ancestor holding a .git entry instead, a name git refuses to
+// check out, so no clone can plant one; discovery there stops at that .git.
 func GitTracked(ctx context.Context, path string) bool {
 	git, err := exec.LookPath("git")
 	if err != nil {
 		return false
 	}
+	top, ok := worktreeRoot(filepath.Dir(path))
+	if !ok {
+		return false
+	}
+	rel, err := filepath.Rel(top, path)
+	if err != nil {
+		return false
+	}
 	ctx, cancel := context.WithTimeout(ctx, gitTrackedTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, git, "-c", "core.fsmonitor=false", "ls-files", "--error-unmatch", "--", filepath.Base(path)) // #nosec G204 -- git from PATH, fixed arguments, the file name passed after "--"
-	cmd.Dir = filepath.Dir(path)
+	cmd := exec.CommandContext(ctx, git, "-c", "core.fsmonitor=false", "ls-files", "--error-unmatch", "--", rel) // #nosec G204 -- git from PATH, fixed arguments, the file name passed after "--"
+	cmd.Dir = top
 	cmd.Env = append(gitenv.Safe(os.Environ()), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
 	// Exit 0 means the index lists the file; 1 means untracked, and 128 means
-	// no repository (or no directory) at all. Only 0 is "tracked".
+	// no usable repository. Only 0 is "tracked".
 	return cmd.Run() == nil
+}
+
+// worktreeRoot returns the nearest directory at or above dir that holds a .git
+// entry (a directory, or the file a linked worktree or submodule uses).
+func worktreeRoot(dir string) (string, bool) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	for {
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
 }
