@@ -333,6 +333,15 @@ and kept, through the same picker and supersede rule as the write. It sends no
 `tracks.update`, so it needs no `--confirm`; an ambiguous track fails as the
 live path does (exit 60). Its JSON is gplay-shaped and carries `"plan": true`.
 
+`releases promote` sends `--to` with the promoted release alone, so it
+replaces every release already there; it reads `--to` first and names the
+replaced versionCodes on the `✓` line, and `--plan` lists those releases
+before anything is sent (ADR-0054). `--from` equal to `--to` is exit 2. The
+source's `countryTargeting` carries over when the copy is a staged rollout
+on production, following the fraction as above. The `--dry-run` of these verbs stays offline
+and its JSON carries `"dryRun": true`, the ADR-0017 `requires` array and the
+`--version-code` asked for; promote's adds `"replacesDestination": true`.
+
 ### Sub-surfaces under `releases`
 
 `releases` also hosts grouping nouns for non-track surfaces (ADR-0030;

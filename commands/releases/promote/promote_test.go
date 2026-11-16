@@ -31,6 +31,9 @@ import (
 type promoteAPI struct {
 	editID             string
 	sourceTrackGetResp string
+	destTrack          string
+	destTrackGetResp   string
+	destTrackGetStatus int
 	trackUpdateRawResp string
 	// trackUpdateStatus, when >= 400, makes the destination tracks.update PUT
 	// fail with that status (carrying a Google error envelope) so tests can
@@ -45,6 +48,11 @@ func newPromoteFake(a promoteAPI) *testkit.Fake {
 			return http.StatusOK, fmt.Sprintf(`{"id":%q,"expiryTimeSeconds":"1700000000"}`, a.editID), true
 		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/"):
 			return http.StatusNoContent, "", true
+		case c.Method == http.MethodGet && a.destTrack != "" && strings.HasSuffix(c.Path, "/tracks/"+a.destTrack):
+			if a.destTrackGetStatus >= 400 {
+				return a.destTrackGetStatus, `{"error":{"code":404,"message":"Track not found."}}`, true
+			}
+			return http.StatusOK, a.destTrackGetResp, true
 		case c.Method == http.MethodGet && strings.Contains(c.Path, "/tracks/"):
 			return http.StatusOK, a.sourceTrackGetResp, true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/tracks/"):
@@ -147,9 +155,6 @@ func TestRenderMarkdown_includesDefaultLanguageAndLocales(t *testing.T) {
 	}
 }
 
-// TestRun_internalToBeta_happyPath asserts the full vertical slice from
-// CLI input to wire: /token exchange precedes the androidpublisher
-// edits.insert, then the canonical promote 4-call sequence runs.
 func TestRun_internalToBeta_happyPath(t *testing.T) {
 	api := promoteAPI{
 		editID:             "edit-promote-cli",
@@ -177,6 +182,7 @@ func TestRun_internalToBeta_happyPath(t *testing.T) {
 	wantSequence := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-promote-cli/tracks/internal",
+		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-promote-cli/tracks/beta",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-promote-cli/tracks/beta",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-promote-cli:commit",
 	}

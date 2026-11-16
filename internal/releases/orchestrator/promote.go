@@ -1,14 +1,8 @@
-// Package orchestrator (promote.go) owns the choreography of
-// `gplay releases promote`: open an Edit, read the source track, pick
-// the release to copy, attach it (same versionCode) to the destination
-// track, and commit. Inherits the ADR-0002 safe-default rule (via
-// ReleaseState.resolve) and the auto-discard / DanglingEditError contract
-// from edits.WithEdit, so production promotes default to draft, and
-// any failure mid-Edit cleans up the orphan unless --keep-edit-on-failure.
 package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -171,20 +165,38 @@ type PromoteOpts struct {
 
 	Confirm bool
 
-	// DryRun validates inputs and computes what would be sent without
-	// performing any HTTP. No Edit is opened, no source tracks.get is
-	// issued, no destination tracks.update is sent. The returned Result
-	// describes the planned payload with VersionCode=0 (the real value
-	// would come from tracks.get on the source) and ReleaseName="(dry-run)".
-	// Runs BEFORE the confirm guard so operators can preview a
-	// production publish without committing to --confirm.
+	// DryRun previews the payload without any HTTP. It runs before the
+	// confirm guard, so a production publish previews without --confirm.
 	DryRun bool
+
+	// Plan reads both tracks into Result.Promotion without writing.
+	Plan bool
 }
+
+// PromotePlan is what a promote would do, read from the live tracks.
+type PromotePlan struct {
+	From         string           `json:"from"`
+	To           string           `json:"to"`
+	Source       tracks.Release   `json:"source"`
+	Status       string           `json:"status"`
+	UserFraction float64          `json:"userFraction,omitempty"`
+	Replaced     []tracks.Release `json:"replaced"`
+}
+
+// DestinationReadError wraps a failed read of promote's destination track.
+type DestinationReadError struct {
+	Err error
+}
+
+func (e *DestinationReadError) Error() string { return e.Err.Error() }
+func (e *DestinationReadError) Unwrap() error { return e.Err }
 
 // Promote performs the promote flow inside a single Edit:
 // edits.insert → tracks.get(FromTrack) → pick the source release →
-// tracks.update(ToTrack) → edits.commit. The carried-over versionCode
-// is what the destination release advertises; no AAB is re-uploaded.
+// tracks.get(ToTrack) → tracks.update(ToTrack) → edits.commit. The
+// carried-over versionCode is what the destination release advertises; no
+// AAB is re-uploaded. The update carries the promoted release alone, so it
+// replaces every release on ToTrack; Result.ReplacedVersionCodes names them.
 //
 // Safe-default rule from ADR-0002 applies to the destination: target
 // production with the zero State produces a draft release; every
@@ -216,6 +228,9 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	if opts.DryRun {
 		return dryRunPromoteResult(opts), nil
 	}
+	if opts.Plan {
+		return planPromote(ctx, hc, opts)
+	}
 
 	// Inherits ADR-0002's confirm guard: a production target that would
 	// reach real users (Completed or InProgress) requires Confirm=true.
@@ -228,25 +243,17 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	result := &Result{Track: opts.ToTrack}
 
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{KeepOnFailure: opts.KeepEditOnFailure, ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
-		src, _, err := tracks.Get(ctx, hc, opts.Package, editID, opts.FromTrack)
+		p, err := readPromotion(ctx, hc, opts, editID)
 		if err != nil {
 			return err
 		}
-		source, err := pickSourceRelease(src.Releases, opts)
-		if err != nil {
-			return err
+		source := p.source
+		result.VersionCode = p.versionCode
+		for _, r := range p.replaced {
+			result.ReplacedVersionCodes = append(result.ReplacedVersionCodes, versionCodes(r)...)
 		}
 
-		if len(source.VersionCodes) == 0 {
-			return &EmptyVersionCodesError{Track: opts.FromTrack, ReleaseName: source.Name}
-		}
-		versionCode, err := strconv.Atoi(source.VersionCodes[0])
-		if err != nil {
-			return &InvalidOptsError{Message: "source release has non-numeric versionCode: " + source.VersionCodes[0]}
-		}
-		result.VersionCode = versionCode
-
-		release := buildPromoteRelease(*source, opts)
+		release := buildPromoteRelease(source, opts)
 		// Release-notes resolution:
 		//   neither flag → carry over source notes verbatim (AC5 default)
 		//   --release-notes / --release-notes-dir → drop source, load
@@ -309,6 +316,70 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	return result, nil
 }
 
+type promotion struct {
+	source      tracks.Release
+	versionCode int
+	replaced    []tracks.Release
+}
+
+func readPromotion(ctx context.Context, hc *http.Client, opts PromoteOpts, editID string) (promotion, error) {
+	src, _, err := tracks.Get(ctx, hc, opts.Package, editID, opts.FromTrack)
+	if err != nil {
+		return promotion{}, err
+	}
+	source, err := pickSourceRelease(src.Releases, opts)
+	if err != nil {
+		return promotion{}, err
+	}
+	if len(source.VersionCodes) == 0 {
+		return promotion{}, &EmptyVersionCodesError{Track: opts.FromTrack, ReleaseName: source.Name}
+	}
+	versionCode, err := strconv.Atoi(source.VersionCodes[0])
+	if err != nil {
+		return promotion{}, &InvalidOptsError{Message: "source release has non-numeric versionCode: " + source.VersionCodes[0]}
+	}
+	dst, _, err := tracks.Get(ctx, hc, opts.Package, editID, opts.ToTrack)
+	if err != nil {
+		return promotion{}, &DestinationReadError{Err: err}
+	}
+	return promotion{source: *source, versionCode: versionCode, replaced: dst.Releases}, nil
+}
+
+func planPromote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, error) {
+	var p promotion
+	read := func(editID string) error {
+		var err error
+		p, err = readPromotion(ctx, hc, opts, editID)
+		return err
+	}
+	var err error
+	if opts.ExplicitEditID != "" {
+		err = read(opts.ExplicitEditID)
+	} else {
+		err = edits.WithReadOnlyEdit(ctx, hc, opts.Package, read)
+	}
+	if err != nil {
+		return nil, err
+	}
+	release := buildPromoteRelease(p.source, opts)
+	plan := &PromotePlan{
+		From:         opts.FromTrack,
+		To:           opts.ToTrack,
+		Source:       p.source,
+		Status:       release.Status,
+		UserFraction: release.UserFraction,
+		Replaced:     append([]tracks.Release{}, p.replaced...),
+	}
+	return &Result{
+		Track:        opts.ToTrack,
+		VersionCode:  p.versionCode,
+		ReleaseName:  p.source.Name,
+		Status:       plan.Status,
+		UserFraction: plan.UserFraction,
+		Promotion:    plan,
+	}, nil
+}
+
 // validatePromoteOpts enforces the orchestrator-level preconditions
 // every PromoteOpts caller (CLI, future MCP server, library user) must
 // satisfy. Mirrors validateOpts on the upload side. Centralizing the
@@ -325,6 +396,9 @@ func validatePromoteOpts(opts PromoteOpts) error {
 	if opts.ToTrack == "" {
 		return &InvalidOptsError{Message: "ToTrack is required"}
 	}
+	if opts.FromTrack == opts.ToTrack {
+		return &InvalidOptsError{Message: "FromTrack and ToTrack are both " + opts.ToTrack + ": promote copies a release to another track"}
+	}
 	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
 		return &InvalidOptsError{
 			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
@@ -339,14 +413,14 @@ func validatePromoteOpts(opts PromoteOpts) error {
 }
 
 // dryRunPromoteResult previews what Promote would send for the given
-// opts, without any HTTP. The real VersionCode would come from
-// tracks.get on the source: synthesized as 0 here. Status and
-// UserFraction come from the resolved ReleaseState, as on the wire.
+// opts, without any HTTP. Status and UserFraction come from the resolved
+// ReleaseState, as on the wire.
 func dryRunPromoteResult(opts PromoteOpts) *Result {
 	state := opts.State.resolve(opts.ToTrack)
 	return &Result{
 		Track:        opts.ToTrack,
-		VersionCode:  0,
+		VersionCode:  opts.VersionCode,
+		Requires:     safetyFlags(requiresConfirm(opts.ToTrack, opts.State)),
 		Status:       state.Status(),
 		UserFraction: state.UserFraction(),
 		// Only an explicit override is knowable offline: the source's own
@@ -439,16 +513,21 @@ func containsVersionCode(codes []string, want int) bool {
 
 // buildPromoteRelease translates a source release + PromoteOpts into
 // the tracks.Release payload sent on the destination track. Carries
-// over the source's versionCode and name; status and fraction come from
-// the resolved ReleaseState, as in buildRelease. The source's
-// inAppUpdatePriority carries over unless opts.UpdatePriority overrides it:
-// before #664 the typed rebuild silently dropped a priority set in the
-// Play Console.
+// over the source's versionCode and name; status and fraction come from the
+// resolved ReleaseState, as in buildRelease. countryTargeting carries over
+// only to a staged rollout on production: Play rejects it on a draft or
+// completed release (#779) and on any other track. The source's inAppUpdatePriority carries over unless
+// opts.UpdatePriority overrides it: before #664 the typed rebuild silently
+// dropped a priority set in the Play Console.
 func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release {
 	state := opts.State.resolve(opts.ToTrack)
 	priority := source.InAppUpdatePriority
 	if opts.UpdatePriority != nil {
 		priority = opts.UpdatePriority
+	}
+	var targeting json.RawMessage
+	if opts.ToTrack == TrackProduction && state.UserFraction() > 0 {
+		targeting = source.CountryTargeting
 	}
 	return tracks.Release{
 		Name:                source.Name,
@@ -456,5 +535,6 @@ func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release
 		UserFraction:        state.UserFraction(),
 		VersionCodes:        source.VersionCodes,
 		InAppUpdatePriority: priority,
+		CountryTargeting:    targeting,
 	}
 }

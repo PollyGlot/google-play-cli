@@ -43,8 +43,10 @@ var rules = map[string]rule{
 	// Discovery names inProgress alone, yet halted counts too: a halted
 	// release is a paused staged rollout that keeps its targeting, and
 	// halt/resume must round-trip it (#779). The production-track half of the
-	// sentence is not checked: the rule sees the release, not its track, and
-	// gplay only ever carries countryTargeting over from tracks.get.
+	// sentence is not checked: the rule sees the release, not its track.
+	// Rollout keeps countryTargeting on the track it was read from, and
+	// promote, the one verb that moves it across tracks, pins the production
+	// guard in TestPromote_countryTargetingFollowsTheFraction.
 	"TrackRelease.countryTargeting": {
 		sentence: "Note this is only allowed to be set for inProgress releases in the production track.",
 		check: func(o map[string]any) string {

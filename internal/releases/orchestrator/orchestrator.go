@@ -173,9 +173,25 @@ type Result struct {
 	// without them.
 	SupersededVersionCodes []int `json:"-"`
 
+	// ReplacedVersionCodes lists the versionCodes a live promote removed from
+	// its destination: tracks.update replaces the whole releases array.
+	ReplacedVersionCodes []int `json:"-"`
+
+	// Requires is the ADR-0017 list of safety flags the live run needs.
+	Requires []string `json:"-"`
+
 	// Plan is set only by a state transition run with StateOpts.Plan: what
 	// the transition would do, read from the live track, nothing written.
 	Plan *TransitionPlan `json:"-"`
+
+	Promotion *PromotePlan `json:"-"`
+}
+
+func safetyFlags(reachesProdUsers bool) []string {
+	if reachesProdUsers {
+		return []string{"confirm"}
+	}
+	return nil
 }
 
 // Artifact is one file Upload sends into the Edit. Format selects its upload
