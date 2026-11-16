@@ -128,9 +128,11 @@ androidpublisher.purchases.subscriptions.acknowledge	POST	androidpublisher/v3/ap
 androidpublisher.purchases.subscriptions.cancel	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}:cancel
 androidpublisher.purchases.subscriptions.defer	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}:defer
 androidpublisher.purchases.subscriptionsv2.cancel	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:cancel
+androidpublisher.purchases.subscriptionsv2.cancelplantransition	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:cancelPlanTransition
 androidpublisher.purchases.subscriptionsv2.defer	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:defer
 androidpublisher.purchases.subscriptionsv2.get	GET	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}
 androidpublisher.purchases.subscriptionsv2.revoke	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:revoke
+androidpublisher.purchases.subscriptionsv2.scheduleplantransition	POST	androidpublisher/v3/applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:schedulePlanTransition
 androidpublisher.purchases.voidedpurchases.list	GET	androidpublisher/v3/applications/{packageName}/purchases/voidedpurchases
 androidpublisher.reviews.get	GET	androidpublisher/v3/applications/{packageName}/reviews/{reviewId}
 androidpublisher.reviews.list	GET	androidpublisher/v3/applications/{packageName}/reviews

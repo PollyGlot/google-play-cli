@@ -1,5 +1,5 @@
 {
-  "revision": "20261108",
+  "revision": "20261112",
   "services": {
     "androidpublisher": {
       "rootUrl": "https://androidpublisher.googleapis.com/",
@@ -3613,6 +3613,29 @@
       "request": "CancelSubscriptionPurchaseRequest",
       "response": "CancelSubscriptionPurchaseResponse"
     },
+    "androidpublisher.purchases.subscriptionsv2.cancelplantransition": {
+      "httpMethod": "POST",
+      "path": "applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:cancelPlanTransition",
+      "description": "Cancel a plan transition for a subscription.",
+      "parameters": [
+        {
+          "name": "packageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The package of the application for which this subscription was purchased (for example, 'com.some.thing')."
+        },
+        {
+          "name": "token",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The token provided to the user's device when the subscription was purchased."
+        }
+      ],
+      "request": "CancelPlanTransitionRequest",
+      "response": "CancelPlanTransitionResponse"
+    },
     "androidpublisher.purchases.subscriptionsv2.defer": {
       "httpMethod": "POST",
       "path": "applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:defer",
@@ -3680,6 +3703,29 @@
       ],
       "request": "RevokeSubscriptionPurchaseRequest",
       "response": "RevokeSubscriptionPurchaseResponse"
+    },
+    "androidpublisher.purchases.subscriptionsv2.scheduleplantransition": {
+      "httpMethod": "POST",
+      "path": "applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:schedulePlanTransition",
+      "description": "Schedule a plan transition for a subscription.",
+      "parameters": [
+        {
+          "name": "packageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The package of the application for which this subscription was purchased (for example, 'com.some.thing')."
+        },
+        {
+          "name": "token",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The token provided to the user's device when the subscription was purchased."
+        }
+      ],
+      "request": "SchedulePlanTransitionRequest",
+      "response": "SchedulePlanTransitionResponse"
     },
     "androidpublisher.purchases.voidedpurchases.list": {
       "httpMethod": "GET",
@@ -5913,6 +5959,10 @@
           "$ref": "InstallmentPlan",
           "description": "The installment plan commitment and state related info for the auto renewing plan."
         },
+        "planTransitionDetails": {
+          "$ref": "PlanTransitionDetails",
+          "description": "The information of the associated plan transition. Will be present only if this plan has a transition plan associated with it and will only include the latest transition details associated with the item."
+        },
         "priceChangeDetails": {
           "$ref": "SubscriptionItemPriceChangeDetails",
           "description": "The information of the last price change for the item since subscription signup."
@@ -5972,6 +6022,10 @@
             "INACTIVE"
           ],
           "description": "Output only. The state of the base plan, i.e. whether it's active. Draft and inactive base plans can be activated or deleted. Active base plans can be made inactive. Inactive base plans can be canceled. This field cannot be changed by updating the resource. Use the dedicated endpoints instead."
+        },
+        "transitionTargetConfig": {
+          "$ref": "TransitionTargetConfig",
+          "description": "Transition target base plan information when this base plan has a transition plan."
         }
       }
     },
@@ -6340,6 +6394,22 @@
           "description": "Required. The parent purchase option (ID) of the offer to cancel."
         }
       }
+    },
+    "CancelPlanTransitionRequest": {
+      "description": "Request for the purchases.subscriptionsv2.cancelplantransition API.",
+      "properties": {
+        "etag": {
+          "type": "string",
+          "description": "If set, the API will fail if the etag does not match the latest etag for this subscription. The etag is retrieved from purchases.subscriptionsv2.get: https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2/get"
+        },
+        "productId": {
+          "type": "string",
+          "description": "Required. The subscription product (for example, 'premium_plan') for which an in process plan transition should be canceled."
+        }
+      }
+    },
+    "CancelPlanTransitionResponse": {
+      "description": "Response for the purchases.subscriptionsv2.cancelplantransition API."
     },
     "CancelSubscriptionPurchaseRequest": {
       "description": "Request for the purchases.subscriptionsv2.cancel API.",
@@ -7009,6 +7079,9 @@
           "description": "The product_id going to replace the existing product_id."
         }
       }
+    },
+    "DefiniteTransition": {
+      "description": "Used to indicate that the plan transition is definite."
     },
     "DeleteOneTimeProductOfferRequest": {
       "description": "Request message for deleting an one-time product offer.",
@@ -9442,7 +9515,7 @@
         },
         "prices": {
           "type": "object",
-          "description": "Prices per buyer region. None of these can be zero, as in-app products are never free. Map key is region code, as defined by ISO 3166-2."
+          "description": "Prices per buyer region. None of these can be zero, as in-app products are never free. Map key is region code, as defined by ISO 3166-1 alpha-2."
         },
         "purchaseType": {
           "type": "string",
@@ -10632,7 +10705,7 @@
         },
         "regionCode": {
           "type": "string",
-          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-2, e.g., \"US\"."
+          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-1 alpha-2, e.g., \"US\"."
         },
         "relativeDiscount": {
           "type": "number",
@@ -10754,7 +10827,7 @@
         },
         "regionCode": {
           "type": "string",
-          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-2, e.g., \"US\"."
+          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-1 alpha-2, e.g., \"US\"."
         }
       }
     },
@@ -11123,6 +11196,23 @@
     },
     "PendingCancellation": {
       "description": "This is an indicator of whether there is a pending cancellation on the virtual installment plan. The cancellation will happen only after the user finished all committed payments."
+    },
+    "PlanTransitionDetails": {
+      "description": "Information related to a plan transition.",
+      "properties": {
+        "basePlanId": {
+          "type": "string",
+          "description": "[Required] The base plan ID to which this plan would be transitioned."
+        },
+        "productId": {
+          "type": "string",
+          "description": "[Required] The product ID to which this plan would be transitioned, (for example, 'monthly001')."
+        },
+        "transitionInfo": {
+          "$ref": "TransitionInfo",
+          "description": "Additional info about the scheduled plan transition. Will be present only if a plan transition has been scheduled."
+        }
+      }
     },
     "Player": {
       "description": "A Player resource.",
@@ -11812,7 +11902,7 @@
         },
         "regionCode": {
           "type": "string",
-          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-2, e.g. \"US\"."
+          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-1 alpha-2, e.g. \"US\"."
         }
       }
     },
@@ -11834,7 +11924,7 @@
         },
         "regionCode": {
           "type": "string",
-          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-2, e.g. \"US\"."
+          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-1 alpha-2, e.g. \"US\"."
         }
       }
     },
@@ -11854,7 +11944,7 @@
         },
         "regionCode": {
           "type": "string",
-          "description": "Region code this configuration applies to, as defined by ISO 3166-2, e.g. \"US\"."
+          "description": "Region code this configuration applies to, as defined by ISO 3166-1 alpha-2, e.g. \"US\"."
         }
       }
     },
@@ -11867,7 +11957,7 @@
         },
         "regionCode": {
           "type": "string",
-          "description": "Required. Immutable. Region code this configuration applies to, as defined by ISO 3166-2, e.g. \"US\"."
+          "description": "Required. Immutable. Region code this configuration applies to, as defined by ISO 3166-1 alpha-2, e.g. \"US\"."
         }
       }
     },
@@ -11908,7 +11998,7 @@
         },
         "regionCode": {
           "type": "string",
-          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-2, e.g. \"US\"."
+          "description": "Required. Region code this configuration applies to, as defined by ISO 3166-1 alpha-2, e.g. \"US\"."
         },
         "streamingTaxType": {
           "type": "string",
@@ -12081,7 +12171,7 @@
         "regionCodes": {
           "type": "string",
           "repeated": true,
-          "description": "Required. Region codes to impose payment restrictions on, as defined by ISO 3166-2, e.g. \"US\"."
+          "description": "Required. Region codes to impose payment restrictions on, as defined by ISO 3166-1 alpha-2, e.g. \"US\"."
         }
       }
     },
@@ -12250,6 +12340,40 @@
     },
     "SafetyLabelsUpdateResponse": {
       "description": "Response for SafetyLabelsUpdate rpc."
+    },
+    "SchedulePlanTransitionRequest": {
+      "description": "Request for the purchases.subscriptionsv2.schedulePlanTransition API.",
+      "properties": {
+        "definiteTransition": {
+          "$ref": "DefiniteTransition",
+          "description": "When using this mode, the user's transition to the new plan is definite, and cannot be canceled."
+        },
+        "earliestTransitionEffectiveTime": {
+          "type": "string",
+          "description": "Required. The earliest time at which the plan transition may take effect. The actual transition will take place at the time of renewal on or after this time."
+        },
+        "etag": {
+          "type": "string",
+          "description": "If set, the API will fail if the etag does not match the latest etag for this subscription. The etag is retrieved from purchases.subscriptionsv2.get: https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2/get"
+        },
+        "productId": {
+          "type": "string",
+          "description": "Required. The subscription product (for example, 'premium_plan') for which the transition must be scheduled."
+        },
+        "tentativeTransition": {
+          "$ref": "TentativeTransition",
+          "description": "When using this mode, the user's transition to the new plan is tentative, and can be canceled."
+        }
+      }
+    },
+    "SchedulePlanTransitionResponse": {
+      "description": "Response for the purchases.subscriptionsv2.schedulePlanTransition API.",
+      "properties": {
+        "planTransitionDetails": {
+          "$ref": "PlanTransitionDetails",
+          "description": "The plan transition details of the subscription item."
+        }
+      }
     },
     "ScoresResetMultipleForAllRequest": {
       "properties": {
@@ -12990,6 +13114,9 @@
         }
       }
     },
+    "TentativeTransition": {
+      "description": "Used to indicate that the plan transition is tentative."
+    },
     "TestPurchase": {
       "description": "Whether this subscription purchase is a test purchase."
     },
@@ -13199,6 +13326,43 @@
           "$ref": "Track",
           "repeated": true,
           "description": "All tracks (including tracks with no releases)."
+        }
+      }
+    },
+    "TransitionInfo": {
+      "description": "Information related to a scheduled plan transition.",
+      "properties": {
+        "expectedTransitionTime": {
+          "type": "string",
+          "description": "The current expected time at which the plan may be transitioned. This is subject to change (to a future time) due to cases where the renewal time shifts like pause and account hold."
+        },
+        "price": {
+          "$ref": "Money",
+          "description": "The default base plan price to which the plan will be transitioned."
+        },
+        "transitionState": {
+          "type": "string",
+          "enum": [
+            "TRANSITION_STATE_UNSPECIFIED",
+            "SCHEDULED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "CANCELED"
+          ],
+          "description": "Output only. [Required] The current state of the transition."
+        }
+      }
+    },
+    "TransitionTargetConfig": {
+      "description": "Configuration for a transition target base plan.",
+      "properties": {
+        "basePlanId": {
+          "type": "string",
+          "description": "Required. The ID of the transition target base plan."
+        },
+        "productId": {
+          "type": "string",
+          "description": "Required. The ID of the parent subscription this transition target base plan belongs to."
         }
       }
     },
