@@ -75,7 +75,7 @@ func TestCreateOffer_postsWithIDs(t *testing.T) {
 // caller-scoped updateMask.
 func TestPatchOffer_scopedMask(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{}`}})
-	_, err := subscriptions.PatchOffer(context.Background(), client(rt), "com.example.app", "premium", "monthly", "intro", "2022/02", []string{"phases", "regionalConfigs"}, json.RawMessage(`{}`))
+	_, err := subscriptions.PatchOffer(context.Background(), client(rt), "com.example.app", "premium", "monthly", "intro", "2022/02", []string{"phases", "regionalConfigs"}, json.RawMessage(`{}`), "")
 	if err != nil {
 		t.Fatalf("PatchOffer: %v", err)
 	}
@@ -168,16 +168,16 @@ func TestSetStates_hitCustomVerbs(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{}`}, {200, `{}`}, {200, `{}`}, {200, `{}`}})
 	ctx := context.Background()
 	hc := client(rt)
-	if _, err := subscriptions.SetBasePlanState(ctx, hc, "com.example.app", "premium", "monthly", true); err != nil {
+	if _, err := subscriptions.SetBasePlanState(ctx, hc, "com.example.app", "premium", "monthly", true, ""); err != nil {
 		t.Fatalf("activate base plan: %v", err)
 	}
-	if _, err := subscriptions.SetBasePlanState(ctx, hc, "com.example.app", "premium", "monthly", false); err != nil {
+	if _, err := subscriptions.SetBasePlanState(ctx, hc, "com.example.app", "premium", "monthly", false, ""); err != nil {
 		t.Fatalf("deactivate base plan: %v", err)
 	}
-	if _, err := subscriptions.SetOfferState(ctx, hc, "com.example.app", "premium", "monthly", "intro", true); err != nil {
+	if _, err := subscriptions.SetOfferState(ctx, hc, "com.example.app", "premium", "monthly", "intro", true, ""); err != nil {
 		t.Fatalf("activate offer: %v", err)
 	}
-	if _, err := subscriptions.SetOfferState(ctx, hc, "com.example.app", "premium", "monthly", "intro", false); err != nil {
+	if _, err := subscriptions.SetOfferState(ctx, hc, "com.example.app", "premium", "monthly", "intro", false, ""); err != nil {
 		t.Fatalf("deactivate offer: %v", err)
 	}
 	wants := []string{

@@ -22,6 +22,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
 // op* tag *api.Error with the REST reference method id.
@@ -143,10 +144,11 @@ func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion
 // with the updateMask scoped to exactly the fields the caller reconciles: the
 // mechanism that keeps anything outside the caller's managed set out of reach
 // of an apply (ADR-0041 §5).
-func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, body json.RawMessage) (json.RawMessage, error) {
+func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, body json.RawMessage, lt latency.Tolerance) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
 	q.Set("regionsVersion.version", regionsVersion)
+	lt.SetQuery(q)
 	return api.Do(ctx, hc, api.Call{
 		Method: mPatch, Op: opPatch, Target: pkg,
 		Params: map[string]string{"packageName": pkg, "productId": productID},

@@ -26,6 +26,10 @@ func TestWire(t *testing.T) {
 			v, raw, err := recovery.Create(ctx, hc, pkg, recovery.CreateOpts{VersionCodes: []int64{42}, AllUsers: true})
 			return []any{v, raw}, err
 		}},
+		{Name: "Create version range", Fn: func(hc *http.Client) (any, error) {
+			v, raw, err := recovery.Create(ctx, hc, pkg, recovery.CreateOpts{VersionRange: &recovery.VersionRange{Start: 40, End: 42}, AllUsers: true})
+			return []any{v, raw}, err
+		}},
 		{Name: "List", Fn: func(hc *http.Client) (any, error) {
 			v, raw, err := recovery.List(ctx, hc, pkg, 42)
 			return []any{v, raw}, err

@@ -24,7 +24,7 @@ func TestWire(t *testing.T) {
 			return v, err
 		}},
 		{Name: "Patch", Fn: func(hc *http.Client) (any, error) {
-			v, err := subscriptions.Patch(ctx, hc, pkg, "gold", "2026/09", []string{"listings", "basePlans"}, body)
+			v, err := subscriptions.Patch(ctx, hc, pkg, "gold", "2026/09", []string{"listings", "basePlans"}, body, "")
 			return v, err
 		}},
 		{Name: "Delete", Fn: func(hc *http.Client) (any, error) { return nil, subscriptions.Delete(ctx, hc, pkg, "gold") }},
@@ -37,29 +37,29 @@ func TestWire(t *testing.T) {
 			return v, err
 		}},
 		{Name: "PatchOffer", Fn: func(hc *http.Client) (any, error) {
-			v, err := subscriptions.PatchOffer(ctx, hc, pkg, "gold", "monthly", "intro", "2026/09", []string{"phases"}, body)
+			v, err := subscriptions.PatchOffer(ctx, hc, pkg, "gold", "monthly", "intro", "2026/09", []string{"phases"}, body, "")
 			return v, err
 		}},
 		{Name: "DeleteOffer", Fn: func(hc *http.Client) (any, error) {
 			return nil, subscriptions.DeleteOffer(ctx, hc, pkg, "gold", "monthly", "intro")
 		}},
 		{Name: "SetBasePlanState activate", Fn: func(hc *http.Client) (any, error) {
-			v, err := subscriptions.SetBasePlanState(ctx, hc, pkg, "gold", "monthly", true)
+			v, err := subscriptions.SetBasePlanState(ctx, hc, pkg, "gold", "monthly", true, "")
 			return v, err
 		}},
 		{Name: "SetBasePlanState deactivate", Fn: func(hc *http.Client) (any, error) {
-			v, err := subscriptions.SetBasePlanState(ctx, hc, pkg, "gold", "monthly", false)
+			v, err := subscriptions.SetBasePlanState(ctx, hc, pkg, "gold", "monthly", false, "")
 			return v, err
 		}},
 		{Name: "DeleteBasePlan", Fn: func(hc *http.Client) (any, error) {
 			return nil, subscriptions.DeleteBasePlan(ctx, hc, pkg, "gold", "monthly")
 		}},
 		{Name: "SetOfferState activate", Fn: func(hc *http.Client) (any, error) {
-			v, err := subscriptions.SetOfferState(ctx, hc, pkg, "gold", "monthly", "intro", true)
+			v, err := subscriptions.SetOfferState(ctx, hc, pkg, "gold", "monthly", "intro", true, "")
 			return v, err
 		}},
 		{Name: "SetOfferState deactivate", Fn: func(hc *http.Client) (any, error) {
-			v, err := subscriptions.SetOfferState(ctx, hc, pkg, "gold", "monthly", "intro", false)
+			v, err := subscriptions.SetOfferState(ctx, hc, pkg, "gold", "monthly", "intro", false, "")
 			return v, err
 		}},
 		{Name: "MigrateBasePlanPrices", Fn: func(hc *http.Client) (any, error) {

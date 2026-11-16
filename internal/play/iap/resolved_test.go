@@ -65,7 +65,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 			// Google's, and this is the line that pins it.
 			name: "onetimeproducts.patch",
 			call: func(hc *http.Client) error {
-				_, err := iap.PatchOneTimeProduct(context.Background(), hc, "com.example.app", "coins", "2022/02", nil, true, json.RawMessage(`{}`))
+				_, err := iap.PatchOneTimeProduct(context.Background(), hc, "com.example.app", "coins", "2022/02", nil, true, json.RawMessage(`{}`), "")
 				return err
 			},
 			verb: http.MethodPatch,
@@ -74,7 +74,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 		{
 			name: "onetimeproducts.delete",
 			call: func(hc *http.Client) error {
-				return iap.DeleteOneTimeProduct(context.Background(), hc, "com.example.app", "coins")
+				return iap.DeleteOneTimeProduct(context.Background(), hc, "com.example.app", "coins", "")
 			},
 			verb: http.MethodDelete,
 			want: base + "/oneTimeProducts/coins",
@@ -82,7 +82,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 		{
 			name: "offers.batchUpdate",
 			call: func(hc *http.Client) error {
-				return iap.BatchUpdateOffers(context.Background(), hc, "com.example.app", "coins", "buy", []iap.OfferUpdate{{Offer: json.RawMessage(`{"offerId":"promo"}`)}}, "2022/02")
+				return iap.BatchUpdateOffers(context.Background(), hc, "com.example.app", "coins", "buy", []iap.OfferUpdate{{Offer: json.RawMessage(`{"offerId":"promo"}`)}}, "2022/02", "")
 			},
 			verb: http.MethodPost,
 			want: base + "/oneTimeProducts/coins/purchaseOptions/buy/offers:batchUpdate",
@@ -90,7 +90,7 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 		{
 			name: "offers.batchDelete",
 			call: func(hc *http.Client) error {
-				return iap.BatchDeleteOffers(context.Background(), hc, "com.example.app", "coins", "buy", []string{"promo"})
+				return iap.BatchDeleteOffers(context.Background(), hc, "com.example.app", "coins", "buy", []string{"promo"}, "")
 			},
 			verb: http.MethodPost,
 			want: base + "/oneTimeProducts/coins/purchaseOptions/buy/offers:batchDelete",

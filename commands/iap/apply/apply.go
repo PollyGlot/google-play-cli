@@ -37,6 +37,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
+	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
 // managedFields is the v2 product-level projection apply reconciles, and the
@@ -70,12 +71,13 @@ var offerManagedFields = []reconcile.Field{
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
-	Package        string
-	Dir            string
-	RegionsVersion string
-	DryRun         bool
-	Confirm        bool
-	Migrate        bool
+	Package          string
+	Dir              string
+	RegionsVersion   string
+	LatencyTolerance string
+	DryRun           bool
+	Confirm          bool
+	Migrate          bool
 }
 
 // Payload renders the Reconciliation plan: planned under --dry-run, executed
@@ -296,6 +298,10 @@ func stateTransition(kind, productID, purchaseOptionID, offerID, declared, live 
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	lt, err := latency.Parse(in.LatencyTolerance)
+	if err != nil {
+		return nil, err
+	}
 	dir := in.Dir
 	if dir == "" {
 		dir = iapcmd.DefaultDir
@@ -432,7 +438,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := iap.PatchOneTimeProduct(rc.Ctx, httpClient, pkg, c.ProductID, regionsVersion, nil, true, body); err != nil {
+		if _, err := iap.PatchOneTimeProduct(rc.Ctx, httpClient, pkg, c.ProductID, regionsVersion, nil, true, body, lt); err != nil {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
@@ -441,7 +447,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := iap.PatchOneTimeProduct(rc.Ctx, httpClient, pkg, c.ProductID, regionsVersion, c.Fields, false, body); err != nil {
+		if _, err := iap.PatchOneTimeProduct(rc.Ctx, httpClient, pkg, c.ProductID, regionsVersion, c.Fields, false, body, lt); err != nil {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
@@ -462,7 +468,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		addUpdate(optionKey{c.ProductID, c.ParentID}, iap.OfferUpdate{Offer: localOffers[iapcmd.OfferKey{ProductID: c.ProductID, PurchaseOptionID: c.ParentID, OfferID: c.OfferID}], UpdateMask: c.Fields})
 	}
 	for _, k := range updateOrder {
-		if err := iap.BatchUpdateOffers(rc.Ctx, httpClient, pkg, k.product, k.option, updates[k], regionsVersion); err != nil {
+		if err := iap.BatchUpdateOffers(rc.Ctx, httpClient, pkg, k.product, k.option, updates[k], regionsVersion, lt); err != nil {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
@@ -494,7 +500,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 		moveOptions := func() error {
 			for _, productID := range productOrder {
-				if err := iap.BatchUpdatePurchaseOptionStates(rc.Ctx, httpClient, pkg, productID, optionUpdates[productID]); err != nil {
+				if err := iap.BatchUpdatePurchaseOptionStates(rc.Ctx, httpClient, pkg, productID, optionUpdates[productID], lt); err != nil {
 					return iapcmd.Classify(pkg, err)
 				}
 			}
@@ -502,7 +508,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 		moveOffers := func() error {
 			for _, s := range offers {
-				if _, err := iap.SetOfferState(rc.Ctx, httpClient, pkg, s.ProductID, s.PurchaseOptionID, s.OfferID, s.To); err != nil {
+				if _, err := iap.SetOfferState(rc.Ctx, httpClient, pkg, s.ProductID, s.PurchaseOptionID, s.OfferID, s.To, lt); err != nil {
 					return iapcmd.Classify(pkg, err)
 				}
 			}
@@ -528,12 +534,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		deletes[k] = append(deletes[k], c.OfferID)
 	}
 	for _, k := range deleteOrder {
-		if err := iap.BatchDeleteOffers(rc.Ctx, httpClient, pkg, k.product, k.option, deletes[k]); err != nil {
+		if err := iap.BatchDeleteOffers(rc.Ctx, httpClient, pkg, k.product, k.option, deletes[k], lt); err != nil {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
 	for _, c := range plan.Deletes {
-		if err := iap.DeleteOneTimeProduct(rc.Ctx, httpClient, pkg, c.ProductID); err != nil {
+		if err := iap.DeleteOneTimeProduct(rc.Ctx, httpClient, pkg, c.ProductID, lt); err != nil {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
@@ -585,8 +591,12 @@ the API has no insert); a plan containing any delete, or any offer cancel
 --confirm (exit 3): CI=true never auto-confirms.
 
 --regions-version pins the regions version sent with writes (default
-` + iapcmd.DefaultRegionsVersion + `). GPLAY_READONLY refuses the command
-(exit 4).`,
+` + iapcmd.DefaultRegionsVersion + `).
+
+--latency-tolerance tolerant trades propagation speed for throughput on a
+large catalog: Play takes up to 24 hours to show the writes to buyers, against
+minutes by default. It rides every write of the plan. GPLAY_READONLY refuses
+the command (exit 4).`,
 		Example: `  # Show the plan against live Play (online, nothing changes)
   gplay iap apply --dry-run
 
@@ -608,6 +618,7 @@ the API has no insert); a plan containing any delete, or any offer cancel
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Dir, "dir", iapcmd.DefaultDir, "catalog directory to reconcile from")
 	cmd.Flags().StringVar(&in.RegionsVersion, "regions-version", iapcmd.DefaultRegionsVersion, "regions version pin sent with writes")
+	cmd.Flags().StringVar(&in.LatencyTolerance, latency.Flag, "", latency.Help)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the plan without committing (online)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize a destructive plan (required when the plan deletes products or offers, or cancels a pre-order offer)")
 	cmd.Flags().BoolVar(&in.Migrate, "migrate", false, "authorize one-way legacy→v2 promotions (required when a live legacy product is redeclared as v2)")

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -263,5 +264,34 @@ func TestApply_prune_belowRequiredMinimum_rejectedAtCommit(t *testing.T) {
 	}
 	if !rt.discarded() {
 		t.Error("a rejected commit must auto-discard the Edit (store untouched)")
+	}
+}
+
+func TestApply_aiGenerated_ridesEveryUpload(t *testing.T) {
+	for _, ai := range []images.AIGeneratedState{"", images.AIGenerated, images.NotAIGenerated} {
+		t.Run(string(ai), func(t *testing.T) {
+			rt := newOrch(t, orchRT{editID: "e"})
+			dir, local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {[]byte("shot-a"), []byte("shot-b")}}})
+			if _, err := imageorchestrator.Apply(context.Background(), &http.Client{Transport: rt}, local, imageorchestrator.Opts{
+				Dir: dir, Package: "com.example.app", Confirm: true, NoValidate: true, AIGenerated: ai,
+			}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if rt.uploads() != 2 {
+				t.Fatalf("uploads = %d, want 2", rt.uploads())
+			}
+			for _, c := range rt.Calls() {
+				if c.Method != http.MethodPost || !strings.HasPrefix(c.Path, "/upload/") {
+					continue
+				}
+				q, err := url.ParseQuery(c.Query)
+				if err != nil {
+					t.Fatalf("parse query: %v", err)
+				}
+				if _, sent := q["aiGeneratedState"]; sent != (ai != "") || q.Get("aiGeneratedState") != string(ai) {
+					t.Errorf("upload %s?%s: aiGeneratedState = %q (sent %v), want %q", c.Path, c.Query, q.Get("aiGeneratedState"), sent, ai)
+				}
+			}
+		})
 	}
 }

@@ -145,3 +145,48 @@ func TestRun_dryRun_noNetwork_noConfirm(t *testing.T) {
 		t.Errorf("dry-run json = %s (err %v), want dryRun:true", out.String(), err)
 	}
 }
+
+func TestRun_versionRange_sentInsteadOfTheList(t *testing.T) {
+	fake := newFake()
+	rc := newRC(t, fake)
+	if _, err := createcmd.Run(rc, createcmd.Input{Package: "com.example.app", VersionRange: "1040-1042", AllUsers: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	calls := fake.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %+v, want the one create POST", calls)
+	}
+	var body struct {
+		Targeting map[string]json.RawMessage `json:"targeting"`
+	}
+	if err := json.Unmarshal(calls[0].Body, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got := string(body.Targeting["versionRange"]); got != `{"versionCodeStart":1040,"versionCodeEnd":1042}` {
+		t.Errorf("targeting.versionRange = %s, want 1040 to 1042", got)
+	}
+	if _, listed := body.Targeting["versionList"]; listed {
+		t.Errorf("a range must not also send versionList: %s", calls[0].Body)
+	}
+}
+
+func TestRun_versionRangeRefused_exit2Offline(t *testing.T) {
+	for _, in := range []createcmd.Input{
+		{VersionRange: "1040-1042", VersionCode: 1041},
+		{VersionRange: "1042-1040"},
+		{VersionRange: "0-3"},
+		{VersionRange: "1040"},
+		{VersionRange: "a-b"},
+	} {
+		fake := newFake()
+		rc := newRC(t, fake)
+		in.Package, in.AllUsers = "com.example.app", true
+		_, err := createcmd.Run(rc, in)
+		if got := exitOf(t, err); got != 2 {
+			t.Errorf("%+v: exit = %d, want 2; err=%v", in, got, err)
+		}
+		if len(fake.Calls()) != 0 || fake.TokenExchanges() != 0 {
+			t.Errorf("%+v: must not reach the network; calls=%v", in, fake.Calls())
+		}
+	}
+}

@@ -30,6 +30,7 @@ var flagVocabulary = map[string]string{
 	"from":               "source track of a promotion",
 	"to":                 "destination track of a promotion",
 	"version-code":       "versionCode of an uploaded artifact",
+	"version-range":      "inclusive range of versionCodes, START-END",
 	"references-version": "versionCode whose already-uploaded expansion file is referenced",
 	"release-name":       "release name: set on the release created, or matched to pick a release within a track",
 	"review-id":          "review ID",
@@ -96,6 +97,9 @@ var flagVocabulary = map[string]string{
 	"command":    "gplay command path whose API methods the API index shows",
 	"oldest":     "cutoff before which price cohorts migrate",
 	"describe":   "describe the metric set instead of querying it",
+	// #784: Discovery's userCohort and sampleErrorReportLimit.
+	"user-cohort":    "user view of a vitals metric query: OS_PUBLIC, APP_TESTERS or OS_BETA",
+	"sample-reports": "sample error reports to attach to each error issue",
 
 	// Commerce reads.
 	"include-partial-refunds": "also list quantity-based partial refunds (voided purchases)",
@@ -148,6 +152,8 @@ var flagVocabulary = map[string]string{
 	"group":                 "Google Group email of testers",
 	"regions":               "region codes targeted",
 	"regions-version":       "regions version pin sent with writes",
+	"latency-tolerance":     "propagation mode of Monetization catalog writes: sensitive or tolerant",
+	"ai-generated":          "attest whether uploaded Listing images are AI generated",
 	"sdk-levels":            "Android SDK levels targeted",
 	"all-users":             "target all users",
 	"remote-in-app-update":  "use a remote in-app update as the recovery action",

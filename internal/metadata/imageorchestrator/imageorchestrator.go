@@ -76,6 +76,11 @@ type Opts struct {
 	// Commit carries the opt-in edits.commit parameters; the zero value keeps
 	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
 	Commit edits.CommitOptions
+
+	// AIGenerated is the attestation every upload of this apply carries; the
+	// zero value sends none. An image already live is not re-uploaded, so its
+	// attestation is left as it was.
+	AIGenerated images.AIGeneratedState
 }
 
 // Result is what Apply returns. Diff is always populated. On a real apply the
@@ -195,7 +200,7 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Staged, opts Op
 			return errNoChanges
 		}
 		for i, p := range plans {
-			if err := executePlan(ctx, hc, opts.Package, editID, opts.Dir, local[p.Locale][p.Type], inputs[i].Local, p, !opts.NoValidate); err != nil {
+			if err := executePlan(ctx, hc, opts.Package, editID, opts.Dir, local[p.Locale][p.Type], inputs[i].Local, p, !opts.NoValidate, opts.AIGenerated); err != nil {
 				return err
 			}
 		}
@@ -263,17 +268,17 @@ func hashFiles(dir string, paths []string) ([]string, error) {
 // executePlan runs one slot's plan inside the open Edit. files are the slot's
 // local images and shas their planned hashes, both indexed by the plan's
 // Uploads. validate runs the pre-check's rules on each buffer uploaded.
-func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool) error {
+func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool, ai images.AIGeneratedState) error {
 	switch p.Kind {
 	case imagediff.KindNone:
 		return nil
 	case imagediff.KindAppend:
-		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p, validate)
+		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p, validate, ai)
 	case imagediff.KindRewrite:
 		if err := images.DeleteAll(ctx, hc, pkg, editID, p.Locale, p.Type); err != nil {
 			return err
 		}
-		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p, validate)
+		return uploadAll(ctx, hc, pkg, editID, dir, files, shas, p, validate, ai)
 	case imagediff.KindDeleteIDs:
 		for _, id := range p.DeleteIDs {
 			if err := images.Delete(ctx, hc, pkg, editID, p.Locale, p.Type, id); err != nil {
@@ -292,7 +297,7 @@ func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, 
 // (ValidationError otherwise). The pre-check and the plan each read the file
 // on their own, so neither proves what an upload holds: a file rewritten
 // between them would be planned unvalidated.
-func uploadAll(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool) error {
+func uploadAll(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool, ai images.AIGeneratedState) error {
 	for _, i := range p.Uploads {
 		data, err := readContained(dir, files[i])
 		if err != nil {
@@ -307,7 +312,7 @@ func uploadAll(ctx context.Context, hc *http.Client, pkg, editID, dir string, fi
 				return &ValidationError{Problems: problems}
 			}
 		}
-		if _, err := images.Upload(ctx, hc, pkg, editID, p.Locale, p.Type, data); err != nil {
+		if _, err := images.Upload(ctx, hc, pkg, editID, p.Locale, p.Type, data, ai); err != nil {
 			return err
 		}
 	}

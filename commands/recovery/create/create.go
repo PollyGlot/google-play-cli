@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -23,6 +25,7 @@ import (
 type Input struct {
 	Package           string
 	VersionCode       int64
+	VersionRange      string // --version-range START-END, inclusive
 	AllUsers          bool
 	Regions           []string
 	SdkLevels         []int64
@@ -73,8 +76,9 @@ func (p Payload) renderJSON(w io.Writer) error {
 
 // Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if in.VersionCode <= 0 {
-		return nil, exit.Usagef("missing or invalid --version-code: the bad APK versionCode the recovery targets is required")
+	opts, err := versionTargeting(in)
+	if err != nil {
+		return nil, err
 	}
 	if !in.AllUsers && len(in.Regions) == 0 && len(in.SdkLevels) == 0 {
 		return nil, exit.Usagef("missing targeting: pass one of --all-users, --regions, or --sdk-levels")
@@ -96,19 +100,50 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	a, raw, err := recovery.Create(rc.Ctx, httpClient, pkg, recovery.CreateOpts{
-		VersionCodes:      []int64{in.VersionCode},
-		AllUsers:          in.AllUsers,
-		Regions:           in.Regions,
-		SdkLevels:         in.SdkLevels,
-		RemoteInAppUpdate: in.RemoteInAppUpdate,
-	})
+	opts.AllUsers, opts.Regions, opts.SdkLevels, opts.RemoteInAppUpdate = in.AllUsers, in.Regions, in.SdkLevels, in.RemoteInAppUpdate
+	a, raw, err := recovery.Create(rc.Ctx, httpClient, pkg, opts)
 	if err != nil {
 		return nil, recoverycmd.Classify(pkg, err)
 	}
 
-	rc.Confirmf("created draft recovery %s for %q (versionCode %d)", a.AppRecoveryID, pkg, in.VersionCode)
+	rc.Confirmf("created draft recovery %s for %q (%s)", a.AppRecoveryID, pkg, versionLabel(opts))
 	return Payload{Package: pkg, Row: recoverycmd.BuildRow(a), Cols: cols, Raw: raw}, nil
+}
+
+// versionTargeting refuses --version-code with --version-range: Discovery does
+// not say how Play reads a list and a range sent together.
+func versionTargeting(in Input) (recovery.CreateOpts, error) {
+	switch {
+	case in.VersionRange != "" && in.VersionCode != 0:
+		return recovery.CreateOpts{}, exit.Usagef("--version-code and --version-range both name the targeted versions: pass one")
+	case in.VersionRange != "":
+		r, err := parseVersionRange(in.VersionRange)
+		if err != nil {
+			return recovery.CreateOpts{}, err
+		}
+		return recovery.CreateOpts{VersionRange: r}, nil
+	case in.VersionCode > 0:
+		return recovery.CreateOpts{VersionCodes: []int64{in.VersionCode}}, nil
+	default:
+		return recovery.CreateOpts{}, exit.Usagef("missing or invalid --version-code: the bad APK versionCode the recovery targets is required (or --version-range for several)")
+	}
+}
+
+func parseVersionRange(s string) (*recovery.VersionRange, error) {
+	lo, hi, ok := strings.Cut(s, "-")
+	start, errStart := strconv.ParseInt(strings.TrimSpace(lo), 10, 64)
+	end, errEnd := strconv.ParseInt(strings.TrimSpace(hi), 10, 64)
+	if !ok || errStart != nil || errEnd != nil || start <= 0 || end < start {
+		return nil, exit.Usagef("invalid --version-range %q: want START-END, two positive versionCodes with START <= END (e.g. 1040-1042)", s)
+	}
+	return &recovery.VersionRange{Start: start, End: end}, nil
+}
+
+func versionLabel(opts recovery.CreateOpts) string {
+	if r := opts.VersionRange; r != nil {
+		return fmt.Sprintf("versionCodes %d-%d", r.Start, r.End)
+	}
+	return fmt.Sprintf("versionCode %d", opts.VersionCodes[0])
 }
 
 // NewCommand returns the cobra command for `gplay recovery create`.
@@ -124,8 +159,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 versionCode. A draft is staged but NOT yet pushed to any user: activate it
 later with ` + "`gplay recovery deploy <id>`" + ` (which requires --confirm).
 
-Pass --version-code (the bad version) and at least one audience selector:
---all-users, --regions <CC,CC>, or --sdk-levels <N,N>. The recovery uses a
+Pass --version-code (the bad version), or --version-range START-END for
+every versionCode in between (both inclusive), and at least one audience
+selector: --all-users, --regions <CC,CC>, or --sdk-levels <N,N>. The recovery uses a
 remote in-app update by default (--remote-in-app-update).
 
 A draft is harmless, so create needs no --confirm; use --dry-run to validate
@@ -134,7 +170,10 @@ inputs without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
   gplay recovery create --version-code 1042 --all-users --dry-run
 
   # Stage a draft for users in two regions only
-  gplay recovery create --version-code 1042 --regions US,FR`,
+  gplay recovery create --version-code 1042 --regions US,FR
+
+  # Cover three bad versions at once
+  gplay recovery create --version-range 1040-1042 --all-users`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -146,7 +185,8 @@ inputs without any HTTP call. GPLAY_READONLY still refuses it (exit 4).`,
 	}
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
-	cmd.Flags().Int64Var(&in.VersionCode, "version-code", 0, "the bad APK versionCode the recovery targets (required)")
+	cmd.Flags().Int64Var(&in.VersionCode, "version-code", 0, "the bad APK versionCode the recovery targets (this or --version-range is required)")
+	cmd.Flags().StringVar(&in.VersionRange, "version-range", "", "the bad versionCodes as an inclusive range START-END, e.g. 1040-1042")
 	cmd.Flags().BoolVar(&in.AllUsers, "all-users", false, "target all users on the bad versionCode")
 	cmd.Flags().StringSliceVar(&in.Regions, "regions", nil, "target users in these CLDR region codes (e.g. US,FR)")
 	cmd.Flags().Int64SliceVar(&in.SdkLevels, "sdk-levels", nil, "target users on these Android SDK levels (e.g. 30,31)")

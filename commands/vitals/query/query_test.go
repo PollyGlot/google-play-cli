@@ -284,3 +284,81 @@ func exitCode(t *testing.T, err error) int {
 	}
 	return coder.ExitCode()
 }
+
+func queryBody(t *testing.T, fake *testkit.Fake) map[string]any {
+	t.Helper()
+	var bodies []map[string]any
+	for _, c := range fake.Calls() {
+		if strings.HasSuffix(c.Path, ":query") {
+			var b map[string]any
+			if err := json.Unmarshal(c.Body, &b); err != nil {
+				t.Fatalf("decode :query body: %v", err)
+			}
+			bodies = append(bodies, b)
+		}
+	}
+	if len(bodies) != 1 {
+		t.Fatalf("recorded %d :query calls, want 1", len(bodies))
+	}
+	return bodies[0]
+}
+
+func TestRun_userCohort_sentOnlyWhenSet(t *testing.T) {
+	for _, tc := range []struct{ flag, want string }{
+		{"", ""},
+		{"OS_BETA", "OS_BETA"},
+		{"app_testers", "APP_TESTERS"},
+	} {
+		t.Run("cohort="+tc.flag, func(t *testing.T) {
+			fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"rows":[]}`))
+			rc, _, _ := newRC(t, fake)
+			if _, err := Run(rc, Input{MetricSet: "crashrate", Package: "com.example.app", UserCohort: tc.flag}); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			got, sent := queryBody(t, fake)["userCohort"]
+			if sent != (tc.want != "") || (sent && got != tc.want) {
+				t.Errorf("userCohort = %v (sent %v), want %q", got, sent, tc.want)
+			}
+		})
+	}
+}
+
+func TestRun_userCohortTheSetRefuses_isUsageErrorBeforeAnyCall(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   Input
+		want string
+	}{
+		{"OS_PUBLIC-only set", Input{MetricSet: "slowstartrate", UserCohort: "APP_TESTERS"}, `unknown user cohort "APP_TESTERS" for slowstartrate (valid: OS_PUBLIC)`},
+		{"unknown cohort", Input{MetricSet: "crashrate", UserCohort: "EVERYONE"}, `unknown user cohort "EVERYONE"`},
+		{"OS_BETA narrows the dimensions", Input{MetricSet: "anrrate", UserCohort: "OS_BETA", Dimensions: []string{"countryCode"}}, `unknown dimension "countryCode" for anrrate with user cohort OS_BETA (valid: osBuild, versionCode)`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"rows":[]}`))
+			rc, _, _ := newRC(t, fake)
+			tc.in.Package = "com.example.app"
+			_, err := Run(rc, tc.in)
+			var coder interface{ ExitCode() int }
+			if !errors.As(err, &coder) || coder.ExitCode() != 2 {
+				t.Fatalf("want exit 2, got %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want it to contain %q", err, tc.want)
+			}
+			if calls := fake.Calls(); len(calls) != 0 {
+				t.Errorf("refused input reached the API: %+v", calls)
+			}
+		})
+	}
+}
+
+func TestRun_osBetaWithItsDimensions_isAccepted(t *testing.T) {
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"rows":[]}`))
+	rc, _, _ := newRC(t, fake)
+	if _, err := Run(rc, Input{MetricSet: "lmkrate", Package: "com.example.app", UserCohort: "OS_BETA", Dimensions: []string{"versionCode", "osBuild"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := queryBody(t, fake)["userCohort"]; got != "OS_BETA" {
+		t.Errorf("userCohort = %v, want OS_BETA", got)
+	}
+}

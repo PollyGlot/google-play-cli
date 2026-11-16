@@ -778,3 +778,46 @@ func TestRun_legacyRetired_legacyFile_refuses(t *testing.T) {
 		t.Errorf("refusal must not mutate; got %v", m)
 	}
 }
+
+// TestRun_latencyTolerance_ridesTheWrites runs the create-and-upsert plan of
+// TestRun_v2CreateIsUpsert with --latency-tolerance tolerant: the product
+// patch carries it in its query, the offer batch in each entry.
+func TestRun_latencyTolerance_ridesTheWrites(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
+		"gems50.json":   `{"productId":"gems50","listings":[{"languageCode":"en-US","title":"Gems"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"offerId":"launch"}]}]}`,
+		"old_gems.json": `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`,
+	})
+	rt := &iapRT{}
+	if _, err := applycmd.Run(newRC(t, rt), applycmd.Input{Package: "com.example.app", Dir: dir, LatencyTolerance: "tolerant"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	const tolerant = "PRODUCT_UPDATE_LATENCY_TOLERANCE_LATENCY_TOLERANT"
+	var patched, batched bool
+	for i, u := range rt.urls {
+		if strings.Contains(u, "/onetimeproducts/gems50?") {
+			patched = true
+			if !strings.Contains(u, "latencyTolerance="+tolerant) {
+				t.Errorf("product patch %q lacks latencyTolerance=%s", u, tolerant)
+			}
+		}
+		if strings.Contains(u, "offers:batchUpdate") {
+			batched = true
+			if body := rt.bodies[rt.calls[i]]; !strings.Contains(body, `"latencyTolerance":"`+tolerant+`"`) {
+				t.Errorf("offer batchUpdate body %s lacks latencyTolerance", body)
+			}
+		}
+	}
+	if !patched || !batched {
+		t.Fatalf("plan sent patch=%v batchUpdate=%v, want both; calls %v", patched, batched, rt.calls)
+	}
+}
+
+func TestRun_latencyToleranceUnknown_isUsageErrorBeforeAnyCall(t *testing.T) {
+	rt := &iapRT{}
+	_, err := applycmd.Run(newRC(t, rt), applycmd.Input{Package: "com.example.app", Dir: matchedCatalog(t), LatencyTolerance: "fast"})
+	assertExit(t, err, 2)
+	if len(rt.calls) != 0 {
+		t.Errorf("refused input reached the API: %v", rt.calls)
+	}
+}

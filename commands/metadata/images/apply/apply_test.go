@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -452,5 +453,41 @@ func TestRun_localeWithoutListing_hintsMetadataApply(t *testing.T) {
 	}
 	if got := exitCodeOf(t, err); got != 30 {
 		t.Errorf("exit = %d, want 30 (the 404's)", got)
+	}
+}
+
+func TestRun_aiGenerated_mapsTheTriStateFlag(t *testing.T) {
+	yes, no := true, false
+	for _, tc := range []struct {
+		name     string
+		declared *bool
+		want     string
+	}{
+		{"unset", nil, ""},
+		{"true", &yes, "aiGeneratedStateAiGeneratedDeveloperAttested"},
+		{"false", &no, "aiGeneratedStateNotAiGenerated"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := newFake(t, applyRT{editID: "e"})
+			if _, err := imagesapply.Run(newRC(t, rt), imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), Confirm: true, Types: []string{"icon"}, AIGenerated: tc.declared}); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			var upload *testkit.Call
+			for _, c := range rt.Calls() {
+				if strings.HasPrefix(c.Path, "/upload/") {
+					upload = &c
+				}
+			}
+			if upload == nil {
+				t.Fatalf("no upload among %v", calls(rt))
+			}
+			q, err := url.ParseQuery(upload.Query)
+			if err != nil {
+				t.Fatalf("parse query: %v", err)
+			}
+			if _, sent := q["aiGeneratedState"]; sent != (tc.want != "") || q.Get("aiGeneratedState") != tc.want {
+				t.Errorf("upload query %q, want aiGeneratedState=%q", upload.Query, tc.want)
+			}
+		})
 	}
 }

@@ -26,15 +26,23 @@ func ErrorCountSet() MetricSet {
 // Filter, the [Start,End) interval, an OrderBy, and a total Limit (0 = every
 // page). The interval is sent as date-only datapoints, or with their hour when
 // Hourly is set (minutes are never sent, so a bound is read on its hour). The
-// call auto-paginates to Limit (or to exhaustion).
+// call auto-paginates to Limit (or to exhaustion). SampleReports asks
+// errors.issues.search to attach that many sample report names to each issue
+// (0 = none, not sent); errors.reports.search has no such parameter and
+// ignores it.
 type SearchOptions struct {
-	Filter  string
-	Start   time.Time
-	End     time.Time
-	Hourly  bool
-	Limit   int
-	OrderBy string
+	Filter        string
+	Start         time.Time
+	End           time.Time
+	Hourly        bool
+	Limit         int
+	OrderBy       string
+	SampleReports int
 }
+
+// MaxSampleReports is the largest sampleErrorReportLimit Play accepts:
+// Discovery documents "currently only 0 and 1 are supported".
+const MaxSampleReports = 1
 
 const (
 	opSearchIssues  = "playdeveloperreporting.vitals.errors.issues.search"
@@ -58,7 +66,11 @@ var (
 // second return value reports that opts.Limit cut the list short while the
 // server still had pages (PRD #446).
 func SearchErrorIssues(ctx context.Context, hc *http.Client, pkg string, opts SearchOptions) (json.RawMessage, bool, error) {
-	return searchErrors(ctx, hc, mSearchIssues, opSearchIssues, "errorIssues", pageMaxIssues, pkg, opts)
+	q := searchQuery(opts)
+	if opts.SampleReports > 0 {
+		q.Set("sampleErrorReportLimit", strconv.Itoa(opts.SampleReports))
+	}
+	return paginateGET(ctx, hc, mSearchIssues, opSearchIssues, pkg, q, "errorIssues", pageMaxIssues, opts.Limit)
 }
 
 // SearchErrorReports issues errors.reports.search (GET) for pkg, following
@@ -66,14 +78,10 @@ func SearchErrorIssues(ctx context.Context, hc *http.Client, pkg string, opts Se
 // envelope (individual reports / stack traces), plus the same truncation signal
 // as SearchErrorIssues.
 func SearchErrorReports(ctx context.Context, hc *http.Client, pkg string, opts SearchOptions) (json.RawMessage, bool, error) {
-	return searchErrors(ctx, hc, mSearchReports, opSearchReports, "errorReports", pageMaxReports, pkg, opts)
+	return paginateGET(ctx, hc, mSearchReports, opSearchReports, pkg, searchQuery(opts), "errorReports", pageMaxReports, opts.Limit)
 }
 
-// searchErrors is the shared, auto-paginating `:search` for the errors
-// sub-resources. m carries the endpoint and verb, itemsKey only the envelope
-// key of the response: the two used to be the same string because the path
-// segment was hand-built from it, which is exactly the coupling #513 removes.
-func searchErrors(ctx context.Context, hc *http.Client, m apiregistry.Method, op, itemsKey string, pageSize int, pkg string, opts SearchOptions) (json.RawMessage, bool, error) {
+func searchQuery(opts SearchOptions) url.Values {
 	base := url.Values{}
 	if opts.Filter != "" {
 		base.Set("filter", opts.Filter)
@@ -87,7 +95,7 @@ func searchErrors(ctx context.Context, hc *http.Client, m apiregistry.Method, op
 	if !opts.End.IsZero() {
 		setIntervalDate(base, "interval.endTime", opts.End, opts.Hourly)
 	}
-	return paginateGET(ctx, hc, m, op, pkg, base, itemsKey, pageSize, opts.Limit)
+	return base
 }
 
 // setIntervalDate writes the google.type.DateTime query params for an interval
