@@ -515,8 +515,8 @@ func containsVersionCode(codes []string, want int) bool {
 // the tracks.Release payload sent on the destination track. Carries
 // over the source's versionCode and name; status and fraction come from the
 // resolved ReleaseState, as in buildRelease. countryTargeting carries over
-// only to a staged rollout: Play rejects it on a draft or completed release
-// (#779). The source's inAppUpdatePriority carries over unless
+// only to a staged rollout on production: Play rejects it on a draft or
+// completed release (#779) and on any other track. The source's inAppUpdatePriority carries over unless
 // opts.UpdatePriority overrides it: before #664 the typed rebuild silently
 // dropped a priority set in the Play Console.
 func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release {
@@ -526,7 +526,7 @@ func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release
 		priority = opts.UpdatePriority
 	}
 	var targeting json.RawMessage
-	if state.UserFraction() > 0 {
+	if opts.ToTrack == TrackProduction && state.UserFraction() > 0 {
 		targeting = source.CountryTargeting
 	}
 	return tracks.Release{

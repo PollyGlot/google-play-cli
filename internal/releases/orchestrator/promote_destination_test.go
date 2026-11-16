@@ -41,20 +41,24 @@ func TestPromote_countryTargetingFollowsTheFraction(t *testing.T) {
 	complete, _ := orchestrator.RequestedState(false, true, false, 0)
 	cases := []struct {
 		name  string
+		to    string
 		state orchestrator.ReleaseState
 		kept  bool
 	}{
-		{"a staged copy keeps it verbatim", staged, true},
-		{"a completed copy cannot carry it", complete, false},
+		{"a staged copy to production keeps it verbatim", "production", staged, true},
+		{"a completed copy cannot carry it", "production", complete, false},
+		{"a staged copy to another track cannot carry it", "beta", staged, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rt := newPromoteFake(promoteAPI{
 				editID:             "edit-ct",
-				sourceTrackGetResp: `{"track":"production","releases":[{"name":"2.5.0","status":"inProgress","versionCodes":["150"],"userFraction":0.2,"countryTargeting":` + targeting + `}]}`,
+				sourceTrackGetResp: `{"track":"beta","releases":[{"name":"2.5.0","status":"completed","versionCodes":["150"],"countryTargeting":` + targeting + `}]}`,
+				destTrack:          tc.to,
+				destTrackGetResp:   `{"track":"` + tc.to + `","releases":[]}`,
 			})
 			if _, err := orchestrator.Promote(context.Background(), &http.Client{Transport: rt}, orchestrator.PromoteOpts{
-				Package: "com.example.app", FromTrack: "production", ToTrack: "beta", State: tc.state,
+				Package: "com.example.app", FromTrack: "alpha", ToTrack: tc.to, State: tc.state, Confirm: true,
 			}); err != nil {
 				t.Fatalf("Promote: %v", err)
 			}

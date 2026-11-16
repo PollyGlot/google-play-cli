@@ -337,8 +337,8 @@ live path does (exit 60). Its JSON is gplay-shaped and carries `"plan": true`.
 replaces every release already there; it reads `--to` first and names the
 replaced versionCodes on the `✓` line, and `--plan` lists those releases
 before anything is sent (ADR-0054). `--from` equal to `--to` is exit 2. The
-source's `countryTargeting` carries over when the copy is a staged rollout,
-following the fraction as above. The `--dry-run` of these verbs stays offline
+source's `countryTargeting` carries over when the copy is a staged rollout
+on production, following the fraction as above. The `--dry-run` of these verbs stays offline
 and its JSON carries `"dryRun": true`, the ADR-0017 `requires` array and the
 `--version-code` asked for; promote's adds `"replacesDestination": true`.
 

@@ -36,9 +36,10 @@ neither `"dryRun": true` nor the ADR-0017 `requires` array, and showed
 4. **`--from` equal to `--to` is CLI misuse** (exit 2), refused before any HTTP.
    Changing a release in place is the rollout state machine's job.
 5. **`countryTargeting` carries over verbatim when the copy is a staged
-   rollout.** It follows the fraction, as in the rollout state machine (#779):
-   Discovery allows it only on an `inProgress` release, so a draft or completed
-   copy goes without it rather than sending a body Play refuses.
+   rollout on production.** It follows the fraction, as in the rollout state
+   machine (#779): Discovery allows it only on an `inProgress` release of the
+   production track, so any other copy goes without it rather than sending a
+   body Play refuses.
 6. **Release dry-runs carry `"dryRun": true`, `requires` and the requested
    `versionCode`** (`rollout`, `halt`, `resume`, `complete`, `promote`).
    `requires` is `["confirm"]` when the live run would reach production users,

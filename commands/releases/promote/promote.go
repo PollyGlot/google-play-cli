@@ -345,7 +345,7 @@ Targeting production defaults to a draft release, which reaches no user,
 unless --complete or --staged is supplied (both require --confirm there).
 Release notes carry over from the source unless --release-notes /
 --release-notes-dir is passed. The source's country targeting carries over
-to a staged rollout (--staged); a draft or completed release cannot hold it.
+to a staged rollout on production (--staged); Play allows it nowhere else.
 
 When the source track has multiple coexisting releases (e.g. inProgress +
 halted), pass --version-code N or --release-name <name> to pick one.`,
