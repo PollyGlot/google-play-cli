@@ -224,7 +224,7 @@ func List(ctx context.Context, hc *http.Client, pkg, editID, language string, im
 // its sha256, which `apply` compares against the local file's hash.
 // images.upload APPENDS to a gallery (there is no position parameter);
 // ordering is the caller's job (upload in name order after a DeleteAll:
-// ADR-0013). ai rides the aiGeneratedState query parameter when set.
+// ADR-0013).
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, data []byte, ai AIGeneratedState) (*Image, error) {
 	var q url.Values
 	if ai != "" {

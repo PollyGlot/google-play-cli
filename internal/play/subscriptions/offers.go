@@ -238,8 +238,6 @@ func offerScope(pkg, productID, basePlanID string, offerID ...string) map[string
 	return p
 }
 
-// postState POSTs a state verb, whose body is an empty object unless it
-// carries a latency tolerance.
 func postState(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg string, params map[string]string, lt latency.Tolerance) (json.RawMessage, error) {
 	body := struct {
 		LatencyTolerance latency.Tolerance `json:"latencyTolerance,omitempty"`

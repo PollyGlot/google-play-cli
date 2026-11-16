@@ -81,8 +81,6 @@ func SearchErrorReports(ctx context.Context, hc *http.Client, pkg string, opts S
 	return paginateGET(ctx, hc, mSearchReports, opSearchReports, pkg, searchQuery(opts), "errorReports", pageMaxReports, opts.Limit)
 }
 
-// searchQuery builds the query both errors `:search` reads share: the filter,
-// the order and the interval.
 func searchQuery(opts SearchOptions) url.Values {
 	base := url.Values{}
 	if opts.Filter != "" {

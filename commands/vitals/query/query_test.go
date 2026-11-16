@@ -285,7 +285,6 @@ func exitCode(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// queryBody returns the body of the one `:query` POST fake recorded.
 func queryBody(t *testing.T, fake *testkit.Fake) map[string]any {
 	t.Helper()
 	var bodies []map[string]any

@@ -456,8 +456,6 @@ func TestRun_localeWithoutListing_hintsMetadataApply(t *testing.T) {
 	}
 }
 
-// TestRun_aiGenerated_mapsTheTriStateFlag asserts unset sends no attestation,
-// true attests AI generated and false attests not AI generated.
 func TestRun_aiGenerated_mapsTheTriStateFlag(t *testing.T) {
 	yes, no := true, false
 	for _, tc := range []struct {

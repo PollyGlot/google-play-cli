@@ -280,8 +280,6 @@ func SupportedDimensions(idx schemaindex.Index, set MetricSet) []string {
 	return parseCatalog(s.Properties["dimensions"].Description, "Supported dimensions:")
 }
 
-// cohortProperty returns the `userCohort` property of a metric set's `:query`
-// request; ok is false for a set whose request has none (errors.counts).
 func cohortProperty(idx schemaindex.Index, set MetricSet) (schemaindex.Property, bool) {
 	s, ok := requestSchema(idx, set)
 	if !ok {

@@ -110,9 +110,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Row: recoverycmd.BuildRow(a), Cols: cols, Raw: raw}, nil
 }
 
-// versionTargeting resolves the targeted versions: exactly one of
-// --version-code and --version-range. Discovery does not say how Play reads a
-// list and a range sent together, so gplay sends one form.
+// versionTargeting refuses --version-code with --version-range: Discovery does
+// not say how Play reads a list and a range sent together.
 func versionTargeting(in Input) (recovery.CreateOpts, error) {
 	switch {
 	case in.VersionRange != "" && in.VersionCode != 0:
@@ -130,8 +129,6 @@ func versionTargeting(in Input) (recovery.CreateOpts, error) {
 	}
 }
 
-// parseVersionRange reads START-END, two positive versionCodes with START no
-// greater than END.
 func parseVersionRange(s string) (*recovery.VersionRange, error) {
 	lo, hi, ok := strings.Cut(s, "-")
 	start, errStart := strconv.ParseInt(strings.TrimSpace(lo), 10, 64)

@@ -100,8 +100,8 @@ type createDraftAppRecoveryRequest struct {
 
 // CreateOpts is the request-shaped input the command builds from flags.
 type CreateOpts struct {
-	VersionCodes      []int64       // the bad APK versionCode(s) the recovery targets, as a list
-	VersionRange      *VersionRange // or as a range
+	VersionCodes      []int64 // the bad APK versionCode(s) the recovery targets
+	VersionRange      *VersionRange
 	AllUsers          bool
 	Regions           []string
 	SdkLevels         []int64

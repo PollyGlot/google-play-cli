@@ -1106,10 +1106,8 @@ func assertExit(t *testing.T, err error, want int) {
 	}
 }
 
-// TestRun_latencyTolerance_ridesThePatchesAndStates runs a plan with a patch,
-// an offer create and two state moves under --latency-tolerance tolerant: the
-// patch and the state verbs carry it, the create does not (Play's create
-// takes no such parameter).
+// TestRun_latencyTolerance_ridesThePatchesAndStates: the offer create carries
+// no latencyTolerance because Play's create method takes no such parameter.
 func TestRun_latencyTolerance_ridesThePatchesAndStates(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE","offers":[

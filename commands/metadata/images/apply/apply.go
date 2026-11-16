@@ -266,8 +266,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Result: res}, nil
 }
 
-// aiGeneratedState maps the tri-state --ai-generated to the attestation an
-// upload carries.
 func aiGeneratedState(declared *bool) images.AIGeneratedState {
 	switch {
 	case declared == nil:

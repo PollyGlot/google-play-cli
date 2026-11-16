@@ -267,9 +267,6 @@ func TestApply_prune_belowRequiredMinimum_rejectedAtCommit(t *testing.T) {
 	}
 }
 
-// TestApply_aiGenerated_ridesEveryUpload asserts the attestation reaches the
-// aiGeneratedState query of each upload, and that no upload carries one when
-// the apply declares none.
 func TestApply_aiGenerated_ridesEveryUpload(t *testing.T) {
 	for _, ai := range []images.AIGeneratedState{"", images.AIGenerated, images.NotAIGenerated} {
 		t.Run(string(ai), func(t *testing.T) {
