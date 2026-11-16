@@ -341,6 +341,7 @@ experimental flag "recovery create" --regions type=stringSlice default="[]"
 experimental flag "recovery create" --remote-in-app-update type=bool default="true"
 experimental flag "recovery create" --sdk-levels type=int64Slice default="[]"
 experimental flag "recovery create" --version-code type=int64 default="0"
+experimental flag "recovery create" --version-range type=string default=""
 experimental leaf "recovery deploy" use="deploy <appRecoveryId>" mutating
 experimental flag "recovery deploy" --confirm type=bool default="false"
 experimental flag "recovery deploy" --dry-run type=bool default="false"

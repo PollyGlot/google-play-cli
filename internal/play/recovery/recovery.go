@@ -74,14 +74,23 @@ type versionList struct {
 	VersionCodes []int64 `json:"versionCodes,omitempty"`
 }
 
+// VersionRange is the AppVersionRange a recovery targets: every versionCode
+// from Start to End, both inclusive.
+type VersionRange struct {
+	Start int64 `json:"versionCodeStart"`
+	End   int64 `json:"versionCodeEnd"`
+}
+
 // Targeting is the audience selector shared by create (full) and add-targeting
 // (the append-only subset). The user dimension (allUsers / androidSdks /
-// regions) and, for create, the version dimension (versionList) combine.
+// regions) and, for create, the version dimension (versionList or
+// versionRange) combine.
 type Targeting struct {
-	AllUsers    *allUsers    `json:"allUsers,omitempty"`
-	AndroidSdks *androidSdks `json:"androidSdks,omitempty"`
-	Regions     *regions     `json:"regions,omitempty"`
-	VersionList *versionList `json:"versionList,omitempty"`
+	AllUsers     *allUsers     `json:"allUsers,omitempty"`
+	AndroidSdks  *androidSdks  `json:"androidSdks,omitempty"`
+	Regions      *regions      `json:"regions,omitempty"`
+	VersionList  *versionList  `json:"versionList,omitempty"`
+	VersionRange *VersionRange `json:"versionRange,omitempty"`
 }
 
 type createDraftAppRecoveryRequest struct {
@@ -91,7 +100,8 @@ type createDraftAppRecoveryRequest struct {
 
 // CreateOpts is the request-shaped input the command builds from flags.
 type CreateOpts struct {
-	VersionCodes      []int64 // the bad APK versionCode(s) the recovery targets
+	VersionCodes      []int64       // the bad APK versionCode(s) the recovery targets, as a list
+	VersionRange      *VersionRange // or as a range
 	AllUsers          bool
 	Regions           []string
 	SdkLevels         []int64
@@ -132,6 +142,7 @@ func Create(ctx context.Context, hc *http.Client, pkg string, opts CreateOpts) (
 	if len(opts.VersionCodes) > 0 {
 		t.VersionList = &versionList{VersionCodes: opts.VersionCodes}
 	}
+	t.VersionRange = opts.VersionRange
 	var a Action
 	raw, err := api.DoJSON(ctx, hc, api.Call{
 		Method: mCreate, Op: opCreate, Target: pkg,

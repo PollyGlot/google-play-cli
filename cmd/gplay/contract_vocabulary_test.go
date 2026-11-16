@@ -30,6 +30,7 @@ var flagVocabulary = map[string]string{
 	"from":               "source track of a promotion",
 	"to":                 "destination track of a promotion",
 	"version-code":       "versionCode of an uploaded artifact",
+	"version-range":      "inclusive range of versionCodes, START-END",
 	"references-version": "versionCode whose already-uploaded expansion file is referenced",
 	"release-name":       "release name: set on the release created, or matched to pick a release within a track",
 	"review-id":          "review ID",
