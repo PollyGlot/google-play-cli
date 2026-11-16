@@ -23,6 +23,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
@@ -181,7 +182,7 @@ time per aggregation period); the window flags do not apply and are rejected.`,
 
 type issuesInput struct {
 	Package, Since, Filter, OrderBy string
-	Limit                           int
+	Limit, SampleReports            int
 }
 
 // issuesPayload renders clustered error issues. JSON is the verbatim API
@@ -209,6 +210,9 @@ func (p issuesPayload) Renderers() output.Renderers {
 }
 
 func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error) {
+	if in.SampleReports < 0 || in.SampleReports > vitals.MaxSampleReports {
+		return nil, exit.Usagef("invalid --sample-reports %d: Play attaches 0 to %d sample reports per issue", in.SampleReports, vitals.MaxSampleReports)
+	}
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
@@ -225,7 +229,7 @@ func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error)
 	if err != nil {
 		return nil, err
 	}
-	opts.Filter, opts.Limit, opts.OrderBy = in.Filter, in.Limit, in.OrderBy
+	opts.Filter, opts.Limit, opts.OrderBy, opts.SampleReports = in.Filter, in.Limit, in.OrderBy, in.SampleReports
 	raw, truncated, err := vitals.SearchErrorIssues(rc.Ctx, hc, pkg, opts)
 	if err != nil {
 		return nil, err
@@ -256,8 +260,15 @@ location: over a window.
 
 ` + mappingsNote + `
 
+--sample-reports 1 attaches the name of one sample error report to each issue
+(its sampleErrorReports field, in --output json), which saves a second
+vitals errors reports call to find a stack trace. Play supports 0 or 1 today.
+
 Read-only; --output json mirrors the API response verbatim.`,
 		Example: `  gplay vitals errors issues --package com.example.app
+
+  # One sample report per issue, to jump straight to a stack trace
+  gplay vitals errors issues --sample-reports 1 --output json
 
   # The 20 most frequent crash clusters of the last week
   gplay vitals errors issues --filter "errorIssueType = CRASH" --order-by "errorReportCount desc" \
@@ -277,6 +288,7 @@ Read-only; --output json mirrors the API response verbatim.`,
 	cmd.Flags().StringVar(&in.Filter, "filter", "", "AIP-160 filter, e.g. \"errorIssueType = CRASH\" or \"versionCode = 123\"")
 	cmd.Flags().StringVar(&in.OrderBy, "order-by", "", "sort order, e.g. \"errorReportCount desc\"")
 	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max issues to return (0 = all, no cap); a capped list warns on stderr")
+	cmd.Flags().IntVar(&in.SampleReports, "sample-reports", 0, "sample error reports to attach to each issue (0 or 1)")
 	return cmd
 }
 

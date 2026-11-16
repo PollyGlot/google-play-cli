@@ -36,3 +36,22 @@ func TestRegistryMatchesSnapshot(t *testing.T) {
 		}
 	}
 }
+
+// TestMaxSampleReports_matchesDiscovery anchors the --sample-reports bound to
+// the sentence it rests on, so a refresh that raises Play's cap fails here.
+func TestMaxSampleReports_matchesDiscovery(t *testing.T) {
+	idx, err := schemaindex.Embedded()
+	if err != nil {
+		t.Fatalf("Embedded: %v", err)
+	}
+	for _, p := range idx.Methods["playdeveloperreporting.vitals.errors.issues.search"].Parameters {
+		if p.Name != "sampleErrorReportLimit" {
+			continue
+		}
+		if vitals.MaxSampleReports != 1 || !strings.Contains(p.Description, "currently only 0 and 1 are supported") {
+			t.Errorf("MaxSampleReports = %d against Discovery %q: review the bound", vitals.MaxSampleReports, p.Description)
+		}
+		return
+	}
+	t.Fatal("errors.issues.search has no sampleErrorReportLimit parameter in the index")
+}

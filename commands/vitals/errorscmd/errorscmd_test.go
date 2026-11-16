@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -179,5 +180,44 @@ func TestRunReports_searchesAndKeepsFrames(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "gplay releases mappings upload") {
 		t.Errorf("reports must note mappings (#250); stderr = %q", stderr.String())
+	}
+}
+
+func TestRunIssues_sampleReports_sendsTheLimitOnlyWhenAsked(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		n     int
+		query string
+	}{
+		{"unset", 0, ""},
+		{"one", 1, "1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rc, fake, _ := newRC(t, `{"errorIssues":[]}`)
+			if _, err := runIssues(rc, issuesInput{Package: "com.example.app", Since: "7d", SampleReports: tc.n}); err != nil {
+				t.Fatalf("runIssues: %v", err)
+			}
+			q, err := url.ParseQuery(lastCall(t, fake).Query)
+			if err != nil {
+				t.Fatalf("parse query: %v", err)
+			}
+			if _, sent := q["sampleErrorReportLimit"]; sent != (tc.query != "") || q.Get("sampleErrorReportLimit") != tc.query {
+				t.Errorf("sampleErrorReportLimit = %q (sent %v), want %q", q.Get("sampleErrorReportLimit"), sent, tc.query)
+			}
+		})
+	}
+}
+
+func TestRunIssues_sampleReportsOutOfRange_isUsageErrorBeforeAnyCall(t *testing.T) {
+	for _, n := range []int{-1, 2} {
+		rc, fake, _ := newRC(t, `{"errorIssues":[]}`)
+		_, err := runIssues(rc, issuesInput{Package: "com.example.app", SampleReports: n})
+		var coder interface{ ExitCode() int }
+		if !errorsAs(err, &coder) || coder.ExitCode() != 2 {
+			t.Fatalf("--sample-reports %d: want exit 2, got %v", n, err)
+		}
+		if calls := fake.Calls(); len(calls) != 0 {
+			t.Errorf("--sample-reports %d: refused input reached the API: %+v", n, calls)
+		}
 	}
 }
