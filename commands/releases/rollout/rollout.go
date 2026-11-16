@@ -45,9 +45,11 @@ type Input struct {
 }
 
 // Payload satisfies output.Renderable for the resulting state-transition
-// Result. JSON is API pass-through (the raw tracks.update body, ADR-0003).
+// Result. JSON is API pass-through (the raw tracks.update body, ADR-0003);
+// DryRun marks the --dry-run preview, which has no body to pass through.
 type Payload struct {
 	Result *orchestrator.Result
+	DryRun bool
 }
 
 func (p Payload) Renderers() output.Renderers {
@@ -60,7 +62,7 @@ func (p Payload) Renderers() output.Renderers {
 	}
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p.Result) },
-		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result) },
+		JSON:     func(w io.Writer) error { return renderJSON(w, p) },
 		Markdown: func(w io.Writer) error { return renderMarkdown(w, p.Result) },
 	}
 }
@@ -161,11 +163,23 @@ func joinCodes(codes []int) string {
 	return strings.Join(s, ", ")
 }
 
-func renderJSON(w io.Writer, r *orchestrator.Result) error {
+// dryRunJSON is the --dry-run JSON shape: the gplay Result led by the dryRun
+// marker and followed by the ADR-0017 requires array.
+type dryRunJSON struct {
+	DryRun bool `json:"dryRun"`
+	*orchestrator.Result
+	Requires []string `json:"requires"`
+}
+
+func renderJSON(w io.Writer, p Payload) error {
+	r := p.Result
 	// API pass-through: emit the raw tracks.update body (ADR-0003).
 	if len(r.RawTrackResponse) > 0 {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
+	}
+	if p.DryRun {
+		return output.WriteJSON(w, dryRunJSON{DryRun: true, Result: r, Requires: output.NonNil(r.Requires)})
 	}
 	return output.WriteJSON(w, r)
 }
@@ -277,7 +291,7 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		rc.ConfirmMutation(explicitEditID, "rollout %s on track %q (versionCode %d, status %s%s)",
 			action, in.Track, result.VersionCode, result.Status, extra)
 	}
-	return Payload{Result: result}, nil
+	return Payload{Result: result, DryRun: in.DryRun}, nil
 }
 
 // RunRollout validates the --staged fraction (AC6: required, strictly between

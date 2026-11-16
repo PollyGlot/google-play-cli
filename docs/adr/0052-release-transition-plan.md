@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted (2026-11-09, #740)
+accepted (2026-11-09, #740); amended by [ADR-0054](./0054-promote-reads-its-destination.md) (`promote` gains `--plan`)
 
 ## Context
 
@@ -46,7 +46,8 @@ The four state transitions gain `--plan`, an online, read-only preview:
 
 ## Consequences
 
-`promote` stays out. It sends its release through the typed `tracks.update`,
-not a patch of the destination track, so what it does to the releases
-already on the destination is Play's call, not a rule gplay owns. A plan for
-it would state a guess.
+`promote` stayed out at first, on the ground that what its typed
+`tracks.update` does to the releases already on the destination is Play's
+call. **Amended by ADR-0054**: the releases array promote sends is gplay's
+choice, so `promote` now reads its destination and gains `--plan` on the
+terms above.

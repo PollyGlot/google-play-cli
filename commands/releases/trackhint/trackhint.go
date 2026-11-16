@@ -18,6 +18,7 @@ import (
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
 // opTracksUpdate is the play-layer operation name internal/play/tracks
@@ -46,18 +47,24 @@ func (e *trackNotFoundError) Error() string {
 // the 404 to exit 30.
 func (e *trackNotFoundError) Unwrap() error { return e.cause }
 
-// Classify attaches a `gplay tracks create <track>` hint to a tracks.update
-// 404: the signal that an upload/promote targeted a closed track that has
-// not been created yet, while leaving the wrapped *api.Error to drive the
-// exit code. Every other failure (a package miss at edits.insert, a
-// malformed AAB at bundles.upload, an auth 403, a 5xx, an ambiguous-release
-// state conflict, a non-api error) propagates verbatim. nil stays nil.
+// Classify attaches a `gplay tracks create <track>` hint to a 404 on the
+// destination track, from tracks.update or from promote's read of it
+// (*orchestrator.DestinationReadError): the signal that an upload/promote
+// targeted a closed track that has not been created yet, while leaving the
+// wrapped *api.Error to drive the exit code. Every other failure (a package
+// miss at edits.insert, a malformed AAB at bundles.upload, an auth 403, a
+// 5xx, an ambiguous-release state conflict, a non-api error) propagates
+// verbatim. nil stays nil.
 func Classify(track string, err error) error {
 	if err == nil {
 		return nil
 	}
 	var apiErr *api.Error
-	if errors.As(err, &apiErr) && apiErr.Operation == opTracksUpdate && apiErr.StatusCode == http.StatusNotFound {
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+		return err
+	}
+	var destErr *orchestrator.DestinationReadError
+	if apiErr.Operation == opTracksUpdate || errors.As(err, &destErr) {
 		return &trackNotFoundError{track: track, cause: err}
 	}
 	return err

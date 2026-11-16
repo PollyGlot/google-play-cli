@@ -27,7 +27,9 @@ import (
 // failure or to fail on a call that must not happen.
 type promoteAPI struct {
 	editID             string
-	sourceTrackGetResp string // body returned for GET /tracks/<from>
+	sourceTrackGetResp string // body returned for GET /tracks/<from>, and for any track without its own body
+	destTrack          string // track name served destTrackGetResp instead
+	destTrackGetResp   string
 	trackUpdateRawResp string // body returned for PUT /tracks/<to>
 	defaultLanguage    string // body returned for GET /details (empty → en-US)
 
@@ -70,6 +72,9 @@ func newPromoteFake(a promoteAPI) *testkit.Fake {
 			if a.getHandler != nil {
 				return override(a.getHandler, c)
 			}
+			if a.destTrack != "" && strings.HasSuffix(c.Path, "/tracks/"+a.destTrack) {
+				return http.StatusOK, a.destTrackGetResp, true
+			}
 			return http.StatusOK, a.sourceTrackGetResp, true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/tracks/"):
 			if a.updateHandler != nil {
@@ -92,8 +97,9 @@ func newPromoteFake(a promoteAPI) *testkit.Fake {
 // TestPromote_internalToBeta_happyPath_copiesVersionCode is the tracer
 // bullet for orchestrator.Promote: a complete vertical slice through
 // the promote flow on a non-production destination. Asserts the
-// canonical four-call sequence (edits.insert → tracks.get(source) →
-// tracks.update(dest) → edits.commit) and that the dest update carries
+// canonical five-call sequence (edits.insert → tracks.get(source) →
+// tracks.get(dest) → tracks.update(dest) → edits.commit) and that the dest
+// update carries
 // the same versionCode as the source plus status=completed,
 // no userFraction (safe-default for non-production targets).
 func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
@@ -116,10 +122,10 @@ func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 		t.Fatal("result is nil")
 	}
 
-	// Canonical four-call sequence.
 	wantPaths := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-promote/tracks/internal",
+		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-promote/tracks/beta",
 		"PUT /androidpublisher/v3/applications/com.example.app/edits/edit-promote/tracks/beta",
 		"POST /androidpublisher/v3/applications/com.example.app/edits/edit-promote:commit",
 	}

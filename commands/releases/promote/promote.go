@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -44,21 +47,87 @@ type Input struct {
 	Commit            commitflags.Flags
 	Confirm           bool
 	DryRun            bool
+	Plan              bool
 }
 
 // Payload satisfies output.Renderable for the resulting promote Result.
 // Reuses the orchestrator's Result so JSON pass-through (ADR-0003) and
-// the table renderer match upload's shape.
+// the table renderer match upload's shape. DryRun marks the --dry-run
+// preview, which has no body to pass through.
 type Payload struct {
 	Result *orchestrator.Result
+	DryRun bool
 }
 
 func (p Payload) Renderers() output.Renderers {
-	return output.Renderers{
-		Table:    func(w io.Writer) error { return renderTable(w, p.Result) },
-		JSON:     func(w io.Writer) error { return renderJSON(w, p.Result) },
-		Markdown: func(w io.Writer) error { return renderMarkdown(w, p.Result) },
+	if plan := p.Result.Promotion; plan != nil {
+		return output.Renderers{
+			Table:    func(w io.Writer) error { return renderPlan(w, plan, "%s:%s%s\n") },
+			JSON:     func(w io.Writer) error { return output.WriteJSON(w, planJSON{Plan: true, PromotePlan: plan}) },
+			Markdown: func(w io.Writer) error { return renderPlan(w, plan, "- **%[1]s**: %[3]s\n") },
+		}
 	}
+	return output.Renderers{
+		Table:    func(w io.Writer) error { return renderTable(w, p) },
+		JSON:     func(w io.Writer) error { return renderJSON(w, p) },
+		Markdown: func(w io.Writer) error { return renderMarkdown(w, p) },
+	}
+}
+
+// planJSON is the --plan JSON shape: gplay-authored, never a tracks.update
+// body, and marked "plan": true so a script cannot mistake it for a result.
+type planJSON struct {
+	Plan bool `json:"plan"`
+	*orchestrator.PromotePlan
+}
+
+// renderPlan writes one labelled line per plan field through line, a format
+// given the label, the table padding after its colon, and the value.
+func renderPlan(w io.Writer, p *orchestrator.PromotePlan, line string) error {
+	becomes := p.Status
+	if showsUserFraction(p.Status, p.UserFraction) {
+		becomes += fmt.Sprintf(", userFraction %v", p.UserFraction)
+	}
+	rows := [][2]string{
+		{"from", p.From},
+		{"source", describeRelease(p.Source)},
+		{"to", p.To},
+		{"becomes", becomes},
+		{"replaced", describeReleases(p.Replaced)},
+	}
+	for _, r := range rows {
+		pad := strings.Repeat(" ", 11-len(r[0]))
+		if _, err := fmt.Fprintf(w, line, r[0], pad, r[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// describeRelease renders a release as "2.4.0 [versionCodes 143], halted".
+func describeRelease(r tracks.Release) string {
+	name := r.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+	return fmt.Sprintf("%s [versionCodes %s], %s", name, strings.Join(r.VersionCodes, ", "), r.Status)
+}
+
+func describeReleases(rs []tracks.Release) string {
+	if len(rs) == 0 {
+		return "none"
+	}
+	s := make([]string, len(rs))
+	for i, r := range rs {
+		s[i] = describeRelease(r)
+	}
+	return strings.Join(s, "; ")
+}
+
+// replacesNote is the dry-run line saying the destination's releases go,
+// without naming them: a dry run reads no track.
+func replacesNote(track string) string {
+	return "every release on " + track + " (unread: --plan lists them)"
 }
 
 // showsUserFraction mirrors upload's helper: inProgress always shows
@@ -74,7 +143,8 @@ func showsUserFraction(status string, userFraction float64) bool {
 	return false
 }
 
-func renderTable(w io.Writer, r *orchestrator.Result) error {
+func renderTable(w io.Writer, p Payload) error {
+	r := p.Result
 	if _, err := fmt.Fprintf(w,
 		"versionCode:  %d\ntrack:        %s\nstatus:       %s\n",
 		r.VersionCode, r.Track, r.Status,
@@ -99,18 +169,38 @@ func renderTable(w io.Writer, r *orchestrator.Result) error {
 			return err
 		}
 	}
+	if p.DryRun {
+		if _, err := fmt.Fprintf(w, "replaces:     %s\n", replacesNote(r.Track)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func renderJSON(w io.Writer, r *orchestrator.Result) error {
+// dryRunJSON is the --dry-run JSON shape: the gplay Result led by the dryRun
+// marker, then the ADR-0017 requires array and the statement that the
+// destination's releases are replaced, which a dry run cannot list.
+type dryRunJSON struct {
+	DryRun bool `json:"dryRun"`
+	*orchestrator.Result
+	Requires            []string `json:"requires"`
+	ReplacesDestination bool     `json:"replacesDestination"`
+}
+
+func renderJSON(w io.Writer, p Payload) error {
+	r := p.Result
 	if len(r.RawTrackResponse) > 0 {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
 	}
+	if p.DryRun {
+		return output.WriteJSON(w, dryRunJSON{DryRun: true, Result: r, Requires: output.NonNil(r.Requires), ReplacesDestination: true})
+	}
 	return output.WriteJSON(w, r)
 }
 
-func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
+func renderMarkdown(w io.Writer, p Payload) error {
+	r := p.Result
 	if _, err := fmt.Fprintf(w,
 		"- **versionCode**: %d\n- **track**: %s\n- **status**: %s\n",
 		r.VersionCode, r.Track, r.Status,
@@ -132,6 +222,11 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 	}
 	if len(r.Locales) > 0 {
 		if _, err := fmt.Fprintf(w, "- **locales**: %v\n", r.Locales); err != nil {
+			return err
+		}
+	}
+	if p.DryRun {
+		if _, err := fmt.Fprintf(w, "- **replaces**: %s\n", replacesNote(r.Track)); err != nil {
 			return err
 		}
 	}
@@ -163,15 +258,18 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ToTrack == "" {
 		return nil, exit.Usagef("missing --to: pass --to <track> (the destination track)")
 	}
+	if in.FromTrack == in.ToTrack {
+		return nil, exit.Usagef("--from and --to are both %s: promote copies a release to another track (use gplay releases rollout/halt/resume/complete to change a release in place)", in.ToTrack)
+	}
+	if in.Plan && in.DryRun {
+		return nil, exit.Usagef("--plan and --dry-run are mutually exclusive: --dry-run stays offline, --plan reads the live tracks")
+	}
 
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
 
-	// Dry-run skips auth entirely: nothing hits the network, so a
-	// missing Account is not a problem here. The orchestrator handles
-	// the dry-run path before any HTTP would happen.
 	// Dry-run skips auth AND the explicit-Edit pin: nothing hits the network and
 	// the dry-run path never reuses a pinned Edit, so a corrupt pin must not
 	// fail a preview. Both are resolved only on the live path.
@@ -191,6 +289,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 
+	// A plan commits nothing, so the commit flags have nothing to apply to.
+	var commit edits.CommitOptions
+	if !in.Plan {
+		commit = in.Commit.For(rc, explicitEditID)
+	}
 	result, err := orchestrator.Promote(rc.Ctx, httpClient, orchestrator.PromoteOpts{
 		Package:           pkg,
 		FromTrack:         in.FromTrack,
@@ -203,15 +306,20 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,
-		Commit:            in.Commit.For(rc, explicitEditID),
+		Commit:            commit,
 		Confirm:           in.Confirm,
 		DryRun:            in.DryRun,
+		Plan:              in.Plan,
 	})
 	if err != nil {
 		// A destination tracks.update 404 means --to does not exist yet;
 		// attach the `gplay tracks create <name>` hint. Every other failure
 		// (and the exit code) passes through untouched.
 		return nil, trackhint.Classify(in.ToTrack, err)
+	}
+	if in.Plan {
+		rc.Notef("plan only: nothing was sent; run again without --plan to apply")
+		return Payload{Result: result}, nil
 	}
 	// DESIGN §8: a committed mutation prints one ✓ line on stderr (never on a
 	// --dry-run). userFraction is shown only when status is inProgress.
@@ -220,10 +328,13 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if result.Status == tracks.StatusInProgress {
 			extra = ", userFraction " + output.Percent(result.UserFraction)
 		}
+		if len(result.ReplacedVersionCodes) > 0 {
+			extra += ", replaced versionCode " + joinCodes(result.ReplacedVersionCodes)
+		}
 		rc.ConfirmMutation(explicitEditID, "promoted versionCode %d: %s → %s (status %s%s)",
 			result.VersionCode, in.FromTrack, in.ToTrack, result.Status, extra)
 	}
-	return Payload{Result: result}, nil
+	return Payload{Result: result, DryRun: in.DryRun}, nil
 }
 
 // NewCommand returns the cobra command for `gplay releases promote`.
@@ -238,10 +349,16 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Promote a release from one track to another (no AAB re-upload)",
 		Long: `Copy the latest release on --from to --to, keeping the same versionCode.
 
+The copy replaces every release already on --to, whatever its status (a
+halted or draft release there is removed): --plan reads both tracks and
+lists the releases it would replace, without changing anything; --dry-run
+reads no track, so it cannot name them. --from and --to must differ.
+
 Targeting production defaults to a draft release, which reaches no user,
 unless --complete or --staged is supplied (both require --confirm there).
 Release notes carry over from the source unless --release-notes /
---release-notes-dir is passed.
+--release-notes-dir is passed. The source's country targeting carries over
+to a staged rollout (--staged); a draft or completed release cannot hold it.
 
 When the source track has multiple coexisting releases (e.g. inProgress +
 halted), pass --version-code N or --release-name <name> to pick one.`,
@@ -253,7 +370,10 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
     --release-notes-dir distribution/whatsnew --confirm
 
   # Preview promoting one of two coexisting releases
-  gplay releases promote --from alpha --to beta --version-code 1042 --dry-run`,
+  gplay releases promote --from alpha --to beta --version-code 1042 --dry-run
+
+  # Read both tracks first: which release moves, which releases on beta it replaces
+  gplay releases promote --from alpha --to beta --plan`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -286,7 +406,18 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	commitflags.Register(cmd, &in.Commit)
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "explicit confirmation required when promoting to production with --complete / --staged")
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "validate inputs and preview the release payload without any HTTP call")
+	cmd.Flags().BoolVar(&in.Plan, "plan", false, "read both tracks and show the release this copies, the state it lands in, and the releases on --to it replaces, without changing anything (needs an Account)")
+	kernel.ExperimentalFlag(cmd, "plan")
 	return cmd
+}
+
+// joinCodes renders versionCodes as "140, 141".
+func joinCodes(codes []int) string {
+	s := make([]string, len(codes))
+	for i, c := range codes {
+		s[i] = strconv.Itoa(c)
+	}
+	return strings.Join(s, ", ")
 }
 
 // updatePriority maps the flag pair to the orchestrator's optional priority:

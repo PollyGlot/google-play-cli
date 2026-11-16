@@ -117,8 +117,9 @@ type StateOpts struct {
 	// DryRun validates inputs and previews the planned transition without
 	// any HTTP: no Edit is opened, no tracks.get, no tracks.update. The
 	// returned Result describes the status / userFraction the update would
-	// set, with VersionCode=0 and ReleaseName="(dry-run)". Runs BEFORE the
-	// confirm gate so a production publish can be previewed without --confirm.
+	// set, with the requested VersionCode (0 when none), ReleaseName="(dry-run)"
+	// and the Requires flags. Runs BEFORE the confirm gate so a production
+	// publish can be previewed without --confirm.
 	DryRun bool
 
 	// Plan reads the live track and reports what the transition would do,
@@ -396,14 +397,15 @@ func transitionReachesProdUsers(track, status string) bool {
 }
 
 // dryRunStateResult previews the transition without HTTP. It can show the
-// status the verb sets and, for rollout, the target fraction. Halt / resume
-// keep the live fraction (unknown without tracks.get), so the preview leaves
-// UserFraction at 0: the renderer hides a zero fraction rather than implying
-// a 0% rollout.
+// status the verb sets, the requested versionCode and, for rollout, the target
+// fraction. Halt / resume keep the live fraction (unknown without tracks.get),
+// so the preview leaves UserFraction at 0: the renderer hides a zero fraction
+// rather than implying a 0% rollout.
 func dryRunStateResult(opts StateOpts, edit releaseEdit) *Result {
 	return &Result{
 		Track:        opts.Track,
-		VersionCode:  0,
+		VersionCode:  opts.VersionCode,
+		Requires:     safetyFlags(transitionReachesProdUsers(opts.Track, edit.status())),
 		Status:       edit.status(),
 		UserFraction: edit.resultFraction(0),
 		ReleaseName:  "(dry-run)",
