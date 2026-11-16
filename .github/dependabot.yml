@@ -6,8 +6,12 @@
 # See PRD #206 / .github/workflows/* and the CONTRIBUTING pinning note.
 version: 2
 updates:
+  # "/" covers .github/workflows only: the local composite actions under
+  # .github/actions pin their own actions and need their own entry.
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: weekly
     # Wait a week before proposing a freshly published release: a hijacked or

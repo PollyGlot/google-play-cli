@@ -662,8 +662,9 @@ GoReleaser.
 
 ### Path-based job gating
 
-A leading **`changes`** job ([`dorny/paths-filter`](https://github.com/dorny/paths-filter))
-classifies each diff and exposes a `code` output. A change is `code: true` if it
+A local composite action, [`.github/actions/change-scope`](../.github/actions/change-scope/action.yml)
+([`dorny/paths-filter`](https://github.com/dorny/paths-filter) over one filter
+list), classifies each diff and exposes a `code` output. A change is `code: true` if it
 touches any of `cmd/**`, `commands/**`, `internal/**`, `**/*.go`, `go.mod`,
 `go.sum`, `Makefile`, `.github/**`, `scripts/**`, `install.sh`,
 `docs/discovery/**`, `docs/COVERAGE.md`, or one of the three pages holding
@@ -698,22 +699,50 @@ The rule of thumb: `code` means *"can this change the built binary?"*, not
 *"does this end in `.go`?"*.
 
 On a docs-only PR the heavy jobs short-circuit, so the frequent self-merged doc
-PRs don't pay the Go jobs (lint, test shards, fuzz). **The required-check interplay is
-the subtle part:**
+PRs don't pay the Go jobs (lint, test shards, fuzz). Two things read `code`, and
+neither waits for the other:
 
-- **`fuzz`** is *not* required, so it skips outright at the job level:
-  `if: needs.changes.outputs.code == 'true'`.
-- **`lint`** and **`test`** are *not* required either, so they skip at the job
-  level on docs-only PRs too.
+- **`changes`** ("Detect change scope") runs the action once and publishes
+  `code` as a job output, for the `build` aggregator's verdict.
+- **`lint`**, every **`test`** shard and **`fuzz`** run the same action
+  themselves, right after checkout, and gate every later step on
+  `if: steps.scope.outputs.code == 'true'`, `setup-go` and the cache restore
+  included. They declare no `needs: changes`.
+
+The second point is about runner allocation, not compute. With `needs:
+changes`, GitHub asked for the wave's eight runners only once `changes` had
+finished, so a code PR paid two queue waits in series to learn something
+`changes` had already decided: 15 to 31 s on a quiet account, minutes when
+other repositories' CI contends for runners (#829). Now `changes`, the wave and
+`docs` all ask at once. The price is on docs-only PRs: each Go job still takes
+a runner for a checkout and the filter (a few seconds, free on this public
+repo) instead of being skipped outright, and every step of those jobs carries
+the `if:`. A step added without it runs on a docs-only PR too, which wastes a
+few seconds or turns that non-required job red, but never skips work on a code
+PR.
+
+The jobs agree with the aggregator because the filter list lives only in the
+action and each job computes it from the same event. On a pull request the
+action lists the PR files through the API, so every job that runs it holds
+`pull-requests: read`; that list follows the PR head, and the one push that
+could change it mid-run also cancels the run. A push to `main` compares
+against the commit before the push, as before, so a docs-only merge skips the
+Go work on `main` as well.
+
+**The required-check interplay is the subtle part:**
+
+- **`lint`**, **`test`** and **`fuzz`** are *not* required. On a docs-only PR
+  they report success after skipping their work steps.
 - **`build`** ("Build, lint, test") *is* required. GitHub treats a **skipped**
   required job as unsatisfied: it would block merge forever. So `build` runs
   with `if: ${{ !cancelled() }}`: it runs whatever happened upstream, failures
   included, and skips only when the run itself is cancelled (see
   [Concurrency](#concurrency-prs-cancel-main-never-does)). It derives
-  its verdict from `needs.*.result` (see the next section). On a docs-only PR it
-  finds `code` false and goes green in seconds, leaving the required check
-  satisfied without running any Go tooling.
-- **`docs`** ("Docs sanity") always runs — it's required, cheap, and relevant to
+  its verdict from `changes`' output and `needs.*.result` (see the next
+  section), never from whether a job ran: on a docs-only PR it finds `code`
+  false and goes green, leaving the required check satisfied without trusting
+  `lint` or `test` to have done anything.
+- **`docs`** ("Docs sanity") always runs: it's required, cheap, and relevant to
   every PR.
 
 Net effect: docs-only PRs get a fast green pipeline; any touch to a Go source
@@ -722,7 +751,9 @@ snapshots, `docs/COVERAGE.md` or a page with generated blocks flips `code`
 true and runs the full pipeline unchanged: gating is by changed path, never by trust, so there's no loss of
 safety.
 
-When adding a path that the build consumes, add it to the filter in the same PR.
+When adding a path that the build consumes, add it to the filter in
+`.github/actions/change-scope` in the same PR. When adding a step to `lint`,
+`test` or `fuzz`, give it the same `if:`.
 A green "Build, lint, test" that finished in seconds on a code PR cannot happen
 any more: the aggregator is red unless `lint` and every `test` shard succeeded.
 On a docs-only PR its log says `docs/site-only change: lint and tests skipped by
