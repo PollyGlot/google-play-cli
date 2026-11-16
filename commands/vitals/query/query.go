@@ -32,6 +32,7 @@ type Input struct {
 	Dimensions []string // --dimensions (empty → no slicing, one row per period)
 	Period     string   // --period, per set: see vitalscmd.QueryPeriodHelp
 	Since      string   // --since 28d, 24h, …
+	UserCohort string   // --user-cohort: OS_PUBLIC, APP_TESTERS or OS_BETA, per set
 	Describe   bool     // --describe: the set's `.get` (freshness) instead of `:query`
 	// WindowFlags is the ChangedFlags list of the query-shaping flags, recorded
 	// by the cobra layer so Run can reject them under --describe.
@@ -39,7 +40,7 @@ type Input struct {
 }
 
 // windowFlags are the flags that only make sense for a `:query`.
-var windowFlags = []string{"metrics", "dimensions", "period", "since"}
+var windowFlags = []string{"metrics", "dimensions", "period", "since", vitalscmd.UserCohortFlag}
 
 // Run resolves the metric set, then delegates to the shared vitals
 // orchestration: the descriptor with --describe, the timeline otherwise.
@@ -61,6 +62,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Dimensions: in.Dimensions,
 		Period:     in.Period,
 		Since:      in.Since,
+		UserCohort: in.UserCohort,
 	})
 }
 
@@ -80,8 +82,8 @@ anr, …) wrap.
 --describe fetches the metric set's descriptor instead of a timeline: the
 latest end time for which data is available, per aggregation period, in the
 set's timezone. It answers "up to when is this data complete?"; the window
-flags (--metrics, --dimensions, --period, --since) do not apply and are
-rejected.
+flags (--metrics, --dimensions, --period, --since, --user-cohort) do not
+apply and are rejected.
 
 --metrics, --dimensions and --period are validated OFFLINE against the embedded
 API schema; unknown values are rejected with the valid set listed (names are
@@ -91,6 +93,11 @@ window ends at the latest time with data (the --describe freshness), so --since
 counts back from there. Supported periods are per metric set: --period lists
 which sets accept each one.
 
+--user-cohort selects the user view: OS_PUBLIC (all public Android versions,
+the default), APP_TESTERS (users opted in as testers) or OS_BETA (beta
+Android versions only). It is checked offline per metric set like the other
+flags, and OS_BETA also narrows the dimensions --dimensions accepts.
+
 This is a READ-ONLY surface on a distinct Google service (Play Developer
 Reporting), requested with the least-privilege playdeveloperreporting scope.
 
@@ -99,7 +106,8 @@ timeline (dates × metrics, sliced by --dimensions). A freshness note is always
 printed to stderr so an empty window is not mistaken for zero.`,
 		Example: `  gplay vitals query crashrate --package com.example.app
   gplay vitals query crashrate --metrics crashRate,distinctUsers --dimensions versionCode
-  gplay vitals query anrrate --period HOURLY --since 24h`,
+  gplay vitals query anrrate --period HOURLY --since 24h
+  gplay vitals query crashrate --user-cohort OS_BETA --dimensions osBuild`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -117,6 +125,7 @@ printed to stderr so an empty window is not mistaken for zero.`,
 	cmd.Flags().StringSliceVar(&in.Dimensions, "dimensions", nil, "dimensions to slice by (e.g. versionCode,countryCode); validated against the schema")
 	cmd.Flags().StringVar(&in.Period, "period", vitalscmd.DefaultPeriod, vitalscmd.QueryPeriodHelp)
 	cmd.Flags().StringVar(&in.Since, "since", vitalscmd.DefaultSince, "window length back from now, e.g. 28d or 24h")
+	cmd.Flags().StringVar(&in.UserCohort, vitalscmd.UserCohortFlag, "", vitalscmd.QueryUserCohortHelp)
 	cmd.Flags().BoolVar(&in.Describe, vitalscmd.DescribeFlag, false, vitalscmd.DescribeHelp)
 	return cmd
 }

@@ -16,25 +16,26 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// periodClause is one period named in a --period help, with the metric sets it
-// is scoped to ("every set" or a comma list) when the help is per set.
-var periodClause = regexp.MustCompile(`([A-Z][A-Z0-9_]+)(?: \(([^)]*)\))?`)
+// valueClause is one value named in a --period or --user-cohort help, with
+// the metric sets it is scoped to ("every set" or a comma list) when the help
+// is per set.
+var valueClause = regexp.MustCompile(`([A-Z][A-Z0-9_]+)(?: \(([^)]*)\))?`)
 
-// advertisedPeriods reads, per metric set, which periods a --period help
-// claims the command accepts. A clause without parentheses applies to every
-// set in sets; "every set" too; otherwise only the sets it lists.
-func advertisedPeriods(t *testing.T, cmd *cobra.Command, sets []vitals.MetricSet) map[string][]string {
+// advertisedValues reads, per metric set, which values a flag's help claims
+// the command accepts. A clause without parentheses applies to every set in
+// sets; "every set" too; otherwise only the sets it lists.
+func advertisedValues(t *testing.T, cmd *cobra.Command, flag string, sets []vitals.MetricSet) map[string][]string {
 	t.Helper()
-	f := cmd.Flags().Lookup("period")
+	f := cmd.Flags().Lookup(flag)
 	if f == nil {
-		t.Fatalf("%s has no --period flag", cmd.CommandPath())
+		t.Fatalf("%s has no --%s flag", cmd.CommandPath(), flag)
 	}
 	_, list, ok := strings.Cut(f.Usage, ":")
 	if !ok {
-		t.Fatalf("%s --period help %q has no period list", cmd.Name(), f.Usage)
+		t.Fatalf("%s --%s help %q has no value list", cmd.Name(), flag, f.Usage)
 	}
 	out := map[string][]string{}
-	for _, m := range periodClause.FindAllStringSubmatch(list, -1) {
+	for _, m := range valueClause.FindAllStringSubmatch(list, -1) {
 		for _, set := range sets {
 			scope := m[2]
 			if scope == "" || scope == "every set" || slices.Contains(strings.Split(scope, ", "), set.Name) {
@@ -45,24 +46,26 @@ func advertisedPeriods(t *testing.T, cmd *cobra.Command, sets []vitals.MetricSet
 	return out
 }
 
-// assertHelpMatchesValidation fails when a --period help names a period the
-// validation (vitals.SupportedPeriods, what Execute checks) refuses for a set,
-// or leaves out one it accepts (#781: FULL_RANGE was advertised, then exit 2).
-func assertHelpMatchesValidation(t *testing.T, cmd *cobra.Command, sets ...vitals.MetricSet) {
+// assertHelpMatchesValidation fails when a flag's help names a value the
+// validation (supported, what Execute checks) refuses for a set, or leaves
+// out one it accepts (#781: FULL_RANGE was advertised, then exit 2).
+func assertHelpMatchesValidation(t *testing.T, cmd *cobra.Command, flag string, supported func(schemaindex.Index, vitals.MetricSet) []string, sets ...vitals.MetricSet) {
 	t.Helper()
 	idx, err := schemaindex.Embedded()
 	if err != nil {
 		t.Fatalf("Embedded: %v", err)
 	}
-	got := advertisedPeriods(t, cmd, sets)
+	got := advertisedValues(t, cmd, flag, sets)
 	for _, set := range sets {
-		want := vitals.SupportedPeriods(idx, set)
+		want := supported(idx, set)
 		if len(want) == 0 {
-			t.Fatalf("%s: no supported periods in the index", set.Name)
+			t.Fatalf("%s: no supported --%s values in the index", set.Name, flag)
 		}
-		if !slices.Equal(got[set.Name], want) {
-			t.Errorf("%s --period help advertises %v for %s, validation accepts %v (help: %q)",
-				cmd.Name(), got[set.Name], set.Name, want, cmd.Flags().Lookup("period").Usage)
+		slices.Sort(want)
+		have := slices.Sorted(slices.Values(got[set.Name]))
+		if !slices.Equal(have, want) {
+			t.Errorf("%s --%s help advertises %v for %s, validation accepts %v (help: %q)",
+				cmd.Name(), flag, have, set.Name, want, cmd.Flags().Lookup(flag).Usage)
 		}
 	}
 }
@@ -70,7 +73,7 @@ func assertHelpMatchesValidation(t *testing.T, cmd *cobra.Command, sets ...vital
 func TestPeriodHelp_presetsMatchValidation(t *testing.T) {
 	for _, spec := range vitalscmd.Presets {
 		set, _ := vitals.MetricSetByName(spec.Set)
-		assertHelpMatchesValidation(t, vitalscmd.NewPresetCommand(kernel.Boot{}, spec), set)
+		assertHelpMatchesValidation(t, vitalscmd.NewPresetCommand(kernel.Boot{}, spec), "period", vitals.SupportedPeriods, set)
 	}
 }
 
@@ -79,9 +82,34 @@ func TestPeriodHelp_errorCountsMatchesValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find errors counts: %v", err)
 	}
-	assertHelpMatchesValidation(t, counts, vitals.ErrorCountSet())
+	assertHelpMatchesValidation(t, counts, "period", vitals.SupportedPeriods, vitals.ErrorCountSet())
 }
 
 func TestPeriodHelp_queryMatchesValidationPerSet(t *testing.T) {
-	assertHelpMatchesValidation(t, query.NewCommand(kernel.Boot{}), vitals.MetricSets()...)
+	assertHelpMatchesValidation(t, query.NewCommand(kernel.Boot{}), "period", vitals.SupportedPeriods, vitals.MetricSets()...)
+}
+
+func TestUserCohortHelp_queryMatchesValidationPerSet(t *testing.T) {
+	assertHelpMatchesValidation(t, query.NewCommand(kernel.Boot{}), vitalscmd.UserCohortFlag, vitals.SupportedCohorts, vitals.MetricSets()...)
+}
+
+// A preset carries --user-cohort exactly when its set accepts a view besides
+// the default, and the help then names every view the set accepts.
+func TestUserCohortHelp_presetsMatchValidation(t *testing.T) {
+	idx, err := schemaindex.Embedded()
+	if err != nil {
+		t.Fatalf("Embedded: %v", err)
+	}
+	for _, spec := range vitalscmd.Presets {
+		set, _ := vitals.MetricSetByName(spec.Set)
+		cmd := vitalscmd.NewPresetCommand(kernel.Boot{}, spec)
+		hasFlag := cmd.Flags().Lookup(vitalscmd.UserCohortFlag) != nil
+		if wantFlag := len(vitals.SupportedCohorts(idx, set)) > 1; hasFlag != wantFlag {
+			t.Errorf("vitals %s: --%s present = %v, want %v (the set accepts %v)", spec.Use, vitalscmd.UserCohortFlag, hasFlag, wantFlag, vitals.SupportedCohorts(idx, set))
+			continue
+		}
+		if hasFlag {
+			assertHelpMatchesValidation(t, cmd, vitalscmd.UserCohortFlag, vitals.SupportedCohorts, set)
+		}
+	}
 }

@@ -132,7 +132,7 @@ func runCounts(rc *kernel.RunContext, in countsInput) (output.Renderable, error)
 	if err != nil {
 		return nil, err
 	}
-	p, err := vitalscmd.PresetParams(idx, vitals.ErrorCountSet(), in.Package, in.VersionCode, in.By, in.Since, in.Period)
+	p, err := vitalscmd.PresetParams(idx, vitals.ErrorCountSet(), in.Package, in.VersionCode, in.By, in.Since, in.Period, "")
 	if err != nil {
 		return nil, err
 	}

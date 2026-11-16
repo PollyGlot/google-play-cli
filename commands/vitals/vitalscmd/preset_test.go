@@ -212,3 +212,19 @@ func exitCode(t *testing.T, err error) int {
 	}
 	return coder.ExitCode()
 }
+
+func TestRunPreset_userCohort_reachesTheQueryBody(t *testing.T) {
+	fake := newPresetFake()
+	rc := newRC(t, fake)
+	if _, err := runPreset(rc, set(t, "crashrate"), presetInput{Package: "com.example.app", UserCohort: "APP_TESTERS"}); err != nil {
+		t.Fatalf("runPreset: %v", err)
+	}
+	last := fake.Calls()[len(fake.Calls())-1]
+	var body map[string]any
+	if err := json.Unmarshal(last.Body, &body); err != nil {
+		t.Fatalf("decode %s body: %v", last.Path, err)
+	}
+	if body["userCohort"] != "APP_TESTERS" {
+		t.Errorf("userCohort = %v, want APP_TESTERS (body %s)", body["userCohort"], last.Body)
+	}
+}

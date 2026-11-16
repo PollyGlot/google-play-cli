@@ -76,7 +76,7 @@ func contains(ss []string, want string) bool {
 // versionCode filter. Shared by the opinionated presets and `vitals errors
 // counts`. A bad --by or --version-code is CLI misuse; the --by error names the
 // user's token (e.g. `country`), not the internal API dimension.
-func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by, since, period string) (Params, error) {
+func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by, since, period, cohort string) (Params, error) {
 	var dimensions []string
 	if by != "" {
 		dim, ok := byDimension[by]
@@ -103,6 +103,7 @@ func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by,
 		Period:     period,
 		Since:      since,
 		Filter:     filter,
+		UserCohort: cohort,
 	}, nil
 }
 
@@ -113,14 +114,15 @@ type presetInput struct {
 	By          string // --by: versionCode|device|country
 	Since       string
 	Period      string
-	Describe    bool // --describe: the set's `.get` (freshness) instead of `:query`
+	UserCohort  string // --user-cohort, on the presets whose set has more than OS_PUBLIC
+	Describe    bool   // --describe: the set's `.get` (freshness) instead of `:query`
 	// WindowFlags is the ChangedFlags list of the query-shaping flags, recorded
 	// by the cobra layer so runPreset can reject them under --describe.
 	WindowFlags []string
 }
 
 // presetWindowFlags are the preset flags that only make sense for a `:query`.
-var presetWindowFlags = []string{"since", "period", "by", "version-code"}
+var presetWindowFlags = []string{"since", "period", "by", "version-code", UserCohortFlag}
 
 // runPreset resolves the friendly preset flags into Params and delegates to
 // Execute. Metrics are left empty so the set's primary metric is used: the
@@ -138,7 +140,7 @@ func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (out
 	if err != nil {
 		return nil, err
 	}
-	p, err := PresetParams(idx, set, in.Package, in.VersionCode, in.By, in.Since, in.Period)
+	p, err := PresetParams(idx, set, in.Package, in.VersionCode, in.By, in.Since, in.Period, in.UserCohort)
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +202,9 @@ flags (--since, --period, --by, --version-code) do not apply and are rejected.`,
 	cmd.Flags().StringVar(&in.By, "by", "", "slice the timeline by a dimension ("+ByChoices()+"; availability depends on the metric set)")
 	cmd.Flags().StringVar(&in.Since, "since", DefaultSince, "window length back from now, e.g. 28d or 24h")
 	cmd.Flags().StringVar(&in.Period, "period", DefaultPeriod, PeriodHelp(set))
+	if help, ok := cohortHelp[set.Name]; ok {
+		cmd.Flags().StringVar(&in.UserCohort, UserCohortFlag, "", help)
+	}
 	cmd.Flags().BoolVar(&in.Describe, DescribeFlag, false, DescribeHelp)
 	RegisterVersionCodeCompletion(cmd, boot)
 	return cmd

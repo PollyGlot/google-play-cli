@@ -280,6 +280,59 @@ func SupportedDimensions(idx schemaindex.Index, set MetricSet) []string {
 	return parseCatalog(s.Properties["dimensions"].Description, "Supported dimensions:")
 }
 
+// cohortProperty returns the `userCohort` property of a metric set's `:query`
+// request; ok is false for a set whose request has none (errors.counts).
+func cohortProperty(idx schemaindex.Index, set MetricSet) (schemaindex.Property, bool) {
+	s, ok := requestSchema(idx, set)
+	if !ok {
+		return schemaindex.Property{}, false
+	}
+	p, ok := s.Properties["userCohort"]
+	return p, ok
+}
+
+// SupportedCohorts returns the user cohorts a metric set accepts: the values
+// of the userCohort enum its description quotes. The enum is shared by every
+// set, but the prose differs: crashrate lists OS_PUBLIC, APP_TESTERS and
+// OS_BETA, where slowstartrate says "The only supported value is
+// `OS_PUBLIC`", so a cohort the set refuses is rejected offline rather than
+// by a server 400.
+func SupportedCohorts(idx schemaindex.Index, set MetricSet) []string {
+	p, ok := cohortProperty(idx, set)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, v := range p.Enum {
+		if !strings.HasSuffix(v, "_UNSPECIFIED") && strings.Contains(p.Description, "`"+v+"`") {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// CohortDimensions returns the dimension catalog a metric set takes under
+// cohort when its userCohort prose replaces the set's own ("Only the
+// following dimensions are supported:", OS_BETA today, which adds osBuild),
+// or nil when the cohort keeps SupportedDimensions.
+func CohortDimensions(idx schemaindex.Index, set MetricSet, cohort string) []string {
+	p, ok := cohortProperty(idx, set)
+	if !ok {
+		return nil
+	}
+	i := strings.Index(p.Description, "`"+cohort+"`")
+	if i < 0 {
+		return nil
+	}
+	paragraph := p.Description[i+len(cohort)+2:]
+	for _, other := range p.Enum {
+		if j := strings.Index(paragraph, "`"+other+"`"); j >= 0 {
+			paragraph = paragraph[:j]
+		}
+	}
+	return parseCatalog(paragraph, "Only the following dimensions are supported:")
+}
+
 // periodEntry matches one `* DAILY:` bullet leader of the "Supported
 // aggregation periods" prose. Unlike metrics and dimensions, Google writes the
 // period names bare (no backticks), in SCREAMING_SNAKE_CASE.

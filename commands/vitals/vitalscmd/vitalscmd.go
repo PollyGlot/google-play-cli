@@ -32,7 +32,8 @@ const (
 
 // Params is the resolved request a vitals metric-set command runs. Metrics
 // empty → the set's primary metric; Dimensions empty → one row per period;
-// Period/Since empty → the defaults; Filter empty → no row filter.
+// Period/Since empty → the defaults; Filter empty → no row filter; UserCohort
+// empty → not sent, so Play's default view (OS_PUBLIC) applies.
 type Params struct {
 	Set        vitals.MetricSet
 	Package    string
@@ -41,6 +42,7 @@ type Params struct {
 	Period     string
 	Since      string
 	Filter     string // AIP-160 predicate, e.g. "versionCode = 123"
+	UserCohort string
 }
 
 // Payload is the rendered result: the verbatim API response for the JSON
@@ -119,8 +121,20 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 		return nil, err
 	}
 
+	// A cohort can replace the set's dimension catalog: OS_BETA takes
+	// versionCode and osBuild only, osBuild being absent from the default view.
+	cohort := strings.ToUpper(p.UserCohort)
+	dimensionScope, supportedDimensions := p.Set.Name, vitals.SupportedDimensions(idx, p.Set)
+	if cohort != "" {
+		if err := validateAll("user cohort", []string{cohort}, vitals.SupportedCohorts(idx, p.Set), p.Set.Name); err != nil {
+			return nil, err
+		}
+		if narrowed := vitals.CohortDimensions(idx, p.Set, cohort); narrowed != nil {
+			dimensionScope, supportedDimensions = p.Set.Name+" with user cohort "+cohort, narrowed
+		}
+	}
 	dimensions := p.Dimensions
-	if err := validateAll("dimension", dimensions, vitals.SupportedDimensions(idx, p.Set), p.Set.Name); err != nil {
+	if err := validateAll("dimension", dimensions, supportedDimensions, dimensionScope); err != nil {
 		return nil, err
 	}
 
@@ -139,7 +153,7 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 		return nil, err
 	}
 
-	body, err := buildBody(metrics, dimensions, period, p.Filter, since, time.Now().UTC(), latest)
+	body, err := buildBody(metrics, dimensions, period, p.Filter, cohort, since, time.Now().UTC(), latest)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +256,7 @@ func LatestEnd(rc *kernel.RunContext, hc *http.Client, set vitals.MetricSet, pkg
 // the period boundary at/after now (exclusive), capped at latest (the set's
 // freshness, ignored when zero); startTime is endTime minus the window. HOURLY
 // carries the hour field; DAILY/FULL_RANGE are date-only.
-func buildBody(metrics, dimensions []string, period, filter string, since time.Duration, now, latest time.Time) ([]byte, error) {
+func buildBody(metrics, dimensions []string, period, filter, cohort string, since time.Duration, now, latest time.Time) ([]byte, error) {
 	hourly := period == "HOURLY"
 	var end, start time.Time
 	if hourly {
@@ -268,6 +282,9 @@ func buildBody(metrics, dimensions []string, period, filter string, since time.D
 	}
 	if filter != "" {
 		body["filter"] = filter
+	}
+	if cohort != "" {
+		body["userCohort"] = cohort
 	}
 	return output.Marshal(body)
 }

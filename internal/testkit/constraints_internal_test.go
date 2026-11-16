@@ -150,7 +150,7 @@ var unenforced = func() map[string]struct{ sentence, why string } {
 		case osBeta[set]:
 			u[req+"userCohort"] = struct{ sentence, why string }{"To select data from beta android versions only", effect}
 		default:
-			u[req+"userCohort"] = struct{ sentence, why string }{"The only supported value is `OS_PUBLIC`.", "gplay never sets userCohort, so Play applies the default OS_PUBLIC"}
+			u[req+"userCohort"] = struct{ sentence, why string }{"The only supported value is `OS_PUBLIC`.", "vitals.SupportedCohorts reads the sentence and Execute refuses any other --user-cohort offline (commands/vitals/vitalscmd/vitalscmd.go)"}
 		}
 	}
 	return u
