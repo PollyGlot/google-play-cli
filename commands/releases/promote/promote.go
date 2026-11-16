@@ -52,8 +52,7 @@ type Input struct {
 
 // Payload satisfies output.Renderable for the resulting promote Result.
 // Reuses the orchestrator's Result so JSON pass-through (ADR-0003) and
-// the table renderer match upload's shape. DryRun marks the --dry-run
-// preview, which has no body to pass through.
+// the table renderer match upload's shape.
 type Payload struct {
 	Result *orchestrator.Result
 	DryRun bool
@@ -74,15 +73,11 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// planJSON is the --plan JSON shape: gplay-authored, never a tracks.update
-// body, and marked "plan": true so a script cannot mistake it for a result.
 type planJSON struct {
 	Plan bool `json:"plan"`
 	*orchestrator.PromotePlan
 }
 
-// renderPlan writes one labelled line per plan field through line, a format
-// given the label, the table padding after its colon, and the value.
 func renderPlan(w io.Writer, p *orchestrator.PromotePlan, line string) error {
 	becomes := p.Status
 	if showsUserFraction(p.Status, p.UserFraction) {
@@ -104,7 +99,6 @@ func renderPlan(w io.Writer, p *orchestrator.PromotePlan, line string) error {
 	return nil
 }
 
-// describeRelease renders a release as "2.4.0 [versionCodes 143], halted".
 func describeRelease(r tracks.Release) string {
 	name := r.Name
 	if name == "" {
@@ -124,8 +118,6 @@ func describeReleases(rs []tracks.Release) string {
 	return strings.Join(s, "; ")
 }
 
-// replacesNote is the dry-run line saying the destination's releases go,
-// without naming them: a dry run reads no track.
 func replacesNote(track string) string {
 	return "every release on " + track + " (unread: --plan lists them)"
 }
@@ -177,9 +169,6 @@ func renderTable(w io.Writer, p Payload) error {
 	return nil
 }
 
-// dryRunJSON is the --dry-run JSON shape: the gplay Result led by the dryRun
-// marker, then the ADR-0017 requires array and the statement that the
-// destination's releases are replaced, which a dry run cannot list.
 type dryRunJSON struct {
 	DryRun bool `json:"dryRun"`
 	*orchestrator.Result
@@ -289,7 +278,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 
-	// A plan commits nothing, so the commit flags have nothing to apply to.
 	var commit edits.CommitOptions
 	if !in.Plan {
 		commit = in.Commit.For(rc, explicitEditID)
@@ -312,9 +300,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Plan:              in.Plan,
 	})
 	if err != nil {
-		// A destination tracks.update 404 means --to does not exist yet;
-		// attach the `gplay tracks create <name>` hint. Every other failure
-		// (and the exit code) passes through untouched.
+		// A 404 on --to means it does not exist yet: attach the
+		// `gplay tracks create <name>` hint.
 		return nil, trackhint.Classify(in.ToTrack, err)
 	}
 	if in.Plan {
@@ -411,7 +398,6 @@ halted), pass --version-code N or --release-name <name> to pick one.`,
 	return cmd
 }
 
-// joinCodes renders versionCodes as "140, 141".
 func joinCodes(codes []int) string {
 	s := make([]string, len(codes))
 	for i, c := range codes {

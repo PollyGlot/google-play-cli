@@ -1,11 +1,3 @@
-// Package orchestrator (promote.go) owns the choreography of
-// `gplay releases promote`: open an Edit, read the source track, pick
-// the release to copy, read the destination track, replace its releases
-// with the copy (same versionCode), and commit. Inherits the ADR-0002
-// safe-default rule (via ReleaseState.resolve) and the auto-discard /
-// DanglingEditError contract from edits.WithEdit, so production promotes
-// default to draft, and any failure mid-Edit cleans up the orphan unless
-// --keep-edit-on-failure.
 package orchestrator
 
 import (
@@ -173,24 +165,15 @@ type PromoteOpts struct {
 
 	Confirm bool
 
-	// DryRun validates inputs and computes what would be sent without
-	// performing any HTTP. No Edit is opened, no tracks.get is issued, no
-	// destination tracks.update is sent. The returned Result describes the
-	// planned payload with the requested VersionCode (0 when none was
-	// passed: the real value would come from tracks.get on the source),
-	// ReleaseName="(dry-run)" and the Requires flags. Runs BEFORE the confirm
-	// guard so operators can preview a production publish without --confirm.
+	// DryRun previews the payload without any HTTP. It runs before the
+	// confirm guard, so a production publish previews without --confirm.
 	DryRun bool
 
-	// Plan reads both tracks and reports the source release, the state it
-	// would land in, and the destination releases the update would replace,
-	// without writing (#785). Same Edit rules as StateOpts.Plan.
+	// Plan reads both tracks into Result.Promotion without writing.
 	Plan bool
 }
 
-// PromotePlan is what a promote would do, read from the live tracks by the
-// same picker the write uses: the source release it copies, the state that
-// copy lands in on To, and every release on To that the update replaces.
+// PromotePlan is what a promote would do, read from the live tracks.
 type PromotePlan struct {
 	From         string           `json:"from"`
 	To           string           `json:"to"`
@@ -200,9 +183,7 @@ type PromotePlan struct {
 	Replaced     []tracks.Release `json:"replaced"`
 }
 
-// DestinationReadError marks a failure to read promote's destination track,
-// which the command layer cannot otherwise tell from the same tracks.get on
-// the source. The wrapped error keeps driving the exit code.
+// DestinationReadError wraps a failed read of promote's destination track.
 type DestinationReadError struct {
 	Err error
 }
@@ -335,16 +316,12 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	return result, nil
 }
 
-// promotion is what readPromotion finds: the source release to copy, its
-// versionCode, and the destination releases the update replaces.
 type promotion struct {
 	source      tracks.Release
 	versionCode int
 	replaced    []tracks.Release
 }
 
-// readPromotion reads both tracks inside editID. The live write and the plan
-// both go through it, so a plan cannot pick another release than the write.
 func readPromotion(ctx context.Context, hc *http.Client, opts PromoteOpts, editID string) (promotion, error) {
 	src, _, err := tracks.Get(ctx, hc, opts.Package, editID, opts.FromTrack)
 	if err != nil {
@@ -368,9 +345,6 @@ func readPromotion(ctx context.Context, hc *http.Client, opts PromoteOpts, editI
 	return promotion{source: *source, versionCode: versionCode, replaced: dst.Releases}, nil
 }
 
-// planPromote reads both tracks and describes the promote without writing,
-// inside the pinned explicit Edit when there is one, else in a read-only Edit
-// that is always discarded.
 func planPromote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, error) {
 	var p promotion
 	read := func(editID string) error {
@@ -439,9 +413,8 @@ func validatePromoteOpts(opts PromoteOpts) error {
 }
 
 // dryRunPromoteResult previews what Promote would send for the given
-// opts, without any HTTP. The VersionCode is the requested one, 0 when none
-// was passed: the real value would come from tracks.get on the source.
-// Status and UserFraction come from the resolved ReleaseState, as on the wire.
+// opts, without any HTTP. Status and UserFraction come from the resolved
+// ReleaseState, as on the wire.
 func dryRunPromoteResult(opts PromoteOpts) *Result {
 	state := opts.State.resolve(opts.ToTrack)
 	return &Result{
@@ -542,9 +515,8 @@ func containsVersionCode(codes []string, want int) bool {
 // the tracks.Release payload sent on the destination track. Carries
 // over the source's versionCode and name; status and fraction come from the
 // resolved ReleaseState, as in buildRelease. countryTargeting carries over
-// verbatim and, as in releaseEdit, follows the fraction: Play allows it only
-// on a staged rollout, so a draft or completed copy goes without it (#779,
-// #785). The source's inAppUpdatePriority carries over unless
+// only to a staged rollout: Play rejects it on a draft or completed release
+// (#779). The source's inAppUpdatePriority carries over unless
 // opts.UpdatePriority overrides it: before #664 the typed rebuild silently
 // dropped a priority set in the Play Console.
 func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release {

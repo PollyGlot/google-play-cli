@@ -48,13 +48,9 @@ func (e *trackNotFoundError) Error() string {
 func (e *trackNotFoundError) Unwrap() error { return e.cause }
 
 // Classify attaches a `gplay tracks create <track>` hint to a 404 on the
-// destination track, from tracks.update or from promote's read of it
-// (*orchestrator.DestinationReadError): the signal that an upload/promote
-// targeted a closed track that has not been created yet, while leaving the
-// wrapped *api.Error to drive the exit code. Every other failure (a package
-// miss at edits.insert, a malformed AAB at bundles.upload, an auth 403, a
-// 5xx, an ambiguous-release state conflict, a non-api error) propagates
-// verbatim. nil stays nil.
+// destination track (tracks.update or *orchestrator.DestinationReadError);
+// the wrapped *api.Error still drives the exit code. Every other error
+// passes through unchanged.
 func Classify(track string, err error) error {
 	if err == nil {
 		return nil

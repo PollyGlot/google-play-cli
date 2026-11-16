@@ -27,8 +27,8 @@ import (
 // failure or to fail on a call that must not happen.
 type promoteAPI struct {
 	editID             string
-	sourceTrackGetResp string // body returned for GET /tracks/<from>, and for any track without its own body
-	destTrack          string // track name served destTrackGetResp instead
+	sourceTrackGetResp string
+	destTrack          string
 	destTrackGetResp   string
 	trackUpdateRawResp string // body returned for PUT /tracks/<to>
 	defaultLanguage    string // body returned for GET /details (empty → en-US)
@@ -94,14 +94,6 @@ func newPromoteFake(a promoteAPI) *testkit.Fake {
 	})
 }
 
-// TestPromote_internalToBeta_happyPath_copiesVersionCode is the tracer
-// bullet for orchestrator.Promote: a complete vertical slice through
-// the promote flow on a non-production destination. Asserts the
-// canonical five-call sequence (edits.insert → tracks.get(source) →
-// tracks.get(dest) → tracks.update(dest) → edits.commit) and that the dest
-// update carries
-// the same versionCode as the source plus status=completed,
-// no userFraction (safe-default for non-production targets).
 func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote",

@@ -76,10 +76,8 @@ type Release struct {
 	// API exposes to the app. A pointer because 0 is a real priority: nil
 	// omits the field, so a release built without a priority sends the same
 	// bytes as before the field existed (#664).
-	InAppUpdatePriority *int `json:"inAppUpdatePriority,omitempty"`
-	// CountryTargeting stays raw so promote carries it over byte for byte,
-	// without gplay modelling a shape it never edits (#785).
-	CountryTargeting json.RawMessage `json:"countryTargeting,omitempty"`
+	InAppUpdatePriority *int            `json:"inAppUpdatePriority,omitempty"`
+	CountryTargeting    json.RawMessage `json:"countryTargeting,omitempty"`
 }
 
 // Track is the API-shaped Track resource. Only the fields gplay reads

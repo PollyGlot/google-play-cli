@@ -30,10 +30,9 @@ import (
 // edits.delete.
 type promoteAPI struct {
 	editID             string
-	sourceTrackGetResp string // served for every track without its own body
-	destTrack          string // track name served destTrackGetResp instead
+	sourceTrackGetResp string
+	destTrack          string
 	destTrackGetResp   string
-	// destTrackGetStatus, when >= 400, makes the read of destTrack fail.
 	destTrackGetStatus int
 	trackUpdateRawResp string
 	// trackUpdateStatus, when >= 400, makes the destination tracks.update PUT
@@ -156,9 +155,6 @@ func TestRenderMarkdown_includesDefaultLanguageAndLocales(t *testing.T) {
 	}
 }
 
-// TestRun_internalToBeta_happyPath asserts the full vertical slice from
-// CLI input to wire: /token exchange precedes the androidpublisher
-// edits.insert, then the canonical promote 5-call sequence runs.
 func TestRun_internalToBeta_happyPath(t *testing.T) {
 	api := promoteAPI{
 		editID:             "edit-promote-cli",

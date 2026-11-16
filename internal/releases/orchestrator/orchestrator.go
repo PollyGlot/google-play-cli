@@ -173,25 +173,20 @@ type Result struct {
 	// without them.
 	SupersededVersionCodes []int `json:"-"`
 
-	// ReplacedVersionCodes lists the versionCodes of the releases a live
-	// promote removed from its destination track: tracks.update replaces the
-	// whole releases array, and promote sends its release alone (#785).
+	// ReplacedVersionCodes lists the versionCodes a live promote removed from
+	// its destination: tracks.update replaces the whole releases array.
 	ReplacedVersionCodes []int `json:"-"`
 
-	// Requires is the ADR-0017 list of safety flags the live run needs, set
-	// only by the dry run of a promote or a state transition.
+	// Requires is the ADR-0017 list of safety flags the live run needs.
 	Requires []string `json:"-"`
 
 	// Plan is set only by a state transition run with StateOpts.Plan: what
 	// the transition would do, read from the live track, nothing written.
 	Plan *TransitionPlan `json:"-"`
 
-	// Promotion is set only by a promote run with PromoteOpts.Plan.
 	Promotion *PromotePlan `json:"-"`
 }
 
-// safetyFlags is a dry run's ADR-0017 requires array: "confirm" when the live
-// write would reach production users, else none.
 func safetyFlags(reachesProdUsers bool) []string {
 	if reachesProdUsers {
 		return []string{"confirm"}

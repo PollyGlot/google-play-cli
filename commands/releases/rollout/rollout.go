@@ -45,8 +45,7 @@ type Input struct {
 }
 
 // Payload satisfies output.Renderable for the resulting state-transition
-// Result. JSON is API pass-through (the raw tracks.update body, ADR-0003);
-// DryRun marks the --dry-run preview, which has no body to pass through.
+// Result. JSON is API pass-through (the raw tracks.update body, ADR-0003).
 type Payload struct {
 	Result *orchestrator.Result
 	DryRun bool
@@ -163,8 +162,6 @@ func joinCodes(codes []int) string {
 	return strings.Join(s, ", ")
 }
 
-// dryRunJSON is the --dry-run JSON shape: the gplay Result led by the dryRun
-// marker and followed by the ADR-0017 requires array.
 type dryRunJSON struct {
 	DryRun bool `json:"dryRun"`
 	*orchestrator.Result

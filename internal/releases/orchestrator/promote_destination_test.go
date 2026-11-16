@@ -15,8 +15,6 @@ import (
 
 const betaSource = `{"track":"beta","releases":[{"name":"2.5.0","status":"completed","versionCodes":["150"]}]}`
 
-// productionHaltedAndDraft holds a halted staged rollout and a draft: the
-// releases a promote to production used to replace without a word (#785).
 const productionHaltedAndDraft = `{"track":"production","releases":[` +
 	`{"name":"2.4.0","status":"halted","versionCodes":["140"],"userFraction":0.1},` +
 	`{"name":"2.4.1","status":"draft","versionCodes":["141"]}]}`
