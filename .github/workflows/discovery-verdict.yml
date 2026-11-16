@@ -69,13 +69,20 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          # Same allow-list as the revision-only auto-merge, plus COVERAGE.md:
-          # step 5 of docs/agents/discovery-triage.md has the routine commit the
-          # newly surfaced methods there, on this very branch. Nothing else may
-          # ride along, whatever the verdict comment claims.
-          if ! .github/scripts/discovery-blast-radius.sh "$PR" "$HEAD_SHA" 'docs/COVERAGE\.md$'; then
+          # Same allow-list as the revision-only auto-merge, plus the two files
+          # step 5 of docs/agents/discovery-triage.md lets the routine commit on
+          # this very branch: COVERAGE.md, and exclusions.go for purchase-token
+          # methods. Nothing else may ride along, whatever the verdict says.
+          if ! .github/scripts/discovery-blast-radius.sh "$PR" "$HEAD_SHA" 'docs/COVERAGE\.md$|internal/apiregistry/exclusions\.go$'; then
             gh pr edit "$PR" --remove-label discovery:verdict-merge --add-label discovery:needs-decision
-            gh pr comment "$PR" --body "The blast-radius guard refused this verdict: the diff reaches beyond \`docs/discovery/\`, \`internal/schemaindex/schema_index.json\` and \`docs/COVERAGE.md\`. Relabelled \`discovery:needs-decision\`."
+            gh pr comment "$PR" --body "The blast-radius guard refused this verdict: the diff reaches beyond \`docs/discovery/\`, \`internal/schemaindex/schema_index.json\`, \`docs/COVERAGE.md\` and \`internal/apiregistry/exclusions.go\`. Relabelled \`discovery:needs-decision\`."
+            exit 1
+          fi
+          # exclusions.go is allowed above only for step 5a's purchase-token
+          # runtime entries; this second guard checks the change is exactly that.
+          if ! .github/scripts/discovery-exclusions-guard.sh "$PR" "$HEAD_SHA"; then
+            gh pr edit "$PR" --remove-label discovery:verdict-merge --add-label discovery:needs-decision
+            gh pr comment "$PR" --body "The exclusions guard refused this verdict: the change to \`internal/apiregistry/exclusions.go\` is not limited to new purchase-token runtime exclusions (triage brief, step 5a). Relabelled \`discovery:needs-decision\`."
             exit 1
           fi
 
