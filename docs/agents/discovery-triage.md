@@ -29,9 +29,11 @@ release). Scope decisions cite
 You may not, under any circumstance:
 
 - **merge anything** (the merge is CI's job, driven by the label you set);
-- **open a code PR**, or push any commit other than the COVERAGE.md commit
-  described in step 5;
-- **touch any file other than `docs/COVERAGE.md`** on the refresh branch;
+- **open a code PR**, or push any commit other than the two step 5 describes
+  (the token-method exclusions, then the COVERAGE.md regeneration);
+- **touch any file other than `docs/COVERAGE.md`** on the refresh branch, the
+  one exception being step 5's token-method entries in
+  `internal/apiregistry/exclusions.go`;
 - **create more than 2 issues** in a single run;
 - **create an issue for a method id already named in an open issue** (search
   first, step 6);
@@ -174,20 +176,45 @@ git commit -m "docs(coverage): regenerate after the <service> refresh"
 git push origin HEAD:"$HEAD_REF"
 ```
 
+### 5a. Exclude the token methods first (the one code change you may push)
+
+A new method that acts on a **purchase token** is runtime by nature (ADR-0026,
+step 4) and has excluded siblings already. Excluding it is mechanical, so you
+do it yourself instead of filing a ticket. A method qualifies only when **all**
+of these hold:
+
+- its id starts with `androidpublisher.purchases.`;
+- its path in `paths.txt` contains `/tokens/{token}`;
+- a sibling of the same resource (same id up to the last dot) is already in
+  `internal/apiregistry/exclusions.go`.
+
+For each one, add an entry next to its siblings, copying their `runtime:`
+reason verbatim, then commit that file alone, before the COVERAGE.md commit:
+
+```bash
+git add internal/apiregistry/exclusions.go
+git commit -m "chore(apiregistry): exclude <ids> as runtime (ADR-0026)"
+```
+
+Type `chore`: no binary behaviour changes, no version bump. Add entries only:
+never edit or remove an existing one. A runtime method that misses any of the
+three conditions stays a fix item (ticket, `discovery:needs-decision`). CI
+re-checks the same rule before merging (`.github/scripts/discovery-exclusions-guard.sh`).
+
+### 5b. Regenerate
+
 Constraints:
 
 - **COVERAGE.md only.** `git status --porcelain` must show that single file
-  before you commit. Anything else in the working tree is a mistake you undo,
+  before you commit (after the 5a commit, if any). Anything else in the working tree is a mistake you undo,
   not a change you ship. In particular, never hand-edit a row: the freshness
   test compares the file byte for byte against a re-render.
 - Commit type is `docs`, never `feat`/`fix`: release-please reads the type
   blind to paths, and this commit must not bump the CLI version.
 - New in-scope methods land as 🔴 by construction (nothing calls them yet), so
   the count in your verdict is the number of new 🔴 rows in the diff.
-- A method the ADR-0026 test judged **runtime** (step 4) does not stay 🔴: it
-  belongs in `internal/apiregistry/exclusions.go` with a one-line reason. That
-  is a code change, which you may not push (step 0): report it as a fix item
-  instead.
+- A method the ADR-0026 test judged **runtime** (step 4) does not stay 🔴: 5a
+  excluded it if it qualifies. If it does not, it stays 🔴 and is a fix item.
 - Re-run `go test ./internal/coveragedoc/ ./internal/apiregistry/` after the
   regeneration; both must be green.
 - The rolling branch is force-pushed weekly. If your push is rejected because
@@ -306,8 +333,8 @@ gh pr edit "$PR" --repo PollyGlot/google-play-cli \
 
 | Label                      | When                                                                                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `discovery:verdict-merge`  | Registry test green, no fix item threatens a shipped command, tickets (if any) filed, COVERAGE.md regenerated. The snapshot refresh itself is safe: the PR touches only `docs/discovery/**`, `internal/schemaindex/schema_index.json` and your COVERAGE.md commit. |
-| `discovery:needs-decision` | Registry test red; **or** the diff exceeds 2 tickets' worth of work; **or** a scope call under ADR-0026 you cannot make alone; **or** the PR touches a file outside the snapshot set; **or** you could not complete a step and said so. |
+| `discovery:verdict-merge`  | Registry test green, no fix item threatens a shipped command, tickets (if any) filed, COVERAGE.md regenerated, `go test ./internal/coveragedoc/ ./internal/apiregistry/` green. The snapshot refresh itself is safe: the PR touches only `docs/discovery/**`, `internal/schemaindex/schema_index.json`, your COVERAGE.md commit and, if any, your step 5a exclusions. A token method you excluded in 5a is not a fix item: list it under Noted with its commit. |
+| `discovery:needs-decision` | Registry test red; **or** the diff exceeds 2 tickets' worth of work; **or** a scope call under ADR-0026 you cannot make alone; **or** the PR touches a file outside the snapshot set and your step 5 commits; **or** you could not complete a step and said so. |
 
 Set one, remove the other. The label is the handoff: `discovery:verdict-merge`
 lets CI merge the PR, `discovery:needs-decision` notifies the maintainer. You
