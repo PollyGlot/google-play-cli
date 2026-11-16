@@ -168,14 +168,6 @@ line.
 it stale, and `TestCoverageDocMatchesSources` red. You do not write rows: you
 run the target and commit its output.
 
-```bash
-make coverage-update
-git diff --stat            # docs/COVERAGE.md and nothing else
-git add docs/COVERAGE.md
-git commit -m "docs(coverage): regenerate after the <service> refresh"
-git push origin HEAD:"$HEAD_REF"
-```
-
 ### 5a. Exclude the token methods first (the one code change you may push)
 
 A new method that acts on a **purchase token** is runtime by nature (ADR-0026,
@@ -202,6 +194,14 @@ three conditions stays a fix item (ticket, `discovery:needs-decision`). CI
 re-checks the same rule before merging (`.github/scripts/discovery-exclusions-guard.sh`).
 
 ### 5b. Regenerate
+
+```bash
+make coverage-update
+git diff --stat            # docs/COVERAGE.md and nothing else
+git add docs/COVERAGE.md
+git commit -m "docs(coverage): regenerate after the <service> refresh"
+git push origin HEAD:"$HEAD_REF"
+```
 
 Constraints:
 

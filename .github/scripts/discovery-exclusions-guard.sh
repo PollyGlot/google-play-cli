@@ -52,16 +52,20 @@ fi
 paths=$(gh api -H 'Accept: application/vnd.github.raw' \
   "repos/{owner}/{repo}/contents/docs/discovery/paths.txt?ref=$HEAD_SHA")
 
+ids=0
+reasons=0
 while IFS= read -r line; do
   content=${line#+}
   if [[ $content =~ ^[[:space:]]*$ || $content =~ ^[[:space:]]*[{]$ || $content =~ ^[[:space:]]*[}],$ ]]; then
     continue
   fi
   if [[ $content =~ ^[[:space:]]*Reason:[[:space:]]+\"runtime:[^\"]*\",$ ]]; then
+    reasons=$((reasons + 1))
     continue
   fi
   if [[ $content =~ ^[[:space:]]*MethodID:[[:space:]]+\"(androidpublisher\.purchases\.[a-z0-9]+\.[a-z0-9]+)\",$ ]]; then
     id=${BASH_REMATCH[1]}
+    ids=$((ids + 1))
     path=$(printf '%s\n' "$paths" | awk -F'\t' -v id="$id" '$1 == id { print $3 }')
     [ -n "$path" ] || fail "$id is not in paths.txt at $HEAD_SHA."
     [[ $path == */tokens/\{token\}* ]] || fail "$id does not act on a purchase token ($path)."
@@ -70,5 +74,8 @@ while IFS= read -r line; do
   fi
   fail "unexpected line in $FILE: $content"
 done <<< "$body"
+
+# Each added entry needs its own runtime reason, not a MethodID alone.
+[ "$ids" -eq "$reasons" ] || fail "$ids added MethodID line(s) but $reasons runtime Reason line(s) in $FILE."
 
 echo "exclusions.go: only purchase-token runtime exclusions added."
