@@ -96,6 +96,9 @@ var flagVocabulary = map[string]string{
 	"command":    "gplay command path whose API methods the API index shows",
 	"oldest":     "cutoff before which price cohorts migrate",
 	"describe":   "describe the metric set instead of querying it",
+	// #784: Discovery's userCohort and sampleErrorReportLimit.
+	"user-cohort":    "user view of a vitals metric query: OS_PUBLIC, APP_TESTERS or OS_BETA",
+	"sample-reports": "sample error reports to attach to each error issue",
 
 	// Commerce reads.
 	"include-partial-refunds": "also list quantity-based partial refunds (voided purchases)",
