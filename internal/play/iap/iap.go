@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
 // op* tag *api.Error with the REST reference method id.
@@ -198,9 +200,10 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 // product from the catalog-file resource, sent verbatim. The Discovery
 // snapshot paths this method under lowercase `onetimeproducts/`, unlike the
 // reads: followed verbatim.
-func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, allowMissing bool, body json.RawMessage) (json.RawMessage, error) {
+func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, allowMissing bool, body json.RawMessage, lt latency.Tolerance) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("regionsVersion.version", regionsVersion)
+	lt.SetQuery(q)
 	if allowMissing {
 		q.Set("allowMissing", "true")
 	}
@@ -217,10 +220,13 @@ func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, r
 
 // DeleteOneTimeProduct deletes one v2 product. Reaching here means the plan
 // carried a delete and the operator passed --confirm (ADR-0041 §3).
-func DeleteOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID string) error {
+func DeleteOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID string, lt latency.Tolerance) error {
+	q := url.Values{}
+	lt.SetQuery(q)
 	_, err := api.Do(ctx, hc, api.Call{
 		Method: mDelete, Op: opDelete, Target: pkg,
 		Params: map[string]string{"packageName": pkg, "productId": productID},
+		Query:  q,
 	})
 	return err
 }
@@ -310,11 +316,12 @@ func sendInBatches(op, target string, ids []string, send func(lo, hi int) error)
 // BatchUpdateOffers creates/edits the given offers of one purchase option
 // through offers:batchUpdate, the only write path the API exposes for offers,
 // in calls of at most maxBatchRequests.
-func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, updates []OfferUpdate, regionsVersion string) error {
+func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, updates []OfferUpdate, regionsVersion string, lt latency.Tolerance) error {
 	type updateReq struct {
-		OneTimeProductOffer json.RawMessage `json:"oneTimeProductOffer"`
-		AllowMissing        bool            `json:"allowMissing,omitempty"`
-		UpdateMask          string          `json:"updateMask,omitempty"`
+		OneTimeProductOffer json.RawMessage   `json:"oneTimeProductOffer"`
+		AllowMissing        bool              `json:"allowMissing,omitempty"`
+		UpdateMask          string            `json:"updateMask,omitempty"`
+		LatencyTolerance    latency.Tolerance `json:"latencyTolerance,omitempty"`
 		RegionsVersion      struct {
 			Version string `json:"version"`
 		} `json:"regionsVersion"`
@@ -322,7 +329,7 @@ func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 	reqs := make([]updateReq, 0, len(updates))
 	ids := make([]string, 0, len(updates))
 	for _, upd := range updates {
-		r := updateReq{OneTimeProductOffer: upd.Offer, AllowMissing: upd.AllowMissing, UpdateMask: strings.Join(upd.UpdateMask, ",")}
+		r := updateReq{OneTimeProductOffer: upd.Offer, AllowMissing: upd.AllowMissing, UpdateMask: strings.Join(upd.UpdateMask, ","), LatencyTolerance: lt}
 		r.RegionsVersion.Version = regionsVersion
 		reqs = append(reqs, r)
 		var offer struct {
@@ -346,16 +353,17 @@ func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 // BatchDeleteOffers deletes the given offers of one purchase option through
 // offers:batchDelete, naming each offer's full identity, in calls of at most
 // maxBatchRequests.
-func BatchDeleteOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, offerIDs []string) error {
+func BatchDeleteOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, offerIDs []string, lt latency.Tolerance) error {
 	type deleteReq struct {
-		PackageName      string `json:"packageName"`
-		ProductID        string `json:"productId"`
-		PurchaseOptionID string `json:"purchaseOptionId"`
-		OfferID          string `json:"offerId"`
+		PackageName      string            `json:"packageName"`
+		ProductID        string            `json:"productId"`
+		PurchaseOptionID string            `json:"purchaseOptionId"`
+		OfferID          string            `json:"offerId"`
+		LatencyTolerance latency.Tolerance `json:"latencyTolerance,omitempty"`
 	}
 	reqs := make([]deleteReq, 0, len(offerIDs))
 	for _, id := range offerIDs {
-		reqs = append(reqs, deleteReq{PackageName: pkg, ProductID: productID, PurchaseOptionID: purchaseOptionID, OfferID: id})
+		reqs = append(reqs, deleteReq{PackageName: pkg, ProductID: productID, PurchaseOptionID: purchaseOptionID, OfferID: id, LatencyTolerance: lt})
 	}
 	return sendInBatches(opOffersBatchDelete, productID+"/"+purchaseOptionID, offerIDs, func(lo, hi int) error {
 		_, err := api.Do(ctx, hc, api.Call{
@@ -384,20 +392,21 @@ type PurchaseOptionStateUpdate struct {
 // of UpdatePurchaseOptionStateRequest: one of activatePurchaseOptionRequest /
 // deactivatePurchaseOptionRequest per entry, each echoing the identity the
 // schema requires.
-func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, productID string, updates []PurchaseOptionStateUpdate) error {
-	type identity struct {
-		PackageName      string `json:"packageName"`
-		ProductID        string `json:"productId"`
-		PurchaseOptionID string `json:"purchaseOptionId"`
+func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, productID string, updates []PurchaseOptionStateUpdate, lt latency.Tolerance) error {
+	type optionReq struct {
+		PackageName      string            `json:"packageName"`
+		ProductID        string            `json:"productId"`
+		PurchaseOptionID string            `json:"purchaseOptionId"`
+		LatencyTolerance latency.Tolerance `json:"latencyTolerance,omitempty"`
 	}
 	type stateReq struct {
-		Activate   *identity `json:"activatePurchaseOptionRequest,omitempty"`
-		Deactivate *identity `json:"deactivatePurchaseOptionRequest,omitempty"`
+		Activate   *optionReq `json:"activatePurchaseOptionRequest,omitempty"`
+		Deactivate *optionReq `json:"deactivatePurchaseOptionRequest,omitempty"`
 	}
 	reqs := make([]stateReq, 0, len(updates))
 	ids := make([]string, 0, len(updates))
 	for _, upd := range updates {
-		id := &identity{PackageName: pkg, ProductID: productID, PurchaseOptionID: upd.PurchaseOptionID}
+		id := &optionReq{PackageName: pkg, ProductID: productID, PurchaseOptionID: upd.PurchaseOptionID, LatencyTolerance: lt}
 		if upd.Activate {
 			reqs = append(reqs, stateReq{Activate: id})
 		} else {
@@ -425,7 +434,7 @@ func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, 
 // is part of the snapshot's flatPath, so it rides the template. The request
 // message echoes the identity the schema declares (the subscription siblings
 // accept an empty body, the one-time ones list the fields: sent to be safe).
-func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID, offerID, target string) (json.RawMessage, error) {
+func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID, offerID, target string, lt latency.Tolerance) (json.RawMessage, error) {
 	var (
 		m  apiregistry.Method
 		op string
@@ -441,10 +450,14 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchas
 		return nil, &api.Error{Operation: opOffersActivate, Package: pkg, Message: "unsupported offer state target " + strconv.Quote(target)}
 	}
 	identity := map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID, "offerId": offerID}
+	body := maps.Clone(identity)
+	if lt != "" {
+		body["latencyTolerance"] = string(lt)
+	}
 	return api.Do(ctx, hc, api.Call{
 		Method: m, Op: op, Target: pkg,
 		Params: identity,
-		Body:   identity,
+		Body:   body,
 	})
 }
 

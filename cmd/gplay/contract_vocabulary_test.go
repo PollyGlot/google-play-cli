@@ -151,6 +151,7 @@ var flagVocabulary = map[string]string{
 	"group":                 "Google Group email of testers",
 	"regions":               "region codes targeted",
 	"regions-version":       "regions version pin sent with writes",
+	"latency-tolerance":     "propagation mode of Monetization catalog writes: sensitive or tolerant",
 	"sdk-levels":            "Android SDK levels targeted",
 	"all-users":             "target all users",
 	"remote-in-app-update":  "use a remote in-app update as the recovery action",

@@ -85,10 +85,10 @@ func TestListAllOffers_wildcard(t *testing.T) {
 func TestPatchOneTimeProduct_upsert(t *testing.T) {
 	rt := iapFake([]scripted{{200, `{}`}, {200, `{}`}})
 	body := json.RawMessage(`{"productId":"coins100","listings":[]}`)
-	if _, err := iap.PatchOneTimeProduct(context.Background(), client(rt), "com.example.app", "coins100", "2022/02", nil, true, body); err != nil {
+	if _, err := iap.PatchOneTimeProduct(context.Background(), client(rt), "com.example.app", "coins100", "2022/02", nil, true, body, ""); err != nil {
 		t.Fatalf("Patch(create): %v", err)
 	}
-	if _, err := iap.PatchOneTimeProduct(context.Background(), client(rt), "com.example.app", "coins100", "2022/02", []string{"listings"}, false, body); err != nil {
+	if _, err := iap.PatchOneTimeProduct(context.Background(), client(rt), "com.example.app", "coins100", "2022/02", []string{"listings"}, false, body, ""); err != nil {
 		t.Fatalf("Patch(edit): %v", err)
 	}
 	create, edit := rt.Calls()[0], rt.Calls()[1]
@@ -109,7 +109,7 @@ func TestPatchOneTimeProduct_upsert(t *testing.T) {
 // TestDeleteOneTimeProduct_addresses asserts the DELETE path.
 func TestDeleteOneTimeProduct_addresses(t *testing.T) {
 	rt := iapFake([]scripted{{204, ``}})
-	if err := iap.DeleteOneTimeProduct(context.Background(), client(rt), "com.example.app", "gems50"); err != nil {
+	if err := iap.DeleteOneTimeProduct(context.Background(), client(rt), "com.example.app", "gems50", ""); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	req := rt.Calls()[0]
@@ -125,7 +125,7 @@ func TestBatchUpdateOffers_groupsPerPurchaseOption(t *testing.T) {
 	err := iap.BatchUpdateOffers(context.Background(), client(rt), "com.example.app", "coins100", "buy", []iap.OfferUpdate{
 		{Offer: json.RawMessage(`{"offerId":"promo"}`), AllowMissing: true},
 		{Offer: json.RawMessage(`{"offerId":"sale"}`), UpdateMask: []string{"regionalPricingAndAvailabilityConfigs"}},
-	}, "2022/02")
+	}, "2022/02", "")
 	if err != nil {
 		t.Fatalf("BatchUpdateOffers: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestBatchUpdateOffers_groupsPerPurchaseOption(t *testing.T) {
 // offer's full identity.
 func TestBatchDeleteOffers_postsIdentities(t *testing.T) {
 	rt := iapFake([]scripted{{200, `{}`}})
-	err := iap.BatchDeleteOffers(context.Background(), client(rt), "com.example.app", "coins100", "buy", []string{"promo"})
+	err := iap.BatchDeleteOffers(context.Background(), client(rt), "com.example.app", "coins100", "buy", []string{"promo"}, "")
 	if err != nil {
 		t.Fatalf("BatchDeleteOffers: %v", err)
 	}

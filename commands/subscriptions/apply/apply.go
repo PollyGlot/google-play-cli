@@ -33,6 +33,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
@@ -65,11 +66,12 @@ var offerManagedFields = []reconcile.Field{
 
 // Input is the request-shaped struct cobra builds from flags.
 type Input struct {
-	Package        string
-	Dir            string
-	RegionsVersion string
-	DryRun         bool
-	Confirm        bool
+	Package          string
+	Dir              string
+	RegionsVersion   string
+	LatencyTolerance string
+	DryRun           bool
+	Confirm          bool
 }
 
 // Payload renders the Reconciliation plan: planned under --dry-run, executed
@@ -268,6 +270,10 @@ func stateTransition(kind, productID, basePlanID, offerID, declared, live string
 // list the live one (subscriptions + offers), compute the three-level plan,
 // then print (--dry-run), refuse (destructive without --confirm) or execute it.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	lt, err := latency.Parse(in.LatencyTolerance)
+	if err != nil {
+		return nil, err
+	}
 	dir := in.Dir
 	if dir == "" {
 		dir = subscriptionscmd.DefaultDir
@@ -404,7 +410,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := subscriptions.Patch(rc.Ctx, httpClient, pkg, c.ProductID, regionsVersion, c.Fields, body); err != nil {
+		if _, err := subscriptions.Patch(rc.Ctx, httpClient, pkg, c.ProductID, regionsVersion, c.Fields, body, lt); err != nil {
 			return nil, subscriptionscmd.Classify(pkg, err)
 		}
 	}
@@ -414,7 +420,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 	for _, c := range plan.OfferPatches {
-		if _, err := subscriptions.PatchOffer(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID, c.OfferID, regionsVersion, c.Fields, localOffers[subscriptionscmd.OfferKey{ProductID: c.ProductID, BasePlanID: c.ParentID, OfferID: c.OfferID}]); err != nil {
+		if _, err := subscriptions.PatchOffer(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID, c.OfferID, regionsVersion, c.Fields, localOffers[subscriptionscmd.OfferKey{ProductID: c.ProductID, BasePlanID: c.ParentID, OfferID: c.OfferID}], lt); err != nil {
 			return nil, subscriptionscmd.Classify(pkg, err)
 		}
 	}
@@ -427,9 +433,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			}
 			var err error
 			if s.Kind == "basePlan" {
-				_, err = subscriptions.SetBasePlanState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.To == subscriptions.StateActive)
+				_, err = subscriptions.SetBasePlanState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.To == subscriptions.StateActive, lt)
 			} else {
-				_, err = subscriptions.SetOfferState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.OfferID, s.To == subscriptions.StateActive)
+				_, err = subscriptions.SetOfferState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.OfferID, s.To == subscriptions.StateActive, lt)
 			}
 			if err != nil {
 				return nil, subscriptionscmd.Classify(pkg, err)
@@ -576,7 +582,13 @@ a separate, gated command.
 
 --regions-version pins the regions version sent with creates and patches
 (default ` + subscriptionscmd.DefaultRegionsVersion + `, the latest Google has
-published). GPLAY_READONLY refuses the command (exit 4).`,
+published).
+
+--latency-tolerance tolerant trades propagation speed for throughput on a
+large catalog: Play takes up to 24 hours to show the writes to buyers, against
+minutes by default. It rides the patches and the activate/deactivate calls;
+Play takes no such parameter on creates and deletes, which keep the default.
+GPLAY_READONLY refuses the command (exit 4).`,
 		Example: `  # Show the plan against live Play (online, nothing changes)
   gplay subscriptions apply --dry-run
 
@@ -597,6 +609,7 @@ published). GPLAY_READONLY refuses the command (exit 4).`,
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.Dir, "dir", subscriptionscmd.DefaultDir, "catalog directory to reconcile from")
 	cmd.Flags().StringVar(&in.RegionsVersion, "regions-version", subscriptionscmd.DefaultRegionsVersion, "regions version pin sent with subscription writes")
+	cmd.Flags().StringVar(&in.LatencyTolerance, latency.Flag, "", latency.Help)
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "read live Play and print the plan without committing (online)")
 	cmd.Flags().BoolVar(&in.Confirm, "confirm", false, "authorize a destructive plan (required when the plan deletes subscriptions, base plans or offers)")
 	return cmd

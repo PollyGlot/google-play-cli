@@ -15,6 +15,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/expansionfiles"
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
+	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 	"github.com/PollyGlot/google-play-cli/internal/play/mappings"
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
@@ -107,7 +108,7 @@ func rotationWireValues(t *testing.T) []string {
 
 func anchors(t *testing.T) []anchor {
 	t.Helper()
-	return []anchor{
+	rows := []anchor{
 		{
 			goList: "images.Types()",
 			src: param{name: "imageType", methods: []string{
@@ -194,11 +195,37 @@ func anchors(t *testing.T) []anchor {
 			code:   []string{iap.StateDraft, iap.StateActive, iap.StateInactive, iap.StateInactivePublished},
 		},
 		{
+			goList: "latency.Tolerance",
+			src: param{name: "latencyTolerance", methods: []string{
+				"androidpublisher.monetization.onetimeproducts.patch",
+				"androidpublisher.monetization.onetimeproducts.delete",
+				"androidpublisher.monetization.subscriptions.patch",
+				"androidpublisher.monetization.subscriptions.basePlans.offers.patch",
+			}},
+			code: strs([]latency.Tolerance{latency.Sensitive, latency.Tolerant}),
+		},
+		{
 			goList: "appstorecatalog.UpdateType*",
 			src:    property{"RecentUpdateEvent", "updateType"},
 			code:   []string{appstorecatalog.UpdateTypeModification, appstorecatalog.UpdateTypeDeletion},
 		},
 	}
+	// The monetization state verbs and batch entries carry the same
+	// tolerance as a body field, one request schema each.
+	for _, schema := range []string{
+		"UpdateOneTimeProductOfferRequest", "DeleteOneTimeProductOfferRequest",
+		"ActivatePurchaseOptionRequest", "DeactivatePurchaseOptionRequest",
+		"ActivateOneTimeProductOfferRequest", "DeactivateOneTimeProductOfferRequest", "CancelOneTimeProductOfferRequest",
+		"ActivateBasePlanRequest", "DeactivateBasePlanRequest",
+		"ActivateSubscriptionOfferRequest", "DeactivateSubscriptionOfferRequest",
+	} {
+		rows = append(rows, anchor{
+			goList: "latency.Tolerance",
+			src:    property{schema, "latencyTolerance"},
+			code:   strs([]latency.Tolerance{latency.Sensitive, latency.Tolerant}),
+		})
+	}
+	return rows
 }
 
 // unspecified reports Discovery's sentinel for an unset enum, which no list

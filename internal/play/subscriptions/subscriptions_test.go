@@ -140,7 +140,7 @@ func TestCreate_postsResourceWithRegionsVersion(t *testing.T) {
 func TestPatch_scopedUpdateMask(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{"productId":"premium"}`}})
 	body := json.RawMessage(`{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}]}`)
-	_, err := subscriptions.Patch(context.Background(), client(rt), "com.example.app", "premium", "2022/02", []string{"listings", "taxAndComplianceSettings"}, body)
+	_, err := subscriptions.Patch(context.Background(), client(rt), "com.example.app", "premium", "2022/02", []string{"listings", "taxAndComplianceSettings"}, body, "")
 	if err != nil {
 		t.Fatalf("Patch: %v", err)
 	}

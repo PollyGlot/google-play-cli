@@ -1105,3 +1105,56 @@ func assertExit(t *testing.T, err error, want int) {
 		t.Errorf("exit = %d, want %d", got, want)
 	}
 }
+
+// TestRun_latencyTolerance_ridesThePatchesAndStates runs a plan with a patch,
+// an offer create and two state moves under --latency-tolerance tolerant: the
+// patch and the state verbs carry it, the create does not (Play's create
+// takes no such parameter).
+func TestRun_latencyTolerance_ridesThePatchesAndStates(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE","offers":[
+			{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"INACTIVE","phases":[{"duration":"P1W"}]},
+			{"offerId":"neo","phases":[{"duration":"P3D"}]}
+		]},{"basePlanId":"yearly","state":"ACTIVE"}]}`,
+		"gone.json": `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
+	})
+	rt := &subsRT{offersBody: liveOffers}
+	live := `{"subscriptions":[
+	  {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"yearly","state":"DRAFT"}]},
+	  {"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}
+	]}`
+	rc, _ := newRCWithLive(t, rt, live)
+	if _, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, LatencyTolerance: "TOLERANT"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	const tolerant = "PRODUCT_UPDATE_LATENCY_TOLERANCE_LATENCY_TOLERANT"
+	seen := map[string]bool{}
+	for i, u := range rt.urls {
+		body := rt.bodies[rt.calls[i]]
+		switch {
+		case strings.Contains(u, "/subscriptions/premium?"):
+			seen["patch"] = strings.Contains(u, "latencyTolerance="+tolerant)
+		case strings.Contains(u, "offerId=neo"):
+			seen["create"] = !strings.Contains(u+body, "latencyTolerance")
+		case strings.Contains(u, "/basePlans/yearly:activate"):
+			seen["activate"] = body == `{"latencyTolerance":"`+tolerant+`"}`
+		case strings.Contains(u, "/offers/intro:deactivate"):
+			seen["deactivate"] = body == `{"latencyTolerance":"`+tolerant+`"}`
+		}
+	}
+	for _, w := range []string{"patch", "create", "activate", "deactivate"} {
+		if !seen[w] {
+			t.Errorf("%s: latencyTolerance not where expected; calls %v urls %v bodies %v", w, rt.calls, rt.urls, rt.bodies)
+		}
+	}
+}
+
+func TestRun_latencyToleranceUnknown_isUsageErrorBeforeAnyCall(t *testing.T) {
+	rt := &subsRT{}
+	rc, _ := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: matchedCatalog(t), LatencyTolerance: "fast"})
+	assertExit(t, err, 2)
+	if len(rt.calls) != 0 {
+		t.Errorf("refused input reached the API: %v", rt.calls)
+	}
+}

@@ -17,6 +17,7 @@ import (
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
+	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
 // op* tag *api.Error with the REST reference method id.
@@ -125,10 +126,11 @@ func CreateOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanI
 
 // PatchOffer updates an offer from the catalog fragment, sent verbatim, with
 // the updateMask scoped to exactly the changed managed fields (ADR-0041 §5).
-func PatchOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID, regionsVersion string, updateMask []string, body json.RawMessage) (json.RawMessage, error) {
+func PatchOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID, regionsVersion string, updateMask []string, body json.RawMessage, lt latency.Tolerance) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
 	q.Set("regionsVersion.version", regionsVersion)
+	lt.SetQuery(q)
 	return api.Do(ctx, hc, api.Call{
 		Method: mOffersPatch, Op: opOffersPatch, Target: pkg,
 		Params: offerScope(pkg, productID, basePlanID, offerID),
@@ -150,13 +152,13 @@ func DeleteOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanI
 
 // SetBasePlanState activates (true) or deactivates (false) a base plan: the
 // reconciliation arm of the declarative state: field in the catalog files. The
-// body is an empty object; the identity rides the path.
-func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, activate bool) (json.RawMessage, error) {
+// identity rides the path, so the body carries the latency tolerance alone.
+func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, activate bool, lt latency.Tolerance) (json.RawMessage, error) {
 	m, op := mBasePlanDeactivate, opBasePlanDeactivate
 	if activate {
 		m, op = mBasePlanActivate, opBasePlanActivate
 	}
-	return postEmpty(ctx, hc, m, op, pkg, offerScope(pkg, productID, basePlanID))
+	return postState(ctx, hc, m, op, pkg, offerScope(pkg, productID, basePlanID), lt)
 }
 
 // DeleteBasePlan deletes a base plan (slice #542): the shrink arm of the
@@ -174,12 +176,12 @@ func DeleteBasePlan(ctx context.Context, hc *http.Client, pkg, productID, basePl
 }
 
 // SetOfferState activates (true) or deactivates (false) an offer.
-func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID string, activate bool) (json.RawMessage, error) {
+func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID string, activate bool, lt latency.Tolerance) (json.RawMessage, error) {
 	m, op := mOffersDeactivate, opOffersDeactivate
 	if activate {
 		m, op = mOffersActivate, opOffersActivate
 	}
-	return postEmpty(ctx, hc, m, op, pkg, offerScope(pkg, productID, basePlanID, offerID))
+	return postState(ctx, hc, m, op, pkg, offerScope(pkg, productID, basePlanID, offerID), lt)
 }
 
 // opMigratePrices tags *api.Error for the subscriber price migration.
@@ -236,7 +238,11 @@ func offerScope(pkg, productID, basePlanID string, offerID ...string) map[string
 	return p
 }
 
-// postEmpty POSTs an empty JSON object to a custom verb.
-func postEmpty(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg string, params map[string]string) (json.RawMessage, error) {
-	return api.Do(ctx, hc, api.Call{Method: m, Op: op, Target: pkg, Params: params, Body: []byte("{}")})
+// postState POSTs a state verb, whose body is an empty object unless it
+// carries a latency tolerance.
+func postState(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg string, params map[string]string, lt latency.Tolerance) (json.RawMessage, error) {
+	body := struct {
+		LatencyTolerance latency.Tolerance `json:"latencyTolerance,omitempty"`
+	}{lt}
+	return api.Do(ctx, hc, api.Call{Method: m, Op: op, Target: pkg, Params: params, Body: body})
 }
