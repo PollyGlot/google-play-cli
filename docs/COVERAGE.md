@@ -32,14 +32,14 @@ worth shipping.
 
 | Service | Methods | ✅ called | ⚪ redundant | ⚫️ excluded | 🔴 parked | 🔴 uncovered |
 |---|---:|---:|---:|---:|---:|---:|
-| `androidpublisher` v3 | 147 | 99 | 31 | 15 | 0 | 2 |
+| `androidpublisher` v3 | 147 | 99 | 31 | 17 | 0 | 0 |
 | `playdeveloperreporting` v1beta1 | 25 | 25 | 0 | 0 | 0 | 0 |
 | `gamesConfiguration` v1configuration | 10 | 10 | 0 | 0 | 0 | 0 |
 | `playcustomapp` v1 | 1 | 1 | 0 | 0 | 0 | 0 |
 | `gamesManagement` v1management | 18 | 0 | 0 | 18 | 0 | 0 |
-| **Total** | **201** | **135** | **31** | **33** | **0** | **2** |
+| **Total** | **201** | **135** | **31** | **35** | **0** | **0** |
 
-Of the 168 admin methods (201 total minus the 33 excluded by nature), **135 are called**, **31 are redundant** with a called method, **0 are parked** behind an issue and **2 are uncovered**.
+Of the 166 admin methods (201 total minus the 35 excluded by nature), **135 are called**, **31 are redundant** with a called method, **0 are parked** behind an issue and **0 are uncovered**.
 
 ## `androidpublisher` v3 (147 methods)
 
@@ -175,11 +175,11 @@ Of the 168 admin methods (201 total minus the 33 excluded by nature), **135 are 
 | `androidpublisher.purchases.subscriptions.cancel` | ⚫️ | runtime: acts on a subscription purchase token, not on a catalog resource |
 | `androidpublisher.purchases.subscriptions.defer` | ⚫️ | runtime: acts on a subscription purchase token, not on a catalog resource |
 | `androidpublisher.purchases.subscriptionsv2.cancel` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
-| `androidpublisher.purchases.subscriptionsv2.cancelplantransition` | 🔴 | |
+| `androidpublisher.purchases.subscriptionsv2.cancelplantransition` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
 | `androidpublisher.purchases.subscriptionsv2.defer` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
 | `androidpublisher.purchases.subscriptionsv2.get` | ⚫️ | runtime: server-side subscription-token verification (v2 shape) |
 | `androidpublisher.purchases.subscriptionsv2.revoke` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
-| `androidpublisher.purchases.subscriptionsv2.scheduleplantransition` | 🔴 | |
+| `androidpublisher.purchases.subscriptionsv2.scheduleplantransition` | ⚫️ | runtime: acts on a subscription purchase token (v2 shape) |
 | `androidpublisher.purchases.voidedpurchases.list` | ✅ | `gplay orders voided list`; voided-purchases feed for refund/chargeback reconciliation (#346) |
 | `androidpublisher.reviews.get` | ✅ | `gplay reviews view` |
 | `androidpublisher.reviews.list` | ✅ | `gplay reviews list` |

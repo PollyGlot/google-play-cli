@@ -90,6 +90,10 @@ var exclusions = []Exclusion{
 		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
 	},
 	{
+		MethodID: "androidpublisher.purchases.subscriptionsv2.cancelplantransition",
+		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
+	},
+	{
 		MethodID: "androidpublisher.purchases.subscriptionsv2.defer",
 		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
 	},
@@ -99,6 +103,10 @@ var exclusions = []Exclusion{
 	},
 	{
 		MethodID: "androidpublisher.purchases.subscriptionsv2.revoke",
+		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
+	},
+	{
+		MethodID: "androidpublisher.purchases.subscriptionsv2.scheduleplantransition",
 		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
 	},
 	{MethodID: "gamesManagement.achievements.reset", Reason: userAuthOnly},
