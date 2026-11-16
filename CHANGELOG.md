@@ -5,6 +5,36 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0](https://github.com/PollyGlot/google-play-cli/compare/v2.4.2...v2.5.0) (2026-11-16)
+
+
+### Features
+
+* **releases:** promote reads its destination and gains --plan ([#835](https://github.com/PollyGlot/google-play-cli/issues/835)) ([56427c6](https://github.com/PollyGlot/google-play-cli/commit/56427c64778a26fa11976d8297fd4f0fb69bab93))
+* send latencyTolerance, aiGeneratedState, userCohort, sampleErrorReportLimit and versionRange ([#834](https://github.com/PollyGlot/google-play-cli/issues/834)) ([847da42](https://github.com/PollyGlot/google-play-cli/commit/847da425433c58ea228b25800f583243445cd9be))
+
+
+### Bug Fixes
+
+* **auth:** tell a network failure from a refused key in auth doctor ([#820](https://github.com/PollyGlot/google-play-cli/issues/820)) ([13a86e8](https://github.com/PollyGlot/google-play-cli/commit/13a86e8bb122fa83db168b5c130097e5020ea5a1))
+* **auth:** tighten loose keystore paths on write, keep GPLAY_ variables out of git ([#817](https://github.com/PollyGlot/google-play-cli/issues/817)) ([8123fe0](https://github.com/PollyGlot/google-play-cli/commit/8123fe02e3373111897178e8df74463e7eeedafb))
+* **build:** build on Go 1.27.4 to pick up the net/http fix ([#815](https://github.com/PollyGlot/google-play-cli/issues/815)) ([54dedc0](https://github.com/PollyGlot/google-play-cli/commit/54dedc071bd35cd2581fd7532e5badfbc9a916f3))
+* **config:** refuse init through symlinks and pin the tracked check to the repo ([#799](https://github.com/PollyGlot/google-play-cli/issues/799)) ([4127604](https://github.com/PollyGlot/google-play-cli/commit/4127604309916d301bc71e3a15bbae7890c63264))
+* **metadata:** fetch pulled images without the OAuth token, over https only ([#803](https://github.com/PollyGlot/google-play-cli/issues/803)) ([4b4c672](https://github.com/PollyGlot/google-play-cli/commit/4b4c672e3a788a0a7f4705e79276973b1ee5b5ae))
+* **metadata:** read one store image at a time in images apply and validate ([#824](https://github.com/PollyGlot/google-play-cli/issues/824)) ([32f4223](https://github.com/PollyGlot/google-play-cli/commit/32f4223d763873af43a755ff57010d6b024bc6f7))
+* **monetization:** diagnose a refused offer delete, list catalogs 20 per page ([#822](https://github.com/PollyGlot/google-play-cli/issues/822)) ([3dbec84](https://github.com/PollyGlot/google-play-cli/commit/3dbec8421c52bed21fc52e0882977c626cc3b63f))
+* **monetization:** refuse dropping an ACTIVE base plan at plan time, with a hint that converges ([#806](https://github.com/PollyGlot/google-play-cli/issues/806)) ([57158df](https://github.com/PollyGlot/google-play-cli/commit/57158dfb6b4ffb913c0f6456e1dfc4002a0b95e6))
+* **monetization:** split iap apply batch writes at the 100 requests Discovery allows ([#821](https://github.com/PollyGlot/google-play-cli/issues/821)) ([e852d66](https://github.com/PollyGlot/google-play-cli/commit/e852d664544ba77ee77067a6ec8fdb33f99fed74))
+* **output:** sanitize every human view at the render boundary ([#804](https://github.com/PollyGlot/google-play-cli/issues/804)) ([825853a](https://github.com/PollyGlot/google-play-cli/commit/825853a58dcb5813d2d17e1c2a53b7080237b184))
+* **releases:** drop countryTargeting from a completed release ([#801](https://github.com/PollyGlot/google-play-cli/issues/801)) ([e1b5a29](https://github.com/PollyGlot/google-play-cli/commit/e1b5a29b3f115fa4c9a6c9a8c000f432f687e73c))
+* **releases:** let edits discard clear an unreadable pin, check release notes before upload ([#823](https://github.com/PollyGlot/google-play-cli/issues/823)) ([8606437](https://github.com/PollyGlot/google-play-cli/commit/86064375d80cbbdd04ba7835a328cbbd4fa0c742))
+* **reports:** bound report downloads by inactivity, not the 60s total ([#802](https://github.com/PollyGlot/google-play-cli/issues/802)) ([eafb36a](https://github.com/PollyGlot/google-play-cli/commit/eafb36ad14bc3c0646060155876dd9bd64df2d29))
+* **reviews:** ask for 100 reviews per page, warn on a reply over 350 characters ([#816](https://github.com/PollyGlot/google-play-cli/issues/816)) ([29400bc](https://github.com/PollyGlot/google-play-cli/commit/29400bc4cb01932229c873aa1e5fbbcb04106c11))
+* **testers:** print the planned body on set --dry-run --output json ([#798](https://github.com/PollyGlot/google-play-cli/issues/798)) ([3c037ef](https://github.com/PollyGlot/google-play-cli/commit/3c037ef0ec0549f3c06bbbe307ef32138fec9cd9))
+* **tracks:** prefix form factor track names on create ([#796](https://github.com/PollyGlot/google-play-cli/issues/796)) ([3178741](https://github.com/PollyGlot/google-play-cli/commit/317874110522f39717c1cb58b615dbcdf82fa444))
+* **vitals:** list only the periods each command accepts in --period help ([#819](https://github.com/PollyGlot/google-play-cli/issues/819)) ([533383c](https://github.com/PollyGlot/google-play-cli/commit/533383cc41a0ba823921aefe504bb28abacbd523))
+* **vitals:** send the hours of an hour window to errors issues and reports ([#797](https://github.com/PollyGlot/google-play-cli/issues/797)) ([16e1037](https://github.com/PollyGlot/google-play-cli/commit/16e10375bb245935e26ae6aefeaed5ab8324a5f4))
+
 ## [2.4.2](https://github.com/PollyGlot/google-play-cli/compare/v2.4.1...v2.4.2) (2026-11-13)
 
 
