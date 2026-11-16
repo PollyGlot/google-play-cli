@@ -127,7 +127,7 @@ func TestUpload_usesMediaProtocol_andParsesImage(t *testing.T) {
 	hc := &http.Client{Transport: transport}
 	data := []byte("\x89PNG\r\n\x1a\nfake-bytes")
 
-	img, err := images.Upload(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.Icon, data)
+	img, err := images.Upload(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.Icon, data, "")
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestUpload_announcesSniffedMediaType(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			transport := fakeWith(200, `{"image":{"id":"new1","sha256":"s256"}}`)
 			hc := &http.Client{Transport: transport}
-			if _, err := images.Upload(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.FeatureGraphic, tc.data); err != nil {
+			if _, err := images.Upload(context.Background(), hc, "com.example.app", "edit-1", "en-US", images.FeatureGraphic, tc.data, ""); err != nil {
 				t.Fatalf("Upload: %v", err)
 			}
 			if got := onlyCall(t, transport).Header.Get("Content-Type"); got != tc.want {
@@ -274,7 +274,7 @@ func TestSha256Soundness_uploadThenList(t *testing.T) {
 
 	hc := &http.Client{Transport: playStore()}
 
-	if _, err := images.Upload(context.Background(), hc, "com.example.app", "e", "en-US", images.Icon, local); err != nil {
+	if _, err := images.Upload(context.Background(), hc, "com.example.app", "e", "en-US", images.Icon, local, ""); err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
 	got, _, err := images.List(context.Background(), hc, "com.example.app", "e", "en-US", images.Icon)

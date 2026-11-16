@@ -120,6 +120,11 @@ func anchors(t *testing.T) []anchor {
 			code: strs(images.Types()),
 		},
 		{
+			goList: "images.AIGeneratedState",
+			src:    param{name: "aiGeneratedState", methods: []string{"androidpublisher.edits.images.upload"}},
+			code:   strs([]images.AIGeneratedState{images.NotAIGenerated, images.AIGenerated}),
+		},
+		{
 			goList: "expansionfiles.Type*",
 			src: param{name: "expansionFileType", methods: []string{
 				"androidpublisher.edits.expansionfiles.get",

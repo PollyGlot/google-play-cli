@@ -152,6 +152,7 @@ var flagVocabulary = map[string]string{
 	"regions":               "region codes targeted",
 	"regions-version":       "regions version pin sent with writes",
 	"latency-tolerance":     "propagation mode of Monetization catalog writes: sensitive or tolerant",
+	"ai-generated":          "attest whether uploaded Listing images are AI generated",
 	"sdk-levels":            "Android SDK levels targeted",
 	"all-users":             "target all users",
 	"remote-in-app-update":  "use a remote in-app update as the recovery action",

@@ -70,6 +70,17 @@ const (
 	WearScreenshots      Type = "wearScreenshots"
 )
 
+// AIGeneratedState is the developer's attestation an upload may carry about
+// the image (#784). Discovery marks it optional; the zero value sends
+// nothing.
+type AIGeneratedState string
+
+// The attestations, pinned to Discovery by internal/enumanchor.
+const (
+	NotAIGenerated AIGeneratedState = "aiGeneratedStateNotAiGenerated"
+	AIGenerated    AIGeneratedState = "aiGeneratedStateAiGeneratedDeveloperAttested"
+)
+
 // Spec is the static metadata of one image Type: its singular/gallery nature.
 // A singular slot holds ≤1 image; a gallery is an ordered set of ≤8: the
 // distinction that decides whether `pull` writes `<type>.<ext>` or a
@@ -213,11 +224,16 @@ func List(ctx context.Context, hc *http.Client, pkg, editID, language string, im
 // its sha256, which `apply` compares against the local file's hash.
 // images.upload APPENDS to a gallery (there is no position parameter);
 // ordering is the caller's job (upload in name order after a DeleteAll:
-// ADR-0013).
-func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, data []byte) (*Image, error) {
+// ADR-0013). ai rides the aiGeneratedState query parameter when set.
+func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, data []byte, ai AIGeneratedState) (*Image, error) {
+	var q url.Values
+	if ai != "" {
+		q = url.Values{"aiGeneratedState": {string(ai)}}
+	}
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodUpload, Op: opImagesUpload, Target: pkg,
 		Params: slotParams(pkg, editID, language, imageType),
+		Query:  q,
 		Media:  true,
 		Body:   data,
 		// The endpoint declares `image/*` and rejects application/octet-stream

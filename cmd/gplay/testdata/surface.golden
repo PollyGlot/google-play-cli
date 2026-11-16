@@ -269,6 +269,7 @@ frozen flag "metadata apply" --output type=string default=""
 frozen flag "metadata apply" --package type=string default=""
 frozen flag "metadata apply" --prune type=bool default="false"
 frozen leaf "metadata images apply" use="apply" mutating
+experimental flag "metadata images apply" --ai-generated type=bool default="false"
 frozen flag "metadata images apply" --changes-in-review type=cancel|error default=""
 frozen flag "metadata images apply" --changes-not-sent-for-review type=bool default="false"
 frozen flag "metadata images apply" --confirm type=bool default="false"
