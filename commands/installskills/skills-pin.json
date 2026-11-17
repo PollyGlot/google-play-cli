@@ -1,7 +1,7 @@
 {
   "repo": "PollyGlot/google-play-cli-skills",
   "url": "https://github.com/PollyGlot/google-play-cli-skills.git",
-  "commit": "64de96e033664595e1380d59589e108835c09c8b",
+  "commit": "9b8081f0d53d3c76a016187bd8b2792c512f8496",
   "subdir": "skills",
   "skills": [
     "gplay-apps",
