@@ -3,7 +3,8 @@
 // definition; main calls exit.For once at the top of the binary so no
 // hand-maintained dispatcher accumulates in cmd/gplay/main.go.
 //
-// Exit-code table (mirrored from docs/DESIGN.md §9):
+// Exit-code table (mirrored from Catalog, which also generates the website
+// exit-codes page):
 //
 //	0 : success
 //	1 : generic (fallback when nothing else fits)

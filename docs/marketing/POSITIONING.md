@@ -118,43 +118,13 @@ angle for each.
 
 ---
 
-## What's shipped today (public preview, `0.x`)
+## What ships
 
-A broad surface is live. The authoritative, always-current list is
-`gplay --help` and the [CHANGELOG](../../CHANGELOG.md) — this section stays
-categorical on purpose so it doesn't drift version-to-version.
-
-- **Auth** — full lifecycle (`login / logout / status / list / doctor`),
-  OS-native keystore (Keychain / libsecret / Windows Credential Manager).
-- **Apps** — local registry, API-validated (`add / list / view / remove`)
-  plus App details read + set (`apps details`).
-- **Releases** — `upload`, `promote`, `rollout` with the staged-rollout state
-  machine (`halt / resume / complete`), `list`.
-- **Tracks** — `list / view`, custom closed-track `create`, country
-  `availability` (read-only).
-- **Reviews** — `list / reply` (documented 7-day API window).
-- **Metadata** — store listings *and* images, sync model (`list / pull /
-  validate / apply`).
-- **Compliance** — Data Safety declaration (write-only `datasafety`).
-- **Team** — Developer-account `users` and per-app `grants` + permissions.
-- **Testers** — Google Groups authorized on closed tracks (`list / set`).
-- **Foundations** — cascading config, TTY-aware output (table / json /
-  markdown), semantic exit codes throughout.
-
-## What's coming next
-
-- Vitals (crashes / ANR, Reporting API) — [#49](https://github.com/PollyGlot/google-play-cli/issues/49)
-- Monetization (subscriptions v2, IAP) — post-v1,
-  [#51](https://github.com/PollyGlot/google-play-cli/issues/51)
-- Reviews history beyond 7 days (CSV reports) — [#94](https://github.com/PollyGlot/google-play-cli/issues/94)
-- See the [issue tracker](https://github.com/PollyGlot/google-play-cli/issues) (`type:prd` / `type:slice`).
-
-## What's deliberately *not* coming soon
-
-(So we don't over-promise.)
-- APK legacy upload (existing apps only) — AAB-first by design
-- OBB / expansion files, App Recovery, internal app sharing
-- Anything filed as a [parking issue](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking), by design
+The authoritative, always-current list is `gplay --help` and the
+[CHANGELOG](../../CHANGELOG.md). Planned work lives in the
+[issue tracker](https://github.com/PollyGlot/google-play-cli/issues)
+(`type:prd` / `type:slice`), deferred work in the
+[parking issues](https://github.com/PollyGlot/google-play-cli/issues?q=is%3Aissue+label%3Atype%3Aparking).
 
 ---
 
