@@ -1,9 +1,9 @@
 # CI/CD with gplay
 
-This guide covers the minimum to wire `gplay` into a CI pipeline. The
-canonical example uses GitHub Actions; §2 also has minimal examples for
-[GitLab CI, Bitrise, CircleCI and Jenkins](#other-providers). The pattern is
-the same everywhere: only the secret injection and the install step change.
+This guide covers what wiring `gplay` into a CI pipeline needs beyond the
+ready-to-paste jobs of the [CI/CD guide](https://gplay.sh/docs/guides/ci-cd/):
+the service account, credential handling, exit codes, release verification and
+orphaned Edits, then the repository's own CI (§8).
 
 ## 1. Create the service account
 
@@ -69,49 +69,13 @@ the environment.
 inline**. In CI, inline is the right choice — no temp files to clean up, no
 disk write of the private key.
 
-### GitHub Actions
+### Pipeline examples
 
-Store the JSON content (the entire file, as-is) as a repository secret named
-`GPLAY_SERVICE_ACCOUNT`.
-
-```yaml
-# .github/workflows/release.yml
-name: Release to Play Store
-
-on:
-  push:
-    tags: ['v*']
-
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    env:
-      GPLAY_SERVICE_ACCOUNT: ${{ secrets.GPLAY_SERVICE_ACCOUNT }}
-    steps:
-      - uses: actions/checkout@v6
-
-      # Build your AAB however you do today (Gradle, Bazel, ...).
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-      - run: ./gradlew bundleRelease
-
-      # Install gplay (pick one).
-      - run: curl -fsSL https://gplay.sh/install | sh
-      # or: brew install <org>/gplay/gplay
-      # or: go install github.com/<org>/google-play-cli/cmd/gplay@latest
-
-      # Verify auth before any mutating call.
-      - run: gplay auth doctor --package com.example.myapp
-
-      # Upload to the internal track.
-      - run: |
-          gplay releases upload app/build/outputs/bundle/release/app-release.aab \
-            --package com.example.myapp \
-            --track internal \
-            --release-notes-dir ./whatsnew
-```
+Complete jobs for GitHub Actions, GitLab CI, Bitrise, CircleCI and Jenkins
+(where each provider keeps the secret, how `gplay` lands on the runner, the
+one-line `jq -c` form for secret stores that mangle multi-line values) are in
+the [CI/CD guide](https://gplay.sh/docs/guides/ci-cd/) on gplay.sh, the single
+source for those examples.
 
 ### Container image
 
@@ -133,184 +97,6 @@ Mount the files a command reads (an AAB, a metadata directory) and work from
 there: `-v "$PWD:/work" -w /work`. The container runs as uid 65532, so add
 `--user "$(id -u):$(id -g)"` when a command writes into the mount (an explicit
 Edit pins itself in `.gplay/`).
-
-### Other providers
-
-Each example below does what the GitHub Actions job does: expose the key as
-`GPLAY_SERVICE_ACCOUNT`, check it with `gplay auth doctor`, then upload the AAB
-to the `internal` track. Two things change from one provider to the next:
-where the secret lives, and how `gplay` lands on the runner.
-
-- **The [container image](#container-image)** fits wherever a step can call
-  `docker run` (the CircleCI example). It cannot be the *job* image on a provider that runs your
-  script inside that container (GitLab's Docker executor, CircleCI's `docker`
-  executor, Jenkins `agent { docker { ... } }`): those need a shell, and the
-  distroless image has none.
-- **The install script** covers everything else. It verifies the archive
-  checksum and fails closed; `GPLAY_VERSION` pins the release, and
-  `GPLAY_INSTALL_DIR` picks the directory (default `$HOME/.local/bin`, often
-  absent from a runner's `PATH`).
-
-If a secret store mangles multi-line values, store the key on one line:
-`jq -c . key.json` prints the same JSON minified, and the private key keeps its
-`\n` escapes. Do not base64-encode it: gplay reads inline JSON or a file path,
-nothing else.
-
-#### GitLab CI
-
-Add `GPLAY_SERVICE_ACCOUNT` under *Settings → CI/CD → Variables* with the JSON
-as its value, and tick **Protected** so only protected branches and tags
-receive it (protect your release tags, or the job below runs without the key).
-A variable of type **File** works too: GitLab writes the value to a temporary
-file and sets the variable to its path, which gplay accepts.
-
-```yaml
-# .gitlab-ci.yml
-stages: [build, publish]
-
-build:
-  stage: build
-  image: your-android-build-image # JDK + Android SDK
-  script:
-    - ./gradlew bundleRelease
-  artifacts:
-    paths:
-      - app/build/outputs/bundle/release/app-release.aab
-
-publish-internal:
-  stage: publish
-  image: alpine:3.20
-  needs: [build]
-  rules:
-    - if: $CI_COMMIT_TAG
-  script:
-    - apk add --no-cache curl
-    - curl -fsSL https://gplay.sh/install | GPLAY_VERSION=v2.5.0 GPLAY_INSTALL_DIR=/usr/local/bin sh # x-release-please-version
-    - gplay auth doctor --package com.example.myapp
-    - gplay releases upload app/build/outputs/bundle/release/app-release.aab --package com.example.myapp --track internal
-```
-
-#### Bitrise
-
-Add `GPLAY_SERVICE_ACCOUNT` in the workflow editor's **Secrets** tab and leave
-*Expose for Pull Requests* off. Bitrise hands secrets to every step as
-environment variables, and the `android-build` step exports the path of the AAB
-it built as `BITRISE_AAB_PATH`.
-
-```yaml
-# bitrise.yml
-format_version: "13"
-default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
-
-workflows:
-  release:
-    steps:
-      - git-clone@8: {}
-      - android-build@1:
-          inputs:
-            - variant: release
-            - build_type: aab
-      - script@1:
-          title: Upload to the internal track
-          inputs:
-            - content: |-
-                #!/usr/bin/env bash
-                set -euo pipefail
-                curl -fsSL https://gplay.sh/install | GPLAY_VERSION=v2.5.0 sh # x-release-please-version
-                export PATH="$HOME/.local/bin:$PATH"
-                gplay auth doctor --package com.example.myapp
-                gplay releases upload "$BITRISE_AAB_PATH" --package com.example.myapp --track internal
-```
-
-#### CircleCI
-
-Add `GPLAY_SERVICE_ACCOUNT` under *Project Settings → Environment Variables*
-(or in a context restricted to your release jobs), as the one-line JSON from
-`jq -c`. The upload job uses the `machine` executor, which has a Docker
-daemon, so it runs the published image instead of installing anything;
-`-e GPLAY_SERVICE_ACCOUNT` forwards the variable without putting the key on the
-command line.
-
-```yaml
-# .circleci/config.yml
-version: 2.1
-
-jobs:
-  build:
-    docker:
-      - image: cimg/android:2026.08
-    steps:
-      - checkout
-      - run: ./gradlew bundleRelease
-      - persist_to_workspace:
-          root: app/build/outputs/bundle/release
-          paths: [app-release.aab]
-
-  publish-internal:
-    machine:
-      image: ubuntu-2404:current
-    environment:
-      GPLAY_IMAGE: ghcr.io/pollyglot/gplay:v2.5.0 # x-release-please-version
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: Upload to the internal track
-          command: |
-            docker run --rm -e GPLAY_SERVICE_ACCOUNT "$GPLAY_IMAGE" \
-              auth doctor --package com.example.myapp
-            docker run --rm -e GPLAY_SERVICE_ACCOUNT -v "$PWD:/work" -w /work "$GPLAY_IMAGE" \
-              releases upload app-release.aab --package com.example.myapp --track internal
-
-workflows:
-  release:
-    jobs:
-      - build
-      - publish-internal:
-          requires: [build]
-```
-
-#### Jenkins
-
-Store the key file as a **Secret file** credential (here with the id
-`gplay-service-account`). The `file(...)` binding copies it to a temporary
-file for the duration of the block, sets `GPLAY_SERVICE_ACCOUNT` to that path,
-masks it in the log and deletes the file afterwards. Keep the `sh` script in
-single quotes so the shell, not Groovy, expands the variables.
-
-```groovy
-// Jenkinsfile
-pipeline {
-  agent any
-  environment {
-    GPLAY_VERSION = 'v2.5.0' // x-release-please-version
-  }
-  stages {
-    stage('Build') {
-      steps {
-        sh './gradlew bundleRelease'
-      }
-    }
-    stage('Upload to internal') {
-      when { buildingTag() }
-      steps {
-        withCredentials([file(credentialsId: 'gplay-service-account', variable: 'GPLAY_SERVICE_ACCOUNT')]) {
-          sh '''
-            set -eu
-            curl -fsSL https://gplay.sh/install | sh
-            export PATH="$HOME/.local/bin:$PATH"
-            gplay auth doctor --package com.example.myapp
-            gplay releases upload app/build/outputs/bundle/release/app-release.aab --package com.example.myapp --track internal
-          '''
-        }
-      }
-    }
-  }
-}
-```
-
-The install script reads `GPLAY_VERSION` from the pipeline's `environment`
-block. The agent needs `curl`, `tar` and `sha256sum` or `shasum`.
 
 ### Credential hygiene — env var, never a flag
 
@@ -336,35 +122,15 @@ out — it writes the key to the runner's keystore; see §2.)
 
 ## 3. Typical release flow
 
-A staged rollout to production usually looks like this, spread across one
-or more workflows:
-
-```bash
-# 1. Push every CI build to internal — visible to your internal testers
-gplay releases upload app.aab --package com.example.myapp --track internal
-
-# 2. Promote a green build to beta — same versionCode, no re-upload
-gplay releases promote --package com.example.myapp --from internal --to beta
-
-# 3. Promote to production. Defaults to `draft` (see ADR-0002).
-gplay releases promote --package com.example.myapp --from beta --to production
-
-# 4. Start a staged rollout when ready.
-gplay releases rollout --package com.example.myapp --track production --staged 0.05
-
-# 5. Ramp up over the next few days.
-gplay releases rollout --package com.example.myapp --track production --staged 0.20
-gplay releases rollout --package com.example.myapp --track production --staged 0.50
-gplay releases complete --package com.example.myapp --track production
-
-# Or halt if metrics go bad.
-gplay releases halt --package com.example.myapp --track production
-```
+The upload, promote, staged rollout, halt and complete sequence, with the
+`--confirm` that production rollouts require, is in the
+[Release flow guide](https://gplay.sh/docs/guides/release-flow/).
 
 ## 4. Exit codes — retry vs. fail
 
 In CI scripts, decide whether to retry based on the exit code. The full
-table is in [`DESIGN.md`](DESIGN.md#9-exit-codes); the short version:
+table is on the [exit codes page](https://gplay.sh/docs/concepts/exit-codes/), the
+rules behind it in [DESIGN §9](DESIGN.md#9-exit-codes); the short version:
 
 - `0` → success
 - `40`, `50` → upstream/network blip, **safe to retry**, except when the
@@ -435,52 +201,18 @@ can gate on before letting `gplay` into a pipeline:
 - a **keyless cosign signature** over `checksums.txt` (which transitively
   covers every archive it lists).
 
-Pin a verification step into the job that installs `gplay`:
-
-```yaml
-      - name: Install and verify gplay
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: v2.5.0 # x-release-please-version
-        run: |
-          set -euo pipefail
-          base="https://github.com/PollyGlot/google-play-cli/releases/download/$VERSION"
-          archive="gplay_${VERSION#v}_linux_amd64.tar.gz"
-          curl -fsSLO "$base/$archive"
-
-          # Provenance: built by this repo's release workflow.
-          gh attestation verify "$archive" -R PollyGlot/google-play-cli
-
-          # Signature over the checksum file, then the archive against it.
-          curl -fsSLO "$base/checksums.txt"
-          curl -fsSLO "$base/checksums.txt.sigstore.json"
-          cosign verify-blob checksums.txt \
-            --bundle checksums.txt.sigstore.json \
-            --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com
-          sha256sum -c <(grep " $archive$" checksums.txt)
-
-          tar -xzf "$archive" gplay && sudo install -m0755 gplay /usr/local/bin/gplay
-```
-
-The container image carries the same two proofs, both stored in GHCR next to
-it: a build-provenance attestation and a keyless cosign signature, on the
-multi-arch digest every tag points to.
-
-```sh
-image=ghcr.io/pollyglot/gplay:v2.5.0 # x-release-please-version
-gh attestation verify "oci://$image" -R PollyGlot/google-play-cli
-cosign verify "$image" \
-  --certificate-identity-regexp '^https://github.com/PollyGlot/google-play-cli/\.github/workflows/release\.yml@' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
-```
+The ready-to-paste CI step that downloads, verifies and installs the archive is
+in the [CI/CD guide](https://gplay.sh/docs/guides/ci-cd/#verify-the-install-in-ci);
+the standalone commands, container image included (its attestation and cosign
+signature sit in GHCR on the multi-arch digest every tag points to), are under
+[Verify a release](https://gplay.sh/docs/getting-started/installation/#verify-a-release).
 
 `gh attestation verify` needs only the GitHub CLI (preinstalled on GitHub
 runners) and `GH_TOKEN`; `cosign verify-blob` needs `cosign` on `PATH`
 (`sigstore/cosign-installer`). Either one alone is a meaningful gate; running
 both is belt-and-suspenders. The `install.sh` one-liner already verifies the
 SHA-256 against `checksums.txt` and fails closed (see the README), so for many
-pipelines the attestation check above is the only thing you need to add.
+pipelines the attestation check is the only thing you need to add.
 
 ## 6. Migration from `fastlane supply`
 
@@ -520,7 +252,7 @@ or release it via the Google Play Console): edits.insert on com.example.myapp:
 ... [reason: editAlreadyExists]
 ```
 
-Exit code follows the upstream status (see the [exit-code table](DESIGN.md#9-exit-codes)):
+Exit code follows the upstream status (see the [exit-code table](https://gplay.sh/docs/concepts/exit-codes/)):
 
 - **exit 30** — the usual case (`400` + `editAlreadyExists`): API misuse,
   recoverable.
@@ -882,8 +614,7 @@ missing target still fails the step on a PR.
 The `lint` job ran `go vet ./...` as its own step while `.golangci.yml` enabled
 the `govet` linter, which runs the same analyzer passes. The step is gone.
 
-That it really was a duplicate was checked, not assumed. A probe package wired
-to trip 18 `go vet` diagnostics across 18 analyzers (`printf`, `appends`,
+A probe package wired to trip 18 `go vet` diagnostics across 18 analyzers (`printf`, `appends`,
 `atomic`, `bools`, `copylocks` twice on one line, `defers`, `lostcancel`,
 `nilfunc`, `shift`, `sigchanyzer`, `stringintconv`, `timeformat`,
 `unusedresult`, `unreachable`, and the recent `hostport`, `slog` and
@@ -895,8 +626,7 @@ processor off in `.golangci.yml` brought it to 18 of 18, in the same spirit as
 the `max-issues-per-linter: 0` already there: a report that hides a finding
 hides a bug.
 
-The gain is small and worth stating plainly. `go vet` was a median 3.5 s of the
-`lint` job over the 32 most recent green code runs, and up to 23 s when the Go
+`go vet` was a median 3.5 s of the `lint` job over the 32 most recent green code runs, and up to 23 s when the Go
 cache is cold, which a toolchain bump makes it. This is a de-duplication whose
 point is that there is one place to read the vet configuration, not a
 performance lever.

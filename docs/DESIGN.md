@@ -926,23 +926,13 @@ pointing at a shared translation):
 
 ## 9. Exit codes
 
-| Code | Meaning | Retry-safe? |
-|---|---|---|
-| `0` | Success | — |
-| `1` | Generic error (fallback when nothing more specific fits) | No |
-| `2` | CLI misuse (unknown flag, bad value, repeated single-value flag, wrong number of positional args) | No |
-| `3` | Safety flag required — command is well-formed but a named acknowledgment flag (`--confirm` / `--grant-admin`) is missing; the message names it | Deterministic (re-run with the named flag) |
-| `4` | Denied by environment policy (`GPLAY_READONLY`) — a mutating command was refused; the message names the env var | No — **not** resolvable by adding a flag; change the environment |
-| `10` | Authentication failure (SA invalid, token refused by the token endpoint or by the API as a `401`, scope missing) | No |
-| `11` | Authorization (`403` — SA not invited on the app, etc.) | No |
-| `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
-| `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
-| `40` | API 5xx (upstream temporarily unhealthy) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
-| `50` | Network (timeout, DNS, refused) | **Yes**, except an Edit commit (`COMMIT_OUTCOME_UNKNOWN`, §4) |
-| `60` | State conflict (another Edit open and unrecoverable, rate-limited, ambiguous release target, ...) | Sometimes |
-| `70` | Findings present: a read-only check command (`apps audit`) ran to completion and reported drift; the report on stdout is complete | No (not a failure; fix what the report names) |
-
-Documented in `gplay help exit-codes` and `docs/CI_CD.md`.
+The table of codes, meanings and retry safety is generated from the catalog in
+`internal/exit` (the one `gplay help exit-codes` prints) into
+[the exit-codes page](../website/src/content/docs/docs/concepts/exit-codes.md)
+by `make docs-update`, and `TestGeneratedDocs_areFresh` fails when it drifts.
+Two details the generated rows leave out: exit `10` also covers a token the
+API refuses with a `401`, and `40`/`50` are retry-safe except for an Edit commit
+(`COMMIT_OUTCOME_UNKNOWN`, §4).
 
 **The envelope's `retryable` field is the authority, not the exit code.** The
 Retry-safe column describes a bucket, and one failure can be narrower than its
@@ -1094,28 +1084,10 @@ which failure it was. Under `--output json` every failure carries one in the
 error envelope's `code` field, so an agent branches on `EDIT_ALREADY_EXISTS`
 rather than regexing the message for the word "already".
 
-| Code | Exit | Retryable | Meaning |
-|---|---|---|---|
-| `GENERIC_ERROR` | 1 | No | Unclassified failure (no typed exit code) |
-| `USAGE_ERROR` | 2 | No | CLI misuse |
-| `SAFETY_FLAG_REQUIRED` | 3 | No | Re-run with the flag named in `requires` |
-| `POLICY_READONLY` | 4 | No | Refused by the read-only environment policy |
-| `AUTH_FAILED` | 10 | No | Authentication failed |
-| `PERMISSION_DENIED` | 11 | No | Authorization failed (403) |
-| `VALIDATION_FAILED` | 20 | No | Client-side validation rejected the input |
-| `INVALID_ARGUMENT` | 30 | No | The API rejected the request as malformed (400) |
-| `NOT_FOUND` | 30 | No | No such package, track, Edit or resource (404) |
-| `BASE_PLAN_NOT_DRAFT` | 30 | No | `subscriptions apply`: the API refused to delete a base plan that is not DRAFT; keep it in the file with state: INACTIVE |
-| `OFFER_NOT_DRAFT` | 30 | No | `subscriptions apply`: the API refused to delete a subscription offer that is not DRAFT; keep it in the file with state: INACTIVE |
-| `API_ERROR` | 30 | No | Other API 4xx rejection |
-| `UPSTREAM_UNAVAILABLE` | 40 | **Yes** | The API is temporarily unhealthy (5xx) |
-| `NETWORK_ERROR` | 50 | **Yes** | Transport failure with no HTTP response |
-| `COMMIT_OUTCOME_UNKNOWN` | 50 | No | An Edit commit failed after it was sent (timeout, reset or 5xx, so exit `50` or `40`) and may be live; check before re-running (§4) |
-| `STATE_CONFLICT` | 60 | No | Remote state conflicts with the request (409) |
-| `EDIT_ALREADY_EXISTS` | 60 | No | An Edit is already open on this package |
-| `EDIT_EXPIRED` | 60 | No | The pinned Edit expired; clear its pin with `gplay edits discard`, then begin a new Edit |
-| `RATE_LIMIT_EXCEEDED` | 60 | **Yes** | Rate or quota limit exceeded; back off |
-| `FINDINGS_PRESENT` | 70 | No | A check command completed and reported findings; not a failure |
+The catalog (code, canonical exit, retryable, meaning) is generated from
+`internal/exit` into the
+[Diagnostic codes table](../website/src/content/docs/docs/concepts/exit-codes.md#diagnostic-codes)
+by `make docs-update`; a test fails when it drifts from the binary.
 
 Classification is **total**: it is derived from the exit code an error already
 carries, refined for an upstream failure by the HTTP status and Google's own

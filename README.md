@@ -212,7 +212,8 @@ and agents start from the same page.
 - [**docs/DESIGN.md**](docs/DESIGN.md): CLI conventions across commands
   (auth precedence, exit codes, output format, verbosity, edit lifecycle).
 - [**docs/CI_CD.md**](docs/CI_CD.md): how to wire `gplay` into a CI
-  pipeline (GitHub Actions example).
+  pipeline (credentials, exit codes, release verification); ready-to-paste jobs
+  are in the [CI/CD guide](https://gplay.sh/docs/guides/ci-cd/).
 - [**docs/adr/**](docs/adr/): Architecture Decision Records.
 
 ## Verify a release

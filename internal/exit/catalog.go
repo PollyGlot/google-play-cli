@@ -10,7 +10,8 @@ type Doc struct {
 
 // Catalog returns the documented exit-code taxonomy in order: the single
 // source of truth shared by `gplay help exit-codes` and this package's
-// doc comment. Keep it in lockstep with docs/DESIGN.md §9.
+// doc comment; `make docs-update` renders it into the website exit-codes
+// page, which docs/DESIGN.md §9 links to rather than copies.
 func Catalog() []Doc {
 	return []Doc{
 		{0, "Success", "n/a"},
