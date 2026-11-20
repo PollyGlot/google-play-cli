@@ -61,6 +61,12 @@ them here.
   URLs make it unreachable, and erring toward "check first" is the safe side.
 - **`--changes-not-sent-for-review` exists because some apps cannot commit any
   other way**, after a rejection for instance.
+- **A release is never committed without its mapping.** `releases upload
+  --mapping` uploads the ProGuard/R8 file in the same Edit once the
+  versionCode is known; if that upload fails the whole command fails, so an
+  implicit Edit is discarded and a pinned one stays open. A release whose
+  crash stacks cannot be read is the failure `--mapping` exists to prevent
+  (#250).
 
 ### Explicit Edits
 

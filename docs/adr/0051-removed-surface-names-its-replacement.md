@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 gplay removes surface without aliases: the verb vocabulary of
@@ -145,6 +147,10 @@ information to recover lived only in the website's migration guide.
   flag (the vitals `--version` rename is eight rows), so a flag removed from
   one command (`releases rollout --to`) is never reported on another that keeps
   it (`releases promote --to`).
+- A flag row may name a leaf that never carried the flag. `games ... set`
+  replaced `update`, which took `--from-json`; a 1.x script that renamed its
+  verb meets the flag next, so `set --from-json` has its row although that
+  pair never shipped.
 
 ## Alternatives rejected
 

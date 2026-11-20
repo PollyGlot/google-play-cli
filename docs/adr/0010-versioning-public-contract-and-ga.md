@@ -1,5 +1,9 @@
 # v1.0 is a stability boundary, not a feature checklist: a granular public contract gated by stability labels
 
+## Status
+
+accepted; amended (2026-11-20): implementation decisions moved from code comments
+
 [ADR-0008](0008-release-pipeline.md) owns the *mechanics* of versioning —
 release-please decides the bump from Conventional Commits, GoReleaser ships the
 artifacts — and states the `0.x` semver rule. This ADR pins the *policy* layered
@@ -108,3 +112,16 @@ states the current maturity state; the version badge stays dynamic and no
 version is hardcoded anywhere — including marketing images, whose terminal title
 bar no longer carries a version string (consistent with ADR-0008's "nothing in
 the README hardcodes a version").
+
+## Implementation notes
+
+- **A gplay-authored JSON shape grows only by omitted-when-empty fields.** A
+  field added to a shape gplay defines (a `--dry-run` preview, say) appears
+  only when it carries information, so every existing invocation keeps its
+  bytes: `releases upload` gained `uploadedVersionCodes` and
+  `retainedVersionCodes` for several artifacts or retained codes, and the
+  single-artifact shape stayed byte-identical (#666).
+- **The command, not the orchestrator, decides what joins a shape.** The
+  orchestrator's result keeps such fields out of its own JSON encoding; each
+  command chooses what enters its Public output, so a field added for a table
+  view never leaks into a frozen JSON shape by accident.

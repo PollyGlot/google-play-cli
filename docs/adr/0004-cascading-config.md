@@ -4,6 +4,8 @@
 
 Accepted.
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 Once a developer has run `gplay auth login`, every subsequent command
@@ -72,12 +74,20 @@ global → project shared → project local → GPLAY_* env → CLI flags
 - `config.local.json` and `GPLAY_ACCOUNT` are the supported ways to set
   the active Account for a single repo without touching the user-wide
   global.
+- A git-tracked `config.local.json` draws a stderr warning on every
+  command, not a refusal (#603). Only the `.gitignore` gplay writes keeps the
+  file local; once tracked, every clone runs with the Account it names and
+  nothing says so. A refusal would be wrong because the operator may be the
+  one who committed it, and untracking the file is theirs to do.
 
 ### `Resolved` shape
 
 The loader returns a single `*Resolved` value to every command. Fields:
 
 - `Pin` — package name from the cascade.
+  Commands never read it directly: the kernel's package accessor takes
+  `--package` first, then the pin, trims both and refuses an empty result,
+  so no command can skip that step.
 - `ConfigAccount` — active account name, after project-local overrides
   the global `active` flag.
 - `Accounts` — the Accounts list from the global layer (for
@@ -93,6 +103,17 @@ lives in `internal/auth/resolver`** because it must interleave with the
 `--service-account` / `GPLAY_SERVICE_ACCOUNT` direct-credential layers.
 Embedding the resolution in `Resolved.ConfigAccount` would force the
 resolver to second-guess us; we don't.
+
+Two consequences for the code:
+
+- **The kernel reads the credential environment variables once** per
+  invocation and hands them to the resolver with the flag values; the
+  resolver itself reads no process state.
+- **`ConfigAccount` is not the resolved Account.** It reflects the file
+  layers only and ignores `--account`, `--service-account` and their
+  environment variables. A command that scopes local state to an Account
+  (the app registry) uses the name the resolver settled on
+  ([ADR-0020](./0020-resolution-error-surfacing.md)).
 
 ## Consequences
 

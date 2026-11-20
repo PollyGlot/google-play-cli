@@ -106,6 +106,14 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   protection**, and their artifacts are downloadable all the same, so the
   flattened listing includes them.
 
+### Listings and Store images
+
+- **Inside an open Edit, a 404 on a locale means that language has no
+  Listing**, not that the package is unknown: the Edit's creation already
+  proved the package. A failed `listings` write or `images.list` is tagged
+  with its locale so the message names the language; the exit code and the
+  JSON error envelope stay those of the API error.
+
 ### One-time products (`monetization.onetimeproducts`)
 
 - **Offer and purchase-option states.** `ACTIVE`, `INACTIVE` and `CANCELLED`
@@ -155,6 +163,17 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 
 - **`AppVersionRange` includes both bounds**: every versionCode from start to
   end.
+
+### Releases and release notes
+
+- **A release without versionCodes is legal** (a name-only draft created
+  without an artifact). `releases promote` has nothing to copy from one, so
+  it refuses with exit 60, a state conflict on the source track, rather than
+  misuse.
+- **Two release-note entries whose locales differ only by case are
+  refused.** `default.txt` therefore yields to a `<locale>.txt` that matches
+  the default language case-insensitively (`en-us.txt` for `en-US`), instead
+  of adding a second entry for the same locale.
 
 ### Reviews
 

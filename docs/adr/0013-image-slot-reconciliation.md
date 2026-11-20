@@ -4,7 +4,7 @@
 
 accepted
 
-amended (2026-11-20): implementation decisions moved from code comments
+amended (2026-11-20): implementation decisions moved from code comments; decision 4 names the bypass flag by its 2.0.0 name
 
 ## Context
 
@@ -94,8 +94,9 @@ Two properties of `edits.images` break the text model:
 
    The hard limit on this strictness: because the rule table is
    hand-maintained and Google can change a limit, gplay must never be
-   *permanently* more restrictive than Play. `apply --no-validate`
-   bypasses the offline check and lets the upload/commit be the judge,
+   *permanently* more restrictive than Play. `apply --skip-preflight`
+   (named `--no-validate` until 2.0.0,
+   [ADR-0048](./0048-v2-release-train.md)) bypasses the offline check and lets the upload/commit be the judge,
    so a stale table can never block in CI an upload Play would accept.
    Likewise the required-slot rule (Play needs an icon, a feature
    graphic, and a minimum screenshot count to publish) is not specially
@@ -201,3 +202,27 @@ Two properties of `edits.images` break the text model:
   than PNG or JPEG is sent as sniffed rather than refused: the default
   `apply` path has already decoded every file as PNG or JPEG, and under
   `--skip-preflight` Play's 400 then names the type actually sent.
+
+## Implementation notes
+
+- **A prune that keeps the live order deletes in place.** When the local
+  gallery is an order-preserving subsequence of the live one and adds
+  nothing, `--prune` removes the online-only images by id: no `deleteall`,
+  no re-upload. Any other difference rewrites the slot. Either way the diff
+  records the net intent: one `delete` per online-only image, one `upload`
+  per new local image, one `reorder` only when the kept images change
+  relative order.
+- **`pull` mirrors each slot it writes, and only those.** Writing a gallery
+  that shrank, or a singular slot whose extension changed, removes the stale
+  image files of that slot, so a re-`pull` is faithful and `pull` then
+  `apply` stays a no-op. It is not a wipe: an unrecognized file and a slot or
+  locale absent from the download are left alone, the additive stance of the
+  text codec.
+- **A downloaded blob that is neither PNG nor JPEG fails the pull**: the codec
+  cannot name it, and a corrupt download must not land as `.bin`. Read also
+  accepts the `.jpeg` spelling of a hand-written tree, which Write never
+  emits.
+- **Commands scan, they do not load.** The operator's tree has no size bound,
+  so a command lists paths (`Scan`) and reads one image at a time (DESIGN §4,
+  Concurrent reads); loading a whole tree into memory is for tests and
+  fixtures only.
