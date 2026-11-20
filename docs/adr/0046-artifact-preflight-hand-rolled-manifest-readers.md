@@ -117,8 +117,10 @@ restoration.
   one long entry, each index decodes its own copy, and a document may carry
   many pools. Past the budget the preflight degrades to a note, as for any
   manifest it cannot parse.
-- **A length the file declares is compared as `uint64`** before any
-  conversion, so a huge value cannot wrap into a plausible `int`. An index
+- **A length the protobuf manifest, a zip member or a pool index declares is
+  compared as `uint64`** before any conversion, so a huge value cannot wrap
+  into a plausible `int`. The binary-XML reader converts first and relies on
+  its `< 0` and `<= 0` guards instead, which must stay. An index
   array whose declared count cannot fit in the chunk is refused before it
   drives an allocation, and a chunk size of zero, negative or past the
   document stops the walk.

@@ -153,6 +153,9 @@ gathers them here.
 - **A product ID names its file, and it comes from the API.** Play product
   IDs are lowercase letters, digits, underscores and periods, so a path-like
   ID is refused rather than joined into the directory.
+- **A catalog file is written to a temporary file and renamed into place**,
+  so a `<productId>.json` already present as a symlink is replaced, never
+  followed.
 
 ### Between the scan and the use
 

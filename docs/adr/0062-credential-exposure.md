@@ -69,7 +69,7 @@ guard on an existing one, gets its entry under the route it concerns.
 - **The misshapen forms are diagnosed, never decoded.** Accepting base64 or a
   quoted blob would change the one detection rule DESIGN §1 documents.
 - **The test that no command echoes a credential value looks for any
-  16-byte window of the raw value**, besides PEM markers and a canary: that is
+  aligned 16-byte block of the raw value**, besides PEM markers and a canary: that is
   what catches a base64 blob, which no redaction pattern matches.
 
 ### Requests to hosts outside the API
