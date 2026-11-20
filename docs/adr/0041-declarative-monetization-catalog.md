@@ -203,6 +203,65 @@ Three realities shape the design:
 - **A change carries a typed identity** (product, middle level, offer), never
   a composite string split again later, and a patch's changed fields are both
   the summary shown and the exact `updateMask` sent.
+- **Each catalog has its own directory**: `./monetization/subscriptions` and
+  `./monetization/iap` by default, so the two file sets never interleave.
+
+### Empty-side guards
+
+- **An empty declared catalog facing a non-empty live one is refused**, even
+  under `--dry-run` (exit 2): it is far more likely a mis-pointed `--dir` than
+  an intent to delete the whole catalog. This ports the `metadata --prune`
+  empty-tree guard ([ADR-0011](./0011-metadata-apply-sync-model.md)).
+- **`pull` refuses the mirror image.** Mirror semantics make `pull`
+  destructive locally, so an empty live listing (a mis-set `--package`, a lost
+  scope) facing a populated catalog directory is refused (exit 2) instead of
+  erasing the files.
+
+### Diff scope
+
+- **`purchaseOptions` ride the product patch.** The sub-resource has only
+  `batchDelete` and `batchUpdateStates`, so its config is declared in the
+  product file and patched with it, like base plans; its output-only `state`
+  is reconciled through `batchUpdateStates` and kept out of the diff, so a
+  state change never doubles as a phantom patch.
+- **The one-time offer's managed fields are pinned to Discovery** by a test
+  against the embedded Schema index. A declarable field missing from the list
+  would be invisible to both the diff and the `updateMask`, a silent no-op on
+  patch, so a field Google adds fails the test until it is managed or listed
+  with its reason. Identity, the server-stamped `regionsVersion` and `state`
+  are never managed.
+- **An offer whose base plan is missing from its subscription is an
+  integrity error** when `pull` nests offers, never a silent drop.
+- **Children of a deleted parent are not planned.** Deleting a subscription
+  takes its base plans and offers, and deleting a one-time product takes its
+  purchase options and offers, so the plan carries no individual delete or
+  state change for them.
+
+### Execution and failure
+
+- **Execution is not transactional.** No batch spans the verbs a plan uses;
+  a failure surfaces at once and a re-run converges. The one-time catalog runs
+  product upserts, offer batch upserts, offer batch deletes, then product
+  deletes, with state moves after the upserts so a resource created in the
+  same run can be activated in it.
+- **A refused subscription offer or base-plan delete is recorded, not
+  fatal.** It is independent of every other change (an INACTIVE one Play will
+  not delete, or one published after the list), so the run finishes the plan
+  and reports it last. Only that refusal (a 400, or a 403 on some accounts)
+  is recorded; a transport failure, a 5xx or a 404 aborts like any other
+  write.
+- **The 400 carries its own diagnostic code, the 403 does not.** On the 400
+  the envelope says `OFFER_NOT_DRAFT` or `BASE_PLAN_NOT_DRAFT` (exit 30), so
+  an agent branches on "keep it as INACTIVE" without parsing the message; the
+  wrapped API error keeps the exit code, the operation and the upstream
+  reasons. A 403 stays `PERMISSION_DENIED` (exit 11): it may be the same
+  refusal, but it cannot rule out a genuine missing grant. The hint travels in
+  the message either way.
+- **Among several recorded refusals, a 403 drives the final error**, whatever
+  the order. A missing grant is not resolved by the file and a re-run would
+  hit it again, while a state refusal's hint is already on stderr. This
+  refines [ADR-0040](./0040-variadic-apps-add-partial-failure.md)'s
+  first-non-retryable rule; the count still names the other refusals.
 
 ## Alternatives rejected
 

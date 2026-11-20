@@ -137,6 +137,13 @@ concerns.
   packages that do not know the flag, so it is run on the packages meant to be
   refreshed.
 
+### Pinning a value
+
+- **A test that pins a user-facing constant spells out its value** rather
+  than reading the constant. The `signing` `--help` tests write the Help
+  Center URL as a literal: a test that read `appsigning.HelpCenterURL` would
+  follow any edit of it, so a silent change of the link would ship.
+
 ### Contract tests (`cmd/gplay`)
 
 - **The surface golden pins what the Public contract freezes**:

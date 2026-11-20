@@ -79,6 +79,19 @@ there: Listing limits and locales in
   so an `--until` at or before `--since` can only return nothing and is
   usage (exit 2).
 
+### Identifiers and request bodies
+
+- **A Play Games application ID must be numeric.** A package name pasted
+  there would come back from the API as a misleading 404, so a non-numeric
+  `--application-id` is refused locally (exit 2).
+- **A device tier config body may not carry `deviceTierConfigId`.** The id is
+  output-only and the API has no update method, so a body carrying one asks
+  for something Play cannot do. The body is refused before any request
+  (exit 20), as is an empty or non-JSON one.
+- **`recovery create` refuses `--version-code` together with
+  `--version-range`.** Discovery does not say how Play reads a list and a
+  range sent together.
+
 ### Input size caps
 
 - **A release-notes file is capped at 1 MiB.** The cap guards memory against

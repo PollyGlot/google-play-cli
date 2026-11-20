@@ -35,6 +35,10 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   `exit.Coder` chain. Command groups keep only their domain wording (a review
   id, an order, a track) and fall back to the shared hints for the generic
   package cases.
+- **An addressed resource that a 200 listing does not contain is a
+  not-found, exit 30.** Where the API has no `get` (a member is found by
+  filtering `users.list`), the call succeeds, but addressing something that
+  does not exist is still a not-found, as for `tracks view` and `apps view`.
 - **`editAlreadyExists` keeps the status's code.** On a 400 it exits 30, with
   the conflict hint; Google has shipped the same reason on a 429, which keeps
   its 60 (retry with backoff) rather than being downgraded

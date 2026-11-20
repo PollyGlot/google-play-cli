@@ -79,6 +79,16 @@ trivially fixable one.
   low-stakes and reversible. It checks no email, URL or phone shape offline
   either; the API arbitrates the format and its error surfaces verbatim.
 
+- **`team grants set` upserts by read-then-decide.** It reads the member's
+  grants, then sends `grants.create` when the app grant is absent and
+  `grants.patch` when present, rather than an optimistic create followed by a
+  patch: that would bet on undocumented 404 and 409 semantics. The read is
+  idempotent and runs under `--dry-run` too, so the preview reports the exact
+  verb and permission diff; only the write is skipped.
+- **`team users add` requires exactly one of `--role` and `--permissions`.**
+  A member is invited with some access; emptying it is a `set --clear`
+  concern.
+
 ## Considered options
 
 - **Reuse exit `2` for a missing safety flag.** Rejected: conflates

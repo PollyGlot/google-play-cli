@@ -88,6 +88,17 @@ verification.
 6. **Ships `[experimental]` first** ([ADR-0010](./0010-versioning-public-contract-and-ga.md));
    companion skill updated ([ADR-0021](./0021-companion-skills-repo.md)).
 
+## Implementation notes
+
+- **The three-year refund refusal is recognised by its wording.** Discovery
+  states the limit only in the `orders.refund` description, not as an error
+  shape, so gplay looks for its stable fragments, case-insensitively, in both
+  the message and the structured reasons. Matching narrow is safe: a miss
+  falls back to the plain API error, still exit 30, only without the specific
+  hint, and the other plausible refund 4xx (403, 404) are classified before
+  this check. The match is to be tightened once a real refusal body is
+  observed.
+
 ## Considered options
 
 - **Separate `get` / `batch-get` verbs.** Rejected: `get` is a pre-rename verb

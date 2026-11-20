@@ -36,5 +36,26 @@ amended (2026-11-20): implementation decisions moved from code comments
   emits them in its JSON and `-v` logs `keystore: using <label> backend`, so
   they are frozen like any Public field
   ([ADR-0010](./0010-versioning-public-contract-and-ga.md)).
+- **`auth logout` saves the config before it deletes the key.** If the
+  delete then fails, the registry still names the Account and the next run can
+  retry the cleanup; the reverse order would leave the config pointing at a
+  credential whose bytes are gone.
+- **`auth logout` selects the backend after its `--confirm` gate**, so a
+  refused logout never probes the keyring.
+- **`auth logout` deletes from the selected backend and from the file
+  backend.** The backend is chosen per process, so a key a keyring-less login
+  wrote to the file (SSH to a Mac with a locked keychain) is invisible to a
+  later logout that reaches the keyring; deleting only there would report
+  success and leave the private key on disk.
+- **A logout reports what it can prove.** Both stores reachable and neither
+  holding the key means the key is gone (a half-finished earlier logout, a
+  keychain wiped by hand): the logout succeeds, without claiming a deletion.
+  A keyring it could not reach and no file credential means the key may still
+  sit in the keyring, so the logout fails and says where to remove it by hand:
+  the user runs logout to know the key is gone.
+- **`auth status` names the credential actually in use**, honouring
+  `--account` and `GPLAY_ACCOUNT` rather than the cascade's value alone, and
+  probes the backend only for a stored Account: an inline credential
+  (`--service-account`, `GPLAY_SERVICE_ACCOUNT`) never touches the keyring.
 - How the file backend keeps its modes tight and what it warns about:
   [ADR-0062](./0062-credential-exposure.md), at rest.
