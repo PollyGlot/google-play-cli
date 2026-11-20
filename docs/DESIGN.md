@@ -236,8 +236,9 @@ current user owns it, or when it shares the owner of the working directory
 (a container running as its own uid on a mounted checkout), and when it is
 not writable by every user. Otherwise another user could have planted it, or
 files in it, in a shared directory such as `/tmp`: gplay ignores it and says
-so on stderr. The ownership check applies on Unix only: Windows ACLs have no
-single owner to compare.
+so on stderr. Both checks apply on Unix only: Windows ACLs have no single
+owner to compare, and when the owner cannot be read the directory is adopted
+without the permission test either.
 
 ### Field rules
 

@@ -124,7 +124,9 @@ gathers them here.
   can commit it as a symlink: the staging path goes through the write check
   too, against the same resolved root as the target. The leaf check is the
   one that catches a staging link aimed back inside `.gplay/` (at
-  `config.json`, say). A failed save removes its staging file.
+  `config.json`, say). A failed rename removes the staging file; the edit
+  pin also removes it when the write itself fails, while the global config
+  save leaves a truncated `config.json.tmp` behind in that case.
 - **`gplay init` checks both files before writing either.** `.gplay/config.json`
   and `.gplay/.gitignore` sit in a directory a cloned repo controls, so either
   can arrive as a committed symlink (#791); checking both first means a

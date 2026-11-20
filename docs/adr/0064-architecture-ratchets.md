@@ -57,6 +57,8 @@ cannot apply; each is stated with its reason.
   `internal/testkit` for the test rules, `internal/output` and
   `internal/kernel` for `stdout-bypass` (the render boundary, and the code
   that hands `rc.Stdout` to it).
+- **`internal/exit`** for `usage-error-type`: it defines `exit.UsageError`,
+  the type every other package must return.
 - **Cloud Storage** (`internal/play/gcs`, `reviews history`) is not a Play
   API: no Discovery snapshot, no registry method, so the executor cannot
   address it. The registry gate exempts it for the same reason
