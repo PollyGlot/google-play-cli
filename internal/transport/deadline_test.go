@@ -13,8 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// hangOrAnswer blocks a request until its context is done when hang is set,
-// else answers with a body that is read after the round trip returns.
 func hangOrAnswer(hang bool) http.RoundTripper {
 	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if hang {
@@ -27,8 +25,6 @@ func hangOrAnswer(hang bool) http.RoundTripper {
 	})
 }
 
-// A hung control-plane request fails on the bound instead of hanging, while a
-// media transfer on the same transport is left alone.
 func TestControlPlaneDeadline_cutsHungControlPlaneOnly(t *testing.T) {
 	hc := &http.Client{Transport: transport.WithControlPlaneDeadline(hangOrAnswer(true), 50*time.Millisecond)}
 
@@ -42,8 +38,6 @@ func TestControlPlaneDeadline_cutsHungControlPlaneOnly(t *testing.T) {
 		t.Fatalf("hung request returned after %v", d)
 	}
 
-	// The media PUT is not bounded: prove it by canceling it ourselves after
-	// the control-plane bound would long have fired.
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	media, _ := http.NewRequestWithContext(ctx, http.MethodPut, "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/x", strings.NewReader("bytes"))
@@ -54,8 +48,6 @@ func TestControlPlaneDeadline_cutsHungControlPlaneOnly(t *testing.T) {
 	}
 }
 
-// The bound stays armed until the body is closed, not just until headers: the
-// body must still be readable after RoundTrip returns.
 func TestControlPlaneDeadline_bodyReadableAfterRoundTrip(t *testing.T) {
 	hc := &http.Client{Transport: transport.WithControlPlaneDeadline(hangOrAnswer(false), time.Minute)}
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/p/edits/e1", nil)
@@ -78,8 +70,8 @@ func TestIsMediaTransfer(t *testing.T) {
 	}{
 		{http.MethodPut, "https://h/upload/androidpublisher/v3/a?upload_id=1", true, true},
 		{http.MethodPost, "https://h/upload/androidpublisher/v3/a?uploadType=media", true, true},
-		{http.MethodPost, "https://h/upload/androidpublisher/v3/a?uploadType=resumable", false, false}, // initiate
-		{http.MethodPut, "https://h/upload/androidpublisher/v3/a?upload_id=1", false, false},           // probe
+		{http.MethodPost, "https://h/upload/androidpublisher/v3/a?uploadType=resumable", false, false},
+		{http.MethodPut, "https://h/upload/androidpublisher/v3/a?upload_id=1", false, false},
 		{http.MethodGet, "https://h/androidpublisher/v3/a:download?alt=media", false, true},
 		{http.MethodPost, "https://h/androidpublisher/v3/applications/p/edits", true, false},
 	}
@@ -95,8 +87,6 @@ func TestIsMediaTransfer(t *testing.T) {
 	}
 }
 
-// mediaServer answers a media download with the body body(req) builds, so a
-// test controls how fast its bytes arrive.
 func mediaServer(body func(*http.Request) io.ReadCloser) http.RoundTripper {
 	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		resp := testkit.Response(http.StatusOK, "")
@@ -117,11 +107,9 @@ func download(t *testing.T, rt http.RoundTripper) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// A media download that keeps moving bytes outlives the bound many times over:
-// the bound is inactivity, not total duration (#780).
 func TestControlPlaneDeadline_downloadBoundedByInactivityNotTotal(t *testing.T) {
 	const bound = 100 * time.Millisecond
-	want := []byte("0123456789") // 10 reads 30ms apart: about 3x the bound in total
+	want := []byte("0123456789")
 	rt := transport.WithControlPlaneDeadline(mediaServer(func(req *http.Request) io.ReadCloser {
 		return testkit.TrickleBody(req.Context(), want, 1, 30*time.Millisecond)
 	}), bound)
@@ -139,8 +127,6 @@ func TestControlPlaneDeadline_downloadBoundedByInactivityNotTotal(t *testing.T) 
 	}
 }
 
-// A media download whose body stops moving fails on the inactivity bound, with
-// an error that names the stall and still reads as a deadline.
 func TestControlPlaneDeadline_stalledDownloadFails(t *testing.T) {
 	const bound = 50 * time.Millisecond
 	rt := transport.WithControlPlaneDeadline(mediaServer(func(req *http.Request) io.ReadCloser {
@@ -161,8 +147,6 @@ func TestControlPlaneDeadline_stalledDownloadFails(t *testing.T) {
 	}
 }
 
-// Waiting for the headers counts as inactivity: a download whose response
-// never starts fails on the bound too.
 func TestControlPlaneDeadline_downloadWithoutHeadersFails(t *testing.T) {
 	rt := transport.WithControlPlaneDeadline(hangOrAnswer(true), 50*time.Millisecond)
 	_, err := download(t, rt)

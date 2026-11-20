@@ -10,8 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// releasesSent decodes the releases array of the tracks.update body, each
-// release kept as the exact bytes gplay sent.
 func releasesSent(t *testing.T, body []byte) []json.RawMessage {
 	t.Helper()
 	var track struct {
@@ -23,13 +21,6 @@ func releasesSent(t *testing.T, body []byte) []json.RawMessage {
 	return track.Releases
 }
 
-// TestComplete_supersedesThePreviousCompletedRelease is #734: during a
-// staged rollout the track holds the previous full rollout as a completed
-// release, and Play refuses an update that carries two ("Only one completed
-// release is allowed"). Completing the rollout drops the previous completed
-// release, keeps the halted and draft ones byte for byte, keeps the
-// target's unmodelled fields bar countryTargeting, which Play allows on an
-// inProgress release only (#779), and reports the superseded versionCode.
 func TestComplete_supersedesThePreviousCompletedRelease(t *testing.T) {
 	const (
 		previous = `{"name":"400","status":"completed","versionCodes":["400"]}`
@@ -87,9 +78,6 @@ func TestComplete_supersedesThePreviousCompletedRelease(t *testing.T) {
 	}
 }
 
-// TestState_onlyCompleteSupersedes asserts the other transitions leave a
-// completed release in place: Play admits one completed release next to an
-// inProgress or halted one, so rollout, halt and resume must not drop it.
 func TestState_onlyCompleteSupersedes(t *testing.T) {
 	const (
 		completed = `{"name":"400","status":"completed","versionCodes":["400"]}`
@@ -133,9 +121,6 @@ func TestState_onlyCompleteSupersedes(t *testing.T) {
 	}
 }
 
-// TestState_keepsCountryTargetingUntilCompleted is the other half of #779:
-// rollout, halt and resume leave the release inProgress or halted, so the
-// target's countryTargeting travels with it byte for byte.
 func TestState_keepsCountryTargetingUntilCompleted(t *testing.T) {
 	const targeting = `{"countries":["DE"],"includeRestOfWorld":true}`
 	verbs := []struct {
@@ -181,8 +166,6 @@ func TestState_keepsCountryTargetingUntilCompleted(t *testing.T) {
 	}
 }
 
-// TestComplete_aloneOnTrack_supersedesNothing keeps the single-release case
-// unchanged: completing the only release drops nothing.
 func TestComplete_aloneOnTrack_supersedesNothing(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-alone",

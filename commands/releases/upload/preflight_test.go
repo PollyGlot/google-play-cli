@@ -1,10 +1,5 @@
 package upload_test
 
-// Artifact preflight (PRD #448) on `gplay releases upload`: the local check
-// that runs before any Edit is opened and before the first upload byte leaves
-// the machine. It shares the suite's newUploadTransport / newRC harness, so every
-// assertion below is also an assertion that nothing reached the network.
-
 import (
 	"bytes"
 	"path/filepath"
@@ -17,12 +12,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// TestRun_preflight_refusesAPKPassedToABundleUpload asserts the preflight
-// refuses a container that is not the format the invocation resolved to,
-// naming both sides so an agent can self-correct.
 func TestRun_preflight_refusesAPKPassedToABundleUpload(t *testing.T) {
-	// A real APK container behind an .aab name, so extension auto-detect
-	// resolves "bundle" and only the container check can catch it.
 	p := artifacttest.APK(t, t.TempDir(), "app.aab", "com.example.app")
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -41,9 +31,6 @@ func TestRun_preflight_refusesAPKPassedToABundleUpload(t *testing.T) {
 	}
 }
 
-// TestRun_preflight_refusesAnotherAppsBuild asserts the package the artifact
-// declares is compared to the package being released: app A's release can
-// never receive app B's build.
 func TestRun_preflight_refusesAnotherAppsBuild(t *testing.T) {
 	p := artifacttest.AAB(t, t.TempDir(), "app.aab", "com.other.app")
 	rt, transport := newUploadTransport(uploadAPI{})
@@ -63,10 +50,6 @@ func TestRun_preflight_refusesAnotherAppsBuild(t *testing.T) {
 	}
 }
 
-// TestRun_skipPreflight_restoresPreCheckBehaviour asserts the escape hatch is
-// total: an artifact the preflight would refuse on both counts uploads
-// exactly as it did before the check existed, with the identical request
-// sequence. This is the parser-gap release valve, so it must never be partial.
 func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 	p := artifacttest.WriteFile(t, t.TempDir(), "app.aab", []byte("not an artifact at all"))
 	rt, transport := newUploadTransport(uploadAPI{
@@ -94,10 +77,6 @@ func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 	assertSequence(t, rt, wantSequence)
 }
 
-// TestRun_preflight_dryRunReportsWhatItFound asserts a rehearsal names the
-// container and the package it read, on stderr, without a ✓ and without any
-// network call: a preview that stayed silent would say nothing about the
-// check it just ran.
 func TestRun_preflight_dryRunReportsWhatItFound(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -125,10 +104,6 @@ func TestRun_preflight_dryRunReportsWhatItFound(t *testing.T) {
 	}
 }
 
-// TestRun_preflight_unreadableManifestDegradesRatherThanRefuses asserts a gap
-// in gplay's own manifest readers never blocks a legitimate release: the
-// container check still applies, the package check is skipped, and the reason
-// is stated on stderr.
 func TestRun_preflight_unreadableManifestDegradesRatherThanRefuses(t *testing.T) {
 	p := artifacttest.Zip(t, t.TempDir(), "app.aab", map[string][]byte{
 		"BundleConfig.pb":                   {},
@@ -151,12 +126,6 @@ func TestRun_preflight_unreadableManifestDegradesRatherThanRefuses(t *testing.T)
 	}
 }
 
-// TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads is the
-// regression that matters most on this surface: a real AAB can carry more zip
-// members than the classifier walks, and gplay declining to walk it is a
-// statement about gplay, not about the artifact. When the cap answered
-// "unknown", this upload died at exit 20 on "found neither an AAB nor an
-// APK", which is the false refusal ADR-0046 rules out.
 func TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads(t *testing.T) {
 	p := artifacttest.AABWith(t, t.TempDir(), "app.aab", "com.example.app",
 		artifacttest.FillerMembers(artifact.MaxZipEntries+1))
@@ -177,11 +146,6 @@ func TestRun_preflight_anAssetRichBundleOverTheMemberCapStillUploads(t *testing.
 	}
 }
 
-// TestRun_skipPreflight_stillRefusesAMissingArtifact pins that the escape
-// hatch is not a way around the local-file check. This surface has its own
-// stat in the orchestrator's dry-run, so it never lost the refusal the way
-// `customapps create` and `releases expansion-files upload` did; the test is
-// here so the three surfaces answer alike whichever check gets there first.
 func TestRun_skipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)

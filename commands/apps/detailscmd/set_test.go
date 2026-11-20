@@ -1,11 +1,3 @@
-// Package detailscmd_test also exercises `gplay apps details set` (the
-// field-by-field write) at the kernel level. The key assertions are on
-// the details.patch BODY actually emitted: a partial patch must carry
-// ONLY the fields the user passed: an omitted flag is absent from the
-// body (the field stays intact upstream), and an explicit empty value is
-// sent verbatim (it clears the field). The write runs inside an implicit
-// Edit (open → details.patch → commit); --dry-run previews the patch with
-// zero network and zero auth.
 package detailscmd_test
 
 import (
@@ -24,15 +16,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// setAPI is the Play API an App details write sees, served by a testkit
-// Fake: edits.insert, details.patch (PATCH, body recorded), edits.commit,
-// and edits.delete (the failure/discard path). Configurable status codes on
-// the patch and commit exercise the error and discard paths.
 type setAPI struct {
 	editID     string
 	patchResp  string
-	patchCode  int // 0 → 200
-	commitCode int // 0 → 200
+	patchCode  int
+	commitCode int
 
 	fake *testkit.Fake
 }
@@ -48,7 +36,7 @@ func (a *setAPI) serve(t *testing.T) *testkit.Fake {
 		case c.Method == http.MethodPatch && strings.HasSuffix(c.Path, "/details"):
 			resp := a.patchResp
 			if resp == "" {
-				resp = string(c.Body) // echo the patch as the resulting resource
+				resp = string(c.Body)
 			}
 			return a.patchCode, resp, true
 		case strings.HasSuffix(c.Path, ":commit"):
@@ -59,9 +47,6 @@ func (a *setAPI) serve(t *testing.T) *testkit.Fake {
 	return a.fake
 }
 
-// calls lists the requests as "METHOD path", the token exchanges first: the
-// oauth2 transport runs the exchange before the first API call and caches
-// the token, and the Fake counts exchanges without recording them.
 func (a *setAPI) calls() []string {
 	var out []string
 	for range a.fake.TokenExchanges() {
@@ -73,7 +58,6 @@ func (a *setAPI) calls() []string {
 	return out
 }
 
-// patchReq returns the body of the last details.patch request.
 func (a *setAPI) patchReq() []byte {
 	var body []byte
 	for _, c := range a.fake.Calls() {
@@ -84,12 +68,6 @@ func (a *setAPI) patchReq() []byte {
 	return body
 }
 
-// TestSet_onlyChangedField_inBody asserts the core partial-patch
-// contract: `set --contact-email X` emits a details.patch body carrying
-// ONLY contactEmail: defaultLanguage, contactPhone, and contactWebsite
-// are absent (they stay intact upstream). The full implicit-Edit sequence
-// runs (/token → insert → PATCH → commit) and --output json is the
-// details.patch response verbatim.
 func TestSet_onlyChangedField_inBody(t *testing.T) {
 	api := &setAPI{editID: "edit-set"}
 	rc, _ := newRC(t, api.serve(t))
@@ -121,7 +99,6 @@ func TestSet_onlyChangedField_inBody(t *testing.T) {
 		}
 	}
 
-	// The patch body carries ONLY contactEmail.
 	var body map[string]json.RawMessage
 	if err := json.Unmarshal(api.patchReq(), &body); err != nil {
 		t.Fatalf("patch body is not JSON: %v\nbody=%s", err, api.patchReq())
@@ -135,7 +112,6 @@ func TestSet_onlyChangedField_inBody(t *testing.T) {
 		}
 	}
 
-	// --output json is the details.patch response verbatim.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -145,9 +121,6 @@ func TestSet_onlyChangedField_inBody(t *testing.T) {
 	}
 }
 
-// TestSet_clearField_sendsEmpty asserts that an explicit empty value
-// (`--contact-phone ""`) is sent verbatim (clears the field), while a
-// field NOT passed is absent from the body.
 func TestSet_clearField_sendsEmpty(t *testing.T) {
 	api := &setAPI{editID: "edit-clear"}
 	rc, _ := newRC(t, api.serve(t))
@@ -179,8 +152,6 @@ func TestSet_clearField_sendsEmpty(t *testing.T) {
 	}
 }
 
-// TestSet_multipleFields_inBody asserts that passing several flags emits
-// all of them (and only them): here defaultLanguage + contactWebsite.
 func TestSet_multipleFields_inBody(t *testing.T) {
 	api := &setAPI{editID: "edit-multi"}
 	rc, _ := newRC(t, api.serve(t))
@@ -212,9 +183,6 @@ func TestSet_multipleFields_inBody(t *testing.T) {
 	}
 }
 
-// TestSet_noFieldFlag_exit2_noHTTP asserts the no-flag guard: a bare
-// `set` with no field flag is misuse: it short-circuits with exit 2
-// before any HTTP, so a forgotten flag can never emit an empty patch.
 func TestSet_noFieldFlag_exit2_noHTTP(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -228,9 +196,6 @@ func TestSet_noFieldFlag_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestSet_dryRun_noHTTP asserts --dry-run previews the patch with zero
-// HTTP (and zero auth) and still returns a non-nil Renderable whose table
-// view shows the field that would be written.
 func TestSet_dryRun_noHTTP(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -264,11 +229,6 @@ func TestSet_dryRun_noHTTP(t *testing.T) {
 	}
 }
 
-// TestSet_dryRunJSON_previewsPatch asserts that --dry-run under --output
-// json (the DEFAULT in pipes/CI) produces a parseable preview object:
-// tagged dryRun:true and carrying only the touched fields: rather than
-// erroring. This is the contract a CI pipeline relies on; it must not
-// regress. Still zero HTTP.
 func TestSet_dryRunJSON_previewsPatch(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -311,8 +271,6 @@ func TestSet_dryRunJSON_previewsPatch(t *testing.T) {
 	}
 }
 
-// TestSet_dryRun_worksWithNoAccount asserts --dry-run never touches auth:
-// even with no resolved Account it previews successfully.
 func TestSet_dryRun_worksWithNoAccount(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -332,9 +290,6 @@ func TestSet_dryRun_worksWithNoAccount(t *testing.T) {
 	}
 }
 
-// TestSet_commitFailure_discardsEdit asserts that a failure on commit
-// auto-discards the Edit (a DELETE is seen) so a dangling Edit does not
-// block the next publish, and the 5xx maps to exit 40.
 func TestSet_commitFailure_discardsEdit(t *testing.T) {
 	api := &setAPI{editID: "edit-commitfail", commitCode: 500}
 	rc, _ := newRC(t, api.serve(t))
@@ -358,10 +313,6 @@ func TestSet_commitFailure_discardsEdit(t *testing.T) {
 	}
 }
 
-// TestSet_keepEditOnFailure_danglingError asserts that with
-// --keep-edit-on-failure a failed write is wrapped in a
-// *edits.DanglingEditError carrying the Edit ID, and the Edit is NOT
-// discarded (no DELETE).
 func TestSet_keepEditOnFailure_danglingError(t *testing.T) {
 	api := &setAPI{
 		editID:    "edit-keep",
@@ -390,8 +341,6 @@ func TestSet_keepEditOnFailure_danglingError(t *testing.T) {
 	}
 }
 
-// TestSet_patch403_exit11_apiAccessHint asserts a 403 on details.patch
-// maps to exit 11 with the Play Console API access hint.
 func TestSet_patch403_exit11_apiAccessHint(t *testing.T) {
 	api := &setAPI{
 		editID:    "edit-403",
@@ -413,8 +362,6 @@ func TestSet_patch403_exit11_apiAccessHint(t *testing.T) {
 	}
 }
 
-// TestSet_patch404_exit30_appsListHint asserts a 404 maps to exit 30 with
-// the `gplay apps list` hint.
 func TestSet_patch404_exit30_appsListHint(t *testing.T) {
 	api := &setAPI{
 		editID:    "edit-404",
@@ -436,10 +383,6 @@ func TestSet_patch404_exit30_appsListHint(t *testing.T) {
 	}
 }
 
-// TestNewSetCommand_registersExpectedFlags is a thin smoke test for the
-// cobra wiring: every field flag exists, the write flags exist, there is
-// NO --confirm (contact info is low-stakes/reversible), and the command
-// is named "set".
 func TestNewSetCommand_registersExpectedFlags(t *testing.T) {
 	cmd := detailscmd.NewSetCommand(kernel.Boot{})
 	for _, name := range []string{
@@ -464,9 +407,6 @@ func TestNewSetCommand_registersExpectedFlags(t *testing.T) {
 	}
 }
 
-// TestSet_emitsConfirmationOnStderr asserts a committed details patch prints a
-// single ✓ line on stderr (DESIGN §8) naming the package, alongside its stdout
-// payload.
 func TestSet_emitsConfirmationOnStderr(t *testing.T) {
 	api := &setAPI{editID: "edit-set"}
 	rc, _ := newRC(t, api.serve(t))
@@ -486,7 +426,6 @@ func TestSet_emitsConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestSet_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestSet_dryRun_noConfirmationOnStderr(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))

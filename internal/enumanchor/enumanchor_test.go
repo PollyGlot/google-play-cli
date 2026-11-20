@@ -22,14 +22,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// source is where an enum lives in the Schema index.
 type source interface {
-	// enums returns the enum found at each place the source names, keyed by
-	// that place, or an error when a place is missing or carries no enum.
 	enums(idx schemaindex.Index) (map[string][]string, error)
 }
 
-// property is a scalar field of a schema.
 type property struct{ schema, name string }
 
 func (p property) enums(idx schemaindex.Index) (map[string][]string, error) {
@@ -44,8 +40,6 @@ func (p property) enums(idx schemaindex.Index) (map[string][]string, error) {
 	return map[string][]string{where: prop.Enum}, nil
 }
 
-// param is a parameter every listed method must carry; each method's enum is
-// checked on its own.
 type param struct {
 	name    string
 	methods []string
@@ -71,13 +65,7 @@ func (p param) enums(idx schemaindex.Index) (map[string][]string, error) {
 	return out, nil
 }
 
-// anchor pins one Go list to one Discovery enum. Let E be the enum minus its
-// "unspecified" sentinel. With unhandled empty the row is exact: code must
-// equal E, as for path segments and flag choices. With unhandled set the row
-// is a subset: code plus the unhandled keys must equal E, so leaving a value
-// out is a recorded choice and a new upstream value still fails.
 type anchor struct {
-	// goList names the Go symbols code is built from: the list to update.
 	goList    string
 	src       source
 	code      []string
@@ -92,7 +80,6 @@ func strs[T ~string](vs []T) []string {
 	return out
 }
 
-// rotationWireValues maps every --reason choice to the enum value it sends.
 func rotationWireValues(t *testing.T) []string {
 	t.Helper()
 	var out []string
@@ -215,8 +202,6 @@ func anchors(t *testing.T) []anchor {
 			code:   []string{appstorecatalog.UpdateTypeModification, appstorecatalog.UpdateTypeDeletion},
 		},
 	}
-	// The monetization state verbs and batch entries carry the same
-	// tolerance as a body field, one request schema each.
 	for _, schema := range []string{
 		"UpdateOneTimeProductOfferRequest", "DeleteOneTimeProductOfferRequest",
 		"ActivatePurchaseOptionRequest", "DeactivatePurchaseOptionRequest",
@@ -233,14 +218,10 @@ func anchors(t *testing.T) []anchor {
 	return rows
 }
 
-// unspecified reports Discovery's sentinel for an unset enum, which no list
-// models.
 func unspecified(v string) bool {
 	return strings.Contains(v, "UNSPECIFIED") || strings.HasSuffix(v, "Unspecified")
 }
 
-// mismatches compares one enum with the row and returns one message per
-// defect.
 func (a anchor) mismatches(enum []string) []string {
 	var e []string
 	for _, v := range enum {
@@ -275,8 +256,6 @@ func (a anchor) mismatches(enum []string) []string {
 	return out
 }
 
-// TestCodeListsMatchDiscovery pins every anchored Go list to its enum in the
-// embedded Schema index.
 func TestCodeListsMatchDiscovery(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {

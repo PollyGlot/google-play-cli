@@ -1,11 +1,5 @@
 package doctor
 
-// This file holds the individual Check constructors. Keeping the
-// definitions here (rather than as package-level functions hard-baked
-// into the runner in doctor.go) lets the command layer compose its own
-// ordered chain and lets the per-package round-trip check (issue #12)
-// drop in alongside these without editing the runner.
-
 import (
 	"context"
 	"encoding/json"
@@ -24,30 +18,19 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// The package-access probe's two calls, resolved from the registry like every
-// Play module's (#586): verb and URL come from the Discovery snapshot, and the
-// executor owns the body caps and the error envelope.
 var (
 	mEditsInsert = apiregistry.MustResolve("androidpublisher.edits.insert")
 	mEditsDelete = apiregistry.MustResolve("androidpublisher.edits.delete")
 )
 
-// Exit codes per docs/DESIGN.md §9.
 const (
-	exitAuth    = 10 // 10: auth (credential invalid, token mint failed, scope missing)
-	exitAuthz   = 11 // 11 (authorization (403) SA not invited on the app, etc.)
-	exitAPI4xx  = 30 // 30: API 4xx other than auth/perms (not found, conflict, gone)
-	exitAPI5xx  = 40 // 40: API 5xx (upstream temporarily unhealthy)
-	exitNetwork = 50 // 50: transport-level failure (timeout, DNS, refused)
+	exitAuth    = 10
+	exitAuthz   = 11
+	exitAPI4xx  = 30
+	exitAPI5xx  = 40
+	exitNetwork = 50
 )
 
-// DefaultChecks returns the ordered chain used by `gplay auth doctor`
-// in its non-API form (issue #11). The per-package edits.insert/delete
-// round-trip (issue #12) appends one more Check to this slice.
-//
-// obs is the ScopeObserver wired around the doctor's HTTP client at the
-// command layer; CheckScope reads from it to assert the requested
-// scopes. Pass nil only in tests that don't exercise CheckScope.
 func DefaultChecks(obs *transport.ScopeObserver) []Check {
 	return []Check{
 		CheckSAJSONValid(),
@@ -57,17 +40,6 @@ func DefaultChecks(obs *transport.ScopeObserver) []Check {
 	}
 }
 
-// CheckSAJSONValid asserts that the resolved service account is non-nil
-// and carries the required Google SA JSON fields (client_email,
-// private_key, token_uri). Resolution upstream of this check is expected
-// to call serviceaccount.Parse, so by the time sa lands here we are
-// effectively re-asserting the parse contract; this gives the doctor a
-// concrete pass line to render even on a happy run.
-//
-// The command layer is responsible for translating a *resolution*
-// failure (file missing, JSON malformed) into a synthetic failing
-// CheckResult under this same Name, so the user sees check 1 fail in
-// the ordered checklist rather than an opaque pre-check error.
 func CheckSAJSONValid() Check {
 	return Check{
 		Name:     "Service account JSON is valid",
@@ -101,20 +73,11 @@ func CheckSAJSONValid() Check {
 	}
 }
 
-// missingFieldHint phrases the required-field failure for end users.
 func missingFieldHint(field string) string {
 	return "service account JSON is missing required field \"" + field +
 		"\"; re-download the JSON from Google Cloud Console and run `gplay auth login`"
 }
 
-// tokenSource threads the runner's HTTP client into ctx (so a test-injected
-// RoundTripper covers the /token exchange) and mints an OAuth2 token source
-// from sa. On failure it returns a ready-to-surface auth CheckResult. The
-// returned context carries the base client, so a caller that builds an
-// oauth2.NewClient on top sees the same seam for the androidpublisher calls.
-//
-// This is the shared opening of every API-touching check; each check adds
-// its own ts.Token() / round-trip logic on top.
 func tokenSource(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *http.Client) (context.Context, oauth2.TokenSource, *CheckResult) {
 	if hc != nil {
 		ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
@@ -130,13 +93,6 @@ func tokenSource(ctx context.Context, sa *serviceaccount.ServiceAccount, hc *htt
 	return ctx, ts, nil
 }
 
-// CheckOAuth2Mint asserts that an OAuth2 access token can be minted by
-// signing a JWT with the SA's private key and exchanging it at the
-// configured token_uri. Failure (non-2xx response, signature problem,
-// any transport error) is mapped to exit code 10 (#11); only the hint
-// tells a token endpoint that never answered (#787) from one that refused.
-// hc is the http.Client the runner threads down: the doctor command wraps
-// it with the scope observer, but for this check that wrapping is invisible.
 func CheckOAuth2Mint() Check {
 	return Check{
 		Name:     "OAuth2 access token can be minted",
@@ -166,13 +122,6 @@ func CheckOAuth2Mint() Check {
 	}
 }
 
-// transportProbe records whether the HTTP transport itself failed, the same
-// split transport.WithRetry makes (a RoundTrip error, as opposed to an answer
-// with a status). The jwt flow flattens that error with %v before returning
-// it, so the error chain alone cannot tell "never answered" from a key that
-// failed to parse; watching the RoundTrip can. RoundTrip returns once the
-// headers are in, so the body is watched too: a read that dies after a 200
-// (timeout, reset connection) is the same "never answered".
 type transportProbe struct {
 	inner http.RoundTripper
 	err   error
@@ -188,8 +137,6 @@ func (p *transportProbe) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-// probedBody records on its probe any read error other than the clean end
-// of the body.
 type probedBody struct {
 	io.ReadCloser
 	probe *transportProbe
@@ -203,9 +150,6 @@ func (b probedBody) Read(buf []byte) (int, error) {
 	return n, err
 }
 
-// wrap returns a copy of the client the token exchange would use (hc, else
-// the one carried by ctx, else http.DefaultClient) with p around its
-// transport. The copy keeps Timeout and the rest; the original is untouched.
 func (p *transportProbe) wrap(ctx context.Context, hc *http.Client) *http.Client {
 	if hc == nil {
 		hc, _ = ctx.Value(oauth2.HTTPClient).(*http.Client)
@@ -222,17 +166,6 @@ func (p *transportProbe) wrap(ctx context.Context, hc *http.Client) *http.Client
 	return &c
 }
 
-// CheckScope asserts that the OAuth2 JWT exchange driven by the token
-// package carries the AndroidPublisher scope. It reads observed scopes
-// from obs (which the caller wires via transport.WithScopeObserver) and
-// fails when the required scope is absent.
-//
-// obs may be nil: the check then reports a wiring bug instead of a
-// credential problem.
-//
-// The optional requiredScope variadic exists for the scope-drift
-// failure test; production callers pass only obs and the check pins
-// to token.AndroidPublisherScope.
 func CheckScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
 	required := token.AndroidPublisherScope
 	if len(requiredScope) > 0 {
@@ -276,19 +209,6 @@ func CheckScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
 	}
 }
 
-// CheckReportingScope asserts that a token can be minted for the
-// playdeveloperreporting scope: the DISTINCT, read-only scope the `gplay
-// vitals` commands request (#49). It mints a reporting-scoped token source and
-// confirms the JWT exchange both succeeds AND requested that scope (read back
-// from obs). Like CheckScope it is a wiring + credential check: a valid
-// service-account key can always mint a token for the requested scope, so a
-// failure here means either the credential cannot sign the exchange or gplay
-// failed to request the scope. (API-level access to the reporting service, if
-// the SA is not granted it, still surfaces as a 403 at call time.)
-//
-// obs may be nil: the check then reports a wiring bug. The optional
-// requiredScope variadic exists for the scope-drift test; production callers
-// pass only obs and the check pins to token.ReportingScope.
 func CheckReportingScope(obs *transport.ScopeObserver, requiredScope ...string) Check {
 	required := token.ReportingScope
 	if len(requiredScope) > 0 {
@@ -338,11 +258,6 @@ func CheckReportingScope(obs *transport.ScopeObserver, requiredScope ...string) 
 	}
 }
 
-// ResolutionFailure builds a synthetic check-1 failure for the case
-// where the command layer could not even resolve a credential (no
-// active account, file missing, JSON malformed). It is used by the
-// `gplay auth doctor` command glue so the user always sees an ordered
-// checklist instead of an opaque error before any check has run.
 func ResolutionFailure(err error) []CheckResult {
 	hint := err.Error()
 	var mfe *serviceaccount.MissingFieldError
@@ -358,25 +273,6 @@ func ResolutionFailure(err error) []CheckResult {
 	}}
 }
 
-// CheckPackageAccess opens then immediately discards an Edit on
-// packageName via the Google Play Developer API, surfacing the
-// "SA not invited on the app" 403 case with an actionable hint
-// pointing at Play Console → Setup → API access.
-//
-// The check ALWAYS attempts edits.delete after a successful
-// edits.insert (even on cleanup failure) so the Edit is never left
-// dangling on the user's package. A cleanup failure is reported (so
-// the user knows the round-trip didn't complete cleanly), but the
-// rest of the doctor chain proceeds normally per the runner contract.
-//
-// HTTP status → exit-code mapping (per docs/DESIGN.md §9):
-//
-//	200/201        → Passed,  exit 0
-//	403            → Failed,  exit 11 (authorization: SA not invited)
-//	404            → Failed,  exit 30 (package not visible to SA)
-//	other 4xx      → Failed,  exit 30 (API misuse)
-//	5xx            → Failed,  exit 40 (transient upstream)
-//	transport err  → Failed,  exit 50 (network)
 func CheckPackageAccess(packageName string) Check {
 	return Check{
 		Name:     "Service account can edit " + packageName,
@@ -386,9 +282,6 @@ func CheckPackageAccess(packageName string) Check {
 			if fail != nil {
 				return *fail
 			}
-			// oauth2.NewClient inherits ctx's oauth2.HTTPClient for the
-			// underlying transport, so a test-injected RoundTripper sees
-			// BOTH the /token exchange and the androidpublisher calls.
 			httpClient := oauth2.NewClient(ctx, ts)
 
 			editID, insertResult, done := insertEdit(ctx, httpClient, sa, packageName)
@@ -396,10 +289,6 @@ func CheckPackageAccess(packageName string) Check {
 				return insertResult
 			}
 
-			// Always attempt cleanup, even if we already have a healthy
-			// insert. A leaked Edit blocks the user's next publish for
-			// up to 24h, so cleanup failures are surfaced as the
-			// check's outcome.
 			if deleteResult, failed := deleteEdit(ctx, httpClient, packageName, editID); failed {
 				return deleteResult
 			}
@@ -408,13 +297,7 @@ func CheckPackageAccess(packageName string) Check {
 	}
 }
 
-// insertEdit POSTs edits.insert and returns the new Edit ID on success.
-// The third return value is true when the caller should return the
-// CheckResult directly (i.e. on any failed insert). When true, no
-// delete attempt is made: there is no Edit ID to clean up.
 func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount.ServiceAccount, packageName string) (string, CheckResult, bool) {
-	// An empty body still carries the JSON Content-Type edits.insert has
-	// always been sent with.
 	raw, err := api.Do(ctx, httpClient, api.Call{
 		Method: mEditsInsert, Target: packageName,
 		Params: map[string]string{"packageName": packageName},
@@ -435,9 +318,6 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.ID == "" {
-		// Edit succeeded but we can't extract the ID: there is nothing to
-		// clean up, so report a 5xx-shaped failure: the upstream gave us a
-		// malformed body.
 		return "", CheckResult{
 			Passed:   false,
 			ExitCode: exitAPI5xx,
@@ -447,9 +327,6 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 	return parsed.ID, CheckResult{}, false
 }
 
-// failure splits an executor error into the HTTP status (0 when no answer
-// came back) and the message: Google's envelope message for an answer, the
-// transport error otherwise.
 func failure(err error) (int, string) {
 	var ae *api.Error
 	if errors.As(err, &ae) {
@@ -458,10 +335,6 @@ func failure(err error) (int, string) {
 	return 0, err.Error()
 }
 
-// statusToExitCode maps a Google Play API HTTP status to the gplay
-// exit-code taxonomy (docs/DESIGN.md §9). Shared by both `edits.insert`
-// and `edits.delete` failure paths. A 401 is the API refusing the token, so
-// it is exit 10 here as in api.StatusToExitCode (#598).
 func statusToExitCode(status int) int {
 	switch {
 	case status == http.StatusUnauthorized:
@@ -475,8 +348,6 @@ func statusToExitCode(status int) int {
 	}
 }
 
-// insertFailureResult maps an edits.insert non-2xx status, and the message
-// of Google's error envelope, to the CheckResult shape required by the issue.
 func insertFailureResult(status int, msg string, sa *serviceaccount.ServiceAccount, packageName string) CheckResult {
 	exit := statusToExitCode(status)
 	switch {
@@ -508,10 +379,6 @@ func insertFailureResult(status int, msg string, sa *serviceaccount.ServiceAccou
 	}
 }
 
-// deleteEdit issues edits.delete to clean up an Edit opened by the
-// happy-path insert. Returns (result, true) when the cleanup itself
-// failed and the caller should surface that as the check outcome. Any 2xx
-// (200, 204) is a clean delete.
 func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editID string) (CheckResult, bool) {
 	_, err := api.Do(ctx, httpClient, api.Call{
 		Method: mEditsDelete, Target: packageName,

@@ -32,19 +32,13 @@ const (
 	defaultResp = `{"fileId":"file-42"}`
 )
 
-// testRoundTripper scripts the three legs an upload command performs offline:
-// the /token exchange, the resumable initiate POST (answered with a Location
-// session URI), and the chunk PUT (answered with the resource body). failWith
-// turns the initiate into an API refusal so the exit-code paths are reachable.
-// initBody/initBodyCT exist because this is the one upload in the namespace
-// whose initiate carries a request body. Nothing here touches the network.
 type testRoundTripper struct {
 	mu         sync.Mutex
 	calls      []string
 	initURL    string
-	initCT     string // X-Upload-Content-Type announced at initiate
+	initCT     string
 	initBody   []byte
-	initBodyCT string // Content-Type of the initiate request itself
+	initBodyCT string
 	putBody    []byte
 	respBody   string
 	failWith   int
@@ -110,9 +104,6 @@ func newRC(t *testing.T, rt *testRoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// writeDoc drops a stand-in supporting document at a temp path. The leading
-// bytes are a real PDF header because the endpoint accepts PDF/JPEG/PNG only
-// and the type is sniffed from the file rather than read off the extension.
 func writeDoc(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "declaration")
@@ -122,9 +113,6 @@ func writeDoc(t *testing.T) string {
 	return p
 }
 
-// TestRun_requestShape asserts the command emits the resumable upload on the
-// app store axis: the upload host, the store-keyed path with the hosted app as
-// its own segment, uploadType=resumable, the sniffed media type, and no Edit.
 func TestRun_requestShape(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -153,11 +141,6 @@ func TestRun_requestShape(t *testing.T) {
 	}
 }
 
-// TestRun_initiateCarriesFileType asserts what makes this upload unlike its two
-// siblings: the method takes a request body, and `fileType` is required. The
-// caller never chooses it: the enum's only other member is the UNSPECIFIED
-// zero value, so the JSON must travel whether or not a flag was passed, with
-// the initiate's own Content-Type distinct from the media type above.
 func TestRun_initiateCarriesFileType(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -179,10 +162,6 @@ func TestRun_initiateCarriesFileType(t *testing.T) {
 	}
 }
 
-// TestRun_rendersTrackingID asserts the human views lead with the fileId and
-// say where it has to be cited: inside the policy response's documentResponse.
-// An id with no destination is a dead end. The views also echo the fileType the
-// caller never chose, so nothing travelled on the wire unseen.
 func TestRun_rendersTrackingID(t *testing.T) {
 	rt := &testRoundTripper{respBody: `{"fileId":"file-42"}`}
 	rc := newRC(t, rt)
@@ -207,8 +186,6 @@ func TestRun_rendersTrackingID(t *testing.T) {
 	}
 }
 
-// TestRun_jsonPassthrough asserts --output json emits the API response verbatim
-// (ADR-0003), including fields the response schema does not model.
 func TestRun_jsonPassthrough(t *testing.T) {
 	const body = `{"fileId":"file-42","unmodeledFutureField":"kept"}`
 	rt := &testRoundTripper{respBody: body}
@@ -227,8 +204,6 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	}
 }
 
-// TestRun_packageDefaultsToProjectPin asserts an omitted --package falls back to
-// the repo pin, like every other package-axis command.
 func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -242,10 +217,6 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	}
 }
 
-// TestRun_storePackageFallsBackToEnv asserts the app store axis reads the
-// ADR-0043 cascade: an omitted --store-package takes $GPLAY_APP_STORE_PACKAGE,
-// so a CI job exports it once for the whole namespace. The project pin never
-// feeds this axis: it pins a package, never a store.
 func TestRun_storePackageFallsBackToEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
 	rt := &testRoundTripper{}
@@ -260,11 +231,6 @@ func TestRun_storePackageFallsBackToEnv(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noHTTPNoFileRead asserts --dry-run resolves the target,
-// performs no HTTP call at all (not even the token exchange) and never opens
-// the file: the path deliberately does not exist, so a job can rehearse an
-// upload while the document is still being assembled. The rehearsal also names
-// the fileType, since the real call would send it unasked.
 func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -314,9 +280,6 @@ func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 	}
 }
 
-// TestRun_missingStorePackage_exit2 asserts the app store package name is
-// required and its absence is CLI misuse: it identifies the caller and has no
-// project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	rt := &testRoundTripper{}
@@ -332,8 +295,6 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_missingFile_exit20 keeps an unreadable local path a client-side
-// validation failure rather than a transport one (exit 50).
 func TestRun_missingFile_exit20(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -345,9 +306,6 @@ func TestRun_missingFile_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_directory_exit20 covers the path that opens and stats fine but cannot
-// be streamed: without the regular-file guard its size would be meaningless and
-// the failure would surface as transport (exit 50) mid-transfer.
 func TestRun_directory_exit20(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -359,8 +317,6 @@ func TestRun_directory_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_403_namesEnrollment asserts a forbidden upload surfaces as an
-// agent-resolvable refusal naming the app store, at the authz exit code.
 func TestRun_403_namesEnrollment(t *testing.T) {
 	rt := &testRoundTripper{failWith: http.StatusForbidden}
 	rc := newRC(t, rt)
@@ -372,8 +328,6 @@ func TestRun_403_namesEnrollment(t *testing.T) {
 	}
 }
 
-// TestRun_404_namesStorePackage asserts an unknown app store or hosted app
-// surfaces a hint pointing at --store-package, at the API-misuse exit code.
 func TestRun_404_namesStorePackage(t *testing.T) {
 	rt := &testRoundTripper{failWith: http.StatusNotFound}
 	rc := newRC(t, rt)
@@ -385,8 +339,6 @@ func TestRun_404_namesStorePackage(t *testing.T) {
 	}
 }
 
-// TestNewCommand_helpDocumentsTheVerb asserts --help explains the verb, the
-// role of the id, and the API's size/type constraint, and declares the flags.
 func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 	cmd := policycmd.NewCommand(kernel.Boot{})
 	if cmd.Use != "upload <file>" {
@@ -400,14 +352,9 @@ func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 			t.Errorf("--%s is not declared", flag)
 		}
 	}
-	// An upload is inert, so it fails the ADR-0043 gate criterion: the flag must
-	// not exist at all rather than exist and be optional.
 	if cmd.Flags().Lookup("confirm") != nil {
 		t.Error("--confirm must not be declared: an upload is not irreversible AND externally visible (ADR-0043)")
 	}
-	// The facts a caller cannot discover from the flag names: what the id is
-	// for, that nothing is declared until `appstore submit`, the size limit, the
-	// fileType sent unasked, and that no confirmation is required.
 	for _, want := range []string{"fileid", "documentresponse", "10 mib", strings.ToLower(appstore.DeclarationFileTypeDocument), "no --confirm", "nothing is declared"} {
 		if !strings.Contains(strings.ToLower(cmd.Long), want) {
 			t.Errorf("--help should state %q; got:\n%s", want, cmd.Long)

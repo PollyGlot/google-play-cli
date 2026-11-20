@@ -70,7 +70,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 
 - **An empty `defaultLanguage` on a 2xx is treated as an API failure.** Every
   app has one; accepting the empty value would send release notes keyed by an
-  empty language.
+  empty language. The guard sits where a second call depends on the value
+  (the listing read that follows); `apps details view`, which reads
+  `edits.details.get` alone, reports the body as the API sent it.
 
 ### App Signing
 
@@ -133,6 +135,8 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 - **The `Unprotected*` lists appear only when the app uses automatic
   protection**, and their artifacts are downloadable all the same, so the
   flattened listing includes them.
+- **A variant id of zero means unset**, so the table leaves the column empty
+  rather than print a `0` that reads like a real variant.
 
 ### Listings and Store images
 
@@ -195,8 +199,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 - **Only `patch` takes `latencyTolerance`.** `subscriptions.create` and
   `offers.create` have no such parameter, so a create never carries it.
 - **`basePlans.migratePrices` repeats the path identity in its body**
-  (`packageName`, `productId`, `basePlanId`; the schema says they "must be
-  equal to" the resource fields), so gplay echoes them.
+  (`packageName`, `productId`, `basePlanId`), so gplay echoes them. Discovery
+  says "Must be equal to" the resource fields for `packageName` and
+  `productId`; `basePlanId` is echoed the same way.
 - **A patch that leaves `SubscriptionOffer.phases` out keeps the stored
   phases**; the "one or two entries" limit binds only a list that is sent.
 

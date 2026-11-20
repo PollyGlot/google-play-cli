@@ -1,15 +1,3 @@
-// Package validatecmd implements `gplay metadata validate`: an OFFLINE
-// lint of the on-disk Metadata tree. Unlike every other gplay command
-// that touches Play, this one never authenticates and never makes an HTTP
-// call: it reads the tree off disk via internal/metadata/tree and runs
-// the pure internal/metadata/validate engine, so it is safe to wire into
-// a pre-commit hook or a CI gate with no credentials present.
-//
-// This is the offline half of the metadata sync model (ADR-0011 §3): the
-// online `metadata apply --dry-run` diffs disk against Play, while
-// `metadata validate` checks the rules that need no network: char
-// limits, known locales, required-non-empty fields. A non-empty result is
-// exit 20 (client-side validation, docs/DESIGN.md §9).
 package validatecmd
 
 import (
@@ -26,20 +14,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// DefaultDir is the conventional metadata-tree root, matching the rest of
-// the metadata command family and `fastlane supply`.
 const DefaultDir = "./metadata"
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Dir         string
 	AllowLocale []string
 }
 
-// dirError signals the metadata tree could not be read (missing or
-// unreadable directory). It is a client-side validation failure: the
-// operator pointed --dir at something gplay cannot lint, so ExitCode()
-// is 20 per docs/DESIGN.md §9.
 type dirError struct {
 	dir   string
 	cause error
@@ -53,11 +34,6 @@ func (e *dirError) ExitCode() int { return 20 }
 
 func (e *dirError) Unwrap() error { return e.cause }
 
-// ValidationError carries every lint Problem found in the tree. It is the
-// command's failure mode: ExitCode() is 20 (client-side validation,
-// docs/DESIGN.md §9) and Error() lists every problem, one actionable line
-// each, so a CI log shows the full picture in one run rather than failing
-// on the first violation.
 type ValidationError struct {
 	Problems []validate.Problem
 }
@@ -83,18 +59,12 @@ func (e *ValidationError) Error() string {
 	return b.String()
 }
 
-// Payload is the success view: the tree passed, here is what was checked.
-// It carries the validated locale list so the table/markdown/json forms
-// can show the operator exactly which locales were linted.
 type Payload struct {
 	Dir     string   `json:"dir"`
 	Locales []string `json:"locales"`
 	OK      bool     `json:"ok"`
 }
 
-// Renderers satisfies output.Renderable. JSON is a small gplay-defined
-// success object (this command has no API pass-through to mirror); table
-// and markdown are human summaries.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return p.renderText(w) },
@@ -117,7 +87,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return output.MarkdownTable(w, []string{"LOCALE", "STATUS"}, rows)
 }
 
-// allowSet turns the repeated --allow-locale values into a lookup set.
 func allowSet(codes []string) map[string]bool {
 	if len(codes) == 0 {
 		return nil
@@ -131,10 +100,6 @@ func allowSet(codes []string) map[string]bool {
 	return m
 }
 
-// Run is the business function the kernel invokes. It is OFFLINE: it reads
-// the tree off disk and runs the pure validator. It NEVER calls
-// rc.AuthedClient and makes no HTTP request, so it works with no
-// credentials and no network (pre-commit / CI).
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	dir := in.Dir
 	if dir == "" {
@@ -156,7 +121,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Dir: dir, Locales: locales, OK: true}, nil
 }
 
-// NewCommand returns the cobra command for `gplay metadata validate`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

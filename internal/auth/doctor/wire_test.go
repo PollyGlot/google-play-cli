@@ -12,10 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestWire_packageAccess pins the edits.insert + edits.delete round trip of
-// the package-access check and the result each answer yields, byte for byte:
-// testdata/wire.golden was recorded before the move onto the executor (#586)
-// and must not move with it.
 func TestWire_packageAccess(t *testing.T) {
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
 	if err != nil {

@@ -10,10 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// mustRoot builds a temp dir and returns both the raw and the resolved form.
-// On macOS t.TempDir() sits under /var, itself a symlink to /private/var, which
-// is exactly the "legitimately symlinked checkout" case containment must not
-// break: keeping both forms makes that visible in the tests below.
 func mustRoot(t *testing.T, dir string) string {
 	t.Helper()
 	root, err := Root(dir)
@@ -43,8 +39,6 @@ func TestContainAcceptsPathsInsideRoot(t *testing.T) {
 	}
 }
 
-// The whole point of resolving the ROOT too: a checkout reached through a
-// symlink (or macOS's /var → /private/var) must keep working.
 func TestContainFullySymlinkedRootPasses(t *testing.T) {
 	real := t.TempDir()
 	if err := os.WriteFile(filepath.Join(real, "default.txt"), []byte("notes"), 0o644); err != nil {
@@ -59,12 +53,9 @@ func TestContainFullySymlinkedRootPasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Root(symlinked dir): %v", err)
 	}
-	// Addressed through the symlink, the file must be accepted: its resolved
-	// form lands under the resolved root.
 	if _, err := Contain(root, filepath.Join(link, "default.txt")); err != nil {
 		t.Errorf("a fully symlinked root was rejected: %v", err)
 	}
-	// And addressed through the real path too: same file, same verdict.
 	if _, err := Contain(root, filepath.Join(real, "default.txt")); err != nil {
 		t.Errorf("the real path under a symlinked root was rejected: %v", err)
 	}
@@ -74,8 +65,6 @@ func TestContainRefusesEscapingSymlink(t *testing.T) {
 	dir := t.TempDir()
 	root := mustRoot(t, dir)
 
-	// The exfiltration shape the PRD names: a file OUTSIDE the tree, reachable
-	// through an innocuous-looking name inside it.
 	outside := filepath.Join(t.TempDir(), "id_rsa")
 	if err := os.WriteFile(outside, []byte("PRIVATE"), 0o600); err != nil {
 		t.Fatal(err)
@@ -95,8 +84,6 @@ func TestContainRefusesEscapingSymlink(t *testing.T) {
 	}
 }
 
-// A symlinked DIRECTORY is the more dangerous case: it makes every file under
-// it escape at once.
 func TestContainRefusesEscapingSymlinkedDirectory(t *testing.T) {
 	dir := t.TempDir()
 	root := mustRoot(t, dir)
@@ -132,8 +119,6 @@ func TestContainRefusesDotDotTraversal(t *testing.T) {
 	}
 }
 
-// Rel, not a string prefix: a sibling whose name merely starts with the root's
-// is outside it.
 func TestContainRefusesSiblingWithSharedPrefix(t *testing.T) {
 	parent := t.TempDir()
 	inside := filepath.Join(parent, ".gplay")
@@ -150,8 +135,6 @@ func TestContainRefusesSiblingWithSharedPrefix(t *testing.T) {
 	}
 }
 
-// The write path needs paths that do not exist yet to be judged on their
-// ancestors, not rejected outright.
 func TestContainHandlesNotYetExistingPaths(t *testing.T) {
 	dir := t.TempDir()
 	root := mustRoot(t, dir)
@@ -164,8 +147,6 @@ func TestContainHandlesNotYetExistingPaths(t *testing.T) {
 	}
 }
 
-// Contain returns the path the caller NAMED (absolute), not the resolved one,
-// so error messages and the actual open agree with the user's input.
 func TestContainReturnsTheNamedPath(t *testing.T) {
 	dir := t.TempDir()
 	root := mustRoot(t, dir)
@@ -233,9 +214,6 @@ func TestJoinSegment(t *testing.T) {
 	}
 }
 
-// A containment refusal is bad INPUT, not a transient fault: it must map to the
-// documented usage exit code (2, docs/DESIGN.md §9) so CI can tell the two
-// apart without scraping the message.
 func assertUsage(t *testing.T, err error) {
 	t.Helper()
 	var ue *exit.UsageError

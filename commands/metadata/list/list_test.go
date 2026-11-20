@@ -1,10 +1,3 @@
-// Package list_test exercises `gplay metadata list` at the kernel level: a
-// RunContext built by hand, a RoundTripper injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// `tracks list` harness, but routes edits.listings.list (the per-locale
-// Store front read) instead of tracks.list. The transport FAILS on any
-// PATCH, PUT, DELETE-on-listing, or :commit: a read-only summary opens,
-// reads, and discards the Edit, never writes or commits it.
 package list_test
 
 import (
@@ -27,9 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// testListings is the canonical two-locale fixture: en-US has title, short,
-// full but an empty video; fr-FR has title, full, and a video URL but an
-// empty short description.
 func testListings() []listings.Listing {
 	return []listings.Listing{
 		{Language: "en-US", Title: "My App", ShortDescription: "short", FullDescription: "long desc", Video: ""},
@@ -37,7 +27,6 @@ func testListings() []listings.Listing {
 	}
 }
 
-// rowByLocale indexes BuildRows output by locale for assertion.
 func rowByLocale(rows []list.ListingRow) map[string]list.ListingRow {
 	m := make(map[string]list.ListingRow, len(rows))
 	for _, r := range rows {
@@ -46,17 +35,11 @@ func rowByLocale(rows []list.ListingRow) map[string]list.ListingRow {
 	return m
 }
 
-// listRT configures the testkit.Fake that routes the read-only listings
-// sequence: edits.insert, listings.list (GET .../listings), edits.delete. It
-// deliberately has NO PATCH/PUT/:commit branch and fails on a DELETE that
-// targets a /listings/ path: reaching one means the command tried to mutate
-// or commit, which a read-only list must never do, so the fake fails the
-// test. A DELETE on the bare /edits/<id> path is the expected Edit discard.
 type listRT struct {
 	editID       string
 	listingsResp string
-	insertCode   int // 0 -> 200
-	listingsCode int // 0 -> 200
+	insertCode   int
+	listingsCode int
 	insertBody   string
 }
 
@@ -80,7 +63,6 @@ func newFake(t *testing.T, r listRT) *testkit.Fake {
 	})
 }
 
-// calls lists the recorded API requests as "METHOD path" lines.
 func calls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -115,11 +97,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_listsEveryLocale_happyPath is the tracer bullet: /token precedes
-// edits.insert, then listings.list (GET .../listings, NOT
-// /listings/<locale>), then the Edit is DISCARDED (never committed).
-// --output json is the raw edits.listings.list payload (ADR-0003
-// pass-through).
 func TestRun_listsEveryLocale_happyPath(t *testing.T) {
 	raw := `{"listings":[` +
 		`{"language":"en-US","title":"My App","shortDescription":"short","fullDescription":"long desc","video":""},` +
@@ -136,8 +113,6 @@ func TestRun_listsEveryLocale_happyPath(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
 
-	// One /token exchange, and edits.insert already carries its bearer: the
-	// exchange preceded the first API call.
 	if n := rt.TokenExchanges(); n != 1 {
 		t.Errorf("token exchanges = %d, want 1; calls=%v", n, calls(rt))
 	}
@@ -167,9 +142,6 @@ func TestRun_listsEveryLocale_happyPath(t *testing.T) {
 	}
 }
 
-// TestBuildRows_recordsFieldSizes_treatsEmptyAsAbsent asserts the
-// per-locale projection: a present field records its character length; an
-// empty API field has no size entry (renders blank).
 func TestBuildRows_recordsFieldSizes_treatsEmptyAsAbsent(t *testing.T) {
 	rows := list.BuildRows(testListings())
 	by := rowByLocale(rows)
@@ -178,7 +150,6 @@ func TestBuildRows_recordsFieldSizes_treatsEmptyAsAbsent(t *testing.T) {
 	if !ok {
 		t.Fatalf("en-US row missing: %+v", rows)
 	}
-	// "My App" = 6 chars, "short" = 5, "long desc" = 9, video empty -> absent.
 	if got := en.Sizes[listing.Title]; got != 6 {
 		t.Errorf("en-US title size = %d, want 6", got)
 	}
@@ -192,7 +163,6 @@ func TestBuildRows_recordsFieldSizes_treatsEmptyAsAbsent(t *testing.T) {
 		t.Errorf("en-US video should be absent (empty), got size entry %d", en.Sizes[listing.Video])
 	}
 
-	// fr-FR: short description empty -> absent; video present (18 chars).
 	fr, ok := by["fr-FR"]
 	if !ok {
 		t.Fatalf("fr-FR row missing: %+v", rows)
@@ -205,9 +175,6 @@ func TestBuildRows_recordsFieldSizes_treatsEmptyAsAbsent(t *testing.T) {
 	}
 }
 
-// TestRenderTable_oneRowPerLocale_headersAndSizes asserts the table view
-// renders the LOCALE + field headers, one row per locale, the per-field
-// char counts, and a blank cell for an absent/empty field.
 func TestRenderTable_oneRowPerLocale_headersAndSizes(t *testing.T) {
 	p := list.Payload{Rows: list.BuildRows(testListings())}
 
@@ -227,14 +194,10 @@ func TestRenderTable_oneRowPerLocale_headersAndSizes(t *testing.T) {
 			t.Errorf("table missing locale %q:\n%s", want, out)
 		}
 	}
-	// en-US full description = 9 chars; fr-FR video URL = 18 chars.
 	if !strings.Contains(out, "9") {
 		t.Errorf("table missing en-US full-desc size 9:\n%s", out)
 	}
 
-	// The en-US row's VIDEO cell is empty: the row must show fewer
-	// non-blank trailing cells than fr-FR (which has a video). Assert the
-	// en-US line does not contain the fr-FR video size.
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	var enLine string
 	for _, l := range lines {
@@ -247,8 +210,6 @@ func TestRenderTable_oneRowPerLocale_headersAndSizes(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdown_isGFMTable asserts the markdown view is a GFM table
-// (header + `---` separator) carrying the locale and field columns.
 func TestRenderMarkdown_isGFMTable(t *testing.T) {
 	p := list.Payload{Rows: list.BuildRows(testListings())}
 
@@ -265,8 +226,6 @@ func TestRenderMarkdown_isGFMTable(t *testing.T) {
 	}
 }
 
-// TestRun_noAccount_exit10 asserts that with no resolved Account the
-// command fails auth (exit 10) before any HTTP call.
 func TestRun_noAccount_exit10(t *testing.T) {
 	rt := newFake(t, listRT{})
 	rc, _ := newRC(t, rt)
@@ -280,8 +239,6 @@ func TestRun_noAccount_exit10(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2 asserts a missing package (no --package and
-// no pin) is a usage error before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	rt := newFake(t, listRT{})
 	rc, _ := newRC(t, rt)
@@ -294,9 +251,6 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_unknownPackage_exit30WithHint asserts that an unknown package
-// (edits.insert 404) maps to exit 30 with a hint pointing the operator at
-// `gplay apps list`, and that no Edit was opened (no DELETE).
 func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	rt := newFake(t, listRT{
 		insertCode: 404,
@@ -318,8 +272,6 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	}
 }
 
-// TestRun_forbidden_exit11WithHint asserts that a 403 (service account not
-// invited on the app) maps to exit 11 with the standard grant-access hint.
 func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	rt := newFake(t, listRT{
 		insertCode: 403,
@@ -336,10 +288,6 @@ func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	}
 }
 
-// TestRun_listingsListError_discardsEditAndPropagates asserts the
-// read-only Edit is discarded even when the listings read itself fails
-// after the Edit was opened, and the underlying status drives the exit
-// code (5xx -> 40).
 func TestRun_listingsListError_discardsEditAndPropagates(t *testing.T) {
 	rt := newFake(t, listRT{
 		editID:       "edit-err",

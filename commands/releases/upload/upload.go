@@ -1,8 +1,3 @@
-// Package upload implements `gplay releases upload`: the CLI glue that
-// resolves --package, parses the status flags (per ADR-0002), and hands
-// an Opts payload to internal/releases/orchestrator. All the actual
-// HTTP and Edit-lifecycle work lives in the orchestrator and its
-// internal/play/* dependencies.
 package upload
 
 import (
@@ -27,34 +22,24 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 	Track   string
 
-	// Artifacts are the AAB/APK paths, one or more (#666): all uploaded into
-	// one Edit and shipped as one release, or none at all.
-	Artifacts []string
-	// RetainVersionCodes is --retain-version-code (repeatable): versionCodes
-	// the new release keeps serving next to the uploaded ones, passed to
-	// Google unvalidated.
+	Artifacts          []string
 	RetainVersionCodes []int
 
-	Format            string // "" | "apk" | "bundle": overrides extension auto-detect
+	Format            string
 	Mapping           string
 	ReleaseNotes      string
-	ReleaseNotesSet   bool // explicit `--release-notes ""` is an empty note, refused (#786)
+	ReleaseNotesSet   bool
 	ReleaseNotesDir   string
 	Draft             bool
 	Complete          bool
 	StagedFraction    float64
 	StagedFractionSet bool
-	// UpdatePriority is --update-priority (0..5); UpdatePrioritySet tells an
-	// explicit 0 (lowest priority) apart from "not passed".
 	UpdatePriority    int
 	UpdatePrioritySet bool
-	// ReleaseName is --release-name; ReleaseNameSet tells an explicit empty
-	// value (a usage error) apart from "not passed" (versionCode default).
 	ReleaseName       string
 	ReleaseNameSet    bool
 	KeepEditOnFailure bool
@@ -62,23 +47,10 @@ type Input struct {
 	Confirm           bool
 	DryRun            bool
 	SkipPreflight     bool
-	// DeviceTierConfig is --device-tier-config: a deviceTierConfigId or
-	// LATEST, forwarded verbatim to edits.bundles.upload. A 1:1 mirror of the
-	// Google parameter, so it is part of the frozen contract like the rest of
-	// the command.
-	DeviceTierConfig string
-	// ExternallyHosted is --externally-hosted: a JSON ExternallyHostedApk
-	// resource registered through edits.apks.addexternallyhosted instead of
-	// uploaded bytes, joined to the same release (#546). Experimental flag.
-	ExternallyHosted string
+	DeviceTierConfig  string
+	ExternallyHosted  string
 }
 
-// resolveFormat classifies the artifact as an APK or an AAB, from an
-// explicit --format override or the file extension (.apk / .aab). It
-// mirrors the `releases sharing upload` convention (ADR-0030), including
-// its exact "cannot tell APK from AAB by extension" message, but as a
-// CLI-misuse usage error (exit 2), matching this command's flag-validation
-// taxonomy. Returns the orchestrator format value (FormatAPK / FormatBundle).
 func resolveFormat(path, formatOverride string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(formatOverride)) {
 	case "apk":
@@ -95,8 +67,6 @@ func resolveFormat(path, formatOverride string) (string, error) {
 	}
 }
 
-// extFormat classifies path by its extension alone: FormatAPK for .apk,
-// FormatBundle for .aab, "" when the extension says neither.
 func extFormat(path string) string {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".apk":
@@ -107,12 +77,6 @@ func extFormat(path string) string {
 	return ""
 }
 
-// resolveArtifacts classifies every path, each on its own (a mixed AAB/APK
-// set is left for Google to accept or refuse). With several artifacts one
-// --format covers them all, so an extension naming the other container is a
-// contradiction rather than an override, and is refused before anything is
-// read. A single artifact keeps the historical override semantics: --format
-// wins over its extension (Public contract).
 func resolveArtifacts(paths []string, formatOverride string) ([]orchestrator.Artifact, error) {
 	out := make([]orchestrator.Artifact, 0, len(paths))
 	for _, p := range paths {
@@ -130,7 +94,6 @@ func resolveArtifacts(paths []string, formatOverride string) ([]orchestrator.Art
 	return out, nil
 }
 
-// hasBundle reports whether any artifact is an App Bundle.
 func hasBundle(artifacts []orchestrator.Artifact) bool {
 	for _, a := range artifacts {
 		if a.Format == orchestrator.FormatBundle {
@@ -140,10 +103,6 @@ func hasBundle(artifacts []orchestrator.Artifact) bool {
 	return false
 }
 
-// preflightKind translates the resolved orchestrator format into the
-// container the preflight must find. The two vocabularies already agree on
-// the strings; the mapping is explicit so a future format value cannot
-// silently become an unchecked upload.
 func preflightKind(format string) artifact.Kind {
 	if format == orchestrator.FormatAPK {
 		return artifact.KindAPK
@@ -151,19 +110,12 @@ func preflightKind(format string) artifact.Kind {
 	return artifact.KindBundle
 }
 
-// Payload satisfies output.Renderable for the resulting upload Result. DryRun
-// marks the --dry-run preview, the path with no API body to pass through.
 type Payload struct {
-	Result *orchestrator.Result
-	DryRun bool
-	// Artifacts are the planned uploads, what a multi-artifact --dry-run
-	// reports in place of the versionCodes it cannot know yet.
+	Result    *orchestrator.Result
+	DryRun    bool
 	Artifacts []orchestrator.Artifact
 }
 
-// Renderers returns the per-Format renderers. The JSON form is API
-// pass-through (the raw tracks.update response, per ADR-0003); the
-// table form is a human-shaped summary.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
@@ -172,17 +124,10 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// multi reports whether the payload describes a release of several
-// artifacts, the case the additive fields and lines exist for. One artifact
-// keeps every historical shape byte-identical (Public contract, #666).
 func (p Payload) multi() bool {
 	return len(p.Result.UploadedVersionCodes) > 1 || len(p.Artifacts) > 1
 }
 
-// codeLines returns the label/value pairs both human formats lead with: the
-// historical versionCode line for one artifact, every uploaded code for
-// several (or, on a dry-run, the planned artifacts, whose codes only Google
-// knows), then the retained codes when there are any.
 func codeLines(p Payload) [][2]string {
 	r := p.Result
 	var lines [][2]string
@@ -200,7 +145,6 @@ func codeLines(p Payload) [][2]string {
 	return lines
 }
 
-// joinCodes renders versionCodes as "142, 143".
 func joinCodes(codes []int) string {
 	s := make([]string, len(codes))
 	for i, c := range codes {
@@ -209,7 +153,6 @@ func joinCodes(codes []int) string {
 	return strings.Join(s, ", ")
 }
 
-// describeArtifacts renders planned uploads as "a.aab (bundle), b.apk (apk)".
 func describeArtifacts(artifacts []orchestrator.Artifact) string {
 	s := make([]string, len(artifacts))
 	for i, a := range artifacts {
@@ -218,13 +161,6 @@ func describeArtifacts(artifacts []orchestrator.Artifact) string {
 	return strings.Join(s, ", ")
 }
 
-// showsUserFraction reports whether userFraction is semantically
-// meaningful for the given release status AND value. inProgress always
-// shows it (the fraction IS the rollout percentage); completed only
-// shows it when non-zero (the API can omit userFraction on completed
-// responses for 100% rollouts, and we should not surface a misleading
-// "userFraction: 0" in that case). Draft / unspecified statuses always
-// hide it: matches the JSON view's omitempty contract.
 func showsUserFraction(status string, userFraction float64) bool {
 	if status == tracks.StatusInProgress {
 		return true
@@ -269,7 +205,6 @@ func renderTable(w io.Writer, p Payload) error {
 	return nil
 }
 
-// plannedArtifact is one planned upload in the --dry-run JSON shape.
 type plannedArtifact struct {
 	Path   string `json:"path"`
 	Format string `json:"format"`
@@ -277,18 +212,10 @@ type plannedArtifact struct {
 
 func renderJSON(w io.Writer, p Payload) error {
 	r := p.Result
-	// API pass-through: emit the raw tracks.update body (ADR-0003), never
-	// touched: the dryRun marker below lives only in gplay's own shape. The
-	// body's release already lists every versionCode, retained ones included.
 	if len(r.RawTrackResponse) > 0 {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
 	}
-	// Fallback to the gplay Result shape (the --dry-run preview, or a live
-	// upload that somehow lost the raw), led under --dry-run by the dryRun
-	// marker every other mutating command's preview carries. The trailing
-	// fields are additive and only appear for several artifacts or retained
-	// codes, so the single-artifact shape stays byte-identical (#666).
 	shape := struct {
 		DryRun bool `json:"dryRun,omitempty"`
 		*orchestrator.Result
@@ -329,11 +256,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return err
 }
 
-// Run is the business function the kernel invokes. It validates the
-// flag combination, resolves the package, builds an authenticated HTTP
-// client from the active Account, then hands off to the orchestrator.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	// Mutual exclusion validation (ADR-0002 / DESIGN §3 / §9).
 	if (in.ReleaseNotesSet || in.ReleaseNotes != "") && in.ReleaseNotesDir != "" {
 		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
@@ -352,8 +275,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if (in.ReleaseNameSet || in.ReleaseName != "") && strings.TrimSpace(in.ReleaseName) == "" {
 		return nil, exit.Usagef("--release-name must not be empty or blank")
 	}
-	// --externally-hosted stands in for the positional artifact: an
-	// externally hosted APK alone is a complete release.
 	hosted := strings.TrimSpace(in.ExternallyHosted) != ""
 	if in.ExternallyHosted != "" && !hosted {
 		return nil, exit.Usagef("--externally-hosted must name a JSON file")
@@ -364,14 +285,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if hosted && len(in.Artifacts) == 0 && in.Format != "" {
 		return nil, exit.Usagef("--format applies to uploaded artifacts, and --externally-hosted names none")
 	}
-	// A mapping deobfuscates one versionCode: with several artifacts there is
-	// no telling which one it belongs to, so it is refused before anything
-	// else rather than attached to a guess.
 	if total := len(in.Artifacts) + boolInt(hosted); in.Mapping != "" && total > 1 {
 		return nil, exit.Usagef("--mapping applies to a single artifact (a mapping belongs to one versionCode), got %d: upload the other mappings with gplay releases mappings upload", total)
 	}
 
-	// Resolve package: --package flag → project pin.
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
@@ -380,28 +297,14 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
-	// Classify APK vs AAB up front (before any HTTP and even on --dry-run)
-	// so an unknown extension without --format is a usage error (exit 2),
-	// never a late surprise after an Edit is opened.
 	artifacts, err := resolveArtifacts(in.Artifacts, in.Format)
 	if err != nil {
 		return nil, err
 	}
-	// A device tier config drives how Google splits an App Bundle; an APK is
-	// already the deliverable, and edits.apks.upload has no such parameter.
-	// It applies to every bundle of the set, and is refused when there is
-	// none so it is never silently dropped.
 	if in.DeviceTierConfig != "" && !hasBundle(artifacts) {
 		return nil, &exit.UsageError{Msg: "--device-tier-config applies to an App Bundle (.aab) only, not an APK"}
 	}
 
-	// Artifact preflight (PRD #448): each artifact's container and declared
-	// package are checked against what this invocation promised BEFORE any
-	// Edit is opened and before the first upload byte leaves the machine, so
-	// a wrong path fails in milliseconds instead of after minutes of
-	// resumable transfer, and app A's release can never receive app B's
-	// build. One mismatch fails the whole call (#666). Silent on success;
-	// --skip-preflight is the parser-gap escape.
 	for _, a := range artifacts {
 		if err := artifact.Verify(rc.Stderr, a.Path, artifact.Expect{
 			Kinds:   []artifact.Kind{preflightKind(a.Format)},
@@ -411,10 +314,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 	}
 
-	// The externally hosted APK joins the set after the uploaded files. Its
-	// resource is checked here, before credentials are even loaded, so a
-	// malformed file or another app's package fails offline (exit 20); the
-	// orchestrator re-checks it before edits.insert for its other callers.
 	if hosted {
 		if _, err := orchestrator.LoadExternallyHosted(in.ExternallyHosted, pkg); err != nil {
 			return nil, err
@@ -422,24 +321,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		artifacts = append(artifacts, orchestrator.Artifact{Path: in.ExternallyHosted, Format: orchestrator.FormatExternallyHosted})
 	}
 
-	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the
-	// network, and the orchestrator's dry-run path never reuses a pinned Edit,
-	// so a corrupt pin must not fail a preview. The pin is only resolved on the
-	// live path below.
 	var (
 		httpClient     *http.Client
 		explicitEditID string
 	)
 	if !in.DryRun {
 		var err error
-		// Reuse an open explicit Edit when one is pinned (`gplay edits begin`);
-		// "" keeps the implicit per-upload Edit. A corrupt pin surfaces here.
 		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
 			return nil, err
 		}
-		// UploadClient, not AuthedClient: the AAB transfer can be hundreds of
-		// MB, so it is exempt from the 60s control-plane default (honors an
-		// explicit --timeout). See kernel.RunContext.UploadClient.
 		if httpClient, err = rc.UploadClient(); err != nil {
 			return nil, err
 		}
@@ -464,14 +354,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		DryRun:             in.DryRun,
 	})
 	if err != nil {
-		// A tracks.update 404 means the target track does not exist yet;
-		// attach the `gplay tracks create <name>` hint. Every other failure
-		// (and the exit code) passes through untouched.
 		return nil, trackhint.Classify(in.Track, err)
 	}
-	// DESIGN §8: a committed mutation prints one ✓ line on stderr (never on a
-	// --dry-run). userFraction is shown only when status is inProgress, the
-	// one status where a partial rollout fraction informs.
 	if !in.DryRun {
 		extra := ""
 		if result.Status == tracks.StatusInProgress {
@@ -493,7 +377,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Result: result, DryRun: in.DryRun, Artifacts: artifacts}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases upload`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag        string
@@ -588,9 +471,6 @@ signs the APK.`,
 
   # Release an APK served from your own host (Managed Play private app)
   gplay releases upload --externally-hosted externally-hosted-apk.json --track internal`,
-		// Positional artifacts are optional only when --externally-hosted
-		// stands in for them; otherwise the historical "missing <artifact>"
-		// refusal (kernel.WrapArgErrors) is kept word for word.
 		Args: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("externally-hosted") {
 				return nil
@@ -604,7 +484,6 @@ signs the APK.`,
 			b.Stdout = cmd.OutOrStdout()
 			b.Stderr = cmd.ErrOrStderr()
 			in.Artifacts = args
-			// Detect explicit --staged so 0 is distinguished from "unset".
 			in.StagedFractionSet = cmd.Flags().Changed("staged")
 			in.StagedFraction = stagedFractionVar
 			in.UpdatePrioritySet = cmd.Flags().Changed("update-priority")
@@ -635,12 +514,9 @@ signs the APK.`,
 	cmd.Flags().StringVar(&in.DeviceTierConfig, "device-tier-config", "", "device tier config id, or LATEST, applied to every uploaded bundle (AAB only)")
 	cmd.Flags().IntSliceVar(&in.RetainVersionCodes, "retain-version-code", nil, "versionCode already uploaded that the new release keeps serving, passed to Google unchecked (repeatable)")
 	cmd.Flags().StringVar(&in.ExternallyHosted, "externally-hosted", "", "ExternallyHostedApk JSON file registering an APK served from your own host, added to the release (Managed Play private apps only)")
-	// The flag is young surface on a frozen command: labelled here, next to
-	// its declaration, so it can never ship frozen by omission (#546).
 	return kernel.ExperimentalFlag(cmd, "externally-hosted")
 }
 
-// boolInt counts a set flag as one artifact.
 func boolInt(b bool) int {
 	if b {
 		return 1
@@ -648,8 +524,6 @@ func boolInt(b bool) int {
 	return 0
 }
 
-// updatePriority maps the flag pair to the orchestrator's optional priority:
-// nil when --update-priority was not passed, so the field stays off the wire.
 func updatePriority(in Input) *int {
 	if !in.UpdatePrioritySet {
 		return nil

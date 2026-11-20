@@ -51,11 +51,8 @@ func TestMaskBuyerLocation_earningsSpelling(t *testing.T) {
 
 func TestMaskBuyerLocation_documentedAndRenamedVariants(t *testing.T) {
 	for _, h := range []string{
-		// The spellings ADR-0050 §9 documents.
 		"City of Buyer", "State of Buyer", "Postcode of Buyer", "Postal Code of Buyer",
 		"Buyer State", "Buyer Postcode", "Buyer Postal Code",
-		// Renames: other separators, camelCase, words glued together, and a
-		// country named next to a place (the place still locates the buyer).
 		"BUYER_CITY", "Buyer's Post Code", "State / Province of Buyer", "buyer zip",
 		"BuyerCity", "CityOfBuyer", "buyercity", "cityofbuyer", "BuyerPostalCode", "buyer_postcode", "buyersstate",
 		"Country / City of Buyer", "Buyer Country/State", "BuyerCountryCity",

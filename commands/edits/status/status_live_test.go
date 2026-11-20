@@ -1,9 +1,5 @@
 package status_test
 
-// The --live path (#544): one edits.get on the pinned id, mocked through a
-// testkit Fake so the suite stays offline. The default path keeps its
-// network-free tests in status_test.go.
-
 import (
 	"bytes"
 	"context"
@@ -23,7 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newLiveFake serves the edits.get GET; getStatus (0 → 200) forces a non-2xx.
 func newLiveFake(getStatus int) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if c.Method != http.MethodGet || !strings.HasSuffix(c.Path, "/edits/edit-55") {
@@ -36,10 +31,6 @@ func newLiveFake(getStatus int) *testkit.Fake {
 	})
 }
 
-// getCalls counts the edits.get calls and fails the test on any other
-// request: an insert or a delete is a contract breach (a status probe must
-// never open or drop an Edit), including on the paths where Run's error
-// would otherwise hide it.
 func getCalls(t *testing.T, f *testkit.Fake) int {
 	t.Helper()
 	n := 0
@@ -53,8 +44,6 @@ func getCalls(t *testing.T, f *testkit.Fake) int {
 	return n
 }
 
-// newLiveRC is newRC plus an Account and a transport-injected HTTP client, the
-// two things --live needs and the default path must never touch.
 func newLiveRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, string) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
@@ -117,7 +106,6 @@ func TestRun_live_404_reportsClosedWithDiscardHint_keepsPin(t *testing.T) {
 	if out := render(t, r, output.FormatTable); !strings.Contains(out, "gplay edits discard") {
 		t.Errorf("table = %q, want the discard hint", out)
 	}
-	// The pin is the user's to clear (via discard): status never mutates it.
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); !ok {
 		t.Error("status --live cleared the pin; it must only report")
 	}
@@ -139,8 +127,6 @@ func TestRun_live_otherError_propagates(t *testing.T) {
 }
 
 func TestRun_live_noPin_staysOffline(t *testing.T) {
-	// No Account, no transport: any network or credential access would fail
-	// loudly, which is the point: --live with nothing pinned needs neither.
 	rc, _ := newRC(t)
 
 	r, err := statuscmd.Run(rc, statuscmd.Input{Package: pkg, Live: true})

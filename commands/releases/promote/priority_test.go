@@ -13,12 +13,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// sourceWithPriority3 is a beta track whose release carries a priority set in
-// the Play Console.
 const sourceWithPriority3 = `{"track":"beta","releases":[{"name":"142","status":"completed","versionCodes":["142"],"inAppUpdatePriority":3}]}`
 
-// promotedPriority returns the raw inAppUpdatePriority of the single release
-// the destination tracks.update PUT carried ("" when the key is absent).
 func promotedPriority(t *testing.T, f *testkit.Fake) string {
 	t.Helper()
 	var body []byte
@@ -36,9 +32,6 @@ func promotedPriority(t *testing.T, f *testkit.Fake) string {
 	return string(track.Releases[0]["inAppUpdatePriority"])
 }
 
-// TestRun_promote_carriesSourceUpdatePriorityOver pins #664: without the flag
-// the source release's priority reaches the destination instead of being
-// dropped by the typed rebuild.
 func TestRun_promote_carriesSourceUpdatePriorityOver(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{editID: "edit-carry", sourceTrackGetResp: sourceWithPriority3})
 	rc, _ := newRC(t, rt)
@@ -51,8 +44,6 @@ func TestRun_promote_carriesSourceUpdatePriorityOver(t *testing.T) {
 	}
 }
 
-// TestRun_promote_updatePriorityFlagOverridesSource: the flag wins over the
-// source's value.
 func TestRun_promote_updatePriorityFlagOverridesSource(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{editID: "edit-override", sourceTrackGetResp: sourceWithPriority3})
 	rc, _ := newRC(t, rt)
@@ -68,8 +59,6 @@ func TestRun_promote_updatePriorityFlagOverridesSource(t *testing.T) {
 	}
 }
 
-// TestRun_promote_sourceWithoutPriority_fieldStaysAbsent keeps today's
-// payload unchanged when neither the source nor the flag sets a priority.
 func TestRun_promote_sourceWithoutPriority_fieldStaysAbsent(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-none",
@@ -85,9 +74,6 @@ func TestRun_promote_sourceWithoutPriority_fieldStaysAbsent(t *testing.T) {
 	}
 }
 
-// TestRun_promote_dryRun_showsUpdatePriorityOverride: the preview shows the
-// flag's value (the source's own priority needs tracks.get, which a dry-run
-// never issues).
 func TestRun_promote_dryRun_showsUpdatePriorityOverride(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{})
 	rc, _ := newRC(t, rt)
@@ -115,8 +101,6 @@ func TestRun_promote_dryRun_showsUpdatePriorityOverride(t *testing.T) {
 	}
 }
 
-// TestRun_promote_updatePriorityOutOfRange_exit2_noHTTP mirrors upload's
-// guard: outside 0..5 is a usage error before any request.
 func TestRun_promote_updatePriorityOutOfRange_exit2_noHTTP(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{editID: "edit-bad", sourceTrackGetResp: sourceWithPriority3})
 	rc, _ := newRC(t, rt)
@@ -133,7 +117,6 @@ func TestRun_promote_updatePriorityOutOfRange_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestNewCommand_registersUpdatePriorityFlag pins the cobra wiring.
 func TestNewCommand_registersUpdatePriorityFlag(t *testing.T) {
 	if promote.NewCommand(kernel.Boot{}).Flags().Lookup("update-priority") == nil {
 		t.Error("releases promote is missing --update-priority")

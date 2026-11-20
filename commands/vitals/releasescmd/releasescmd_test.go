@@ -56,7 +56,6 @@ func TestRun_fetchesReleaseFilterOptionsForThePackage(t *testing.T) {
 	if c := calls[0]; c.Method != http.MethodGet || c.URL != "https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app:fetchReleaseFilterOptions" {
 		t.Errorf("call = %s %s", c.Method, c.URL)
 	}
-	// WriteJSON indents; verbatim means the same document, every field kept.
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, []byte(render(t, r, output.FormatJSON))); err != nil {
 		t.Fatalf("JSON output does not parse: %v", err)

@@ -1,10 +1,3 @@
-// Package mappings implements `gplay releases mappings upload`: attach a
-// ProGuard/R8 deobfuscation file (a Mapping, per GLOSSARY.md) to an
-// already-published versionCode after the fact, so Play vitals can
-// symbolicate that version's obfuscated crash stacks. The CLI glue
-// resolves --package, validates --version-code, and hands a MappingOpts
-// to internal/releases/orchestrator; the Edit lifecycle and HTTP live
-// there and in internal/play/*.
 package mappings
 
 import (
@@ -22,7 +15,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package           string
 	MappingPath       string
@@ -33,16 +25,11 @@ type Input struct {
 	DryRun            bool
 }
 
-// Payload satisfies output.Renderable for the MappingResult. DryRun marks
-// the --dry-run preview, the path with no API body to pass through.
 type Payload struct {
 	Result *orchestrator.MappingResult
 	DryRun bool
 }
 
-// Renderers returns the per-Format renderers. The JSON form is API
-// pass-through (the raw deobfuscationfiles.upload response, ADR-0003);
-// the table/markdown forms are human-shaped summaries.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p.Result) },
@@ -64,14 +51,10 @@ func renderTable(w io.Writer, r *orchestrator.MappingResult) error {
 }
 
 func renderJSON(w io.Writer, r *orchestrator.MappingResult, dryRun bool) error {
-	// API pass-through: emit the raw deobfuscationfiles.upload body (ADR-0003).
 	if len(r.Raw) > 0 {
 		_, err := w.Write(r.Raw)
 		return err
 	}
-	// Fallback to the gplay MappingResult shape (e.g. on --dry-run, where
-	// no upload happened), led by the dryRun marker every other mutating
-	// command's preview carries.
 	return output.WriteJSON(w, struct {
 		DryRun bool `json:"dryRun,omitempty"`
 		*orchestrator.MappingResult
@@ -86,8 +69,6 @@ func renderMarkdown(w io.Writer, r *orchestrator.MappingResult) error {
 	return err
 }
 
-// Run validates the inputs, resolves the package, builds an authenticated
-// HTTP client, then hands off to orchestrator.UploadMapping.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.MappingPath == "" {
 		return nil, &exit.UsageError{Msg: "missing mapping path: gplay releases mappings upload <mapping.txt> --version-code N"}
@@ -96,29 +77,20 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &exit.UsageError{Msg: "missing or invalid --version-code (the APK versionCode to attach the mapping to)"}
 	}
 
-	// Resolve package: --package flag → project pin.
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
 
-	// Dry-run skips auth AND the explicit-Edit pin entirely: nothing hits the
-	// network and the dry-run path never reuses a pinned Edit, so a corrupt pin
-	// must not fail a preview. Both are resolved only on the live path.
 	var (
 		httpClient     *http.Client
 		explicitEditID string
 	)
 	if !in.DryRun {
 		var err error
-		// UploadClient, not AuthedClient: native symbol archives can reach
-		// the API's 1.6 GiB cap, so the upload is exempt from the 60s
-		// control-plane default (honors an explicit --timeout).
 		if httpClient, err = rc.UploadClient(); err != nil {
 			return nil, err
 		}
-		// Reuse an open explicit Edit when one is pinned (`gplay edits begin`);
-		// "" keeps the implicit per-upload Edit.
 		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
 			return nil, err
 		}
@@ -137,15 +109,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	// DESIGN §8: a committed mutation prints one ✓ line on stderr (never on
-	// a --dry-run).
 	if !in.DryRun {
 		rc.ConfirmMutation(explicitEditID, "uploaded %s mapping for versionCode %d", result.FileType, result.VersionCode)
 	}
 	return Payload{Result: result, DryRun: in.DryRun}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases mappings upload`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

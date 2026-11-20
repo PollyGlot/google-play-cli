@@ -1,8 +1,3 @@
-// Package create_test exercises `gplay tracks create` at the kernel
-// level: a RunContext built by hand, a testkit Fake injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// promote command's test harness so a single seam proves the auth +
-// Edit lifecycle wiring for tracks create too.
 package create_test
 
 import (
@@ -24,10 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// createAPI is the Play API the create flow sees, served by a testkit Fake:
-// edits.insert, tracks.create, edits.commit, edits.delete. trackCreateStatus
-// lets a test force a non-2xx on the POST .../tracks (the "track already
-// exists" case).
 type createAPI struct {
 	editID            string
 	trackCreateStatus int
@@ -58,9 +49,6 @@ func (a *createAPI) serve(t *testing.T) *testkit.Fake {
 	return a.fake
 }
 
-// calls lists the requests as "METHOD path", the token exchanges first: the
-// oauth2 transport runs the exchange before the first API call and caches
-// the token, and the Fake counts exchanges without recording them.
 func (a *createAPI) calls() []string {
 	var out []string
 	for range a.fake.TokenExchanges() {
@@ -72,7 +60,6 @@ func (a *createAPI) calls() []string {
 	return out
 }
 
-// trackCreateReq returns the body of the last tracks.create request.
 func (a *createAPI) trackCreateReq() []byte {
 	var body []byte
 	for _, c := range a.fake.Calls() {
@@ -97,9 +84,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stdout
 }
 
-// TestRun_dryRun_noHTTP asserts --dry-run previews the TrackConfig
-// without auth or any HTTP call, and the human renders mention the
-// hardcoded CLOSED_TESTING type.
 func TestRun_dryRun_noHTTP(t *testing.T) {
 	api := &createAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -124,10 +108,6 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_happyPath_createsClosedTrack asserts the full vertical slice:
-// /token exchange, then the open → create → commit sequence, with the
-// create request carrying type=CLOSED_TESTING, and the --output json
-// render being the raw tracks.create response verbatim (ADR-0003).
 func TestRun_happyPath_createsClosedTrack(t *testing.T) {
 	api := &createAPI{
 		editID:          "edit-create-cli",
@@ -165,7 +145,6 @@ func TestRun_happyPath_createsClosedTrack(t *testing.T) {
 		t.Errorf("create request body = %s, want type=CLOSED_TESTING", api.trackCreateReq())
 	}
 
-	// ADR-0003: --output json must be the raw tracks.create response.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -175,11 +154,6 @@ func TestRun_happyPath_createsClosedTrack(t *testing.T) {
 	}
 }
 
-// TestRun_createOnExistingTrack_exit30 asserts that creating a track
-// that already exists surfaces the API 400 verbatim (exit 30 via
-// StatusToExitCode) (gplay does not fake idempotency) and that the
-// failed Edit is auto-discarded (DELETE) since keep-edit-on-failure is
-// off by default.
 func TestRun_createOnExistingTrack_exit30(t *testing.T) {
 	api := &createAPI{
 		editID:            "edit-create-cli",
@@ -196,7 +170,6 @@ func TestRun_createOnExistingTrack_exit30(t *testing.T) {
 		t.Errorf("exit.For(err) = %d, want 30; err=%v", got, err)
 	}
 
-	// The Edit must have been discarded after the failure.
 	sawDelete := false
 	for _, c := range api.calls() {
 		if strings.HasPrefix(c, "DELETE ") {
@@ -208,10 +181,6 @@ func TestRun_createOnExistingTrack_exit30(t *testing.T) {
 	}
 }
 
-// TestNewCommand_registersExpectedFlags is a thin smoke test for the
-// cobra wiring: the expected flags exist, the deliberately-absent ones
-// (--type / --confirm) do not, --form-factor defaults to default, and Use
-// carries the positional <name>.
 func TestNewCommand_registersExpectedFlags(t *testing.T) {
 	cmd := create.NewCommand(kernel.Boot{})
 	for _, name := range []string{
@@ -238,9 +207,6 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 	}
 }
 
-// TestRun_happyPath_emitsConfirmationOnStderr asserts a committed track create
-// prints a single ✓ line on stderr (DESIGN §8) naming the new track, alongside
-// the stdout payload.
 func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 	api := &createAPI{
 		editID:          "edit-create-cli",
@@ -259,7 +225,6 @@ func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	api := &createAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -274,9 +239,6 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_forwardsCommitOptIns: an implicit-mode write command hands the #598
-// opt-ins to its own edits.commit. The other tests here run with the flags
-// unset, which sends no query (pinned in internal/play/edits).
 func TestRun_forwardsCommitOptIns(t *testing.T) {
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -306,9 +268,6 @@ func TestRun_forwardsCommitOptIns(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_formFactorWear asserts --form-factor maps the
-// operator-facing value (any case) to the TrackConfig enum the --dry-run
-// preview prints, still without any HTTP call.
 func TestRun_dryRun_formFactorWear(t *testing.T) {
 	api := &createAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -332,8 +291,6 @@ func TestRun_dryRun_formFactorWear(t *testing.T) {
 	}
 }
 
-// TestRun_formFactorAutomotive_sentInBody asserts the chosen form factor
-// reaches the tracks.create request body and the human view.
 func TestRun_formFactorAutomotive_sentInBody(t *testing.T) {
 	api := &createAPI{
 		editID:          "edit-create-cli",
@@ -360,11 +317,6 @@ func TestRun_formFactorAutomotive_sentInBody(t *testing.T) {
 	}
 }
 
-// TestRun_helpExample_formFactorTrackIsPrefixed runs the --help example
-// (`gplay tracks create beta-wear --form-factor wear`) and a name that
-// already carries its prefix: both send wear:beta-wear, the identifier
-// TrackConfig.track requires for a Wear track, never wear:wear:beta-wear.
-// The Fake refuses a body that breaks the prefix rule (#776).
 func TestRun_helpExample_formFactorTrackIsPrefixed(t *testing.T) {
 	for _, name := range []string{"beta-wear", "wear:beta-wear"} {
 		api := &createAPI{editID: "edit-create-cli", trackCreateResp: `{"track":"wear:beta-wear","releases":[]}`}
@@ -388,9 +340,6 @@ func TestRun_helpExample_formFactorTrackIsPrefixed(t *testing.T) {
 	}
 }
 
-// TestRun_contradictoryPrefix_exit2NoHTTP asserts a name whose prefix names
-// another form factor than --form-factor is CLI misuse, refused before any
-// request, with or without --dry-run.
 func TestRun_contradictoryPrefix_exit2NoHTTP(t *testing.T) {
 	for _, tc := range []struct{ name, formFactor string }{
 		{"automotive:beta", "wear"},
@@ -413,8 +362,6 @@ func TestRun_contradictoryPrefix_exit2NoHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_defaultFormFactor_bodyUnchanged asserts that leaving the flag
-// unset sends the exact body gplay always sent (formFactor DEFAULT).
 func TestRun_defaultFormFactor_bodyUnchanged(t *testing.T) {
 	api := &createAPI{editID: "edit-create-cli", trackCreateResp: `{"track":"qa-team","releases":[]}`}
 	rc, _ := newRC(t, api.serve(t))
@@ -428,8 +375,6 @@ func TestRun_defaultFormFactor_bodyUnchanged(t *testing.T) {
 	}
 }
 
-// TestRun_unknownFormFactor_exit2NoHTTP asserts an unsupported value is CLI
-// misuse (exit 2) naming the accepted values, refused before any request.
 func TestRun_unknownFormFactor_exit2NoHTTP(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		api := &createAPI{editID: "edit-create-cli"}

@@ -9,9 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestExperimental_roundTrips asserts the label round-trips and that an
-// unlabelled command reports false: the "frozen by default" side of ADR-0010,
-// where absence of a label means the Public contract applies.
 func TestExperimental_roundTrips(t *testing.T) {
 	marked := kernel.Experimental(&cobra.Command{Use: "pull", Short: "Pull the catalog"})
 	if !kernel.IsExperimental(marked) {
@@ -24,10 +21,6 @@ func TestExperimental_roundTrips(t *testing.T) {
 	}
 }
 
-// TestExperimental_tagsHelpText asserts the label is visible in both places a
-// user reads: the Short (rendered in the parent's subcommand list) and the Long
-// (the command's own --help), with the Long carrying the consequence rather
-// than the bare marker.
 func TestExperimental_tagsHelpText(t *testing.T) {
 	cmd := kernel.Experimental(&cobra.Command{
 		Use:   "apply",
@@ -49,9 +42,6 @@ func TestExperimental_tagsHelpText(t *testing.T) {
 	}
 }
 
-// TestExperimental_synthesisesLongFromShort asserts a command written with only
-// a Short still shows the full notice in its own --help, and that the
-// synthesised body does not repeat the marker inside the notice.
 func TestExperimental_synthesisesLongFromShort(t *testing.T) {
 	cmd := kernel.Experimental(&cobra.Command{Use: "create", Short: "Create a recovery action"})
 
@@ -63,10 +53,6 @@ func TestExperimental_synthesisesLongFromShort(t *testing.T) {
 	}
 }
 
-// TestExperimental_labelsRegisteredSubtree asserts one call on a namespace
-// covers the children already registered under it: the registration shape
-// cmd/gplay/main.go uses, so each child carries the tag in its own help
-// instead of inheriting it invisibly.
 func TestExperimental_labelsRegisteredSubtree(t *testing.T) {
 	group := &cobra.Command{Use: "subscriptions", Short: "Manage subscriptions"}
 	child := &cobra.Command{Use: "pull", Short: "Pull the catalog"}
@@ -88,10 +74,6 @@ func TestExperimental_labelsRegisteredSubtree(t *testing.T) {
 	}
 }
 
-// TestIsExperimental_inheritsFromAncestor asserts a subcommand registered AFTER
-// its namespace was labelled is still outside the contract. The parent walk is
-// the safety net that keeps a late-added child from silently claiming more
-// stability than the namespace containing it.
 func TestIsExperimental_inheritsFromAncestor(t *testing.T) {
 	group := kernel.Experimental(&cobra.Command{Use: "iap", Short: "Manage one-time products"})
 	late := &cobra.Command{Use: "apply", Short: "Apply the catalog"}
@@ -102,9 +84,6 @@ func TestIsExperimental_inheritsFromAncestor(t *testing.T) {
 	}
 }
 
-// TestExperimental_idempotent asserts labelling a child and then its parent:
-// the order a namespace-wide call produces when a child was marked on its own:
-// does not stack two markers in the help text.
 func TestExperimental_idempotent(t *testing.T) {
 	group := &cobra.Command{Use: "games", Short: "Manage Play Games config"}
 	child := kernel.Experimental(&cobra.Command{Use: "achievements", Short: "Manage achievements"})
@@ -120,19 +99,12 @@ func TestExperimental_idempotent(t *testing.T) {
 	}
 }
 
-// TestIsExperimental_nilIsStable guards the accessor against a nil command the
-// way ScopeFor/IsMutating are guarded, so a caller walking a partially built
-// tree cannot panic.
 func TestIsExperimental_nilIsStable(t *testing.T) {
 	if kernel.IsExperimental(nil) {
 		t.Error("IsExperimental(nil) = true, want false")
 	}
 }
 
-// TestExperimentalFlag_labelsOneFlag asserts the flag-level label: the marked
-// flag reports experimental and shows the tag in its usage, its frozen
-// siblings and the command itself stay frozen, and labelling twice does not
-// stack the tag.
 func TestExperimentalFlag_labelsOneFlag(t *testing.T) {
 	cmd := &cobra.Command{Use: "upload"}
 	cmd.Flags().String("young", "", "a new sub-feature")
@@ -154,8 +126,6 @@ func TestExperimentalFlag_labelsOneFlag(t *testing.T) {
 	}
 }
 
-// TestExperimentalFlag_inheritsFromCommand asserts every flag of an
-// experimental command is experimental, labelled or not.
 func TestExperimentalFlag_inheritsFromCommand(t *testing.T) {
 	cmd := &cobra.Command{Use: "pull", Short: "Pull"}
 	cmd.Flags().String("dir", "", "target dir")
@@ -165,8 +135,6 @@ func TestExperimentalFlag_inheritsFromCommand(t *testing.T) {
 	}
 }
 
-// TestExperimentalFlag_unknownFlagPanics asserts a typo at registration fails
-// loudly instead of leaving the intended flag frozen.
 func TestExperimentalFlag_unknownFlagPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {

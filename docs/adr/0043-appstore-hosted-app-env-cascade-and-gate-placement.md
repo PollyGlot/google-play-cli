@@ -114,8 +114,10 @@ placement is unchanged.
   the exit code (404 is exit 30).
 
 - **The submission body is the operator's JSON, forwarded verbatim** except
-  `packageName`, which is overwritten with the resolved target so it always
-  wins. Decoding it into gplay's request struct and re-encoding it would drop
+  `packageName`, which the resolved target governs: a `packageName` in the
+  body that differs from `--package` or the Project pin is refused (exit 2),
+  and with neither flag nor pin the body's `packageName` is the target. The
+  call submits to review, so gplay never guesses between two packages. Decoding it into gplay's request struct and re-encoding it would drop
   anything the struct does not model, a field Google added last week or a
   misspelt key, and a submission cannot be recalled. Sent as written, a
   misspelling comes back as Google's rejection, never as a submission quietly

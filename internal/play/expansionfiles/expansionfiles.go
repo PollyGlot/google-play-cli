@@ -1,13 +1,3 @@
-// Package expansionfiles performs the hand-rolled HTTP calls for the legacy OBB
-// expansion-file surface (edits.expansionfiles; ADR-0007 raw HTTP). An
-// ExpansionFile is an Android Publisher Edit artifact keyed by an APK
-// apkVersionCode and a type (main|patch): structurally a sibling of a Mapping
-// (GLOSSARY.md), uploaded with the same scope and Edit model. The Edit lifecycle
-// (begin/commit/discard) is the caller's concern (edits.WithEdit /
-// WithReadOnlyEdit); these functions perform a single call inside an already-open
-// Edit, given the editID.
-//
-// Legacy: superseded by Play Asset Delivery for AABs; only APK-based apps use it.
 package expansionfiles
 
 import (
@@ -28,41 +18,26 @@ const (
 	opGet    = "expansionfiles.get"
 )
 
-// Registry entries this package calls. Resolving them at init makes an
-// unregistered or vanished method a startup panic caught by CI rather than a
-// runtime surprise; verb and URL then come from the Discovery snapshot instead
-// of literals kept here (#513). upload shares the same path shape but on the
-// /upload host, hence UploadURL.
 var (
 	methodUpload = apiregistry.MustResolve("androidpublisher.edits.expansionfiles.upload")
 	methodUpdate = apiregistry.MustResolve("androidpublisher.edits.expansionfiles.update")
 	methodGet    = apiregistry.MustResolve("androidpublisher.edits.expansionfiles.get")
 )
 
-// Expansion file types: the expansionFileType path segment. The Discovery
-// enum's zero value (expansionFileTypeUnspecified) is never sent.
 const (
 	TypeMain  = "main"
 	TypePatch = "patch"
 )
 
-// ExpansionFile is the parsed resource. Exactly one of FileSize (this APK has
-// its own uploaded file) or ReferencesVersion (it points at another APK's file)
-// is set, per the API schema. FileSize is an int64 carried as a string by the
-// API; ReferencesVersion is an int32.
 type ExpansionFile struct {
 	FileSize          string `json:"fileSize,omitempty"`
 	ReferencesVersion int    `json:"referencesVersion,omitempty"`
 }
 
-// HasFile reports whether this APK has its own uploaded expansion file (a
-// non-zero fileSize), as opposed to referencing another APK's.
 func (e ExpansionFile) HasFile() bool {
 	return e.FileSize != "" && e.FileSize != "0"
 }
 
-// LocalIOError is returned when the .obb cannot be read locally; exit 20
-// (client-side validation), distinct from transport. Mirrors bundles/mappings.
 type LocalIOError struct {
 	Path  string
 	Cause error
@@ -72,8 +47,6 @@ func (e *LocalIOError) Error() string { return fmt.Sprintf("%s: %s: %v", opUploa
 func (e *LocalIOError) Unwrap() error { return e.Cause }
 func (e *LocalIOError) ExitCode() int { return 20 }
 
-// fileParams is the path-parameter set the three expansionfiles methods share:
-// the file is keyed by (package, edit, APK versionCode, expansion file type).
 func fileParams(pkg, editID string, versionCode int, fileType string) map[string]string {
 	return map[string]string{
 		"packageName":       pkg,
@@ -83,9 +56,6 @@ func fileParams(pkg, editID string, versionCode int, fileType string) map[string
 	}
 }
 
-// Upload streams the .obb at path to expansionfiles.upload, keyed by the APK
-// versionCode and type, and returns the verbatim response body
-// (ExpansionFilesUploadResponse). Resumable upload to the upload sub-host.
 func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCode int, fileType, path string) (json.RawMessage, error) {
 	f, info, err := openRegular(path)
 	if err != nil {
@@ -99,11 +69,6 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 	}
 	u += "?uploadType=resumable"
 
-	// *os.File is an io.ReaderAt, giving the resumable helper random access so
-	// it can re-send from a server-acknowledged offset after a transient
-	// failure without reopening the file. The resumable state machine lives in
-	// the shared api.ResumableUpload helper; the response body
-	// (ExpansionFilesUploadResponse) is passed through verbatim (ADR-0003).
 	body, _, err := api.ResumableUpload(ctx, hc, opUpload, pkg, u, "application/octet-stream", f, info.Size())
 	if err != nil {
 		return nil, err
@@ -111,10 +76,6 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 	return json.RawMessage(body), nil
 }
 
-// Update declaratively sets the expansion file's referencesVersion (PUT),
-// pointing this APK's expansion file at another APK versionCode's already-
-// uploaded file. fileSize is output-only, so the request only ever carries
-// referencesVersion.
 func Update(ctx context.Context, hc *http.Client, pkg, editID string, versionCode int, fileType string, referencesVersion int) (json.RawMessage, error) {
 	return api.Do(ctx, hc, api.Call{
 		Method: methodUpdate, Op: opUpdate, Target: pkg,
@@ -123,7 +84,6 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 	})
 }
 
-// Get reads the expansion file configuration (fileSize XOR referencesVersion).
 func Get(ctx context.Context, hc *http.Client, pkg, editID string, versionCode int, fileType string) (ExpansionFile, json.RawMessage, error) {
 	var ef ExpansionFile
 	raw, err := api.DoJSON(ctx, hc, api.Call{
@@ -136,10 +96,6 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID string, versionCode i
 	return ef, raw, nil
 }
 
-// openRegular opens the file and rejects a non-regular path up front as a
-// client-side *LocalIOError (exit 20), for parity with bundles/mappings.Upload,
-// so a directory/fifo never surfaces as a transport error (exit 50). It returns
-// the os.FileInfo so the caller sets ContentLength without a second Stat.
 func openRegular(path string) (*os.File, os.FileInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {

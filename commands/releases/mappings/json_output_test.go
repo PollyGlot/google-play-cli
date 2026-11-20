@@ -9,20 +9,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// mappingUploadBody is a deobfuscationfiles.upload response in a layout gplay
-// would not produce itself: passthrough means these exact bytes reach stdout.
-// The resource has no free-text field, so the layout (not &, <, >) is what a
-// re-encoding would visibly change.
 const mappingUploadBody = `{
  "deobfuscationFile": {
   "symbolType": "proguard"
  }
 }`
 
-// TestRenderJSON_passthrough_isTheUploadBodyVerbatim asserts `--output json`
-// prints the deobfuscationfiles.upload body byte for byte (ADR-0003). The
-// Result is built directly: the package fake answers the resumable upload
-// with a fixed body, so it cannot carry these bytes.
 func TestRenderJSON_passthrough_isTheUploadBodyVerbatim(t *testing.T) {
 	p := mappings.Payload{Result: &orchestrator.MappingResult{
 		VersionCode: 142,
@@ -35,8 +27,6 @@ func TestRenderJSON_passthrough_isTheUploadBodyVerbatim(t *testing.T) {
 	}
 }
 
-// TestRenderJSON_dryRun_golden freezes the gplay MappingResult shape --dry-run
-// prints: no upload ran, so there is no API body to pass through.
 func TestRenderJSON_dryRun_golden(t *testing.T) {
 	rt, transport := newMappingTransport("")
 	rc := newRC(t, transport)

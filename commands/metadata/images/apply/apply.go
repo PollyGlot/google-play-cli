@@ -1,20 +1,3 @@
-// Package imagesapply implements `gplay metadata images apply`: reconcile the
-// local Store-image tree with the images live on Google Play. It is thin glue
-// : resolve --package/--dir, read the image tree off disk (internal/metadata/
-// imagetree), validate the --type flags, and hand it to
-// internal/metadata/imageorchestrator, which owns the Edit lifecycle, the diff,
-// the --confirm gate, and the offline validate pre-check. The command only
-// resolves inputs and renders.
-//
-// Two modes (ADR-0011 stance, ADR-0013 mechanics):
-//
-//   - --dry-run is ONLINE: it reads the live images and prints the per-slot
-//     delta without committing. --output json is the ADR-0013 §5 diff schema
-//     {package, slots[], summary} so a CI gate is one jq line:
-//     jq -e '.summary.upload + .summary.delete + .summary.reorder > 0'.
-//   - --confirm performs the real publish (one Edit, one commit, atomic).
-//     Without --confirm a real apply refuses (exit 3: safety flag required)
-//     and points at --dry-run; CI=true never auto-confirms. Images are live-on-commit (no draft).
 package imagesapply
 
 import (
@@ -42,10 +25,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// DefaultDir is the metadata tree root used when --dir is unset.
 const DefaultDir = "./metadata"
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package       string
 	Dir           string
@@ -56,12 +37,9 @@ type Input struct {
 	Locales       []string
 	Types         []string
 	SkipPreflight bool
-	// AIGenerated is the --ai-generated attestation: nil when the flag is
-	// unset, so no upload declares anything.
-	AIGenerated *bool
+	AIGenerated   *bool
 }
 
-// dirError signals an unreadable --dir. Exit 20 (client-side validation).
 type dirError struct {
 	dir   string
 	cause error
@@ -73,10 +51,6 @@ func (e *dirError) Error() string {
 func (e *dirError) Unwrap() error { return e.cause }
 func (e *dirError) ExitCode() int { return 20 }
 
-// listingNotFoundError is the 404 of images.list inside an open Edit: the
-// package resolved, only that language has no Listing, and images attach to a
-// Listing. Pointing at `gplay apps list` there sent the operator after the
-// wrong cause.
 type listingNotFoundError struct {
 	locale string
 	dir    string
@@ -89,11 +63,6 @@ func (e *listingNotFoundError) Error() string {
 }
 func (e *listingNotFoundError) Unwrap() error { return e.cause }
 
-// classifyApplyError adds the operator hints, leaving the wrapped error to
-// drive the exit code. A 404 tagged with a locale is that language's missing
-// Listing, not the package; an image file that cannot be read after the scan
-// (removed or unreadable) is the --dir failure it was when Read loaded the
-// whole tree upfront.
 func classifyApplyError(pkg, dir string, err error) error {
 	var locErr *imageorchestrator.LocaleError
 	if apihint.Status(err) == http.StatusNotFound && errors.As(err, &locErr) {
@@ -106,9 +75,6 @@ func classifyApplyError(pkg, dir string, err error) error {
 	return apihint.ForPackage(pkg, err)
 }
 
-// Payload renders an imageorchestrator.Result. The shape switches on
-// Result.DryRun: a dry-run renders the diff schema; a real apply renders what
-// was published.
 type Payload struct {
 	Result *imageorchestrator.Result
 }
@@ -121,9 +87,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// renderJSON emits the ADR-0013 diff, the same schema whichever mode ran, led
-// under --dry-run by the dryRun marker every other mutating command's preview
-// carries (omitted on a real apply, whose output is unchanged).
 func (p Payload) renderJSON(w io.Writer) error {
 	return output.WriteJSON(w, struct {
 		DryRun bool `json:"dryRun,omitempty"`
@@ -181,7 +144,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return err
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -192,8 +154,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		dir = DefaultDir
 	}
 
-	// Refuse an unknown --type upfront (before any network) so a typo never
-	// silently applies nothing.
 	for _, t := range in.Types {
 		if _, ok := images.ParseType(t); !ok {
 			return nil, exit.Usagef("unknown --type %q (want one of: %s)", t, images.Names())
@@ -212,27 +172,17 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.Warnf("%s", imagetree.RetiredMessage(p))
 	}
 
-	// Refuse a --locale absent from the on-disk tree, mirroring the --type
-	// guard: a typo'd locale (en_US vs en-US) is otherwise silently dropped
-	// during reconciliation and the apply does nothing for it.
 	for _, loc := range in.Locales {
 		if _, ok := local[loc]; !ok {
 			return nil, exit.Usagef("unknown --locale %q (no managed images under %s; on disk: %s)", loc, dir, strings.Join(managedLocales(local), ", "))
 		}
 	}
 
-	// UploadClient, not AuthedClient: image bytes (icons, feature graphics,
-	// screenshots) are media uploads, exempt from the 60s control-plane default
-	// (honors an explicit --timeout). See kernel.RunContext.UploadClient.
 	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return nil, err
 	}
 
-	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
-	// keeps the implicit per-apply Edit. Skipped on --dry-run: the preview uses
-	// a separate read-only Edit and never reuses the pin, so a corrupt pin must
-	// not fail it.
 	var explicitEditID string
 	if !in.DryRun {
 		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
@@ -256,8 +206,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, classifyApplyError(pkg, dir, err)
 	}
-	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
-	// --dry-run), reporting the upload/delete/reorder tally.
 	if !in.DryRun {
 		s := res.Diff.Summary
 		rc.ConfirmMutation(explicitEditID, "images applied to %q (%d uploaded, %d deleted, %d reordered)",
@@ -277,8 +225,6 @@ func aiGeneratedState(declared *bool) images.AIGeneratedState {
 	}
 }
 
-// managedLocales returns the locale codes the on-disk tree manages (has images
-// for), sorted: used to name the available locales when a --locale is unknown.
 func managedLocales(local imagetree.Staged) []string {
 	out := make([]string, 0, len(local))
 	for loc := range local {
@@ -288,7 +234,6 @@ func managedLocales(local imagetree.Staged) []string {
 	return out
 }
 
-// NewCommand returns the cobra command for `gplay metadata images apply`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag  string

@@ -1,29 +1,3 @@
-// Package auditcmd implements `gplay apps audit` (PRD #449): a strictly
-// read-only consistency sweep over a set of apps, emitting a findings report
-// and exiting 70 when anything was found, so CI can gate on "is my account in
-// a clean state?" without clicking through the Play Console app by app.
-//
-// Why `apps audit` and not `account audit`: GLOSSARY.md reserves **Account**
-// for a locally registered credential and warns against writing "account"
-// unqualified (three different things end in "account" here). The sweep's unit
-// is the app, so the command hangs off the `apps` noun with a
-// reference/diagnostic verb, the ADR-0019 category that already holds `doctor`
-// and `validate`.
-//
-// Composition, not a new surface: discovery rides `apps.search` (ADR-0039, the
-// same read as `apps accessible list`) and each app is read through the
-// existing read-only Edit path (edits.tracks.list + edits.listings.list). No
-// new API method, no mutation: the only non-GET calls in the whole sweep are
-// the open/discard of the throwaway Edit each read needs, which is how every
-// gplay read works (edits.WithReadOnlyEdit never commits).
-//
-// The report is a gplay-owned document, not an API mirror: it composes several
-// resources, so ADR-0003's verbatim rule has nothing to mirror. That, plus a
-// check set that may still grow, is why the command ships [experimental].
-//
-// Quota is the real cost of a sweep (one Edit + two GETs per app), which is
-// what the report's `ran` section is for: it names the apps and checks that
-// actually ran, so a partial sweep is never mistaken for a clean bill.
 package auditcmd
 
 import (
@@ -49,51 +23,29 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
-	// Packages scopes the sweep to explicit packages, taken from the
-	// positional arguments. Empty means "discover the accessible apps", which
-	// costs a Reporting call and can be a large set: a user who manages three
-	// apps out of an org's hundreds names them and never pays for the rest.
-	//
-	// Positional and variadic, like `apps add <pkg>...`, rather than a
-	// repeated --package: everywhere else in gplay --package addresses ONE
-	// app, and quietly giving the same flag last-wins-or-accumulate semantics
-	// depending on the command is exactly the ambiguity an agent trips on.
-	Packages []string
-	// Checks / SkipChecks select the check set; both are validated against
-	// the frozen ID registry before any network call.
+	Packages   []string
 	Checks     []string
 	SkipChecks []string
 }
 
-// SweepError is one app the sweep could not read. It is reported inside the
-// document rather than aborting the run: an audit over forty apps that dies on
-// the one the credential cannot see is useless, and the whole point of the
-// `ran` section is to make the hole visible.
 type SweepError struct {
 	Package  string `json:"package"`
 	Message  string `json:"message"`
 	ExitCode int    `json:"exitCode"`
 }
 
-// Ran is the what-ran section: the apps and checks that actually executed.
-// Without it, "no findings" is ambiguous between a clean account and a sweep
-// that silently covered nothing.
 type Ran struct {
 	Apps   []string `json:"apps"`
 	Checks []string `json:"checks"`
 }
 
-// Summary is the counts a human reads first and a CI job can assert on.
 type Summary struct {
 	AppsAudited int `json:"appsAudited"`
 	AppsFailed  int `json:"appsFailed"`
 	Findings    int `json:"findings"`
 }
 
-// Report is the gplay-owned findings document: the JSON contract of the
-// command (experimental, so free to move until the check set settles).
 type Report struct {
 	Ran      Ran             `json:"ran"`
 	Findings []audit.Finding `json:"findings"`
@@ -108,10 +60,6 @@ var columns = []output.Column[audit.Finding]{
 	{Key: "detail", Header: "DETAIL", Value: func(f audit.Finding) string { return f.Message }},
 }
 
-// Payload satisfies output.Renderable. The JSON form is the whole Report (a
-// gplay document, not an API pass-through); the table and markdown forms show
-// the findings and append the what-ran / errors context, which a bare table
-// cannot carry.
 type Payload struct {
 	Report Report
 }
@@ -124,9 +72,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// renderText draws the findings with the shared table machinery, then the
-// what-ran and per-app-failure context. A findings table alone would let a
-// reader mistake an empty sweep for a clean one.
 func (p Payload) renderText(w io.Writer, draw func(io.Writer, []output.Column[audit.Finding], []audit.Finding) error) error {
 	if len(p.Report.Findings) > 0 {
 		if err := draw(w, columns, p.Report.Findings); err != nil {
@@ -151,9 +96,6 @@ func (p Payload) renderText(w io.Writer, draw func(io.Writer, []output.Column[au
 	return nil
 }
 
-// Run performs the sweep: resolve the app set, read one snapshot per app, run
-// the selected checks, build the report. It renders nothing and mutates
-// nothing; the caller (RunE) decides the exit code from the report.
 func Run(rc *kernel.RunContext, in Input) (Report, error) {
 	checks, err := audit.Select(in.Checks, in.SkipChecks)
 	if err != nil {
@@ -177,11 +119,6 @@ func Run(rc *kernel.RunContext, in Input) (Report, error) {
 		return Report{}, err
 	}
 
-	// Apps are independent (one throwaway Edit each), so they are read
-	// fanout.Limit at a time. Each result lands at its package's index and is
-	// folded below in package order, so ran, failures and findings come out
-	// exactly as a serial sweep orders them. A per-app failure is data, not a
-	// fanout error: it never stops the other apps.
 	snaps := make([]audit.Snapshot, len(packages))
 	readErrs := make([]error, len(packages))
 	_ = fanout.Each(len(packages), func(i int) error {
@@ -208,9 +145,6 @@ func Run(rc *kernel.RunContext, in Input) (Report, error) {
 		ran = append(ran, pkg)
 	}
 
-	// The cross-app context is built from the successful snapshots only:
-	// guessing at an app the sweep could not read would turn an API failure
-	// into false locale-drift findings on its peers.
 	sweep := audit.BuildContext(snapshots)
 	findings := make([]audit.Finding, 0)
 	for _, s := range snapshots {
@@ -233,11 +167,6 @@ func Run(rc *kernel.RunContext, in Input) (Report, error) {
 	}, nil
 }
 
-// resolvePackages returns the app set to sweep, deduplicated and ordered.
-// Named packages win (explicit scope, no Reporting call, no quota spent on apps
-// the operator does not manage); otherwise the set is discovered from
-// apps.search, the same server-authoritative inventory `apps accessible list`
-// prints (ADR-0039).
 func resolvePackages(rc *kernel.RunContext, in Input) ([]string, error) {
 	if len(in.Packages) > 0 {
 		return dedupe(in.Packages), nil
@@ -252,14 +181,6 @@ func resolvePackages(rc *kernel.RunContext, in Input) ([]string, error) {
 	return pkgs, nil
 }
 
-// discoverPackages pages through apps.search and returns every accessible
-// package name, sorted for a deterministic sweep order.
-//
-// It mints its OWN reporting-scoped client rather than annotating the command
-// with kernel.WithScope: the sweep needs BOTH scopes (Reporting to discover,
-// androidpublisher to read each app), and a command carries one. Doing it here
-// keeps least privilege where it matters: a package-scoped run never asks
-// for a Reporting token at all.
 func discoverPackages(rc *kernel.RunContext) ([]string, error) {
 	reporting := *rc
 	reporting.Scope = token.ReportingScope
@@ -268,10 +189,6 @@ func discoverPackages(rc *kernel.RunContext) ([]string, error) {
 		return nil, err
 	}
 
-	// Bounded: a runaway or looping nextPageToken must not turn an audit into
-	// an unbounded quota burn. A repeated token fails at once, and 1000 pages
-	// (far past any real account) with a token still set fails loudly rather
-	// than auditing a partial list as if it were the whole account.
 	pkgs, _, err := api.Paginate(api.Pager{Op: "apps.search", What: "apps.search", MaxPages: maxDiscoveryPages},
 		func(token string, _ int) ([]string, string, error) {
 			sr, _, err := accessibleapps.Search(rc.Ctx, hc, 0, token)
@@ -294,14 +211,8 @@ func discoverPackages(rc *kernel.RunContext) ([]string, error) {
 	return pkgs, nil
 }
 
-// maxDiscoveryPages bounds the apps.search walk of discoverPackages.
 const maxDiscoveryPages = 1000
 
-// discoveryError points at the named-packages escape hatch when discovery fails.
-// A credential can hold androidpublisher rights without the Reporting access
-// apps.search needs (ADR-0039), and that operator can still audit: they just
-// have to name the apps. It carries no ExitCode of its own so the wrapped
-// *api.Error stays authoritative.
 type discoveryError struct{ cause error }
 
 func (e *discoveryError) Error() string {
@@ -310,10 +221,6 @@ func (e *discoveryError) Error() string {
 
 func (e *discoveryError) Unwrap() error { return e.cause }
 
-// readSnapshot reads one app: open a read-only Edit, list its tracks and its
-// Listings, discard the Edit. Two GETs per app; the Edit is never committed.
-// The two GETs stay serial: the sweep already runs fanout.Limit apps at once,
-// and nesting a second fan-out here would double the burst past that limit.
 func readSnapshot(rc *kernel.RunContext, hc *http.Client, pkg string) (audit.Snapshot, error) {
 	snap := audit.Snapshot{Package: pkg}
 	err := edits.WithReadOnlyEdit(rc.Ctx, hc, pkg, func(editID string) error {
@@ -334,8 +241,6 @@ func readSnapshot(rc *kernel.RunContext, hc *http.Client, pkg string) (audit.Sna
 	return snap, nil
 }
 
-// dedupe keeps first-seen order and drops blanks: `apps audit a a`
-// must not audit `a` twice (and pay twice the quota).
 func dedupe(in []string) []string {
 	seen := make(map[string]bool, len(in))
 	out := make([]string, 0, len(in))
@@ -350,21 +255,8 @@ func dedupe(in []string) []string {
 	return out
 }
 
-// retryableExitCodes are the docs/DESIGN.md §9 codes an automated caller can
-// usefully retry unchanged: 40 (API 5xx) and 50 (network). Everything else is
-// permanent for the current credential and inputs. Same rule and same reasons
-// as the `apps add` batch (60 deliberately excluded: only "sometimes"
-// retryable, and surfacing it stops a blind loop).
 var retryableExitCodes = map[int]struct{}{40: {}, 50: {}}
 
-// sweepFailedError is the error a sweep returns when at least one app could
-// not be read. Findings are a *result*; an unread app is a hole in the sweep,
-// so it takes precedence: the report is complete for what ran, but "clean" is
-// not something this run is entitled to claim.
-//
-// The code follows the non-retryable-wins rule: the first permanent failure
-// (403, 404, ...) wins over any transient one, so a caller that sees 40/50
-// knows a plain retry is worth it, and anything else means inspect and fix.
 type sweepFailedError struct {
 	errs      []SweepError
 	audited   int
@@ -393,9 +285,6 @@ func newSweepFailedError(r Report) *sweepFailedError {
 	return e
 }
 
-// ExitCode reports the winning per-app failure code. The defensive fallback is
-// 1, never 0 and never 70: a sweep with holes must not be readable as a clean
-// bill, whatever the API handed back.
 func (e *sweepFailedError) ExitCode() int {
 	if e.firstCode != 0 {
 		return e.firstCode
@@ -412,24 +301,6 @@ func (e *sweepFailedError) Error() string {
 		len(failed), strings.Join(failed, ", "), e.audited, e.findings)
 }
 
-// Emit turns a finished sweep into what the kernel needs: a Renderable on the
-// clean path, and (nil, err) with the report already rendered to stdout when
-// the run must exit non-zero.
-//
-// Three outcomes, in precedence order:
-//
-//  1. any app could not be read -> the ordinary API code (DESIGN §9). An
-//     unread app is a hole, not a result: a sweep where every app 403s would
-//     otherwise report zero findings and exit 0, i.e. hand back a clean bill
-//     for an account it never looked at.
-//  2. findings, every app read -> exit 70, a gate rather than an error.
-//  3. neither -> exit 0.
-//
-// Rendering before returning is the kernel's contract, not a quirk here:
-// kernel.Run only renders on the success path, so a command that must exit
-// non-zero WITH data on stdout renders it itself (the `auth doctor` pattern).
-// Split out of RunE so the exit-code decision is testable without driving
-// cobra and a keystore.
 func Emit(rc *kernel.RunContext, report Report) (output.Renderable, error) {
 	payload := Payload{Report: report}
 	if len(report.Errors) == 0 && report.Summary.Findings == 0 {
@@ -445,7 +316,6 @@ func Emit(rc *kernel.RunContext, report Report) (output.Renderable, error) {
 		report.Summary.Findings, report.Summary.AppsAudited)
 }
 
-// NewCommand returns the cobra command for `gplay apps audit`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

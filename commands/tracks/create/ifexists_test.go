@@ -17,12 +17,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// existingTrack is a tracks.get body for a track that already exists, with a
-// field gplay does not model, so a verbatim pass-through is observable.
 const existingTrack = `{"track":"qa-team","releases":[{"name":"7","status":"completed","versionCodes":["7"]}],"unmodeled":true}`
 
-// ifExistsAPI serves the --if-exists flow: the Edit lifecycle, tracks.get
-// (getStatus/getResp, 404 by default: the track is absent) and tracks.create.
 type ifExistsAPI struct {
 	editID    string
 	getStatus int
@@ -70,8 +66,6 @@ func assertCalls(t *testing.T, got []string, want ...string) {
 	}
 }
 
-// Absent track + skip: one read in the Edit (404), then the create and the
-// commit exactly as without the flag.
 func TestRun_ifExistsSkip_absentTrack_readsThenCreates(t *testing.T) {
 	api := &ifExistsAPI{editID: "e1"}
 	rc, _ := newRC(t, api.serve(t))
@@ -100,9 +94,6 @@ func TestRun_ifExistsSkip_absentTrack_readsThenCreates(t *testing.T) {
 	}
 }
 
-// Existing track + skip, implicit Edit: no create, the Edit is discarded
-// rather than committed, stdout is the tracks.get body verbatim (ADR-0003),
-// stderr says it was skipped and carries no ✓ (nothing was committed).
 func TestRun_ifExistsSkip_existingTrack_noCreateEditDiscarded(t *testing.T) {
 	api := &ifExistsAPI{editID: "e1", getStatus: 200, getResp: existingTrack}
 	rc, _ := newRC(t, api.serve(t))
@@ -138,9 +129,6 @@ func TestRun_ifExistsSkip_existingTrack_noCreateEditDiscarded(t *testing.T) {
 	}
 }
 
-// Existing track + skip inside an explicit Edit (`gplay edits begin`): the
-// read runs in the pinned Edit and nothing is added to it, committed or
-// discarded.
 func TestRun_ifExistsSkip_explicitEdit_readsInPinUntouched(t *testing.T) {
 	api := &ifExistsAPI{getStatus: 200, getResp: existingTrack}
 	rc, _ := newRC(t, api.serve(t))
@@ -157,9 +145,6 @@ func TestRun_ifExistsSkip_explicitEdit_readsInPinUntouched(t *testing.T) {
 	assertCalls(t, api.calls(), "GET "+editsBase+"/edit-pinned/tracks/qa-team")
 }
 
-// A commit flag passed alongside an explicit Edit is only reported as
-// "staged in open edit" when the create was actually staged: a skipped create
-// stages nothing, so the warning would lie.
 func TestRun_ifExistsSkip_explicitEdit_commitFlagWarnsOnlyWhenStaged(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -192,8 +177,6 @@ func TestRun_ifExistsSkip_explicitEdit_commitFlagWarnsOnlyWhenStaged(t *testing.
 	}
 }
 
-// A read that fails for another reason than 404 is surfaced and no create is
-// sent: existence is never guessed.
 func TestRun_ifExistsSkip_readFails_surfacedNoCreate(t *testing.T) {
 	api := &ifExistsAPI{editID: "e1", getStatus: 500, getResp: `{"error":{"code":500,"message":"backend"}}`}
 	rc, _ := newRC(t, api.serve(t))
@@ -209,8 +192,6 @@ func TestRun_ifExistsSkip_readFails_surfacedNoCreate(t *testing.T) {
 	}
 }
 
-// Default and explicit fail: no read is added, the create runs and its
-// "already exists" error is today's (exit 30).
 func TestRun_ifExistsFail_noReadTodaysError(t *testing.T) {
 	for _, p := range []ifexists.Policy{"", ifexists.Fail} {
 		api := &createAPI{
@@ -232,8 +213,6 @@ func TestRun_ifExistsFail_noReadTodaysError(t *testing.T) {
 	}
 }
 
-// update is not a tracks create policy, and an unknown value is misuse: both
-// exit 2 before any HTTP, on the live and the dry-run path.
 func TestRun_ifExistsUnoffered_exit2NoHTTP(t *testing.T) {
 	for _, p := range []ifexists.Policy{ifexists.Update, "bogus"} {
 		for _, dryRun := range []bool{false, true} {
@@ -254,8 +233,6 @@ func TestRun_ifExistsUnoffered_exit2NoHTTP(t *testing.T) {
 	}
 }
 
-// --dry-run stays offline under skip and reports the chosen policy without
-// resolving existence.
 func TestRun_ifExistsSkip_dryRun_offlineReportsPolicy(t *testing.T) {
 	api := &ifExistsAPI{editID: "e1"}
 	rc, _ := newRC(t, api.serve(t))
@@ -282,7 +259,6 @@ func TestRun_ifExistsSkip_dryRun_offlineReportsPolicy(t *testing.T) {
 	}
 }
 
-// The default dry-run preview is byte-identical to before the flag.
 func TestRun_dryRun_defaultPolicy_previewUnchanged(t *testing.T) {
 	api := &ifExistsAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -300,8 +276,6 @@ func TestRun_dryRun_defaultPolicy_previewUnchanged(t *testing.T) {
 	}
 }
 
-// The cobra leaf offers skip|fail, defaults to fail and classifies the flag
-// Experimental (the leaf itself stays frozen Public).
 func TestNewCommand_ifExistsFlag(t *testing.T) {
 	cmd := create.NewCommand(kernel.Boot{})
 	f := cmd.Flags().Lookup(ifexists.Name)

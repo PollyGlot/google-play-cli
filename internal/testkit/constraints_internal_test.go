@@ -10,23 +10,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// constraintWording finds the Discovery descriptions that state a rule on a
-// property in prose (#735). It is deliberately wider than the rules table: a
-// match the table does not encode must be accounted for below. The bare
-// modals (#783) catch the sentences the phrase list missed, such as
-// "is only allowed to be set", "This prefix must match", "can not be
-// updated" and "will be rejected". The quantity wordings catch the limits
-// stated without a modal: "maximum length is 55 characters", "up to 20".
 var constraintWording = regexp.MustCompile(`(?i)\bonly\b|\bmust\b|\bimmutable\b|\bcan ?not\b|\bat most\b|\bup to\b|\bmaximum\b|\bno more than\b|\bat least\b|\brejected\b|0 <|strictly (smaller|larger|greater|less)|required (when|if)|not be set|mutually exclusive|exactly one of`)
 
-// fieldBehavior is the AIP annotation Discovery prefixes a description with.
-// "Immutable." there marks a create-time identifier; an immutability rule
-// worded in prose still matches constraintWording.
 var fieldBehavior = regexp.MustCompile(`^((Required|Optional|Immutable)\.\s*)+`)
 
-// statesConstraint reports whether a description states a constraint on the
-// request. An "Output only." field is filled by Play, which ignores it in a
-// request, so nothing gplay sends there can be refused.
 func statesConstraint(description string) bool {
 	if strings.HasPrefix(description, "Output only.") {
 		return false
@@ -34,8 +21,6 @@ func statesConstraint(description string) bool {
 	return constraintWording.MatchString(fieldBehavior.ReplaceAllString(description, ""))
 }
 
-// The reasons a documented constraint on a property gplay writes is not in
-// the rules table.
 const (
 	userInput = "the value is the user's own input (a JSON or certificate file, a flag), forwarded verbatim: gplay builds none, so Play's refusal names the user's input"
 	stored    = "the constraint involves what Play already stores (the resource before the call, its siblings, the app), which a body rule does not see"
@@ -46,8 +31,6 @@ const (
 	civil     = "vitals fills it from a Go time.Time (toDateTime in commands/vitals/vitalscmd/vitalscmd.go), which cannot hold an out-of-range field; the TimelineSpec rules check its alignment"
 )
 
-// unenforced lists the properties gplay writes whose constraint the table
-// does not check, each with the Discovery sentence it rests on and why.
 var unenforced = func() map[string]struct{ sentence, why string } {
 	u := map[string]struct{ sentence, why string }{
 		"ExpansionFile.referencesVersion": {"The file_size field will not be set.", "describes the response: Play fills fileSize, and gplay's request carries referencesVersion alone"},
@@ -121,7 +104,6 @@ var unenforced = func() map[string]struct{ sentence, why string } {
 		"GoogleTypeDateTime.nanos":     {"Must be from 0 to 999,999,999, defaults to 0.", civil},
 		"GoogleTypeDateTime.utcOffset": {"Must be whole seconds, between -18 hours and +18 hours.", "vitals never sets it, and the TimelineSpec rules refuse any zone but the one each aggregation period takes"},
 
-		// Quantity wordings ("up to", "maximum", "at least").
 		"OneTimeProductListing.title":                      {"The maximum length is 55 characters.", userInput},
 		"OneTimeProductListing.description":                {"The maximum length is 200 characters.", userInput},
 		"SubscriptionListing.description":                  {"Maximum length - 200 characters.", userInput},
@@ -137,7 +119,6 @@ var unenforced = func() map[string]struct{ sentence, why string } {
 		"LeaderboardConfiguration.scoreMax":                {"Maximum score that can be posted to this leaderboard.", "names a bound the field carries, not a limit Play puts on the request"},
 		"SafetyLabelsUpdateRequest.safetyLabels":           {"To download an up to date template", "the wording is about the template being current, not a limit"},
 	}
-	// The vitals `:query` requests share their wording across metric sets.
 	osBeta := map[string]bool{"AnrRate": true, "CrashRate": true, "LmkRate": true}
 	for _, set := range []string{"AnonRssAndSwapMemoryUsage", "AnrRate", "BitmapMemoryUsage", "CrashRate", "ErrorCount", "ExcessiveWakeupRate", "LmkRate", "SlowRenderingRate", "SlowStartRate", "StuckBackgroundWakelockRate"} {
 		req := "GooglePlayDeveloperReportingV1beta1Query" + set + "MetricSetRequest."
@@ -165,7 +146,6 @@ func embeddedIndex(t *testing.T) schemaindex.Index {
 	return idx
 }
 
-// description returns the Discovery description of a `Schema.property` key.
 func description(t *testing.T, idx schemaindex.Index, key string) string {
 	t.Helper()
 	schema, prop, _ := strings.Cut(key, ".")
@@ -176,8 +156,6 @@ func description(t *testing.T, idx schemaindex.Index, key string) string {
 	return p.Description
 }
 
-// written returns the schemas a request body of a registered method can
-// hold: what gplay may send, as opposed to what it only reads.
 func written(idx schemaindex.Index) map[string]string {
 	via := map[string]string{}
 	var walk func(schema, id string)
@@ -200,8 +178,6 @@ func written(idx schemaindex.Index) map[string]string {
 	return via
 }
 
-// A refresh that rewords a sentence a rule or an exclusion rests on fails
-// here, so the rule is reviewed against Google's new wording.
 func TestRules_anchorTheirDiscoverySentence(t *testing.T) {
 	idx := embeddedIndex(t)
 	for key, r := range rules {
@@ -216,8 +192,6 @@ func TestRules_anchorTheirDiscoverySentence(t *testing.T) {
 	}
 }
 
-// The four sentences #783 found the first wording missed, on properties
-// gplay writes.
 func TestRules_inventoryDetectsTheConstraintsItOnceMissed(t *testing.T) {
 	idx := embeddedIndex(t)
 	for _, key := range []string{"TrackRelease.countryTargeting", "TrackConfig.track", "TrackRelease.inAppUpdatePriority", "ReviewsReplyRequest.replyText"} {
@@ -227,8 +201,6 @@ func TestRules_inventoryDetectsTheConstraintsItOnceMissed(t *testing.T) {
 	}
 }
 
-// Every property whose description states a constraint is in the table, is
-// excluded with a reason, or sits in a schema no request gplay sends can hold.
 func TestRules_inventoryCoversEveryDocumentedConstraint(t *testing.T) {
 	idx := embeddedIndex(t)
 	via := written(idx)

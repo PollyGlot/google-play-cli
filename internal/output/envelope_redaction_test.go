@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
-// The envelope's message is gplay's own error text, written to STDOUT where the
-// stderr filter does not reach (ADR-0023). A wrapped error that quotes a
-// credential must come out masked there too (#583).
 func TestWriteErrorEnvelope_messageIsRedacted(t *testing.T) {
 	leaky := errors.New(`could not read credential: invalid key in {"private_key_id":"kid-LEAKEDSECRETBODY","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQLEAKEDSECRETBODY\n-----END PRIVATE KEY-----\n"}`)
 

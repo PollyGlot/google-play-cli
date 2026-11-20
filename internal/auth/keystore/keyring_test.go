@@ -12,12 +12,9 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 )
 
-// fakeKeyring is the test double for the go-keyring slice the keyring backend
-// depends on. It tracks calls and lets each test simulate either a working
-// keystore or an unavailable one via the configurable hooks.
 type fakeKeyring struct {
 	mu       sync.Mutex
-	store    map[string]string // key = service + "\x00" + user
+	store    map[string]string
 	setErr   error
 	getErr   error
 	delErr   error
@@ -39,8 +36,6 @@ func (f *fakeKeyring) Set(service, user, pass string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, "Set:"+user)
-	// The selector probes by Set("gplay", "__gplay_probe__", "ok"). Route the
-	// probe through probeErr so individual tests can force availability.
 	if user == "__gplay_probe__" {
 		f.probed = true
 		if f.probeErr != nil {
@@ -100,7 +95,6 @@ func TestSelect_keyringAvailable_returnsKeyringBackend(t *testing.T) {
 		t.Errorf("Select did not probe the keyring")
 	}
 
-	// Sanity: Save flows through the keyring, not the filesystem.
 	if err := be.Save(context.Background(), "alpha", []byte(`{"v":1}`)); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -111,7 +105,6 @@ func TestSelect_keyringAvailable_returnsKeyringBackend(t *testing.T) {
 	if !bytes.Equal(got, []byte(`{"v":1}`)) {
 		t.Errorf("Load returned %q, want %q", got, `{"v":1}`)
 	}
-	// And nothing under the file root.
 	if entries, _ := filepath.Glob(filepath.Join(dir, "*.json")); len(entries) != 0 {
 		t.Errorf("keyring backend created file artifacts: %v", entries)
 	}
@@ -136,7 +129,6 @@ func TestSelect_keyringUnavailable_fallsBackToFile(t *testing.T) {
 	if err := be.Save(context.Background(), "alpha", []byte(`{"v":1}`)); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	// File backend writes <dir>/alpha.json.
 	if _, err := keystore.NewFileBackend(dir).Load(context.Background(), "alpha"); err != nil {
 		t.Errorf("expected file backend persistence after fallback, got %v", err)
 	}
@@ -212,9 +204,6 @@ func TestKeyringBackend_list_returnsSavedNamesAndExcludesReservedIndex(t *testin
 	}
 }
 
-// TestSelect_probesOnEveryCall, after #37 the process-level cache is
-// gone. The probe is cheap, so calling Select repeatedly is fine; the
-// kernel calls it once per RunContext and passes the Backend down.
 func TestSelect_probesOnEveryCall(t *testing.T) {
 	fk := newFakeKeyring()
 	dir := t.TempDir()
@@ -223,8 +212,6 @@ func TestSelect_probesOnEveryCall(t *testing.T) {
 	if _, _, err := keystore.Select(context.Background(), opts); err != nil {
 		t.Fatalf("first Select: %v", err)
 	}
-	// Reset the probe flag; the second call must hit the keyring again
-	//: that's the contract now that there is no caching.
 	fk.mu.Lock()
 	fk.probed = false
 	fk.mu.Unlock()

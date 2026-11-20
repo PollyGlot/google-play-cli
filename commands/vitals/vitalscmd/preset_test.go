@@ -23,12 +23,10 @@ import (
 
 const presetRowsBody = `{"rows":[{"startTime":{"year":2026,"month":6,"day":1},"metrics":[{"metric":"crashRate","decimalValue":{"value":"0.01"}}]}]}`
 
-// newPresetFake answers every metric-set query with one crashRate row.
 func newPresetFake() *testkit.Fake {
 	return testkit.NewFake(testkit.Any(http.StatusOK, presetRowsBody))
 }
 
-// lastCall returns the last API call the fake recorded.
 func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := fake.Calls()
@@ -114,12 +112,10 @@ func TestRunPreset_byAndVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runPreset: %v", err)
 	}
-	// --by device → the deviceModel dimension.
 	body := string(lastCall(t, fake).Body)
 	if !strings.Contains(body, `"deviceModel"`) {
 		t.Errorf("--by device must map to deviceModel: %s", body)
 	}
-	// --version-code 123 → a versionCode filter.
 	if !strings.Contains(body, `versionCode = 123`) {
 		t.Errorf("--version-code must produce a versionCode filter: %s", body)
 	}
@@ -141,8 +137,6 @@ func TestRunPreset_badVersion_isUsageError(t *testing.T) {
 	}
 }
 
-// TestPresets_referenceRealMetricSets asserts every declared preset points at a
-// registered metric set, so NewPresetCommand never panics in production.
 func TestPresets_referenceRealMetricSets(t *testing.T) {
 	for _, spec := range Presets {
 		if _, ok := vitals.MetricSetByName(spec.Set); !ok {
@@ -151,19 +145,11 @@ func TestPresets_referenceRealMetricSets(t *testing.T) {
 	}
 }
 
-// presetExempt lists the metric sets deliberately left without an opinionated
-// preset: the memory percentile sets are niche and have no single headline
-// metric worth a friendlier flag surface, so `gplay vitals query <set>` is the
-// only form (#440, decided at triage). Anything else must have a preset.
 var presetExempt = map[string]bool{
 	"anonrssandswapmemoryusage": true,
 	"bitmapmemoryusage":         true,
 }
 
-// TestPresets_coverEveryMetricSet asserts every queryable metric set has an
-// opinionated preset (#260 completes the rate sets), bar the documented
-// exemptions. A new metric set added to the registry without a preset and
-// without an exemption fails here.
 func TestPresets_coverEveryMetricSet(t *testing.T) {
 	covered := map[string]bool{}
 	for _, spec := range Presets {
@@ -181,9 +167,6 @@ func TestPresets_coverEveryMetricSet(t *testing.T) {
 	}
 }
 
-// TestRunPreset_everyPresetHitsItsResource is the table-driven proof that each
-// preset issues its `:query` to the metric set's own REST resource (#260: the
-// five additional metric sets, alongside crashes/anr).
 func TestRunPreset_everyPresetHitsItsResource(t *testing.T) {
 	for _, spec := range Presets {
 		t.Run(spec.Use, func(t *testing.T) {

@@ -9,8 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// staged builds the inProgress state at f, failing the test when f is not a
-// legal fraction.
 func staged(t *testing.T, f float64) orchestrator.ReleaseState {
 	t.Helper()
 	s, err := orchestrator.InProgress(f)
@@ -20,9 +18,6 @@ func staged(t *testing.T, f float64) orchestrator.ReleaseState {
 	return s
 }
 
-// TestInProgress_acceptsOnlyFractionsStrictlyBetweenZeroAndOne pins the one
-// bound every --staged flag goes through (#733): Play refuses 1.0 ("lower than
-// one") as firmly as 0, so a staged release at 1.0 cannot be built.
 func TestInProgress_acceptsOnlyFractionsStrictlyBetweenZeroAndOne(t *testing.T) {
 	for _, f := range []float64{0.0001, 0.05, 0.5, 0.9999} {
 		s := staged(t, f)
@@ -37,8 +32,6 @@ func TestInProgress_acceptsOnlyFractionsStrictlyBetweenZeroAndOne(t *testing.T) 
 	}
 }
 
-// TestCompletedAndDraft_carryNoFraction asserts the two states without a
-// rollout share leave userFraction off the wire.
 func TestCompletedAndDraft_carryNoFraction(t *testing.T) {
 	for _, s := range []orchestrator.ReleaseState{orchestrator.Completed(), orchestrator.Draft()} {
 		if s.UserFraction() != 0 {
@@ -47,8 +40,6 @@ func TestCompletedAndDraft_carryNoFraction(t *testing.T) {
 	}
 }
 
-// TestRequestedState_mapsTheStatusFlags covers the flag translation shared
-// by `releases upload` and `releases promote`.
 func TestRequestedState_mapsTheStatusFlags(t *testing.T) {
 	cases := []struct {
 		name                       string
@@ -75,9 +66,6 @@ func TestRequestedState_mapsTheStatusFlags(t *testing.T) {
 	}
 }
 
-// TestRequestedState_stagedOne_isUsageErrorPointingAtComplete asserts the
-// #733 contract: --staged 1.0 is exit 2, and the message sends the operator
-// to --complete instead of leaving them to guess.
 func TestRequestedState_stagedOne_isUsageErrorPointingAtComplete(t *testing.T) {
 	_, err := orchestrator.RequestedState(false, false, true, 1.0)
 	if got := exit.For(err); got != 2 {
@@ -90,8 +78,6 @@ func TestRequestedState_stagedOne_isUsageErrorPointingAtComplete(t *testing.T) {
 	}
 }
 
-// TestRequestedState_twoFlags_isUsageError keeps --draft, --complete and
-// --staged mutually exclusive.
 func TestRequestedState_twoFlags_isUsageError(t *testing.T) {
 	_, err := orchestrator.RequestedState(true, false, true, 0.1)
 	if got := exit.For(err); got != 2 || !strings.Contains(err.Error(), "mutually exclusive") {

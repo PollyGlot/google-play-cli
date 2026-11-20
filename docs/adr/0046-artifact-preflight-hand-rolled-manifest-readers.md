@@ -57,9 +57,12 @@ cannot zip-bomb the check that exists to make uploads fast to fail.
 **Refusal is exit 20, not exit 2.** `docs/DESIGN.md` §9 defines 20 as
 client-side validation and names "malformed AAB" as its example: a preflight
 refusal is exactly that, and by construction the API was never reached. The
-sibling checks these commands already ran (`cannot tell APK from AAB by
-extension`, `not a regular file`) exit 20 too, so this keeps one code for
-"gplay refused your artifact locally" rather than splitting it in two. Exit 2
+sibling check these commands already ran (`not a regular file`) exits 20 too, so this keeps one code for
+"gplay refused your artifact locally" rather than splitting it in two. (An
+artifact whose extension names neither format, `cannot tell APK from AAB by
+extension: pass --format apk|bundle`, exits 20 on `releases sharing upload`
+but 2 on `releases upload`, which treats it as a usage error since the fix is
+a flag; the two are not yet aligned.) Exit 2
 stays what an automated caller needs it to mean: you typed the command wrong.
 
 **A parser gap never becomes a false refusal.** Whenever gplay cannot answer,
@@ -128,14 +131,19 @@ restoration.
   one long entry, each index decodes its own copy, and a document may carry
   many pools. Past the budget the preflight degrades to a note, as for any
   manifest it cannot parse.
-- **A length the file declares is compared as `uint64`** before any
-  conversion, so a huge value cannot wrap into a plausible `int`. An index
+- **A length the protobuf manifest, a zip member or a pool index declares is
+  compared as `uint64`** before any conversion, so a huge value cannot wrap
+  into a plausible `int`. The binary-XML reader converts first and relies on
+  its `< 0` and `<= 0` guards instead, which must stay. An index
   array whose declared count cannot fit in the chunk is refused before it
   drives an allocation, and a chunk size of zero, negative or past the
   document stops the walk.
 
 ### Reading the formats
 
+- **The AAB markers are checked before the APK ones.** An AAB has no root
+  `AndroidManifest.xml`, so the two cannot both match; the AAB pair is the
+  more specific test.
 - **A duplicated member name resolves to its first occurrence**, the
   classic spoofing defence.
 - **Both string-pool encodings are read**: aapt2 writes modified UTF-8,
@@ -145,7 +153,8 @@ restoration.
 - **The aapt2 protobuf manifest is read by field number** from three
   messages of `Resources.proto`: `XmlNode` (`element` = 1), `XmlElement`
   (`name` = 3, `attribute` = 4) and `XmlAttribute` (`namespace_uri` = 1,
-  `name` = 2, `value` = 3).
+  `name` = 2, `value` = 3). The deprecated group wire types (3 and 4) never
+  appear in aapt2 output and are refused.
 - **A partial answer is still an answer.** A truncated binary-XML tail is
   clamped to the bytes present, since `<manifest>` sits near the front; a bad
   string offset costs that one string, not the pool, since only `manifest` and

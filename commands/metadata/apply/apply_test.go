@@ -1,8 +1,3 @@
-// Package apply_test drives `gplay metadata apply` at the kernel level: a
-// RunContext built by hand, a RoundTripper injected via the
-// oauth2.HTTPClient context key (so one transport covers /token + the
-// androidpublisher calls), and Run invoked directly. The local tree is
-// written into t.TempDir() and passed via Input.Dir.
 package apply_test
 
 import (
@@ -26,9 +21,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// applyRT configures the testkit.Fake that routes the apply sequence; the
-// Fake records every request line and each PATCH / PUT body. notFoundLoc
-// makes either Listing write on that locale answer 404.
 type applyRT struct {
 	editID       string
 	listingsBody string
@@ -65,7 +57,6 @@ func newFake(t *testing.T, r applyRT) *testkit.Fake {
 	})
 }
 
-// calls lists the recorded API requests as "METHOD path" lines.
 func calls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -83,7 +74,6 @@ func saw(f *testkit.Fake, method, substr string) bool {
 	return false
 }
 
-// sentBody returns the raw body of the last method write on locale's Listing.
 func sentBody(f *testkit.Fake, method, locale string) string {
 	var body string
 	for _, c := range f.Calls() {
@@ -118,7 +108,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return c.ExitCode()
 }
 
-// writeTree writes tr into a fresh temp dir and returns the path.
 func writeTree(t *testing.T, tr listing.Tree) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -140,12 +129,10 @@ func ml(code string, fv ...string) listing.Listing {
 	return l
 }
 
-// TestRun_dryRun_jsonDiffSchema asserts dry-run emits the gplay diff schema
-// {package, changes[], summary} and never commits or patches.
 func TestRun_dryRun_jsonDiffSchema(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "New", "full", "Body")})
 	rt := newFake(t, applyRT{editID: "e1",
-		listingsBody: `{"listings":[{"language":"en-US","fullDescription":"Body"}]}`}) // title create, full unchanged
+		listingsBody: `{"listings":[{"language":"en-US","fullDescription":"Body"}]}`})
 	rc := newRC(t, rt)
 
 	r, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, DryRun: true})
@@ -174,9 +161,6 @@ func TestRun_dryRun_jsonDiffSchema(t *testing.T) {
 	}
 }
 
-// TestRun_applyWithoutConfirm_exit3 asserts a real apply refuses without
-// --confirm, before opening any Edit, with exit 3 (safety flag required,
-// docs/DESIGN.md §9, NOT the generic usage exit 2, #408).
 func TestRun_applyWithoutConfirm_exit3(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
 	rt := newFake(t, applyRT{editID: "e1"})
@@ -200,13 +184,10 @@ func TestRun_applyWithoutConfirm_exit3(t *testing.T) {
 	}
 }
 
-// TestRun_applyConfirm_patchesAndCommits asserts a confirmed apply patches
-// the changed locale, commits once, and --output json is the per-locale
-// patch body.
 func TestRun_applyConfirm_patchesAndCommits(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"fr-FR": ml("fr-FR", "title", "Bonjour", "full", "Desc")})
 	rt := newFake(t, applyRT{editID: "e7",
-		listingsBody: `{"listings":[{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`}) // title update
+		listingsBody: `{"listings":[{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`})
 	rc := newRC(t, rt)
 
 	r, err := apply.Run(rc, apply.Input{Package: "com.x", Dir: dir, Confirm: true})
@@ -216,7 +197,6 @@ func TestRun_applyConfirm_patchesAndCommits(t *testing.T) {
 	if !saw(rt, "PATCH", "/listings/fr-FR") || !saw(rt, "POST", ":commit") {
 		t.Errorf("expected PATCH fr-FR + commit; calls=%v", calls(rt))
 	}
-	// PATCH body carries only the changed title + language (missing≠empty).
 	var body map[string]string
 	_ = json.Unmarshal([]byte(sentBody(rt, http.MethodPatch, "fr-FR")), &body)
 	if body["title"] != "Bonjour" {
@@ -235,8 +215,6 @@ func TestRun_applyConfirm_patchesAndCommits(t *testing.T) {
 	}
 }
 
-// TestRun_pruneConfirm_deletesOnlineOnly asserts --prune deletes an
-// online-only locale and reports it.
 func TestRun_pruneConfirm_deletesOnlineOnly(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
 	rt := newFake(t, applyRT{editID: "ep", detailsLang: "en-US",
@@ -261,8 +239,6 @@ func TestRun_pruneConfirm_deletesOnlineOnly(t *testing.T) {
 	}
 }
 
-// TestRun_dirMissing_exit20 asserts an unreadable --dir is exit 20 before
-// any network.
 func TestRun_dirMissing_exit20(t *testing.T) {
 	rt := newFake(t, applyRT{})
 	rc := newRC(t, rt)
@@ -275,8 +251,6 @@ func TestRun_dirMissing_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_noPackage_exit2 and TestRun_noAccount_exit10 guard the pre-HTTP
-// usage/auth gates.
 func TestRun_noPackage_exit2(t *testing.T) {
 	rt := newFake(t, applyRT{})
 	rc := newRC(t, rt)
@@ -300,9 +274,6 @@ func TestRun_noAccount_exit10(t *testing.T) {
 	}
 }
 
-// TestRun_applyConfirm_emitsConfirmationOnStderr asserts a committed apply
-// prints a single ✓ line on stderr (DESIGN §8) naming the package, alongside
-// the stdout payload.
 func TestRun_applyConfirm_emitsConfirmationOnStderr(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"fr-FR": ml("fr-FR", "title", "Bonjour", "full", "Desc")})
 	rt := newFake(t, applyRT{editID: "e7",
@@ -320,7 +291,6 @@ func TestRun_applyConfirm_emitsConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "New", "full", "Body")})
 	rt := newFake(t, applyRT{editID: "e1",
@@ -337,10 +307,6 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_applyConfirm_createsNewLocaleWithPUT is the #561 scenario: the app
-// has only en-US, the tree adds de-DE. The new locale is created through
-// edits.listings.update (PUT, full body), reported as "created", and its
-// response body is in the per-locale --output json.
 func TestRun_applyConfirm_createsNewLocaleWithPUT(t *testing.T) {
 	dir := writeTree(t, listing.Tree{
 		"en-US": ml("en-US", "title", "T", "full", "F"),
@@ -388,9 +354,6 @@ func TestRun_applyConfirm_createsNewLocaleWithPUT(t *testing.T) {
 	}
 }
 
-// TestRun_listing404_namesLanguageNotPackage: a 404 on a per-locale Listing
-// write names the language and no longer sends the operator to `gplay apps
-// list` (#561). The exit code stays 30 (the wrapped *api.Error).
 func TestRun_listing404_namesLanguageNotPackage(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"de-DE": ml("de-DE", "title", "Meine App", "full", "Lang")})
 	rt := newFake(t, applyRT{editID: "e404", notFoundLoc: "de-DE",
@@ -410,8 +373,6 @@ func TestRun_listing404_namesLanguageNotPackage(t *testing.T) {
 	}
 }
 
-// TestRun_edit404_stillNamesPackage guards the other side: a 404 outside a
-// per-locale call (here the Edit insert) keeps the package hint.
 func TestRun_edit404_stillNamesPackage(t *testing.T) {
 	dir := writeTree(t, listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")})
 	rc := newRC(t, testkit.NewFake(testkit.Any(404, `{"error":{"code":404,"message":"Package not found: com.x."}}`)))

@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// Fabricated universe: two called methods, one excluded, and ids the lists may
-// or may not claim. Each case below breaks exactly one invariant so the
-// message named is the one a maintainer would read.
 var (
 	lintKnown = map[string]bool{
 		"svc.res.patch": true, "svc.res.list": true, "svc.res.update": true,

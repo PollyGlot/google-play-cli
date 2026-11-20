@@ -1,13 +1,3 @@
-// Package list implements `gplay releases artifacts list`: the APKs and App
-// Bundles currently attached to an app, with their version codes, so an
-// operator can answer "which version codes are on Play right now?" before a
-// promote or a rollout without opening the Console.
-//
-// Both resources are Edit-scoped (edits.apks.list / edits.bundles.list). The
-// command opens a read-only Edit and discards it (never commits), or, when a
-// `gplay edits begin` pin exists for the package, reads inside that explicit
-// Edit so artifacts uploaded in it and not yet committed are visible. Ships
-// [experimental].
 package list
 
 import (
@@ -27,41 +17,31 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 )
 
-// Artifact kinds, the values of --format and of the `kind` column.
 const (
 	KindApk    = "apk"
 	KindBundle = "bundle"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
-	Format  string // --format: apk or bundle, the name the upload commands give the artifact container
+	Format  string
 	Columns string
 }
 
-// Row is the one-line-per-artifact view merging both resources. Sha256 is the
-// full hex digest so it can be compared with `sha256sum` on the local file.
 type Row struct {
 	Kind        string
 	VersionCode int64
 	Sha256      string
 }
 
-// columns is the single source of truth for the artifacts table (ADR-0018):
-// declaration order is both the set of valid --columns keys and the default.
 var columns = output.NewColumnSet(
 	output.Column[Row]{Key: "kind", Header: "KIND", Value: func(r Row) string { return r.Kind }},
 	output.Column[Row]{Key: "versionCode", Header: "VERSION_CODE", Value: func(r Row) string { return strconv.FormatInt(r.VersionCode, 10) }},
 	output.Column[Row]{Key: "sha256", Header: "SHA256", Value: func(r Row) string { return r.Sha256 }},
 )
 
-// ResolveColumns turns a --columns spec into validated, ordered columns.
 func ResolveColumns(spec string) ([]output.Column[Row], error) { return columns.Resolve(spec) }
 
-// Payload renders the merged rows as a table, or the raw responses as JSON.
-// With both kinds the JSON view is {"apks": <raw>, "bundles": <raw>}; with
-// --format it is that one response verbatim (ADR-0003).
 type Payload struct {
 	Rows    []Row
 	Cols    []output.Column[Row]
@@ -95,8 +75,6 @@ func renderJSON(w io.Writer, p Payload) error {
 		_, err := w.Write(p.Bundles)
 		return err
 	}
-	// Both raw bodies are already valid JSON: splice them rather than
-	// re-encoding, so each value stays byte-for-byte the API's response.
 	_, err := fmt.Fprintf(w, "{\"apks\":%s,\"bundles\":%s}\n", bytesOrNull(p.Apks), bytesOrNull(p.Bundles))
 	return err
 }
@@ -108,8 +86,6 @@ func bytesOrNull(b json.RawMessage) string {
 	return strings.TrimSpace(string(b))
 }
 
-// normalizeKind validates --format: "" means both, anything else must be one of
-// the two artifact kinds (CLI misuse otherwise, exit 2).
 func normalizeKind(k string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(k)) {
 	case "":
@@ -123,9 +99,6 @@ func normalizeKind(k string) (string, error) {
 	}
 }
 
-// BuildRows merges both responses into one list ordered by versionCode, with
-// apk before bundle on a tie (the same version code cannot normally carry both,
-// but the order must be deterministic either way).
 func BuildRows(apks artifacts.ApksListResponse, bundles artifacts.BundlesListResponse) []Row {
 	rows := make([]Row, 0, len(apks.Apks)+len(bundles.Bundles))
 	for _, a := range apks.Apks {
@@ -143,7 +116,6 @@ func BuildRows(apks artifacts.ApksListResponse, bundles artifacts.BundlesListRes
 	return rows
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	kind, err := normalizeKind(in.Format)
 	if err != nil {
@@ -186,10 +158,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil
 	}
 
-	// A pinned explicit Edit (`gplay edits begin`) is reused as-is: reading in
-	// it shows artifacts uploaded there but not yet committed, and the pin's
-	// owner decides when to commit or discard. Otherwise a read-only Edit is
-	// opened and always discarded (DESIGN §4).
 	explicitEditID, err := rc.ExplicitEditID(pkg)
 	if err != nil {
 		return nil, err
@@ -205,7 +173,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Rows: BuildRows(apks, bundles), Cols: cols, Apks: rawA, Bundles: rawB, Kind: kind}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases artifacts list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

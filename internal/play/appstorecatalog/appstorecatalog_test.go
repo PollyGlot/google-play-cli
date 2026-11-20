@@ -14,9 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstorecatalog"
 )
 
-// roundTripperFunc is the offline transport every test in this file rides:
-// nothing here ever reaches the network.
-
 func resp(status int, body string) *http.Response {
 	return &http.Response{
 		StatusCode: status,
@@ -51,9 +48,6 @@ const appViewBody = `{
   }
 }`
 
-// TestGetRecentAppView_requestShape asserts the GET targets the androidpublisher
-// appstorecatalog endpoint with BOTH path parameters in place, outside the Edit
-// model, and returns the body verbatim for the ADR-0003 pass-through.
 func TestGetRecentAppView_requestShape(t *testing.T) {
 	var gotURL, gotMethod string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -84,14 +78,11 @@ func TestGetRecentAppView_requestShape(t *testing.T) {
 	if len(v.AppView.ActiveVersionNames) != 2 {
 		t.Errorf("ActiveVersionNames = %v, want two entries", v.AppView.ActiveVersionNames)
 	}
-	// ADR-0003: the raw body carries fields the typed view deliberately drops.
 	if !strings.Contains(string(raw), "excludedDevicesByIdentifier") {
 		t.Errorf("raw = %s, want the verbatim body", raw)
 	}
 }
 
-// TestGetRecentAppView_escapesPathParams asserts both path parameters are
-// escaped, so a value carrying a slash or a space cannot forge a different path.
 func TestGetRecentAppView_escapesPathParams(t *testing.T) {
 	var gotPath string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -113,8 +104,6 @@ func TestGetRecentAppView_escapesPathParams(t *testing.T) {
 	}
 }
 
-// TestGetRecentAppView_apiError maps a non-2xx to an *api.Error carrying the
-// status (so the shared classifier can map 403 → exit 11) and the RPC id.
 func TestGetRecentAppView_apiError(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"The caller does not have permission"}}`), nil

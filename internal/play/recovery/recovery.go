@@ -1,15 +1,3 @@
-// Package recovery performs the hand-rolled HTTP calls for App Recovery (the
-// apprecovery resource; ADR-0007 raw HTTP). A recovery action is a targeted
-// incident-response remediation that pushes users impacted by a bad release
-// back to a safe app version via remote in-app update. Like internal/play/team
-// these calls are app-scoped and OUTSIDE the Edit model: they target
-// /applications/{packageName}/appRecoveries, with their own appRecoveryId and a
-// draft→active→canceled lifecycle, never an editId.
-//
-// This file carries the draft + read surface (Create, List); the
-// production-impacting lifecycle leaves (Deploy, Cancel, AddTargeting) live in
-// lifecycle.go. Every failure surfaces as *api.Error so the exit-code taxonomy
-// maps transparently.
 package recovery
 
 import (
@@ -28,18 +16,11 @@ const (
 	opList   = "apprecovery.list"
 )
 
-// m* are the registry entries this package calls. Resolving them at init turns
-// an unregistered or vanished method into a startup panic CI catches (the
-// registry tests resolve every entry), never a runtime surprise for a user;
-// verb and URL template then come from the Discovery snapshot instead of
-// literals maintained here (#513).
 var (
 	mCreate = apiregistry.MustResolve("androidpublisher.apprecovery.create")
 	mList   = apiregistry.MustResolve("androidpublisher.apprecovery.list")
 )
 
-// Action is the parsed AppRecoveryAction: the fields the human views need. The
-// full body round-trips verbatim via the raw return (ADR-0003).
 type Action struct {
 	AppRecoveryID  string `json:"appRecoveryId,omitempty"`
 	Status         string `json:"status,omitempty"`
@@ -47,7 +28,6 @@ type Action struct {
 	LastUpdateTime string `json:"lastUpdateTime,omitempty"`
 }
 
-// ListResponse is the parsed ListAppRecoveriesResponse.
 type ListResponse struct {
 	RecoveryActions []Action `json:"recoveryActions,omitempty"`
 }
@@ -72,17 +52,11 @@ type versionList struct {
 	VersionCodes []int64 `json:"versionCodes,omitempty"`
 }
 
-// VersionRange is the AppVersionRange a recovery targets: every versionCode
-// from Start to End, both inclusive.
 type VersionRange struct {
 	Start int64 `json:"versionCodeStart"`
 	End   int64 `json:"versionCodeEnd"`
 }
 
-// Targeting is the audience selector shared by create (full) and add-targeting
-// (the append-only subset). The user dimension (allUsers / androidSdks /
-// regions) and, for create, the version dimension (versionList or
-// versionRange) combine.
 type Targeting struct {
 	AllUsers     *allUsers     `json:"allUsers,omitempty"`
 	AndroidSdks  *androidSdks  `json:"androidSdks,omitempty"`
@@ -96,19 +70,15 @@ type createDraftAppRecoveryRequest struct {
 	Targeting         *Targeting         `json:"targeting,omitempty"`
 }
 
-// CreateOpts is the request-shaped input the command builds from flags.
 type CreateOpts struct {
-	VersionCodes      []int64 // the bad APK versionCode(s) the recovery targets
+	VersionCodes      []int64
 	VersionRange      *VersionRange
 	AllUsers          bool
 	Regions           []string
 	SdkLevels         []int64
-	RemoteInAppUpdate bool // default true: the only recovery type Play models today
+	RemoteInAppUpdate bool
 }
 
-// BuildTargeting assembles the audience selector from the user-dimension flags
-// (allUsers / regions / sdkLevels). It is exported so add-targeting (lifecycle.go)
-// and create share one builder. Returns nil when no user selector is set.
 func BuildTargeting(all bool, regionCodes []string, sdkLevels []int64) *Targeting {
 	t := &Targeting{}
 	set := false
@@ -130,8 +100,6 @@ func BuildTargeting(all bool, regionCodes []string, sdkLevels []int64) *Targetin
 	return t
 }
 
-// Create posts a draft recovery action and returns the parsed Action plus the
-// verbatim AppRecoveryAction response.
 func Create(ctx context.Context, hc *http.Client, pkg string, opts CreateOpts) (Action, json.RawMessage, error) {
 	t := BuildTargeting(opts.AllUsers, opts.Regions, opts.SdkLevels)
 	if t == nil {
@@ -156,8 +124,6 @@ func Create(ctx context.Context, hc *http.Client, pkg string, opts CreateOpts) (
 	return a, raw, nil
 }
 
-// List reads the recovery actions for a versionCode (required by the API). It
-// returns the parsed actions and the verbatim ListAppRecoveriesResponse.
 func List(ctx context.Context, hc *http.Client, pkg string, versionCode int64) (ListResponse, json.RawMessage, error) {
 	var lr ListResponse
 	raw, err := api.DoJSON(ctx, hc, api.Call{

@@ -20,10 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// getRT covers the OAuth2 /token exchange and the single reviews.get GET a
-// `reviews view` invocation makes. code/errBody force a non-2xx for the
-// error-mapping tests (0 → 200 with body). It records the path it saw so a test
-// can assert the wire call.
 type getRT struct {
 	t       *testing.T
 	body    string
@@ -44,7 +40,6 @@ func (r *getRT) serve(req *http.Request) (*http.Response, error) {
 		r.tokenHits++
 		return resp, nil
 	}
-	// reviews.get is GET .../reviews/<id>, not the collection, not :reply.
 	if req.Method != http.MethodGet || !strings.Contains(req.URL.Path, "/reviews/") {
 		r.t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 		return nil, nil
@@ -78,8 +73,6 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-// newRC wires a RunContext whose HTTP client routes through rt, in the given
-// output Format, and returns the captured stdout and stderr buffers.
 func newRC(t *testing.T, rt http.RoundTripper, format output.Format) (*kernel.RunContext, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
@@ -106,8 +99,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// oneReviewBody is a single reviews.get response with a user comment and one
-// developer reply, reused across the rendering tests.
 const oneReviewBody = `{
 	"reviewId":"gp:AOqpT123",
 	"authorName":"Jane Doe",
@@ -125,7 +116,6 @@ func TestRun_human_headerAndThread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// The wire call lands on the single-review path, reviewId colon literal.
 	wantPath := "/androidpublisher/v3/applications/com.example.app/reviews/gp:AOqpT123"
 	if rt.gotPath != wantPath {
 		t.Errorf("path = %q, want %q", rt.gotPath, wantPath)
@@ -147,8 +137,6 @@ func TestRun_human_headerAndThread(t *testing.T) {
 			t.Errorf("table missing value %q in:\n%s", v, out)
 		}
 	}
-	// The thread shows the full review body (not a one-line summary) and the
-	// developer reply with its date.
 	if !strings.Contains(out, "Crashes on launch") || !strings.Contains(out, "please fix") {
 		t.Errorf("table should show the full review body in:\n%s", out)
 	}
@@ -170,8 +158,6 @@ func TestRun_json_passthroughVerbatim(t *testing.T) {
 	if err := output.Render(&buf, output.FormatJSON, r.Renderers()); err != nil {
 		t.Fatalf("Render json: %v", err)
 	}
-	// --output json is the Review object verbatim (ADR-0003): same reviewId,
-	// and the developerComment survives the pass-through.
 	var got struct {
 		ReviewID string `json:"reviewId"`
 		Comments []struct {
@@ -226,8 +212,6 @@ func TestRun_notFound_exit30_namesWindow(t *testing.T) {
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Fatalf("404 should map to exit 30, got %d (err: %v)", code, err)
 	}
-	// The message must name the 7-day window so a valid-but-expired id is
-	// understood, and must name the review (not point at `gplay apps list`).
 	if !strings.Contains(err.Error(), "7 days") {
 		t.Errorf("404 message should name the 7-day window; got %q", err.Error())
 	}
@@ -262,8 +246,6 @@ func TestRun_emptyReviewID_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_packageFlagTrimmed pins the shared resolver (rc.Package): a padded
-// --package reaches the wire trimmed. This copy used to send it verbatim.
 func TestRun_packageFlagTrimmed(t *testing.T) {
 	rt := &getRT{t: t, body: oneReviewBody}
 	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatJSON)
@@ -276,10 +258,6 @@ func TestRun_packageFlagTrimmed(t *testing.T) {
 	}
 }
 
-// hostileReviewBody carries the escape families sanitize_test.go pins (CSI
-// color, OSC 0 title, OSC 8 hyperlink, OSC 52 clipboard write, bare ESC/BEL/CR)
-// in every string an anonymous Play user controls: author, device, review text,
-// plus a developer reply. \u001b / \u0007 are how they arrive in JSON.
 const hostileReviewBody = `{
 	"reviewId":"gp:hostile",
 	"authorName":"\u001b]8;;https://evil.example\u001b\\Jane\u001b]8;;\u001b\\ \u001b[31mDoe\u001b[0m",
@@ -289,10 +267,6 @@ const hostileReviewBody = `{
 	]
 }`
 
-// TestRun_human_neutralizesHostileReview pins SEC-04 (#589): the hand-rolled
-// table and markdown renderers strip escape sequences from every API string,
-// while the review and reply bodies keep their line breaks and tabs. JSON is
-// the ADR-0003 pass-through and keeps the bytes.
 func TestRun_human_neutralizesHostileReview(t *testing.T) {
 	for _, format := range []output.Format{output.FormatTable, output.FormatMarkdown} {
 		t.Run(string(format), func(t *testing.T) {
@@ -317,7 +291,6 @@ func TestRun_human_neutralizesHostileReview(t *testing.T) {
 					t.Errorf("output missing %q:\n%q", want, out)
 				}
 			}
-			// Line breaks survive: the body is two lines, not one.
 			if strings.Contains(out, "line one okline two") || strings.Contains(out, "reply onereply two") {
 				t.Errorf("sanitizer flattened a multi-line body:\n%q", out)
 			}

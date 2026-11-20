@@ -17,8 +17,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// makeTestSA builds a valid *ServiceAccount with a real RSA
-// private key so Source can actually sign the token-exchange JWT.
 func makeTestSA(t *testing.T) *serviceaccount.ServiceAccount {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -112,10 +110,6 @@ func TestSource_returnsAuthError_on401(t *testing.T) {
 	}
 }
 
-// TestSource_classifiesTokenRefusals (#584): Google refuses a deleted key, a
-// bad signature or a skewed clock with 400 invalid_grant, so a 400 naming the
-// credential is an *AuthError (exit 10) like a 401/403. A 400 about the
-// request itself and a 5xx stay plain errors (not a credential verdict).
 func TestSource_classifiesTokenRefusals(t *testing.T) {
 	cases := []struct {
 		name     string

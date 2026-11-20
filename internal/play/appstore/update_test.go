@@ -14,9 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
 )
 
-// submissionBody is a complete submission as an operator would write it,
-// including a policy response variant appstore.PolicyDeclaration models only as
-// json.RawMessage.
 const submissionBody = `{
   "appDetails": {"developerName": "Acme", "contactEmail": "dev@acme.test"},
   "activeApks": {"activeApkSets": [{"baseApkId": "apk-base", "splitApkId": ["apk-en"]}]},
@@ -28,8 +25,6 @@ const submissionBody = `{
   ]
 }`
 
-// TestUpdateHostedApp_requestShape pins the submit call: POST to the
-// app-store-keyed :update endpoint, no Edit, and the whole payload on the wire.
 func TestUpdateHostedApp_requestShape(t *testing.T) {
 	var gotMethod, gotURL string
 	var gotBody []byte
@@ -63,8 +58,6 @@ func TestUpdateHostedApp_requestShape(t *testing.T) {
 			t.Errorf("request body is missing the %q field: %s", key, gotBody)
 		}
 	}
-	// The media ids from the upload verbs must survive under the API's own
-	// spelling: they are the whole point of having uploaded anything.
 	got := compact(t, gotBody)
 	for _, want := range []string{`"baseApkId":"apk-base"`, `"splitApkId":["apk-en"]`, `"appIconId":"img-icon"`, `"screenshotId":["img-1"]`, `"documentId":"file-9"`} {
 		if !strings.Contains(got, want) {
@@ -73,9 +66,6 @@ func TestUpdateHostedApp_requestShape(t *testing.T) {
 	}
 }
 
-// TestUpdateHostedApp_forcesPackageName: the caller's resolved target wins over
-// whatever packageName the body carried, so the command layer's reconciliation
-// cannot be bypassed by the file.
 func TestUpdateHostedApp_forcesPackageName(t *testing.T) {
 	for _, body := range []string{`{"packageName":"com.stale.app"}`, `{}`} {
 		var gotBody []byte
@@ -98,12 +88,6 @@ func TestUpdateHostedApp_forcesPackageName(t *testing.T) {
 	}
 }
 
-// TestUpdateHostedApp_forwardsUnmodelledFields is the reason the body is
-// forwarded verbatim instead of round-tripped through UpdateHostedAppRequest.
-// Anything the struct does not model: a field Google added, or an operator's
-// typo: must reach Google as written: dropping it would ship an incomplete
-// submission that cannot be recalled, and a typo must come back as a readable
-// rejection rather than as silence.
 func TestUpdateHostedApp_forwardsUnmodelledFields(t *testing.T) {
 	body := `{
       "appDetails": {"developerName": "Acme", "developerNAme": "typo", "futureField": {"x": 1}},
@@ -127,8 +111,6 @@ func TestUpdateHostedApp_forwardsUnmodelledFields(t *testing.T) {
 	}
 }
 
-// TestUpdateHostedApp_invalidBody_errors: a body that is not a JSON object
-// cannot have packageName forced onto it, and must fail before the request.
 func TestUpdateHostedApp_invalidBody_errors(t *testing.T) {
 	var called bool
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -143,8 +125,6 @@ func TestUpdateHostedApp_invalidBody_errors(t *testing.T) {
 	}
 }
 
-// TestUpdateHostedApp_rawPassthrough keeps ADR-0003 honest even though the
-// documented response is empty.
 func TestUpdateHostedApp_rawPassthrough(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(200, `{"unexpected":"field"}`), nil
@@ -158,9 +138,6 @@ func TestUpdateHostedApp_rawPassthrough(t *testing.T) {
 	}
 }
 
-// TestUpdatePublishStatus_requestShape pins the publish-state call: the hosted
-// package is a path segment here (unlike :create, where it rides the body),
-// and the state travels as the API enum.
 func TestUpdatePublishStatus_requestShape(t *testing.T) {
 	var gotURL string
 	var gotBody []byte
@@ -187,7 +164,6 @@ func TestUpdatePublishStatus_requestShape(t *testing.T) {
 	}
 }
 
-// TestUpdate_pathEscaped guards both path keys, on both verbs.
 func TestUpdate_pathEscaped(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -209,7 +185,6 @@ func TestUpdate_pathEscaped(t *testing.T) {
 	}
 }
 
-// TestUpdate_errorTaxonomy pins that both verbs keep the shared exit codes.
 func TestUpdate_errorTaxonomy(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -235,7 +210,6 @@ func TestUpdate_errorTaxonomy(t *testing.T) {
 	}
 }
 
-// TestUpdate_transport_exit50 keeps a dial failure distinct from an API refusal.
 func TestUpdate_transport_exit50(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("dial tcp: connection refused")
@@ -244,7 +218,6 @@ func TestUpdate_transport_exit50(t *testing.T) {
 	assertExitCode(t, err, 50)
 }
 
-// compact normalises whitespace so a body assertion tests content, not layout.
 func compact(t *testing.T, body []byte) string {
 	t.Helper()
 	var buf bytes.Buffer

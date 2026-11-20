@@ -51,7 +51,6 @@ func TestInitCmd_inHomeDir_refuses(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute in $HOME: expected error, got nil")
 	}
-	// No files should have been written.
 	if _, err := os.Stat(filepath.Join(home, ".gplay", "config.json")); err == nil {
 		t.Error("config.json should not exist after refusing $HOME init")
 	}
@@ -71,8 +70,6 @@ func TestInitCmd_emitsRegistryHint(t *testing.T) {
 	}
 }
 
-// After init, Load() finds the pin via the cascading loader: end-to-end
-// proof that the tracer bullet works.
 func TestInitCmd_pinIsReadableByLoad(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
@@ -82,7 +79,6 @@ func TestInitCmd_pinIsReadableByLoad(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	// Sub-sub-directory of repo: walk-up must still find the pin.
 	subSub := filepath.Join(repo, "src", "feature", "deep")
 	if err := os.MkdirAll(subSub, 0o755); err != nil {
 		t.Fatal(err)

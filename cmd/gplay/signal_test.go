@@ -23,19 +23,15 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// Environment of the interrupt helper process (TestInterruptHelperProcess).
 const (
-	envInterruptChild = "GPLAY_TEST_INTERRUPT_CHILD"    // non-empty: act as the child
-	envInterruptDir   = "GPLAY_TEST_INTERRUPT_DIR"      // scratch dir: config, artifact, call log
-	envInterruptHang  = "GPLAY_TEST_INTERRUPT_HANG"     // "delete": the discard hangs too
-	readyLine         = "gplay-test: upload in flight"  // child → parent: send the signal now
-	discardLine       = "gplay-test: discard in flight" // child → parent: the cleanup started
+	envInterruptChild = "GPLAY_TEST_INTERRUPT_CHILD"
+	envInterruptDir   = "GPLAY_TEST_INTERRUPT_DIR"
+	envInterruptHang  = "GPLAY_TEST_INTERRUPT_HANG"
+	readyLine         = "gplay-test: upload in flight"
+	discardLine       = "gplay-test: discard in flight"
 	editsPath         = "/androidpublisher/v3/applications/com.example.app/edits"
 )
 
-// hangingPlay answers the Play API from a testkit.Fake, except that the
-// artifact upload (and, with hangDelete, the Edit discard) blocks until its
-// request is canceled, so the process sits mid-command when the signal lands.
 type hangingPlay struct {
 	fake       *testkit.Fake
 	hangDelete bool
@@ -50,7 +46,6 @@ func (h *hangingPlay) serve(req *http.Request) (*http.Response, error) {
 		} else {
 			fmt.Fprintln(os.Stderr, discardLine)
 		}
-		// Record the call through the Fake first, so the log shows it.
 		_, _ = h.fake.RoundTrip(req)
 		<-req.Context().Done()
 		return nil, req.Context().Err()
@@ -58,9 +53,6 @@ func (h *hangingPlay) serve(req *http.Request) (*http.Response, error) {
 	return h.fake.RoundTrip(req)
 }
 
-// TestInterruptHelperProcess is not a test: it is the gplay process the
-// interrupt tests signal. It runs `releases upload` against a fake Play API
-// through the same execute path main uses, then logs every API call it made.
 func TestInterruptHelperProcess(t *testing.T) {
 	if os.Getenv(envInterruptChild) == "" {
 		t.Skip("helper process for the interrupt tests")
@@ -97,8 +89,6 @@ func TestInterruptHelperProcess(t *testing.T) {
 	os.Exit(code)
 }
 
-// startInterruptChild launches the helper process and returns once its upload
-// is in flight. The returned channel yields the child's exit error.
 func startInterruptChild(t *testing.T, hang string) (cmd *exec.Cmd, dir string, exited <-chan error, stderr func() string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -150,7 +140,7 @@ func startInterruptChild(t *testing.T, hang string) (cmd *exec.Cmd, dir string, 
 	}()
 	done := make(chan error, 1)
 	go func() {
-		<-scanned // Wait must not run before the pipe is drained
+		<-scanned
 		done <- cmd.Wait()
 	}()
 	stderr = func() string { mu.Lock(); defer mu.Unlock(); return buf.String() }
@@ -166,9 +156,6 @@ func startInterruptChild(t *testing.T, hang string) (cmd *exec.Cmd, dir string, 
 	return cmd, dir, done, stderr
 }
 
-// SIGTERM mid-upload (a CI job canceled or timed out): gplay discards the
-// implicit Edit it opened, commits nothing, and exits 50 within the 5s the
-// runner's kill margin leaves.
 func TestInterrupt_SIGTERM_discardsImplicitEditAndExits50(t *testing.T) {
 	cmd, dir, exited, stderr := startInterruptChild(t, "")
 
@@ -207,16 +194,12 @@ func TestInterrupt_SIGTERM_discardsImplicitEditAndExits50(t *testing.T) {
 	}
 }
 
-// A second signal is not caught: when the discard itself hangs, SIGINT then
-// SIGTERM (the Actions sequence) kills gplay at once instead of waiting out
-// the cleanup bound.
 func TestInterrupt_secondSignalForcesExit(t *testing.T) {
 	cmd, _, exited, stderr := startInterruptChild(t, "delete")
 
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
-	// Wait for the first signal to have started the (hanging) discard.
 	for deadline := time.Now().Add(10 * time.Second); !strings.Contains(stderr(), discardLine); {
 		if time.Now().After(deadline) {
 			_ = cmd.Process.Kill()

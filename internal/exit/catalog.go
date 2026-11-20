@@ -1,17 +1,11 @@
 package exit
 
-// Doc is one row of the exit-code taxonomy (docs/DESIGN.md §9), surfaced by
-// `gplay help exit-codes`.
 type Doc struct {
 	Code      int
 	Meaning   string
-	RetrySafe string // "no" | "yes" | a short qualifier
+	RetrySafe string
 }
 
-// Catalog returns the documented exit-code taxonomy in order: the single
-// source of truth shared by `gplay help exit-codes` and this package's
-// doc comment; `make docs-update` renders it into the website exit-codes
-// page, which docs/DESIGN.md §9 links to rather than copies.
 func Catalog() []Doc {
 	return []Doc{
 		{0, "Success", "n/a"},

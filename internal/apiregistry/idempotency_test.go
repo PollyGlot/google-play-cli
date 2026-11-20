@@ -7,12 +7,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 )
 
-// TestIdempotentBit pins the declared bit on the methods whose replay matters:
-// the writes the audit (#575) caught being replayed, the read-shaped POSTs that
-// must keep --retry, and the verb defaults.
 func TestIdempotentBit(t *testing.T) {
 	cases := map[string]bool{
-		// Non-idempotent: creates, appends and one-shot actions.
 		"androidpublisher.edits.images.upload":                   false,
 		"androidpublisher.edits.commit":                          false,
 		"androidpublisher.orders.refund":                         false,
@@ -23,16 +19,14 @@ func TestIdempotentBit(t *testing.T) {
 		"androidpublisher.grants.create":                         false,
 		"gamesConfiguration.achievementConfigurations.insert":    false,
 		"androidpublisher.internalappsharingartifacts.uploadapk": false,
-		// Replay-safe POSTs.
-		"androidpublisher.edits.insert":                     true,
-		"androidpublisher.edits.validate":                   true,
-		"androidpublisher.monetization.convertRegionPrices": true,
-		"playdeveloperreporting.vitals.crashrate.query":     true,
-		// Verb defaults.
-		"androidpublisher.edits.tracks.get":                   true,
-		"androidpublisher.edits.tracks.update":                true,
-		"androidpublisher.edits.images.delete":                true,
-		"androidpublisher.monetization.onetimeproducts.patch": true,
+		"androidpublisher.edits.insert":                          true,
+		"androidpublisher.edits.validate":                        true,
+		"androidpublisher.monetization.convertRegionPrices":      true,
+		"playdeveloperreporting.vitals.crashrate.query":          true,
+		"androidpublisher.edits.tracks.get":                      true,
+		"androidpublisher.edits.tracks.update":                   true,
+		"androidpublisher.edits.images.delete":                   true,
+		"androidpublisher.monetization.onetimeproducts.patch":    true,
 	}
 	for id, want := range cases {
 		m, err := apiregistry.Resolve(id)
@@ -45,10 +39,6 @@ func TestIdempotentBit(t *testing.T) {
 	}
 }
 
-// TestPaginatedBit checks the bit is read from the response schema: the
-// query-param lists, the legacy tokenPagination envelope, and the vitals
-// queries whose token rides the body are paginated; a single-resource read is
-// not.
 func TestPaginatedBit(t *testing.T) {
 	cases := map[string]bool{
 		"androidpublisher.monetization.onetimeproducts.list": true,
@@ -70,9 +60,6 @@ func TestPaginatedBit(t *testing.T) {
 	}
 }
 
-// TestIdempotentRequest covers the classifier the retry transport calls: a
-// request built from the registry carries its method's bit, and one that
-// matches no registered method falls back to its verb.
 func TestIdempotentRequest(t *testing.T) {
 	upload := apiregistry.MustResolve("androidpublisher.edits.images.upload")
 	uploadURL, err := upload.UploadURL(map[string]string{"packageName": "com.example.app", "editId": "e1", "language": "en-US", "imageType": "phoneScreenshots"})

@@ -1,9 +1,3 @@
-// Package listcmd implements `gplay reports list`: the inventory of the Bulk
-// reports the Reporting bucket holds, one row per export (family, package,
-// month, dimension), so a user sees what exists before asking for one
-// (ADR-0050). One storage.objects.list per family of the catalogue; a family
-// the service account may not read is a warning, not a failure, so the rest
-// of the inventory still prints.
 package listcmd
 
 import (
@@ -20,31 +14,27 @@ import (
 	reportbucket "github.com/PollyGlot/google-play-cli/internal/reports/bucket"
 )
 
-// catalogue is the family set listed; tests swap in a finance family before
-// one ships, to exercise the per-family 403 path.
 var catalogue = reports.Catalogue
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
-	Family      string // --family; "" = every family
-	Package     string // --package; "" = every package (no Project pin: an inventory)
-	Since       string // --since YYYY-MM, first month kept
-	Until       string // --until YYYY-MM, last month kept
+	Family      string
+	Package     string
+	Since       string
+	Until       string
 	Bucket      string
 	DeveloperID string
 	Columns     string
 }
 
-// Entry is one export in the inventory: a row of `reports list`.
 type Entry struct {
 	Family  string `json:"family"`
 	Package string `json:"package,omitempty"`
-	Product string `json:"product,omitempty"` // subscription stats: the id --product takes
-	Month   string `json:"month"`             // YYYY-MM
-	Split   string `json:"split,omitempty"`   // the --dimension value; per-package families only
+	Product string `json:"product,omitempty"`
+	Month   string `json:"month"`
+	Split   string `json:"split,omitempty"`
 	Object  string `json:"object"`
-	Size    string `json:"size"`    // bytes, as the bucket listing reports them
-	Updated string `json:"updated"` // RFC 3339, as the bucket listing reports it
+	Size    string `json:"size"`
+	Updated string `json:"updated"`
 }
 
 var columns = output.NewColumnSet(
@@ -60,13 +50,11 @@ var columns = output.NewColumnSet(
 
 const defaultColumns = "family,package,product,month,split,size,updated"
 
-// Payload satisfies output.Renderable.
 type Payload struct {
 	Entries []Entry
 	Columns []output.Column[Entry]
 }
 
-// Renderers draws the inventory; JSON is {"reports": [...]}, every field.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table: func(w io.Writer) error { return output.RenderTable(w, p.Columns, p.Entries) },
@@ -79,7 +67,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run validates the filters, then lists each family's exports.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	families := catalogue()
 	if name := strings.TrimSpace(in.Family); name != "" {
@@ -147,17 +134,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 				Family: o.Family, Package: o.Package, Product: o.Product, Month: reports.DisplayMonth(o.Month),
 				Object: o.Name, Size: o.Size, Updated: o.Updated,
 			}
-			// The dimension is what --dimension picks, and only a per-package
-			// family has one: the suffix of an earnings name (123456-0) is not
-			// one, and the object name already shows it.
 			if f.Scope == reports.PerPackage {
 				e.Split = o.Split
 			}
 			entries = append(entries, e)
 		}
 	}
-	// Nothing could be read at all: that is the access failure itself, with
-	// the permission and Console hint, not an empty inventory.
 	if len(denied) == len(families) {
 		d := denied[0]
 		return nil, reportbucket.Classify(bucket, d.f.Permission, d.f.Page, d.err)
@@ -168,8 +150,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Entries: entries, Columns: cols}, nil
 }
 
-// window validates the optional --since/--until month bounds (each may come
-// alone: they filter an inventory, not a fetched range).
 func window(since, until string) (string, string, error) {
 	var s, u string
 	var err error
@@ -189,7 +169,6 @@ func window(since, until string) (string, string, error) {
 	return s, u, nil
 }
 
-// NewCommand returns the cobra command for `gplay reports list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -15,11 +15,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// pricedRegions is roughly how many regions Play prices a product in: a
-// catalog that sets a price everywhere carries one regional config each.
 const pricedRegions = 175
 
-// regionCodes returns n distinct two-letter codes, the shape of a regionCode.
 func regionCodes(n int) []string {
 	codes := make([]string, n)
 	for i := range codes {
@@ -32,9 +29,6 @@ func money(currency string) map[string]any {
 	return map[string]any{"currencyCode": currency, "units": "4", "nanos": 990000000}
 }
 
-// realisticProduct is a one-time product as a priced-everywhere catalog
-// holds it: a buy and a rent purchase option, each with a price in every
-// region.
 func realisticProduct(i int) map[string]any {
 	var options []any
 	for _, id := range []string{"buy", "rent"} {
@@ -65,7 +59,6 @@ func realisticProduct(i int) map[string]any {
 	}
 }
 
-// realisticOffer is a discounted offer priced everywhere.
 func realisticOffer(i int) map[string]any {
 	var regional []any
 	for _, r := range regionCodes(pricedRegions) {
@@ -78,9 +71,6 @@ func realisticOffer(i int) map[string]any {
 	}
 }
 
-// playPage renders a list page as Play sends it: pretty-printed, Play's
-// default (Discovery: prettyPrint defaults to true, and gplay does not turn
-// it off), which roughly doubles the bytes of the compact form.
 func playPage(t *testing.T, field string, items []any, next string) string {
 	t.Helper()
 	page := map[string]any{field: items}
@@ -94,9 +84,6 @@ func playPage(t *testing.T, field string, items []any, next string) string {
 	return string(b)
 }
 
-// fullPages answers each list request with as many realistic items as it
-// asked for, twice: the page size gplay requests is what decides whether a
-// full page of a priced-everywhere catalog fits the body cap (#790).
 func fullPages(t *testing.T, field string, item func(int) map[string]any) *testkit.Fake {
 	t.Helper()
 	served := 0
@@ -126,9 +113,6 @@ func fullPages(t *testing.T, field string, item func(int) map[string]any) *testk
 	})
 }
 
-// TestListOneTimeProducts_fullRealisticPageFitsBodyCap asserts the page size
-// the v2 list requests keeps a full page of priced-everywhere products under
-// the 4 MiB body cap.
 func TestListOneTimeProducts_fullRealisticPageFitsBodyCap(t *testing.T) {
 	rt := fullPages(t, "oneTimeProducts", realisticProduct)
 	if _, err := iap.ListOneTimeProducts(context.Background(), client(rt), "com.example.app"); err != nil {
@@ -139,8 +123,6 @@ func TestListOneTimeProducts_fullRealisticPageFitsBodyCap(t *testing.T) {
 	}
 }
 
-// TestListAllOffers_fullRealisticPageFitsBodyCap is the same guarantee for
-// the offers walk, which shares the page size.
 func TestListAllOffers_fullRealisticPageFitsBodyCap(t *testing.T) {
 	rt := fullPages(t, "oneTimeProductOffers", realisticOffer)
 	if _, err := iap.ListAllOffers(context.Background(), client(rt), "com.example.app"); err != nil {
@@ -148,9 +130,6 @@ func TestListAllOffers_fullRealisticPageFitsBodyCap(t *testing.T) {
 	}
 }
 
-// TestListOneTimeProducts_pageOverBodyCap_namesTheCap asserts a page past the
-// body cap (100 priced-everywhere products, the former page size) fails with
-// an error naming the cap, never a parse of a truncated document.
 func TestListOneTimeProducts_pageOverBodyCap_namesTheCap(t *testing.T) {
 	items := make([]any, 100)
 	for i := range items {

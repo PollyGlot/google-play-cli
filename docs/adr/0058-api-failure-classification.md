@@ -43,6 +43,10 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   the conflict hint; Google has shipped the same reason on a 429, which keeps
   its 60 (retry with backoff) rather than being downgraded
   ([ADR-0006](./0006-apps-add-validates-via-api.md)).
+- **`releases promote` from an empty source track is exit 2**, not the exit 30
+  of an absent resource: the user named a track that holds nothing to promote,
+  an input error the API was never asked about. `rollout`, `halt`, `resume` and
+  `complete` on a track with no matching release stay exit 30.
 
 ### From exit code to diagnostic code
 
@@ -68,9 +72,14 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   the retry-safe bucket. The error is classified as a body-read failure (the
   Cloud Storage client gives it status 0), never from the 2xx already
   received.
-- **A 2xx body that reads whole but does not decode keeps status 200**, and so
-  exit 30: the API answered something gplay cannot read, which a re-run does
-  not fix.
+- **A 2xx body that reads whole but does not decode is not yet classified one
+  way.** Modules that decode by hand (edits, tracks, listings, images,
+  testers, App Signing, voided purchases) tag the error with status 200, so it
+  exits 30: the API answered something gplay cannot read, which a re-run does
+  not fix. `api.DoJSON` and the modules built on it (vitals, team, one-time
+  products, subscriptions, Cloud Storage, the app store uploads) leave the
+  status unset, so the same failure exits 50. Moving a module from one to the
+  other changes a public exit code; #844 tracks settling on one rule.
 - **`auth doctor` watches the transport itself** to tell "never answered"
   from a key that could not be used. The jwt flow flattens the transport error
   with `%v` before returning it, so the error chain alone cannot draw that

@@ -28,21 +28,13 @@ func pngOf(t *testing.T, w, h int) []byte {
 	return b.Bytes()
 }
 
-// swapPoint is the request during which applyWithSwap swaps the icon.
 type swapPoint int
 
 const (
-	// atEditOpen swaps after the pre-check validated the icon and before the
-	// plan hashes it.
 	atEditOpen swapPoint = iota
-	// atDeleteAll swaps after the plan hashed the icon and before its upload.
 	atDeleteAll
 )
 
-// applyWithSwap scans a tree holding a valid 512x512 icon that differs from
-// the live one (a rewrite: deleteall, then upload), and runs swap while the
-// fake answers the request at names. It returns the uploads the fake received
-// and Apply's error.
 func applyWithSwap(t *testing.T, at swapPoint, swap func(icon string)) (uploads int, err error) {
 	t.Helper()
 	dir := t.TempDir()
@@ -99,9 +91,6 @@ func applyWithSwap(t *testing.T, at swapPoint, swap func(icon string)) (uploads 
 	return uploads, err
 }
 
-// Finding 1: icon.png replaced by a symlink out of the tree after the scan.
-// With the hatch closed the upload re-checks containment on the file it
-// opens and refuses it: the outside file is never sent.
 func TestApply_iconSwappedForExternalSymlinkAfterPlan_refused(t *testing.T) {
 	t.Setenv(pathguard.EnvAllowExternalSymlinks, "")
 	secret := filepath.Join(t.TempDir(), "secret.png")
@@ -127,9 +116,6 @@ func TestApply_iconSwappedForExternalSymlinkAfterPlan_refused(t *testing.T) {
 	}
 }
 
-// Finding 2: the validated 512x512 icon rewritten as 1024x512 after the plan.
-// The upload hashes what it read, finds it is not the planned content, and
-// refuses before any byte of it is sent.
 func TestApply_iconRewrittenAfterPlan_refusedAsChanged(t *testing.T) {
 	uploads, err := applyWithSwap(t, atDeleteAll, func(icon string) {
 		if err := os.WriteFile(icon, pngOf(t, 1024, 512), 0o644); err != nil {
@@ -148,10 +134,6 @@ func TestApply_iconRewrittenAfterPlan_refusedAsChanged(t *testing.T) {
 	}
 }
 
-// Finding 3: the icon rewritten as 1024x512 after the pre-check validated it
-// but before the plan hashed it. The plan carries the invalid content's hash,
-// so the upload's hash check alone would send it; the upload validates the
-// bytes it holds and refuses them, with the pre-check's exit code.
 func TestApply_iconRewrittenBeforePlanHash_refusedAsInvalid(t *testing.T) {
 	uploads, err := applyWithSwap(t, atEditOpen, func(icon string) {
 		if err := os.WriteFile(icon, pngOf(t, 1024, 512), 0o644); err != nil {

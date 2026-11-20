@@ -26,8 +26,6 @@ const (
 	bundlesBody = `{"kind":"androidpublisher#bundlesListResponse","bundles":[{"versionCode":9,"sha256":"aab-9"},{"versionCode":5,"sha256":"aab-5"}]}`
 )
 
-// newArtFake fakes the Edit lifecycle plus both list endpoints; the Fake
-// records the sequence so tests can assert insert → lists → delete.
 func newArtFake() *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -56,8 +54,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// apiCalls lists the recorded API calls (token exchanges excluded) as
-// "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -66,9 +62,6 @@ func apiCalls(f *testkit.Fake) []string {
 	return out
 }
 
-// TestRun_bothKinds_readOnlyEdit_rowsByVersionCode asserts the lifecycle
-// (insert → apks → bundles → delete, never commit), the merged table ordered
-// by versionCode, and the {"apks","bundles"} JSON envelope of verbatim bodies.
 func TestRun_bothKinds_readOnlyEdit_rowsByVersionCode(t *testing.T) {
 	rt := newArtFake()
 	rc := newRC(t, rt)
@@ -119,8 +112,6 @@ func TestRun_bothKinds_readOnlyEdit_rowsByVersionCode(t *testing.T) {
 	}
 }
 
-// TestRun_kindApk_sendsOnlyApksRequest asserts --format apk skips bundles.list
-// and passes the apks response through verbatim.
 func TestRun_kindApk_sendsOnlyApksRequest(t *testing.T) {
 	rt := newArtFake()
 	rc := newRC(t, rt)
@@ -152,8 +143,6 @@ func TestRun_kindApk_sendsOnlyApksRequest(t *testing.T) {
 	}
 }
 
-// TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete asserts a
-// `gplay edits begin` pin is reused untouched: no insert, no delete.
 func TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete(t *testing.T) {
 	rt := newArtFake()
 	rc := newRC(t, rt)
@@ -172,7 +161,6 @@ func TestRun_explicitPin_readsInsidePinnedEdit_noInsertNoDelete(t *testing.T) {
 	}
 }
 
-// TestRun_badKind_exit2_noNetwork asserts --format is validated before any HTTP.
 func TestRun_badKind_exit2_noNetwork(t *testing.T) {
 	rt := newArtFake()
 	rc := newRC(t, rt)
@@ -186,7 +174,6 @@ func TestRun_badKind_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_noPackage_exit2 asserts the package resolution guard.
 func TestRun_noPackage_exit2(t *testing.T) {
 	rt := newArtFake()
 	rc := newRC(t, rt)

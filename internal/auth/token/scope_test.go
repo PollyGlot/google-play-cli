@@ -12,10 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 )
 
-// scopeFromAssertion decodes the `scope` claim of the signed JWT bearer
-// assertion the token exchange POSTs. The JWT bearer grant carries the
-// requested scope inside the signed assertion (not as a top-level form field),
-// so this is how a test observes which scope gplay actually requested.
 func scopeFromAssertion(t *testing.T, req *http.Request) string {
 	t.Helper()
 	if err := req.ParseForm(); err != nil {
@@ -51,10 +47,6 @@ func token200(_ *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// TestSource_defaultsToAndroidPublisherScope asserts that with no explicit
-// scope, Source keeps requesting the androidpublisher scope: the contract
-// every existing publishing command relies on (least surprise on the default
-// path).
 func TestSource_defaultsToAndroidPublisherScope(t *testing.T) {
 	sa := makeTestSA(t)
 	var got string
@@ -74,9 +66,6 @@ func TestSource_defaultsToAndroidPublisherScope(t *testing.T) {
 	}
 }
 
-// TestSource_honorsExplicitReportingScope asserts the per-command scope path:
-// a vitals command requests ONLY the read-only playdeveloperreporting scope
-// (least privilege, #49), never androidpublisher.
 func TestSource_honorsExplicitReportingScope(t *testing.T) {
 	sa := makeTestSA(t)
 	var got string

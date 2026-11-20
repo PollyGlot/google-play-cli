@@ -1,9 +1,3 @@
-// Package imagespull_test exercises `gplay metadata images pull` at the
-// kernel level. The command is READ-ONLY against Play (open → list → download
-// → discard, never commit) but WRITES the downloaded images to disk under
-// <dir>/<locale>/images/. The transport routes the read sequence and serves
-// image bytes from the per-image url; it fails on any :commit or mutating
-// call.
 package imagespull_test
 
 import (
@@ -34,15 +28,9 @@ import (
 func png(tag string) []byte { return append([]byte("\x89PNG\r\n\x1a\n"), tag...) }
 func jpg(tag string) []byte { return append([]byte("\xff\xd8\xff\xe0"), tag...) }
 
-// pullFake routes the read-only pull sequence and serves image bytes keyed by
-// url. slots maps "<locale>/<type>" -> images.list body; blobs maps an image
-// url -> its bytes. A commit, any other mutation or an unknown request fails
-// t and is left unclaimed, so the round trip fails too. first, when given,
-// answer before the routing.
 func pullFake(t *testing.T, editID, listingsResp string, slots map[string]string, blobs map[string][]byte, first ...testkit.Responder) *testkit.Fake {
 	t.Helper()
 	return testkit.NewFake(append(first, func(c testkit.Call) (int, string, bool) {
-		// Image blob downloads: any GET whose full URL is a known blob url.
 		if b, ok := blobs[c.URL]; ok && c.Method == http.MethodGet {
 			return http.StatusOK, string(b), true
 		}
@@ -72,14 +60,12 @@ func pullFake(t *testing.T, editID, listingsResp string, slots map[string]string
 	})...)
 }
 
-// redirect answers a GET of from with a 302 to to.
 func redirect(from, to string) testkit.Responder {
 	return testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		return http.StatusFound, "", c.Method == http.MethodGet && c.URL == from
 	}, "Location", func(testkit.Call, int) string { return to })
 }
 
-// committed reports whether the pull sent an Edit commit.
 func committed(f *testkit.Fake) bool {
 	for _, c := range f.Calls() {
 		if strings.HasSuffix(c.Path, ":commit") {
@@ -89,7 +75,6 @@ func committed(f *testkit.Fake) bool {
 	return false
 }
 
-// downloads counts the blob GETs the pull made.
 func downloads(f *testkit.Fake, blobs map[string][]byte) int {
 	n := 0
 	for _, c := range f.Calls() {
@@ -113,8 +98,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// fixture: en-US has icon (1) + 2 phone screenshots; fr-FR has a feature
-// graphic; tvBanner everywhere is empty (writes nothing).
 func fixture() (string, map[string]string, map[string][]byte) {
 	listingsResp := `{"listings":[{"language":"en-US","title":"My App"},{"language":"fr-FR","title":"Mon App"}]}`
 	blobs := map[string][]byte{
@@ -131,8 +114,6 @@ func fixture() (string, map[string]string, map[string][]byte) {
 	return listingsResp, slots, blobs
 }
 
-// listed is the images.list body for urls, each Image carrying the sha256 of
-// the bytes blobs serves at that url, as Play reports it.
 func listed(blobs map[string][]byte, urls ...string) string {
 	imgs := make([]map[string]string, len(urls))
 	for i, u := range urls {
@@ -147,10 +128,6 @@ func sum(b []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// TestRun_writesLiveSlotsToDisk is the tracer bullet: pull downloads each
-// non-empty slot and writes singular `<type>.<ext>` + gallery `<type>/N.<ext>`
-// files with the downloaded bytes; empty slots write nothing; the Edit is
-// discarded, never committed.
 func TestRun_writesLiveSlotsToDisk(t *testing.T) {
 	listingsResp, slots, blobs := fixture()
 	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
@@ -183,15 +160,11 @@ func TestRun_writesLiveSlotsToDisk(t *testing.T) {
 			t.Errorf("%s bytes = %q, want %q", path, got, want)
 		}
 	}
-	// An empty slot (tvBanner everywhere) writes no file.
 	if _, err := os.Stat(filepath.Join(dir, "en-US", "images", "tvBanner.png")); !os.IsNotExist(err) {
 		t.Errorf("empty slot tvBanner must not be written")
 	}
 }
 
-// TestRun_pullIsCodecRoundTrippable asserts the on-disk result reads back via
-// the codec to exactly the downloaded byte sequences: the structural basis of
-// the pull → apply no-op (ADR-0013).
 func TestRun_pullIsCodecRoundTrippable(t *testing.T) {
 	listingsResp, slots, blobs := fixture()
 	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
@@ -216,10 +189,6 @@ func TestRun_pullIsCodecRoundTrippable(t *testing.T) {
 	}
 }
 
-// TestRun_downloadsOriginalSize pins the size option on the download: the bare
-// googleusercontent url images.list returns serves a 512px thumbnail, so pull
-// must ask for "=s0" (the original) or a pull → apply round trip would upload
-// thumbnails over the store images.
 func TestRun_downloadsOriginalSize(t *testing.T) {
 	listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
 	const featURL, p1URL = "https://lh3.googleusercontent.com/feat", "https://play-lh.googleusercontent.com/p1=w512-h512"
@@ -245,10 +214,6 @@ func TestRun_downloadsOriginalSize(t *testing.T) {
 	}
 }
 
-// TestRun_refusesBytesNotMatchingSha256 pins the content check: when the host
-// serves bytes that do not hash to the Image's sha256 (a resized preview), pull
-// fails without writing anything, so a later apply cannot upload the copy over
-// the store image (ADR-0013).
 func TestRun_refusesBytesNotMatchingSha256(t *testing.T) {
 	listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
 	const u = "https://play-lh.test/en/icon"
@@ -270,7 +235,6 @@ func TestRun_refusesBytesNotMatchingSha256(t *testing.T) {
 	}
 }
 
-// TestRun_uppercaseSha256Matches pins that the comparison ignores hex case.
 func TestRun_uppercaseSha256Matches(t *testing.T) {
 	listingsResp := `{"listings":[{"language":"en-US","title":"My App"}]}`
 	const u = "https://play-lh.test/en/icon"
@@ -284,8 +248,6 @@ func TestRun_uppercaseSha256Matches(t *testing.T) {
 	}
 }
 
-// stagingDirs points the temp dir pull stages its downloads under at a fresh
-// directory and returns it, so a test can see what pull left behind there.
 func stagingDirs(t *testing.T) string {
 	t.Helper()
 	tmp := t.TempDir()
@@ -293,15 +255,9 @@ func stagingDirs(t *testing.T) string {
 	return tmp
 }
 
-// TestRun_failedDownloadLeavesDirAndStagingClean pins the all-or-nothing rule
-// with downloads staged on disk: when one image fails after others were
-// staged, the destination tree is exactly as it was and the staging files are
-// gone.
 func TestRun_failedDownloadLeavesDirAndStagingClean(t *testing.T) {
 	tmp := stagingDirs(t)
 	listingsResp, slots, blobs := fixture()
-	// fr-FR/featureGraphic sorts after every en-US slot, so the en-US images
-	// are staged before the failure.
 	slots["fr-FR/featureGraphic"] = fmt.Sprintf(`{"images":[{"id":"f1","url":%q,"sha256":%q}]}`, "https://play-lh.test/fr/feat", sum(png("original")))
 	rt := pullFake(t, "edit-pull", listingsResp, slots, blobs)
 	dir := t.TempDir()
@@ -337,8 +293,6 @@ func TestRun_failedDownloadLeavesDirAndStagingClean(t *testing.T) {
 	}
 }
 
-// TestRun_successRemovesStaging pins that a successful pull leaves nothing in
-// the temp dir either.
 func TestRun_successRemovesStaging(t *testing.T) {
 	tmp := stagingDirs(t)
 	listingsResp, slots, blobs := fixture()
@@ -351,10 +305,6 @@ func TestRun_successRemovesStaging(t *testing.T) {
 	}
 }
 
-// TestRun_imageHostsGetNoCredential pins that the Account's token goes to the
-// Play API only: the image urls images.list returns are public previews, so
-// neither their host nor a host one redirects to may see an Authorization
-// header, while the images.list calls keep theirs.
 func TestRun_imageHostsGetNoCredential(t *testing.T) {
 	listingsResp, slots, blobs := fixture()
 	const moved = "https://cdn.elsewhere.test/icon"
@@ -387,10 +337,6 @@ func TestRun_imageHostsGetNoCredential(t *testing.T) {
 	}
 }
 
-// TestRun_refusesNonHTTPSImageURL pins that pull fetches image bytes over
-// https only, whether images.list returns a plain-http url or an https one
-// redirects to another scheme: the request is refused before it is sent,
-// exits 1 (a retry would be refused again) and writes nothing.
 func TestRun_refusesNonHTTPSImageURL(t *testing.T) {
 	const insecure = "http://play-lh.test/en/icon"
 	for _, tc := range []struct {

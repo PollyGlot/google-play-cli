@@ -10,14 +10,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// row is a tiny stand-in for a command's row type, exercising Column[T]
-// over a struct just like reviews.Review / TrackRow / tracks.Release do.
 type row struct {
 	a, b, c string
 }
 
-// cols is the shared fixture: a three-column set whose declaration order
-// (a, b, c) is both the registry and the default render order.
 func cols() output.ColumnSet[row] {
 	return output.NewColumnSet(
 		output.Column[row]{Key: "a", Header: "A", Value: func(r row) string { return r.a }},
@@ -34,12 +30,6 @@ func keysOf(cs []output.Column[row]) []string {
 	return out
 }
 
-// TestColumnSet_Resolve locks the resolution contract every list command
-// now leans on instead of carrying its own copy: empty spec → all columns
-// in declaration order; an explicit spec selects and REORDERS; blanks are
-// skipped; and an unknown or empty selection is a CLI misuse (exit 2). The
-// default↔registry invariant that used to be re-tested per command is here
-// structural (DefaultKeys IS the declaration order) and asserted once.
 func TestColumnSet_Resolve(t *testing.T) {
 	cs := cols()
 

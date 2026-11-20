@@ -1,8 +1,3 @@
-// Package commit implements `gplay edits commit`: commit the explicit Edit
-// pinned in .gplay/edit-<package>.json (edits.commit) and clear the pin on
-// success. With no open Edit it fails with exit 60. A failed commit (e.g. a
-// validation error from Google) leaves the Edit open AND the pin in place, so
-// the user can fix the cause and re-attempt, or discard.
 package commit
 
 import (
@@ -18,13 +13,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 	Commit  commitflags.Flags
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -49,16 +42,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	if err := edits.CommitExplicit(rc.Ctx, httpClient, pkg, pin.EditID, in.Commit.Options()); err != nil {
-		// Leave the pin in place: the Edit is still open, so a re-run can retry
-		// the commit (or `gplay edits discard` can abandon it). On an unknown
-		// outcome the Edit may be gone instead; the error says how to check.
 		return nil, err
 	}
 	if err := editpin.Clear(rc.FS, gplayDir, pkg); err != nil {
-		// The Edit IS committed (the change is live); only the local pin cleanup
-		// failed. Say so explicitly and name the stale file, so this does not
-		// read as a failed commit and the leftover pin (which would block the
-		// next `gplay edits begin`) can be removed by hand.
 		return nil, fmt.Errorf("committed explicit edit %s for %s, but failed to clear the local pin %s (remove it manually): %w", pin.EditID, pkg, editpin.Path(gplayDir, pkg), err)
 	}
 
@@ -66,7 +52,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return editscmd.Payload{Package: pkg, EditID: pin.EditID, Open: false, Action: "committed"}, nil
 }
 
-// NewCommand returns the cobra command for `gplay edits commit`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

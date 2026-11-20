@@ -11,12 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// The recovery branches of the resumable loop (#587, TEST-03): each test
-// scripts the exact PUT/probe sequence and asserts the loop's two promises, a
-// finished upload is never re-sent and a dead one always terminates, by
-// counting the requests it made.
-
-// repeat returns n copies of s.
 func repeat(n int, s ...step) []step {
 	var out []step
 	for range n {
@@ -25,9 +19,6 @@ func repeat(n int, s ...step) []step {
 	return out
 }
 
-// assertBackoffCurve checks that the recorded waits follow the --retry curve
-// for the given attempt indexes: attempt k waits within [b/2, b] of
-// b = 500ms * 2^k (jitter), capped at 30s.
 func assertBackoffCurve(t *testing.T, waits []time.Duration, attempts ...int) {
 	t.Helper()
 	if len(waits) != len(attempts) {
@@ -45,13 +36,11 @@ func assertBackoffCurve(t *testing.T, waits []time.Duration, attempts ...int) {
 	}
 }
 
-// A transport error on the LAST chunk whose bytes did land: the probe answers
-// 2xx with the resource, which is returned as is, with no further PUT.
 func TestResumable_lostFinalResponse_probeReturnsResourceOnce(t *testing.T) {
 	size := 2048
 	rt := &resumeRT{t: t, putSteps: []step{
-		{status: 0}, // final chunk: bytes landed, response lost
-		{status: 200, body: `{"versionCode":11}`}, // probe: already complete
+		{status: 0},
+		{status: 200, body: `{"versionCode":11}`},
 	}}
 	body, status, err := run(t, rt, size)
 	if err != nil {
@@ -69,8 +58,6 @@ func TestResumable_lostFinalResponse_probeReturnsResourceOnce(t *testing.T) {
 	assertBackoffCurve(t, rt.waits, 0)
 }
 
-// The final chunk's 2xx arrives but its body is cut mid-read: same recovery,
-// the probe hands the resource back instead of a truncated document.
 func TestResumable_finalBodyCut_probeReturnsResource(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{
 		{status: 200, body: `{"versionCode":12}`, cutBody: true},
@@ -88,9 +75,6 @@ func TestResumable_finalBodyCut_probeReturnsResource(t *testing.T) {
 	}
 }
 
-// Transport errors on every chunk AND every probe: the stall bound ends the
-// loop after maxResumeStalls rounds (8 chunk PUTs + 8 probes), with a backoff
-// before each probe that grows along the --retry curve. Exit 50 (network).
 func TestResumable_transportErrorsEverywhere_stallBoundTerminates(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: repeat(8, step{status: 0}, step{status: 0})}
 	_, _, err := run(t, rt, 4096)
@@ -106,8 +90,6 @@ func TestResumable_transportErrorsEverywhere_stallBoundTerminates(t *testing.T) 
 	assertBackoffCurve(t, rt.waits, 0, 1, 2, 3, 4, 5, 6, 7)
 }
 
-// Transport errors on the chunk, but the probe answers 308 with no progress:
-// the stall error names the lack of progress and keeps the transport cause.
 func TestResumable_transportErrorNoProgress_stallBoundTerminates(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: repeat(8, step{status: 0}, step{status: 308})}
 	_, _, err := run(t, rt, 4096)
@@ -128,8 +110,6 @@ func TestResumable_transportErrorNoProgress_stallBoundTerminates(t *testing.T) {
 	assertBackoffCurve(t, rt.waits, 0, 1, 2, 3, 4, 5, 6, 7)
 }
 
-// A 503 storm with no progress: 8 chunk PUTs and 8 probes, backed off, then a
-// stall error carrying the upstream status (exit 40).
 func TestResumable_5xxNoProgress_stallBoundTerminates(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: repeat(8, step{status: 503}, step{status: 308})}
 	_, _, err := run(t, rt, 4096)
@@ -146,8 +126,6 @@ func TestResumable_5xxNoProgress_stallBoundTerminates(t *testing.T) {
 	assertBackoffCurve(t, rt.waits, 0, 1, 2, 3, 4, 5, 6, 7)
 }
 
-// A server that keeps answering 308 without moving its offset: 8 chunk PUTs,
-// then the 308 stall error. The waits between them back off too.
 func TestResumable_308NoProgress_stallBoundTerminates(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: repeat(8, step{status: 308})}
 	_, _, err := run(t, rt, 4096)
@@ -161,8 +139,6 @@ func TestResumable_308NoProgress_stallBoundTerminates(t *testing.T) {
 	assertBackoffCurve(t, rt.waits, 1, 2, 3, 4, 5, 6, 7)
 }
 
-// A terminal 403 from the probe that follows a transport error ends the upload
-// at once (exit 11), with no further PUT.
 func TestResumable_probe403AfterTransportError_isImmediate(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{
 		{status: 0},
@@ -177,14 +153,12 @@ func TestResumable_probe403AfterTransportError_isImmediate(t *testing.T) {
 	}
 }
 
-// Progress resets the curve: after a no-progress round and a round that moves
-// the offset, the next failure waits the first backoff again.
 func TestResumable_progressResetsBackoff(t *testing.T) {
 	size := api.ResumableChunkSize + 300
 	rt := &resumeRT{t: t, putSteps: []step{
-		{status: 500}, {status: 308}, // no progress: stalls=1
-		{status: 500}, {status: 308, rng: "bytes=0-8388607"}, // progress: stalls=0
-		{status: 500}, {status: 308, rng: "bytes=0-8388607"}, // no progress again
+		{status: 500}, {status: 308},
+		{status: 500}, {status: 308, rng: "bytes=0-8388607"},
+		{status: 500}, {status: 308, rng: "bytes=0-8388607"},
 		{status: 200, body: `{"versionCode":1}`},
 	}}
 	if _, _, err := run(t, rt, size); err != nil {
@@ -193,13 +167,11 @@ func TestResumable_progressResetsBackoff(t *testing.T) {
 	assertBackoffCurve(t, rt.waits, 0, 1, 0)
 }
 
-// A chunk whose connection stops moving is cut by the chunk bound and resumed
-// through the probe, instead of hanging until the runner kill.
 func TestResumable_stalledChunk_isCutAndResumed(t *testing.T) {
 	size := api.ResumableChunkSize + 300
 	rt := &resumeRT{t: t, putSteps: []step{
-		{hang: true},                          // chunk 1: connection stalls
-		{status: 308, rng: "bytes=0-8388607"}, // probe: chunk 1 had landed
+		{hang: true},
+		{status: 308, rng: "bytes=0-8388607"},
 		{status: 200, body: `{"versionCode":4}`},
 	}}
 	start := time.Now()
@@ -218,9 +190,6 @@ func TestResumable_stalledChunk_isCutAndResumed(t *testing.T) {
 	}
 }
 
-// A canceled ctx is not a transient failure: the loop returns on the first
-// failed PUT with no probe and no backoff, instead of spinning through the
-// stall budget (the refutation note on TEST-03).
 func TestResumable_canceledCtx_stopsAtOnce(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -242,12 +211,10 @@ func TestResumable_canceledCtx_stopsAtOnce(t *testing.T) {
 	}
 }
 
-// A cancel that lands during a backoff wait ends the upload without the probe.
 func TestResumable_canceledDuringBackoff_skipsProbe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	rt := &resumeRT{t: t, putSteps: []step{{status: 500}, {status: 308}}}
-	// The 500 is answered, then the cancel arrives before the probe's wait.
 	rt.onPut = func(i int) {
 		if i == 0 {
 			cancel()

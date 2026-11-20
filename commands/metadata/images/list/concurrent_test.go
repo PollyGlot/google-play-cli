@@ -14,13 +14,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestRun_concurrentListKeepsSlotOrder: the 8 x L images.list reads run
-// fanout.Limit at a time and answer in a scrambled order, yet the slots come
-// out in (sorted locale, canonical type) order, the order a serial walk gives.
 func TestRun_concurrentListKeepsSlotOrder(t *testing.T) {
 	locales := []string{"de-DE", "en-US", "es-ES", "fr-FR", "it-IT"}
-	// Every slot but tvBanner holds one image, so an ordering slip anywhere in
-	// the 8 x 5 grid shows.
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
@@ -29,7 +24,6 @@ func TestRun_concurrentListKeepsSlotOrder(t *testing.T) {
 			return http.StatusNoContent, "", true
 		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/listings"):
 			var ls []string
-			// Deliberately unsorted: list sorts the locales itself.
 			for i := len(locales) - 1; i >= 0; i-- {
 				ls = append(ls, fmt.Sprintf(`{"language":%q}`, locales[i]))
 			}
@@ -43,7 +37,6 @@ func TestRun_concurrentListKeepsSlotOrder(t *testing.T) {
 		}
 		return 0, "", false
 	})
-	// A per-slot pseudo-random latency scrambles the completion order.
 	rt := testkit.NewDelayed(fake, func(r *http.Request) time.Duration {
 		h := fnv.New32a()
 		_, _ = h.Write([]byte(r.URL.Path))

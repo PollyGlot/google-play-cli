@@ -14,9 +14,6 @@ import (
 
 const pkg = "com.example.app"
 
-// failRenameFS wraps an FS but makes the tmp→pin rename fail, simulating a swap
-// that dies partway (EXDEV, ENOSPC, power loss). Every other operation delegates
-// to the embedded FS, so the tmp file still gets written and best-effort-removed.
 type failRenameFS struct{ config.FS }
 
 func (failRenameFS) Rename(_, _ string) error { return errors.New("simulated rename failure") }
@@ -45,8 +42,6 @@ func TestWriteThenLookup(t *testing.T) {
 }
 
 func TestWriteCreatesGplayDir(t *testing.T) {
-	// Write into a .gplay/ that does not exist yet: begin must not require
-	// the directory to be pre-created (beyond the project root).
 	dir := filepath.Join(t.TempDir(), ".gplay")
 	if err := editpin.Write(config.OSFS{}, dir, pkg, "edit-1"); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -56,24 +51,15 @@ func TestWriteCreatesGplayDir(t *testing.T) {
 	}
 }
 
-// TestWriteFailedSwapKeepsPriorPin is the crash-atomicity guard: a Write whose
-// final swap fails must leave the *prior* pin intact, never a truncated or
-// half-written one. Because a corrupt pin is fatal to Lookup (and would wedge
-// every later write command plus block `gplay edits begin` recovery), Write
-// stages to `<pin>.tmp` and renames, so a failed write is a no-op on the live
-// pin. A non-atomic WriteFile-in-place would clobber it. MemFS mirrors the
-// FS-level contract (as config's atomic-Save test does).
 func TestWriteFailedSwapKeepsPriorPin(t *testing.T) {
 	fsys := configtest.NewMemFS("/", "/home/u")
 	dir := "/repo/.gplay"
 	path := editpin.Path(dir, pkg)
 
-	// A valid pin already on disk (a prior `gplay edits begin`).
 	if err := editpin.Write(fsys, dir, pkg, "edit-old"); err != nil {
 		t.Fatalf("seed Write: %v", err)
 	}
 
-	// The swap onto the live pin fails partway; the prior pin must survive.
 	if err := editpin.Write(failRenameFS{fsys}, dir, pkg, "edit-new"); err == nil {
 		t.Fatal("Write with failing rename: want error, got nil")
 	}
@@ -84,15 +70,11 @@ func TestWriteFailedSwapKeepsPriorPin(t *testing.T) {
 	if got.EditID != "edit-old" {
 		t.Errorf("EditID = %q, want edit-old: a failed write must not clobber the prior pin", got.EditID)
 	}
-	// No `.tmp` fragment left masquerading as pin state.
 	if _, err := fsys.Stat(path + ".tmp"); err == nil {
 		t.Error("failed Write left a .tmp fragment behind")
 	}
 }
 
-// TestWriteLeavesNoTmpBehind asserts a successful fresh write (no prior pin)
-// lands the pin and cleans up after itself: the rename consumes the `.tmp`
-// sibling, leaving nothing for a later Lookup to trip over.
 func TestWriteLeavesNoTmpBehind(t *testing.T) {
 	dir := t.TempDir()
 	if err := editpin.Write(config.OSFS{}, dir, pkg, "edit-1"); err != nil {
@@ -113,16 +95,11 @@ func TestLookupMissingIsNotAnError(t *testing.T) {
 	}
 }
 
-// TestLookupUnusablePinIsCorruptError covers the three ways a present pin is
-// unusable. Each must be a *CorruptError (exit 60) whose message names the way
-// out, `gplay edits discard --package <pkg>`: every other command refuses the
-// pin, so without that name the user is stuck (#786).
 func TestLookupUnusablePinIsCorruptError(t *testing.T) {
 	for name, body := range map[string]string{
-		"not JSON":       "not json",
-		"truncated":      `{"editId": `,
-		"missing editId": `{"package":"com.example.app"}`,
-		// A copied/renamed pin: the file name and the embedded package disagree.
+		"not JSON":         "not json",
+		"truncated":        `{"editId": `,
+		"missing editId":   `{"package":"com.example.app"}`,
 		"package mismatch": `{"editId":"e1","package":"com.other.app"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -150,7 +127,6 @@ func TestLookupUnusablePinIsCorruptError(t *testing.T) {
 
 func TestClearIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	// Clearing a non-existent pin is a no-op (no error).
 	if err := editpin.Clear(config.OSFS{}, dir, pkg); err != nil {
 		t.Fatalf("Clear on missing: %v", err)
 	}

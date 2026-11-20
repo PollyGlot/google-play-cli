@@ -10,14 +10,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
 )
 
-// osReader is the production FileReader shape, local to the test so this
-// package stays import-free of internal/config.
 type osReader struct{}
 
 func (osReader) ReadFile(name string) ([]byte, error) { return os.ReadFile(name) }
 
-// leakySAJSON carries a synthetic key whose body is an unmistakable canary: a
-// leak shows up as LEAKEDSECRETBODY in a failing assertion.
 const leakySAJSON = `{
   "type": "service_account",
   "project_id": "p",
@@ -27,9 +23,6 @@ const leakySAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-// misshapenValues are the credential shapes that CI secret stores and YAML
-// produce and that fall through to the path branch (#583): each one used to
-// come back verbatim inside "open <value>: file name too long".
 func misshapenValues() map[string]string {
 	return map[string]string{
 		"base64":              base64.StdEncoding.EncodeToString([]byte(leakySAJSON)),
@@ -50,8 +43,6 @@ func wrap(s string, n int) string {
 	return b.String()
 }
 
-// secretChunks slices value into 16-byte windows: none may survive into the
-// error, which is how a base64 blob (no PEM marker, no canary word) is caught.
 func secretChunks(value string) []string {
 	var out []string
 	for i := 0; i+16 <= len(value); i += 16 {
@@ -101,8 +92,6 @@ func TestLoadValue_misshapenValue_neverEchoesIt(t *testing.T) {
 	}
 }
 
-// A short missing path cannot be a credential, so it is named back: a typo'd
-// path must stay diagnosable.
 func TestLoadValue_shortMissingPath_isShown(t *testing.T) {
 	path := t.TempDir() + "/missing-sa.json"
 	_, err := serviceaccount.LoadValue(osReader{}, "--service-account", path)
@@ -120,8 +109,6 @@ func TestLoadValue_shortMissingPath_isShown(t *testing.T) {
 	}
 }
 
-// Anything that could carry key material stays hidden, whatever else it looks
-// like: too long, multi-line, holding a '{' or a PEM marker.
 func TestLoadValue_credentialLikeValue_isNeverShown(t *testing.T) {
 	for name, value := range map[string]string{
 		"long single line": "/tmp/" + strings.Repeat("LEAKEDSECRETBODY", 20),

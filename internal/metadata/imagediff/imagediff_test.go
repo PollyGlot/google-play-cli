@@ -1,8 +1,3 @@
-// Package imagediff_test exercises the Store-image reconciliation engine: the
-// pure comparison of a local image sequence against the live sequence that
-// produces the ADR-0013 §5 diff schema and the per-slot execution plan. These
-// are behavior tests of the reconciliation spec (content + order), the brittle
-// heart of `images apply`.
 package imagediff_test
 
 import (
@@ -17,13 +12,10 @@ import (
 
 func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
-// img builds a live image whose sha256 matches the given local bytes, so the
-// content-hash comparison treats them as identical.
 func img(id string, b []byte) images.Image { return images.Image{ID: id, Sha256: sha(b)} }
 
 func B(tag string) []byte { return []byte("png-" + tag) }
 
-// local is a slot's local sequence as the engine takes it: one sha256 per image.
 func local(bs ...[]byte) []string {
 	out := make([]string, len(bs))
 	for i, b := range bs {
@@ -32,7 +24,6 @@ func local(bs ...[]byte) []string {
 	return out
 }
 
-// changeFor returns the first change matching (type, op).
 func opsOf(changes []imagediff.SlotChange) []string {
 	out := make([]string, 0, len(changes))
 	for _, c := range changes {
@@ -50,8 +41,6 @@ func hasOp(changes []imagediff.SlotChange, op imagediff.Op) bool {
 	return false
 }
 
-// TestUnchanged_isNoOp: identical local and live sequences produce one
-// `unchanged` record and no executable action.
 func TestUnchanged_isNoOp(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
@@ -67,8 +56,6 @@ func TestUnchanged_isNoOp(t *testing.T) {
 	}
 }
 
-// TestSingular_upload_whenLiveEmpty: a managed singular slot with no live image
-// uploads.
 func TestSingular_upload_whenLiveEmpty(t *testing.T) {
 	in := imagediff.SlotInput{Locale: "en-US", Type: images.Icon, Local: local(B("icon"))}
 	p := imagediff.Plans([]imagediff.SlotInput{in}, false)[0]
@@ -80,8 +67,6 @@ func TestSingular_upload_whenLiveEmpty(t *testing.T) {
 	}
 }
 
-// TestSingular_replace_whenContentDiffers: a managed singular slot whose live
-// content differs is replaced (rewrite = deleteall + upload), emitting upload.
 func TestSingular_replace_whenContentDiffers(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.Icon,
@@ -97,8 +82,6 @@ func TestSingular_replace_whenContentDiffers(t *testing.T) {
 	}
 }
 
-// TestGallery_pureAppend_uploadsTail: live is a prefix of local → only the
-// appended tail uploads (no reorder, no deleteall).
 func TestGallery_pureAppend_uploadsTail(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
@@ -117,8 +100,6 @@ func TestGallery_pureAppend_uploadsTail(t *testing.T) {
 	}
 }
 
-// TestGallery_reorder_whenOrderDiffers_noLoss: same set, different order →
-// rewrite with a single reorder record (no online-only image lost).
 func TestGallery_reorder_whenOrderDiffers_noLoss(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
@@ -132,15 +113,11 @@ func TestGallery_reorder_whenOrderDiffers_noLoss(t *testing.T) {
 	if !hasOp(p.Changes, imagediff.OpReorder) {
 		t.Errorf("reorder should emit a reorder op, got %v", opsOf(p.Changes))
 	}
-	// Re-uploaded sequence is the full local order.
 	if len(p.Uploads) != 2 {
 		t.Errorf("rewrite should re-upload the whole local seq (2), got %d", len(p.Uploads))
 	}
 }
 
-// TestGallery_additive_keepsOnlineOnly: live has an extra image absent from
-// local. Additive (no prune) uploads only the genuinely-new local image and
-// NEVER deletes the online-only one.
 func TestGallery_additive_keepsOnlineOnly(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
@@ -154,14 +131,11 @@ func TestGallery_additive_keepsOnlineOnly(t *testing.T) {
 	if hasOp(p.Changes, imagediff.OpReorder) {
 		t.Errorf("additive with online-only present must not reorder (would drop it): %v", opsOf(p.Changes))
 	}
-	// Only the genuinely-new local image ("new") is uploaded (appended).
 	if p.Kind != imagediff.KindAppend || len(p.Uploads) != 1 {
 		t.Errorf("additive should append only the new image, got kind=%v uploads=%d", p.Kind, len(p.Uploads))
 	}
 }
 
-// TestUntouchedSlot_whenLocalEmpty: a slot empty on disk but live on Play is
-// reported untouchedSlot and never acted on (missing == empty).
 func TestUntouchedSlot_whenLocalEmpty(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.Icon,
@@ -176,12 +150,10 @@ func TestUntouchedSlot_whenLocalEmpty(t *testing.T) {
 	}
 }
 
-// TestAggregate_summaryAndSchema: the aggregated Result carries the ADR-0013
-// §5 shape and a flat counter summary; HasChanges keys the CI gate.
 func TestAggregate_summaryAndSchema(t *testing.T) {
 	slots := []imagediff.SlotInput{
-		{Locale: "en-US", Type: images.Icon, Local: local(B("icon"))},                                                                            // upload
-		{Locale: "en-US", Type: images.PhoneScreenshots, Local: local(B("b"), B("a")), Live: []images.Image{img("1", B("a")), img("2", B("b"))}}, // reorder
+		{Locale: "en-US", Type: images.Icon, Local: local(B("icon"))},
+		{Locale: "en-US", Type: images.PhoneScreenshots, Local: local(B("b"), B("a")), Live: []images.Image{img("1", B("a")), img("2", B("b"))}},
 	}
 	res := imagediff.Aggregate("com.example.app", imagediff.Plans(slots, false))
 	if res.Package != "com.example.app" {
@@ -193,7 +165,6 @@ func TestAggregate_summaryAndSchema(t *testing.T) {
 	if !res.HasChanges() {
 		t.Errorf("HasChanges should be true when upload+delete+reorder > 0")
 	}
-	// JSON shape: a flat object with package/slots/summary and the gate field.
 	b, _ := json.Marshal(res)
 	var doc struct {
 		Package string `json:"package"`

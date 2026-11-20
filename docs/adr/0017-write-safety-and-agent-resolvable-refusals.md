@@ -71,9 +71,10 @@ trivially fixable one.
 
 ## Implementation notes
 
-- **`requires` is always an array, never `null`.** Every gplay-authored array
-  field (the dry-run `requires` included) is normalised to `[]` before it is
-  encoded, so a consumer iterates it without a guard.
+- **`requires` is always an array, never `null`, in a dry-run preview.** The
+  preview's gplay-authored array fields are normalised to `[]` before they
+  are encoded, so a consumer iterates them without a guard. The error
+  envelope differs: its `requires` and `reasons` are omitted when empty.
 - **`--role` and `--permissions` count as given when the flag is present**
   (`Flags().Changed`), so the guard tells an absent flag from an explicit
   value. An explicitly empty value currently passes it (#872).

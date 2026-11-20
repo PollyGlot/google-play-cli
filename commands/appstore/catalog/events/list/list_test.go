@@ -22,8 +22,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newFake answers every recentupdateevents.list call with status and body; a
-// zero status serves eventsBody. Nothing here reaches the network.
 func newFake(status int, body string) *testkit.Fake {
 	if status == 0 {
 		status, body = http.StatusOK, eventsBody
@@ -31,7 +29,6 @@ func newFake(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// last is the most recent API call, failing the test when none was made.
 func last(t *testing.T, fake *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := fake.Calls()
@@ -71,7 +68,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, stderr
 }
 
-// query parses the recorded API URL's query string.
 func query(t *testing.T, raw string) url.Values {
 	t.Helper()
 	u, err := url.Parse(raw)
@@ -86,9 +82,6 @@ const (
 	end   = "2026-07-08T00:00:00Z"
 )
 
-// TestRun_requestShape asserts the GET targets the recentUpdateEvents endpoint
-// on the app store axis, carries both required time params, opens no Edit, and
-// passes the envelope through verbatim on --output json (ADR-0003).
 func TestRun_requestShape(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -112,7 +105,6 @@ func TestRun_requestShape(t *testing.T) {
 	if q.Get("endTime") != end {
 		t.Errorf("endTime = %q, want %q", q.Get("endTime"), end)
 	}
-	// pageSize/pageToken are omitted when unset so the server applies its default.
 	if q.Has("pageSize") || q.Has("pageToken") {
 		t.Errorf("url %q must omit pageSize/pageToken when unset", apiCall.URL)
 	}
@@ -125,8 +117,6 @@ func TestRun_requestShape(t *testing.T) {
 	}
 }
 
-// TestRun_table asserts the human table carries one row per event with the
-// package, time and MODIFICATION/DELETION type.
 func TestRun_table(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -148,8 +138,6 @@ func TestRun_table(t *testing.T) {
 	}
 }
 
-// TestRun_pagingParamsPropagate asserts --page-size and --page-token reach the
-// query, so an incremental sync can walk the whole range.
 func TestRun_pagingParamsPropagate(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -166,14 +154,11 @@ func TestRun_pagingParamsPropagate(t *testing.T) {
 	if q.Get("pageToken") != "tok-1" {
 		t.Errorf("pageToken = %q, want tok-1", q.Get("pageToken"))
 	}
-	// The time bounds must still ride along on a paged call.
 	if q.Get("startTime") != start || q.Get("endTime") != end {
 		t.Errorf("url %q must keep the same time range across pages", apiCall.URL)
 	}
 }
 
-// TestRun_nextPageTokenNoted asserts the human path gets a stderr note carrying
-// the next --page-token, so a table read never silently under-reports.
 func TestRun_nextPageTokenNoted(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -187,8 +172,6 @@ func TestRun_nextPageTokenNoted(t *testing.T) {
 	}
 }
 
-// TestRun_timeFlagValidation asserts every bad time input is CLI misuse (exit 2)
-// caught before any HTTP call: the fail-fast contract for CI.
 func TestRun_timeFlagValidation(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -220,8 +203,6 @@ func TestRun_timeFlagValidation(t *testing.T) {
 	}
 }
 
-// TestRun_acceptsOffsetTimestamps asserts a non-UTC RFC 3339 offset is accepted
-// and travels verbatim, so a caller need not convert to Z first.
 func TestRun_acceptsOffsetTimestamps(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.alt")
 	fake := newFake(0, "")
@@ -236,8 +217,6 @@ func TestRun_acceptsOffsetTimestamps(t *testing.T) {
 	}
 }
 
-// TestRun_negativePageSize_exit2_noNetwork asserts a negative --page-size is CLI
-// misuse caught before any HTTP call.
 func TestRun_negativePageSize_exit2_noNetwork(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.alt")
 	fake := newFake(0, "")
@@ -250,8 +229,6 @@ func TestRun_negativePageSize_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_missingStorePackage_exit2_noNetwork asserts the shared app store
-// package-name resolution applies here too, and fails before the network.
 func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -267,8 +244,6 @@ func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_storePackageFromEnv asserts the CI path: the app store package name
-// resolves from $GPLAY_APP_STORE_PACKAGE when the flag is omitted.
 func TestRun_storePackageFromEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.fromenv")
 	fake := newFake(0, "")
@@ -283,8 +258,6 @@ func TestRun_storePackageFromEnv(t *testing.T) {
 	}
 }
 
-// TestRun_403_exit11 asserts a forbidden read maps to exit 11 with a refusal
-// naming the app store package.
 func TestRun_403_exit11(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
@@ -297,8 +270,6 @@ func TestRun_403_exit11(t *testing.T) {
 	}
 }
 
-// TestRun_404_exit30 asserts an unknown app store package maps to the not-found
-// exit code with an enrollment hint.
 func TestRun_404_exit30(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(404, `{"error":{"message":"not found"}}`)

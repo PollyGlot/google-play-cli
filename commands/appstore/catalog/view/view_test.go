@@ -21,8 +21,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newFake answers every recentappviews.get call with status and body; a zero
-// status serves appViewBody. Nothing here reaches the network.
 func newFake(status int, body string) *testkit.Fake {
 	if status == 0 {
 		status, body = http.StatusOK, appViewBody
@@ -30,7 +28,6 @@ func newFake(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// last is the most recent API call, failing the test when none was made.
 func last(t *testing.T, fake *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := fake.Calls()
@@ -90,9 +87,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_happyPath_storeAxis_noEdit asserts the read hits the appstorecatalog
-// endpoint with both path parameters, opens no Edit, and passes the
-// RecentAppView through verbatim on --output json (ADR-0003).
 func TestRun_happyPath_storeAxis_noEdit(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -118,9 +112,6 @@ func TestRun_happyPath_storeAxis_noEdit(t *testing.T) {
 	}
 }
 
-// TestRun_humanSummary renders the table view and asserts the main catalog
-// fields land: identity, versions, price, delivery token, IARC, listings,
-// permissions and device compatibility.
 func TestRun_humanSummary(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -156,8 +147,6 @@ func TestRun_humanSummary(t *testing.T) {
 	}
 }
 
-// TestRun_markdownRecord asserts the markdown view renders a heading plus the
-// field list, so a pasted report stands alone.
 func TestRun_markdownRecord(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -179,8 +168,6 @@ func TestRun_markdownRecord(t *testing.T) {
 	}
 }
 
-// TestRun_freeApp_rendersFree asserts an app with no US price reads as "free"
-// rather than an empty cell (the API expresses free by omitting the Money).
 func TestRun_freeApp_rendersFree(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(200, `{"appView":{"packageName":"com.example.free"}}`)
@@ -199,8 +186,6 @@ func TestRun_freeApp_rendersFree(t *testing.T) {
 	}
 }
 
-// TestRun_storePackageFromEnv asserts the app store package name resolves from
-// $GPLAY_APP_STORE_PACKAGE when --store-package is omitted: the CI path.
 func TestRun_storePackageFromEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.fromenv")
 	fake := newFake(0, "")
@@ -215,8 +200,6 @@ func TestRun_storePackageFromEnv(t *testing.T) {
 	}
 }
 
-// TestRun_flagBeatsEnv asserts --store-package wins over the env var (later
-// layer wins, ADR-0004).
 func TestRun_flagBeatsEnv(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.fromenv")
 	fake := newFake(0, "")
@@ -231,8 +214,6 @@ func TestRun_flagBeatsEnv(t *testing.T) {
 	}
 }
 
-// TestRun_missingStorePackage_exit2_noNetwork asserts an unresolved app store
-// package name is CLI misuse caught before any HTTP call, naming both layers.
 func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -250,8 +231,6 @@ func TestRun_missingStorePackage_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_missingPlayPackage_exit2_noNetwork asserts a whitespace-only Play app
-// package name is CLI misuse caught before any HTTP call.
 func TestRun_missingPlayPackage_exit2_noNetwork(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.store.alt")
 	fake := newFake(0, "")
@@ -264,8 +243,6 @@ func TestRun_missingPlayPackage_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_403_namesStorePackage asserts a forbidden read maps to exit 11 and
-// the refusal points at the app store enrollment, not a per-app permission.
 func TestRun_403_namesStorePackage(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
@@ -278,8 +255,6 @@ func TestRun_403_namesStorePackage(t *testing.T) {
 	}
 }
 
-// TestRun_404_exit30 asserts an app with no catalog app view maps to the
-// not-found exit code with an eligibility hint.
 func TestRun_404_exit30(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(404, `{"error":{"message":"not found"}}`)

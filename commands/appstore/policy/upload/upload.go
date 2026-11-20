@@ -1,26 +1,3 @@
-// Package upload implements `gplay appstore policy upload --store-package <sp>
-// [--package <pkg>] <file>`: stream a policy declaration supporting document
-// for a hosted app to
-// `appstoreappsreview.uploadAppStoreAppPolicyDeclarationFile` and print the
-// tracking id Google assigns it.
-//
-// The id (not the transfer) is the product of the call. `gplay appstore
-// update` cites it inside a policy response's `documentResponse`, which is how
-// a declaration answer points at the evidence backing it. Nothing is declared
-// by this command: an uploaded document is inert until an `appstore submit`
-// names its id.
-//
-// The method is the one upload in the namespace that carries a request body:
-// `fileType` is required, and its only meaningful value
-// (DECLARATION_FILE_TYPE_DOCUMENT) is sent for us by internal/play/appstore:
-// the enum's other member is the UNSPECIFIED zero value, so there is no choice
-// to expose as a flag.
-//
-// MarkMutating at registration so GPLAY_READONLY refuses it (exit 4); --dry-run
-// previews the resolved target without any HTTP call AND without opening the
-// file. Edit-free: the call is not under `/edits/`. No confirmation gate
-// (ADR-0043): a gate is for the irreversible *and* externally visible, and an
-// upload is neither: it mints an id and changes nothing a user can see.
 package upload
 
 import (
@@ -38,13 +15,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
 )
 
-// citeHint is the one thing a caller must know after the upload succeeds: the
-// id is worthless unless it reaches `appstore submit`. Spelled once, shared by
-// the human views and the stderr confirmation, so the three never drift.
 const citeHint = "cite this fileId in `gplay appstore submit` inside the policy response's documentResponse: the document backs a declaration only once that call names it"
 
-// Input is the request-shaped struct cobra builds from the flags plus the
-// positional file path.
 type Input struct {
 	StorePackage string
 	Package      string
@@ -52,10 +24,6 @@ type Input struct {
 	DryRun       bool
 }
 
-// Payload renders the uploaded document's tracking id (or, on --dry-run, the
-// upload that would happen). Raw carries the verbatim API body for the ADR-0003
-// --output json pass-through; FileID is the same body's `fileId`, lifted out so
-// the human views can lead with it.
 type Payload struct {
 	StorePackage string
 	Package      string
@@ -73,10 +41,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// rows is the identifying set shared by the human views, in a fixed order with
-// FILE_ID first: it is the only value the caller has to carry forward.
-// FILE_TYPE is echoed because it travelled on the wire without the caller
-// choosing it.
 func (p Payload) rows() [][2]string {
 	return [][2]string{
 		{"FILE_ID", p.FileID},
@@ -87,9 +51,6 @@ func (p Payload) rows() [][2]string {
 	}
 }
 
-// renderTable writes `FIELD<TAB>VALUE` lines (like `apps view` / `orders
-// view`), then the cite hint: the id alone does not tell an operator where it
-// is meant to go. A dry-run leads with the rehearsed action instead.
 func (p Payload) renderTable(w io.Writer) error {
 	if p.DryRun {
 		_, err := fmt.Fprintf(w, "would upload policy declaration file %s for hosted app %s in app store %s (dry-run)\n", p.Path, p.Package, p.StorePackage)
@@ -129,10 +90,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return err
 }
 
-// dryRunView is the gplay-shaped --dry-run JSON: the resolved target plus the
-// machine-readable `requires` array (ADR-0017 §4): empty, because an upload
-// needs no safety flag beyond a writable environment. fileType is echoed
-// because the request body carries it whether or not the caller asked.
 type dryRunView struct {
 	DryRun              bool     `json:"dryRun"`
 	AppStorePackageName string   `json:"appStorePackageName"`
@@ -153,18 +110,10 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Requires:            []string{},
 		})
 	}
-	// ADR-0003: the API response is passed through verbatim: it is where the
-	// tracking id comes from in the first place. There is no empty-body
-	// fallback here, unlike the acknowledgement-only verbs in this namespace:
-	// an upload whose response carried no id never reaches this point, the
-	// client layer having already failed it (internal/play/appstore.trackingID).
 	_, err := w.Write(p.Raw)
 	return err
 }
 
-// Run is the business function the kernel invokes. It resolves the two
-// addressing values and the local path, then, unless --dry-run short-circuits
-// before any network and before the file is even opened: streams the document.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	path := strings.TrimSpace(in.Path)
 	if path == "" {
@@ -179,15 +128,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// Deliberately before os.Open: a rehearsal answers "what would this
-	// command address?", and a job planning the upload of a document that is
-	// still being assembled must still get an answer.
 	if in.DryRun {
 		return Payload{StorePackage: storePackage, Package: pkg, Path: path, DryRun: true}, nil
 	}
 
-	// UploadClient, not AuthedClient: a 10 MiB document on a slow CI uplink can
-	// outlive the 60s control-plane default. It honors an explicit --timeout.
 	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return nil, err
@@ -198,14 +142,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, appstorecmd.ClassifyHostedApp(storePackage, pkg, err)
 	}
 
-	// DESIGN §8: a committed mutation prints one ✓ line on stderr; stdout stays
-	// data-only. The line names the id AND its destination, because an id with
-	// nowhere to go is a silent dead end.
 	rc.Confirmf("uploaded policy declaration file %s for hosted app %s in app store %s: fileId %s; %s", path, pkg, storePackage, fileID, citeHint)
 	return Payload{StorePackage: storePackage, Package: pkg, Path: path, FileID: fileID, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay appstore policy upload`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

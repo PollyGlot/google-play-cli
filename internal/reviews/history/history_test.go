@@ -8,11 +8,9 @@ import (
 	"unicode/utf16"
 )
 
-// utf16LE encodes s as UTF-16LE with a leading BOM: the exact byte shape of
-// Google's monthly reviews reports.
 func utf16LE(s string) []byte {
 	var buf bytes.Buffer
-	buf.Write([]byte{0xFF, 0xFE}) // BOM
+	buf.Write([]byte{0xFF, 0xFE})
 	for _, u := range utf16.Encode([]rune(s)) {
 		var b [2]byte
 		binary.LittleEndian.PutUint16(b[:], u)
@@ -50,7 +48,6 @@ func TestParse_utf16LE_nonASCII(t *testing.T) {
 	if r.ReviewTitle != "Génial" {
 		t.Errorf("reviewTitle = %q (UTF-16 non-ASCII lost)", r.ReviewTitle)
 	}
-	// The non-ASCII, quoted, comma-bearing body must round-trip intact.
 	if r.ReviewText != "Très bonne app, 日本語 too 🎉" {
 		t.Errorf("reviewText = %q (transcoding/quoting lost data)", r.ReviewText)
 	}
@@ -63,8 +60,6 @@ func TestParse_utf16LE_nonASCII(t *testing.T) {
 }
 
 func TestParse_headerDriven_reordered(t *testing.T) {
-	// Columns in a different order than the struct: header-driven parsing must
-	// still land each value in the right field.
 	csv := "Star Rating,Package Name,Review Text\n3,com.x,hello\n"
 	rows, err := Parse(utf16LE(csv))
 	if err != nil {
@@ -97,8 +92,8 @@ func TestLatestMonth(t *testing.T) {
 		"reviews/reviews_com.example.app_202604.csv",
 		"reviews/reviews_com.example.app_202606.csv",
 		"reviews/reviews_com.example.app_202605.csv",
-		"reviews/reviews_com.other.app_202612.csv",  // different package, ignored
-		"stats/installs_com.example.app_202606.csv", // different report, ignored
+		"reviews/reviews_com.other.app_202612.csv",
+		"stats/installs_com.example.app_202606.csv",
 	}
 	if got := LatestMonth("com.example.app", names); got != "202606" {
 		t.Errorf("LatestMonth = %q, want 202606", got)
@@ -139,12 +134,10 @@ func TestMonthRange(t *testing.T) {
 		t.Errorf("MonthRange = %v, want %v", got, want)
 	}
 
-	// Same month both ends → a single element.
 	if got, _ := MonthRange("2026-06", "2026-06"); len(got) != 1 || got[0] != "202606" {
 		t.Errorf("MonthRange(single) = %v, want [202606]", got)
 	}
 
-	// Year boundary crossing.
 	got, err = MonthRange("2026-11", "2027-02")
 	if err != nil {
 		t.Fatalf("MonthRange(cross-year): %v", err)
@@ -153,7 +146,6 @@ func TestMonthRange(t *testing.T) {
 		t.Errorf("MonthRange(cross-year) = %v", got)
 	}
 
-	// Inverted range and malformed bounds are errors.
 	if _, err := MonthRange("2026-03", "2026-01"); err == nil {
 		t.Error("inverted range should error")
 	}
@@ -163,12 +155,9 @@ func TestMonthRange(t *testing.T) {
 		}
 	}
 
-	// A span wider than the cap (e.g. a mistyped year) is rejected, not expanded
-	// into thousands of months.
 	if _, err := MonthRange("1026-01", "2026-12"); err == nil {
 		t.Error("an over-wide range should error, not expand to thousands of months")
 	}
-	// Exactly the cap is allowed; one past it is not.
 	if got, err := MonthRange("2020-01", "2029-12"); err != nil || len(got) != 120 {
 		t.Errorf("120-month span should be allowed, got len=%d err=%v", len(got), err)
 	}
@@ -178,8 +167,6 @@ func TestMonthRange(t *testing.T) {
 }
 
 func TestMerge_dedupLastUpdateWins_sortedBySubmit(t *testing.T) {
-	// Review /1 appears in two months: the later export carries a greater Last
-	// Update and must win. Rows arrive out of submit order to prove the sort.
 	rows := []Row{
 		{ReviewLink: "https://play.google.com/r/2", ReviewSubmitMillisSinceEpoch: "2000", ReviewText: "second"},
 		{ReviewLink: "https://play.google.com/r/1", ReviewSubmitMillisSinceEpoch: "1000", ReviewLastUpdateMillisSinceEpoch: "1500", ReviewText: "old"},
@@ -189,18 +176,15 @@ func TestMerge_dedupLastUpdateWins_sortedBySubmit(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("want 2 rows after dedup, got %d: %+v", len(got), got)
 	}
-	// Sorted by submit millis: /1 (1000) then /2 (2000).
 	if got[0].ReviewLink != "https://play.google.com/r/1" || got[1].ReviewLink != "https://play.google.com/r/2" {
 		t.Errorf("not sorted by submit time: %+v", got)
 	}
-	// Last update wins.
 	if got[0].ReviewText != "edited" {
 		t.Errorf("latest Review Last Update should win, got %q", got[0].ReviewText)
 	}
 }
 
 func TestMerge_noLink_keptDistinct(t *testing.T) {
-	// Rows without a ReviewLink cannot be identified across months → all kept.
 	rows := []Row{
 		{ReviewSubmitMillisSinceEpoch: "2", ReviewText: "a"},
 		{ReviewSubmitMillisSinceEpoch: "1", ReviewText: "b"},

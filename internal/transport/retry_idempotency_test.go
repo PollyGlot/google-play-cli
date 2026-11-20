@@ -11,14 +11,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// imagesUploadURL is edits.images.upload on its media endpoint: a POST that
-// APPENDS to a gallery, the audit's example of a write a replay duplicates.
 const imagesUploadURL = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/abc/listings/en-US/phoneScreenshots?uploadType=media"
 
-// TestRetry_nonIdempotentPOSTNotReplayedAfter5xx is the #575 acceptance test:
-// a 503 on a non-idempotent POST may come after Google stored the image, so
-// --retry hands the failure back after a single attempt. Same for a transport
-// error that is not a dial failure (a reset, a timeout mid-request).
 func TestRetry_nonIdempotentPOSTNotReplayedAfter5xx(t *testing.T) {
 	for _, st := range []step{{status: 503}, {status: 500}, {status: 0}} {
 		inner := &scriptRT{t: t, steps: []step{st}}
@@ -33,8 +27,6 @@ func TestRetry_nonIdempotentPOSTNotReplayedAfter5xx(t *testing.T) {
 	}
 }
 
-// TestRetry_nonIdempotentPOSTRetriedWhenNeverSent: a dial or DNS failure, or a
-// 429, proves the write never ran, so even a non-idempotent POST is retried.
 func TestRetry_nonIdempotentPOSTRetriedWhenNeverSent(t *testing.T) {
 	cases := map[string]step{
 		"dial": {err: &url.Error{Op: "Post", URL: imagesUploadURL, Err: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}}},
@@ -51,8 +43,6 @@ func TestRetry_nonIdempotentPOSTRetriedWhenNeverSent(t *testing.T) {
 	}
 }
 
-// TestRetry_replaySafePOSTReplayed: a POST the registry declares replay-safe
-// (edits.validate, read-shaped) keeps the full retry behaviour.
 func TestRetry_replaySafePOSTReplayed(t *testing.T) {
 	const validateURL = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/edits/abc:validate"
 	inner := &scriptRT{t: t, steps: []step{{status: 503}, {status: 200}}}
@@ -63,9 +53,6 @@ func TestRetry_replaySafePOSTReplayed(t *testing.T) {
 	}
 }
 
-// TestRetry_retryAfterClampedToMaxDelay: a day-long Retry-After, or one large
-// enough to overflow time.Duration, waits the policy's MaxDelay: never a day,
-// and never zero.
 func TestRetry_retryAfterClampedToMaxDelay(t *testing.T) {
 	for _, v := range []string{"86400", "9227000000"} {
 		h := http.Header{}
@@ -88,12 +75,12 @@ func TestParseRetryAfter(t *testing.T) {
 		in     string
 		want   time.Duration
 		wantOK bool
-		approx bool // HTTP-date: 1s resolution, and time passes during the test
+		approx bool
 	}{
 		{"", 0, false, false},
 		{"soon", 0, false, false},
 		{"-1", 0, false, false},
-		{"99999999999999999999", 0, false, false}, // not an int64, not a date
+		{"99999999999999999999", 0, false, false},
 		{"0", 0, true, false},
 		{"5", 5 * time.Second, true, false},
 		{"30", maxDelay, true, false},
@@ -122,10 +109,6 @@ func TestParseRetryAfter(t *testing.T) {
 	}
 }
 
-// FuzzParseRetryAfter holds the property the retry loop relies on: whatever a
-// server sends in Retry-After, an accepted value is a delay in [0, maxDelay].
-// A seconds value large enough to overflow time.Duration used to come back
-// negative, which made the retry fire at once.
 func FuzzParseRetryAfter(f *testing.F) {
 	for _, s := range []string{"", "0", "2", "30", "86400", "9227000000", "-5", "1e9", "Sun, 06 Nov 1994 08:49:37 GMT", "Fri, 31 Dec 9999 23:59:59 GMT"} {
 		f.Add(s)

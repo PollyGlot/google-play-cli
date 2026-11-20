@@ -1,8 +1,3 @@
-// Package tracks reads and updates the release configuration of Google
-// Play tracks within an open Edit. The operations exposed (Get (one
-// track), List (every track), Update, and Create (a new closed-testing
-// track)) are shared by the upload, promote, rollout, halt, resume,
-// complete, tracks-list, and tracks-create commands.
 package tracks
 
 import (
@@ -23,10 +18,6 @@ const (
 	opTracksCreate = "tracks.create"
 )
 
-// Registry entries this package calls. Resolving them at init makes an
-// unregistered or vanished method a startup panic caught by CI rather than a
-// runtime surprise; verb and URL then come from the Discovery snapshot instead
-// of literals kept here (#513).
 var (
 	methodGet    = apiregistry.MustResolve("androidpublisher.edits.tracks.get")
 	methodList   = apiregistry.MustResolve("androidpublisher.edits.tracks.list")
@@ -34,12 +25,6 @@ var (
 	methodCreate = apiregistry.MustResolve("androidpublisher.edits.tracks.create")
 )
 
-// TrackTypeClosedTesting is the only track type edits.tracks.create
-// supports (open / internal track creation has no API path). The
-// FormFactor* values are the TrackConfig.formFactor enum a closed track
-// can be created for: DEFAULT (phone), WEAR and AUTOMOTIVE. They are
-// exported so the command layer can label and preview a created track
-// without restating the wire strings.
 const (
 	TrackTypeClosedTesting = "CLOSED_TESTING"
 	FormFactorDefault      = "DEFAULT"
@@ -47,8 +32,6 @@ const (
 	FormFactorAutomotive   = "AUTOMOTIVE"
 )
 
-// The Status* values are the TrackRelease.status enum: what Release.Status
-// carries on the wire, both read and written.
 const (
 	StatusDraft      = "draft"
 	StatusInProgress = "inProgress"
@@ -56,60 +39,37 @@ const (
 	StatusCompleted  = "completed"
 )
 
-// LocalizedText mirrors the API's `LocalizedText` shape: one per locale
-// in a release's releaseNotes payload.
 type LocalizedText struct {
 	Language string `json:"language"`
 	Text     string `json:"text"`
 }
 
-// Release is the API-shaped subset of fields we set on a release. The
-// json tags mirror the Google Play Developer API verbatim per
-// ADR-0003 (JSON output is API pass-through).
 type Release struct {
-	Name         string          `json:"name,omitempty"`
-	Status       string          `json:"status,omitempty"`
-	UserFraction float64         `json:"userFraction,omitempty"`
-	VersionCodes []string        `json:"versionCodes,omitempty"`
-	ReleaseNotes []LocalizedText `json:"releaseNotes,omitempty"`
-	// InAppUpdatePriority is the 0..5 priority the Play Core in-app update
-	// API exposes to the app. A pointer because 0 is a real priority: nil
-	// omits the field, so a release built without a priority sends the same
-	// bytes as before the field existed (#664).
+	Name                string          `json:"name,omitempty"`
+	Status              string          `json:"status,omitempty"`
+	UserFraction        float64         `json:"userFraction,omitempty"`
+	VersionCodes        []string        `json:"versionCodes,omitempty"`
+	ReleaseNotes        []LocalizedText `json:"releaseNotes,omitempty"`
 	InAppUpdatePriority *int            `json:"inAppUpdatePriority,omitempty"`
 	CountryTargeting    json.RawMessage `json:"countryTargeting,omitempty"`
 }
 
-// Track is the API-shaped Track resource. Only the fields gplay reads
-// or writes are modeled here.
 type Track struct {
 	Track    string    `json:"track"`
 	Releases []Release `json:"releases"`
 }
 
-// TrackConfig is the edits.tracks.create request body. The API supports
-// exactly one type (CLOSED_TESTING), so gplay hardcodes it; formFactor is
-// one of the FormFactor* values, chosen by the caller.
 type TrackConfig struct {
 	Track      string `json:"track"`
 	Type       string `json:"type"`
 	FormFactor string `json:"formFactor"`
 }
 
-// formFactorPrefixes are the TrackConfig.track prefixes Play requires on a
-// form factor track (`wear:production`); a default track carries none.
 var formFactorPrefixes = map[string]string{
 	FormFactorWear:       "wear:",
 	FormFactorAutomotive: "automotive:",
 }
 
-// QualifiedName returns the TrackConfig.track identifier Play knows a track
-// named name of formFactor by: the bare alias for a default track, the alias
-// behind the form factor's prefix otherwise (beta-wear becomes wear:beta-wear).
-// A name that already carries its own prefix is kept as is. One that carries
-// another form factor's prefix contradicts formFactor and is refused, since
-// Play rejects the mismatch and guessing which side the caller meant would
-// create the wrong track.
 func QualifiedName(name, formFactor string) (string, error) {
 	for ff, prefix := range formFactorPrefixes {
 		if ff != formFactor && strings.HasPrefix(name, prefix) {
@@ -124,11 +84,6 @@ func QualifiedName(name, formFactor string) (string, error) {
 	return prefix + alias, nil
 }
 
-// Get fetches the current Track resource at edits.tracks.get. The
-// returned Track carries every release coexisting on the track (e.g.
-// inProgress + halted), which is what the promote / rollout / halt /
-// resume verbs consume. The raw JSON body is returned alongside for
-// --output json pass-through (ADR-0003) and for diagnostics.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Track, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodGet, Op: opTracksGet, Target: pkg,
@@ -144,14 +99,6 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Trac
 	return &parsed, raw, nil
 }
 
-// List fetches every track configured on the app at edits.tracks.list:
-// the standard tracks the SA can see plus any custom closed tracks. It
-// returns the parsed Track slice and the raw {"tracks":[...]} body for
-// the --output json pass-through (ADR-0003). Cross-track presentation
-// (injecting absent standard tracks, deriving the standard/custom kind,
-// summarizing the top release) is a command-layer concern; List returns
-// exactly what the API returns. Like Get, it runs inside an Edit the
-// caller has already opened.
 func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Track, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodList, Op: opTracksList, Target: pkg,
@@ -169,10 +116,6 @@ func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Track, js
 	return parsed.Tracks, raw, nil
 }
 
-// Update PUTs the track resource at edits.tracks.update carrying a single
-// release. Returns the parsed Track and the raw JSON body for --output json
-// pass-through (ADR-0003). Used by upload / promote, which build a fresh
-// release for the (possibly empty) destination track.
 func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, release Release) (*Track, json.RawMessage, error) {
 	payload, err := json.Marshal(Track{Track: track, Releases: []Release{release}})
 	if err != nil {
@@ -181,13 +124,6 @@ func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, rel
 	return UpdateRaw(ctx, hc, pkg, editID, track, payload)
 }
 
-// UpdateRaw PUTs a caller-built track body to edits.tracks.update verbatim.
-// tracks.update REPLACES the track's whole releases array, so a caller that
-// mutates one release on a track holding several (the rollout state machine)
-// must send every release, and must preserve fields gplay does not model
-// (e.g. countryTargeting). Building the body from the raw tracks.get JSON
-// and patching only the target release is the lossless way to do that;
-// round-tripping through the typed Release struct would drop the rest.
 func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, body []byte) (*Track, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodUpdate, Op: opTracksUpdate, Target: pkg,
@@ -204,12 +140,6 @@ func UpdateRaw(ctx context.Context, hc *http.Client, pkg, editID, track string, 
 	return &parsed, raw, nil
 }
 
-// Create POSTs a fresh closed-testing track to edits.tracks.create. The
-// create endpoint supports exactly one type (CLOSED_TESTING), so the body
-// hardcodes it; formFactor is the caller's FormFactor* value. Returns the
-// parsed Track and the raw JSON body for the --output json pass-through
-// (ADR-0003). Creating a track that already
-// exists is an API 4xx surfaced verbatim: gplay does not fake idempotency.
 func Create(ctx context.Context, hc *http.Client, pkg, editID, name, formFactor string) (*Track, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodCreate, Op: opTracksCreate, Target: pkg,
@@ -226,8 +156,6 @@ func Create(ctx context.Context, hc *http.Client, pkg, editID, name, formFactor 
 	return &parsed, raw, nil
 }
 
-// decode unmarshals a 2xx body into out. A body that does not decode keeps
-// the 200 status tag it always had, so its exit code (30) is unchanged.
 func decode(op, pkg string, raw json.RawMessage, out any) error {
 	if err := json.Unmarshal(raw, out); err != nil {
 		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}

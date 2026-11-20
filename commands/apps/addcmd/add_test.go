@@ -1,8 +1,3 @@
-// Package addcmd_test exercises `gplay apps add` at the kernel level:
-// a RunContext built by hand, a transport injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// commands/releases/upload_test pattern so the seams stay consistent
-// across write-side commands.
 package addcmd_test
 
 import (
@@ -29,11 +24,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// probeFake answers the edits.insert+delete pair edits.Validate makes, per
-// package: an insert for a package listed in insertStatusByPkg returns that
-// status (a simulated API failure), every other insert returns 200 with
-// editID, and every delete returns 204. Any other request fails the round
-// trip, so a stray call surfaces as an error.
 func probeFake(editID string, insertStatusByPkg map[string]int) *testkit.Fake {
 	return testkit.NewFake(
 		func(c testkit.Call) (int, string, bool) {
@@ -51,8 +41,6 @@ func probeFake(editID string, insertStatusByPkg map[string]int) *testkit.Fake {
 	)
 }
 
-// pkgFromPath extracts the package from a `/applications/{pkg}/edits...`
-// URL path: the shape internal/play/edits builds.
 func pkgFromPath(path string) string {
 	const marker = "/applications/"
 	i := strings.Index(path, marker)
@@ -66,9 +54,6 @@ func pkgFromPath(path string) string {
 	return rest
 }
 
-// signedSAJSON generates a service-account JSON whose private_key is a
-// real RSA key so the oauth2 library can sign the exchange JWT in
-// tests. Mirrors the helper in commands/releases/upload_test.go.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -90,10 +75,6 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-// newRC builds a RunContext with a parsed Account, the RoundTripper
-// installed as the oauth2.HTTPClient seam, a fresh global config seeded
-// with one Account named "playci" (active), and a temp ConfigPath the
-// command can write back to.
 func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
@@ -122,9 +103,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// failOnCall fails the test on any HTTP call, the token exchange included.
-// Tests pass it through the oauth2.HTTPClient seam to prove --no-verify
-// never hits the wire.
 func failOnCall(t *testing.T) http.RoundTripper {
 	t.Helper()
 	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -133,10 +111,6 @@ func failOnCall(t *testing.T) http.RoundTripper {
 	})
 }
 
-// TestRun_noVerify_skipsAPIAndRecordsAnyway asserts the --no-verify
-// escape hatch: zero HTTP traffic but the package is still persisted
-// under the active Account. The RoundTripper is the assertion: any
-// network call would fail the test.
 func TestRun_noVerify_skipsAPIAndRecordsAnyway(t *testing.T) {
 	rc := newRC(t, failOnCall(t))
 
@@ -153,10 +127,6 @@ func TestRun_noVerify_skipsAPIAndRecordsAnyway(t *testing.T) {
 	}
 }
 
-// TestRun_invalidPackage_rejectsClientSide asserts a missing-dot
-// package name is rejected before any HTTP traffic. The error must
-// carry exit code 20 (client-side validation) so CI can distinguish
-// "user mistyped the package" from "API said no".
 func TestRun_invalidPackage_rejectsClientSide(t *testing.T) {
 	rc := newRC(t, failOnCall(t))
 
@@ -168,7 +138,6 @@ func TestRun_invalidPackage_rejectsClientSide(t *testing.T) {
 		t.Errorf("exit.For = %d, want 20 (client-side validation); err = %v", got, err)
 	}
 
-	// The registry must be untouched.
 	g, err := config.LoadGlobalOrEmpty(rc.Ctx, config.OSFS{}, rc.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty: %v", err)
@@ -178,16 +147,9 @@ func TestRun_invalidPackage_rejectsClientSide(t *testing.T) {
 	}
 }
 
-// TestRun_persistsUnderAccountThatActuallyRanProbe asserts the
-// account-misattribution fix: when --account / GPLAY_ACCOUNT pick a
-// credential other than the on-disk Active, the package must be
-// registered under THAT Account's name, not under the cascade's
-// ConfigAccount snapshot. The pre-fix code did the opposite, silently
-// recording the (Account, Package) pair under the wrong identity.
 func TestRun_persistsUnderAccountThatActuallyRanProbe(t *testing.T) {
 	rc := newRC(t, probeFake("edit-misattrib", nil))
 
-	// Seed a second Account in the global so registry.Add can find it.
 	g, err := config.LoadGlobalOrEmpty(rc.Ctx, config.OSFS{}, rc.ConfigPath)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -197,9 +159,6 @@ func TestRun_persistsUnderAccountThatActuallyRanProbe(t *testing.T) {
 		t.Fatalf("Save seed: %v", err)
 	}
 
-	// Simulate --account altname overriding the cascade: AccountName
-	// is the resolver's choice, ConfigAccount stays "playci" (the
-	// global Active flag).
 	rc.AccountName = "altname"
 
 	if _, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.app"}}); err != nil {
@@ -218,14 +177,9 @@ func TestRun_persistsUnderAccountThatActuallyRanProbe(t *testing.T) {
 	}
 }
 
-// TestRun_accountNotInGlobal_refusesBeforeProbe asserts the pre-flight
-// check: if rc.AccountName names an Account that isn't in the global
-// config (keystore-only, or a stale local override), apps add must
-// refuse client-side without burning a Google round-trip. The
-// failOnCall transport is the assertion mechanism.
 func TestRun_accountNotInGlobal_refusesBeforeProbe(t *testing.T) {
 	rc := newRC(t, failOnCall(t))
-	rc.AccountName = "ghost" // not in g.Accounts (newRC seeds only "playci")
+	rc.AccountName = "ghost"
 
 	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"com.example.app"}})
 	if err == nil {
@@ -239,12 +193,6 @@ func TestRun_accountNotInGlobal_refusesBeforeProbe(t *testing.T) {
 	}
 }
 
-// TestRun_apiError_doesNotPersistPackage asserts the most important
-// safety property of `apps add`: a failed validate (here a 403: SA
-// not invited on the app) must NOT add the package to the registry.
-// Persisting on failure would defeat the whole purpose of validate-
-// by-default: users would end up with a registry full of packages
-// the credential cannot reach.
 func TestRun_apiError_doesNotPersistPackage(t *testing.T) {
 	rc := newRC(t, probeFake("edit-x", map[string]int{"com.example.myapp": http.StatusForbidden}))
 
@@ -265,9 +213,6 @@ func TestRun_apiError_doesNotPersistPackage(t *testing.T) {
 	}
 }
 
-// TestRun_happyPath_validatesAndPersists is the tracer bullet: a real
-// /token exchange + edits.insert + edits.delete round trip, then the
-// global config carries the package under the active Account.
 func TestRun_happyPath_validatesAndPersists(t *testing.T) {
 	fake := probeFake("edit-add", nil)
 	rc := newRC(t, fake)
@@ -288,12 +233,6 @@ func TestRun_happyPath_validatesAndPersists(t *testing.T) {
 	}
 }
 
-// TestRun_malformedInlineCredential_exits10NotRegistered drives the
-// production lazy path (kernel.Run → buildRunContext) with a malformed
-// inline --service-account. The AccountName == "" branch must surface the
-// invalid-credential error (exit 10, the real cause) instead of the
-// misdirecting "run gplay auth login" authError, and the package must NOT
-// be registered under the cascade Account (#180, ADR-0020).
 func TestRun_malformedInlineCredential_exits10NotRegistered(t *testing.T) {
 	t.Setenv(resolver.EnvServiceAccount, "")
 	t.Setenv(resolver.EnvAccount, "")
@@ -318,8 +257,6 @@ func TestRun_malformedInlineCredential_exits10NotRegistered(t *testing.T) {
 	if !strings.Contains(runErr.Error(), "could not read credential") {
 		t.Errorf("error should name the real cause; got %q", runErr.Error())
 	}
-	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
-	// error survives, not just the wrapper prefix.
 	if !strings.Contains(runErr.Error(), "invalid character") {
 		t.Errorf("error should preserve the underlying JSON parse cause; got %q", runErr.Error())
 	}

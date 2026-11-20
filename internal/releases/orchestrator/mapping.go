@@ -1,10 +1,3 @@
-// Package orchestrator: UploadMapping owns the standalone
-// mapping-upload choreography behind `gplay releases mappings upload`:
-// open an Edit, POST the deobfuscation file keyed by an explicit
-// versionCode, and commit. Unlike Upload it touches no track and uploads
-// no AAB: it attaches a ProGuard/R8 mapping (a Mapping, per GLOSSARY.md)
-// to an already-published version after the fact, so Play vitals can
-// symbolicate that version's obfuscated crash stacks (#250).
 package orchestrator
 
 import (
@@ -17,34 +10,21 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/mappings"
 )
 
-// MappingOpts is the input contract for UploadMapping. FileType empty
-// defaults to proguard (the mapping.txt common case).
 type MappingOpts struct {
 	Package     string
 	VersionCode int
 	MappingPath string
-	// FileType is the deobfuscation file type, taken verbatim from the
-	// Discovery enum (proguard / nativeCode). Empty defaults to proguard.
-	FileType string
+	FileType    string
 
 	KeepEditOnFailure bool
 
-	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
-	// instead of opening/committing a per-upload Edit (docs/DESIGN.md §4).
-	// Empty is the implicit default.
 	ExplicitEditID string
 
-	// Commit carries the opt-in edits.commit parameters; the zero value keeps
-	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
 	Commit edits.CommitOptions
 
-	// DryRun validates inputs and the mapping is readable without any
-	// HTTP: no Edit is opened, nothing is uploaded.
 	DryRun bool
 }
 
-// MappingResult is what UploadMapping returns on success. Raw carries the
-// verbatim deobfuscationfiles.upload body for the ADR-0003 pass-through.
 type MappingResult struct {
 	VersionCode int             `json:"versionCode"`
 	FileType    string          `json:"deobfuscationFileType"`
@@ -52,9 +32,6 @@ type MappingResult struct {
 	Raw         json.RawMessage `json:"-"`
 }
 
-// resolveFileType applies the proguard default and rejects any value
-// outside the Discovery enum. Centralized so the live and dry-run paths
-// validate identically (every misuse → *InvalidOptsError, exit 2).
 func resolveFileType(fileType string) (string, error) {
 	switch fileType {
 	case "":
@@ -67,9 +44,6 @@ func resolveFileType(fileType string) (string, error) {
 	}
 }
 
-// validateMappingOpts enforces the caller-side preconditions shared by
-// the live and dry-run paths: a positive versionCode and an in-enum file
-// type. Every failure maps to *InvalidOptsError (exit 2).
 func validateMappingOpts(opts MappingOpts) (string, error) {
 	if opts.VersionCode <= 0 {
 		return "", &InvalidOptsError{Message: "VersionCode must be a positive APK version code"}
@@ -77,11 +51,6 @@ func validateMappingOpts(opts MappingOpts) (string, error) {
 	return resolveFileType(opts.FileType)
 }
 
-// UploadMapping uploads a deobfuscation file for an existing versionCode
-// inside its own Edit: edits.insert → deobfuscationfiles.upload →
-// edits.commit. On any failure the Edit is auto-discarded (unless
-// KeepEditOnFailure). opts.DryRun validates inputs and the mapping is
-// readable without any HTTP.
 func UploadMapping(ctx context.Context, hc *http.Client, opts MappingOpts) (*MappingResult, error) {
 	fileType, err := validateMappingOpts(opts)
 	if err != nil {
@@ -93,9 +62,6 @@ func UploadMapping(ctx context.Context, hc *http.Client, opts MappingOpts) (*Map
 		if err != nil {
 			return nil, &dryRunError{msg: "mapping not accessible: " + err.Error()}
 		}
-		// Parity with the live path (mappings.Upload): a directory passes
-		// Stat but cannot be streamed, so reject non-regular files in
-		// dry-run too, keeping --dry-run and live behavior aligned.
 		if !st.Mode().IsRegular() {
 			return nil, &dryRunError{msg: "mapping is not a regular file: " + opts.MappingPath}
 		}

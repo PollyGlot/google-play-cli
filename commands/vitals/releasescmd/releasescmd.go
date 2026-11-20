@@ -1,8 +1,3 @@
-// Package releasescmd implements `gplay vitals releases`: the tracks, serving
-// releases and version codes the Play Developer Reporting service holds vitals
-// data for (apps.fetchReleaseFilterOptions, #348). It answers "which
-// --version-code can I filter on?" before a preset is run. Read-only, on the
-// same least-privilege reporting scope as the rest of `vitals`.
 package releasescmd
 
 import (
@@ -17,13 +12,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 }
 
-// Payload renders the release filter options. JSON is the verbatim API
-// pass-through (ADR-0003); table/markdown show one row per serving release.
 type Payload struct {
 	Raw      json.RawMessage
 	Releases []vitals.Release
@@ -44,8 +36,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run resolves the package, fetches its release filter options and projects
-// them for the table/markdown renderers.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -66,7 +56,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Raw: raw, Releases: rows}, nil
 }
 
-// NewCommand returns the cobra command for `gplay vitals releases`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -16,15 +16,6 @@ import (
 	"unicode/utf8"
 )
 
-// FuzzDecode fuzzes the Bulk report decoder, which reads files fetched from a
-// bucket gplay does not control. Three properties:
-//
-//   - On arbitrary bytes Decode never panics, never returns rows alongside an
-//     error, and every row key it returns is a declared column.
-//   - Any cell value and header a well-formed report carries (quotes, commas,
-//     newlines, non-BMP runes) comes back byte for byte, whether the file is
-//     UTF-16 LE with a BOM, UTF-16 BE with a BOM, or UTF-8.
-//   - The key derived from a header is the same whatever the encoding.
 func FuzzDecode(f *testing.F) {
 	f.Add(encodeUTF16(installsCSV, binary.LittleEndian, true), "Daily Device Installs", "00042")
 	f.Add([]byte{}, "", "")
@@ -54,9 +45,6 @@ func FuzzDecode(f *testing.F) {
 			}
 		}
 
-		// encoding/csv folds a quoted \r\n to \n on read, invalid UTF-8 cannot
-		// survive a UTF-16 round trip, and a header's surrounding space and a
-		// leading BOM rune are not part of its text: none is a Decode defect.
 		if !utf8.ValidString(header) || !utf8.ValidString(value) ||
 			strings.ContainsRune(header, '\r') || strings.ContainsRune(value, '\r') ||
 			strings.TrimSpace(header) != header || strings.HasPrefix(header, "\uFEFF") ||
@@ -97,13 +85,6 @@ func FuzzDecode(f *testing.F) {
 	})
 }
 
-// FuzzExtractCSV fuzzes the report ZIP reader (the .csv members of an archive), which opens archives fetched
-// from a bucket gplay does not control. Two properties:
-//
-//   - On arbitrary bytes Read never panics and never returns a table
-//     alongside an error.
-//   - A well-formed archive holding one CSV member reads as that member
-//     decoded on its own.
 func FuzzExtractCSV(f *testing.F) {
 	f.Add([]byte{}, "earnings_202609.csv", "Description,Buyer Country\nGPA.1,FR\n")
 	f.Add([]byte("PK\x05\x06"+strings.Repeat("\x00", 18)), "salesreport_202609.csv", "")
@@ -123,7 +104,7 @@ func FuzzExtractCSV(f *testing.F) {
 		w := zip.NewWriter(&buf)
 		fw, err := w.Create(name)
 		if err != nil {
-			return // a name archive/zip will not write is not a reader defect
+			return
 		}
 		_, _ = fw.Write([]byte(body))
 		if err := w.Close(); err != nil {
@@ -143,23 +124,18 @@ func FuzzExtractCSV(f *testing.F) {
 	})
 }
 
-// TestUTF16Reader_matchesUnicodeUTF16 checks the streaming transcoder
-// against unicode/utf16 on the edge cases (pairs, lone surrogates, a high
-// surrogate last) and on random runs of code units, read one byte at a time
-// so a rune never fits whole.
 func TestUTF16Reader_matchesUnicodeUTF16(t *testing.T) {
 	cases := [][]byte{
-		{'a', 0, 0x3D, 0xD8, 0x89, 0xDF}, // 🎉 as a pair
-		{0x3D, 0xD8, 'a', 0},             // a lone high surrogate
-		{0x89, 0xDF, 'a', 0},             // a lone low surrogate
-		{'a', 0, 0x3D, 0xD8},             // a high surrogate last
+		{'a', 0, 0x3D, 0xD8, 0x89, 0xDF},
+		{0x3D, 0xD8, 'a', 0},
+		{0x89, 0xDF, 'a', 0},
+		{'a', 0, 0x3D, 0xD8},
 		{0x3D, 0xD8, 0x3D, 0xD8, 0x89, 0xDF},
 	}
 	rng := rand.New(rand.NewPCG(1, 2))
 	for range 2000 {
 		b := make([]byte, 2*rng.IntN(12))
 		for i := range b {
-			// Bias towards the surrogate range so pairs and strays both occur.
 			if i%2 == 1 && rng.IntN(2) == 0 {
 				b[i] = byte(0xD8 + rng.IntN(8))
 			} else {
@@ -183,7 +159,6 @@ func TestUTF16Reader_matchesUnicodeUTF16(t *testing.T) {
 	}
 }
 
-// sameTable compares two tables by columns and by the cells each row has.
 func sameTable(a, b Table) bool {
 	if len(a.Columns) != len(b.Columns) || len(a.Rows) != len(b.Rows) {
 		return false

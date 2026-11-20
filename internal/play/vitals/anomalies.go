@@ -17,36 +17,18 @@ const (
 	pageMaxAnomalies = 100
 )
 
-// mListAnomalies is the registry entry behind ListAnomalies. Resolving at init
-// turns an unregistered or vanished method into a CI panic rather than a
-// runtime surprise; verb, host (playdeveloperreporting.googleapis.com) and URL
-// template then come from the Discovery snapshot (#513, batch 3).
 var mListAnomalies = apiregistry.MustResolve("playdeveloperreporting.anomalies.list")
 
-// AnomalyListOptions bounds an anomalies.list call: an AIP-160 Filter (the
-// window is expressed as an `activeBetween(...)` filter: see ActiveBetween) and
-// a total Limit (0 = every page). The call auto-paginates to Limit.
 type AnomalyListOptions struct {
 	Filter string
 	Limit  int
 }
 
-// ActiveBetween builds the anomalies `activeBetween("start", "end")` filter from
-// a window, the documented way to bound anomalies.list by time (the method has
-// no interval parameters). Timestamps are RFC-3339 in UTC.
 func ActiveBetween(start, end time.Time) string {
 	return fmt.Sprintf("activeBetween(%q, %q)",
 		start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339))
 }
 
-// ListAnomalies issues anomalies.list (GET) for pkg, following nextPageToken to
-// opts.Limit (0 = all), and returns the rebuilt {anomalies:[...]} envelope
-// (items verbatim) for the JSON pass-through. The API default page is only 10,
-// so a single page would silently under-report.
-//
-// The second return value reports that opts.Limit cut the list short while the
-// server still had pages: the command layer turns it into a stderr warning
-// (PRD #446).
 func ListAnomalies(ctx context.Context, hc *http.Client, pkg string, opts AnomalyListOptions) (json.RawMessage, bool, error) {
 	base := url.Values{}
 	if opts.Filter != "" {
@@ -55,9 +37,6 @@ func ListAnomalies(ctx context.Context, hc *http.Client, pkg string, opts Anomal
 	return paginateGET(ctx, hc, mListAnomalies, opListAnomalies, pkg, base, "anomalies", pageMaxAnomalies, opts.Limit)
 }
 
-// Anomaly is the render-ready subset of a Play-detected metric anomaly: which
-// metric of which metric set spiked, the anomalous value, the period it covers,
-// and the dimensions it is sliced by.
 type Anomaly struct {
 	MetricSet  string
 	Metric     string
@@ -66,7 +45,6 @@ type Anomaly struct {
 	Period     string
 }
 
-// ParseAnomalies projects an anomalies.list response into Anomalies.
 func ParseAnomalies(body []byte) ([]Anomaly, error) {
 	var resp struct {
 		Anomalies []struct {
@@ -99,8 +77,6 @@ func ParseAnomalies(body []byte) ([]Anomaly, error) {
 	return out, nil
 }
 
-// lastPathSegment trims a resource name like "apps/X/crashRateMetricSet" to its
-// final segment ("crashRateMetricSet"), the part a reader recognises.
 func lastPathSegment(s string) string {
 	if i := strings.LastIndexByte(s, '/'); i >= 0 {
 		return s[i+1:]
@@ -108,8 +84,6 @@ func lastPathSegment(s string) string {
 	return s
 }
 
-// period renders the anomaly's [start, end) window compactly; an unset endpoint
-// is omitted.
 func period(start, end apiDateTime) string {
 	s := start.format(false)
 	e := end.format(false)

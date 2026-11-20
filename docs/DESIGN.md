@@ -247,8 +247,9 @@ current user owns it, or when it shares the owner of the working directory
 (a container running as its own uid on a mounted checkout), and when it is
 not writable by every user. Otherwise another user could have planted it, or
 files in it, in a shared directory such as `/tmp`: gplay ignores it and says
-so on stderr. The ownership check applies on Unix only: Windows ACLs have no
-single owner to compare.
+so on stderr. Both checks apply on Unix only: Windows ACLs have no single
+owner to compare, and when the owner cannot be read the directory is adopted
+without the permission test either.
 
 ### Field rules
 
@@ -329,12 +330,15 @@ offending file. The check is syntactic: `xy-ZZ` passes and is Play's to
 refuse, while `en_US`, `en-`, `klingon` and `e` do not. It ignores case (RFC
 5646 tags are case-insensitive), and the primary subtag is 2 or 3 letters
 although RFC 5646 reserves longer ones, which no Play locale uses and which
-would let `klingon` through. It uses no locale registry, which would reject a
+would let `klingon` through. Singleton extension and private-use subtags (RFC
+5646 §2.2.6-7) are refused for the same reason: no Play locale carries one,
+and accepting them would admit arbitrary one-letter subtags. It uses no locale registry, which would reject a
 locale Google added last week, and no `golang.org/x/text`, whose tables would
 weigh on a single static binary (ADR-0007). An unreadable directory is
 refused at the same point, and `default.txt` is exempt: it is a fallback
-marker, not a locale. A notes file over 1 MiB is refused (exit `2`) before it
-is read ([ADR-0063](./adr/0063-offline-validation-before-the-api.md)).
+marker, not a locale. A notes file over 1 MiB is refused before it is read:
+exit `2` on a live upload and on `promote`, exit `20` under `--dry-run`, which
+reports every local artifact problem as a client-side error ([ADR-0063](./adr/0063-offline-validation-before-the-api.md)).
 
 **`releases promote` carries the source's notes over verbatim** unless
 `--release-notes` or `--release-notes-dir` is passed. An override that lacks a
@@ -548,6 +552,11 @@ reports the error the serial walk would have hit first.
 
 - **Writes inside one Edit stay sequential** (`images apply`, `metadata apply`):
   Google does not document concurrent writes to an Edit.
+- **A fan-out worker never resolves credentials or writes output through the
+  `RunContext`.** One cobra invocation owns one `RunContext`, whose lazy
+  credential resolution and output counters are unguarded: the HTTP client is
+  taken from it before the fan-out starts, and results are written after it
+  ends. Reading its context (`rc.Ctx`) from a worker is fine.
 - **`images apply` and `images validate` hold one image at a time**: the tree
   is scanned for paths, validation reads each file's size and header, the diff
   hashes each file as a stream, and an upload reads its image just before
@@ -593,6 +602,8 @@ reports the error the serial walk would have hit first.
   price of that leniency: a reply that opens with a quote and never closes it
   swallows the rest of the stream into one record. A malformed line (not two
   fields, an empty id or reply) is reported on its own and the batch goes on.
+  Surrounding whitespace is trimmed from the review id, since the API answers
+  a padded id with a 404.
   A batch with any failed row exits with the highest exit code among its rows
   (a `404` row, exit `30`, outranks a malformed line, exit `2`); a fully
   successful batch exits `0`. Under `--output json` a stdout that cannot be
@@ -1322,7 +1333,8 @@ low-stakes and reversible, unlike a production rollout.
 upload/promote to a closed track that **does not exist yet** fails at the
 API; gplay attaches a hint pointing at `gplay tracks create <name>` (same
 pattern as the other track-not-found hints). The hint attaches to the
-`tracks.update` 404 only: on the same flow a package miss at `edits.insert`
+404 of the track call only (`tracks.update`, and the `tracks.get` that
+`releases promote` reads `--to` with): on the same flow a package miss at `edits.insert`
 and a malformed bundle at `bundles.upload` also answer 404, and telling either
 to create a track would mislead. gplay **never auto-creates** a
 track as a side effect of an upload — a typo'd `--track` must fail, not

@@ -11,8 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
-// failingBlob sniffs as a PNG, then fails its copy after writing part of it:
-// a staged file that cannot be read back in full.
 type failingBlob struct{}
 
 func (failingBlob) head() ([]byte, error) { return []byte("\x89PNG\r\n\x1a\n"), nil }
@@ -21,9 +19,6 @@ func (failingBlob) copyTo(w io.Writer) error {
 	return errors.New("read staged file: boom")
 }
 
-// TestWriteContained_failedCopyKeepsExistingImage asserts a copy that fails
-// partway leaves the image already on disk intact, not truncated, and leaves
-// no temporary file next to it.
 func TestWriteContained_failedCopyKeepsExistingImage(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "icon.png")
@@ -46,8 +41,6 @@ func TestWriteContained_failedCopyKeepsExistingImage(t *testing.T) {
 	}
 }
 
-// TestWriteContained_replacesWithFilePerm asserts a successful write replaces
-// the existing image and leaves it with filePerm.
 func TestWriteContained_replacesWithFilePerm(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "icon.png")

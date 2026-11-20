@@ -16,11 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// failingTransport is the transport the repeated-flag tests install over
-// http.DefaultTransport (what the kernel falls back to in production when no
-// client is injected): every request it sees is a contract violation, because a
-// repeated flag must be rejected during parsing, long before any RunE body can
-// mint a token or call the API.
 type failingTransport struct {
 	t     *testing.T
 	calls int
@@ -32,8 +27,6 @@ func (f *failingTransport) serve(req *http.Request) (*http.Response, error) {
 	return nil, errors.New("no network in tests")
 }
 
-// noNetwork swaps http.DefaultTransport for a failing transport for the
-// duration of the test and returns it so the caller can assert the call count.
 func noNetwork(t *testing.T) *failingTransport {
 	t.Helper()
 	ft := &failingTransport{t: t}
@@ -43,25 +36,11 @@ func noNetwork(t *testing.T) *failingTransport {
 	return ft
 }
 
-// TestRepeatedFlags_areCliMisuse asserts the fourth door into the
-// docs/DESIGN.md §9 misuse contract (PRD #446 / #450): a single-value flag
-// passed twice is a usage error (exit 2) naming the flag AND both values,
-// instead of pflag's silent last-wins.
-//
-// The `--track alpha --track production` case is the whole reason the PRD
-// exists: last-wins there ships to production with nothing on stdout or stderr
-// to say the first value was dropped.
-//
-// Genuine repeatable flags (pflag.SliceValue) must keep accepting repetition:
-// see TestRepeatableFlags_stillAcceptRepetition.
-//
-// Every case is rejected during flag parsing, so no RunE runs: the installed
-// failing transport proves no HTTP left the process.
 func TestRepeatedFlags_areCliMisuse(t *testing.T) {
 	cases := []struct {
 		name     string
 		args     []string
-		wantMsgs []string // substrings the one-line error must contain
+		wantMsgs []string
 	}{
 		{
 			"repeated-track-on-leaf",
@@ -84,8 +63,6 @@ func TestRepeatedFlags_areCliMisuse(t *testing.T) {
 			[]string{"--verbose"},
 		},
 		{
-			// Identical values are still ambiguous input, not a no-op: the
-			// rejection is about the argv, not about the resolved value.
 			"repeated-with-identical-values",
 			[]string{"apps", "list", "--account", "same", "--account", "same"},
 			[]string{"--account", `"same"`},
@@ -121,10 +98,6 @@ func TestRepeatedFlags_areCliMisuse(t *testing.T) {
 	}
 }
 
-// TestRepeatableFlags_stillAcceptRepetition is the other half of the contract:
-// a flag declared repeatable (StringArrayVar / StringSliceVar → pflag.SliceValue)
-// must survive the walk untouched. It parses the tree's real repeatable
-// `--locale` and asserts both values landed.
 func TestRepeatableFlags_stillAcceptRepetition(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 	apply, _, err := root.Find([]string{"metadata", "images", "apply"})
@@ -143,39 +116,18 @@ func TestRepeatableFlags_stillAcceptRepetition(t *testing.T) {
 	}
 }
 
-// TestRepeatedFlags_everyRegisteredFlagRejects is the completeness guard behind
-// the case-by-case test above, and the reason #450 lives in the kernel rather
-// than in each command: it WALKS the real command tree and asserts that EVERY
-// registered single-value flag, at any depth, refuses a second value.
-//
-// A leaf added tomorrow with a plain StringVar is covered without touching this
-// test, because kernel.RejectRepeatedFlags wraps whatever the tree carries;
-// what this pins is that newRootCmd keeps CALLING it after registration.
-// Dropping that one call turns this red.
-//
-// Flags are driven directly through pflag (Set is a pure function of the flag's
-// value), so no RunE fires: no credentials, no keyring, no network.
 func TestRepeatedFlags_everyRegisteredFlagRejects(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 
-	// A parseable sample per flag Type() in the tree. An unlisted type is
-	// REPORTED rather than skipped, so a new flag kind cannot slip past this
-	// guard by simply not having a sample here.
 	samples := map[string]string{
 		"string": "x", "bool": "true", "int": "1", "int64": "1",
 		"float64": "0.5", "duration": "1s",
 		"stringSlice": "x", "stringArray": "x", "int64Slice": "1", "intSlice": "1",
 		"stringToString": "k=v", "stringToInt": "k=1", "stringToInt64": "k=1",
-		// commitflags' validated enum (#598): only its listed values parse.
-		"cancel|error": "error",
-		// ifexists' per-command enum (ADR-0050): the type is the offered set.
+		"cancel|error":     "error",
 		"skip|fail":        "skip",
 		"skip|update|fail": "update",
 	}
-	// Flag types whose second occurrence is normal use, not misuse. pflag
-	// publishes an interface for its slice values and none for its map values,
-	// so the map kinds are matched by name here exactly as the kernel matches
-	// them, and an unknown type still lands in the samples check above.
 	repeatableTypes := map[string]bool{
 		"stringToString": true, "stringToInt": true, "stringToInt64": true,
 	}
@@ -196,9 +148,6 @@ func TestRepeatedFlags_everyRegisteredFlagRejects(t *testing.T) {
 			}
 			_, isSlice := f.Value.(pflag.SliceValue)
 			if isSlice || repeatableTypes[f.Value.Type()] {
-				// The exemption is asserted, not assumed: a repeatable flag
-				// that started rejecting its second value would be a silent
-				// regression on `--locale a --locale b`.
 				repeatable++
 				if err := f.Value.Set(sample); err != nil {
 					t.Errorf("%s --%s: first Set(%q) = %v, want nil", c.CommandPath(), f.Name, sample, err)

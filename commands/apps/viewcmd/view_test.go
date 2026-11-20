@@ -1,9 +1,3 @@
-// Package viewcmd_test exercises `gplay apps view` at the kernel level:
-// a RunContext built by hand, a testkit Fake injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// releases/list harness: the transport FAILS on any PUT or :commit,
-// because `apps view` is a read-only listing (open Edit → details.get
-// → listings.get → discard, never commit).
 package viewcmd_test
 
 import (
@@ -26,16 +20,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// viewAPI is the Play API the apps-view sequence sees, served by a testkit
-// Fake: edits.insert, edits.details.get, edits.listings.get(lang), the
-// listing icon, edits.delete. It deliberately has NO PUT or :commit route:
-// reaching one means the command tried to mutate state, which a read-only
-// listing must never do, so the test fails.
 type viewAPI struct {
 	editID  string
 	details string
 	listing string
-	icon    string // body for /listings/{lang}/icon (defaults to empty slot)
+	icon    string
 
 	detailsCode int
 	listingCode int
@@ -57,7 +46,7 @@ func (a *viewAPI) serve(t *testing.T) *testkit.Fake {
 		case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/icon"):
 			body := a.icon
 			if body == "" {
-				body = `{"images":[]}` // missing == empty (ADR-0013)
+				body = `{"images":[]}`
 			}
 			return a.iconCode, body, true
 		case c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/"):
@@ -68,9 +57,6 @@ func (a *viewAPI) serve(t *testing.T) *testkit.Fake {
 	return a.fake
 }
 
-// calls lists the requests as "METHOD path", the token exchanges first: the
-// oauth2 transport runs the exchange before the first API call and caches
-// the token, and the Fake counts exchanges without recording them.
 func (a *viewAPI) calls() []string {
 	var out []string
 	for range a.fake.TokenExchanges() {
@@ -109,11 +95,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_happyPath asserts the read-only vertical slice: /token first,
-// then edits.insert, details.get, listings.get(defaultLanguage),
-// edits.delete. The returned payload carries the three Details fields,
-// and --output json emits the {"details":..,"listing":..} envelope
-// verbatim (explicit exception to ADR-0003).
 func TestRun_happyPath(t *testing.T) {
 	detailsBody := `{"contactEmail":"hi@example.com","contactPhone":"+1","contactWebsite":"https://x","defaultLanguage":"en-US"}`
 	listingBody := `{"language":"en-US","title":"MyApp","shortDescription":"hi","fullDescription":"world","video":""}`
@@ -151,7 +132,6 @@ func TestRun_happyPath(t *testing.T) {
 			t.Errorf("call %d = %q, want %q", i, api.calls()[i], want)
 		}
 	}
-	// Exactly one Edit opened (single edits.insert), reused for all reads.
 	inserts := 0
 	for _, c := range api.calls() {
 		if c == "POST /androidpublisher/v3/applications/com.example.app/edits" {
@@ -162,8 +142,6 @@ func TestRun_happyPath(t *testing.T) {
 		t.Errorf("edits.insert count = %d, want exactly 1 (same Edit reused)", inserts)
 	}
 
-	// JSON pass-through: the envelope wraps both upstream bodies verbatim.
-	// With no icon in the slot, the optional icon key is omitted entirely.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -187,10 +165,6 @@ func TestRun_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_iconPresent_inEnvelopeAndViews asserts that when the default
-// language has a store icon, the JSON envelope carries an "icon" key
-// {"url":..,"sha256":..} verbatim, and the table/markdown views show the
-// sha256 line. The whole read still opens exactly one Edit.
 func TestRun_iconPresent_inEnvelopeAndViews(t *testing.T) {
 	api := &viewAPI{
 		editID:  "edit-info",
@@ -242,15 +216,11 @@ func TestRun_iconPresent_inEnvelopeAndViews(t *testing.T) {
 	}
 }
 
-// TestRun_iconAbsent_noIconRow asserts that with an empty icon slot, the
-// icon key is omitted from the envelope and no icon row appears in the
-// table/markdown views.
 func TestRun_iconAbsent_noIconRow(t *testing.T) {
 	api := &viewAPI{
 		editID:  "edit-info",
 		details: `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`,
 		listing: `{"language":"en-US","title":"MyApp"}`,
-		// icon left empty → transport serves {"images":[]}
 	}
 	rc, _ := newRC(t, api.serve(t))
 
@@ -282,8 +252,6 @@ func TestRun_iconAbsent_noIconRow(t *testing.T) {
 	}
 }
 
-// TestRun_iconRead403_exit11 asserts a 403 on the icon read bubbles up
-// as exit 11 (authorization).
 func TestRun_iconRead403_exit11(t *testing.T) {
 	api := &viewAPI{
 		editID:   "edit-icon-403",
@@ -299,8 +267,6 @@ func TestRun_iconRead403_exit11(t *testing.T) {
 	}
 }
 
-// TestRun_iconRead404_exit30 asserts a 404 on the icon read maps to
-// exit 30 (API 4xx other than auth/perms).
 func TestRun_iconRead404_exit30(t *testing.T) {
 	api := &viewAPI{
 		editID:   "edit-icon-404",
@@ -316,9 +282,6 @@ func TestRun_iconRead404_exit30(t *testing.T) {
 	}
 }
 
-// TestRun_usesPin_whenNoFlag asserts that without --package the command
-// falls back to rc.Resolved.Pin (the .gplay/config.json pin), matching
-// the same precedence rule as `gplay releases list`.
 func TestRun_usesPin_whenNoFlag(t *testing.T) {
 	api := &viewAPI{
 		editID:  "edit-pin",
@@ -339,9 +302,6 @@ func TestRun_usesPin_whenNoFlag(t *testing.T) {
 	t.Errorf("expected calls scoped to com.pinned.app, got: %v", api.calls())
 }
 
-// TestRun_missingPackage_exit2 asserts that with neither --package nor
-// a pinned project, the command short-circuits with a usage error
-// before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	api := &viewAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -354,10 +314,6 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_invalidPackage_exit20 asserts that a package name that
-// doesn't even pass the cheapest client-side shape check (must
-// contain a dot, reverse-DNS convention) fails fast with exit 20
-// before any HTTP round-trip. Same gate as `apps add`.
 func TestRun_invalidPackage_exit20(t *testing.T) {
 	api := &viewAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -370,9 +326,6 @@ func TestRun_invalidPackage_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_noAccount_exit10 asserts that with no resolved Account the
-// command fails auth (exit 10) before any HTTP call: there is no
-// dry-run path for a read-only listing.
 func TestRun_noAccount_exit10(t *testing.T) {
 	api := &viewAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -386,8 +339,6 @@ func TestRun_noAccount_exit10(t *testing.T) {
 	}
 }
 
-// TestRun_detailsGet403_exit11 asserts a 403 on details.get bubbles up
-// as exit 11 (authorization). The Edit is still discarded.
 func TestRun_detailsGet403_exit11(t *testing.T) {
 	api := &viewAPI{
 		editID:      "edit-403",
@@ -401,8 +352,6 @@ func TestRun_detailsGet403_exit11(t *testing.T) {
 	}
 }
 
-// TestRun_detailsGet404_exit30 asserts a 404 on details.get maps to
-// exit 30 (API 4xx other than auth/perms).
 func TestRun_detailsGet404_exit30(t *testing.T) {
 	api := &viewAPI{
 		editID:      "edit-404",
@@ -416,10 +365,6 @@ func TestRun_detailsGet404_exit30(t *testing.T) {
 	}
 }
 
-// TestRenderTable_showsAllThreeFields asserts the table view surfaces
-// defaultLanguage, title, contactEmail: the three fields documented
-// in the AC. The exact layout is up to the renderer; the contract is
-// that each value appears somewhere in the output.
 func TestRenderTable_showsAllThreeFields(t *testing.T) {
 	p := viewcmd.Payload{
 		Package:         "com.example.app",
@@ -439,10 +384,6 @@ func TestRenderTable_showsAllThreeFields(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdown_showsAllThreeFields asserts the markdown view
-// surfaces the same three fields. Per docs/DESIGN.md §7, markdown for a
-// single-record info command is a `- **Field**: value` list rather than
-// a GFM table.
 func TestRenderMarkdown_showsAllThreeFields(t *testing.T) {
 	p := viewcmd.Payload{
 		Package:         "com.example.app",

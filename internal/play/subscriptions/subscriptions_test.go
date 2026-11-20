@@ -20,8 +20,6 @@ type scripted struct {
 	body   string
 }
 
-// subsFake serves the scripted responses in call order, then 200 {} once they
-// run out, and records every request for assertions. No network.
 func subsFake(responses []scripted) *testkit.Fake {
 	var (
 		mu sync.Mutex
@@ -41,9 +39,6 @@ func subsFake(responses []scripted) *testkit.Fake {
 
 func client(rt http.RoundTripper) *http.Client { return &http.Client{Transport: rt} }
 
-// TestList_paginatesToCompletion asserts List follows nextPageToken across
-// pages, parses each subscription's productId, and keeps the verbatim resource
-// bytes for the pass-through.
 func TestList_paginatesToCompletion(t *testing.T) {
 	rt := subsFake([]scripted{
 		{200, `{"subscriptions":[{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}]}],"nextPageToken":"p2"}`},
@@ -74,8 +69,6 @@ func TestList_paginatesToCompletion(t *testing.T) {
 	}
 }
 
-// TestList_tokenLoopGuard asserts a server that repeats a nextPageToken forever
-// surfaces an error instead of an infinite loop.
 func TestList_tokenLoopGuard(t *testing.T) {
 	rt := subsFake([]scripted{
 		{200, `{"subscriptions":[{"productId":"a"}],"nextPageToken":"same"}`},
@@ -91,9 +84,6 @@ func TestList_tokenLoopGuard(t *testing.T) {
 	}
 }
 
-// TestList_emptyProductID_refuses asserts a malformed resource without a
-// productId is rejected at the API boundary instead of becoming an
-// unaddressable catalog entry.
 func TestList_emptyProductID_refuses(t *testing.T) {
 	rt := subsFake([]scripted{
 		{200, `{"subscriptions":[{"listings":[{"languageCode":"en-US","title":"No ID"}]}]}`},
@@ -104,8 +94,6 @@ func TestList_emptyProductID_refuses(t *testing.T) {
 	}
 }
 
-// TestCreate_postsResourceWithRegionsVersion asserts Create POSTs the file
-// resource verbatim with productId and regionsVersion.version as query params.
 func TestCreate_postsResourceWithRegionsVersion(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{"productId":"premium"}`}})
 	body := json.RawMessage(`{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}]}`)
@@ -134,9 +122,6 @@ func TestCreate_postsResourceWithRegionsVersion(t *testing.T) {
 	}
 }
 
-// TestPatch_scopedUpdateMask asserts Patch PATCHes the addressed subscription
-// with an updateMask restricted to the fields the walking skeleton manages, so
-// unmanaged nesting (basePlans) can never be clobbered.
 func TestPatch_scopedUpdateMask(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{"productId":"premium"}`}})
 	body := json.RawMessage(`{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}]}`)
@@ -159,8 +144,6 @@ func TestPatch_scopedUpdateMask(t *testing.T) {
 	}
 }
 
-// TestConvertRegionPrices_postsPrice asserts the helper POSTs the Money to the
-// pricing:convertRegionPrices endpoint and returns the response verbatim.
 func TestConvertRegionPrices_postsPrice(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{"regionVersion":{"version":"2022/02"},"convertedRegionPrices":{"FR":{"regionCode":"FR","price":{"currencyCode":"EUR","units":"4","nanos":490000000}}}}`}})
 	raw, err := subscriptions.ConvertRegionPrices(context.Background(), client(rt), "com.example.app", subscriptions.Money{CurrencyCode: "USD", Units: "4", Nanos: 990000000})
@@ -179,8 +162,6 @@ func TestConvertRegionPrices_postsPrice(t *testing.T) {
 	}
 }
 
-// TestDelete_addressesProduct asserts Delete issues the DELETE and treats an
-// empty 2xx as success.
 func TestDelete_addressesProduct(t *testing.T) {
 	rt := subsFake([]scripted{{204, ``}})
 	if err := subscriptions.Delete(context.Background(), client(rt), "com.example.app", "legacy"); err != nil {
@@ -192,8 +173,6 @@ func TestDelete_addressesProduct(t *testing.T) {
 	}
 }
 
-// TestErrorEnvelope_apiError asserts a non-2xx maps to *api.Error carrying the
-// status and the operation, so commands can classify it.
 func TestErrorEnvelope_apiError(t *testing.T) {
 	rt := subsFake([]scripted{{403, `{"error":{"message":"The caller does not have permission"}}`}})
 	_, err := subscriptions.List(context.Background(), client(rt), "com.example.app")

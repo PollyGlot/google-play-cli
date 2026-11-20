@@ -13,8 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
-// Marker lines bound the gplay-managed block inside .gplay/.gitignore so
-// rerunning Init only replaces our content and leaves user-added rules alone.
 const (
 	gitignoreMarkerStart = "# BEGIN gplay-managed"
 	gitignoreMarkerEnd   = "# END gplay-managed"
@@ -22,22 +20,6 @@ const (
 edit-*.json`
 )
 
-// Init writes <repoRoot>/.gplay/config.json with the given package pin and
-// a sibling .gplay/.gitignore through fsys. It refuses to run when repoRoot
-// equals homeDir, preventing an accidental ~/.gplay/config.json from being
-// picked up via walk-up as if it were a project pin.
-//
-// The .gitignore write is idempotent: the gplay-managed block is bounded
-// by marker lines so a rerun replaces only that block, leaving any
-// user-added rules untouched.
-//
-// config.json is rewritten unconditionally so calling Init twice with a
-// different package updates the pin. ctx is threaded for future
-// cancellation; the FS operations themselves are synchronous today.
-//
-// The refusals a user can cause (running at $HOME, a missing or malformed
-// package) are *exit.UsageError, exit 2 per docs/DESIGN.md §9 (#593): they
-// are CLI misuse, not the generic exit 1 a plain error falls back to.
 func Init(_ context.Context, fsys FS, repoRoot, homeDir, pkg string) error {
 	if repoRoot == "" {
 		return fmt.Errorf("config init: repoRoot is empty")
@@ -75,13 +57,6 @@ func Init(_ context.Context, fsys FS, repoRoot, homeDir, pkg string) error {
 	return ensureGitignore(fsys, ignorePath)
 }
 
-// containWrite guards a file Init is about to write. Both files sit in a
-// directory a cloned repo controls, so either can arrive as a committed symlink
-// and a plain WriteFile would overwrite its target with the operator's rights
-// (#791); a symlinked .gplay/ pointing out of the repo is caught the same way.
-// Both are checked before either is written, so a refusal leaves nothing
-// half-initialised. As in Global.Save, a root that will not resolve means the
-// MemFS seam, with nothing on disk to contain against.
 func containWrite(repoRoot, path string) (string, error) {
 	if root, rootErr := pathguard.Root(repoRoot); rootErr == nil {
 		return pathguard.ContainWrite(root, path)
@@ -110,10 +85,6 @@ func writeConfigJSON(fsys FS, path, pkg string) error {
 	return fsys.WriteFile(path, append(data, '\n'), 0o644)
 }
 
-// ensureGitignore writes the gplay-managed block into path. If the file
-// already exists, the existing managed block (between markers) is
-// replaced and the user-authored content around it is preserved. If no
-// managed block exists, one is appended.
 func ensureGitignore(fsys FS, path string) error {
 	managed := gitignoreMarkerStart + "\n" + gitignoreBody + "\n" + gitignoreMarkerEnd + "\n"
 
@@ -121,13 +92,12 @@ func ensureGitignore(fsys FS, path string) error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	if err != nil { // file doesn't exist: write fresh
+	if err != nil {
 		return fsys.WriteFile(path, []byte(managed), 0o644)
 	}
 
 	updated, ok := replaceManagedBlock(string(existing), managed)
 	if !ok {
-		// No marker block yet: append (ensuring a newline before our block).
 		buf := string(existing)
 		if len(buf) > 0 && !strings.HasSuffix(buf, "\n") {
 			buf += "\n"
@@ -137,9 +107,6 @@ func ensureGitignore(fsys FS, path string) error {
 	return fsys.WriteFile(path, []byte(updated), 0o644)
 }
 
-// replaceManagedBlock swaps the existing gplay-managed block (delimited
-// by gitignoreMarkerStart/End) with newBlock. Returns ok=false when no
-// existing block is found, signalling that the caller should append.
 func replaceManagedBlock(existing, newBlock string) (string, bool) {
 	startIdx := strings.Index(existing, gitignoreMarkerStart)
 	if startIdx == -1 {
@@ -147,12 +114,9 @@ func replaceManagedBlock(existing, newBlock string) (string, bool) {
 	}
 	endIdx := strings.Index(existing[startIdx:], gitignoreMarkerEnd)
 	if endIdx == -1 {
-		// Start marker without end marker: replace from start marker
-		// through end of file to recover.
 		return existing[:startIdx] + newBlock, true
 	}
 	endIdx += startIdx + len(gitignoreMarkerEnd)
-	// Consume the newline after the end marker too, if any.
 	if endIdx < len(existing) && existing[endIdx] == '\n' {
 		endIdx++
 	}

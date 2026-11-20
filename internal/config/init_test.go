@@ -58,8 +58,6 @@ func TestInit_inHomeDir_isRejected(t *testing.T) {
 	if !strings.Contains(err.Error(), home) {
 		t.Errorf("error %q should mention $HOME path", err.Error())
 	}
-	// Running init in the wrong place is CLI misuse (DESIGN §9), not the
-	// generic exit 1 a plain error falls back to (#593).
 	if code := exit.For(err); code != 2 {
 		t.Errorf("exit.For = %d, want 2 (CLI misuse)", code)
 	}
@@ -93,7 +91,6 @@ func TestInit_isIdempotent_onSecondCall(t *testing.T) {
 	if err := config.Init(context.Background(), config.OSFS{}, repo, home, "com.example.app"); err != nil {
 		t.Fatalf("Init first: %v", err)
 	}
-	// Append a user line to .gitignore: Init must not blow it away on rerun.
 	giPath := filepath.Join(repo, ".gplay", ".gitignore")
 	if err := appendLine(giPath, "# my custom rule\n*.swp\n"); err != nil {
 		t.Fatal(err)
@@ -111,7 +108,6 @@ func TestInit_isIdempotent_onSecondCall(t *testing.T) {
 		t.Errorf(".gitignore lost user-added line on rerun; got:\n%s", data)
 	}
 
-	// config.json should reflect the new pin (Init overwrites it).
 	cfgPath := filepath.Join(repo, ".gplay", "config.json")
 	cfg, err := os.ReadFile(cfgPath)
 	if err != nil {
@@ -122,8 +118,6 @@ func TestInit_isIdempotent_onSecondCall(t *testing.T) {
 	}
 }
 
-// config.json is a committed file (per ADR-0004) shared with teammates,
-// so it must use a world-readable mode, not the 0600 reserved for secrets.
 func TestInit_configJSON_modeIsWorldReadable(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
@@ -140,7 +134,6 @@ func TestInit_configJSON_modeIsWorldReadable(t *testing.T) {
 	}
 }
 
-// appendLine appends content to path. Helper for the idempotence test.
 func appendLine(path, content string) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
@@ -153,21 +146,15 @@ func appendLine(path, content string) error {
 	return nil
 }
 
-// Make sure the test can detect "the file was never created" cleanly.
 func TestInit_inHomeDir_writesNoFiles(t *testing.T) {
 	home := t.TempDir()
-	_ = config.Init(context.Background(), config.OSFS{}, home, home, "com.example.app") // error expected, we ignore
+	_ = config.Init(context.Background(), config.OSFS{}, home, home, "com.example.app")
 
 	if _, err := os.Stat(filepath.Join(home, ".gplay", "config.json")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Init in $HOME must not create files; stat err = %v", err)
 	}
 }
 
-// A cloned repo can commit .gplay/config.json or .gplay/.gitignore as a
-// symlink. Init writes both, so without the guard `gplay init` overwrites the
-// link's target with the operator's rights (#791). The refusal is the one
-// Global.Save gives for its staging file (pathguard.ContainWrite): a link out
-// of the repo is refused as an escape, a link back inside it as a symlink.
 func TestInit_refusesToWriteThroughCommittedSymlink(t *testing.T) {
 	for _, file := range []string{"config.json", ".gitignore"} {
 		for _, tc := range []struct {
@@ -208,8 +195,6 @@ func TestInit_refusesToWriteThroughCommittedSymlink(t *testing.T) {
 	}
 }
 
-// A symlinked .gplay/ itself, pointing out of the repo, must not become the
-// place Init writes the pin and .gitignore into.
 func TestInit_refusesSymlinkedGplayDirOutsideRepo(t *testing.T) {
 	repo := gitRepo(t)
 	elsewhere := t.TempDir()

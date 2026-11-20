@@ -17,10 +17,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// runLikeMain drives the real command tree the way main does: execute with the
-// failure-envelope backstop as its hook. It returns stdout, the error main
-// prints and the exit code. Every case fails before RunE (or before any
-// credential is read), so nothing here touches the keyring or the network.
 func runLikeMain(t *testing.T, args ...string) (string, int, error) {
 	t.Helper()
 	dir := t.TempDir()
@@ -40,8 +36,6 @@ func runLikeMain(t *testing.T, args ...string) (string, int, error) {
 	return stdout.String(), code, failure
 }
 
-// envelopeOf decodes stdout as exactly one error envelope, failing on anything
-// else (empty, a second object, trailing bytes).
 func envelopeOf(t *testing.T, stdout string) output.ErrorDetail {
 	t.Helper()
 	dec := json.NewDecoder(strings.NewReader(stdout))
@@ -55,10 +49,6 @@ func envelopeOf(t *testing.T, stdout string) output.ErrorDetail {
 	return env.Error
 }
 
-// TestFailureEnvelope_cliMisuseUnderJSON is COH-03 (#593): the CLI-misuse
-// failures cobra raises before RunE (argument count, unknown flag, repeated
-// flag, unknown subcommand) carry the same envelope as a RunE failure under
-// --output json, where stdout used to stay empty.
 func TestFailureEnvelope_cliMisuseUnderJSON(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	cases := []struct {
@@ -69,7 +59,6 @@ func TestFailureEnvelope_cliMisuseUnderJSON(t *testing.T) {
 		{"surplus-positional", []string{"tracks", "list", "extra", "--output", "json"}, `unexpected argument "extra"`},
 		{"missing-positional", []string{"releases", "upload", "--output", "json"}, "missing <artifact>"},
 		{"missing-positional-equals-form", []string{"orders", "view", "--output=json"}, "missing <orderId>"},
-		// pflag stops at --bogus: --output is never parsed, hence the argv scan.
 		{"unknown-flag-before-output", []string{"tracks", "list", "--bogus", "--output", "json"}, "unknown flag: --bogus"},
 		{"repeated-flag", []string{"tracks", "list", "--package", "a", "--package", "b", "--output", "json"}, "repeated flag"},
 		{"unknown-subcommand", []string{"tracks", "nonesuch"}, `unknown command "nonesuch"`},
@@ -94,16 +83,10 @@ func TestFailureEnvelope_cliMisuseUnderJSON(t *testing.T) {
 	}
 }
 
-// TestFailureEnvelope_writtenOnceOrNotAtAll pins the boundaries the backstop
-// shares with the kernel emitter (ADR-0023): never a second object after the
-// kernel's own envelope, never under a non-JSON format, and never when the
-// format itself is the invalid input.
 func TestFailureEnvelope_writtenOnceOrNotAtAll(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 
 	t.Run("kernel-already-emitted", func(t *testing.T) {
-		// A RunE usage error: the kernel writes the envelope, main must not
-		// append a second one.
 		stdout, code, err := runLikeMain(t, "releases", "list", "--package", "com.example.app", "--output", "json")
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2; err=%v", code, err)
@@ -137,8 +120,6 @@ func TestFailureEnvelope_writtenOnceOrNotAtAll(t *testing.T) {
 	})
 }
 
-// TestOutputFlagValue covers the raw argv scan: both spellings, the first
-// occurrence, and the "--" terminator after which a token is positional.
 func TestOutputFlagValue(t *testing.T) {
 	cases := []struct {
 		argv []string
@@ -158,10 +139,6 @@ func TestOutputFlagValue(t *testing.T) {
 	}
 }
 
-// TestStdoutTally_countsAndKeepsTheDescriptor asserts the two properties main
-// relies on: every byte is counted (including through io.WriteString, which
-// would bypass an embedded *os.File), and Fd still reaches the real file so
-// TTY detection is unchanged.
 func TestStdoutTally_countsAndKeepsTheDescriptor(t *testing.T) {
 	f, err := os.CreateTemp(t.TempDir(), "stdout")
 	if err != nil {
@@ -182,17 +159,11 @@ func TestStdoutTally_countsAndKeepsTheDescriptor(t *testing.T) {
 	if tally.Fd() != f.Fd() {
 		t.Errorf("Fd = %d, want the wrapped file's %d", tally.Fd(), f.Fd())
 	}
-	// A regular file is not a terminal whichever way it is reached.
 	if output.IsTerminalFunc()(tally) {
 		t.Error("a temp file reported as a terminal through the tally")
 	}
 }
 
-// TestLeaves_declarePositionalArgs is the guard behind COH-12 (#593): a
-// runnable leaf with no Args validator accepts any stray token (cobra's
-// default) and exits 0, which DESIGN §9 calls CLI misuse. Every leaf must
-// declare one, so a leaf added tomorrow cannot regress silently. cobra's own
-// `help` command takes a command path as its arguments and is exempt.
 func TestLeaves_declarePositionalArgs(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 	var walk func(c *cobra.Command)

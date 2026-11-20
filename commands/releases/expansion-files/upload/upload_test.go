@@ -19,10 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newEFTransport serves the implicit Edit around a resumable expansion-file
-// upload: insert, initiate, chunk PUT, commit. The Fake records every call;
-// the wrapper only adds the session URI (Location) to the initiate response,
-// which a responder cannot express.
 func newEFTransport() (*testkit.Fake, http.RoundTripper) {
 	f := testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -39,7 +35,6 @@ func newEFTransport() (*testkit.Fake, http.RoundTripper) {
 		}
 		return 0, "", false
 	}, "Location", func(c testkit.Call, status int) string {
-		// Resumable initiate: the session URI goes in Location.
 		if c.Method == http.MethodPost && strings.Contains(c.Path, "/expansionFiles/") {
 			return "https://" + c.Host + c.Path + "?upload_id=session-1"
 		}
@@ -48,7 +43,6 @@ func newEFTransport() (*testkit.Fake, http.RoundTripper) {
 	return f, f
 }
 
-// apiCalls lists the recorded API calls as "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -57,8 +51,6 @@ func apiCalls(f *testkit.Fake) []string {
 	return out
 }
 
-// touched reports whether anything reached the transport, token exchange
-// included.
 func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
 func newRC(t *testing.T, transport http.RoundTripper) *kernel.RunContext {
@@ -94,8 +86,6 @@ func exitOf(t *testing.T, err error) int {
 	return c.ExitCode()
 }
 
-// TestRun_happyPath_editSequence asserts insert → upload → commit and a verbatim
-// pass-through, with a ✓.
 func TestRun_happyPath_editSequence(t *testing.T) {
 	r, transport := newEFTransport()
 	rc := newRC(t, transport)
@@ -136,7 +126,6 @@ func TestRun_happyPath_editSequence(t *testing.T) {
 	}
 }
 
-// TestRun_missingVersionCode_exit2_noNetwork.
 func TestRun_missingVersionCode_exit2_noNetwork(t *testing.T) {
 	r, transport := newEFTransport()
 	rc := newRC(t, transport)
@@ -149,7 +138,6 @@ func TestRun_missingVersionCode_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_badType_exit2_noNetwork.
 func TestRun_badType_exit2_noNetwork(t *testing.T) {
 	r, transport := newEFTransport()
 	rc := newRC(t, transport)
@@ -162,19 +150,15 @@ func TestRun_badType_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_validatesFile_noNetwork: a directory path fails offline (exit
-// 20); a good file rehearses with no network and no ✓.
 func TestRun_dryRun_validatesFile_noNetwork(t *testing.T) {
 	r, transport := newEFTransport()
 	rc := newRC(t, transport)
-	// directory → exit 20
 	if got := exitOf(t, mustErr(uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", VersionCode: 142, Type: "main", OBBPath: t.TempDir(), DryRun: true}))); got != 20 {
 		t.Errorf("directory dry-run exit = %d, want 20", got)
 	}
 	if touched(r) {
 		t.Errorf("dry-run must make no network call; calls=%v", apiCalls(r))
 	}
-	// good file → rehearses, no network
 	var stderr bytes.Buffer
 	rc.Stderr = &stderr
 	if _, err := uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", VersionCode: 142, Type: "main", OBBPath: writeOBB(t), DryRun: true}); err != nil {

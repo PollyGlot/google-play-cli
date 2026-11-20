@@ -1,9 +1,3 @@
-// Package list implements `gplay releases generated list`: enumerate the APKs
-// Play generated and signed from an uploaded AAB for a given versionCode.
-// Read-only and Edit-free: a direct application-scoped GET (the generatedApks
-// endpoints are not under /edits/). The API keys the resource on versionCode, so
-// gplay requires --version-code; missing it is CLI misuse (exit 2) caught before
-// any network. Ships [experimental].
 package list
 
 import (
@@ -19,14 +13,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/generatedapks"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package     string
 	VersionCode int64
 	Columns     string
 }
 
-// Payload renders the generated APKs as a table / verbatim JSON.
 type Payload struct {
 	Rows []generatedcmd.Row
 	Cols []output.Column[generatedcmd.Row]
@@ -41,7 +33,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
 		return nil, exit.Usagef("missing or invalid --version-code: the bundle versionCode whose generated APKs to list is required")
@@ -65,7 +56,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Rows: generatedcmd.BuildRows(lr), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases generated list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
