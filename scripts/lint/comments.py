@@ -37,16 +37,16 @@ GENERATED_HEAD = re.compile(
     r"|^\s*(//+|#|--|/?\*+)\s*(GENERATED|[Aa]uto-?generated|This file (is|was) (automatically )?generated)",
     re.M,
 )
-DIRECTIVE = re.compile(
-    r"^\s*(#!|//\s*ignore(_for_file)?:|//\s*dart format|/[/*]\s*(es|ox)lint-|biome-ignore"
-    r"|prettier-ignore|@ts-(ignore|expect-error|nocheck|check)|//\s*@vitest-|/// ?<reference"
-    r"|/\*\*?\s*@jsx|//\s*@refresh|//go:|//\s*\+build|//nolint|//export |#\s*noqa"
-    r"|#\s*type:\s*ignore|#\s*pyright:|#\s*mypy:|#\s*fmt:|#\s*ruff:|#\s*pylint:"
-    r"|#\s*shellcheck |#.*-\*-.*-\*-|//\s*swiftlint:|//\s*swift-format|//\s*coverage:"
-    r"|/[/*]\s*(istanbul|c8|v8) ignore|--\s*(migrate|\+goose|plpgsql_check)"
-    r"|/\*\s*webpackChunkName|#\s*syntax=|-->\s*statement-breakpoint|/\*\s*[@#]__(PURE|NO_SIDE_EFFECTS)__)",
-    re.I,
+DIRECTIVE_WORDS = (
+    r"ignore(_for_file)?:", r"dart format", r"(es|ox)lint-", r"biome-ignore", r"prettier-ignore",
+    r"@ts-(ignore|expect-error|nocheck|check)\b", r"@vitest-", r"<reference", r"@jsx", r"@refresh",
+    r"@effect-diagnostics", r"go:\w", r"\+build", r"nolint", r"noqa", r"type:\s*ignore", r"pyright:",
+    r"mypy:", r"fmt:\s*(on|off|skip)", r"ruff:", r"pylint:", r"shellcheck\s", r".*-\*-.*-\*-",
+    r"swiftlint:", r"swift-format", r"coverage:", r"pragma:", r"(istanbul|c8|v8) ignore", r"migrate:(up|down)", r"\+goose",
+    r"plpgsql_check", r"webpackChunkName", r"syntax=", r">\s*statement-breakpoint",
+    r"[@#]__(PURE|NO_SIDE_EFFECTS)__",
 )
+DIRECTIVE = re.compile(r"^\s*(#!|(//+|/\*+|#+|--|\*)\s*(" + "|".join(DIRECTIVE_WORDS) + "))", re.I)
 LICENSE = re.compile(r"copyright|license|spdx", re.I)
 COUNTED = ("comment", "doc", "docstring")
 AAA_WORD = r"(arrange|act|assert|given|when|then)"
@@ -233,18 +233,22 @@ def delete_blocks(root: Path, targets: list[Block]) -> list[str]:
     return refused
 
 
-def code_without_comments(src: bytes, lang: str) -> bytes:
+def code_tokens(src: bytes, lang: str) -> list[bytes]:
     tree = get_parser(lang).parse(src)
-    spans = [(n.start_byte, n.end_byte) for n in comment_nodes(tree.root_node)]
+    dropped = {(n.start_byte, n.end_byte) for n in comment_nodes(tree.root_node)
+               if not DIRECTIVE.search(src[n.start_byte:n.end_byte].decode("utf8", "replace"))}
     if lang == "python":
-        spans += [(n.start_byte, n.end_byte) for n, _ in docstring_nodes(tree.root_node)]
-    out, pos = bytearray(), 0
-    for a, b in sorted(spans):
-        if a >= pos:
-            out += src[pos:a]
-            pos = b
-    out += src[pos:]
-    return re.sub(rb"\s+", b"", bytes(out))
+        dropped |= {(n.start_byte, n.end_byte) for n, _ in docstring_nodes(tree.root_node)}
+    tokens, stack = [], [tree.root_node]
+    while stack:
+        n = stack.pop()
+        if (n.start_byte, n.end_byte) in dropped:
+            continue
+        if n.child_count == 0:
+            tokens.append(src[n.start_byte:n.end_byte])
+        else:
+            stack.extend(reversed(n.children))
+    return tokens
 
 
 def only_comments_changed(root: Path, base: str) -> list[str]:
@@ -257,7 +261,7 @@ def only_comments_changed(root: Path, base: str) -> list[str]:
             continue
         old = subprocess.run(["git", "-C", str(root), "show", f"{base}:{rel}"], capture_output=True,
                              check=True).stdout
-        if code_without_comments(old, lang) != code_without_comments((root / rel).read_bytes(), lang):
+        if code_tokens(old, lang) != code_tokens((root / rel).read_bytes(), lang):
             changed.append(rel)
     return changed
 

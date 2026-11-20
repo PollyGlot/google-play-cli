@@ -821,7 +821,7 @@
     "scripts/stats.sh": 20,
     "scripts/sync-labels.sh": 30,
     "scripts/verb-gate.sh": 48,
-    "website/astro.config.mjs": 28,
+    "website/astro.config.mjs": 27,
     "website/scripts/check-dist.mjs": 26,
     "website/scripts/csp.mjs": 34,
     "website/scripts/gen-agent-skills.mjs": 22,
