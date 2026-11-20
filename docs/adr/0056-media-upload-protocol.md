@@ -34,7 +34,10 @@ The rules both paths follow lived in code comments; the comment purge (the
 
 1. **Initiate**: a POST to the method's upload URL with
    `uploadType=resumable`, `X-Upload-Content-Type` and
-   `X-Upload-Content-Length`, and no body. The method's query parameters ride
+   `X-Upload-Content-Length`. The body is empty, except where the method takes
+   resource metadata alongside the media: `customApps.create` (the app's
+   title and language) and the app store policy declaration upload (its
+   `fileType`) send it as JSON in this request. The method's query parameters ride
    this request only; the server answers with a session URI in `Location`,
    which already embeds them, and every chunk PUT goes there.
 2. **Upload**: PUTs of a fixed chunk size with
@@ -53,6 +56,9 @@ The rules both paths follow lived in code comments; the comment purge (the
 - **The server's acknowledged offset is the only truth.** No byte past it is
   re-sent, and none before it is assumed stored.
 - **A `308` without `Range` means zero bytes committed.**
+- **An acknowledged offset outside `[0, size]` fails the upload.** `Range` is
+  data from the network; trusting an out-of-bounds offset would compute a
+  negative chunk length.
 - **A probe that finds the upload complete** (the final chunk landed, its
   response was lost) returns that resource without another PUT.
 - **The chunk size is 8 MiB, fixed.** Google rejects an intermediate chunk

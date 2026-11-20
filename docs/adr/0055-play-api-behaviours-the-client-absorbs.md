@@ -135,8 +135,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 ### Subscriptions (`monetization.subscriptions`)
 
 - **`basePlans.migratePrices` repeats the path identity in its body**
-  (`packageName`, `productId`, `basePlanId`; the schema says they "must be
-  equal to" the resource fields), so gplay echoes them.
+  (`packageName`, `productId`, `basePlanId`), so gplay echoes them. Discovery
+  says "Must be equal to" the resource fields for `packageName` and
+  `productId`; `basePlanId` is echoed the same way.
 
 ### Orders and voided purchases
 
