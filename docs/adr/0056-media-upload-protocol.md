@@ -34,7 +34,10 @@ The rules both paths follow lived in code comments; the comment purge (the
 
 1. **Initiate**: a POST to the method's upload URL with
    `uploadType=resumable`, `X-Upload-Content-Type` and
-   `X-Upload-Content-Length`, and no body. The method's query parameters ride
+   `X-Upload-Content-Length`. The body is empty, except where the method takes
+   resource metadata alongside the media: `customApps.create` (the app's
+   title and language) and the app store policy declaration upload (its
+   `fileType`) send it as JSON in this request. The method's query parameters ride
    this request only; the server answers with a session URI in `Location`,
    which already embeds them, and every chunk PUT goes there.
 2. **Upload**: PUTs of a fixed chunk size with
@@ -45,12 +48,17 @@ The rules both paths follow lived in code comments; the comment purge (the
 3. **Resume**: after a transient failure (a transport error or a `5xx`), a PUT
    with `Content-Range: bytes */{total}` and an empty body asks which byte the
    server last committed, and the upload continues from there.
+4. **A zero-length upload** has no byte range to name, so its single PUT
+   carries `Content-Range: bytes */0`.
 
 ### Resumable: what the client believes
 
 - **The server's acknowledged offset is the only truth.** No byte past it is
   re-sent, and none before it is assumed stored.
 - **A `308` without `Range` means zero bytes committed.**
+- **An acknowledged offset outside `[0, size]` fails the upload.** `Range` is
+  data from the network; trusting an out-of-bounds offset would compute a
+  negative chunk length.
 - **A probe that finds the upload complete** (the final chunk landed, its
   response was lost) returns that resource without another PUT.
 - **The chunk size is 8 MiB, fixed.** Google rejects an intermediate chunk
@@ -88,7 +96,8 @@ The rules both paths follow lived in code comments; the comment purge (the
 - **Only a regular file is uploaded.** A directory, fifo or device passes
   `Open` and `Stat` but cannot be streamed and reports a wrong size, so it is
   refused up front as a client-side error (exit 20), never surfacing as a
-  transport failure (exit 50).
+  transport failure (exit 50). A symlink to a regular file is accepted: the
+  open follows it, so the size checked is the target's.
 
 ## Consequences
 

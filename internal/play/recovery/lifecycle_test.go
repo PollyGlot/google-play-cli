@@ -12,7 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
 
-// TestDeploy_postsDeployVerb asserts the :deploy custom verb path + empty body.
 func TestDeploy_postsDeployVerb(t *testing.T) {
 	var gotURL, gotMethod string
 	var bodyLen int
@@ -39,7 +38,6 @@ func TestDeploy_postsDeployVerb(t *testing.T) {
 	}
 }
 
-// TestCancel_postsCancelVerb asserts the :cancel custom verb path.
 func TestCancel_postsCancelVerb(t *testing.T) {
 	var gotURL, gotMethod string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -59,11 +57,6 @@ func TestCancel_postsCancelVerb(t *testing.T) {
 	}
 }
 
-// TestAddTargeting_postsTargetingUpdate asserts the :addTargeting verb + the
-// append-only TargetingUpdate body (no versionList). It exercises the
-// regions + sdk-levels dimensions together, asserting androidSdks.sdkLevels
-// reaches the wire: the SDK-level selector was previously unasserted on
-// add-targeting, so a JSON-shape regression could have shipped undetected.
 func TestAddTargeting_postsTargetingUpdate(t *testing.T) {
 	var gotURL string
 	var gotBody []byte
@@ -90,9 +83,6 @@ func TestAddTargeting_postsTargetingUpdate(t *testing.T) {
 	}
 }
 
-// TestAddTargeting_allUsersOnWire asserts widening to all users reaches the wire
-// as allUsers.isAllUsersRequested inside targetingUpdate: the "everyone"
-// dimension of the append-only selector, previously unasserted on add-targeting.
 func TestAddTargeting_allUsersOnWire(t *testing.T) {
 	var gotBody []byte
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {

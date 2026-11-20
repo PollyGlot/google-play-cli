@@ -68,7 +68,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 
 - **An empty `defaultLanguage` on a 2xx is treated as an API failure.** Every
   app has one; accepting the empty value would send release notes keyed by an
-  empty language.
+  empty language. The guard sits where a second call depends on the value
+  (the listing read that follows); `apps details view`, which reads
+  `edits.details.get` alone, reports the body as the API sent it.
 
 ### App Signing
 
@@ -141,8 +143,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 ### Subscriptions (`monetization.subscriptions`)
 
 - **`basePlans.migratePrices` repeats the path identity in its body**
-  (`packageName`, `productId`, `basePlanId`; the schema says they "must be
-  equal to" the resource fields), so gplay echoes them.
+  (`packageName`, `productId`, `basePlanId`), so gplay echoes them. Discovery
+  says "Must be equal to" the resource fields for `packageName` and
+  `productId`; `basePlanId` is echoed the same way.
 
 ### Orders and voided purchases
 

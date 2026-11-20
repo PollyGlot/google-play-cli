@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// noRequestClient fails the test on ANY HTTP request. The explicit-mode
-// short-circuit must reach neither edits.insert, :commit, nor edits.delete:
-// fn runs directly against the pinned Edit, so the transport stays untouched.
 func noRequestClient(t *testing.T) *http.Client {
 	t.Helper()
 	return &http.Client{Transport: testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -33,13 +30,9 @@ func TestWithEdit_explicitMode_reusesPinAndMakesNoLifecycleCalls(t *testing.T) {
 	if gotEditID != "edit-pinned" {
 		t.Errorf("fn ran against %q, want the pinned edit-pinned", gotEditID)
 	}
-	// The RoundTripper would have failed the test on any insert/commit/discard.
 }
 
 func TestWithEdit_explicitMode_failureDoesNotAutoDiscard(t *testing.T) {
-	// In explicit mode a closure failure must leave the Edit open (no
-	// edits.delete) so the user can retry or `gplay edits discard`. noRequestClient
-	// fails on any call, including the discard WithEdit does in implicit mode.
 	hc := noRequestClient(t)
 	sentinel := errors.New("mutation failed mid-batch")
 	err := edits.WithEdit(context.Background(), hc, "com.example.app",

@@ -1,8 +1,3 @@
-// Package tracks_test exercises the play-layer track operations against a
-// fake transport. List is the cross-track read used by `gplay tracks
-// list`: one GET on edits.tracks.list inside an already-open Edit,
-// returning every configured track plus the raw body for the ADR-0003
-// JSON pass-through.
 package tracks_test
 
 import (
@@ -17,13 +12,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// fakeWith answers every request with status and body.
 func fakeWith(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// onlyCall returns the single request the Fake served, failing the test on
-// any other count.
 func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := f.Calls()
@@ -33,10 +25,6 @@ func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	return calls[0]
 }
 
-// TestList_parsesEveryTrack_andReturnsRawBody asserts List GETs
-// edits.tracks.list, parses the {"tracks":[...]} envelope into a Track
-// slice (every configured track, standard and custom), and hands back
-// the raw body verbatim for the JSON pass-through.
 func TestList_parsesEveryTrack_andReturnsRawBody(t *testing.T) {
 	raw := `{"tracks":[` +
 		`{"track":"production","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]},` +
@@ -73,9 +61,6 @@ func TestList_parsesEveryTrack_andReturnsRawBody(t *testing.T) {
 	}
 }
 
-// TestList_apiError_isWrappedWithStatus asserts a non-2xx tracks.list
-// response surfaces as an *api.Error carrying the HTTP status so the
-// gplay exit-code taxonomy maps it (403 -> 11, 404 -> 30, ...).
 func TestList_apiError_isWrappedWithStatus(t *testing.T) {
 	transport := fakeWith(403, `{"error":{"code":403,"message":"The caller does not have permission"}}`)
 	hc := &http.Client{Transport: transport}
@@ -93,11 +78,6 @@ func TestList_apiError_isWrappedWithStatus(t *testing.T) {
 	}
 }
 
-// TestCreate_postsClosedTestingConfig_andReturnsRawBody asserts Create
-// POSTs edits.tracks.create with a TrackConfig that hardcodes the only
-// supported type (CLOSED_TESTING) and the DEFAULT form factor, carrying
-// the caller's track name, and hands back the parsed Track plus the raw
-// body verbatim for the ADR-0003 JSON pass-through.
 func TestCreate_postsClosedTestingConfig_andReturnsRawBody(t *testing.T) {
 	raw := `{"track":"qa-team","releases":[]}`
 	transport := fakeWith(200, raw)
@@ -127,11 +107,6 @@ func TestCreate_postsClosedTestingConfig_andReturnsRawBody(t *testing.T) {
 	}
 }
 
-// TestCreate_apiError_isWrappedWithStatus asserts a non-2xx
-// tracks.create response (e.g. creating a track that already exists)
-// surfaces as an *api.Error carrying the HTTP status so the exit-code
-// taxonomy maps it (400 -> 30 via StatusToExitCode), with the envelope
-// reason preserved.
 func TestCreate_apiError_isWrappedWithStatus(t *testing.T) {
 	transport := fakeWith(400, `{"error":{"code":400,"message":"Track already exists.","errors":[{"reason":"badRequest"}]}}`)
 	hc := &http.Client{Transport: transport}

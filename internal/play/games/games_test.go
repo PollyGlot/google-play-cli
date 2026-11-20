@@ -22,7 +22,6 @@ func jsonResp(status int, body string) *http.Response {
 	}
 }
 
-// recorder captures the last request's method, URL, and body, returning resp.
 func recorder(resp *http.Response, gotURL, gotMethod, gotBody *string) *http.Client {
 	return &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		*gotURL = r.URL.String()

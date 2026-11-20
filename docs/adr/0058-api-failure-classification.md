@@ -47,9 +47,14 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   the retry-safe bucket. The error is classified as a body-read failure (the
   Cloud Storage client gives it status 0), never from the 2xx already
   received.
-- **A 2xx body that reads whole but does not decode keeps status 200**, and so
-  exit 30: the API answered something gplay cannot read, which a re-run does
-  not fix.
+- **A 2xx body that reads whole but does not decode is not yet classified one
+  way.** Modules that decode by hand (edits, tracks, listings, images,
+  testers, App Signing, voided purchases) tag the error with status 200, so it
+  exits 30: the API answered something gplay cannot read, which a re-run does
+  not fix. `api.DoJSON` and the modules built on it (vitals, team, one-time
+  products, subscriptions, Cloud Storage, the app store uploads) leave the
+  status unset, so the same failure exits 50. Moving a module from one to the
+  other changes a public exit code; #844 tracks settling on one rule.
 - **A local file that is not a regular file is exit 20** (`LocalIOError`),
   never a transport 50 ([ADR-0056](./0056-media-upload-protocol.md)).
 

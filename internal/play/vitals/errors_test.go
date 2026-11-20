@@ -15,9 +15,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// TestErrorCountSet_isAQueryableMetricSet asserts the errors.counts set resolves
-// to the errorCountMetricSet resource and its query method id exists in the
-// index, so the metric-set Query/validation machinery applies to it.
 func TestErrorCountSet_isAQueryableMetricSet(t *testing.T) {
 	set := vitals.ErrorCountSet()
 	if set.Resource != "errorCountMetricSet" {
@@ -73,10 +70,6 @@ func TestSearchErrorIssues_issuesGET(t *testing.T) {
 	}
 }
 
-// TestSearchErrorIssues_encodesFilterOrderByPageSize pins the search query
-// shaping: --filter, --order-by and the per-page size must reach the wire under
-// their exact API param names (a refactor emitting page_size would silently
-// break the call otherwise).
 func TestSearchErrorIssues_encodesFilterOrderByPageSize(t *testing.T) {
 	var gotURL string
 	hc := &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {

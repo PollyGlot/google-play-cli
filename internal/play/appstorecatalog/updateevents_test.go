@@ -27,9 +27,6 @@ const (
 	endTime   = "2026-07-08T00:00:00Z"
 )
 
-// TestListRecentUpdateEvents_requestShape asserts the GET targets the
-// recentUpdateEvents endpoint with the app store package name escaped in the
-// path, both required time params in the query, and parses the page.
 func TestListRecentUpdateEvents_requestShape(t *testing.T) {
 	var got *url.URL
 	var gotMethod string
@@ -72,8 +69,6 @@ func TestListRecentUpdateEvents_requestShape(t *testing.T) {
 	}
 }
 
-// TestListRecentUpdateEvents_pagingParams asserts pageSize (>0) and pageToken
-// ride the query alongside the unchanged time range.
 func TestListRecentUpdateEvents_pagingParams(t *testing.T) {
 	var got *url.URL
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -96,8 +91,6 @@ func TestListRecentUpdateEvents_pagingParams(t *testing.T) {
 	}
 }
 
-// TestListRecentUpdateEvents_escapesStorePackage asserts the app store package
-// name is escaped in the path, so a value carrying a slash cannot forge a path.
 func TestListRecentUpdateEvents_escapesStorePackage(t *testing.T) {
 	var gotPath string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -113,8 +106,6 @@ func TestListRecentUpdateEvents_escapesStorePackage(t *testing.T) {
 	}
 }
 
-// TestListRecentUpdateEvents_apiError maps a non-2xx to an *api.Error carrying
-// the status and the RPC id, so the shared classifier can map it to an exit code.
 func TestListRecentUpdateEvents_apiError(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(404, `{"error":{"message":"not found"}}`), nil
