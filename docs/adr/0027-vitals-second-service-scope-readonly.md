@@ -107,3 +107,24 @@ list is kept by hand.
   registry.** It takes the same query and validation machinery as the rate
   sets, but it is surfaced as `vitals errors counts`, under the `errors`
   resource group, not through `vitals query`.
+
+### Presets and help
+
+- **The memory percentile sets have no preset.** They are niche and have no
+  single headline metric worth a friendlier flag surface, so `vitals query
+  <set>` is their only form. Every other metric set has a preset, and a test
+  fails on a set left without one unless it is on that exemption list.
+- **The `--period` help strings are written out**, not built from the
+  embedded index: parsing the index cost every command about 2 ms at start,
+  for a help string. A test fails when a help names a period the set refuses,
+  or leaves out one it accepts, against the same supported-period set the
+  command validates with, so an advertised period never ends in exit 2.
+
+### Freshness and empty results
+
+- **`vitals anomalies` always notes the reporting delay on stderr.**
+  Anomalies are exceptional, so an empty result is the common, healthy case;
+  the note keeps it from reading as "no anomalies, ever" when a very recent
+  spike may not be reported yet. The metric-set queries do the same with
+  their freshness line (Consequences above), naming the freshest datapoint of
+  the window when there is one.

@@ -604,6 +604,11 @@ reports the error the serial walk would have hit first.
   fields, an empty id or reply) is reported on its own and the batch goes on.
   Surrounding whitespace is trimmed from the review id, since the API answers
   a padded id with a 404.
+  A batch with any failed row exits with the highest exit code among its rows
+  (a `404` row, exit `30`, outranks a malformed line, exit `2`); a fully
+  successful batch exits `0`. Under `--output json` a stdout that cannot be
+  written fails the run with its own error, ahead of that aggregate: the
+  consumer reading stdout could not see past it.
 - Long-history retrieval (CSV reports in the GCS bucket) ships as `reviews
   history --month` (ADR-0037).
 - The other monthly exports of the same bucket (installs, then ratings,
@@ -929,6 +934,10 @@ seconds instead of stalling a CI job until the runner-level kill:
   `--timeout 2m`) overrides both — it bounds *every* request, uploads included.
   Unset (`0`) means "60s for control-plane, 60s of inactivity for downloads,
   unbounded for uploads".
+- **Shell completion that calls the API** (the `--version-code` suggestions
+  of the `vitals` leaves) is bounded at 3s as a whole, token exchange
+  included, and never retried: a TAB press that hangs is worse than one that
+  suggests nothing.
 
 A deadline-exceeded failure is a transport-level error and maps to **exit 50**
 (network), the retry-safe bucket, so the same CI wrapper that retries a DNS

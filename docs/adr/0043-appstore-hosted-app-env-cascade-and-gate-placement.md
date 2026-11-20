@@ -4,7 +4,7 @@
 
 accepted
 
-amended (2026-11-20): implementation decisions moved from code comments
+amended (2026-11-20): implementation decisions moved from code comments; the commands are named as shipped (see Naming below)
 
 ## Context
 
@@ -90,11 +90,34 @@ The same criterion resolved the other two gate questions in this batch:
   criterion requires a write to be both irreversible and externally visible;
   irreversibility is the property this one lacks.
 
+## Naming
+
+This ADR was written before the verbs settled. `appstore update` shipped as
+`appstore submit` in 2.0.0 (the domain verb for an irrevocable submission to
+review, [ADR-0051](./0051-removed-surface-names-its-replacement.md)), and in the
+same release the uploads became `appstore apk upload`, `appstore image
+upload` and `appstore policy upload`, and `appstore publish-status` took a
+`set` verb. Read `appstore update` above as `appstore submit`: the gate
+placement is unchanged.
+
 ## Implementation notes
 
+- **A 404 is hinted by what the call addresses.** `appstore create` uses the
+  review classifier, whose 404 names the store, since the hosted app record
+  is what that call creates and cannot be the missing thing. The calls that
+  act on an existing record (the three uploads, `publish-status set`,
+  `submit`) use the hosted-app classifier, whose 404 names both the store and
+  a missing record: Google requires `createappstorehostedapp` before any other
+  call for a hosted app, so a caller who skipped `appstore create` lands
+  there, and naming only the store would send them auditing a
+  `--store-package` that is very likely correct. The wrapped API error keeps
+  the exit code (404 is exit 30).
+
 - **The submission body is the operator's JSON, forwarded verbatim** except
-  `packageName`, which is overwritten with the resolved target so it always
-  wins. Decoding it into gplay's request struct and re-encoding it would drop
+  `packageName`, which the resolved target governs: a `packageName` in the
+  body that differs from `--package` or the Project pin is refused (exit 2),
+  and with neither flag nor pin the body's `packageName` is the target. The
+  call submits to review, so gplay never guesses between two packages. Decoding it into gplay's request struct and re-encoding it would drop
   anything the struct does not model, a field Google added last week or a
   misspelt key, and a submission cannot be recalled. Sent as written, a
   misspelling comes back as Google's rejection, never as a submission quietly

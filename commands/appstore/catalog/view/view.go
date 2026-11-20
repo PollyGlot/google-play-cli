@@ -1,17 +1,3 @@
-// Package view implements `gplay appstore catalog view <play-package>`: the
-// catalog app view of one Play app, read from the Google Play Catalog Export
-// for app stores (appstorecatalog.recentappviews.get).
-//
-// The persona is the operator of an alternative app store mirroring Play's
-// public catalog, so addressing rides the app store package name
-// (--store-package / $GPLAY_APP_STORE_PACKAGE) plus the Play app package name
-// as the positional argument. Read-only and Edit-free: a direct GET under
-// /appstorecatalog/. The human views summarize the main catalog fields
-// (identity, versions, publication, price, ratings, delivery token, localized
-// store listings, permissions, device compatibility); --output json is the
-// RecentAppView verbatim (ADR-0003 pass-through), which is where the fields the
-// summary omits (image assets, device exclusions, screen support) live.
-// Ships [experimental] (ADR-0010/ADR-0042).
 package view
 
 import (
@@ -29,16 +15,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstorecatalog"
 )
 
-// Input is the request-shaped struct cobra builds from the positional Play app
-// package name plus the --store-package flag.
 type Input struct {
 	StorePackage string
 	PlayPackage  string
 }
 
-// Payload satisfies output.Renderable. View is the parsed catalog app view
-// driving the human renderers; Raw carries the verbatim RecentAppView bytes for
-// the ADR-0003 JSON pass-through.
 type Payload struct {
 	View appstorecatalog.CatalogAppView
 	Raw  json.RawMessage
@@ -52,9 +33,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// headerRows is the scalar summary shared by the table and markdown views, in a
-// fixed order. Empty values are kept (an absent price reads as a blank cell,
-// not a dropped row) so the shape of the record never depends on the data.
 func headerRows(v appstorecatalog.CatalogAppView) [][2]string {
 	return [][2]string{
 		{"PACKAGE", v.PackageName},
@@ -75,9 +53,6 @@ func headerRows(v appstorecatalog.CatalogAppView) [][2]string {
 	}
 }
 
-// renderTable writes the summary as `FIELD<TAB>VALUE` lines (like `orders view`
-// / `apps view`), then the repeated blocks: localized store listings,
-// permissions, device compatibility requirements, as labelled sections.
 func (p Payload) renderTable(w io.Writer) error {
 	for _, row := range headerRows(p.View) {
 		if _, err := fmt.Fprintf(w, "%s\t%s\n", row[0], row[1]); err != nil {
@@ -97,9 +72,6 @@ func (p Payload) renderTable(w io.Writer) error {
 	return nil
 }
 
-// renderMarkdown renders the view as a record: a level-2 heading then a
-// `- **Field**: value` list (docs/DESIGN.md §7), followed by the repeated
-// blocks as bullet lists, so a pasted report stands alone.
 func (p Payload) renderMarkdown(w io.Writer) error {
 	heading := "Catalog app view"
 	if p.View.PackageName != "" {
@@ -108,7 +80,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	if _, err := fmt.Fprintf(w, "## %s\n\n", heading); err != nil {
 		return err
 	}
-	// Skip PACKAGE in the list (it is the heading); show the rest.
 	for _, row := range headerRows(p.View)[1:] {
 		if _, err := fmt.Fprintf(w, "- **%s**: %s\n", mdLabel(row[0]), row[1]); err != nil {
 			return err
@@ -127,9 +98,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return nil
 }
 
-// renderJSON emits the verbatim API bytes (ADR-0003 pass-through). Raw is
-// always populated on the Run path; an empty Raw would mean the API body was
-// never captured, so we error rather than emit zero bytes.
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) == 0 {
 		return fmt.Errorf("missing raw catalog app view payload for --output json")
@@ -138,14 +106,11 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// section is one labelled block of repeated values in the human views.
 type section struct {
 	title string
 	lines []string
 }
 
-// sections builds the repeated blocks of the human views, skipping any block
-// the response left empty.
 func sections(v appstorecatalog.CatalogAppView) []section {
 	var out []section
 	if lines := listingLines(v.LocalizedStoreListings); len(lines) > 0 {
@@ -163,8 +128,6 @@ func sections(v appstorecatalog.CatalogAppView) []section {
 	return out
 }
 
-// listingLines renders one line per locale: "<languageCode>  <appName>: <short
-// description>", dropping the parts the listing leaves empty.
 func listingLines(l *appstorecatalog.LocalizedStoreListings) []string {
 	if l == nil {
 		return nil
@@ -185,8 +148,6 @@ func listingLines(l *appstorecatalog.LocalizedStoreListings) []string {
 	return lines
 }
 
-// permissionLines renders one line per declared permission, appending the
-// maxSdkVersion scope when the API sets one.
 func permissionLines(perms []appstorecatalog.CatalogPermission) []string {
 	lines := make([]string, 0, len(perms))
 	for _, p := range perms {
@@ -202,9 +163,6 @@ func permissionLines(perms []appstorecatalog.CatalogPermission) []string {
 	return lines
 }
 
-// compatibilityLines renders one line per requirement set: the SDK range, the
-// required ABIs and the required system features. A device is compatible if it
-// satisfies all requirements of at least one set, so each set is its own line.
 func compatibilityLines(reqs []appstorecatalog.DeviceCompatibilityRequirements) []string {
 	lines := make([]string, 0, len(reqs))
 	for _, r := range reqs {
@@ -226,8 +184,6 @@ func compatibilityLines(reqs []appstorecatalog.DeviceCompatibilityRequirements) 
 	return lines
 }
 
-// formatSDK renders an SDK range as "sdk 21..34 (target 33)", dropping the
-// parts the API left unset.
 func formatSDK(s *appstorecatalog.SdkVersion) string {
 	if s == nil {
 		return ""
@@ -251,8 +207,6 @@ func formatSDK(s *appstorecatalog.SdkVersion) string {
 	return rng
 }
 
-// category joins the app category and its subcategory ("APP / GAME_ACTION"),
-// dropping whichever the API left unset.
 func category(v appstorecatalog.CatalogAppView) string {
 	parts := make([]string, 0, 2)
 	if v.AppCategory != "" {
@@ -264,7 +218,6 @@ func category(v appstorecatalog.CatalogAppView) string {
 	return strings.Join(parts, " / ")
 }
 
-// developerName reads the developer name off the developer details block.
 func developerName(v appstorecatalog.CatalogAppView) string {
 	if v.DeveloperDetails == nil {
 		return ""
@@ -272,7 +225,6 @@ func developerName(v appstorecatalog.CatalogAppView) string {
 	return v.DeveloperDetails.DeveloperName
 }
 
-// defaultLanguage reads the default language code of the localized listings.
 func defaultLanguage(v appstorecatalog.CatalogAppView) string {
 	if v.LocalizedStoreListings == nil {
 		return ""
@@ -280,8 +232,6 @@ func defaultLanguage(v appstorecatalog.CatalogAppView) string {
 	return v.LocalizedStoreListings.DefaultLanguageCode
 }
 
-// priceOrFree renders the US price, or the explicit "free" the API expresses by
-// omitting the Money entirely (per the CatalogAppView description).
 func priceOrFree(m *appstorecatalog.Money) string {
 	if m == nil {
 		return "free"
@@ -289,8 +239,6 @@ func priceOrFree(m *appstorecatalog.Money) string {
 	return formatMoney(m)
 }
 
-// formatMoney renders a Money as "<amount> <CURRENCY>" (e.g. "4.99 USD"),
-// combining the whole units with the nano fractional part. A nil Money is "".
 func formatMoney(m *appstorecatalog.Money) string {
 	if m == nil {
 		return ""
@@ -305,8 +253,6 @@ func formatMoney(m *appstorecatalog.Money) string {
 		sign := ""
 		if nanos < 0 {
 			nanos = -nanos
-			// units carries the sign when it is non-zero; only add a leading
-			// "-" for the units==0, negative-nanos case (e.g. -0.75).
 			if !strings.HasPrefix(units, "-") {
 				sign = "-"
 			}
@@ -320,8 +266,6 @@ func formatMoney(m *appstorecatalog.Money) string {
 	return amount
 }
 
-// formatDate renders a google.type.Date as YYYY-MM-DD, degrading to the parts
-// the API set (a year-only date renders as the year).
 func formatDate(d *appstorecatalog.Date) string {
 	if d == nil || d.Year == 0 {
 		return ""
@@ -335,7 +279,6 @@ func formatDate(d *appstorecatalog.Date) string {
 	return fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day)
 }
 
-// formatBool renders a boolean catalog flag as yes/no.
 func formatBool(b bool) string {
 	if b {
 		return "yes"
@@ -343,12 +286,8 @@ func formatBool(b bool) string {
 	return "no"
 }
 
-// oneLine collapses interior whitespace so a multi-line description cannot
-// inject an extra tabwriter column or break a Markdown row.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// mdLabel turns a SCREAMING_SNAKE header key into a "Title case" markdown label
-// (LAST_PUBLISH_TIME → "Last publish time").
 func mdLabel(key string) string {
 	words := strings.Split(strings.ToLower(key), "_")
 	if len(words) > 0 && words[0] != "" {
@@ -357,10 +296,6 @@ func mdLabel(key string) string {
 	return strings.Join(words, " ")
 }
 
-// Run is the business function the kernel invokes. It validates the positional
-// Play app package name, resolves the app store package name from the
-// flag/env cascade, builds an authenticated client, reads the catalog app view,
-// and classifies a 403/404 into an agent-resolvable refusal.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	playPkg, err := appstorecmd.RequirePlayPackage(in.PlayPackage,
 		"no Play app package name: pass it as the positional argument (gplay appstore catalog view <play-package>)")
@@ -386,7 +321,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{View: av, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay appstore catalog view`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

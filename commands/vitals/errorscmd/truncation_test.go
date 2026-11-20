@@ -17,10 +17,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newPagingRC serves a fixed sequence of page bodies, so a test can hand the
-// client a stream that still has a nextPageToken when --limit cuts it off.
-// Sequence repeats the last page once exhausted; every stream here ends
-// without a nextPageToken, so the client never asks past it.
 func newPagingRC(t *testing.T, pages []string) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(saJSON(t))
@@ -35,26 +31,17 @@ func newPagingRC(t *testing.T, pages []string) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stderr
 }
 
-// truncatedPages is a stream the server has not finished handing out: page 2
-// still advertises a nextPageToken, so a --limit that stops here is a prefix of
-// the truth.
 var truncatedPages = []string{
 	`{"errorIssues":[{"type":"CRASH"},{"type":"CRASH"}],"nextPageToken":"P2"}`,
 	`{"errorIssues":[{"type":"ANR"},{"type":"ANR"}],"nextPageToken":"P3"}`,
 	`{"errorIssues":[{"type":"NON_FATAL"}]}`,
 }
 
-// exhaustivePages ends cleanly: the last page carries no token, so a --limit
-// that happens to match the total is NOT a truncation.
 var exhaustivePages = []string{
 	`{"errorIssues":[{"type":"CRASH"},{"type":"CRASH"}],"nextPageToken":"P2"}`,
 	`{"errorIssues":[{"type":"ANR"}]}`,
 }
 
-// TestRunIssues_truncatedListWarnsOnStderr is the user-facing half of PRD #446
-// / #451: when --limit cuts a listing short while the server still had pages,
-// the command says so on stderr and names the flag to raise, so an agent does
-// not read a capped list as the whole truth.
 func TestRunIssues_truncatedListWarnsOnStderr(t *testing.T) {
 	rc, stderr := newPagingRC(t, truncatedPages)
 	payload, err := runIssues(rc, issuesInput{Package: "com.example.app", Limit: 3})
@@ -68,9 +55,6 @@ func TestRunIssues_truncatedListWarnsOnStderr(t *testing.T) {
 		}
 	}
 
-	// stdout stays a verbatim API mirror (ADR-0003): the warning must not
-	// leak into the data channel, and the payload must still hold exactly the
-	// capped item count.
 	var out bytes.Buffer
 	if err := payload.Renderers().JSON(&out); err != nil {
 		t.Fatalf("render JSON: %v", err)
@@ -89,10 +73,6 @@ func TestRunIssues_truncatedListWarnsOnStderr(t *testing.T) {
 	}
 }
 
-// TestRunIssues_exhaustiveListDoesNotWarn is the other half: a listing that
-// consumed the whole stream must stay silent about truncation, or the warning
-// becomes noise nobody reads. The reporting-delay note stays, so the assertion
-// targets the truncation wording specifically.
 func TestRunIssues_exhaustiveListDoesNotWarn(t *testing.T) {
 	rc, stderr := newPagingRC(t, exhaustivePages)
 	if _, err := runIssues(rc, issuesInput{Package: "com.example.app", Limit: 3}); err != nil {
@@ -103,14 +83,7 @@ func TestRunIssues_exhaustiveListDoesNotWarn(t *testing.T) {
 	}
 }
 
-// TestRunIssues_stdoutIdenticalWithAndWithoutTheWarning pins the ADR-0003
-// invariant directly: the same page stream rendered with a truncating --limit
-// and with the warning path exercised produces byte-identical stdout to the
-// same items fetched without the cap being the reason to stop. Only stderr
-// differs.
 func TestRunIssues_stdoutIdenticalWithAndWithoutTheWarning(t *testing.T) {
-	// Same three items either way: once reached via a --limit 3 that leaves a
-	// token behind (warns), once via a stream that simply ends (silent).
 	warned, warnedErr := renderIssues(t, truncatedPages, 3)
 	silentPages := []string{
 		`{"errorIssues":[{"type":"CRASH"},{"type":"CRASH"}],"nextPageToken":"P2"}`,
@@ -129,8 +102,6 @@ func TestRunIssues_stdoutIdenticalWithAndWithoutTheWarning(t *testing.T) {
 	}
 }
 
-// renderIssues runs the issues command over pages with the given limit and
-// returns (stdout JSON, stderr).
 func renderIssues(t *testing.T, pages []string, limit int) (string, string) {
 	t.Helper()
 	rc, stderr := newPagingRC(t, pages)

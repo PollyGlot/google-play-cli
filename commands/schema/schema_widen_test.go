@@ -21,9 +21,6 @@ func renderMarkdown(t *testing.T, r output.Renderable) string {
 	return b.String()
 }
 
-// runCaptureStderr runs the command with a captured stderr so the zero-match
-// note can be asserted; it fails the test if Run errors (zero match must be
-// exit 0, not an error).
 func runCaptureStderr(t *testing.T, in schemacmd.Input) (output.Renderable, string) {
 	t.Helper()
 	var errb bytes.Buffer
@@ -36,9 +33,6 @@ func runCaptureStderr(t *testing.T, in schemacmd.Input) (output.Renderable, stri
 	return r, errb.String()
 }
 
-// TestList_compactCatalog asserts --list prints the compact catalog (id ·
-// httpMethod · path) of the full method surface, and that the JSON view carries
-// the methods with an empty schemas section.
 func TestList_compactCatalog(t *testing.T) {
 	r := run(t, schemacmd.Input{List: true})
 
@@ -62,7 +56,6 @@ func TestList_compactCatalog(t *testing.T) {
 	}
 }
 
-// TestMethodFilter_json asserts --method narrows to a single verb.
 func TestMethodFilter_json(t *testing.T) {
 	r := run(t, schemacmd.Input{Method: "DELETE"})
 	v := parseJSON(t, renderJSON(t, r))
@@ -76,9 +69,6 @@ func TestMethodFilter_json(t *testing.T) {
 	}
 }
 
-// TestInlineExpansion_oneHop asserts a matched method inline-expands its
-// request/response schema exactly one hop: the schema's direct properties are
-// present, but a nested $ref is shown by name only (not expanded).
 func TestInlineExpansion_oneHop(t *testing.T) {
 	r := run(t, schemacmd.Input{Query: "edits.tracks.update"})
 	v := parseJSON(t, renderJSON(t, r))
@@ -93,21 +83,16 @@ func TestInlineExpansion_oneHop(t *testing.T) {
 	if track.Properties["releases"].Ref != "TrackRelease" {
 		t.Errorf("releases should point to TrackRelease by name, got %+v", track.Properties["releases"])
 	}
-	// One hop only: TrackRelease (nested under Track.releases) is referenced by
-	// name, NOT expanded into the schemas section.
 	if _, expanded := v.Schemas["TrackRelease"]; expanded {
 		t.Error("TrackRelease should be shown by name only, not expanded (two hops)")
 	}
 
-	// The table view shows the expanded property and the nested type name.
 	table := renderTable(t, r)
 	if !strings.Contains(table, "releases") || !strings.Contains(table, "TrackRelease") {
 		t.Errorf("table inline expansion missing releases / TrackRelease\n%s", table)
 	}
 }
 
-// TestSchemaQuery_directTypeWithEnum asserts a schema-name query resolves a type
-// directly and surfaces its enum values and verbatim descriptions.
 func TestSchemaQuery_directTypeWithEnum(t *testing.T) {
 	r := run(t, schemacmd.Input{Query: "TrackRelease"})
 
@@ -128,8 +113,6 @@ func TestSchemaQuery_directTypeWithEnum(t *testing.T) {
 	}
 }
 
-// TestZeroMatch_noteOnStderrExit0 asserts a no-match query exits 0 (no error)
-// and writes a note to stderr, so "found nothing" is not mistaken for failure.
 func TestZeroMatch_noteOnStderrExit0(t *testing.T) {
 	r, stderr := runCaptureStderr(t, schemacmd.Input{Query: "zzz-not-a-real-thing"})
 	if stderr == "" {
@@ -138,14 +121,12 @@ func TestZeroMatch_noteOnStderrExit0(t *testing.T) {
 	if !strings.Contains(stderr, "zzz-not-a-real-thing") {
 		t.Errorf("note should echo the query, got %q", stderr)
 	}
-	// stdout (JSON) is still valid and empty.
 	v := parseJSON(t, renderJSON(t, r))
 	if len(v.Methods) != 0 || len(v.Schemas) != 0 {
 		t.Errorf("zero match should render empty, got %d methods / %d schemas", len(v.Methods), len(v.Schemas))
 	}
 }
 
-// TestMarkdown_renders asserts the third Format produces a valid GFM table.
 func TestMarkdown_renders(t *testing.T) {
 	r := run(t, schemacmd.Input{Query: "edits.tracks.update"})
 	md := renderMarkdown(t, r)

@@ -97,6 +97,29 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   wrong one is rejected after the whole transfer, and an operator's screenshot
   without a suffix is still a PNG. `edits.images.upload` behaves the same
   ([ADR-0013](./0013-image-slot-reconciliation.md)).
+- **A hosted app is `PUBLISHED` by default** once its details are submitted
+  (Discovery: "It is not necessary to call this RPC explicitly to set an app
+  to PUBLISHED"), so `appstore publish-status set` exists to withdraw an app
+  and to restore it. The CLI words `published` and `unpublished` map onto
+  `APP_STORE_APP_PUBLISH_STATE_*`; the third member,
+  `APP_STORE_APP_PUBLISH_STATE_UNSPECIFIED`, is documented "Do not use" and
+  is not reachable from the CLI.
+
+### App store catalog (`appstorecatalog`)
+
+- **A time range is `[start, end)`.** Discovery: the start time is
+  "inclusive", the end time "exclusive"; an end at or before the start can
+  only return nothing, and is refused offline
+  ([ADR-0063](./0063-offline-validation-before-the-api.md)).
+- **A device is compatible if it satisfies at least one requirement set**
+  (Discovery: "satisfies at least one of `DeviceCompatibilityRequirements`"),
+  so the human view renders one line per set (SDK range, ABIs, system
+  features) rather than merging them.
+- **A free app has no US price.** Discovery: `priceInTheUnitedStates` is
+  "Empty if the app is free", so an absent Money renders as `free`.
+- **`google.type.Money` carries the sign on `units` unless `units` is 0.**
+  `-1.75` is `units` -1 and `nanos` -750,000,000; `-0.75` is `units` 0 and
+  negative `nanos`. A formatter adds a leading `-` only in that second case.
 
 ### Expansion files
 
@@ -119,6 +142,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   proved the package. A failed `listings` write or `images.list` is tagged
   with its locale so the message names the language; the exit code and the
   JSON error envelope stay those of the API error.
+- **No endpoint lists every Store image.** A read of the whole Store front
+  takes the locales carrying a Listing from `listings.list`, then one
+  `images.list` per locale and image type.
 
 ### One-time products (`monetization.onetimeproducts`)
 
@@ -201,6 +227,12 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   filters (#61, #789).
 - **A 404 on `reviews.get` is an unknown or an expired review**: a valid
   review that left the API's 7-day window answers the same 404.
+- **A 404 on `reviews.reply` names the review, not the package**, so the
+  hint names the review id and the 7-day window rather than `gplay apps
+  list`.
+- **One Play Console permission, "Reply to reviews", gates both reading and
+  replying**, so a 403 on `reviews.list` is the same missing grant a reply
+  would hit, and its hint names that permission.
 
 ### System APKs
 
@@ -268,6 +300,13 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   default timezone: `America/Los_Angeles` for `DAILY`, UTC for `HOURLY`.
   gplay keeps that zone next to the instant rather than reading the civil
   fields as UTC.
+- **A timeline may not end past the freshness.** The API rejects a query
+  whose timeline ends after the set's `latestEndTime` for the period, so
+  gplay reads it through the set's `.get` first, and the error searches end
+  their hourly window on it.
+- **A `DAILY` bound is a date only.** The API requires the time fields unset
+  for `DAILY`, and gplay leaves the time zone unset too, so the set's default
+  zone applies.
 
 ## Consequences
 

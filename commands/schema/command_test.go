@@ -12,9 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// registryMethods is the expected answer for a command, read straight from the
-// API registry: the lens must show exactly what the registry declares, no more
-// (a second mapping) and no less (a dropped method).
 func registryMethods(command string) []string {
 	var ids []string
 	for _, e := range apiregistry.Entries() {
@@ -37,9 +34,6 @@ func sortedKeys[V any](m map[string]V) []string {
 	return out
 }
 
-// TestCommand_listsTheRegistryMethods asserts --command inverts the registry:
-// for a multi-method command and a single-method one, the methods shown are
-// exactly the registry's.
 func TestCommand_listsTheRegistryMethods(t *testing.T) {
 	for _, command := range []string{"releases upload", "edits begin", "metadata apply"} {
 		t.Run(command, func(t *testing.T) {
@@ -53,7 +47,6 @@ func TestCommand_listsTheRegistryMethods(t *testing.T) {
 			}
 		})
 	}
-	// Spot-check the N:1 case the parking note called "not derivable".
 	v := parseJSON(t, renderJSON(t, run(t, schemacmd.Input{Command: "releases upload"})))
 	for _, id := range []string{"androidpublisher.edits.bundles.upload", "androidpublisher.edits.tracks.update", "androidpublisher.edits.deobfuscationfiles.upload"} {
 		if _, ok := v.Methods[id]; !ok {
@@ -62,8 +55,6 @@ func TestCommand_listsTheRegistryMethods(t *testing.T) {
 	}
 }
 
-// TestCommand_sameViewAsMethodQuery asserts each method renders exactly as a
-// method-id query renders it: same method object, same one-hop schemas.
 func TestCommand_sameViewAsMethodQuery(t *testing.T) {
 	var byCommand, byID struct {
 		Methods map[string]json.RawMessage `json:"methods"`
@@ -72,8 +63,6 @@ func TestCommand_sameViewAsMethodQuery(t *testing.T) {
 	if err := json.Unmarshal([]byte(renderJSON(t, run(t, schemacmd.Input{Command: "edits begin"}))), &byCommand); err != nil {
 		t.Fatal(err)
 	}
-	// "edits begin" calls only edits.insert; the exact id is also a substring
-	// of no other method, so the query returns that one method.
 	if err := json.Unmarshal([]byte(renderJSON(t, run(t, schemacmd.Input{Query: "androidpublisher.edits.insert"}))), &byID); err != nil {
 		t.Fatal(err)
 	}
@@ -99,8 +88,6 @@ func TestCommand_sameViewAsMethodQuery(t *testing.T) {
 	}
 }
 
-// TestCommand_normalizesInput asserts the binary name, extra spaces and case do
-// not defeat the lookup.
 func TestCommand_normalizesInput(t *testing.T) {
 	v := parseJSON(t, renderJSON(t, run(t, schemacmd.Input{Command: "  gplay  Releases   UPLOAD "})))
 	if got, want := strings.Join(sortedKeys(v.Methods), ","), strings.Join(registryMethods("releases upload"), ","); got != want {
@@ -108,8 +95,6 @@ func TestCommand_normalizesInput(t *testing.T) {
 	}
 }
 
-// TestCommand_combinesWithMethodAndList asserts --method narrows the command's
-// methods by verb and --list renders them as the compact catalog.
 func TestCommand_combinesWithMethodAndList(t *testing.T) {
 	v := parseJSON(t, renderJSON(t, run(t, schemacmd.Input{Command: "releases upload", Method: "put"})))
 	if got := sortedKeys(v.Methods); len(got) != 1 || got[0] != "androidpublisher.edits.tracks.update" {
@@ -126,8 +111,6 @@ func TestCommand_combinesWithMethodAndList(t *testing.T) {
 	}
 }
 
-// TestCommand_unknownIsANoteAndExit0 asserts a command that calls no API method
-// behaves like a zero-match query: empty result, note on stderr, no error.
 func TestCommand_unknownIsANoteAndExit0(t *testing.T) {
 	tests := []struct {
 		name string
@@ -153,8 +136,6 @@ func TestCommand_unknownIsANoteAndExit0(t *testing.T) {
 	}
 }
 
-// TestCommand_editLifecycleNote asserts the shared Edit calls the lens does not
-// list are named on stderr for an Edit-scoped command, and only there.
 func TestCommand_editLifecycleNote(t *testing.T) {
 	_, stderr := runCaptureStderr(t, schemacmd.Input{Command: "releases upload"})
 	if !strings.Contains(stderr, "edits.insert") || !strings.Contains(stderr, "edits.commit") {
@@ -165,8 +146,6 @@ func TestCommand_editLifecycleNote(t *testing.T) {
 	}
 }
 
-// TestCommand_withQueryIsUsageError asserts a query and --command together are
-// CLI misuse (exit 2): they are two keys for the same view, not a filter pair.
 func TestCommand_withQueryIsUsageError(t *testing.T) {
 	_, err := schemacmd.Run(newOfflineRC(t), schemacmd.Input{Query: "Track", Command: "releases upload"})
 	if err == nil {
@@ -177,7 +156,6 @@ func TestCommand_withQueryIsUsageError(t *testing.T) {
 	}
 }
 
-// TestCommand_flagRegistered pins the --command flag on the cobra command.
 func TestCommand_flagRegistered(t *testing.T) {
 	if schemacmd.NewCommand(kernel.Boot{}).Flags().Lookup("command") == nil {
 		t.Error("missing --command flag")

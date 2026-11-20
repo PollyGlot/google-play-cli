@@ -19,7 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// lastCall returns the last API call the fake recorded.
 func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := fake.Calls()
@@ -74,7 +73,6 @@ func TestRun_listsAnomalies_withSinceWindow(t *testing.T) {
 	if last.Method != http.MethodGet || !strings.Contains(last.URL, "/apps/com.example.app/anomalies") {
 		t.Errorf("call = %s %s", last.Method, last.URL)
 	}
-	// --since builds an activeBetween(...) filter.
 	if !strings.Contains(last.URL, "activeBetween") {
 		t.Errorf("URL missing activeBetween filter: %q", last.URL)
 	}
@@ -87,9 +85,6 @@ func TestRun_listsAnomalies_withSinceWindow(t *testing.T) {
 func TestRun_rawFilterOverridesSince(t *testing.T) {
 	rc, fake, _ := newRC(t, `{"anomalies":[]}`)
 	raw := `activeBetween("2026-01-01T00:00:00Z", UNBOUNDED)`
-	// Both --since AND --filter are set: --filter must win, so the raw
-	// (UNBOUNDED) predicate reaches the API and the --since-derived
-	// activeBetween window is NOT used.
 	if _, err := Run(rc, Input{Package: "com.example.app", Since: "7d", Filter: raw}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}

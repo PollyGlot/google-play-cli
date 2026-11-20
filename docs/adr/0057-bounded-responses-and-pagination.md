@@ -28,6 +28,11 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   document must never reach `--output json` as if it were whole.
 - **Media downloads have no cap.** They stream to a writer
   ([ADR-0034](./0034-generated-apks-binary-download-to-file.md)).
+- **A Store image `metadata images pull` downloads is capped at 16 MiB.**
+  Play's largest asset (a 3840px screenshot) stays well under it; the cap is
+  defence against a runaway or hostile image url. The first byte past it
+  fails the download rather than truncating it, since a cut image would land
+  on disk as a corrupt file.
 - **Cloud Storage reads have their own caps**: 4 MiB for a list page, 64 MiB
   for a fetched object. Monthly review CSVs stay well under 64 MB even for
   high-volume apps, and the cap stops a hostile or misconfigured bucket from
@@ -55,6 +60,10 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   `*.query` methods, which take their token in the POST body. The fact is
   declared per method in the registry
   ([ADR-0065](./0065-api-registry-and-discovery-snapshot.md)).
+- **A POST page resends the first request unchanged except for its
+  `pageToken`.** Play requires every other parameter of a vitals `*.query`
+  page to match the previous call, so the request body is kept as raw JSON
+  values and only the token is replaced.
 - **A walk follows the continuation token to the end** (`api.Paginate`), or to
   an explicit `--limit`, which it reports as truncation.
 - **The Reporting API needs it most**: its default pages are small (10

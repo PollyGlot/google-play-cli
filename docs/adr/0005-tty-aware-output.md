@@ -116,6 +116,10 @@ structured output do not get forced into the dispatcher.
 
 ## Implementation notes
 
+- **A record view keeps its empty rows.** The key-value view of a single
+  record (`appstore catalog view`) prints every row, empty values included,
+  so the shape of the record never depends on the data; only whole empty
+  sections are skipped.
 - **Human views are sanitised line by line** as they are written (DESIGN §7,
   control-sequence sanitization). Holding back the unfinished line keeps an
   escape sequence or a multi-byte rune split across two writes (`tabwriter`,
@@ -131,6 +135,13 @@ structured output do not get forced into the dispatcher.
   rollout above a completed one, a draft above production); the highest
   versionCode is the newest build whatever order the API lists them in, and
   the status column says whether that build is a draft (`tracks list`).
+- **A command whose output splits per item between stdout and stderr writes
+  it itself.** `reviews reply` sends a stderr confirmation plus the verbatim
+  API body for one reply, and per-line `OK`/`ERR` on stderr plus a
+  `{"results":[…]}` envelope for a `--batch`. That split does not fit the
+  three-renderer payload, so its `Run` writes through `output.WriteJSON` and
+  the logging helpers and returns only an error. It is the exception: a
+  command that can return a `Renderable` does.
 
 ## Consequences
 

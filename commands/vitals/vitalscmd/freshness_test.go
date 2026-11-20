@@ -8,8 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// freshnessFake answers the metric set's `.get` with the given freshness body
-// and its `:query` with one row, so a test sees both legs of Execute.
 func freshnessFake(describe string) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if c.Method == http.MethodGet {
@@ -19,9 +17,6 @@ func freshnessFake(describe string) *testkit.Fake {
 	})
 }
 
-// TestExecute_windowEndsAtFreshness pins #768: the API rejects a timeline whose
-// end is past the set's freshness, so the window must end at latestEndTime and
-// --since counts back from there, not from today.
 func TestExecute_windowEndsAtFreshness(t *testing.T) {
 	const fresh = `{"freshnessInfo":{"freshnesses":[` +
 		`{"aggregationPeriod":"HOURLY","latestEndTime":{"year":2020,"month":1,"day":10,"hours":9,"timeZone":{"id":"UTC"}}},` +
@@ -47,8 +42,6 @@ func TestExecute_windowEndsAtFreshness(t *testing.T) {
 	}
 }
 
-// TestExecute_noFreshnessKeepsToday: a descriptor without an entry for the
-// requested period leaves the window anchored on today, as before.
 func TestExecute_noFreshnessKeepsToday(t *testing.T) {
 	fake := freshnessFake(`{"freshnessInfo":{"freshnesses":[]}}`)
 	rc := newRC(t, fake)

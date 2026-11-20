@@ -1,16 +1,3 @@
-// Package list implements `gplay appstore catalog events list --since <t>
-// --until <t>`: one page of update events for the apps eligible for an app
-// store's catalog (appstorecatalog.recentupdateevents.list).
-//
-// This is the incremental-sync half of the Catalog Export for app stores: an
-// operator polls the feed for a time range and reacts per event: re-fetch a
-// MODIFICATION with `appstore catalog view`, delist a DELETION. Both time
-// bounds are required by the API and validated client-side as RFC 3339 so a
-// malformed range fails fast (exit 2) instead of costing a round trip.
-// Pagination is caller-driven: one page per invocation with
-// --page-size/--page-token, the accessible-apps / device-tiers convention.
-// Read-only, Edit-free; --output json is the ListRecentUpdateEventsResponse
-// verbatim (ADR-0003), nextPageToken included. Ships [experimental].
 package list
 
 import (
@@ -28,7 +15,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstorecatalog"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	StorePackage string
 	Since        string
@@ -37,25 +23,17 @@ type Input struct {
 	PageToken    string
 }
 
-// columns is the update-event table (ADR-0018 shared machinery): which Play app
-// changed, when, and how.
 var columns = []output.Column[appstorecatalog.RecentUpdateEvent]{
 	{Key: "package", Header: "PACKAGE", Value: func(e appstorecatalog.RecentUpdateEvent) string { return e.PlayAppPackageName }},
 	{Key: "time", Header: "TIME", Value: func(e appstorecatalog.RecentUpdateEvent) string { return e.EventTime }},
 	{Key: "type", Header: "TYPE", Value: func(e appstorecatalog.RecentUpdateEvent) string { return e.UpdateType }},
 }
 
-// Payload satisfies output.Renderable. Events drives the table/markdown views;
-// Raw is the verbatim ListRecentUpdateEventsResponse for the ADR-0003 JSON
-// pass-through, nextPageToken included.
 type Payload struct {
 	Events []appstorecatalog.RecentUpdateEvent
 	Raw    json.RawMessage
 }
 
-// renderJSON emits the verbatim API bytes (ADR-0003 pass-through). An empty Raw
-// is a bug, never a valid render: erroring loudly beats zero bytes at exit 0 on
-// the CI default format.
 func (p Payload) renderJSON(w io.Writer) error {
 	if len(p.Raw) == 0 {
 		return fmt.Errorf("missing raw update events payload for --output json")
@@ -72,12 +50,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes. It validates the required
-// time range and the page size client-side, resolves the app store package name
-// from the flag/env cascade, then fetches one page. When the page carries a
-// nextPageToken a note on stderr tells the operator how to fetch the next page:
-// the human views would otherwise silently under-report an incremental sync;
-// --output json keeps the token in the body for a machine caller.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	start, end, err := appstorecmd.ValidateTimeRange(in.Since, in.Until)
 	if err != nil {
@@ -104,7 +76,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Events: resp.RecentUpdateEvents, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay appstore catalog events list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

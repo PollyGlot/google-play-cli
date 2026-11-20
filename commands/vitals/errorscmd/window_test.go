@@ -11,15 +11,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// hourlyFresh is an errorCountMetricSet descriptor whose HOURLY data ends at
-// 2020-01-10 09:00 UTC: older than any clock the test runs on, so an hour
-// window must end there and nowhere else.
 const hourlyFresh = `{"freshnessInfo":{"freshnesses":[` +
 	`{"aggregationPeriod":"HOURLY","latestEndTime":{"year":2020,"month":1,"day":10,"hours":9,"timeZone":{"id":"UTC"}}},` +
 	`{"aggregationPeriod":"DAILY","latestEndTime":{"year":2020,"month":1,"day":10,"timeZone":{"id":"America/Los_Angeles"}}}]}}`
 
-// windowFake answers the errorCount descriptor with hourlyFresh and every
-// search with an empty page.
 func windowFake() *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if strings.HasSuffix(c.Path, "/errorCountMetricSet") {
@@ -29,8 +24,6 @@ func windowFake() *testkit.Fake {
 	})
 }
 
-// intervalOf returns the interval.* query params of the last call: the whole
-// window as the search sends it.
 func intervalOf(t *testing.T, fake *testkit.Fake) url.Values {
 	t.Helper()
 	q, err := url.ParseQuery(lastCall(t, fake).Query)
@@ -63,9 +56,6 @@ func hourParams(start, end time.Time) url.Values {
 	return v
 }
 
-// TestSearchWindow pins #775: an hour window is sent with its hours and ends at
-// the newest hour of the errorCount set, a day window keeps its UTC-midnight
-// alignment ending today. Both search views share the window.
 func TestSearchWindow(t *testing.T) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	views := map[string]func(*testing.T, string) *testkit.Fake{

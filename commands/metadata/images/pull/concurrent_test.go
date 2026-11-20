@@ -24,15 +24,11 @@ const shots = 8
 
 var concurrentLocales = []string{"de-DE", "en-US", "fr-FR"}
 
-// shotURL is where screenshot j of loc is served; shotBytes is its content.
 func shotURL(loc string, j int) string { return fmt.Sprintf("https://play-lh.test/%s/%d", loc, j) }
 func shotBytes(loc string, j int) []byte {
 	return png(fmt.Sprintf("%s-%d", loc, j))
 }
 
-// galleryFake serves a pull where every locale holds an 8-screenshot phone
-// gallery and nothing else. A download whose "<locale>/<j>" is in fail answers
-// 500; override responders run first.
 func galleryFake(fail map[string]bool, override ...testkit.Responder) *testkit.Fake {
 	var ls []string
 	for _, l := range concurrentLocales {
@@ -69,8 +65,6 @@ func galleryFake(fail map[string]bool, override ...testkit.Responder) *testkit.F
 	})...)
 }
 
-// reverseLatency makes later screenshots of a gallery answer FIRST, so a pull
-// that wrote in completion order would scramble the gallery.
 func reverseLatency(slow map[string]time.Duration) func(*http.Request) time.Duration {
 	return func(r *http.Request) time.Duration {
 		if r.URL.Host != "play-lh.test" {
@@ -86,9 +80,6 @@ func reverseLatency(slow map[string]time.Duration) func(*http.Request) time.Dura
 	}
 }
 
-// TestRun_concurrentPullKeepsGalleryOrder: the downloads run fanout.Limit at a
-// time and complete out of order, yet every gallery lands on disk in display
-// order and the summary is in (locale, type) order.
 func TestRun_concurrentPullKeepsGalleryOrder(t *testing.T) {
 	rt := testkit.NewDelayed(galleryFake(nil), reverseLatency(nil))
 	rc := newRC(t, rt)
@@ -127,10 +118,6 @@ func TestRun_concurrentPullKeepsGalleryOrder(t *testing.T) {
 	}
 }
 
-// TestRun_concurrentPull429FollowsRetryFlag pins what the burst does to the
-// rate limit, unchanged by concurrency: --retry stays opt-in, so without it a
-// 429 on one images.list fails the whole pull (exit 60, nothing written); with
-// --retry the same 429 is replayed and the pull completes.
 func TestRun_concurrentPull429FollowsRetryFlag(t *testing.T) {
 	for _, retry := range []int{0, 1} {
 		t.Run(fmt.Sprintf("retry=%d", retry), func(t *testing.T) {
@@ -169,13 +156,8 @@ func TestRun_concurrentPull429FollowsRetryFlag(t *testing.T) {
 	}
 }
 
-// TestRun_concurrentPullIsAllOrNothing: one failed download leaves the target
-// tree exactly as it was (no partial gallery a later `images apply --prune`
-// would push as deletions), and the error is the serial one: the failure with
-// the lowest (locale, type, position), even when a later one fails first.
 func TestRun_concurrentPullIsAllOrNothing(t *testing.T) {
 	fail := map[string]bool{"de-DE/5": true, "fr-FR/0": true}
-	// de-DE/5 answers last, fr-FR/0 fails well before it.
 	rt := testkit.NewDelayed(galleryFake(fail), reverseLatency(map[string]time.Duration{"de-DE/5": 40 * time.Millisecond}))
 	rc := newRC(t, rt)
 	dir := t.TempDir()

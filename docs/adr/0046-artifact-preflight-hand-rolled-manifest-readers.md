@@ -104,6 +104,12 @@ restoration.
 - **`--dry-run` names what the preflight found even on a match.** A preview
   that stays silent tells the user nothing about the check it just ran; the
   live path stays silent on success.
+- **`appstore apk upload` preflights on the live path only.** Its
+  `--dry-run` answers before the file is opened
+  ([ADR-0063](./0063-offline-validation-before-the-api.md)), so the
+  preflight sits after that branch, still before authentication and before
+  the resumable session is reserved, which on an APK of up to 10 GiB is the
+  point of running it first.
 
 ### Bounds
 

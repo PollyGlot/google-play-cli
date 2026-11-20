@@ -1,7 +1,3 @@
-// Package imagesvalidate_test exercises `gplay metadata images validate` at
-// the kernel level. The command is fully OFFLINE (no auth, no network) so
-// the RunContext carries no account and no transport; it reads the on-disk
-// image tree and runs the pure rule engine.
 package imagesvalidate_test
 
 import (
@@ -48,8 +44,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_validTree_passesOffline is the tracer bullet: a clean tree validates
-// with no error and no auth/network (the RunContext has neither).
 func TestRun_validTree_passesOffline(t *testing.T) {
 	dir := writeTree(t, imagetree.Tree{
 		"en-US": {
@@ -70,8 +64,6 @@ func TestRun_validTree_passesOffline(t *testing.T) {
 	}
 }
 
-// TestRun_badImage_isValidationError_exit20 asserts a rule violation (a
-// 500×500 icon) fails with exit 20 and names the problem.
 func TestRun_badImage_isValidationError_exit20(t *testing.T) {
 	dir := writeTree(t, imagetree.Tree{"en-US": {images.Icon: {testkit.PNG(500, 500)}}})
 	_, err := imagesvalidate.Run(newRC(t), imagesvalidate.Input{Dir: dir})
@@ -83,8 +75,6 @@ func TestRun_badImage_isValidationError_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_missingDir_isExit20 asserts an unreadable --dir is a client-side
-// validation failure (exit 20), like the text validate.
 func TestRun_missingDir_isExit20(t *testing.T) {
 	_, err := imagesvalidate.Run(newRC(t), imagesvalidate.Input{Dir: "/no/such/metadata/dir"})
 	if got := exitCodeOf(t, err); got != 20 {
@@ -92,10 +82,6 @@ func TestRun_missingDir_isExit20(t *testing.T) {
 	}
 }
 
-// TestRun_retiredPromoGraphic_warnsAndPasses asserts a leftover
-// images/promoGraphic.png (fastlane supply trees carry one) does not fail the
-// lint, since gplay never uploads it, but draws a stderr warning naming the
-// file so it is not dropped silently.
 func TestRun_retiredPromoGraphic_warnsAndPasses(t *testing.T) {
 	dir := writeTree(t, imagetree.Tree{"en-US": {images.Icon: {testkit.PNG(512, 512)}}})
 	promo := filepath.Join(dir, "en-US", "images", "promoGraphic.png")

@@ -15,34 +15,16 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
 
-// VersionCodeFlag is the flag CompleteVersionCodes is registered on.
 const VersionCodeFlag = "version-code"
 
-// completionTimeout bounds the whole completion (token exchange included): a
-// TAB press that hangs is worse than one that suggests nothing. A var only so
-// the test can shorten it.
 var completionTimeout = 3 * time.Second
 
-// RegisterVersionCodeCompletion wires CompleteVersionCodes on cmd's
-// --version-code flag. Every vitals leaf carrying that flag calls it, so the
-// suggestion source stays the one `vitals releases` lists (#348).
 func RegisterVersionCodeCompletion(cmd *cobra.Command, boot kernel.Boot) {
-	// The only error is "no such flag", a programmer error that the test
-	// building the command tree turns into a failure.
 	if err := cmd.RegisterFlagCompletionFunc(VersionCodeFlag, CompleteVersionCodes(boot)); err != nil {
 		panic("vitalscmd: " + err.Error())
 	}
 }
 
-// CompleteVersionCodes suggests the version codes Play holds vitals data for
-// (apps.fetchReleaseFilterOptions on the --package, or the Project pin),
-// newest first, each described by the release and track serving it.
-//
-// It is best effort by contract: the user did not ask for a network call, they
-// pressed TAB. Any failure (no package, no credential, an API refusal, a
-// malformed answer, the timeout) yields no suggestion, never an error
-// directive, and nothing reaches the terminal: stdout and stderr of the run
-// are discarded, since cobra's completion protocol owns stdout.
 func CompleteVersionCodes(boot kernel.Boot) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		const directive = cobra.ShellCompDirectiveNoFileComp
@@ -85,9 +67,6 @@ func CompleteVersionCodes(boot kernel.Boot) cobra.CompletionFunc {
 	}
 }
 
-// versionCodeCompletions turns release rows into completions: one per distinct
-// version code starting with toComplete, newest (highest) first, described by
-// the first release serving it in API order.
 func versionCodeCompletions(rows []vitals.Release, toComplete string) []cobra.Completion {
 	desc := map[string]string{}
 	var codes []string

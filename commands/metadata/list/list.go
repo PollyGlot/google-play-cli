@@ -1,15 +1,3 @@
-// Package list implements `gplay metadata list`: a read-only summary of
-// the Store front Listings live on Google Play for a package: one row per
-// locale, showing which managed fields each locale has and the character
-// length of each. It reads ONLY from Play (never the local metadata tree):
-// resolve --package, open a read-only Edit, consume
-// internal/play/listings.List, project each API Listing onto the four
-// managed fields, and render. The Edit is opened and discarded via
-// edits.WithReadOnlyEdit, never committed.
-//
-// Comparing the live Listings against an on-disk tree is the job of
-// `gplay metadata apply --dry-run`; this command answers the simpler "what
-// does Play currently hold, per locale?".
 package list
 
 import (
@@ -30,26 +18,15 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/listings"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 }
 
-// ListingRow is the synthesized, one-line-per-locale view rendered by the
-// table and markdown formatters. It is NOT the API shape: Sizes holds the
-// character length of each managed field present (non-empty) on the
-// locale, keyed by listing.Field; an absent (or empty) API field has no
-// entry and renders as a blank cell. The JSON view bypasses ListingRow
-// entirely and emits the raw edits.listings.list payload (ADR-0003).
 type ListingRow struct {
 	Locale string
 	Sizes  map[listing.Field]int
 }
 
-// fieldValue returns the value of the managed field f on an API Listing.
-// The four managed fields map onto the API struct's keys 1:1 (title,
-// shortDescription, fullDescription, video); an out-of-range Field yields
-// "".
 func fieldValue(l listings.Listing, f listing.Field) string {
 	switch f {
 	case listing.Title:
@@ -65,12 +42,6 @@ func fieldValue(l listings.Listing, f listing.Field) string {
 	}
 }
 
-// BuildRows projects each API Listing onto the four managed fields,
-// recording the character length of every present (non-empty) field. An
-// empty API field ("") is treated as absent per the ADR-0011 "missing ≠
-// empty" display rule for this read-only summary: there is no size to
-// report for a field Play holds empty, so its cell stays blank. Rows
-// follow the API's locale order (List returns them as Play does).
 func BuildRows(apiListings []listings.Listing) []ListingRow {
 	rows := make([]ListingRow, 0, len(apiListings))
 	for _, l := range apiListings {
@@ -87,17 +58,11 @@ func BuildRows(apiListings []listings.Listing) []ListingRow {
 	return rows
 }
 
-// columnDef pairs a column's header with the managed Field it reports the
-// size of. The header column for the locale itself is handled separately.
 type columnDef struct {
 	header string
 	field  listing.Field
 }
 
-// fieldColumns is the ordered list of per-field size columns, derived from
-// listing.Specs() so the order (title, short, full, video) and the set of
-// fields stay in lockstep with the shared model. Headers are gplay-chosen
-// display names matching the table vocabulary.
 var fieldColumns = buildFieldColumns()
 
 func buildFieldColumns() []columnDef {
@@ -114,17 +79,11 @@ func buildFieldColumns() []columnDef {
 	return cols
 }
 
-// Payload satisfies output.Renderable. Raw carries the edits.listings.list
-// body for the ADR-0003 JSON pass-through; Rows is the synthesized
-// one-line-per-locale size summary.
 type Payload struct {
 	Raw  json.RawMessage `json:"-"`
 	Rows []ListingRow    `json:"-"`
 }
 
-// Renderers satisfies output.Renderable with one renderer per Format. The
-// JSON form is the ADR-0003 edits.listings.list pass-through; table and
-// markdown are human-shaped, one-row-per-locale field-size views.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
@@ -133,8 +92,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// headers returns the table header row: LOCALE plus one column per managed
-// field.
 func headers() []string {
 	h := make([]string, 0, len(fieldColumns)+1)
 	h = append(h, "LOCALE")
@@ -144,9 +101,6 @@ func headers() []string {
 	return h
 }
 
-// row extracts one locale's cells: the locale code, then the character
-// count of each managed field present on it (blank when the field is
-// absent/empty).
 func row(r ListingRow) []string {
 	cells := make([]string, 0, len(fieldColumns)+1)
 	cells = append(cells, r.Locale)
@@ -160,8 +114,6 @@ func row(r ListingRow) []string {
 	return cells
 }
 
-// renderTable writes a tab-aligned table: LOCALE + one field-size column
-// per managed field, one row per locale.
 func renderTable(w io.Writer, p Payload) error {
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 	if _, err := fmt.Fprintln(tw, strings.Join(headers(), "\t")); err != nil {
@@ -175,12 +127,6 @@ func renderTable(w io.Writer, p Payload) error {
 	return tw.Flush()
 }
 
-// renderJSON emits the raw edits.listings.list body verbatim (ADR-0003
-// pass-through). Raw is always populated on the Run path; an empty Raw
-// would mean we never captured the API body, so we error rather than
-// synthesize one (every Payload field is json:"-", so falling back to
-// output.WriteJSON would emit a bare "{}" and silently break the
-// contract). Mirrors `tracks list`'s renderJSON.
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) == 0 {
 		return fmt.Errorf("missing raw listings.list payload for --output json")
@@ -189,8 +135,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// renderMarkdown writes the locale × field-size grid as a GitHub-Flavored
-// Markdown table via output.MarkdownTable.
 func renderMarkdown(w io.Writer, p Payload) error {
 	rows := make([][]string, 0, len(p.Rows))
 	for _, r := range p.Rows {
@@ -199,9 +143,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return output.MarkdownTable(w, headers(), rows)
 }
 
-// Run is the business function the kernel invokes. It resolves the
-// package, builds an authenticated HTTP client, then opens a read-only
-// Edit and lists every locale's Listing.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -231,7 +172,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Raw: raw, Rows: BuildRows(parsed)}, nil
 }
 
-// NewCommand returns the cobra command for `gplay metadata list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

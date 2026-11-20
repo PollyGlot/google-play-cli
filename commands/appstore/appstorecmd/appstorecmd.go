@@ -1,24 +1,3 @@
-// Package appstorecmd holds the wiring shared by every `gplay appstore` leaf:
-// app store package name resolution, RFC 3339 time validation, and the 403/404
-// hint classifications that turn a bare API rejection into an agent-resolvable
-// refusal. Mirrors commands/orders/orderscmd
-// and commands/games/gamescmd, and keeps the leaves thin.
-//
-// The namespace wraps two sibling surfaces sharing one addressing axis:
-// `appstorecatalog` (read-only catalog export) and `appstoreappsreview` (the
-// hosted app review path: see GLOSSARY.md "Hosted app" and PRD #377).
-//
-// Addressing rides the APP STORE PACKAGE NAME: the package of the alternative
-// app store on whose behalf the request is made, which is a different axis
-// from the Android package the rest of gplay targets: it names the *caller's
-// store*, not the app being read or acted on. There is therefore no
-// `.gplay/config.json` project-pin cascade for it (that pin is the repo's own
-// app); resolution is deliberately non-interactive and CI-friendly:
-//
-//	--store-package  →  $GPLAY_APP_STORE_PACKAGE
-//
-// Later layers win, mirroring ADR-0004 (see ADR-0043). An unresolved value is
-// CLI misuse (exit 2) naming both ways to set it.
 package appstorecmd
 
 import (
@@ -35,26 +14,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// FlagStorePackage is the flag name carrying the app store package name. Named
-// once here so every leaf in the namespace spells it identically.
 const FlagStorePackage = "store-package"
 
-// EnvStorePackage supplies the app store package name from the environment
-// (ADR-0043). It sits below the --store-package flag in the cascade so a CI job
-// can export it once and every `gplay appstore` command inherits it.
 const EnvStorePackage = "GPLAY_APP_STORE_PACKAGE"
 
-// RegisterStorePackageFlag declares --store-package on a leaf. Every `appstore`
-// leaf calls this rather than spelling the flag itself, so the name and usage
-// string stay defined in one place.
 func RegisterStorePackageFlag(cmd *cobra.Command, target *string) {
 	cmd.Flags().StringVar(target, FlagStorePackage, "", "package name of the third-party app store making the call (falls back to $"+EnvStorePackage+")")
 }
 
-// ResolveStorePackage resolves the app store package name from the
-// --store-package flag, falling back to $GPLAY_APP_STORE_PACKAGE. Nothing is
-// ever prompted for: an unresolved value is a usage error (exit 2) naming both
-// layers, so a CI run fails fast and legibly.
 func ResolveStorePackage(flag string) (string, error) {
 	if v := strings.TrimSpace(flag); v != "" {
 		return v, nil
@@ -66,8 +33,6 @@ func ResolveStorePackage(flag string) (string, error) {
 		" (the package name of the app store on whose behalf the request is made, not the app being read or acted on)"}
 }
 
-// RequirePlayPackage validates a required Play app package name, returning a
-// usage error (exit 2) carrying usage when it is empty or whitespace-only.
 func RequirePlayPackage(pkg, usage string) (string, error) {
 	if pkg = strings.TrimSpace(pkg); pkg == "" {
 		return "", &exit.UsageError{Msg: usage}
@@ -75,12 +40,6 @@ func RequirePlayPackage(pkg, usage string) (string, error) {
 	return pkg, nil
 }
 
-// ParseRFC3339 validates a required RFC 3339 timestamp flag (the `google-datetime`
-// format the API's time-range parameters take). It returns the parsed instant:
-// for range checks, and the trimmed original string, which is what travels on
-// the wire so the caller's offset is preserved verbatim. A missing or malformed
-// value is CLI misuse (exit 2) naming the flag and a valid example, so a CI run
-// fails fast instead of paying for a round trip that the API would reject.
 func ParseRFC3339(flag, value string) (time.Time, string, error) {
 	v := strings.TrimSpace(value)
 	if v == "" {
@@ -93,10 +52,6 @@ func ParseRFC3339(flag, value string) (time.Time, string, error) {
 	return t, v, nil
 }
 
-// ValidateTimeRange validates the required --since / --until pair and
-// returns the two strings to send. The range is [start, end): the API documents
-// the start as inclusive and the end as exclusive, so an end at or before the
-// start can only ever return nothing and is rejected as CLI misuse (exit 2).
 func ValidateTimeRange(startFlag, endFlag string) (string, string, error) {
 	start, startStr, err := ParseRFC3339("since", startFlag)
 	if err != nil {
@@ -112,10 +67,6 @@ func ValidateTimeRange(startFlag, endFlag string) (string, string, error) {
 	return startStr, endStr, nil
 }
 
-// forbiddenError wraps a 403 with an agent-resolvable hint: the catalog export
-// is granted per app store, so the usual fix is an enrollment/allow-list gap on
-// the app store package name, not a per-app permission. It carries no ExitCode
-// of its own so the wrapped *api.Error (403 → exit 11) stays authoritative.
 type forbiddenError struct {
 	storePkg string
 	cause    error
@@ -126,9 +77,6 @@ func (e *forbiddenError) Error() string {
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
-// notFoundError wraps a 404 on the catalog app view: either the app store
-// package name is unknown or the Play app is not eligible for catalog
-// inclusion. The wrapped *api.Error drives the exit code (404 → 30).
 type notFoundError struct {
 	storePkg string
 	playPkg  string
@@ -140,9 +88,6 @@ func (e *notFoundError) Error() string {
 }
 func (e *notFoundError) Unwrap() error { return e.cause }
 
-// ClassifyAppView adds 403/404 hints to a catalog-app-view read failure,
-// leaving the *api.Error to drive the exit code (403 → 11, 404 → 30). Any other
-// error passes through.
 func ClassifyAppView(storePkg, playPkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
@@ -156,8 +101,6 @@ func ClassifyAppView(storePkg, playPkg string, err error) error {
 	return err
 }
 
-// storeNotFoundError wraps a 404 on a store-scoped read: there is no Play app in
-// play here, only the app store package name, so the hint names that alone.
 type storeNotFoundError struct {
 	storePkg string
 	cause    error
@@ -168,9 +111,6 @@ func (e *storeNotFoundError) Error() string {
 }
 func (e *storeNotFoundError) Unwrap() error { return e.cause }
 
-// ClassifyStoreRead adds 403/404 hints to a read keyed by the app store package
-// name alone (no Play app), leaving the *api.Error to drive the exit code
-// (403 → 11, 404 → 30). Any other error passes through.
 func ClassifyStoreRead(storePkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
@@ -184,12 +124,6 @@ func ClassifyStoreRead(storePkg string, err error) error {
 	return err
 }
 
-// ClassifyHostedApp is ClassifyReview for the calls that act on an app the
-// store has ALREADY created: the three uploads, publish-status set and
-// submit. It differs on 404 only: there, a missing hosted app record is at
-// least as likely as a wrong store, so the hint names both. Use
-// ClassifyReview for `appstore create`, where the record cannot be the thing
-// that is missing.
 func ClassifyHostedApp(storePkg, pkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
@@ -198,10 +132,6 @@ func ClassifyHostedApp(storePkg, pkg string, err error) error {
 	return ClassifyReview(storePkg, err)
 }
 
-// reviewForbiddenError wraps a 403 on the `appstoreappsreview` write path.
-// Access is granted to enrolled third-party app stores, so the refusal names
-// both halves of what has to be true. No ExitCode of its own: the wrapped
-// *api.Error (403 → exit 11) stays authoritative.
 type reviewForbiddenError struct {
 	storePkg string
 	cause    error
@@ -212,9 +142,6 @@ func (e *reviewForbiddenError) Error() string {
 }
 func (e *reviewForbiddenError) Unwrap() error { return e.cause }
 
-// reviewStoreNotFoundError wraps a 404 on the app store path key of a review
-// write with an actionable hint. The wrapped *api.Error drives the exit code
-// (404 → exit 30).
 type reviewStoreNotFoundError struct {
 	storePkg string
 	cause    error
@@ -225,14 +152,6 @@ func (e *reviewStoreNotFoundError) Error() string {
 }
 func (e *reviewStoreNotFoundError) Unwrap() error { return e.cause }
 
-// hostedAppNotFoundError wraps a 404 on a call that addresses an EXISTING
-// hosted app (the three uploads, publish-status set, submit) rather than
-// creating one. Two things can be missing there, and only one of them is the
-// store: Google's own contract is that `createappstorehostedapp` "must be
-// called before any other RPCs for this hosted app", so a caller who skipped `appstore create` lands
-// here. Naming only the store would send them auditing a --store-package that
-// is very likely correct. The wrapped *api.Error drives the exit code
-// (404 → exit 30).
 type hostedAppNotFoundError struct {
 	storePkg string
 	pkg      string
@@ -245,9 +164,6 @@ func (e *hostedAppNotFoundError) Error() string {
 }
 func (e *hostedAppNotFoundError) Unwrap() error { return e.cause }
 
-// ClassifyReview adds 403/404 hints to an `appstoreappsreview` write failure,
-// leaving the *api.Error to drive the exit code (403 → 11, 404 → 30). Any other
-// error passes through unchanged.
 func ClassifyReview(storePkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {

@@ -21,14 +21,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// listRT is a transport covering both the OAuth2 /token exchange and the
-// reviews.list calls a `reviews list` invocation makes. It serves the canned
-// pages in order; reviewCode/errBody let a test force an error status on the
-// reviews call (403, 404, ...).
 type listRT struct {
 	t          *testing.T
-	pages      []string // reviews.list bodies, served in order
-	reviewCode int      // 0 -> 200
+	pages      []string
+	reviewCode int
 	errBody    string
 
 	mu        sync.Mutex
@@ -64,8 +60,6 @@ func (r *listRT) serve(req *http.Request) (*http.Response, error) {
 	return nil, nil
 }
 
-// signedSAJSON builds a syntactically valid service_account.json with a
-// real RSA key so token.Source can sign a JWT in tests.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -87,8 +81,6 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-// newRC wires a RunContext whose HTTP client (token exchange + API calls)
-// routes through rt, and returns the captured stdout and stderr buffers.
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
@@ -115,14 +107,11 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// twoReviewsBody is a single reviews.list page with a 5-star and a 1-star
-// review, reused across the command tests.
 const twoReviewsBody = `{"reviews":[
 	{"reviewId":"r1","comments":[{"userComment":{"text":"Great app\nsecond line","starRating":5,"reviewerLanguage":"en","lastModified":{"seconds":"1700000000"}}}]},
 	{"reviewId":"r2","comments":[{"userComment":{"text":"Bad","starRating":1,"reviewerLanguage":"fr-FR","lastModified":{"seconds":"1700000100"}}}]}
 ]}`
 
-// ids extracts the reviewIds of a payload's surviving reviews, in order.
 func ids(p Payload) []string {
 	out := make([]string, len(p.Reviews))
 	for i, r := range p.Reviews {
@@ -132,7 +121,6 @@ func ids(p Payload) []string {
 }
 
 func TestRun_starsFilter_keepsOnlyMatching(t *testing.T) {
-	// twoReviewsBody: r1=5★, r2=1★.
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
 	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
@@ -154,8 +142,6 @@ const fourReviewsBody = `{"reviews":[
 ]}`
 
 func TestRun_limitCapsAfterFilter(t *testing.T) {
-	// stars=1 keeps r2 and r4 (in order); limit=1 then caps to r2: proving
-	// the cap is applied AFTER the filter, not against the raw page.
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
 	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
@@ -181,13 +167,6 @@ func TestRun_limitZeroMeansNoCap(t *testing.T) {
 	}
 }
 
-// TestRun_limitTruncation_warnsOnStderr covers the reviews half of PRD #446 /
-// #451. Here the whole set is already in hand (reviews.List exhausts the token
-// before filtering), so "truncated" means the --limit dropped rows we were
-// holding: silence there would let a capped list read as the whole match.
-//
-// Stdout is untouched by the warning (ADR-0003): the payload still carries
-// exactly the capped rows and nothing about the warning.
 func TestRun_limitTruncation_warnsOnStderr(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
 	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -210,8 +189,6 @@ func TestRun_limitTruncation_warnsOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_limitNotReached_doesNotWarn is the other half: a --limit larger than
-// the result set is not a truncation, and warning there would be noise.
 func TestRun_limitNotReached_doesNotWarn(t *testing.T) {
 	rt := &listRT{t: t, pages: []string{fourReviewsBody}}
 	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -254,11 +231,9 @@ func TestPayload_Table_defaultColumns_summaryFirstLine(t *testing.T) {
 			t.Errorf("table header missing %q in:\n%s", h, out)
 		}
 	}
-	// Both reviews appear, with locale and id.
 	if !strings.Contains(out, "r1") || !strings.Contains(out, "r2") || !strings.Contains(out, "fr-FR") {
 		t.Errorf("table missing expected rows:\n%s", out)
 	}
-	// Summary is the FIRST line of the comment, not the whole body.
 	if !strings.Contains(out, "Great app") {
 		t.Errorf("table should show first line 'Great app':\n%s", out)
 	}
@@ -350,7 +325,6 @@ func TestSummary(t *testing.T) {
 }
 
 func TestPayload_JSON_reflectsFilteredSet_verbatim(t *testing.T) {
-	// r1=5★, r2=1★; --stars 1 keeps only r2.
 	rt := &listRT{t: t, pages: []string{twoReviewsBody}}
 	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
@@ -385,7 +359,6 @@ func TestPayload_JSON_reflectsFilteredSet_verbatim(t *testing.T) {
 	if got.ReviewID != "r2" {
 		t.Errorf("survivor reviewId = %q, want r2", got.ReviewID)
 	}
-	// The review object is passed through verbatim: nested fields intact.
 	if got.Comments[0].UserComment.StarRating != 1 || got.Comments[0].UserComment.ReviewerLanguage != "fr-FR" {
 		t.Errorf("verbatim review fields lost: %+v", got)
 	}
@@ -404,11 +377,6 @@ func TestRun_forbidden_exit11_withReplyHint(t *testing.T) {
 	}
 }
 
-// hangUntilCanceled serves the /token exchange instantly but blocks the
-// reviews.list call until the request context is canceled: standing in for a
-// hung upstream connection. A well-behaved transport observes ctx
-// cancellation, which is how the kernel-applied deadline (the global --timeout
-// / 60s default) interrupts the request.
 func hangUntilCanceled(req *http.Request) (*http.Response, error) {
 	if resp, ok := testkit.TokenResponse(req); ok {
 		return resp, nil
@@ -417,11 +385,6 @@ func hangUntilCanceled(req *http.Request) (*http.Response, error) {
 	return nil, req.Context().Err()
 }
 
-// TestRun_timeout_mapsToExit50 drives `reviews list` against a transport whose
-// API call hangs, with a tight global --timeout. The kernel-applied deadline
-// must interrupt the request, and the transport-level failure must surface as
-// exit 50 (network): bounded well under the would-be hang, not stalling until
-// a runner-level kill.
 func TestRun_timeout_mapsToExit50(t *testing.T) {
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
 	if err != nil {
@@ -444,9 +407,6 @@ func TestRun_timeout_mapsToExit50(t *testing.T) {
 	}
 }
 
-// retryRT serves the /token exchange, then fails the first reviews.list call
-// with a 500 and serves a valid page on the second: exercising the kernel's
-// --retry wiring end-to-end through a real command.
 type retryRT struct {
 	body           string
 	reviewAttempts int
@@ -463,10 +423,6 @@ func (r *retryRT) serve(req *http.Request) (*http.Response, error) {
 	return testkit.Response(http.StatusOK, r.body), nil
 }
 
-// TestRun_retry_recoversFrom5xx drives `reviews list` with --retry 1 against a
-// transport whose first API call 500s and second succeeds: the command must
-// recover and return the payload (proving Inputs.Retry layers the retry
-// middleware onto the authed client).
 func TestRun_retry_recoversFrom5xx(t *testing.T) {
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
 	if err != nil {
@@ -500,13 +456,7 @@ func TestRun_unknownPackage_exit30(t *testing.T) {
 	}
 }
 
-// TestRun_hostileReviewText_tableSanitized_jsonByteFaithful is the #213
-// demonstration case: a user-generated review whose text carries ANSI escape
-// sequences and control bytes must be NEUTRALIZED in table/markdown output (no
-// escape can reach the terminal), yet pass through BYTE-FAITHFULLY in JSON so
-// machine consumers see the data exactly as the API returned it (ADR-0003).
 func TestRun_hostileReviewText_tableSanitized_jsonByteFaithful(t *testing.T) {
-	// Real ESC/BEL/control bytes plus legitimate multi-byte content.
 	const hostileText = "\x1b[31mRED\x1b[0m\x07 visit evil.example \x1b]0;pwn\x07 café 日本 🎉"
 	raw, err := json.Marshal(map[string]any{
 		"reviews": []any{map[string]any{
@@ -532,7 +482,6 @@ func TestRun_hostileReviewText_tableSanitized_jsonByteFaithful(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	// Table: no escape/BEL byte survives; legitimate content remains.
 	var tbuf bytes.Buffer
 	if err := output.Render(&tbuf, output.FormatTable, r.Renderers()); err != nil {
 		t.Fatalf("Render table: %v", err)
@@ -547,8 +496,6 @@ func TestRun_hostileReviewText_tableSanitized_jsonByteFaithful(t *testing.T) {
 		}
 	}
 
-	// JSON: byte-faithful: decoding the output yields the original text,
-	// control bytes and all (no sanitization on the machine path).
 	var jbuf bytes.Buffer
 	if err := output.Render(&jbuf, output.FormatJSON, r.Renderers()); err != nil {
 		t.Fatalf("Render JSON: %v", err)
@@ -599,7 +546,6 @@ func TestRun_invalidStars_exit2(t *testing.T) {
 			if code := exitCodeOf(t, err); code != 2 {
 				t.Errorf("--stars %q: exit code = %d, want 2", spec, code)
 			}
-			// A bad selector is rejected before any network call.
 			if rt.tokenHits != 0 || len(rt.calls) != 0 {
 				t.Errorf("--stars %q reached the network; calls=%v", spec, rt.calls)
 			}
@@ -633,9 +579,6 @@ func TestRun_happyPath_warnsAndReturnsPayload(t *testing.T) {
 		t.Errorf("reviews.list was not called; calls=%v", rt.calls)
 	}
 
-	// The 7-day window warning is always printed to stderr on success.
-	// Assert against the constant so rewording it cannot silently weaken
-	// this check, while a genuinely missing warning still fails.
 	if !strings.Contains(stderr.String(), sevenDayWarning) {
 		t.Errorf("stderr = %q, want the 7-day window warning %q", stderr.String(), sevenDayWarning)
 	}

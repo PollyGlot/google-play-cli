@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestWire_download pins the image-bytes download, which moved onto the
-// executor's streaming download (#586), byte for byte: testdata/wire.golden
-// was recorded on the hand-rolled request and must not move with it.
 func TestWire_download(t *testing.T) {
 	const u = "https://play-lh.googleusercontent.com/abc=w512-h512"
 	send := []testkit.Send{{Name: "download", Fn: func(hc *http.Client) (any, error) {

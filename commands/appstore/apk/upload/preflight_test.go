@@ -1,10 +1,5 @@
 package upload_test
 
-// Artifact preflight (PRD #448) on `gplay appstore apk upload`. The hosted
-// app is addressed by package, so both checks apply here; the refusal lands
-// before the resumable session is reserved, which on a 10 GiB APK is the
-// whole point.
-
 import (
 	"strings"
 	"testing"

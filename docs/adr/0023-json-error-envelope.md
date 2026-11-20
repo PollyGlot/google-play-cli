@@ -167,3 +167,11 @@ target is reported as `app`, anything else as `package`.
   `--output=json`) and stops at `--`, after which every token is positional.
   The first occurrence wins because a repeated `--output` is itself rejected,
   and the first is the value the parser had already accepted.
+- **A refusal that depends on cobra's parse state is decided in `Run`.** A
+  flag-combination check that needs to know which flags the user set (the
+  `vitals --describe` guard reads cobra's `Changed` state, so a flag left at
+  its default such as `--since 28d` does not count) has the cobra layer record
+  that state into the command's input, and the command's `Run` refuses. The
+  refusal then travels the kernel's own error path, where the envelope is
+  written, rather than relying on main's backstop for errors raised before a
+  command runs.

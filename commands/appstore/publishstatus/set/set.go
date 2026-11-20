@@ -1,26 +1,3 @@
-// Package set implements `gplay appstore publish-status set
-// --store-package <sp> [--package <pkg>] <published|unpublished>`: flip a hosted
-// app between visible and withdrawn in a third-party Android app store, via
-// `appstoreappsreview.updateAppStoreHostedAppPublishStatus`.
-//
-// Google documents the state as already PUBLISHED after
-// `UpdateAppStoreHostedApp` ("It is not necessary to call this RPC explicitly to
-// set an app to PUBLISHED"), so in practice this command exists to pull an app
-// back OUT of the store, and to put it back. That symmetry is the whole design:
-// the operation is reversible in both directions by a single call, which is why
-// it carries no --confirm gate (ADR-0043 gates what is irreversible *and*
-// externally visible; this is only the latter). --dry-run still previews the
-// resolved target with no HTTP call.
-//
-// The CLI speaks the two human words `published` / `unpublished`,
-// case-insensitively, and maps them onto the API's
-// APP_STORE_APP_PUBLISH_STATE_* enum. An unknown word is CLI misuse (exit 2)
-// that enumerates the accepted values: a server-side 400 for a typo would cost a
-// round trip and say less. The third enum member,
-// APP_STORE_APP_PUBLISH_STATE_UNSPECIFIED, is documented "Do not use" and is
-// therefore deliberately not reachable from the CLI.
-//
-// Edit-free: the call is not under `/edits/`.
 package set
 
 import (
@@ -39,28 +16,18 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
 )
 
-// The human words the CLI exposes, in the order --help and the usage error list
-// them. Spelled once so the error message can never drift from what
-// resolveState actually accepts.
 const (
 	statePublished   = "published"
 	stateUnpublished = "unpublished"
 )
 
-// Input is the request-shaped struct cobra builds from the flags and the single
-// positional argument.
 type Input struct {
 	StorePackage string
 	Package      string
-	// State is the raw positional word as typed; resolveState normalizes and
-	// validates it, so Run stays the only place that knows the enum.
-	State  string
-	DryRun bool
+	State        string
+	DryRun       bool
 }
 
-// resolveState maps the human word onto the API enum. The comparison is
-// case-insensitive (an agent may well emit `PUBLISHED`), and anything else is a
-// usage error naming both accepted values: never a 400 from the server.
 func resolveState(word string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(word)) {
 	case statePublished:
@@ -74,21 +41,13 @@ func resolveState(word string) (string, error) {
 	}
 }
 
-// Payload renders the applied publish state (or, on --dry-run, the state that
-// would be applied). Raw carries the verbatim API body for the ADR-0003
-// --output json pass-through; UpdateAppStoreHostedAppPublishStatusResponse
-// models no fields, so the human views describe the change from the resolved
-// inputs rather than from the response.
 type Payload struct {
 	StorePackage string
 	Package      string
-	// Word is the human spelling (`published` / `unpublished`), State the API
-	// enum actually sent. Both are shown: the word is what the operator typed,
-	// the enum is what a support ticket or an API log will quote.
-	Word   string
-	State  string
-	DryRun bool
-	Raw    json.RawMessage
+	Word         string
+	State        string
+	DryRun       bool
+	Raw          json.RawMessage
 }
 
 func (p Payload) Renderers() output.Renderers {
@@ -99,9 +58,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// renderTable writes the identifying values as `FIELD<TAB>VALUE` lines (like
-// `appstore create`): the call returns no server-assigned field to lead with.
-// A dry-run leads with the rehearsed action instead.
 func (p Payload) renderTable(w io.Writer) error {
 	if p.DryRun {
 		if _, err := fmt.Fprintf(w, "would set hosted app %s to %s in app store %s (dry-run)\n", p.Package, p.Word, p.StorePackage); err != nil {
@@ -135,8 +91,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return output.MarkdownTable(w, []string{"FIELD", "VALUE"}, rows)
 }
 
-// rows is the identifying triple shared by the human views, in a fixed order:
-// the two addressing values then the state that was applied.
 func (p Payload) rows() [][2]string {
 	return [][2]string{
 		{"APP_STORE_PACKAGE_NAME", p.StorePackage},
@@ -145,8 +99,6 @@ func (p Payload) rows() [][2]string {
 	}
 }
 
-// updatedView is the gplay-shaped success object emitted only when the API
-// returns no body at all (see renderJSON).
 type updatedView struct {
 	OK                  bool   `json:"ok"`
 	AppStorePackageName string `json:"appStorePackageName"`
@@ -154,10 +106,6 @@ type updatedView struct {
 	PublishState        string `json:"publishState"`
 }
 
-// dryRunView is the gplay-shaped --dry-run JSON: the resolved target and state,
-// plus the machine-readable `requires` array (ADR-0017 §4): empty, because
-// flipping the publish status is reversible and needs no safety flag beyond a
-// writable environment.
 type dryRunView struct {
 	DryRun              bool     `json:"dryRun"`
 	AppStorePackageName string   `json:"appStorePackageName"`
@@ -176,12 +124,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Requires:            []string{},
 		})
 	}
-	// ADR-0003: the API response is passed through verbatim. The documented
-	// exception applies only when there is nothing to pass through:
-	// UpdateAppStoreHostedAppPublishStatusResponse models no fields, so a server
-	// answering with an empty body (rather than `{}`) would leave --output json,
-	// the CI default, with zero bytes to parse. As in `appstore create`, a
-	// gplay-shaped success object stands in.
 	if len(bytes.TrimSpace(p.Raw)) > 0 {
 		_, err := w.Write(p.Raw)
 		return err
@@ -189,12 +131,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return output.WriteJSON(w, updatedView{OK: true, AppStorePackageName: p.StorePackage, PackageName: p.Package, PublishState: p.State})
 }
 
-// Run is the business function the kernel invokes. It validates the requested
-// state and resolves both addressing values (all exit 2), then, unless
-// --dry-run short-circuits before any network: issues the publish-status call.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	// The positional word is validated first: it is the argument the command is
-	// about, and a typo there is the misuse most worth naming precisely.
 	state, err := resolveState(in.State)
 	if err != nil {
 		return nil, err
@@ -223,13 +160,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, appstorecmd.ClassifyHostedApp(storePackage, pkg, err)
 	}
 
-	// DESIGN §8: a committed mutation prints one ✓ line on stderr; stdout stays
-	// data-only.
 	rc.Confirmf("set hosted app %s to %s in app store %s", pkg, word, storePackage)
 	return Payload{StorePackage: storePackage, Package: pkg, Word: word, State: state, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay appstore publish-status set`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

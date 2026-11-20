@@ -1,11 +1,3 @@
-// Package pull_test exercises `gplay metadata pull` at the kernel level: a
-// RunContext built by hand, a RoundTripper injected via the oauth2.HTTPClient
-// context key, Run invoked directly, and the resulting Metadata tree written
-// into t.TempDir(). Mirrors the `metadata list` harness, but pull projects the
-// online Listings onto the managed-field model (non-empty values only) and
-// writes them to disk via internal/metadata/tree.Write: never committing the
-// read-only Edit. The transport FAILS on any PATCH, PUT, DELETE-on-listing, or
-// :commit: pull is a read-then-write-to-disk, never a write-to-Play.
 package pull_test
 
 import (
@@ -32,9 +24,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// testListings is the canonical two-locale fixture: en-US has title, short,
-// full but an empty video; fr-FR has title, full, and a video URL but an empty
-// short description.
 func testListings() []listings.Listing {
 	return []listings.Listing{
 		{Language: "en-US", Title: "My App", ShortDescription: "short", FullDescription: "long desc", Video: ""},
@@ -42,8 +31,6 @@ func testListings() []listings.Listing {
 	}
 }
 
-// listingsJSON renders an edits.listings.list envelope from a fixture slice so
-// the transport can return exactly what the API would.
 func listingsJSON(t *testing.T, ls []listings.Listing) string {
 	t.Helper()
 	type wire struct {
@@ -70,17 +57,11 @@ func listingsJSON(t *testing.T, ls []listings.Listing) string {
 	return string(b)
 }
 
-// pullRT configures the testkit.Fake that routes the read-only listings
-// sequence: edits.insert, listings.list (GET .../listings), edits.delete. It
-// deliberately has NO PATCH/PUT/:commit branch and fails on a DELETE that
-// targets a /listings/ path: reaching one means the command tried to mutate
-// or commit, which pull must never do Play-side, so the fake fails the
-// test. A DELETE on the bare /edits/<id> path is the expected Edit discard.
 type pullRT struct {
 	editID       string
 	listingsResp string
-	insertCode   int // 0 -> 200
-	listingsCode int // 0 -> 200
+	insertCode   int
+	listingsCode int
 	insertBody   string
 }
 
@@ -104,7 +85,6 @@ func newFake(t *testing.T, r pullRT) *testkit.Fake {
 	})
 }
 
-// calls lists the recorded API requests as "METHOD path" lines.
 func calls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -139,8 +119,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// readFile returns a field file's contents, failing the test if it cannot be
-// read.
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -150,7 +128,6 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-// fileExists reports whether path exists on disk.
 func fileExists(t *testing.T, path string) bool {
 	t.Helper()
 	_, err := os.Stat(path)
@@ -164,11 +141,6 @@ func fileExists(t *testing.T, path string) bool {
 	return false
 }
 
-// TestRun_pullsEveryLocale_happyPath is the tracer bullet: /token precedes
-// edits.insert, then listings.list (GET .../listings), then the Edit is
-// DISCARDED (never committed). Each non-empty online field is written to
-// <dir>/<locale>/<field>.txt with its value + trailing newline; an empty
-// online field writes no file.
 func TestRun_pullsEveryLocale_happyPath(t *testing.T) {
 	dir := t.TempDir()
 	rt := newFake(t, pullRT{editID: "edit-pull", listingsResp: listingsJSON(t, testListings())})
@@ -182,8 +154,6 @@ func TestRun_pullsEveryLocale_happyPath(t *testing.T) {
 		t.Fatal("Run returned nil Renderable on happy path")
 	}
 
-	// One /token exchange, and edits.insert already carries its bearer: the
-	// exchange preceded the first API call.
 	if n := rt.TokenExchanges(); n != 1 {
 		t.Errorf("token exchanges = %d, want 1; calls=%v", n, calls(rt))
 	}
@@ -204,7 +174,6 @@ func TestRun_pullsEveryLocale_happyPath(t *testing.T) {
 		}
 	}
 
-	// en-US: title, short_description, full_description present (video empty).
 	if got := readFile(t, filepath.Join(dir, "en-US", "title.txt")); got != "My App\n" {
 		t.Errorf("en-US title = %q, want %q", got, "My App\n")
 	}
@@ -215,7 +184,6 @@ func TestRun_pullsEveryLocale_happyPath(t *testing.T) {
 		t.Errorf("en-US full_description = %q, want %q", got, "long desc\n")
 	}
 
-	// fr-FR: title, full_description, video present (short empty).
 	if got := readFile(t, filepath.Join(dir, "fr-FR", "title.txt")); got != "Mon App\n" {
 		t.Errorf("fr-FR title = %q, want %q", got, "Mon App\n")
 	}
@@ -224,9 +192,6 @@ func TestRun_pullsEveryLocale_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_emptyOnlineField_writesNoFile asserts the ADR-0011 missing ≠ empty
-// rule for the pull direction: a field Play holds empty ("") produces NO file
-// on disk (not a 0-byte file), so a later apply leaves it untouched.
 func TestRun_emptyOnlineField_writesNoFile(t *testing.T) {
 	dir := t.TempDir()
 	rt := newFake(t, pullRT{editID: "edit-empty", listingsResp: listingsJSON(t, testListings())})
@@ -236,22 +201,16 @@ func TestRun_emptyOnlineField_writesNoFile(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	// en-US video is empty online -> no video.txt.
 	if p := filepath.Join(dir, "en-US", "video.txt"); fileExists(t, p) {
 		t.Errorf("en-US video.txt exists but online video was empty: %s", p)
 	}
-	// fr-FR short description is empty online -> no short_description.txt.
 	if p := filepath.Join(dir, "fr-FR", "short_description.txt"); fileExists(t, p) {
 		t.Errorf("fr-FR short_description.txt exists but online short was empty: %s", p)
 	}
 }
 
-// TestRun_localLocaleAbsentOnline_isNotDeleted asserts pull's additive
-// contract: a locale that exists only on disk (absent online) is left intact:
-// pull never deletes from the local tree.
 func TestRun_localLocaleAbsentOnline_isNotDeleted(t *testing.T) {
 	dir := t.TempDir()
-	// Pre-create a local-only locale not present in the online fixture.
 	preDir := filepath.Join(dir, "zz-ZZ")
 	if err := os.MkdirAll(preDir, 0o755); err != nil {
 		t.Fatalf("mkdir zz-ZZ: %v", err)
@@ -276,10 +235,6 @@ func TestRun_localLocaleAbsentOnline_isNotDeleted(t *testing.T) {
 	}
 }
 
-// TestRun_pullThenRead_isNoOpInvariant proves the ADR-0011 invariant: after a
-// pull, re-reading the on-disk tree (tree.Read) yields EXACTLY the non-empty
-// projection of the online Listings (BuildTree). Equality field-by-field means
-// a later `apply` sees no delta.
 func TestRun_pullThenRead_isNoOpInvariant(t *testing.T) {
 	dir := t.TempDir()
 	fixture := testListings()
@@ -326,10 +281,6 @@ func TestRun_pullThenRead_isNoOpInvariant(t *testing.T) {
 	}
 }
 
-// TestBuildTree_excludesEmptyKeepsNonEmpty is the pure projection test: an
-// empty online field is NOT managed (absent from the Listing), a non-empty one
-// IS managed with its value. This is the structural source of the no-op
-// invariant, verifiable with no I/O.
 func TestBuildTree_excludesEmptyKeepsNonEmpty(t *testing.T) {
 	tr := pull.BuildTree(testListings())
 
@@ -359,8 +310,6 @@ func TestBuildTree_excludesEmptyKeepsNonEmpty(t *testing.T) {
 	}
 }
 
-// TestBuildTree_allFieldsEmpty_dropsLocale asserts a locale whose every online
-// field is empty contributes no Tree entry at all (no empty directory).
 func TestBuildTree_allFieldsEmpty_dropsLocale(t *testing.T) {
 	tr := pull.BuildTree([]listings.Listing{
 		{Language: "de-DE", Title: "", ShortDescription: "", FullDescription: "", Video: ""},
@@ -373,9 +322,6 @@ func TestBuildTree_allFieldsEmpty_dropsLocale(t *testing.T) {
 	}
 }
 
-// TestRun_noListings_emptySummaryNotError asserts that an app with zero online
-// Listings is not an error: pull succeeds with an empty summary and writes
-// nothing.
 func TestRun_noListings_emptySummaryNotError(t *testing.T) {
 	dir := t.TempDir()
 	rt := newFake(t, pullRT{editID: "edit-none", listingsResp: `{"listings":[],"kind":"androidpublisher#listingsListResponse"}`})
@@ -397,9 +343,6 @@ func TestRun_noListings_emptySummaryNotError(t *testing.T) {
 	}
 }
 
-// TestRun_jsonSummaryShape asserts the gplay summary JSON shape: package, dir,
-// pulled[] with API camelCase field keys, and the summary totals, NOT an API
-// pass-through.
 func TestRun_jsonSummaryShape(t *testing.T) {
 	dir := t.TempDir()
 	rt := newFake(t, pullRT{editID: "edit-json", listingsResp: listingsJSON(t, testListings())})
@@ -438,8 +381,6 @@ func TestRun_jsonSummaryShape(t *testing.T) {
 	if got.Summary.Locales != 2 {
 		t.Errorf("summary.locales = %d, want 2", got.Summary.Locales)
 	}
-	// en-US: title, shortDescription, fullDescription = 3; fr-FR: title,
-	// fullDescription, video = 3 -> 6 files.
 	if got.Summary.Files != 6 {
 		t.Errorf("summary.files = %d, want 6", got.Summary.Files)
 	}
@@ -469,8 +410,6 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// TestRun_noAccount_exit10 asserts that with no resolved Account the command
-// fails auth (exit 10) before any HTTP call.
 func TestRun_noAccount_exit10(t *testing.T) {
 	dir := t.TempDir()
 	rt := newFake(t, pullRT{})
@@ -485,8 +424,6 @@ func TestRun_noAccount_exit10(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2 asserts a missing package (no --package and no
-// pin) is a usage error before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	dir := t.TempDir()
 	rt := newFake(t, pullRT{})
@@ -500,9 +437,6 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_unknownPackage_exit30WithHint asserts that an unknown package
-// (edits.insert 404) maps to exit 30 with a hint pointing the operator at
-// `gplay apps list`, and that no Edit was opened (no DELETE).
 func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	dir := t.TempDir()
 	rt := newFake(t, pullRT{
@@ -525,8 +459,6 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	}
 }
 
-// TestRun_forbidden_exit11WithHint asserts that a 403 (service account not
-// invited on the app) maps to exit 11 with the standard grant-access hint.
 func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	dir := t.TempDir()
 	rt := newFake(t, pullRT{
