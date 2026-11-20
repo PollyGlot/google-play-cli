@@ -23,9 +23,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newFake answers every createappstorehostedapp call with status and body; a
-// zero status serves a 200 carrying body, or {} when body is empty. Nothing
-// here touches the network.
 func newFake(status int, body string) *testkit.Fake {
 	if status == 0 {
 		status = http.StatusOK
@@ -36,7 +33,6 @@ func newFake(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// last is the most recent API call, failing the test when none was made.
 func last(t *testing.T, fake *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := fake.Calls()
@@ -67,9 +63,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_requestShape asserts the command emits the create call on the app
-// store axis: POST to appstore/{appStorePackageName}/apps:create, the hosted
-// app's package in the body, and no Edit.
 func TestRun_requestShape(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -87,8 +80,6 @@ func TestRun_requestShape(t *testing.T) {
 	if strings.Contains(apiCall.URL, "/edits/") {
 		t.Errorf("url %q must not open an Edit", apiCall.URL)
 	}
-	// The store package is the PATH key, the hosted app package is the BODY:
-	// swapping them is the mistake the two flags exist to prevent.
 	if strings.Contains(apiCall.URL, "com.example.app") {
 		t.Errorf("url %q must not carry the hosted app package", apiCall.URL)
 	}
@@ -103,8 +94,6 @@ func TestRun_requestShape(t *testing.T) {
 	}
 }
 
-// TestRun_storePackagePathEscaped asserts the app store package name is
-// path-escaped on the way into the URL.
 func TestRun_storePackagePathEscaped(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -121,8 +110,6 @@ func TestRun_storePackagePathEscaped(t *testing.T) {
 	}
 }
 
-// TestRun_packageDefaultsToProjectPin asserts an omitted --package falls back to
-// the repo's .gplay/config.json pin, like every other package-axis command.
 func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -143,8 +130,6 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	}
 }
 
-// TestRun_jsonPassthrough asserts --output json emits the API response verbatim
-// (ADR-0003), including fields the empty response schema does not model.
 func TestRun_jsonPassthrough(t *testing.T) {
 	const body = `{"unmodeledFutureField":"kept"}`
 	fake := newFake(0, body)
@@ -163,9 +148,6 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	}
 }
 
-// TestRun_jsonEmptyBodyFallback asserts an empty API body still yields parseable
-// JSON: the documented ADR-0003 exception (as in `orders refund`), never zero
-// bytes on the CI default format.
 func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 	fake := newFake(200, "")
 	rc := newRC(t, fake)
@@ -191,8 +173,6 @@ func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 	}
 }
 
-// TestRun_humanViews asserts the table and markdown views name both
-// identifiers: the response carries no fields, so the echo is the whole view.
 func TestRun_humanViews(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -217,10 +197,6 @@ func TestRun_humanViews(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noHTTP asserts --dry-run resolves the target, performs no HTTP
-// call at all (not even the token exchange), and renders the ADR-0017 preview:
-// the human views say "would create", the JSON view carries dryRun plus the
-// (empty) machine-readable requires array.
 func TestRun_dryRun_noHTTP(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -264,8 +240,6 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_validatesFirst asserts --dry-run still fails fast on an
-// unresolvable target: the rehearsal previews a real call, not a hypothetical.
 func TestRun_dryRun_validatesFirst(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -277,9 +251,6 @@ func TestRun_dryRun_validatesFirst(t *testing.T) {
 	}
 }
 
-// TestRun_missingStorePackage_exit2 asserts the app store package name is
-// required and its absence is CLI misuse: it identifies the caller and has no
-// project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -295,9 +266,6 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_storePackageEnvCascade asserts the ADR-0043 cascade: the
-// --store-package flag wins, $GPLAY_APP_STORE_PACKAGE fills in when the flag is
-// absent, so a CI job exports the store identity once for the whole namespace.
 func TestRun_storePackageEnvCascade(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
 	fake := newFake(0, "")
@@ -320,8 +288,6 @@ func TestRun_storePackageEnvCascade(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2 asserts an unresolvable hosted app package is CLI
-// misuse, before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -333,8 +299,6 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_403_namesEnrollment asserts a forbidden create surfaces as an
-// agent-resolvable refusal naming the app store, at the authz exit code.
 func TestRun_403_namesEnrollment(t *testing.T) {
 	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
 	rc := newRC(t, fake)
@@ -346,8 +310,6 @@ func TestRun_403_namesEnrollment(t *testing.T) {
 	}
 }
 
-// TestRun_404_namesStorePackage asserts an unknown app store surfaces a hint
-// pointing at --store-package, at the API-misuse exit code.
 func TestRun_404_namesStorePackage(t *testing.T) {
 	fake := newFake(404, `{"error":{"message":"not found"}}`)
 	rc := newRC(t, fake)
@@ -359,8 +321,6 @@ func TestRun_404_namesStorePackage(t *testing.T) {
 	}
 }
 
-// TestRun_409_exit60 asserts re-creating an existing hosted app record surfaces
-// as a state conflict rather than a generic 4xx.
 func TestRun_409_exit60(t *testing.T) {
 	fake := newFake(409, `{"error":{"message":"already exists"}}`)
 	rc := newRC(t, fake)
@@ -369,8 +329,6 @@ func TestRun_409_exit60(t *testing.T) {
 	assertExit(t, err, 60)
 }
 
-// TestNewCommand_helpDocumentsTheVerb asserts --help explains what the verb does
-// and declares both flags.
 func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 	cmd := createcmd.NewCommand(kernel.Boot{})
 	if cmd.Use != "create" {
@@ -384,9 +342,6 @@ func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 			t.Errorf("--%s is not declared", flag)
 		}
 	}
-	// The Long text must carry the precondition and the absence of a delete
-	// verb (ADR-0043 §3): the two facts a caller cannot discover from the flag
-	// names.
 	for _, want := range []string{"hosted app", "before any other", "no delete"} {
 		if !strings.Contains(strings.ToLower(cmd.Long), want) {
 			t.Errorf("--help should state %q; got:\n%s", want, cmd.Long)

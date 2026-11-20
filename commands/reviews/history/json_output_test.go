@@ -7,9 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/reviews/history"
 )
 
-// TestRenderJSON_rows_golden freezes the ADR-0037 row shape: every CSV column
-// as a lowerCamel string key, kept even when the cell is empty (the second
-// review has no developer reply). Review text is user free text, hence < > &.
 func TestRenderJSON_rows_golden(t *testing.T) {
 	p := Payload{Rows: []history.Row{
 		{
@@ -48,8 +45,6 @@ func TestRenderJSON_rows_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "rows.json.golden", p)
 }
 
-// TestRenderJSON_noRows_golden pins a report with no review to
-// "reviews": [] (renderJSON swaps nil for an empty slice), never null.
 func TestRenderJSON_noRows_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "no_rows.json.golden", Payload{})
 }

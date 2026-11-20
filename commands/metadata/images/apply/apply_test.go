@@ -1,7 +1,3 @@
-// Package imagesapply_test exercises `gplay metadata images apply` end to end
-// at the kernel level: the --confirm gate, the online --dry-run diff schema,
-// the offline validate pre-check, the --type tracer, and a real apply that
-// uploads a slot inside one committed Edit.
 package imagesapply_test
 
 import (
@@ -32,18 +28,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// applyRT configures the testkit.Fake that routes the apply sequence.
-// images.list returns empty for every slot (so a local image is a fresh
-// upload). The Fake records every call (uploads, deleteall, commit), and any
-// request the routes below do not recognize fails the test.
 type applyRT struct {
 	editID   string
-	liveBody string // images.list body for every slot (default: empty)
+	liveBody string
 }
 
 func newFake(t *testing.T, r applyRT) *testkit.Fake {
 	t.Helper()
-	var uploadSeq atomic.Int64 // numbers the uploaded image ids up1, up2, ...
+	var uploadSeq atomic.Int64
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
@@ -55,7 +47,7 @@ func newFake(t *testing.T, r applyRT) *testkit.Fake {
 		case c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/"):
 			body := r.liveBody
 			if body == "" {
-				body = `{"images":[]}` // every slot empty live by default
+				body = `{"images":[]}`
 			}
 			return 200, body, true
 		case c.Method == http.MethodDelete && strings.Contains(c.Path, "/listings/"):
@@ -68,7 +60,6 @@ func newFake(t *testing.T, r applyRT) *testkit.Fake {
 	})
 }
 
-// calls lists the recorded API requests as "METHOD path" lines.
 func calls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -109,7 +100,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// seedIcon writes a valid 512×512 icon for en-US and returns the dir.
 func seedIcon(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -142,9 +132,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_realApply_withoutConfirm_refusesExit3 asserts the confirm gate fires
-// before any network, with exit 3 (safety flag required, docs/DESIGN.md §9,
-// NOT the generic usage exit 2, #408).
 func TestRun_realApply_withoutConfirm_refusesExit3(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
@@ -161,9 +148,6 @@ func TestRun_realApply_withoutConfirm_refusesExit3(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_onlineDiffSchema asserts --dry-run reads live and emits the
-// ADR-0013 diff schema (a fresh icon → summary.upload ≥ 1, the jq gate true)
-// without committing.
 func TestRun_dryRun_onlineDiffSchema(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
@@ -195,8 +179,6 @@ func TestRun_dryRun_onlineDiffSchema(t *testing.T) {
 	}
 }
 
-// TestRun_realApply_uploadsAndCommits asserts a confirmed apply uploads the
-// local icon and commits once inside one Edit.
 func TestRun_realApply_uploadsAndCommits(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
@@ -212,8 +194,6 @@ func TestRun_realApply_uploadsAndCommits(t *testing.T) {
 	}
 }
 
-// TestRun_typeFilter_isATracer asserts --type icon considers only the icon
-// slot (one images.list GET), the single-slot tracer.
 func TestRun_typeFilter_isATracer(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
@@ -232,9 +212,6 @@ func TestRun_typeFilter_isATracer(t *testing.T) {
 	}
 }
 
-// TestRun_validateFailFast asserts a bad image (500×500 icon) is rejected by
-// the offline pre-check (exit 20) before any network, and that --skip-preflight
-// bypasses it.
 func TestRun_validateFailFast(t *testing.T) {
 	dir := t.TempDir()
 	if err := imagetree.Write(dir, imagetree.Tree{"en-US": {images.Icon: {testkit.PNG(500, 500)}}}); err != nil {
@@ -250,7 +227,6 @@ func TestRun_validateFailFast(t *testing.T) {
 		t.Errorf("validate must fail before any network, saw %v", calls(rt))
 	}
 
-	// --skip-preflight bypasses the pre-check: the dry-run now reaches Play.
 	rt2 := newFake(t, applyRT{editID: "e"})
 	rc2 := newRC(t, rt2)
 	if _, err := imagesapply.Run(rc2, imagesapply.Input{Package: "com.example.app", Dir: dir, DryRun: true, Types: []string{"icon"}, SkipPreflight: true}); err != nil {
@@ -261,9 +237,6 @@ func TestRun_validateFailFast(t *testing.T) {
 	}
 }
 
-// TestRun_dryRunPrune_showsDeleteRecords asserts `--dry-run --prune --output
-// json` surfaces an online-only image as a delete record in the ADR-0013
-// schema (the #135 jq gate), without committing.
 func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 	dir := t.TempDir()
 	shot := testkit.PNG(1080, 1920)
@@ -271,7 +244,6 @@ func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	shotSum := sha256.Sum256(shot)
-	// Live has the local shot plus an online-only one; --prune should delete it.
 	live := fmt.Sprintf(`{"images":[{"id":"keep","sha256":%q},{"id":"drop","sha256":%q}]}`,
 		hex.EncodeToString(shotSum[:]), "00deadbeef")
 	rt := newFake(t, applyRT{editID: "e", liveBody: live})
@@ -315,13 +287,9 @@ func TestRun_dryRunPrune_showsDeleteRecords(t *testing.T) {
 	}
 }
 
-// TestRun_unknownLocale_isUsageError asserts a typo'd --locale is refused
-// upfront (exit 2) instead of silently reconciling nothing: the footgun the
-// --type guard already prevents.
 func TestRun_unknownLocale_isUsageError(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
-	// seedIcon writes en-US; ask for en_US (underscore typo).
 	_, err := imagesapply.Run(rc, imagesapply.Input{Package: "com.example.app", Dir: seedIcon(t), DryRun: true, Locales: []string{"en_US"}})
 	if got := exitCodeOf(t, err); got != 2 {
 		t.Errorf("exit = %d, want 2 for unknown --locale", got)
@@ -334,7 +302,6 @@ func TestRun_unknownLocale_isUsageError(t *testing.T) {
 	}
 }
 
-// TestRun_unknownType_isUsageError asserts a typo'd --type is refused upfront.
 func TestRun_unknownType_isUsageError(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
@@ -344,9 +311,6 @@ func TestRun_unknownType_isUsageError(t *testing.T) {
 	}
 }
 
-// TestRun_realApply_emitsConfirmationOnStderr asserts a committed image apply
-// prints a single ✓ line on stderr (DESIGN §8) naming the package and the
-// upload/delete tally, alongside the stdout payload.
 func TestRun_realApply_emitsConfirmationOnStderr(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
@@ -362,7 +326,6 @@ func TestRun_realApply_emitsConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
@@ -377,9 +340,6 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_promoGraphicType_isUsageError asserts --type promoGraphic is refused
-// upfront like any unknown type: Google removed it from AppImageType, so the
-// request would only draw Play's 400.
 func TestRun_promoGraphicType_isUsageError(t *testing.T) {
 	rt := newFake(t, applyRT{editID: "e"})
 	rc := newRC(t, rt)
@@ -392,10 +352,6 @@ func TestRun_promoGraphicType_isUsageError(t *testing.T) {
 	}
 }
 
-// TestRun_retiredPromoGraphicFile_warnsAndIsNeverSent asserts a leftover
-// images/promoGraphic.png (a fastlane supply tree carries one) draws a stderr
-// warning naming the file, and that the apply never reads or uploads that
-// slot: before the fix every apply without --type failed on Play's 400.
 func TestRun_retiredPromoGraphicFile_warnsAndIsNeverSent(t *testing.T) {
 	dir := seedIcon(t)
 	promo := filepath.Join(dir, "en-US", "images", "promoGraphic.png")
@@ -420,10 +376,6 @@ func TestRun_retiredPromoGraphicFile_warnsAndIsNeverSent(t *testing.T) {
 	}
 }
 
-// TestRun_localeWithoutListing_hintsMetadataApply: images.list answers 404
-// inside the open Edit, so the package resolved and only that language lacks
-// the Listing images attach to. The hint names `gplay metadata apply` for that
-// locale, not `gplay apps list`, and the exit code stays the 404's.
 func TestRun_localeWithoutListing_hintsMetadataApply(t *testing.T) {
 	notFound := `{"error":{"code":404,"message":"Listing not found."}}`
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {

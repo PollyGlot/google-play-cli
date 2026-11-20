@@ -1,21 +1,3 @@
-// Package submit implements `gplay appstore submit --store-package <sp>
-// [--package <pkg>] --file <submission.json> --confirm`: assemble a hosted
-// app's details: developer identity, active APK sets, per-locale store
-// listings, policy questionnaire answers, and SUBMIT it to Google's review,
-// via `appstoreappsreview.updateAppStoreHostedApp`.
-//
-// The input is declarative and file-only: the body mirrors
-// UpdateAppStoreHostedAppRequest. There is deliberately no flag set for it:
-// the policy declarations are a seven-way oneof Google keeps growing, and are
-// simply not expressible as flags (see internal/play/appstore/update.go). One
-// file, versionable next to the app, is also what a CI job wants.
-//
-// The call submits the app to review IMMEDIATELY: no staging step, no recall.
-// That puts it in the destructive tier (ADR-0017): --confirm is mandatory
-// (missing → exit 3 naming the flag), and --dry-run rehearses the whole thing
-// (read, parse, resolve, count) with zero HTTP, reporting the gate in the
-// machine-readable `requires` array. MarkMutating gates it under
-// GPLAY_READONLY (exit 4). Edit-free: the call is not under `/edits/`.
 package submit
 
 import (
@@ -35,18 +17,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
 )
 
-// Input is the request-shaped struct cobra builds from the flags.
 type Input struct {
 	StorePackage string
 	Package      string
-	File         string // "" or "-" → stdin
+	File         string
 	Confirm      bool
 	DryRun       bool
 }
 
-// summary is what a human needs to recognise the submission they are about to
-// make (or just made), derived from the parsed body rather than from the
-// response: UpdateAppStoreHostedAppResponse carries no fields.
 type summary struct {
 	DeveloperName      string
 	Locales            int
@@ -68,10 +46,6 @@ func summarize(req appstore.UpdateHostedAppRequest) summary {
 	return s
 }
 
-// Payload renders the submitted hosted app (live) or the rehearsal (--dry-run).
-// Raw carries the verbatim API body for the ADR-0003 --output json
-// pass-through; the documented response models no fields, so the human views
-// describe the submission from the parsed request instead.
 type Payload struct {
 	StorePackage string
 	Package      string
@@ -88,7 +62,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// rows is the recap shared by the human views, in a fixed order.
 func (p Payload) rows() [][2]string {
 	return [][2]string{
 		{"APP_STORE_PACKAGE_NAME", p.StorePackage},
@@ -137,9 +110,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return err
 }
 
-// dryRunView is the gplay-shaped --dry-run JSON: the resolved target, what the
-// body adds up to, and the machine-readable `requires` array (ADR-0017 §4) so
-// an agent learns the gate before running live.
 type dryRunView struct {
 	DryRun              bool     `json:"dryRun"`
 	AppStorePackageName string   `json:"appStorePackageName"`
@@ -151,8 +121,6 @@ type dryRunView struct {
 	Requires            []string `json:"requires"`
 }
 
-// submittedView is the gplay-shaped success object emitted only when the API
-// returns no body at all (see renderJSON).
 type submittedView struct {
 	OK                  bool   `json:"ok"`
 	AppStorePackageName string `json:"appStorePackageName"`
@@ -177,12 +145,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Requires:            []string{"confirm"},
 		})
 	}
-	// ADR-0003: the API response goes through verbatim. The documented
-	// exception applies only when there is nothing to pass through:
-	// UpdateAppStoreHostedAppResponse models no fields, so a server answering
-	// with an empty body (rather than `{}`) would leave --output json, the CI
-	// default, with zero bytes to parse. As in `appstore create`, a
-	// gplay-shaped success object stands in.
 	if len(bytes.TrimSpace(p.Raw)) > 0 {
 		_, err := w.Write(p.Raw)
 		return err
@@ -199,9 +161,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	})
 }
 
-// readBody reads the submission body from --file (or stdin when "" / "-"). A
-// body that cannot be read is CLI misuse (exit 2), named precisely enough that
-// the caller knows which of the two input paths failed.
 func readBody(rc *kernel.RunContext, file string) ([]byte, error) {
 	file = strings.TrimSpace(file)
 	if file == "" || file == "-" {
@@ -221,10 +180,6 @@ func readBody(rc *kernel.RunContext, file string) ([]byte, error) {
 	return b, nil
 }
 
-// parseBody turns the operator's JSON into the request struct: for the RECAP
-// and the packageName reconciliation only. The bytes that reach Google are the
-// operator's own (see Run): parsing here never subsets what is submitted, so a
-// key this struct does not model is neither dropped nor rejected locally.
 func parseBody(body []byte) (appstore.UpdateHostedAppRequest, error) {
 	var req appstore.UpdateHostedAppRequest
 	if len(bytes.TrimSpace(body)) == 0 {
@@ -236,12 +191,6 @@ func parseBody(body []byte) (appstore.UpdateHostedAppRequest, error) {
 	return req, nil
 }
 
-// resolveTarget reconciles the package the flags/pin resolve to with the
-// packageName the body carries. The flag (then the .gplay/config.json pin) is
-// authoritative; a body naming a DIFFERENT app is refused (exit 2) rather than
-// silently resolved one way: this call submits to review, so guessing is not
-// an option. A body with no packageName inherits the resolved one; a
-// self-contained body is accepted when nothing else resolves.
 func resolveTarget(rc *kernel.RunContext, flag string, bodyPkg string) (string, error) {
 	bodyPkg = strings.TrimSpace(bodyPkg)
 	pkg, err := rc.Package(flag)
@@ -249,8 +198,6 @@ func resolveTarget(rc *kernel.RunContext, flag string, bodyPkg string) (string, 
 		if bodyPkg == "" {
 			return "", err
 		}
-		// The body names its own subject: honour it rather than demanding the
-		// same value twice.
 		return bodyPkg, nil
 	}
 	if bodyPkg != "" && bodyPkg != pkg {
@@ -261,9 +208,6 @@ func resolveTarget(rc *kernel.RunContext, flag string, bodyPkg string) (string, 
 	return pkg, nil
 }
 
-// Run is the business function the kernel invokes. It reads and validates the
-// submission offline first, so a --dry-run rehearsal exercises every check the
-// live run does, then gates the irreversible submission behind --confirm.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	storePackage, err := appstorecmd.ResolveStorePackage(in.StorePackage)
 	if err != nil {
@@ -283,16 +227,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	sum := summarize(req)
 
-	// --dry-run short-circuits BEFORE the safety gate (as `customapps create`
-	// does): the whole point of the rehearsal is to be runnable without
-	// --confirm.
 	if in.DryRun {
 		return Payload{StorePackage: storePackage, Package: pkg, Sum: sum, DryRun: true}, nil
 	}
 
-	// Destructive tier: the call submits the app to Google's review at once:
-	// no staging, no recall. --confirm is mandatory (exit 3 naming the flag);
-	// CI=true never auto-confirms (gplay never auto-confirms, ADR-0017).
 	if !in.Confirm {
 		return nil, exit.SafetyFlag("confirm",
 			"submitting hosted app %s to Google review is immediate and irrevocable: there is no staging step and no way to recall the submission; pass --confirm to proceed (rehearse first with --dry-run)", pkg)
@@ -303,23 +241,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// The operator's own bytes go on the wire, with only packageName forced to
-	// the resolved target: re-serialising the parsed struct would drop any key
-	// it does not model, and this submission cannot be recalled. req is used for
-	// the recap, not as the payload.
 	raw, err := appstore.UpdateHostedApp(rc.Ctx, httpClient, storePackage, pkg, body)
 	if err != nil {
 		return nil, appstorecmd.ClassifyHostedApp(storePackage, pkg, err)
 	}
 
-	// DESIGN §8: a committed mutation prints one ✓ line on stderr; stdout stays
-	// data-only.
 	rc.Confirmf("submitted hosted app %s in app store %s to Google review (%d locale(s), %d APK set(s), %d policy declaration(s))",
 		pkg, storePackage, sum.Locales, sum.ApkSets, sum.PolicyDeclarations)
 	return Payload{StorePackage: storePackage, Package: pkg, Sum: sum, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay appstore submit`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

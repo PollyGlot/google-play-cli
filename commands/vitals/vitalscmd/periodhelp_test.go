@@ -16,14 +16,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// valueClause is one value named in a --period or --user-cohort help, with
-// the metric sets it is scoped to ("every set" or a comma list) when the help
-// is per set.
 var valueClause = regexp.MustCompile(`([A-Z][A-Z0-9_]+)(?: \(([^)]*)\))?`)
 
-// advertisedValues reads, per metric set, which values a flag's help claims
-// the command accepts. A clause without parentheses applies to every set in
-// sets; "every set" too; otherwise only the sets it lists.
 func advertisedValues(t *testing.T, cmd *cobra.Command, flag string, sets []vitals.MetricSet) map[string][]string {
 	t.Helper()
 	f := cmd.Flags().Lookup(flag)
@@ -46,9 +40,6 @@ func advertisedValues(t *testing.T, cmd *cobra.Command, flag string, sets []vita
 	return out
 }
 
-// assertHelpMatchesValidation fails when a flag's help names a value the
-// validation (supported, what Execute checks) refuses for a set, or leaves
-// out one it accepts (#781: FULL_RANGE was advertised, then exit 2).
 func assertHelpMatchesValidation(t *testing.T, cmd *cobra.Command, flag string, supported func(schemaindex.Index, vitals.MetricSet) []string, sets ...vitals.MetricSet) {
 	t.Helper()
 	idx, err := schemaindex.Embedded()
@@ -93,8 +84,6 @@ func TestUserCohortHelp_queryMatchesValidationPerSet(t *testing.T) {
 	assertHelpMatchesValidation(t, query.NewCommand(kernel.Boot{}), vitalscmd.UserCohortFlag, vitals.SupportedCohorts, vitals.MetricSets()...)
 }
 
-// A preset carries --user-cohort exactly when its set accepts a view besides
-// the default, and the help then names every view the set accepts.
 func TestUserCohortHelp_presetsMatchValidation(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {

@@ -10,12 +10,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// slowBound stands in for the 60s control-plane default, so a slow link is
-// provable in a fraction of a second.
 const slowBound = 100 * time.Millisecond
 
-// pacedFetch serves rt, then re-serves the month CSV through body, so a test
-// sets how fast the bytes of the fetch come.
 func pacedFetch(rt *historyRT, body func(*http.Request, []byte) io.ReadCloser) http.RoundTripper {
 	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		resp, err := rt.serve(req)
@@ -38,8 +34,6 @@ func runPacedMonth(t *testing.T, body func(*http.Request, []byte) io.ReadCloser)
 	return p, time.Since(start), err
 }
 
-// A month CSV that downloads slower than the control-plane bound, but keeps
-// moving, is read in full: the fetch is bounded by inactivity (#780).
 func TestRun_slowMonthOutlivesTheControlPlaneBound(t *testing.T) {
 	p, took, err := runPacedMonth(t, func(req *http.Request, raw []byte) io.ReadCloser {
 		return testkit.TrickleBody(req.Context(), raw, len(raw)/15+1, 20*time.Millisecond)
@@ -55,8 +49,6 @@ func TestRun_slowMonthOutlivesTheControlPlaneBound(t *testing.T) {
 	}
 }
 
-// A month CSV whose body stops moving fails on the inactivity bound as a
-// network failure (exit 50), naming the stall.
 func TestRun_stalledMonthFailsAsNetwork(t *testing.T) {
 	_, took, err := runPacedMonth(t, func(req *http.Request, raw []byte) io.ReadCloser {
 		return testkit.StalledBody(req.Context(), raw[:len(raw)/2])

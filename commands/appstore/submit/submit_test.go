@@ -25,9 +25,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newFake answers every updateAppStoreHostedApp call with status and body; a
-// zero status serves a 200 carrying body, or {} when body is empty. Nothing
-// here touches the network.
 func newFake(status int, body string) *testkit.Fake {
 	if status == 0 {
 		status = http.StatusOK
@@ -38,7 +35,6 @@ func newFake(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// last is the most recent API call, failing the test when none was made.
 func last(t *testing.T, fake *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := fake.Calls()
@@ -69,8 +65,6 @@ func newRC(t *testing.T, rt http.RoundTripper, stdin string) *kernel.RunContext 
 	return rc
 }
 
-// fullBody is a complete submission exercising every branch of the payload,
-// including a policy response variant gplay does not model.
 const fullBody = `{
   "appDetails": {"developerName": "Acme", "contactEmail": "dev@acme.test", "developerWebsite": "https://acme.test"},
   "activeApks": {"activeApkSets": [{"baseApkId": "apk-base", "splitApkId": ["apk-en", "apk-fr"]}]},
@@ -92,8 +86,6 @@ func writeBody(t *testing.T, content string) string {
 	return p
 }
 
-// TestRun_requestShape asserts the command emits the submit call on the app
-// store axis and forwards the whole declarative body, field names included.
 func TestRun_requestShape(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake, "")
@@ -127,8 +119,6 @@ func TestRun_requestShape(t *testing.T) {
 			t.Errorf("request body dropped the %q field: %s", key, apiCall.Body)
 		}
 	}
-	// The media ids are the whole point of the upload verbs: they must survive
-	// the round trip through the CLI untouched, under the API's own spelling.
 	for _, want := range []string{`"baseApkId":"apk-base"`, `"splitApkId":["apk-en","apk-fr"]`, `"appIconId":"img-icon"`, `"screenshotId":["img-1","img-2"]`} {
 		if !strings.Contains(string(apiCall.Body), want) {
 			t.Errorf("request body is missing %s: %s", want, apiCall.Body)
@@ -136,9 +126,6 @@ func TestRun_requestShape(t *testing.T) {
 	}
 }
 
-// TestRun_unknownPolicyVariantSurvives is the reason PolicyDeclaration.Responses
-// stays json.RawMessage: Google keeps adding question types, and a response
-// shape gplay has never seen must still reach the API intact.
 func TestRun_unknownPolicyVariantSurvives(t *testing.T) {
 	fake := newFake(0, "")
 	body := `{"policyDeclarations":[{"declarationId":"d","responses":[{"questionId":"q","futureResponse":{"shape":"unknown","depth":[1,2]}}]}]}`
@@ -154,8 +141,6 @@ func TestRun_unknownPolicyVariantSurvives(t *testing.T) {
 	}
 }
 
-// TestRun_readsStdin covers the pipe path: `--file -` and an omitted --file both
-// read the body from stdin, so a CI job can generate the submission inline.
 func TestRun_readsStdin(t *testing.T) {
 	for _, file := range []string{"", "-"} {
 		t.Run("file="+file, func(t *testing.T) {
@@ -172,8 +157,6 @@ func TestRun_readsStdin(t *testing.T) {
 	}
 }
 
-// TestRun_missingConfirm_exit3 is the gate: submission is immediate and cannot
-// be recalled, so the run must refuse (before any HTTP) naming the flag.
 func TestRun_missingConfirm_exit3(t *testing.T) {
 	fake := newFake(0, "")
 	_, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -188,9 +171,6 @@ func TestRun_missingConfirm_exit3(t *testing.T) {
 	}
 }
 
-// TestRun_dryRunNeedsNoConfirm: the rehearsal exists to be runnable without the
-// gate. If --dry-run demanded --confirm there would be no way to check a
-// submission before making it.
 func TestRun_dryRunNeedsNoConfirm(t *testing.T) {
 	fake := newFake(0, "")
 	got, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -203,8 +183,6 @@ func TestRun_dryRunNeedsNoConfirm(t *testing.T) {
 		t.Errorf("--dry-run must emit no API call, got %v", fake.Calls())
 	}
 
-	// ADR-0017 §4: the gate is machine-readable, so an agent learns what the
-	// live run will demand without failing once to find out.
 	var buf bytes.Buffer
 	if err := got.Renderers().JSON(&buf); err != nil {
 		t.Fatalf("render JSON: %v", err)
@@ -226,14 +204,11 @@ func TestRun_dryRunNeedsNoConfirm(t *testing.T) {
 	if len(view.Requires) != 1 || view.Requires[0] != "confirm" {
 		t.Errorf("requires = %v, want [confirm]", view.Requires)
 	}
-	// The counts are what makes a rehearsal worth reading: they prove the file
-	// parsed the way the operator intended.
 	if view.Locales != 2 || view.ApkSets != 1 || view.PolicyDeclarations != 1 {
 		t.Errorf("counts = %d locales / %d apk sets / %d declarations, want 2/1/1", view.Locales, view.ApkSets, view.PolicyDeclarations)
 	}
 }
 
-// TestRun_invalidJSON_exit2 keeps a malformed file client-side misuse.
 func TestRun_invalidJSON_exit2(t *testing.T) {
 	fake := newFake(0, "")
 	_, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -245,7 +220,6 @@ func TestRun_invalidJSON_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_emptyBody_exit2 covers the pipe that delivered nothing.
 func TestRun_emptyBody_exit2(t *testing.T) {
 	_, err := submitcmd.Run(newRC(t, newFake(0, ""), "   "), submitcmd.Input{
 		StorePackage: "s", Package: "com.example.app", Confirm: true,
@@ -253,7 +227,6 @@ func TestRun_emptyBody_exit2(t *testing.T) {
 	assertExit(t, err, 2)
 }
 
-// TestRun_unreadableFile_exit2 names which input path failed.
 func TestRun_unreadableFile_exit2(t *testing.T) {
 	_, err := submitcmd.Run(newRC(t, newFake(0, ""), ""), submitcmd.Input{
 		StorePackage: "s", Package: "com.example.app", File: filepath.Join(t.TempDir(), "absent.json"), Confirm: true,
@@ -261,9 +234,6 @@ func TestRun_unreadableFile_exit2(t *testing.T) {
 	assertExit(t, err, 2)
 }
 
-// TestRun_bodyPackageContradictsFlag_exit2: this call submits to review, so a
-// body naming a different app than the resolved target is refused rather than
-// resolved one way silently.
 func TestRun_bodyPackageContradictsFlag_exit2(t *testing.T) {
 	fake := newFake(0, "")
 	_, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -281,7 +251,6 @@ func TestRun_bodyPackageContradictsFlag_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_bodyPackageAgrees accepts the redundant-but-consistent case.
 func TestRun_bodyPackageAgrees(t *testing.T) {
 	fake := newFake(0, "")
 	if _, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -297,8 +266,6 @@ func TestRun_bodyPackageAgrees(t *testing.T) {
 	}
 }
 
-// TestRun_packageDefaultsToProjectPin: the repo pin resolves the target like
-// everywhere else in the CLI.
 func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake, "")
@@ -313,8 +280,6 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	}
 }
 
-// TestRun_missingStorePackage_exit2 pins the app-store axis as required: it has
-// no project-pin fallback (ADR-0043).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	fake := newFake(0, "")
@@ -327,7 +292,6 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_storePackageEnvCascade: flag beats env (ADR-0043 §1).
 func TestRun_storePackageEnvCascade(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "com.env.store")
 	fake := newFake(0, "")
@@ -342,8 +306,6 @@ func TestRun_storePackageEnvCascade(t *testing.T) {
 	}
 }
 
-// TestRun_jsonPassthrough: ADR-0003: whatever the API says is what --output
-// json prints, verbatim, fields gplay does not model included.
 func TestRun_jsonPassthrough(t *testing.T) {
 	fake := newFake(0, `{"reviewId":"rev-1","unmodelled":{"x":1}}`)
 	got, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -361,9 +323,6 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	}
 }
 
-// TestRun_jsonEmptyBodyFallback: the documented response models no fields, so a
-// server answering with nothing would leave --output json (the CI default) with
-// zero bytes to parse. A gplay-shaped object stands in.
 func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 	fake := newFake(0, " ")
 	got, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -390,8 +349,6 @@ func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 	}
 }
 
-// TestRun_humanViews: the table and markdown views must say the submission is
-// gone to review: the fact an operator most needs to read back.
 func TestRun_humanViews(t *testing.T) {
 	got, err := submitcmd.Run(newRC(t, newFake(0, ""), ""), submitcmd.Input{
 		StorePackage: "com.example.store", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
@@ -414,8 +371,6 @@ func TestRun_humanViews(t *testing.T) {
 	}
 }
 
-// TestRun_403_namesEnrollment / _404: upstream refusals keep the shared exit
-// taxonomy and the namespace's hints.
 func TestRun_403_exit11(t *testing.T) {
 	fake := newFake(http.StatusForbidden, `{"error":{"message":"denied"}}`)
 	_, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -427,10 +382,6 @@ func TestRun_403_exit11(t *testing.T) {
 	}
 }
 
-// TestRun_404_pointsAtTheMissingRecord: on this path the store is not the only
-// thing that can be missing. `appstore create` is the mandatory precondition,
-// so a 404 must name it rather than sending the caller to audit a
-// --store-package that is probably correct.
 func TestRun_404_exit30(t *testing.T) {
 	fake := newFake(http.StatusNotFound, `{"error":{"message":"missing"}}`)
 	_, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -444,8 +395,6 @@ func TestRun_404_exit30(t *testing.T) {
 	}
 }
 
-// TestNewCommand_helpDocumentsTheVerb pins the public surface: the flags an
-// agent must find, and the side effect it must not discover the hard way.
 func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 	cmd := submitcmd.NewCommand(kernel.Boot{})
 	if cmd.Use != "submit" {
@@ -459,7 +408,6 @@ func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 			t.Errorf("--%s is not declared", flag)
 		}
 	}
-	// ADR-0043 amendment: the gate is --confirm, and no --yes alias exists.
 	if cmd.Flags().Lookup("yes") != nil {
 		t.Error("--yes must not exist: the CLI has exactly one gate name, --confirm")
 	}

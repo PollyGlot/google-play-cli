@@ -22,13 +22,8 @@ const releaseOptions = `{"tracks":[
  {"displayName":"Production","type":"PRODUCTION","servingReleases":[{"displayName":"1.4.0","versionCodes":["140","141"]}]},
  {"displayName":"Internal testing","type":"INTERNAL","servingReleases":[{"displayName":"1.5.0-rc1","versionCodes":["150"]},{"displayName":"1.4.0","versionCodes":["141"]}]}]}`
 
-// complete drives cobra's own `__complete` protocol (what the generated shell
-// scripts call) for `--version-code <toComplete>` on the crashes preset, with
-// rt as the only network. It returns the suggestion lines, the directive line
-// and whatever reached stderr.
 func complete(t *testing.T, rt http.RoundTripper, toComplete string) (suggestions []string, directive, stderr string) {
 	t.Helper()
-	// The machine's own Account selection must not leak into the test.
 	t.Setenv(resolver.EnvAccount, "")
 	dir := t.TempDir()
 	boot := kernel.Boot{ConfigPath: filepath.Join(dir, "config.json"), KeystoreRoot: filepath.Join(dir, "accounts")}
@@ -46,9 +41,6 @@ func complete(t *testing.T, rt http.RoundTripper, toComplete string) (suggestion
 	return lines[:len(lines)-1], lines[len(lines)-1], errb.String()
 }
 
-// wantNoFileDirective is ShellCompDirectiveNoFileComp as cobra prints it: a
-// version code is never a path, so even an empty answer must not fall back
-// to file names. ShellCompDirectiveError (":1") would be the error signal.
 var wantNoFileDirective = ":" + "4"
 
 func TestCompleteVersionCodes_suggestsTheCodesPlayHasVitalsFor(t *testing.T) {
@@ -57,8 +49,6 @@ func TestCompleteVersionCodes_suggestsTheCodesPlayHasVitalsFor(t *testing.T) {
 
 	got, directive, _ := complete(t, fake, "")
 
-	// Newest first, each code once (141 is served by two tracks), described by
-	// the release that carries it.
 	want := []string{"150\t1.5.0-rc1 (Internal testing)", "141\t1.4.0 (Production)", "140\t1.4.0 (Production)"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("suggestions =\n %q\nwant\n %q", got, want)
@@ -81,9 +71,6 @@ func TestCompleteVersionCodes_filtersOnWhatIsTyped(t *testing.T) {
 	}
 }
 
-// A completion runs on every TAB, without the user asking for a call: any
-// failure (no credential, an API refusal, a slow network) yields no
-// suggestion, no error directive and nothing on stderr.
 func TestCompleteVersionCodes_isSilentOnFailure(t *testing.T) {
 	cases := []struct {
 		name string

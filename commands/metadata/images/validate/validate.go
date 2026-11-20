@@ -1,18 +1,3 @@
-// Package imagesvalidate implements `gplay metadata images validate`: an
-// OFFLINE lint of the on-disk Store-image tree. Like `metadata validate`
-// (text), it never authenticates and never makes an HTTP call: it reads the
-// image tree off disk via internal/metadata/imagetree and runs the pure
-// internal/metadata/imagevalidate engine, so it is safe in a pre-commit hook
-// or a CI gate with no credentials present.
-//
-// This is the offline half of the image sync model (ADR-0013 §4): the online
-// `metadata images apply --dry-run` diffs disk against Play, while this
-// command checks the rules that need no network: exact dimensions, screenshot
-// side range + aspect ratio, format (png/jpeg), per-image byte size, and
-// per-slot count. A non-empty result is exit 20 (client-side validation). It
-// is the DEFAULT gate but never the ultimate authority: `images apply` runs it
-// as a fail-fast pre-check that `--skip-preflight` bypasses, so a stale rule table
-// can never permanently block an upload Play would accept.
 package imagesvalidate
 
 import (
@@ -31,16 +16,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// DefaultDir matches the rest of the metadata family and `fastlane supply`.
 const DefaultDir = "./metadata"
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Dir string
 }
 
-// dirError signals the image tree could not be read. It is a client-side
-// validation failure (exit 20).
 type dirError struct {
 	dir   string
 	cause error
@@ -52,9 +33,6 @@ func (e *dirError) Error() string {
 func (e *dirError) ExitCode() int { return 20 }
 func (e *dirError) Unwrap() error { return e.cause }
 
-// ValidationError carries every image rule violation found in the tree. It is
-// the command's failure mode: ExitCode() 20, and Error() lists every problem
-// one actionable line each, so a CI log shows the full picture in one run.
 type ValidationError struct {
 	Problems []imagevalidate.Problem
 }
@@ -80,9 +58,6 @@ func (e *ValidationError) Error() string {
 	return b.String()
 }
 
-// Payload is the success view: the tree passed, here is what was checked. It
-// carries the validated slot count and the rule-table version so the operator
-// can see exactly which limits were applied.
 type Payload struct {
 	Dir          string `json:"dir"`
 	Slots        int    `json:"slots"`
@@ -111,8 +86,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 		[][]string{{p.Dir, strconv.Itoa(p.Slots), strconv.Itoa(p.Images), p.RulesVersion, "valid"}})
 }
 
-// Run is OFFLINE: it reads the tree off disk and runs the pure validator. It
-// NEVER calls rc.AuthedClient and makes no HTTP request.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	dir := in.Dir
 	if dir == "" {
@@ -143,7 +116,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Dir: dir, Slots: slots, Images: imgs, RulesVersion: imagevalidate.RulesVersion, OK: true}, nil
 }
 
-// count returns the number of managed slots and total images in tr.
 func count(tr imagetree.Staged) (slots, imgs int) {
 	locales := make([]string, 0, len(tr))
 	for loc := range tr {
@@ -163,7 +135,6 @@ func count(tr imagetree.Staged) (slots, imgs int) {
 	return slots, imgs
 }
 
-// NewCommand returns the cobra command for `gplay metadata images validate`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -1,12 +1,3 @@
-// Package familycmd builds the `gplay reports <family>` commands from the
-// family catalogue (internal/reports, ADR-0050): one command per Bulk report
-// family, all with the same flags, selection rules and output. A family
-// command is therefore one catalogue entry plus one registration line.
-//
-// The data channel is the Reporting bucket over the Cloud Storage API, with
-// the read-only storage scope its registration declares (kernel.WithScope),
-// like `reviews history` (ADR-0037). Ships [experimental]: the columns are
-// Google's.
 package familycmd
 
 import (
@@ -26,35 +17,26 @@ import (
 	reportbucket "github.com/PollyGlot/google-play-cli/internal/reports/bucket"
 )
 
-// limits is the budget of one command; the tests lower it to cross it with
-// small exports.
 var limits = reports.DefaultLimits
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
-	Package     string
-	Product     string // --product, PerProduct families only (subscription stats)
-	Month       string // --month YYYY-MM; "" with no range = the latest month present
-	Since       string // --since YYYY-MM, range start (with --until)
-	Until       string // --until YYYY-MM, range end (with --since)
-	Dimension   string // --dimension; "" = the family's default split when present
-	Bucket      string // --bucket override; "" = derive from the developer-id
-	DeveloperID string // --developer-id (feeds the default bucket name only)
-	Columns     string // --columns; "" = the family's default table columns
-	// IncludeBuyerLocation is --include-buyer-location: keep the buyer's
-	// city, state and postcode a BuyerLocation family hides by default.
+	Package              string
+	Product              string
+	Month                string
+	Since                string
+	Until                string
+	Dimension            string
+	Bucket               string
+	DeveloperID          string
+	Columns              string
 	IncludeBuyerLocation bool
 }
 
-// Payload satisfies output.Renderable: the merged report, and the columns the
-// table and Markdown views draw.
 type Payload struct {
 	Report  reports.Report
 	Columns []output.Column[reports.Row]
 }
 
-// Renderers draws the selected columns as a table or Markdown, and emits the
-// ADR-0050 envelope as JSON (every column, whatever --columns says).
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return output.RenderTable(w, p.Columns, p.Report.Table.Rows) },
@@ -63,9 +45,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run validates the flags (before any network call), lists the family's
-// exports for the package, selects the months and the split against what the
-// bucket holds, fetches and decodes each export and merges them.
 func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, error) {
 	pkg, err := packageOf(rc, f, in.Package)
 	if err != nil {
@@ -84,8 +63,6 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 	if err != nil {
 		return nil, err
 	}
-	// UploadClient: an export can outlast the 60s control-plane total on a slow
-	// link, so its fetch is bounded by inactivity; the listing keeps the total.
 	hc, err := rc.UploadClient()
 	if err != nil {
 		return nil, err
@@ -104,8 +81,6 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		rc.Logf("ignoring %s: not a %s export name", name, f.Name)
 	}
 	if f.PerProduct {
-		// The product prefix also matches a longer id (gold_ and gold_trial):
-		// the parsed product decides, as the parsed package does.
 		objs = onlyProduct(objs, product)
 	}
 	sel, err := f.Select(objs, months, strings.TrimSpace(in.Dimension))
@@ -125,8 +100,6 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		}
 		rc.Warnf("no %s report for %s with dimension %q: skipped", f.Name, reports.DisplayMonth(m), sel.Split)
 	}
-	// The listing gives each export's size: one over the read cap is refused
-	// before a byte of it is fetched (ADR-0050 §10).
 	for _, o := range sel.Objects {
 		if size, err := strconv.ParseInt(o.Size, 10, 64); err == nil && size > f.MaxObjectBytes {
 			return nil, tooLarge(o.Name, f.MaxObjectBytes)
@@ -135,12 +108,6 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 
 	tables := make([]reports.Table, 0, len(sel.Objects))
 	id := reports.Identity{Family: f.Name, Package: pkg, Product: product, Split: sel.Split}
-	// One reader, so one budget, for every export of the command: a range is
-	// bounded as a whole (ADR-0050 §10). An account-wide family's --package
-	// filters each export on the package column its own header declares, as
-	// it is decoded: a range across a rename of that column (Product ID one
-	// month, Package Name the next) keeps every month, and the rows dropped
-	// never take memory.
 	filter := ""
 	if f.Scope == reports.AccountWide {
 		filter = pkg
@@ -149,13 +116,9 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 	for _, o := range sel.Objects {
 		raw, err := gcs.FetchObjectLimit(rc.Ctx, hc, bucket, o.Name, f.MaxObjectBytes)
 		if errors.Is(err, gcs.ErrTooLarge) {
-			// The object grew past the cap since it was listed.
 			return nil, tooLarge(o.Name, f.MaxObjectBytes)
 		}
 		if reportbucket.IsNotFound(err) {
-			// The listing named it a moment ago: the export was replaced
-			// (Play republishes one now and then), not denied. A range
-			// skips the month like one never published.
 			if in.Since != "" {
 				rc.Warnf("no %s report for %s: %s vanished between the listing and the read: skipped", f.Name, reports.DisplayMonth(o.Month), o.Name)
 				continue
@@ -176,12 +139,9 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 		}
 	}
 	if len(id.Objects) == 0 {
-		// Every export of the range vanished after the listing.
 		return nil, noReport(f, pkg, product, bucket, months)
 	}
 	if filter != "" && rd.RowsRead() > 0 && rd.RowsKept() == 0 {
-		// An empty result is a valid answer (the app sold nothing), but it is
-		// also what a typo in --package gives: say how much was read.
 		rc.Notef("0 of %d rows matched --package %s", rd.RowsRead(), pkg)
 	}
 	merged := reports.Merge(tables...)
@@ -205,10 +165,6 @@ func Run(rc *kernel.RunContext, f reports.Family, in Input) (output.Renderable, 
 	return Payload{Report: report, Columns: cols}, nil
 }
 
-// packageOf resolves the package a family reads. A per-package family needs
-// one (--package, else the Project pin). An account-wide family covers every
-// app: --package only filters its rows, so the pin, which says which app a
-// repository ships rather than which rows to read, does not apply.
 func packageOf(rc *kernel.RunContext, f reports.Family, flag string) (string, error) {
 	if f.Scope == reports.AccountWide {
 		return strings.TrimSpace(flag), nil
@@ -216,14 +172,10 @@ func packageOf(rc *kernel.RunContext, f reports.Family, flag string) (string, er
 	return rc.Package(flag)
 }
 
-// tooLarge is the refusal of an export over the family's read cap: exit 20,
-// like every other bound, never a truncated read.
 func tooLarge(object string, limit int64) error {
 	return &reports.RefusedError{Object: object, Reason: fmt.Sprintf("larger than the %d-byte read cap", limit)}
 }
 
-// requestedMonths validates the month flags: nil means "the latest month
-// present", one month is --month, several a --since/--until range.
 func requestedMonths(in Input) ([]string, error) {
 	rangeMode := in.Since != "" || in.Until != ""
 	switch {
@@ -247,11 +199,6 @@ func requestedMonths(in Input) ([]string, error) {
 	return nil, nil
 }
 
-// noReport is the "nothing to read" error: the bucket answered, but holds no
-// export of the family for the package (and months) asked. ADR-0050 gives it
-// exit 30 like `reviews history`: the report is absent, the command line is
-// well-formed (the fix is in --package, --month, --bucket, or in waiting for
-// Play to publish).
 func noReport(f reports.Family, pkg, product, bucket string, months []string) error {
 	when := ""
 	switch len(months) {
@@ -275,7 +222,6 @@ func noReport(f reports.Family, pkg, product, bucket string, months []string) er
 		"or pass --bucket if the derived name is wrong", f.Name, what, when, bucket, check, f.Name, pkg)}
 }
 
-// onlyProduct keeps the exports of one product.
 func onlyProduct(objs []reports.Object, product string) []reports.Object {
 	kept := objs[:0:0]
 	for _, o := range objs {
@@ -286,10 +232,6 @@ func onlyProduct(objs []reports.Object, product string) []reports.Object {
 	return kept
 }
 
-// vanishedError is a 404 on an export the listing has just named: Play
-// replaced it in between (it republishes an export now and then). It wraps
-// the *api.Error, which keeps the exit code (30), and says to run again
-// rather than blame a permission or the bucket name.
 type vanishedError struct {
 	object, bucket string
 	cause          error
@@ -302,16 +244,11 @@ func (e *vanishedError) Error() string {
 
 func (e *vanishedError) Unwrap() error { return e.cause }
 
-// noReportError carries exit 30 (an absent resource), the code `reviews
-// history` gives the same situation.
 type noReportError struct{ msg string }
 
 func (e *noReportError) Error() string { return e.msg }
 func (e *noReportError) ExitCode() int { return 30 }
 
-// tableColumns resolves --columns against the report's own columns. Without
-// it, the table shows every column but the family's hidden ones, so a column
-// Google adds is visible; all of them when nothing else is left.
 func tableColumns(f reports.Family, cols []reports.Column, spec string) ([]output.Column[reports.Row], error) {
 	all := make([]output.Column[reports.Row], len(cols))
 	for i, c := range cols {
@@ -341,7 +278,6 @@ func tableColumns(f reports.Family, cols []reports.Column, spec string) ([]outpu
 	return shown, nil
 }
 
-// NewCommand returns the cobra command `gplay reports <f.Name>`.
 func NewCommand(boot kernel.Boot, f reports.Family) *cobra.Command {
 	var (
 		outputFlag string
@@ -393,8 +329,6 @@ func dimensionHelp(f reports.Family) string {
 	return "dimension file to read, as the bucket names it (default: " + f.DefaultSplit + " when present)"
 }
 
-// long is the --help body: the family's own paragraph, then the text every
-// family shares, filled from its catalogue entry.
 func long(f reports.Family) string {
 	return f.About + `
 
@@ -432,9 +366,6 @@ func forThePackage(f reports.Family) string {
 	return " for\nthe package"
 }
 
-// selectionText is the --help part that differs by family shape: the
-// dimension of a per-package family; the row filter, the buyer-location
-// default and the ZIP bounds of an account-wide finance family.
 func selectionText(f reports.Family) string {
 	if f.Scope == reports.PerPackage {
 		return `Each month comes as one file per dimension. --dimension picks it and is

@@ -8,9 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
 )
 
-// TestRunCounts_describe_getsErrorCountSet proves the tenth `.get`
-// (errors.counts.get) is reachable: `vitals errors counts --describe` issues a
-// GET on the bare errorCountMetricSet resource, not the `:query` POST (#545).
 func TestRunCounts_describe_getsErrorCountSet(t *testing.T) {
 	rc, fake, _ := newRC(t, `{"name":"apps/com.example.app/errorCountMetricSet","freshnessInfo":{"freshnesses":[{"aggregationPeriod":"DAILY","latestEndTime":{"year":2026,"month":9,"day":12,"timeZone":{"id":"America/Los_Angeles"}}}]}}`)
 	r, err := runCounts(rc, countsInput{Package: "com.example.app", Describe: true})

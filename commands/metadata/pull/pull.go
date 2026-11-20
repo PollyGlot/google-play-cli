@@ -1,24 +1,3 @@
-// Package pull implements `gplay metadata pull`: it rapatriates the Store
-// front Listings live on Google Play for a package into the local Metadata
-// tree on disk. It reads ONLY from Play, then writes the tree additively:
-// resolve --package, open a read-only Edit, consume
-// internal/play/listings.List, project each API Listing onto the managed
-// fields keeping ONLY the non-empty values, and hand the resulting
-// listing.Tree to internal/metadata/tree.Write. The Edit is opened and
-// discarded via edits.WithReadOnlyEdit, never committed.
-//
-// The projection is the heart of the command and the source of the ADR-0011
-// "pull then apply is a no-op" invariant: an online field that is empty ("")
-// or absent is treated as NOT managed (never Set on the listing.Listing), so
-// tree.Write writes no file for it; an online field that is non-empty is
-// managed with its value, so tree.Write writes the file. Because the
-// projection only ever surfaces non-empty values and tree.Read/tree.Write are
-// value-level inverses, re-reading the tree after a pull yields exactly the
-// projection: a later `apply` sees no delta.
-//
-// pull never deletes: tree.Write is additive, so a local locale absent online
-// is left intact on disk. Removing locales/fields no longer online is the
-// opt-in job of `metadata apply --prune`, never a side effect of pull.
 package pull
 
 import (
@@ -38,20 +17,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/listings"
 )
 
-// DefaultDir is the on-disk root pull writes the Metadata tree under when
-// --dir is not given. It matches the convention in CLAUDE.md's command
-// roadmap (`gplay metadata apply --dir ./metadata`).
 const DefaultDir = "./metadata"
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 	Dir     string
 }
 
-// fieldValue returns the value of the managed field f on an API Listing. The
-// four managed fields map onto the API struct's keys 1:1 (title,
-// shortDescription, fullDescription, video); an out-of-range Field yields "".
 func fieldValue(l listings.Listing, f listing.Field) string {
 	switch f {
 	case listing.Title:
@@ -67,21 +39,6 @@ func fieldValue(l listings.Listing, f listing.Field) string {
 	}
 }
 
-// BuildTree projects the online edits.listings.list payload onto the managed
-// listing.Tree pull writes to disk. It is the structural encoding of the
-// ADR-0011 "missing ≠ empty" rule for the pull direction: a field is Set on a
-// locale's listing.Listing ONLY when its online value is non-empty, so it
-// becomes a managed field tree.Write materializes as a file; an empty ("") or
-// absent online field is never Set, so it stays unmanaged and tree.Write
-// writes no file for it. A locale whose every managed field is empty online
-// contributes no entry at all (an empty Listing carries no information and
-// would only create an empty directory). Locale order does not matter: the
-// Tree is keyed by locale and tree.Write iterates it in sorted order.
-//
-// Because the projection only surfaces non-empty values and tree.Read/Write
-// are value-level inverses, tree.Read(dir) after a pull returns exactly
-// BuildTree(online): a later `apply` sees no delta. This is the no-op
-// invariant, provable as a pure function here without any I/O.
 func BuildTree(apiListings []listings.Listing) listing.Tree {
 	tr := make(listing.Tree)
 	for _, al := range apiListings {
@@ -89,14 +46,11 @@ func BuildTree(apiListings []listings.Listing) listing.Tree {
 		for _, f := range listing.Fields() {
 			v := fieldValue(al, f)
 			if v == "" {
-				// Empty online -> NOT managed: skip, so tree.Write writes
-				// no file and a later apply leaves the field untouched.
 				continue
 			}
 			l.Set(f, v)
 		}
 		if l.Empty() {
-			// Every field empty online: nothing to write for this locale.
 			continue
 		}
 		tr[al.Language] = l
@@ -104,26 +58,16 @@ func BuildTree(apiListings []listings.Listing) listing.Tree {
 	return tr
 }
 
-// localeReport is one locale's pull result for the gplay summary: the locale
-// code and the API JSON keys (camelCase, from listing.SpecOf) of the fields
-// written to disk, in canonical field order.
 type localeReport struct {
 	Locale string   `json:"locale"`
 	Fields []string `json:"fields"`
 }
 
-// summary is the run-level totals: how many locales were written and how many
-// field files in total. A CI gate can read `.summary.files` in one jq line.
 type summary struct {
 	Locales int `json:"locales"`
 	Files   int `json:"files"`
 }
 
-// Payload satisfies output.Renderable. It is a gplay-defined summary of what
-// pull WROTE, not an API pass-through (ADR-0011: pull's JSON is a gplay
-// object, not the edits.listings.list body, since the on-disk result, not the
-// wire payload, is what the operator cares about). Pulled is in tree-sorted
-// locale order for deterministic output.
 type Payload struct {
 	Package string         `json:"package"`
 	Dir     string         `json:"dir"`
@@ -131,9 +75,6 @@ type Payload struct {
 	Summary summary        `json:"summary"`
 }
 
-// newPayload builds the Payload from the projected Tree: one localeReport per
-// locale (in sorted order), each listing the API keys of its managed fields,
-// plus the run totals.
 func newPayload(pkg, dir string, tr listing.Tree) Payload {
 	pulled := make([]localeReport, 0, len(tr))
 	files := 0
@@ -161,9 +102,6 @@ func newPayload(pkg, dir string, tr listing.Tree) Payload {
 	}
 }
 
-// Renderers satisfies output.Renderable with one renderer per Format. JSON is
-// the gplay summary object; table and markdown are a one-row-per-locale view
-// (LOCALE, FIELDS).
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
@@ -172,16 +110,12 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// headers returns the human-table header row.
 func headers() []string { return []string{"LOCALE", "FIELDS"} }
 
-// row renders one locale's cells: the locale code and a comma-separated list
-// of the API field keys written for it.
 func row(r localeReport) []string {
 	return []string{r.Locale, strings.Join(r.Fields, ", ")}
 }
 
-// renderTable writes a tab-aligned LOCALE + FIELDS table, one row per locale.
 func renderTable(w io.Writer, p Payload) error {
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 	if _, err := fmt.Fprintln(tw, strings.Join(headers(), "\t")); err != nil {
@@ -195,8 +129,6 @@ func renderTable(w io.Writer, p Payload) error {
 	return tw.Flush()
 }
 
-// renderMarkdown writes the LOCALE × FIELDS view as a GitHub-Flavored Markdown
-// table via output.MarkdownTable.
 func renderMarkdown(w io.Writer, p Payload) error {
 	rows := make([][]string, 0, len(p.Pulled))
 	for _, r := range p.Pulled {
@@ -205,10 +137,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return output.MarkdownTable(w, headers(), rows)
 }
 
-// Run is the business function the kernel invokes. It resolves the package and
-// the output dir, builds an authenticated HTTP client, opens a read-only Edit,
-// lists every locale's Listing, projects them onto the managed-field model
-// (non-empty values only), and writes the resulting Tree to disk additively.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -245,8 +173,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return newPayload(pkg, dir, tr), nil
 }
 
-// NewCommand returns the cobra command for `gplay metadata pull`. It does NOT
-// create the parent `metadata` command; cmd/gplay/main.go wires it under it.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

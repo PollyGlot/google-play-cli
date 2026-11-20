@@ -25,10 +25,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// replyRT covers the OAuth2 /token exchange and the reviews.reply POSTs an
-// invocation makes. status maps a reviewId to a forced HTTP status (absent →
-// 200); posted records the reviewIds posted, in order, so a test can assert
-// the wire calls and that a per-line failure did not abort the batch.
 type replyRT struct {
 	t      *testing.T
 	status map[string]int
@@ -62,7 +58,6 @@ func (r *replyRT) serve(req *http.Request) (*http.Response, error) {
 	return testkit.Response(http.StatusOK, fmt.Sprintf(`{"result":{"replyText":"echo for %s"}}`, id)), nil
 }
 
-// reviewIDFromPath recovers the reviewId from a .../reviews/<id>:reply path.
 func reviewIDFromPath(p string) string {
 	const marker = "/reviews/"
 	i := strings.Index(p, marker)
@@ -97,9 +92,6 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-// newRC wires a RunContext whose HTTP client routes through rt, in the given
-// output Format, with stdin as the batch source. Returns the captured stdout
-// and stderr buffers.
 func newRC(t *testing.T, rt http.RoundTripper, format output.Format, stdin io.Reader) (*kernel.RunContext, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
@@ -114,7 +106,6 @@ func newRC(t *testing.T, rt http.RoundTripper, format output.Format, stdin io.Re
 	return rc, &stdout, &stderr
 }
 
-// writeTSV writes content to a temp file and returns its path.
 func writeTSV(t *testing.T, content string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "replies.tsv")
@@ -147,11 +138,9 @@ func TestRun_single_postsAndEchoesJSON(t *testing.T) {
 	if len(rt.posted) != 1 || rt.posted[0] != "r1" {
 		t.Fatalf("posted = %v, want [r1]", rt.posted)
 	}
-	// The success line goes to stderr (stdout is reserved for data).
 	if !strings.Contains(stderr.String(), "Reply posted on r1") {
 		t.Errorf("stderr should confirm the post; got %q", stderr.String())
 	}
-	// --output json echoes the API response verbatim on stdout (ADR-0003).
 	if !strings.Contains(stdout.String(), "echo for r1") {
 		t.Errorf("stdout should carry the API response; got %q", stdout.String())
 	}
@@ -226,7 +215,6 @@ func TestRun_single_unknownReview_exit30(t *testing.T) {
 	if code := exitCodeOf(t, err); code != 30 {
 		t.Fatalf("404 should map to exit 30, got %d (err: %v)", code, err)
 	}
-	// The 404 must name the review, not point at `gplay apps list`.
 	if !strings.Contains(err.Error(), "review") || strings.Contains(err.Error(), "gplay apps list") {
 		t.Errorf("reply 404 hint should name the review; got %q", err.Error())
 	}
@@ -284,8 +272,6 @@ func TestRun_batch_stdin(t *testing.T) {
 }
 
 func TestRun_batch_perLineFailureContinues_aggregateExit30(t *testing.T) {
-	// r2 → 404; r1 and r3 succeed. The failure must not abort the batch, and
-	// the aggregate exit is the highest code seen (30).
 	rt := &replyRT{t: t, status: map[string]int{"r2": 404}}
 	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
 
@@ -339,7 +325,6 @@ func TestRun_batch_malformedLine_reportedAndContinues(t *testing.T) {
 	rt := &replyRT{t: t}
 	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve), output.FormatTable, nil)
 
-	// The middle line has no tab → malformed; r1 and r3 still post.
 	path := writeTSV(t, "r1\ta\nbroken-no-tab\nr3\tc\n")
 	err := Run(rc, Input{Package: "com.example.app", BatchSet: true, Batch: path})
 
@@ -370,18 +355,12 @@ func TestRun_batch_dryRun_noNetwork(t *testing.T) {
 	}
 }
 
-// A reply past the 350 characters Play documents is still sent, with a
-// stderr warning, in single mode and in --batch alike (#789). The limit counts
-// Unicode characters, not bytes: 350 "é" (700 bytes) stays silent. stdout
-// carries the same bytes with or without the warning (ADR-0003).
 func TestRun_overLongReply_warnsAndStillSends(t *testing.T) {
 	long := strings.Repeat("é", 351)
 	atLimit := strings.Repeat("é", 350)
 
 	run := func(t *testing.T, batch bool, text string) (fake *testkit.Fake, stdout, stderr string) {
 		t.Helper()
-		// The constraint table refuses a replyText over 350 characters; this
-		// test sends one on purpose, to pin that gplay does not refuse it.
 		fake = testkit.NewFake(testkit.Any(http.StatusOK, `{"result":{"replyText":"echo"}}`)).
 			AllowInvalid("ReviewsReplyRequest.replyText")
 		rc, out, errb := newRC(t, fake, output.FormatJSON, nil)

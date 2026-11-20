@@ -1,7 +1,3 @@
-// Package anomaliescmd implements `gplay vitals anomalies`: Play-detected metric
-// anomalies (unexpected spikes in crash/ANR/etc. rates) over a window (#49).
-// Read-only, on the same Play Developer Reporting service and least-privilege
-// reporting scope as the rest of `vitals`.
 package anomaliescmd
 
 import (
@@ -17,15 +13,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 	Since   string
-	Filter  string // raw AIP-160 filter; overrides the --since-derived activeBetween
+	Filter  string
 	Limit   int
 }
 
-// Payload renders detected anomalies. JSON is the verbatim API pass-through.
 type Payload struct {
 	Raw       json.RawMessage
 	Anomalies []vitals.Anomaly
@@ -47,8 +41,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run resolves the package, lists anomalies bounded by --filter (or a
-// --since-derived activeBetween window), and renders them.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -84,10 +76,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Raw: raw, Anomalies: anoms}, nil
 }
 
-// warn always notes the reporting delay on stderr so an empty result is not
-// read as a hard "no anomalies, ever": very recent spikes may not be reported
-// yet. Anomalies are exceptional by nature, so an empty result is the common,
-// healthy case; the note just keeps the freshness caveat visible.
 func warn(rc *kernel.RunContext, n int) {
 	if n == 0 {
 		rc.Notef("no anomalies detected in the requested window; vitals are reported with a delay, so very recent spikes may not appear yet.")
@@ -96,7 +84,6 @@ func warn(rc *kernel.RunContext, n int) {
 	rc.Notef("vitals are reported with a delay; very recent anomalies may not appear yet.")
 }
 
-// NewCommand returns the cobra command for `gplay vitals anomalies`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

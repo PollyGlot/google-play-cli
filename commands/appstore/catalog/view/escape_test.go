@@ -10,11 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRun_humanViews_stripTerminalEscapes serves a catalog view whose
-// third-party text (developer name, listing title and short description)
-// carries an OSC title and a CSI erase-screen, and asserts the table and
-// markdown views print the text without them while JSON keeps the bytes
-// verbatim (ADR-0003).
 func TestRun_humanViews_stripTerminalEscapes(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	body := strings.NewReplacer(

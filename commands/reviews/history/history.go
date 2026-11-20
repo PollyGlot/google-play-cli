@@ -1,13 +1,3 @@
-// Package history implements `gplay reviews history`: the full-history channel
-// for user reviews, beyond `reviews list`'s 7-day API window. It reads the
-// monthly reviews CSV report Google deposits in the developer's reporting
-// bucket (gs://pubsite_prod_rev_<developerId>/reviews/reviews_<pkg>_YYYYMM.csv)
-// over the GCS JSON API and renders the parsed rows (#94 / ADR-0037).
-//
-// A different data channel than `reviews list` (GCS objects vs Android
-// Publisher), a different OAuth scope (devstorage.read_only, requested via
-// kernel.WithScope), a different axis (--month), so it is a sibling command,
-// not a flag. Read-only by scope construction. Ships [experimental] (ADR-0010).
 package history
 
 import (
@@ -24,20 +14,16 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/reviews/history"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package     string
-	Month       string // --month YYYY-MM; "" = the latest month present in the bucket
-	Since       string // --since YYYY-MM; range start (mutually exclusive with --month)
-	Until       string // --until YYYY-MM; range end (mutually exclusive with --month)
-	Bucket      string // --bucket override; "" = derive from the developer-id
-	DeveloperID string // --developer-id (feeds the default bucket name only)
-	Columns     string // --columns override; "" = the default set
+	Month       string
+	Since       string
+	Until       string
+	Bucket      string
+	DeveloperID string
+	Columns     string
 }
 
-// Canonical --columns keys. They name the CSV report's documented columns
-// (lowerCamel, matching the `--output json` field names) so an operator who has
-// seen the JSON can select the same columns.
 const (
 	colDate    = "date"
 	colStars   = "stars"
@@ -49,8 +35,6 @@ const (
 	colReply   = "reply"
 )
 
-// columns is the single source of truth for the history table: its declaration
-// order is both the set of valid --columns keys and the default column order.
 var columns = output.NewColumnSet(
 	output.Column[history.Row]{Key: colDate, Header: "DATE", Value: func(r history.Row) string { return r.ReviewSubmitDateAndTime }},
 	output.Column[history.Row]{Key: colStars, Header: "STARS", Value: func(r history.Row) string { return r.StarRating }},
@@ -62,16 +46,10 @@ var columns = output.NewColumnSet(
 	output.Column[history.Row]{Key: colReply, Header: "REPLY", Value: func(r history.Row) string { return summary(r.DeveloperReplyText) }},
 )
 
-// defaultColumns is the subset shown when --columns is not given (the full set
-// above is wide; the default keeps the table readable).
 const defaultColumns = colDate + "," + colStars + "," + colLocale + "," + colVersion + "," + colTitle + "," + colSummary
 
-// maxSummaryLen caps a free-text cell (title/body/reply) so a long comment does
-// not blow out the table.
 const maxSummaryLen = 60
 
-// version renders the app version a review targets as "name (code)", "name",
-// "(code)", or "".
 func version(r history.Row) string {
 	switch {
 	case r.AppVersionName != "" && r.AppVersionCode != "":
@@ -85,9 +63,6 @@ func version(r history.Row) string {
 	}
 }
 
-// summary is a one-line, table-friendly digest of free text: the first
-// non-blank line, interior whitespace collapsed to single spaces, truncated to
-// maxSummaryLen runes with an ellipsis.
 func summary(text string) string {
 	var line string
 	for _, ln := range strings.Split(text, "\n") {
@@ -104,18 +79,11 @@ func summary(text string) string {
 	return line
 }
 
-// Payload satisfies output.Renderable. Rows is the parsed report; Columns the
-// resolved display order.
 type Payload struct {
 	Rows    []history.Row
 	Columns []output.Column[history.Row]
 }
 
-// Renderers renders the parsed rows. table/markdown draw the selected columns;
-// JSON emits the rows under a {"reviews":[...]} envelope. This JSON is the
-// ADR-0037 documented deviation from the ADR-0003 pass-through: the upstream is
-// a CSV file, so there is no API response to mirror; the rows carry stable
-// lowerCamel field names instead.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return output.RenderTable(w, p.Columns, p.Rows) },
@@ -134,9 +102,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	}{Reviews: rows})
 }
 
-// noReportsError signals that no monthly reviews report exists for the package
-// in the bucket (an empty listing when --month was omitted). It is API-misuse
-// shaped (exit 30): the same class as an unknown package.
 type noReportsError struct{ pkg, bucket string }
 
 func (e *noReportsError) Error() string {
@@ -146,24 +111,16 @@ func (e *noReportsError) Error() string {
 }
 func (e *noReportsError) ExitCode() int { return 30 }
 
-// classify adds the reporting-bucket hint (permission and Console page) to a
-// 403/404 while leaving the wrapped *api.Error to drive the exit code; every
-// other failure propagates verbatim.
 func classify(bucket string, err error) error {
 	return reportbucket.Classify(bucket, reportbucket.ViewAppInformation, "Reviews", err)
 }
 
-// Run resolves the package, the reporting bucket, and the target month, fetches
-// the monthly reviews CSV report, parses it (UTF-16 → UTF-8, header-driven), and
-// returns the rendered rows.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
 		return nil, err
 	}
 
-	// Empty --columns yields the curated default subset, not every column: the
-	// full set (with device/reply) is wide, so it stays opt-in.
 	spec := in.Columns
 	if strings.TrimSpace(spec) == "" {
 		spec = defaultColumns
@@ -173,16 +130,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// Derive the bucket unless overridden. The developer-id is only needed for
-	// the default name, so --bucket lets an operator skip the developer-id
-	// cascade entirely.
 	bucket, err := reportbucket.Resolve(rc, in.Bucket, in.DeveloperID)
 	if err != nil {
 		return nil, err
 	}
 
-	// --month (single) and --since/--until (range) are mutually exclusive addressing
-	// axes: one names a month, the other a span. Both together is ambiguous.
 	rangeMode := in.Since != "" || in.Until != ""
 	if rangeMode && in.Month != "" {
 		return nil, exit.Usagef("--month and --since/--until are mutually exclusive")
@@ -191,8 +143,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("--since and --until must be given together")
 	}
 
-	// Resolve the months to read up front so a malformed flag fails before any
-	// network I/O. An empty list means "default": list the bucket for the latest.
 	var months []string
 	switch {
 	case rangeMode:
@@ -207,14 +157,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		months = []string{yyyymm}
 	}
 
-	// UploadClient: a month's CSV can outlast the 60s control-plane total on a
-	// slow link, so its fetch is bounded by inactivity; the listing keeps the total.
 	hc, err := rc.UploadClient()
 	if err != nil {
 		return nil, err
 	}
 
-	// Neither --month nor a range: list the package's reports, pick the latest.
 	if len(months) == 0 {
 		objs, err := gcs.ListObjects(rc.Ctx, hc, bucket, history.ReviewsPrefix(pkg))
 		if err != nil {
@@ -231,10 +178,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		months = []string{latest}
 	}
 
-	// Fetch each month. In range mode a missing month (404) is a skipped stderr
-	// WARN: the range is a best-effort sweep over what Play actually published,
-	// not a demand that every month exist. Any other failure (e.g. 403) is fatal.
-	// read counts the months that actually yielded a report.
 	var all []history.Row
 	read := 0
 	for _, m := range months {
@@ -254,26 +197,16 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		all = append(all, rows...)
 	}
 
-	// A range that matched no report at all (every month 404'd, typically a
-	// wrong --package or --bucket) is the same "no reports" condition the
-	// single-month and default paths raise (exit 30), not a silent empty success.
 	if rangeMode && read == 0 {
 		return nil, &noReportsError{pkg: pkg, bucket: bucket}
 	}
 
-	// Merge only when more than one report was actually read: multiple files can
-	// repeat a review across the month boundary, so they need cross-file dedup
-	// (latest update wins) and a submit-time order. A lone report (a single
-	// month, a degenerate --since X --until X, or a range where only one month
-	// existed) is one coherent file, left verbatim exactly like --month so the
-	// two spellings of "one month" agree.
 	if read > 1 {
 		all = history.Merge(all)
 	}
 	return Payload{Rows: all, Columns: cols}, nil
 }
 
-// NewCommand returns the cobra command for `gplay reviews history`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

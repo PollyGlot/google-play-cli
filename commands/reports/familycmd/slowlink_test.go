@@ -12,12 +12,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// slowBound stands in for the 60s control-plane default, so a slow link is
-// provable in a fraction of a second.
 const slowBound = 100 * time.Millisecond
 
-// paced serves the bucket fake, then re-serves each 200 body that pick selects
-// through body, so a test sets how fast the bytes of a fetch or a listing come.
 func paced(t *testing.T, b reportstest.Bucket, pick func(*http.Request) bool, body func(*http.Request, []byte) io.ReadCloser) http.RoundTripper {
 	t.Helper()
 	fake := testkit.NewFake(b.Responder())
@@ -42,8 +38,6 @@ func isListing(req *http.Request) bool {
 	return req.URL.Host == "storage.googleapis.com" && !isFetch(req)
 }
 
-// trickle spreads raw over about 15 reads 20ms apart: about 3x slowBound in
-// total, yet never silent for longer than a fifth of it.
 func trickle(req *http.Request, raw []byte) io.ReadCloser {
 	return testkit.TrickleBody(req.Context(), raw, len(raw)/15+1, 20*time.Millisecond)
 }
@@ -57,8 +51,6 @@ func runPaced(t *testing.T, rt http.RoundTripper) (time.Duration, error) {
 	return time.Since(start), err
 }
 
-// An export that downloads slower than the control-plane bound, but keeps
-// moving, is read in full: the fetch is bounded by inactivity (#780).
 func TestRun_slowExportOutlivesTheControlPlaneBound(t *testing.T) {
 	took, err := runPaced(t, paced(t, installsBucket(), isFetch, trickle))
 	if err != nil {
@@ -69,8 +61,6 @@ func TestRun_slowExportOutlivesTheControlPlaneBound(t *testing.T) {
 	}
 }
 
-// An export whose body stops moving fails on the inactivity bound as a network
-// failure (exit 50), naming the stall.
 func TestRun_stalledExportFailsAsNetwork(t *testing.T) {
 	stall := func(req *http.Request, raw []byte) io.ReadCloser {
 		return testkit.StalledBody(req.Context(), raw[:len(raw)/2])
@@ -90,8 +80,6 @@ func TestRun_stalledExportFailsAsNetwork(t *testing.T) {
 	}
 }
 
-// The listing stays a control-plane call: the same slow pace that a fetch
-// survives fails a listing on the total bound.
 func TestRun_slowListingKeepsTheControlPlaneBound(t *testing.T) {
 	_, err := runPaced(t, paced(t, installsBucket(), isListing, trickle))
 	if err == nil {

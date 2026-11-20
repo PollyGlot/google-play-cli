@@ -31,16 +31,11 @@ const (
 	defaultResp = `{"apkId":"apk-42"}`
 )
 
-// testRoundTripper scripts the three legs an upload command performs offline:
-// the /token exchange, the resumable initiate POST (answered with a Location
-// session URI), and the chunk PUT (answered with the resource body). failWith
-// turns the initiate into an API refusal so the exit-code paths are reachable.
-// Nothing here touches the network.
 type testRoundTripper struct {
 	mu       sync.Mutex
 	calls    []string
 	initURL  string
-	initCT   string // X-Upload-Content-Type announced at initiate
+	initCT   string
 	initBody []byte
 	putBody  []byte
 	respBody string
@@ -106,18 +101,11 @@ func newRC(t *testing.T, rt *testRoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// writeAPK drops a real (if minimal) APK container at a temp path. The
-// artifact preflight (PRD #448) reads the container and its manifest before
-// the upload, so a placeholder byte string would be refused offline and never
-// reach the RoundTripper.
 func writeAPK(t *testing.T, pkg string) string {
 	t.Helper()
 	return artifacttest.APK(t, t.TempDir(), "app.apk", pkg)
 }
 
-// TestRun_requestShape asserts the command emits the resumable upload on the
-// app store axis: the upload host, the store-keyed path with the hosted app as
-// its own segment, uploadType=resumable, octet-stream, and no Edit.
 func TestRun_requestShape(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -138,8 +126,6 @@ func TestRun_requestShape(t *testing.T) {
 	if rt.initCT != "application/octet-stream" {
 		t.Errorf("X-Upload-Content-Type = %q, want application/octet-stream", rt.initCT)
 	}
-	// The PUT carries the artifact verbatim: its first bytes are the zip local
-	// file header every APK starts with.
 	if !strings.HasPrefix(string(rt.putBody), "PK\x03\x04") {
 		t.Errorf("chunk PUT did not carry the file bytes: %q", rt.putBody)
 	}
@@ -148,8 +134,6 @@ func TestRun_requestShape(t *testing.T) {
 	}
 }
 
-// TestRun_rendersTrackingID asserts the human views lead with the apkId and say
-// where it has to be cited: an id with no destination is a dead end.
 func TestRun_rendersTrackingID(t *testing.T) {
 	rt := &testRoundTripper{respBody: `{"apkId":"apk-42"}`}
 	rc := newRC(t, rt)
@@ -174,8 +158,6 @@ func TestRun_rendersTrackingID(t *testing.T) {
 	}
 }
 
-// TestRun_jsonPassthrough asserts --output json emits the API response verbatim
-// (ADR-0003), including fields the response schema does not model.
 func TestRun_jsonPassthrough(t *testing.T) {
 	const body = `{"apkId":"apk-42","unmodeledFutureField":"kept"}`
 	rt := &testRoundTripper{respBody: body}
@@ -194,8 +176,6 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	}
 }
 
-// TestRun_packageDefaultsToProjectPin asserts an omitted --package falls back to
-// the repo pin, like every other package-axis command.
 func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -209,10 +189,6 @@ func TestRun_packageDefaultsToProjectPin(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noHTTPNoFileRead asserts --dry-run resolves the target,
-// performs no HTTP call at all (not even the token exchange) and never opens
-// the file: the path deliberately does not exist, so a CI job can rehearse an
-// upload before its build step has produced the artifact.
 func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -258,9 +234,6 @@ func TestRun_dryRun_noHTTPNoFileRead(t *testing.T) {
 	}
 }
 
-// TestRun_missingStorePackage_exit2 asserts the app store package name is
-// required and its absence is CLI misuse: it identifies the caller and has no
-// project-level default (the Project pin pins a package, never a store).
 func TestRun_missingStorePackage_exit2(t *testing.T) {
 	t.Setenv(appstorecmd.EnvStorePackage, "")
 	rt := &testRoundTripper{}
@@ -276,8 +249,6 @@ func TestRun_missingStorePackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_missingFile_exit20 keeps an unreadable local path a client-side
-// validation failure rather than a transport one (exit 50).
 func TestRun_missingFile_exit20(t *testing.T) {
 	rt := &testRoundTripper{}
 	rc := newRC(t, rt)
@@ -289,8 +260,6 @@ func TestRun_missingFile_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_403_namesEnrollment asserts a forbidden upload surfaces as an
-// agent-resolvable refusal naming the app store, at the authz exit code.
 func TestRun_403_namesEnrollment(t *testing.T) {
 	rt := &testRoundTripper{failWith: http.StatusForbidden}
 	rc := newRC(t, rt)
@@ -302,8 +271,6 @@ func TestRun_403_namesEnrollment(t *testing.T) {
 	}
 }
 
-// TestRun_404_namesStorePackage asserts an unknown app store or hosted app
-// surfaces a hint pointing at --store-package, at the API-misuse exit code.
 func TestRun_404_namesStorePackage(t *testing.T) {
 	rt := &testRoundTripper{failWith: http.StatusNotFound}
 	rc := newRC(t, rt)
@@ -315,8 +282,6 @@ func TestRun_404_namesStorePackage(t *testing.T) {
 	}
 }
 
-// TestNewCommand_helpDocumentsTheVerb asserts --help explains the verb, the
-// role of the id, and the API's size/type constraint, and declares the flags.
 func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 	cmd := apkcmd.NewCommand(kernel.Boot{})
 	if cmd.Use != "upload <file.apk>" {
@@ -330,9 +295,6 @@ func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 			t.Errorf("--%s is not declared", flag)
 		}
 	}
-	// The facts a caller cannot discover from the flag names: what the id is
-	// for, that nothing ships until `appstore submit`, the size/type limit, and
-	// that no confirmation is required.
 	for _, want := range []string{"apkid", "baseapkid", "10 gib", "application/octet-stream", "no --confirm", "nothing is distributed"} {
 		if !strings.Contains(strings.ToLower(cmd.Long), want) {
 			t.Errorf("--help should state %q; got:\n%s", want, cmd.Long)

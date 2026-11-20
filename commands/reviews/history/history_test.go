@@ -26,7 +26,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// utf16LE encodes s as UTF-16LE with a BOM: the byte shape of a real report.
 func utf16LE(s string) []byte {
 	var buf bytes.Buffer
 	buf.Write([]byte{0xFF, 0xFE})
@@ -42,14 +41,12 @@ const reportCSV = "Package Name,Star Rating,Reviewer Language,Review Title,Revie
 	"com.example.app,5,fr,Génial,\"Très bonne app 🎉\",4.2.0,42\n" +
 	"com.example.app,1,en,Meh,Crashes,4.2.0,42\n"
 
-// historyRT serves the /token exchange, a GCS list, and a GCS media fetch. It
-// records every non-token request path so tests can assert the wire shape.
 type historyRT struct {
 	mu       sync.Mutex
 	calls    []string
 	listBody string
 	getBody  []byte
-	code     int // forced non-2xx for the GCS call (0 -> 200)
+	code     int
 	errBody  string
 }
 
@@ -64,10 +61,10 @@ func (r *historyRT) serve(req *http.Request) (*http.Response, error) {
 	if r.code != 0 {
 		return testkit.Response(r.code, r.errBody), nil
 	}
-	if strings.Contains(req.URL.Path, "/o/") { // media fetch
+	if strings.Contains(req.URL.Path, "/o/") {
 		return testkit.Response(http.StatusOK, string(r.getBody)), nil
 	}
-	return testkit.Response(http.StatusOK, r.listBody), nil // list
+	return testkit.Response(http.StatusOK, r.listBody), nil
 }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -91,9 +88,6 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-// newRC wires a RunContext whose HTTP client routes through rt (wrapped in a
-// ScopeObserver so the token-exchange scope can be asserted), with the storage
-// scope declared and a developer-id resolved so the bucket derives.
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *transport.ScopeObserver, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
@@ -122,9 +116,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_monthFetch_wirePathAndScope covers the primary acceptance criterion:
-// `--month 2026-06` fetches reviews/reviews_P_202606.csv from the derived
-// bucket, and the token exchange carries the devstorage.read_only scope.
 func TestRun_monthFetch_wirePathAndScope(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
 	rc, obs, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -137,7 +128,6 @@ func TestRun_monthFetch_wirePathAndScope(t *testing.T) {
 		t.Fatalf("want 2 parsed rows, got %d", got)
 	}
 
-	// Wire path: media fetch of the derived bucket + month object.
 	found := false
 	for _, c := range rt.calls {
 		if strings.Contains(c, "storage.googleapis.com/storage/v1/b/pubsite_prod_rev_123456/o/reviews%2Freviews_com.example.app_202606.csv") &&
@@ -149,7 +139,6 @@ func TestRun_monthFetch_wirePathAndScope(t *testing.T) {
 		t.Errorf("did not fetch the derived bucket/month object; calls=%v", rt.calls)
 	}
 
-	// The token request carried the devstorage.read_only scope (least privilege).
 	scopes := obs.Scopes()
 	if !containsScope(scopes, token.StorageReadOnlyScope) {
 		t.Errorf("token exchange scopes = %v, want to include %q", scopes, token.StorageReadOnlyScope)
@@ -168,8 +157,6 @@ func containsScope(scopes []string, want string) bool {
 	return false
 }
 
-// TestRun_noMonth_selectsLatest: omitting --month lists the bucket and fetches
-// the newest month present.
 func TestRun_noMonth_selectsLatest(t *testing.T) {
 	rt := &historyRT{
 		listBody: `{"items":[
@@ -191,7 +178,7 @@ func TestRun_noMonth_selectsLatest(t *testing.T) {
 			listed = true
 		}
 		if strings.Contains(c, "reviews%2Freviews_com.example.app_202606.csv") {
-			fetched = true // the LATEST of the three
+			fetched = true
 		}
 	}
 	if !listed {
@@ -212,12 +199,10 @@ func TestRun_noReports_exit30(t *testing.T) {
 	}
 }
 
-// TestRun_bucketOverride: --bucket wins over the derived name (and no
-// developer-id is required).
 func TestRun_bucketOverride(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
 	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
-	rc.Resolved = &config.Resolved{} // no developer-id at all
+	rc.Resolved = &config.Resolved{}
 
 	if _, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06", Bucket: "custom-bucket-name"}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -279,7 +264,7 @@ func TestRun_badMonth_exit2_noNetwork(t *testing.T) {
 func TestRun_noDeveloperId_exit10(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
 	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
-	rc.Resolved = &config.Resolved{} // no developer-id, no --bucket
+	rc.Resolved = &config.Resolved{}
 
 	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06"})
 	if code := exitCodeOf(t, err); code != 10 {
@@ -321,12 +306,10 @@ func TestPayload_JSON_emitsParsedRows(t *testing.T) {
 	}
 }
 
-// monthRT serves a per-month CSV for the range tests: a month present in bodies
-// returns its report; a month absent returns 404: a gap Play never published.
 type monthRT struct {
 	mu     sync.Mutex
 	calls  []string
-	bodies map[string][]byte // YYYYMM -> UTF-16 CSV report
+	bodies map[string][]byte
 }
 
 var monthInPath = regexp.MustCompile(`_(\d{6})\.csv`)
@@ -349,23 +332,15 @@ func (r *monthRT) serve(req *http.Request) (*http.Response, error) {
 	return testkit.Response(http.StatusNotFound, `{"error":{"code":404,"message":"no such object"}}`), nil
 }
 
-// oneReviewCSV builds a minimal single-row report carrying the columns Merge
-// needs: submit millis (sort key), last-update millis (dedup tiebreak), link
-// (identity), and a text marker.
 func oneReviewCSV(link, submitMillis, updateMillis, text string) string {
 	return "Package Name,Review Submit Millis Since Epoch,Review Last Update Millis Since Epoch,Review Text,Review Link\n" +
 		"com.example.app," + submitMillis + "," + updateMillis + ",\"" + text + "\"," + link + "\n"
 }
 
-// TestRun_range_fetchesAllMonths_mergedSorted covers the primary range criteria:
-// every month in --since..--until is fetched, rows merge into one set sorted by
-// submit time, and a review re-exported in a later month collapses to one row
-// with the latest update winning.
 func TestRun_range_fetchesAllMonths_mergedSorted(t *testing.T) {
 	rt := &monthRT{bodies: map[string][]byte{
 		"202601": utf16LE(oneReviewCSV("https://play.google.com/r/1", "1000", "1000", "jan")),
 		"202602": utf16LE(oneReviewCSV("https://play.google.com/r/2", "3000", "3000", "feb")),
-		// March re-exports r/1 (edited, higher update millis) plus a fresh r/3.
 		"202603": utf16LE(oneReviewCSV("https://play.google.com/r/1", "1000", "2000", "jan-edited") +
 			"com.example.app,2000,2000,\"mar\",https://play.google.com/r/3\n"),
 	}}
@@ -376,7 +351,6 @@ func TestRun_range_fetchesAllMonths_mergedSorted(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	// All three months fetched.
 	for _, m := range []string{"202601", "202602", "202603"} {
 		if !fetchedMonth(rt.calls, m) {
 			t.Errorf("month %s not fetched; calls=%v", m, rt.calls)
@@ -387,19 +361,16 @@ func TestRun_range_fetchesAllMonths_mergedSorted(t *testing.T) {
 	if len(rows) != 3 {
 		t.Fatalf("want 3 merged rows (r/1 deduped), got %d: %+v", len(rows), rows)
 	}
-	// Sorted by submit millis: r/1 (1000), r/3 (2000), r/2 (3000).
 	wantLinks := []string{"https://play.google.com/r/1", "https://play.google.com/r/3", "https://play.google.com/r/2"}
 	for i, want := range wantLinks {
 		if rows[i].ReviewLink != want {
 			t.Errorf("row %d link = %q, want %q (sort by submit)", i, rows[i].ReviewLink, want)
 		}
 	}
-	// Latest update wins for r/1.
 	if rows[0].ReviewText != "jan-edited" {
 		t.Errorf("dedup should keep latest update, got %q", rows[0].ReviewText)
 	}
 
-	// --output json emits the merged set.
 	var buf bytes.Buffer
 	if err := output.Render(&buf, output.FormatJSON, r.Renderers()); err != nil {
 		t.Fatalf("Render JSON: %v", err)
@@ -426,12 +397,9 @@ func fetchedMonth(calls []string, yyyymm string) bool {
 	return false
 }
 
-// TestRun_range_missingMonth_warnsNotFatal: a month with no report inside the
-// range is skipped with a stderr warning, not a failure.
 func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 	rt := &monthRT{bodies: map[string][]byte{
 		"202601": utf16LE(oneReviewCSV("https://play.google.com/r/1", "1000", "1000", "jan")),
-		// 202602 absent → 404.
 		"202603": utf16LE(oneReviewCSV("https://play.google.com/r/3", "3000", "3000", "mar")),
 	}}
 	rc, _, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -448,10 +416,8 @@ func TestRun_range_missingMonth_warnsNotFatal(t *testing.T) {
 	}
 }
 
-// TestRun_range_allMissing_exit30: a range where every month 404s (e.g. a wrong
-// package) is the "no reports" condition: exit 30, not a silent empty success.
 func TestRun_range_allMissing_exit30(t *testing.T) {
-	rt := &monthRT{bodies: map[string][]byte{}} // nothing published → every month 404
+	rt := &monthRT{bodies: map[string][]byte{}}
 	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
 
 	_, err := Run(rc, Input{Package: "com.example.app", Since: "2026-01", Until: "2026-03"})
@@ -460,12 +426,7 @@ func TestRun_range_allMissing_exit30(t *testing.T) {
 	}
 }
 
-// TestRun_singleMonthRange_verbatimLikeMonth: --since X --until X reads exactly one
-// file and must return it in file order, identical to --month X: the merge/sort
-// step only applies when more than one report is actually read.
 func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
-	// Two rows whose submit millis DESCEND, so a submit-time sort would reorder
-	// them; verbatim file order must be preserved.
 	csv := "Package Name,Review Submit Millis Since Epoch,Review Text,Review Link\n" +
 		"com.example.app,2000,\"first\",https://play.google.com/r/a\n" +
 		"com.example.app,1000,\"second\",https://play.google.com/r/b\n"
@@ -480,14 +441,11 @@ func TestRun_singleMonthRange_verbatimLikeMonth(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("want 2 rows, got %d", len(rows))
 	}
-	// File order preserved (NOT sorted by submit): same as --month would give.
 	if rows[0].ReviewText != "first" || rows[1].ReviewText != "second" {
 		t.Errorf("single-month range should be verbatim like --month, got %q then %q", rows[0].ReviewText, rows[1].ReviewText)
 	}
 }
 
-// TestRun_monthAndRange_exit2_noNetwork: --month with --since/--until is a usage
-// error (exit 2) caught before any network I/O.
 func TestRun_monthAndRange_exit2_noNetwork(t *testing.T) {
 	rt := &monthRT{}
 	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -501,7 +459,6 @@ func TestRun_monthAndRange_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_halfRange_exit2: --since without --until (or vice versa) is a usage error.
 func TestRun_halfRange_exit2(t *testing.T) {
 	rt := &monthRT{}
 	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -514,8 +471,6 @@ func TestRun_halfRange_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_badRange_exit2_noNetwork: an inverted or malformed range fails as
-// usage before any I/O.
 func TestRun_badRange_exit2_noNetwork(t *testing.T) {
 	rt := &monthRT{}
 	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -547,7 +502,6 @@ func TestPayload_Table_defaultColumns(t *testing.T) {
 			t.Errorf("table header missing %q in:\n%s", h, out)
 		}
 	}
-	// device/reply are non-default columns.
 	if strings.Contains(out, "DEVICE") || strings.Contains(out, "REPLY") {
 		t.Errorf("default table should not include device/reply:\n%s", out)
 	}
