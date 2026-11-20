@@ -8,10 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// TestRun_explicitEmptyReleaseNotes_exit20_noHTTP is #786: `--release-notes ""`
-// is an empty note, not an absent flag, so it is refused like "   " is, in
-// --dry-run too, before any request. Passed with --release-notes-dir it is the
-// same flag misuse as any other value.
 func TestRun_explicitEmptyReleaseNotes_exit20_noHTTP(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		rt, transport := newUploadTransport(uploadAPI{})

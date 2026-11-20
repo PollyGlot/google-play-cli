@@ -1,9 +1,5 @@
 package upload_test
 
-// Externally hosted APKs (#546): --externally-hosted registers an
-// ExternallyHostedApk resource through edits.apks.addexternallyhosted and
-// joins its versionCode to the same release as the uploaded artifacts.
-
 import (
 	"bytes"
 	"os"
@@ -17,7 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// writeHostedFile writes body as an externally hosted APK resource file.
 func writeHostedFile(t *testing.T, body string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "ext.json")
@@ -29,9 +24,6 @@ func writeHostedFile(t *testing.T, body string) string {
 
 const hostedResource = `{"packageName":"com.example.app","externallyHostedUrl":"https://cdn.example.com/app-310.apk","versionCode":310}`
 
-// TestRun_externallyHostedAlone_insertAddTrackCommit asserts the flag alone
-// is a complete release: edits.insert → apks.addexternallyhosted →
-// tracks.update → edits.commit, the release holding the returned code.
 func TestRun_externallyHostedAlone_insertAddTrackCommit(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-h", hostedVersionCode: 310})
 	rc, _ := newRC(t, transport)
@@ -59,9 +51,6 @@ func TestRun_externallyHostedAlone_insertAddTrackCommit(t *testing.T) {
 	}
 }
 
-// TestRun_externallyHostedWithAAB_releaseHoldsBothCodes asserts the flag
-// combines with an uploaded AAB and --retain-version-code: one Edit, one
-// tracks.update listing the uploaded, hosted, then retained codes.
 func TestRun_externallyHostedWithAAB_releaseHoldsBothCodes(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-mix", versionCode: 311, hostedVersionCode: 310})
 	rc, _ := newRC(t, transport)
@@ -88,9 +77,6 @@ func TestRun_externallyHostedWithAAB_releaseHoldsBothCodes(t *testing.T) {
 	}
 }
 
-// TestRun_externallyHosted_badResource_exit20_noNetwork asserts malformed
-// JSON and a package mismatch fail offline, before edits.insert and before
-// the token exchange, on the live path and on --dry-run.
 func TestRun_externallyHosted_badResource_exit20_noNetwork(t *testing.T) {
 	for name, body := range map[string]string{
 		"malformed JSON":   `{"packageName":`,
@@ -115,8 +101,6 @@ func TestRun_externallyHosted_badResource_exit20_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_externallyHosted_usageRefusals_exit2 pins the flag combinations
-// refused as CLI misuse, before any network call.
 func TestRun_externallyHosted_usageRefusals_exit2(t *testing.T) {
 	cases := map[string]upload.Input{
 		"blank path":                 {ExternallyHosted: "  "},
@@ -144,8 +128,6 @@ func TestRun_externallyHosted_usageRefusals_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_externallyHosted_dryRun_previewWithoutNetwork asserts --dry-run
-// with the flag alone previews the release with nothing on the wire.
 func TestRun_externallyHosted_dryRun_previewWithoutNetwork(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -168,10 +150,6 @@ func TestRun_externallyHosted_dryRun_previewWithoutNetwork(t *testing.T) {
 	}
 }
 
-// TestNewCommand_externallyHostedFlag_experimentalAndStandsInForArtifact
-// asserts the flag is labelled experimental on the frozen command, and that
-// it alone satisfies the positional-artifact check while a bare invocation
-// keeps the historical "missing <artifact>" refusal.
 func TestNewCommand_externallyHostedFlag_experimentalAndStandsInForArtifact(t *testing.T) {
 	cmd := upload.NewCommand(kernel.Boot{})
 	f := cmd.Flags().Lookup("externally-hosted")

@@ -7,12 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// TestCatalog_columnsAreSelfContained guards the two-column split of every row.
-// The em dash sweep (#444) once moved a closing parenthesis from Meaning into
-// RetrySafe, so `gplay exit-codes` printed "no) change the environment" in the
-// RETRY-SAFE column (#594). Each field is rendered in its own column (help
-// text, surface golden, website table), so each must read on its own:
-// parentheses balanced within the field, and RetrySafe opening with a verdict.
 func TestCatalog_columnsAreSelfContained(t *testing.T) {
 	verdicts := []string{"n/a", "no", "yes", "sometimes", "re-run"}
 	for _, d := range exit.Catalog() {
@@ -33,8 +27,6 @@ func TestCatalog_columnsAreSelfContained(t *testing.T) {
 	}
 }
 
-// TestCatalog_row4 pins the corrected wording of the GPLAY_READONLY row, the
-// one #594 found garbled.
 func TestCatalog_row4(t *testing.T) {
 	for _, d := range exit.Catalog() {
 		if d.Code != 4 {

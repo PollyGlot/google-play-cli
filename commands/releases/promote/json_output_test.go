@@ -9,9 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// promoteUpdateBody is a tracks.update response as Google shapes it, with the
-// characters an encoder would rewrite (&, <, >) and a layout gplay would not
-// produce itself: passthrough means these exact bytes reach stdout.
 const promoteUpdateBody = `{
  "track": "beta",
  "releases": [
@@ -24,9 +21,6 @@ const promoteUpdateBody = `{
  ]
 }`
 
-// TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim drives Run against
-// the fake API and asserts `--output json` prints the tracks.update body
-// byte for byte (ADR-0003): the contract agents and storedeck parse.
 func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-xyz",
@@ -44,10 +38,6 @@ func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
 	}
 }
 
-// TestRenderJSON_emptyRawResponse_fallsBackToResultShape pins the silent
-// fallback (also the --dry-run output, which has no API body): a Result
-// without a raw tracks.update body renders the gplay Result shape rather
-// than nothing, through output.WriteJSON (no HTML escaping of the name).
 func TestRenderJSON_emptyRawResponse_fallsBackToResultShape(t *testing.T) {
 	p := promote.Payload{Result: &orchestrator.Result{
 		VersionCode:     142,

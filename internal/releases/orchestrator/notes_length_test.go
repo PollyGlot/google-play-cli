@@ -13,10 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestUpload_invalidNoteContent_failsBeforeAnyHTTP is #786 on the upload path.
-// Play refuses an empty note and one over 500 characters, but used to say so
-// at tracks.update, after the bundle was uploaded. The refusal now comes before
-// any request, in --dry-run too, with exit 20 and the locale and length named.
 func TestUpload_invalidNoteContent_failsBeforeAnyHTTP(t *testing.T) {
 	longDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(longDir, "fr-FR.txt"), []byte(strings.Repeat("é", 501)), 0o644); err != nil {
@@ -71,9 +67,6 @@ func TestUpload_invalidNoteContent_failsBeforeAnyHTTP(t *testing.T) {
 	}
 }
 
-// TestPromote_invalidNoteContent_failsBeforeAnyHTTP is #786 on the promote
-// path: a --release-notes override Play would refuse is refused before
-// edits.insert, and --dry-run says so instead of exiting 0.
 func TestPromote_invalidNoteContent_failsBeforeAnyHTTP(t *testing.T) {
 	longDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(longDir, "fr-FR.txt"), []byte(strings.Repeat("é", 501)), 0o644); err != nil {
@@ -119,10 +112,6 @@ func TestPromote_invalidNoteContent_failsBeforeAnyHTTP(t *testing.T) {
 	}
 }
 
-// TestUpload_dryRun_unusedEmptyDefaultTxt_accepted: a default.txt that a
-// `<locale>.txt` may cover is not refused offline, where the default language
-// is unknown. With en-US.txt present and en-US the real default, the live load
-// never reads default.txt, so refusing it would block a legitimate upload.
 func TestUpload_dryRun_unusedEmptyDefaultTxt_accepted(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Bug fixes\n"), 0o644); err != nil {
@@ -148,11 +137,6 @@ func TestUpload_dryRun_unusedEmptyDefaultTxt_accepted(t *testing.T) {
 	}
 }
 
-// TestUpload_usedEmptyDefaultTxt_refusedBeforeBundleUpload is the other half
-// of the offline rule: once details.get names a default language no
-// `<locale>.txt` covers, the empty default.txt ships, so the load inside the
-// Edit refuses it with exit 20 before any bundle byte is sent, and the
-// implicit Edit is discarded.
 func TestUpload_usedEmptyDefaultTxt_refusedBeforeBundleUpload(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Bug fixes\n"), 0o644); err != nil {

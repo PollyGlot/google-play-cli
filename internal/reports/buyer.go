@@ -6,16 +6,6 @@ import (
 	"unicode"
 )
 
-// MaskBuyerLocation removes the buyer's city, state and postcode columns from
-// a finance report (ADR-0050 §9) and returns the columns it hid, in header
-// order; the input is left untouched. Columns are recognised from their
-// header text, never by position, so masking survives a Google rename: a
-// header is buyer location when it names the buyer and a place below the
-// country (city, state, province, postcode, post code, postal, zip), whatever
-// separates the words (spaces, punctuation, camelCase, or none: BuyerCity,
-// cityofbuyer). The country alone locates no one (revenue per country is the
-// common aggregate), so a country column is kept; a header naming the country
-// next to a place (Country / City of Buyer) is masked for the place.
 func MaskBuyerLocation(t Table) (Table, []Column) {
 	var hidden []Column
 	drop := map[string]bool{}
@@ -31,10 +21,6 @@ func MaskBuyerLocation(t Table) (Table, []Column) {
 	if len(hidden) == 0 {
 		return t, nil
 	}
-	// A row reads its cells through its export's layout: a masked row shares
-	// its cells with t but points to a copy of the layout without the hidden
-	// keys, so the hidden cells become unreachable and no row's text is
-	// copied.
 	masked := map[*layout]*layout{}
 	out.Rows = make([]Row, len(t.Rows))
 	for i, r := range t.Rows {
@@ -53,15 +39,12 @@ func MaskBuyerLocation(t Table) (Table, []Column) {
 	return out, hidden
 }
 
-// isBuyerLocation applies MaskBuyerLocation's header rule.
 func isBuyerLocation(header string) bool {
 	words := headerWords(header)
 	buyer, place := false, false
 	for i, w := range words {
 		if strings.Contains(w, "buyer") {
 			buyer = true
-			// A word glued to "buyer" (buyercity, cityofbuyer, buyersstate)
-			// is judged on what is left once the buyer is taken out.
 			w = strings.Replace(strings.Replace(w, "buyers", "", 1), "buyer", "", 1)
 			w = strings.TrimSuffix(strings.TrimPrefix(w, "of"), "of")
 		}
@@ -75,11 +58,6 @@ func isBuyerLocation(header string) bool {
 	return buyer && place
 }
 
-// headerWords are a header's words, lowercased: the runs of letters and
-// digits, each run further split at a camelCase boundary (a lower-case letter
-// or digit then an upper-case one, or an acronym then a capitalised word), so
-// "Buyer's Post-Code" gives buyer, s, post, code and "BuyerPostalCode" gives
-// buyer, postal, code.
 func headerWords(header string) []string {
 	var words []string
 	for _, run := range strings.FieldsFunc(header, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
@@ -98,15 +76,8 @@ func headerWords(header string) []string {
 	return words
 }
 
-// packageKeys are the column keys that carry the app's package name, by
-// preference. Google's finance reports call it "Product ID" (the package
-// name, "SKU ID" being the in-app product), so productId comes last, after
-// the explicit spellings.
 var packageKeys = []string{"packageName", "packageId", "productId"}
 
-// packageKey resolves the package column of an export's header (packageKeys
-// by preference), never a fixed position. A header with no such column cannot
-// be filtered: NoPackageColumnError.
 func packageKey(cols []Column) (string, error) {
 	for _, want := range packageKeys {
 		for _, c := range cols {
@@ -122,9 +93,6 @@ func packageKey(cols []Column) (string, error) {
 	return "", &NoPackageColumnError{Headers: headers}
 }
 
-// NoPackageColumnError means --package was asked of a report whose header
-// names no package column. It is a usage error (exit 2): dropping --package
-// reads the report.
 type NoPackageColumnError struct{ Headers []string }
 
 func (e *NoPackageColumnError) Error() string {
@@ -132,5 +100,4 @@ func (e *NoPackageColumnError) Error() string {
 		strings.Join(e.Headers, ", "))
 }
 
-// ExitCode implements exit.Coder.
 func (e *NoPackageColumnError) ExitCode() int { return 2 }

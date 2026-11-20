@@ -2,10 +2,6 @@ package filter
 
 import "testing"
 
-// TestParse_rejectsInvalid covers the out-of-band specs the grammar must
-// refuse: a rating below 1, above 5, a reversed range, and non-numeric
-// junk. Each must surface a non-nil error (the command maps it to exit 2);
-// the parser itself stays exit-code-agnostic.
 func TestParse_rejectsInvalid(t *testing.T) {
 	cases := []struct {
 		name string
@@ -28,9 +24,6 @@ func TestParse_rejectsInvalid(t *testing.T) {
 	}
 }
 
-// TestParse_emptySpecMatchesAll documents that an absent --stars (empty
-// spec) yields a selector admitting every rating: the command calls
-// Matches unconditionally rather than branching on whether --stars was set.
 func TestParse_emptySpecMatchesAll(t *testing.T) {
 	sel, err := Parse("")
 	if err != nil {
@@ -43,16 +36,12 @@ func TestParse_emptySpecMatchesAll(t *testing.T) {
 	}
 }
 
-// TestParse_acceptsAndMatches drives the --stars grammar: a single star,
-// an inclusive range, and a comma set. The behavior verified is "which
-// ratings does the parsed selector admit", through the public Parse +
-// Matches surface only: never the internal set representation.
 func TestParse_acceptsAndMatches(t *testing.T) {
 	cases := []struct {
 		name    string
 		spec    string
-		match   []int // ratings the selector must admit
-		noMatch []int // ratings the selector must reject
+		match   []int
+		noMatch []int
 	}{
 		{"single", "1", []int{1}, []int{2, 3, 4, 5}},
 		{"range", "1-2", []int{1, 2}, []int{3, 4, 5}},

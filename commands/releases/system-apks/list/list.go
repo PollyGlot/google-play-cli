@@ -1,7 +1,3 @@
-// Package list implements `gplay releases system-apks list`: enumerate the
-// System APK variants created from the bundle uploaded under a versionCode.
-// Read-only and Edit-free (a direct application-scoped GET). Ships
-// [experimental].
 package list
 
 import (
@@ -16,14 +12,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/systemapks"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package     string
 	VersionCode int64
 	Columns     string
 }
 
-// Payload renders the variants as a table / verbatim JSON.
 type Payload struct {
 	Rows []systemapkscmd.Row
 	Cols []output.Column[systemapkscmd.Row]
@@ -38,7 +32,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := systemapkscmd.RequireVersionCode(in.VersionCode); err != nil {
 		return nil, err
@@ -62,7 +55,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Rows: systemapkscmd.BuildRows(lr.Variants), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases system-apks list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

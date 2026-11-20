@@ -14,30 +14,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// This file keeps --help honest. TestLeafContract only checks that a leaf HAS
-// an Example; the two tests here check what the help SAYS:
-//
-//   - TestLeafExamples_parse runs every Example invocation through the real
-//     flag parser of the leaf it documents, so an Example citing a renamed
-//     flag, a wrong value type, a missing required flag or a wrong positional
-//     count fails here instead of failing the user who copies it.
-//   - TestHelp_noInternalReferences keeps repository-internal pointers (ADR
-//     numbers, PRD and issue numbers, repo file paths) out of help text: a
-//     Homebrew user cannot open them. Code comments keep them.
-
-// newExampleRoot builds a fresh command tree. Parsing an Example sets flag
-// values on the tree it parses into, so each invocation gets its own tree:
-// a value left over from a previous Example must never satisfy a required
-// flag of the next one.
 func newExampleRoot() *cobra.Command {
 	return newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 }
 
-// TestLeafExamples_parse checks every "gplay ..." line of every leaf Example:
-// it must invoke that leaf, and cobra must accept its flags (name, value
-// type, required flags, mutually exclusive groups) and its positional count.
-// Deprecated and hidden flags are refused too: an Example is what a new user
-// copies, so it only shows the current names.
 func TestLeafExamples_parse(t *testing.T) {
 	for _, leaf := range runnableLeaves(newExampleRoot()) {
 		key := leafKey(leaf)
@@ -53,8 +33,6 @@ func TestLeafExamples_parse(t *testing.T) {
 	}
 }
 
-// checkExampleInvocation resolves args (everything after "gplay") on a fresh
-// tree and runs the same validation cobra runs before RunE.
 func checkExampleInvocation(key string, args []string) error {
 	cmd := newExampleRoot()
 	i := 0
@@ -95,11 +73,6 @@ func checkExampleInvocation(key string, args []string) error {
 	return cmd.ValidateFlagGroups()
 }
 
-// documentedRequired matches the usage of a flag its leaf validates as
-// required in RunE rather than through cobra's MarkFlagRequired (so that a
-// missing value exits 2, not 1): "(required)", "(required; e.g. ...)" or a
-// trailing "Required.". Safety gates ("required: this is destructive",
-// "required when ...") are not matched: a --dry-run Example omits them.
 var documentedRequired = regexp.MustCompile(`\(required(\)|; e\.g\.)|Required\.$`)
 
 func subcommand(c *cobra.Command, name string) *cobra.Command {
@@ -114,7 +87,6 @@ func subcommand(c *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-// exampleInvocations is the argv after "gplay" of each exampleRun.
 func exampleInvocations(example string) [][]string {
 	var out [][]string
 	for _, r := range exampleRuns(example) {
@@ -123,21 +95,13 @@ func exampleInvocations(example string) [][]string {
 	return out
 }
 
-// exampleRun is one gplay invocation of an Example, with what the shell
-// would hand it besides its argv.
 type exampleRun struct {
-	args  []string          // argv after "gplay", $NAMEs the block sets expanded
-	stdin string            // the file a `< file` redirect reads, "" for none
-	env   map[string]string // NAME=value lines above it in the block
-	unset []string          // $NAMEs it reads that no line above sets
+	args  []string
+	stdin string
+	env   map[string]string
+	unset []string
 }
 
-// exampleRuns extracts the gplay invocations of an Example: comment and
-// blank lines are skipped, a trailing backslash continues a line, leading
-// VAR=value assignments are dropped (a line of assignments alone sets them
-// for the lines below), and a pipe, redirect or command list ends the
-// invocation. Lines running another program (jq, apksigner) are not gplay's
-// to check.
 func exampleRuns(example string) []exampleRun {
 	var out []exampleRun
 	var logical []string
@@ -213,16 +177,9 @@ func exampleRuns(example string) []exampleRun {
 
 var (
 	envAssignment = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=`)
-	// shellVar is a $NAME or ${NAME} reference. The tokenizer has already
-	// dropped the quotes, so a single-quoted $ would expand too: no Example
-	// writes one.
-	shellVar = regexp.MustCompile(`\$\{?[A-Za-z_][A-Za-z0-9_]*\}?`)
+	shellVar      = regexp.MustCompile(`\$\{?[A-Za-z_][A-Za-z0-9_]*\}?`)
 )
 
-// shellWords splits a line the way a POSIX shell would for the subset an
-// Example uses: whitespace separates words, single quotes are literal, double
-// quotes allow backslash escapes. An operator such as | stays its own word
-// only when it is surrounded by spaces, which is how Examples are written.
 func shellWords(line string) []string {
 	var words []string
 	var w strings.Builder
@@ -269,8 +226,6 @@ func shellWords(line string) []string {
 	return words
 }
 
-// TestExampleParser_selfCheck pins the parser the Example test relies on, so
-// a lenient tokenizer cannot turn TestLeafExamples_parse into a silent pass.
 func TestExampleParser_selfCheck(t *testing.T) {
 	got := exampleInvocations(`  # a comment
   gplay releases upload app.aab --track internal
@@ -315,7 +270,6 @@ func TestExampleParser_selfCheck(t *testing.T) {
 		t.Fatalf("exampleRuns:\n got %+v\nwant %+v", runs, wantRuns)
 	}
 
-	// The checker itself must reject what it exists to catch.
 	for _, bad := range []struct {
 		key  string
 		args []string
@@ -333,14 +287,8 @@ func TestExampleParser_selfCheck(t *testing.T) {
 	}
 }
 
-// internalReference matches pointers into the repository that mean nothing to
-// someone who installed the binary: ADR and PRD numbers, issue numbers, and
-// repo file paths. The public docs site (https://gplay.sh/docs/...) is where
-// help text sends a reader who needs more.
 var internalReference = regexp.MustCompile(`ADR-?\d|\bPRD\b|#\d|docs/[A-Za-z_]+\.md|\bGLOSSARY\.md\b|\bDESIGN\.md\b|§`)
 
-// TestHelp_noInternalReferences walks every command, groups and root
-// included, and checks each piece of text --help prints.
 func TestHelp_noInternalReferences(t *testing.T) {
 	var walk func(c *cobra.Command)
 	walk = func(c *cobra.Command) {

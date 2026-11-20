@@ -11,10 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestRun_pinWriteAndDiscardBothFail_reportsTheOrphanedEdit drives the worst
-// case of begin: the Edit is open on Play, the pin could not be written, and
-// the rollback discard failed too. Nothing local can recover that Edit, so
-// the error must carry both causes and the Edit ID with the way out.
 func TestRun_pinWriteAndDiscardBothFail_reportsTheOrphanedEdit(t *testing.T) {
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {

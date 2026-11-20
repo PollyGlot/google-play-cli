@@ -1,23 +1,5 @@
 package ratchet
 
-// The generalisation of internal/apiregistry/archgate_test.go (#577): one gate
-// per copy the audit counted, each with an allowlist that may only shrink. The
-// package comment lists the rules; this file holds their detectors.
-//
-// Detectors read syntax, not types (the module has no golang.org/x/tools), so
-// each one is a pattern tight enough to have no false positive on the tree
-// today, pinned by TestRules_detectTheirPattern:
-//
-//   - request-helper matches a one-argument `x.Do(arg)` whose receiver is not
-//     an imported package (api.Do takes three) and whose argument is not a
-//     func literal (sync.Once.Do). It ignores hc.Get / hc.Post, which no code
-//     uses; add them here the day one appears.
-//   - the rsa and http rules resolve the file's own import name, so an
-//     aliased import does not slip through.
-//
-// Test code is a `_test.go` file or a test-support package (a package name
-// ending in "test", e.g. internal/teamtest), the archgate convention.
-
 import (
 	"bufio"
 	"flag"
@@ -35,17 +17,12 @@ import (
 	"testing"
 )
 
-// moduleRoot is the repository root relative to this package's directory (go
-// test runs there). Keys in the allowlists are slash paths relative to it.
 var moduleRoot = filepath.Join("..", "..")
 
-// scanRoots are the trees that hold Go code.
 var scanRoots = []string{"cmd", "commands", "internal"}
 
 var report = flag.Bool("ratchet.report", false, "print the allowlist size of every rule and exit (make ratchets)")
 
-// TestMain serves `make ratchets`: with -ratchet.report it prints one line per
-// rule instead of running the gate.
 func TestMain(m *testing.M) {
 	flag.Parse()
 	if *report {
@@ -58,34 +35,26 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// srcFile is one parsed Go file, shared by every rule.
 type srcFile struct {
-	path    string // slash path relative to the module root
+	path    string
 	fset    *token.FileSet
 	ast     *ast.File
 	isTest  bool
-	imports map[string]string // import path -> local name
+	imports map[string]string
 }
 
-// hit is one offender: key is the allowlist line, `path symbol`.
 type hit struct {
 	key string
 	pos token.Position
 }
 
 type rule struct {
-	id string
-	// hasAllowlist is false for a rule already at zero: no file, no debt.
+	id           string
 	hasAllowlist bool
-	// what names the offending construct, fix its paved-road replacement; both
-	// go into the failure message.
-	what, fix string
-	// exempt are the path prefixes that ARE the paved road (or, with a reason,
-	// sit outside what it covers).
-	exempt []string
-	// testCode selects test code (true) or shipped code (false).
-	testCode bool
-	detect   func(f *srcFile) []hit
+	what, fix    string
+	exempt       []string
+	testCode     bool
+	detect       func(f *srcFile) []hit
 }
 
 var rules = []rule{
@@ -94,14 +63,9 @@ var rules = []rule{
 		what: "direct (*http.Client).Do",
 		fix:  "send the request through the executor, api.Do / api.DoJSON in internal/play/api",
 		exempt: []string{
-			"internal/play/api/", // the executor itself
+			"internal/play/api/",
 			"internal/transport/",
-			// Cloud Storage (reviews history) is not a Play API: no Discovery
-			// snapshot, no registry method, so the executor cannot address it
-			// (the archgate test exempts it for the same reason).
 			"internal/play/gcs/",
-			// Fetches Discovery documents for `make discovery-update`, a dev
-			// tool; the Discovery service is not in the registry either.
 			"internal/discovery/",
 		},
 		detect: detectDirectDo,
@@ -128,10 +92,7 @@ var rules = []rule{
 		fix:  "take the client the RunContext builds (rc.AuthedClient / rc.UploadClient), wrap transports in internal/transport, and build any new client with transport.NewClient",
 		exempt: []string{
 			"internal/transport/",
-			"internal/discovery/", // dev tool, see request-helper
-			// The test harness: its package name does not end in "test", so
-			// the scan counts it as shipped code, but no production package
-			// imports it and its clients only ever wrap the fake transport.
+			"internal/discovery/",
 			"internal/testkit/",
 		},
 		detect: detectHTTPClient,
@@ -142,14 +103,10 @@ var rules = []rule{
 		what:         "stdout written outside output.Render",
 		fix:          "return an output.Renderable and let the kernel render it: output.Render runs every table and markdown view through output.SanitizeText, so an API string cannot carry a terminal escape sequence to the screen (output.WriteJSON for a JSON-only echo)",
 		exempt: []string{
-			"internal/output/", // the render boundary itself
-			"internal/kernel/", // hands rc.Stdout to output.Render
-			// The process root: wires os.Stdout into the Boot and prints the
-			// `version` line, which carries no API string.
+			"internal/output/",
+			"internal/kernel/",
 			"cmd/gplay/",
-			"internal/discovery/", // dev tool, see request-helper
-			// Stream a downloaded APK to stdout: binary bytes, not a view, so
-			// sanitising them would corrupt the file.
+			"internal/discovery/",
 			"commands/releases/generated/download/",
 			"commands/releases/system-apks/download/",
 		},
@@ -179,9 +136,6 @@ func TestRatchets(t *testing.T) {
 	}
 }
 
-// scan runs r over the files in its scope and indexes the hits by key; one
-// key may cover several sites (two Do calls in one function), and the first
-// position is kept for the message.
 func scan(r rule, files []*srcFile) map[string]hit {
 	found := map[string]hit{}
 	for _, f := range files {
@@ -206,8 +160,6 @@ func exempted(r rule, path string) bool {
 	return false
 }
 
-// violations compares both directions and returns the messages, sorted so a
-// run is stable: every new offender, then every stale allowlist line.
 func violations(r rule, found map[string]hit, allowed map[string]bool) []string {
 	var out []string
 	for key, h := range found {
@@ -236,9 +188,6 @@ func symbolOf(key string) string {
 	return sym
 }
 
-// loadAllowlist reads testdata/<id>.allow: `path symbol` per line, `#`
-// comments and blank lines ignored. A duplicate line is an error, so the
-// count `make ratchets` prints is the number of offenders.
 func loadAllowlist(r rule) (map[string]bool, error) {
 	name := filepath.Join("testdata", r.id+".allow")
 	allowed := map[string]bool{}
@@ -356,7 +305,6 @@ func (f *srcFile) hit(symbol string, pos token.Pos) hit {
 	return hit{key: f.path + " " + symbol, pos: f.fset.Position(pos)}
 }
 
-// isImportName reports whether id names a package imported by f.
 func (f *srcFile) isImportName(id string) bool {
 	for _, name := range f.imports {
 		if name == id {
@@ -366,7 +314,6 @@ func (f *srcFile) isImportName(id string) bool {
 	return false
 }
 
-// isPkgSel reports whether e is `<local name of importPath>.<sel>`.
 func (f *srcFile) isPkgSel(e ast.Expr, importPath, sel string) bool {
 	s, ok := e.(*ast.SelectorExpr)
 	if !ok || s.Sel.Name != sel {
@@ -377,8 +324,6 @@ func (f *srcFile) isPkgSel(e ast.Expr, importPath, sel string) bool {
 	return ok && imported && x.Name == name
 }
 
-// eachDecl visits every node of f with the symbol that encloses it: the
-// function or `Type.Method`, or "(package)" for package-level declarations.
 func eachDecl(f *srcFile, visit func(symbol string, n ast.Node)) {
 	for _, decl := range f.ast.Decls {
 		symbol := "(package)"
@@ -401,7 +346,6 @@ func funcSymbol(fd *ast.FuncDecl) string {
 	return recvType(fd) + "." + fd.Name.Name
 }
 
-// recvType is the receiver's type name, without pointer or type parameters.
 func recvType(fd *ast.FuncDecl) string {
 	e := fd.Recv.List[0].Type
 	for {
@@ -483,14 +427,6 @@ func detectHTTPClient(f *srcFile) []hit {
 
 const outputPkg = "github.com/PollyGlot/google-play-cli/internal/output"
 
-// detectStdoutBypass finds a fmt.Print* call, or a stdout handle (os.Stdout,
-// a `.Stdout` field such as rc.Stdout, a cmd.OutOrStdout() call) used for
-// anything but wiring it into another `Stdout` (an assignment or a `Stdout:`
-// field) or handing it to the sanctioned sinks, output.Render and
-// output.WriteJSON. Every other use is a renderer writing to the terminal
-// without crossing the sanitising boundary. It does not follow a handle once
-// it is stored under another name (w := rc.Stdout is caught at the
-// assignment, a helper taking an io.Writer is not inspected).
 func detectStdoutBypass(f *srcFile) []hit {
 	var hits []hit
 	for _, decl := range f.ast.Decls {
@@ -498,8 +434,6 @@ func detectStdoutBypass(f *srcFile) []hit {
 		if fd, ok := decl.(*ast.FuncDecl); ok {
 			symbol = funcSymbol(fd)
 		}
-		// Inspect visits a parent before its children, so the wiring and
-		// sink checks mark a handle before the handle itself is visited.
 		sanctioned := map[ast.Expr]bool{}
 		ast.Inspect(decl, func(n ast.Node) bool {
 			switch x := n.(type) {
@@ -520,7 +454,6 @@ func detectStdoutBypass(f *srcFile) []hit {
 				if (f.isPkgSel(x.Fun, outputPkg, "Render") || f.isPkgSel(x.Fun, outputPkg, "WriteJSON")) && len(x.Args) > 0 {
 					sanctioned[x.Args[0]] = true
 				}
-				// fmt.Print* writes to os.Stdout without naming it.
 				for _, p := range []string{"Print", "Printf", "Println"} {
 					if f.isPkgSel(x.Fun, "fmt", p) {
 						hits = append(hits, f.hit(symbol, x.Pos()))
@@ -539,9 +472,6 @@ func detectStdoutBypass(f *srcFile) []hit {
 	return hits
 }
 
-// isStdout reports whether e is a stdout handle: os.Stdout, a `.Stdout`
-// field of a value (rc.Stdout, boot.Stdout), or a no-argument OutOrStdout()
-// call (cobra).
 func (f *srcFile) isStdout(e ast.Expr) bool {
 	switch x := e.(type) {
 	case *ast.SelectorExpr:
@@ -559,8 +489,6 @@ func (f *srcFile) isStdout(e ast.Expr) bool {
 	return false
 }
 
-// usageErrorName matches usageError, usageErr, cliUsageError, ...: the local
-// copies #576 folded into exit.UsageError.
 var usageErrorName = regexp.MustCompile(`(?i)usage\w*err`)
 
 func detectUsageErrorType(f *srcFile) []hit {
@@ -580,13 +508,10 @@ func detectUsageErrorType(f *srcFile) []hit {
 	return hits
 }
 
-// TestRules_detectTheirPattern pins each detector on a minimal offender and on
-// the look-alike it must let through, so a heuristic cannot silently go blind
-// (a gate that finds nothing passes forever).
 func TestRules_detectTheirPattern(t *testing.T) {
 	cases := []struct {
 		rule, path, src string
-		want            []string // keys
+		want            []string
 	}{
 		{"request-helper", "commands/x/x.go", `package x
 import ("context"; "net/http"; "sync"; "github.com/PollyGlot/google-play-cli/internal/play/api")
@@ -665,9 +590,6 @@ type usage struct{}`,
 	}
 }
 
-// TestViolations_bothDirections pins the ratchet itself: a new offender and a
-// stale allowlist line both fail, and the new-offender message names the
-// paved-road replacement.
 func TestViolations_bothDirections(t *testing.T) {
 	r := ruleByID(t, "request-helper")
 	found := map[string]hit{

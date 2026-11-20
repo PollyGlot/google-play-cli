@@ -10,16 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
-// The alias registry is hand-curated (ADR-0016), so nothing ties it to
-// Google's enum set: a Discovery refresh that deprecates an aliased enum stays
-// green everywhere else (#559). This test is that tie. It reads the committed
-// androidpublisher snapshot the same way the discovery and schemaindex
-// integrity tests do (discovery.Services + SnapshotFilename under
-// docs/discovery/). The embedded Schema index cannot serve here: it keeps
-// neither array-item enums nor enumDeprecated.
-
-// enumItems mirrors the only part of a Discovery array property this test
-// reads: the item enum and its parallel enumDeprecated flags.
 type enumItems struct {
 	Items struct {
 		Enum           []string `json:"enum"`
@@ -27,8 +17,6 @@ type enumItems struct {
 	} `json:"items"`
 }
 
-// loadPermissionEnums returns, for each scope, every enum value Google lists
-// on the permission field of that scope, mapped to its enumDeprecated flag.
 func loadPermissionEnums(t *testing.T) map[vocab.Scope]map[string]bool {
 	t.Helper()
 	var svc *discovery.Service
@@ -83,17 +71,13 @@ func loadPermissionEnums(t *testing.T) map[vocab.Scope]map[string]bool {
 	return out
 }
 
-// TestAliases_anchoredToDiscovery fails when an alias resolves to an enum the
-// snapshot marks enumDeprecated while the alias is not marked Deprecated (the
-// #559 drift), or the reverse (a stale marking). It also fails when an alias
-// resolves to an enum Google no longer lists at all.
 func TestAliases_anchoredToDiscovery(t *testing.T) {
 	known := loadPermissionEnums(t)
 	for _, a := range vocab.Aliases() {
 		for _, scope := range []vocab.Scope{vocab.Account, vocab.App} {
 			e, ok := a.Enum(scope)
 			if !ok {
-				continue // account-only alias: no per-app enum to anchor
+				continue
 			}
 			googleDeprecated, listed := known[scope][e]
 			switch {

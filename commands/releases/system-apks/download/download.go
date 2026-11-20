@@ -1,9 +1,3 @@
-// Package download implements `gplay releases system-apks download
-// <variantId>`: stream the raw bytes of one System APK variant to a local file
-// (or stdout with `--dest -`), following the ADR-0034 binary download
-// convention: no --output, destination is --dest, a ✓ on stderr. Read-only and
-// Edit-free; not MarkMutating, not gated by GPLAY_READONLY. Ships
-// [experimental].
 package download
 
 import (
@@ -20,10 +14,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/systemapks"
 )
 
-// destStdout is the --dest sentinel that streams the bytes to stdout.
 const destStdout = "-"
 
-// Input is the request-shaped struct cobra builds from the positional + flags.
 type Input struct {
 	Package     string
 	VersionCode int64
@@ -31,8 +23,6 @@ type Input struct {
 	Dest        string
 }
 
-// localIOError maps a destination that cannot be created or finalized to the
-// client-side IO exit (20, docs/DESIGN.md §9), not transport (50).
 type localIOError struct {
 	path  string
 	cause error
@@ -42,8 +32,6 @@ func (e *localIOError) Error() string { return fmt.Sprintf("write %s: %v", e.pat
 func (e *localIOError) Unwrap() error { return e.cause }
 func (e *localIOError) ExitCode() int { return 20 }
 
-// Run streams the variant to the destination and emits the ✓ on stderr. The
-// bytes are not a Renderable, so it returns none.
 func Run(rc *kernel.RunContext, in Input) error {
 	id, err := systemapkscmd.ParseVariantID(in.VariantID)
 	if err != nil {
@@ -59,9 +47,6 @@ func Run(rc *kernel.RunContext, in Input) error {
 	if err != nil {
 		return err
 	}
-	// UploadClient: a media transfer is bounded only by an explicit --timeout,
-	// not the 60s control-plane deadline (docs/DESIGN.md §8), as for
-	// `releases generated download`.
 	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return err
@@ -82,8 +67,6 @@ func Run(rc *kernel.RunContext, in Input) error {
 	}
 	n, derr := systemapks.Download(rc.Ctx, httpClient, pkg, in.VersionCode, id, f)
 	closeErr := f.Close()
-	// A failed transfer or a failed Close leaves a suspect file: remove it
-	// rather than hand a truncated APK to a system-image build.
 	if derr != nil {
 		_ = os.Remove(in.Dest)
 		return systemapkscmd.Classify(pkg, derr)
@@ -96,7 +79,6 @@ func Run(rc *kernel.RunContext, in Input) error {
 	return nil
 }
 
-// NewCommand returns the cobra command for `gplay releases system-apks download`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var in Input
 	cmd := &cobra.Command{

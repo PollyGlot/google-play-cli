@@ -13,13 +13,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestRun_concurrentSweepKeepsPackageOrder: apps are read fanout.Limit at a
-// time and the first-named apps answer LAST, yet ran, errors and findings
-// follow the named order exactly as a serial sweep would, a failed app never
-// stops the others, and every Edit opened is discarded.
 func TestRun_concurrentSweepKeepsPackageOrder(t *testing.T) {
-	// Named out of alphabetical order on purpose: a named sweep keeps the
-	// operator's order, it does not sort.
 	pkgs := []string{"com.z", "com.a", "com.m", "com.b", "com.y", "com.c", "com.x", "com.d", "com.w", "com.e"}
 	failing := map[string]int{"com.m": http.StatusForbidden, "com.x": http.StatusInternalServerError}
 	delay := map[string]time.Duration{}
@@ -76,7 +70,6 @@ func TestRun_concurrentSweepKeepsPackageOrder(t *testing.T) {
 	if len(report.Errors) == 2 && (report.Errors[0].ExitCode != 11 || report.Errors[1].ExitCode != 40) {
 		t.Errorf("exit codes = %d, %d, want 11 (403) then 40 (5xx)", report.Errors[0].ExitCode, report.Errors[1].ExitCode)
 	}
-	// Findings are grouped per app in the same order.
 	var seen []string
 	for _, f := range report.Findings {
 		if len(seen) == 0 || seen[len(seen)-1] != f.Package {

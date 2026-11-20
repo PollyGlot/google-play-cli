@@ -1,14 +1,3 @@
-// Command coverage-update renders docs/COVERAGE.md from the committed
-// Discovery existence index and the API method registry (slice #514). It is
-// OFFLINE: it makes no network call; `make discovery-update` is the separate,
-// networked step that refreshes the index this reads.
-//
-// It is a thin wrapper over internal/coveragedoc, the same Render the offline
-// freshness test re-runs, so a re-render is byte-equal to the committed file.
-// Invoke via `make coverage-update`.
-//
-// This command is NOT part of the shipped gplay binary; it is maintenance
-// tooling run by a human (or by the Discovery triage bot) on demand.
 package main
 
 import (

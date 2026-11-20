@@ -12,17 +12,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// step is one scripted outcome: status 0 means "return a transport error"
-// (err when set, else a generic one), otherwise an HTTP response with that
-// status (and optional headers).
 type step struct {
 	status int
 	header http.Header
 	err    error
 }
 
-// scriptRT serves a fixed sequence of outcomes and records the body bytes seen
-// on each attempt (to prove a retried request re-sends its full payload).
 type scriptRT struct {
 	t      *testing.T
 	steps  []step
@@ -57,8 +52,6 @@ func (s *scriptRT) serve(req *http.Request) (*http.Response, error) {
 	return &http.Response{StatusCode: st.status, Header: h, Body: io.NopCloser(strings.NewReader("ok"))}, nil
 }
 
-// newRetry builds a retryTransport over inner with deterministic, non-blocking
-// seams: identity jitter and a sleep that records each delay instead of waiting.
 func newRetry(t *testing.T, inner http.RoundTripper, maxRetries int) (*retryTransport, *[]time.Duration) {
 	t.Helper()
 	rt, ok := WithRetry(inner, RetryOptions{MaxRetries: maxRetries}).(*retryTransport)
@@ -66,7 +59,7 @@ func newRetry(t *testing.T, inner http.RoundTripper, maxRetries int) (*retryTran
 		t.Fatalf("WithRetry did not return a *retryTransport for MaxRetries=%d", maxRetries)
 	}
 	delays := &[]time.Duration{}
-	rt.jitter = func(d time.Duration) time.Duration { return d } // deterministic
+	rt.jitter = func(d time.Duration) time.Duration { return d }
 	rt.sleep = func(_ context.Context, d time.Duration) bool { *delays = append(*delays, d); return true }
 	return rt, delays
 }
@@ -166,10 +159,6 @@ func TestRetry_editsCommitNeverRetried(t *testing.T) {
 }
 
 func TestRetry_withoutRetryContextNeverRetried(t *testing.T) {
-	// A request whose context carries WithoutRetry (the resumable-upload
-	// chunk PUTs) must pass through once even on a 5xx: the caller owns its
-	// own resume-from-offset recovery, so a blind transport retry would
-	// double-send bytes.
 	inner := &scriptRT{t: t, steps: []step{{status: 500}}}
 	rt, _ := newRetry(t, testkit.RoundTripFunc(inner.serve), 3)
 	req := newReq(t, http.MethodPut, apiURL, "chunk")
@@ -207,8 +196,6 @@ func TestRetry_exhaustedReturnsLastResponse(t *testing.T) {
 func TestRetry_uploadBodyRecreatedPerAttempt(t *testing.T) {
 	inner := &scriptRT{t: t, steps: []step{{status: 500}, {status: 200}}}
 	rt, _ := newRetry(t, testkit.RoundTripFunc(inner.serve), 1)
-	// PUT (tracks.update): a replay after a 5xx needs an idempotent method, see
-	// TestRetry_nonIdempotentPOST* for the POST side.
 	resp, err := rt.RoundTrip(newReq(t, http.MethodPut, apiURL, "payload-bytes"))
 	if err != nil {
 		t.Fatalf("RoundTrip: %v", err)
@@ -235,15 +222,12 @@ func TestRetry_backoffGrowsExponentially(t *testing.T) {
 	if len(*delays) != 2 {
 		t.Fatalf("backoff sleeps = %d, want 2", len(*delays))
 	}
-	// Identity jitter → delays are base, base*2: strictly increasing.
 	if (*delays)[1] <= (*delays)[0] {
 		t.Errorf("backoff did not grow: %v", *delays)
 	}
 }
 
 func TestWithRetry_zeroIsPassthrough(t *testing.T) {
-	// A Fake, not a RoundTripFunc: the identity check needs a comparable
-	// transport, and comparing two func values panics.
 	inner := testkit.NewFake()
 	got := WithRetry(inner, RetryOptions{MaxRetries: 0})
 	if got != http.RoundTripper(inner) {

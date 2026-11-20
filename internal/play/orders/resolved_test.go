@@ -1,8 +1,3 @@
-// Migration proof for #518: orders now takes its verbs and URLs from
-// internal/apiregistry instead of local literals. orders_test.go is untouched
-// and still asserts the behaviour by substring; what is added here is the
-// ABSOLUTE URL (host included) and the verb of each call, the `orders:batchGet`
-// and `{orderId}:refund` custom verbs included.
 package orders_test
 
 import (
@@ -18,10 +13,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/orders"
 )
 
-// pinned answers {} to every call and records what was sent.
 func pinned() *testkit.Fake { return testkit.NewFake(testkit.Any(http.StatusOK, `{}`)) }
 
-// first is the first call f recorded, or the zero Call when none was sent.
 func first(f *testkit.Fake) testkit.Call {
 	if calls := f.Calls(); len(calls) > 0 {
 		return calls[0]
@@ -90,9 +83,6 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 	}
 }
 
-// TestEmptyOrderIDFailsBeforeTheWire asserts a missing path parameter is
-// refused locally rather than sent as a truncated URL: on a money-moving
-// endpoint, a request that reaches the wire malformed is the worst outcome.
 func TestEmptyOrderIDFailsBeforeTheWire(t *testing.T) {
 	rt := pinned()
 	_, err := orders.Refund(context.Background(), &http.Client{Transport: rt}, "com.example.app", "", false)

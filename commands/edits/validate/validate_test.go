@@ -22,8 +22,6 @@ import (
 
 const pkg = "com.example.app"
 
-// newValidateFake serves the edits.validate POST; validateStatus (0 → 200)
-// forces a non-2xx for the failure test.
 func newValidateFake(validateStatus int) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if c.Method != http.MethodPost || !strings.HasSuffix(c.Path, "/edits/edit-9:validate") {
@@ -36,9 +34,6 @@ func newValidateFake(validateStatus int) *testkit.Fake {
 	})
 }
 
-// validateCalls counts the edits.validate calls and fails the test on any
-// other request: an insert, a commit or a delete is a contract breach,
-// including on the paths where Run's error would otherwise hide it.
 func validateCalls(t *testing.T, f *testkit.Fake) int {
 	t.Helper()
 	n := 0
@@ -101,14 +96,12 @@ func TestRun_valid_mirrorsAPIBodyAndKeepsPin(t *testing.T) {
 	if n := validateCalls(t, fake); n != 1 {
 		t.Errorf("validateCalls = %d, want 1", n)
 	}
-	// ADR-0003: --output json is the API body, not a gplay envelope.
 	if got, want := strings.TrimSpace(render(t, r, output.FormatJSON)), `{"id":"edit-9","expiryTimeSeconds":"1700000000"}`; got != want {
 		t.Errorf("json = %q, want the verbatim AppEdit %q", got, want)
 	}
 	if out := render(t, r, output.FormatTable); !strings.Contains(out, "validated explicit edit edit-9") {
 		t.Errorf("table = %q", out)
 	}
-	// Validate never commits: the Edit is still open, so the pin must survive.
 	if _, ok, _ := editpin.Lookup(config.OSFS{}, gplayDir, pkg); !ok {
 		t.Error("pin cleared by validate; it must stay for the later commit/discard")
 	}

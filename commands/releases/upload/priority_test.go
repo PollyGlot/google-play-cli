@@ -10,8 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestRun_updatePriority_sentOnTracksUpdate pins #664: --update-priority N
-// lands as inAppUpdatePriority on the release the tracks.update PUT carries.
 func TestRun_updatePriority_sentOnTracksUpdate(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-prio", versionCode: 142})
 	rc, _ := newRC(t, transport)
@@ -33,9 +31,6 @@ func TestRun_updatePriority_sentOnTracksUpdate(t *testing.T) {
 	}
 }
 
-// TestRun_noUpdatePriority_fieldAbsentFromTracksUpdate keeps today's payload
-// byte-identical without the flag: no inAppUpdatePriority key at all (an
-// explicit 0 would reset a priority, so absence and 0 must differ).
 func TestRun_noUpdatePriority_fieldAbsentFromTracksUpdate(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-noprio", versionCode: 142})
 	rc, _ := newRC(t, transport)
@@ -48,8 +43,6 @@ func TestRun_noUpdatePriority_fieldAbsentFromTracksUpdate(t *testing.T) {
 	}
 }
 
-// TestRun_updatePriorityZero_isSentExplicitly: 0 is a legal priority (the
-// lowest), distinct from "unset", so --update-priority 0 must reach the wire.
 func TestRun_updatePriorityZero_isSentExplicitly(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-zero", versionCode: 142})
 	rc, _ := newRC(t, transport)
@@ -65,8 +58,6 @@ func TestRun_updatePriorityZero_isSentExplicitly(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_updatePriority_golden: the --dry-run preview shows the
-// priority the live call would send.
 func TestRun_dryRun_updatePriority_golden(t *testing.T) {
 	_, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -91,8 +82,6 @@ func TestRun_dryRun_updatePriority_golden(t *testing.T) {
 	}
 }
 
-// TestRun_updatePriorityOutOfRange_exit2_noHTTP: Google accepts 0..5 only;
-// anything else is a usage error before any request, token exchange included.
 func TestRun_updatePriorityOutOfRange_exit2_noHTTP(t *testing.T) {
 	for _, p := range []int{6, -1} {
 		rt, transport := newUploadTransport(uploadAPI{})
@@ -111,7 +100,6 @@ func TestRun_updatePriorityOutOfRange_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestNewCommand_registersUpdatePriorityFlag pins the cobra wiring.
 func TestNewCommand_registersUpdatePriorityFlag(t *testing.T) {
 	if upload.NewCommand(kernel.Boot{}).Flags().Lookup("update-priority") == nil {
 		t.Error("releases upload is missing --update-priority")

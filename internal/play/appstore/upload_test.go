@@ -17,21 +17,17 @@ import (
 
 const uploadSessionURI = "https://androidpublisher.googleapis.com/upload/session/abc123"
 
-// uploadRT scripts the two-leg resumable exchange: the initiate POST answers
-// with a session URI, the single chunk PUT answers with the resource body.
 type uploadRT struct {
 	initURL      string
-	initCT       string // X-Upload-Content-Type announced at initiate
+	initCT       string
 	initBody     []byte
-	initBodyCT   string // Content-Type of the initiate request itself
+	initBodyCT   string
 	putBody      []byte
 	respStatus   int
 	respBody     string
-	initFailWith int // non-zero => fail the initiate POST with this status
+	initFailWith int
 }
 
-// client serves r through testkit.RoundTripFunc: the initiate answer carries a
-// Location header, which the Fake's status-and-body responders cannot set.
 func (r *uploadRT) client() *http.Client {
 	return &http.Client{Transport: testkit.RoundTripFunc(r.serve)}
 }
@@ -65,7 +61,6 @@ func (r *uploadRT) serve(req *http.Request) (*http.Response, error) {
 	return nil, http.ErrNotSupported
 }
 
-// writeFile drops content at a temp path and returns it.
 func writeFile(t *testing.T, name string, content []byte) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), name)
@@ -75,12 +70,8 @@ func writeFile(t *testing.T, name string, content []byte) string {
 	return p
 }
 
-// pngBytes is a minimal PNG header: enough for http.DetectContentType.
 var pngBytes = append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
 
-// TestUploadAPK_requestShape pins the wire shape: the upload host (not the
-// plain API host), the app-store-keyed path with the hosted package as a path
-// segment, resumable upload type, and no Edit.
 func TestUploadAPK_requestShape(t *testing.T) {
 	rt := &uploadRT{respBody: `{"apkId":"apk-42"}`}
 	path := writeFile(t, "app.apk", []byte("PK\x03\x04 pretend apk"))
@@ -107,22 +98,17 @@ func TestUploadAPK_requestShape(t *testing.T) {
 	if rt.initCT != "application/octet-stream" {
 		t.Errorf("X-Upload-Content-Type = %q, want application/octet-stream", rt.initCT)
 	}
-	// uploadApk takes no request body: the initiate POST opens an empty
-	// session, the bytes ride the chunk PUT.
 	if len(rt.initBody) != 0 {
 		t.Errorf("initiate body = %q, want empty (UploadApkRequest has no fields)", rt.initBody)
 	}
 	if !strings.Contains(string(rt.putBody), "pretend apk") {
 		t.Errorf("chunk PUT did not carry the file bytes: %q", rt.putBody)
 	}
-	// ADR-0003: the raw body is the source of truth for --output json.
 	if string(raw) != `{"apkId":"apk-42"}` {
 		t.Errorf("raw = %s, want the verbatim response", raw)
 	}
 }
 
-// TestUploadAPK_pathEscapesBothKeys guards against a store or package name
-// with a path-hostile character silently reshaping the URL.
 func TestUploadAPK_pathEscapesBothKeys(t *testing.T) {
 	rt := &uploadRT{respBody: `{"apkId":"a"}`}
 	path := writeFile(t, "app.apk", []byte("bytes"))
@@ -135,12 +121,9 @@ func TestUploadAPK_pathEscapesBothKeys(t *testing.T) {
 	}
 }
 
-// TestUploadImage_sniffsContentType pins that the image endpoint is told it is
-// receiving an image: it declares `image/*`, so announcing octet-stream would
-// invite a rejection after the whole transfer.
 func TestUploadImage_sniffsContentType(t *testing.T) {
 	rt := &uploadRT{respBody: `{"imageId":"img-7"}`}
-	path := writeFile(t, "icon", pngBytes) // no extension on purpose
+	path := writeFile(t, "icon", pngBytes)
 
 	id, _, err := appstore.UploadImage(context.Background(), rt.client(), "com.example.store", "com.example.app", path)
 	if err != nil {
@@ -157,8 +140,6 @@ func TestUploadImage_sniffsContentType(t *testing.T) {
 	}
 }
 
-// TestUploadPolicy_sendsRequiredFileType pins the one upload that carries a
-// request body: fileType is required, and it opens the resumable session.
 func TestUploadPolicy_sendsRequiredFileType(t *testing.T) {
 	rt := &uploadRT{respBody: `{"fileId":"file-9"}`}
 	path := writeFile(t, "policy.pdf", []byte("%PDF-1.4\n stub"))
@@ -187,8 +168,6 @@ func TestUploadPolicy_sendsRequiredFileType(t *testing.T) {
 	}
 }
 
-// TestUpload_missingFile_exit20 keeps an unreadable local path client-side
-// (exit 20) instead of letting it surface as transport (exit 50).
 func TestUpload_missingFile_exit20(t *testing.T) {
 	rt := &uploadRT{}
 	_, _, err := appstore.UploadAPK(context.Background(), rt.client(), "s", "p", filepath.Join(t.TempDir(), "nope.apk"))
@@ -198,23 +177,16 @@ func TestUpload_missingFile_exit20(t *testing.T) {
 	}
 }
 
-// TestUpload_directory_exit20 covers the path that passes Open and Stat but
-// cannot be streamed.
 func TestUpload_directory_exit20(t *testing.T) {
 	_, _, err := appstore.UploadImage(context.Background(), (&uploadRT{}).client(), "s", "p", t.TempDir())
 	assertExitCode(t, err, 20)
 }
 
-// TestUpload_emptyFile_exit20 rejects a zero-byte file: there is nothing to
-// sniff and nothing worth uploading.
 func TestUpload_emptyFile_exit20(t *testing.T) {
 	_, _, err := appstore.UploadImage(context.Background(), (&uploadRT{}).client(), "s", "p", writeFile(t, "empty.png", nil))
 	assertExitCode(t, err, 20)
 }
 
-// TestUpload_responseWithoutID_errors: the tracking id is the whole product of
-// the call. Returning an empty string would push an opaque failure downstream
-// into `appstore submit`.
 func TestUpload_responseWithoutID_errors(t *testing.T) {
 	rt := &uploadRT{respBody: `{}`}
 	_, _, err := appstore.UploadAPK(context.Background(), rt.client(), "s", "p", writeFile(t, "a.apk", []byte("x")))
@@ -226,14 +198,12 @@ func TestUpload_responseWithoutID_errors(t *testing.T) {
 	}
 }
 
-// TestUpload_403_exit11 pins that upstream failures keep the shared taxonomy.
 func TestUpload_403_exit11(t *testing.T) {
 	rt := &uploadRT{initFailWith: http.StatusForbidden}
 	_, _, err := appstore.UploadAPK(context.Background(), rt.client(), "s", "p", writeFile(t, "a.apk", []byte("x")))
 	assertExitCode(t, err, 11)
 }
 
-// TestUpload_404_exit30 covers the store or hosted app not existing.
 func TestUpload_404_exit30(t *testing.T) {
 	rt := &uploadRT{initFailWith: http.StatusNotFound}
 	_, _, err := appstore.UploadImage(context.Background(), rt.client(), "s", "p", writeFile(t, "i.png", pngBytes))

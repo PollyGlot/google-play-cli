@@ -1,9 +1,3 @@
-// Package rollout_test exercises the rollout state-machine commands
-// (rollout / halt / resume / complete) at the kernel level: a RunContext
-// built by hand, a RoundTripper injected via the oauth2.HTTPClient context
-// key, and the per-verb Run functions invoked directly. Mirrors the
-// upload / promote command harness so one seam proves the auth + Edit
-// lifecycle wiring for the whole family.
 package rollout_test
 
 import (
@@ -25,8 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// stateAPI configures the fake androidpublisher calls the state machine
-// makes: edits.insert, tracks.get, tracks.update, edits.commit, edits.delete.
 type stateAPI struct {
 	editID             string
 	trackGetResp       string
@@ -54,7 +46,6 @@ func newStateFake(a stateAPI) *testkit.Fake {
 	})
 }
 
-// apiCalls lists the recorded API calls as "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -63,8 +54,6 @@ func apiCalls(f *testkit.Fake) []string {
 	return out
 }
 
-// trackUpdateReq returns the body of the last tracks.update PUT, nil when
-// none was sent.
 func trackUpdateReq(f *testkit.Fake) []byte {
 	var body []byte
 	for _, c := range f.Calls() {
@@ -75,8 +64,6 @@ func trackUpdateReq(f *testkit.Fake) []byte {
 	return body
 }
 
-// touched reports whether anything reached the transport, token exchange
-// included.
 func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
 func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
@@ -95,9 +82,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 
 const oneInProgressRelease = `{"track":"production","releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.05}]}`
 
-// TestRunRollout_happyPath_fullSequence asserts the full vertical slice for
-// rollout: /token precedes the canonical four-call sequence, and the
-// tracks.update body carries the requested fraction + inProgress status.
 func TestRunRollout_happyPath_fullSequence(t *testing.T) {
 	api := stateAPI{
 		editID:             "edit-rollout-cli",
@@ -145,7 +129,6 @@ func TestRunRollout_happyPath_fullSequence(t *testing.T) {
 		t.Errorf("tracks.update body = %s, want inProgress at 0.2", body)
 	}
 
-	// ADR-0003: --output json is API pass-through (raw tracks.update body).
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -155,8 +138,6 @@ func TestRunRollout_happyPath_fullSequence(t *testing.T) {
 	}
 }
 
-// TestRunHalt_happyPath asserts halt maps to orchestrator.Halt and the
-// wire payload carries status=halted.
 func TestRunHalt_happyPath(t *testing.T) {
 	rt := newStateFake(stateAPI{
 		editID:             "edit-halt-cli",
@@ -177,8 +158,6 @@ func TestRunHalt_happyPath(t *testing.T) {
 	}
 }
 
-// TestRunResume_happyPath asserts resume flips a halted release to
-// inProgress with the fraction preserved.
 func TestRunResume_happyPath(t *testing.T) {
 	rt := newStateFake(stateAPI{
 		editID:             "edit-resume-cli",
@@ -200,7 +179,6 @@ func TestRunResume_happyPath(t *testing.T) {
 	}
 }
 
-// TestRunComplete_happyPath asserts complete ramps to completed, with no fraction.
 func TestRunComplete_happyPath(t *testing.T) {
 	rt := newStateFake(stateAPI{
 		editID:             "edit-complete-cli",
@@ -222,10 +200,6 @@ func TestRunComplete_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_productionWriteWithoutConfirm_returnsExit3 asserts the production
-// confirm gate at the CLI: complete on production without --confirm refuses
-// with exit 3 (safety flag required, docs/DESIGN.md §9, NOT the generic
-// usage exit 2, #408) before any HTTP.
 func TestRun_productionWriteWithoutConfirm_returnsExit3(t *testing.T) {
 	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
@@ -233,7 +207,6 @@ func TestRun_productionWriteWithoutConfirm_returnsExit3(t *testing.T) {
 	_, err := rollout.RunComplete(rc, rollout.Input{
 		Package: "com.example.app",
 		Track:   "production",
-		// Confirm omitted → must refuse before any HTTP.
 	})
 	assertExit(t, err, 3)
 	if touched(rt) {
@@ -241,8 +214,6 @@ func TestRun_productionWriteWithoutConfirm_returnsExit3(t *testing.T) {
 	}
 }
 
-// TestRunRollout_missingStaged_returnsExit2 asserts that omitting --staged is
-// a CLI misuse caught before any HTTP, with a message naming the flag.
 func TestRunRollout_missingStaged_returnsExit2(t *testing.T) {
 	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
@@ -250,7 +221,6 @@ func TestRunRollout_missingStaged_returnsExit2(t *testing.T) {
 	_, err := rollout.RunRollout(rc, rollout.Input{
 		Package: "com.example.app",
 		Track:   "production",
-		// StagedFractionSet false → --staged not supplied.
 	})
 	assertExit(t, err, 2)
 	if touched(rt) {
@@ -261,10 +231,6 @@ func TestRunRollout_missingStaged_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestRunRollout_outOfRangeStaged_returnsExit2 asserts the range guard (AC6):
-// --staged 1.5 is rejected with exit 2 and a range hint, before any HTTP. A
-// non-numeric value never reaches RunRollout: --staged is a float64 flag, so
-// pflag rejects it at parse time, which is already exit 2.
 func TestRunRollout_outOfRangeStaged_returnsExit2(t *testing.T) {
 	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
@@ -281,9 +247,6 @@ func TestRunRollout_outOfRangeStaged_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestRunRollout_stagedOne_pointsAtComplete asserts #733: Play refuses a
-// fraction of 1.0, so --staged 1 is exit 2 before any HTTP, and the message
-// names the verb that does a full rollout.
 func TestRunRollout_stagedOne_pointsAtComplete(t *testing.T) {
 	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
@@ -304,8 +267,6 @@ func TestRunRollout_stagedOne_pointsAtComplete(t *testing.T) {
 	}
 }
 
-// TestRun_missingTrack_returnsExit2 asserts --track is required across the
-// family (checked here via complete).
 func TestRun_missingTrack_returnsExit2(t *testing.T) {
 	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
@@ -319,8 +280,6 @@ func TestRun_missingTrack_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_returnsExit2 asserts that with neither --package
-// nor a project pin, the command refuses before any HTTP.
 func TestRun_missingPackage_returnsExit2(t *testing.T) {
 	rt := newStateFake(stateAPI{})
 	rc := newRC(t, rt)
@@ -334,9 +293,6 @@ func TestRun_missingPackage_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestRenderTable_showsUserFractionForHalted asserts the table renderer
-// surfaces the preserved fraction on a halted release, so the operator can
-// see "halted at 5%".
 func TestRenderTable_showsUserFractionForHalted(t *testing.T) {
 	p := rollout.Payload{Result: &orchestrator.Result{
 		VersionCode:  142,
@@ -372,8 +328,6 @@ func assertExit(t *testing.T, err error, want int) {
 	}
 }
 
-// confirmStderr runs fn with a stderr buffer wired onto rc and returns what
-// landed there: the shared setup for the ✓-confirmation tests below.
 func confirmStderr(t *testing.T, rt http.RoundTripper, fn func(rc *kernel.RunContext) error) string {
 	t.Helper()
 	rc := newRC(t, rt)
@@ -385,9 +339,6 @@ func confirmStderr(t *testing.T, rt http.RoundTripper, fn func(rc *kernel.RunCon
 	return stderr.String()
 }
 
-// TestRunRollout_emitsConfirmationWithUserFractionPercent asserts a committed
-// rollout prints a ✓ line on stderr (DESIGN §8) naming the track and rendering
-// the new userFraction as a percentage (status inProgress).
 func TestRunRollout_emitsConfirmationWithUserFractionPercent(t *testing.T) {
 	rt := newStateFake(stateAPI{
 		editID:             "edit-rollout-cli",
@@ -408,8 +359,6 @@ func TestRunRollout_emitsConfirmationWithUserFractionPercent(t *testing.T) {
 	}
 }
 
-// TestRunHalt_emitsConfirmation asserts halt prints a ✓ line naming the track
-// and the halted status (no userFraction: only inProgress shows it).
 func TestRunHalt_emitsConfirmation(t *testing.T) {
 	rt := newStateFake(stateAPI{
 		editID:             "edit-halt-cli",
@@ -425,7 +374,6 @@ func TestRunHalt_emitsConfirmation(t *testing.T) {
 	}
 }
 
-// TestRunResume_emitsConfirmation asserts resume prints a ✓ line.
 func TestRunResume_emitsConfirmation(t *testing.T) {
 	rt := newStateFake(stateAPI{
 		editID:             "edit-resume-cli",
@@ -441,7 +389,6 @@ func TestRunResume_emitsConfirmation(t *testing.T) {
 	}
 }
 
-// TestRunComplete_emitsConfirmation asserts complete prints a ✓ line.
 func TestRunComplete_emitsConfirmation(t *testing.T) {
 	rt := newStateFake(stateAPI{
 		editID:             "edit-complete-cli",
@@ -457,10 +404,6 @@ func TestRunComplete_emitsConfirmation(t *testing.T) {
 	}
 }
 
-// TestRunComplete_reportsTheSupersededRelease asserts #734 at the command:
-// completing a rollout over the previous full rollout names the superseded
-// versionCode on the ✓ line and in the table, while --output json stays the
-// tracks.update body verbatim (ADR-0003).
 func TestRunComplete_reportsTheSupersededRelease(t *testing.T) {
 	const updated = `{"track":"production","releases":[{"name":"142","status":"completed","versionCodes":["142"]}]}`
 	rt := newStateFake(stateAPI{
@@ -498,7 +441,6 @@ func TestRunComplete_reportsTheSupersededRelease(t *testing.T) {
 	}
 }
 
-// TestRunRollout_dryRun_noConfirmation asserts --dry-run never emits a ✓.
 func TestRunRollout_dryRun_noConfirmation(t *testing.T) {
 	rt := newStateFake(stateAPI{editID: "edit-dry", trackGetResp: oneInProgressRelease})
 	got := confirmStderr(t, rt, func(rc *kernel.RunContext) error {

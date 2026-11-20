@@ -1,18 +1,3 @@
-// Package availability implements `tracks availability`, a pure grouping
-// noun over the Country availability of a single track, which
-// countries an app's artifacts are distributed to on --track.
-//
-// Per ADR-0019 a read always carries a verb, so the bare `availability`
-// only prints help and the read lives under `tracks availability view`.
-// The read is thin glue: resolve --package, open a read-only Edit, consume
-// internal/play/countryavailability.Get, and render. The Edit is opened
-// and discarded via edits.WithReadOnlyEdit, never committed.
-//
-// The resource is read-only at the API level (no insert/patch/update) and
-// keyed by TRACK, not by app, so --track is REQUIRED (no implicit
-// production default) and gplay introduces no availability writer (the
-// group holds only `view`, no `set`). See ADR-0012. A user who wants to
-// CHANGE where an app is available is pointed at the Play Console.
 package availability
 
 import (
@@ -33,38 +18,22 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 	Track   string
 }
 
-// notFoundError wraps a 404 (unknown track OR package) with a hint
-// pointing at `gplay tracks list`. It carries no ExitCode of its own so
-// the wrapped *api.Error (404 → exit 30) stays authoritative through the
-// Coder chain. Availability is track-scoped, so a 404's most likely cause
-// is a wrong/missing track: `gplay tracks list` is the right next step
-// for both track and package misses.
 type notFoundError struct {
 	track string
 	cause error
 }
 
-// Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *notFoundError) Error() string {
 	return fmt.Sprintf("track %q or package not found: run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 404 to exit 30.
 func (e *notFoundError) Unwrap() error { return e.cause }
 
-// classifyAvailabilityError attaches an actionable hint to the operator-facing
-// failures of an availability read, while leaving the wrapped *api.Error
-// to drive the exit code. A 404 (on edits.insert OR countryAvailability.get)
-// means an unknown track or package (→ `gplay tracks list` hint); a 403
-// means the service account lacks API access on the app. Every other
-// failure (5xx, network, edit conflict) propagates verbatim.
 func classifyAvailabilityError(pkg, track string, err error) error {
 	if apihint.Status(err) == http.StatusNotFound {
 		return &notFoundError{track: track, cause: err}
@@ -72,11 +41,6 @@ func classifyAvailabilityError(pkg, track string, err error) error {
 	return apihint.Forbidden(pkg, err)
 }
 
-// Payload satisfies output.Renderable. Raw carries the
-// countryavailability.get body for the ADR-0003 JSON pass-through; Track
-// is gplay-derived context shown above the human views (never in the
-// JSON, which stays a faithful pass-through). Countries is the flattened
-// list of CLDR codes for the human views.
 type Payload struct {
 	Track              string          `json:"-"`
 	SyncWithProduction bool            `json:"-"`
@@ -85,9 +49,6 @@ type Payload struct {
 	Raw                json.RawMessage `json:"-"`
 }
 
-// Renderers satisfies output.Renderable with one renderer per Format. The
-// JSON form is the ADR-0003 countryavailability.get pass-through; table
-// and markdown are human-shaped views over the same resource.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
@@ -96,9 +57,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// countriesCell joins the CLDR codes for the human views, rendering the
-// empty set as `(none)` so an empty list reads unambiguously (an app that
-// targets nowhere explicit, relying on restOfWorld).
 func countriesCell(codes []string) string {
 	if len(codes) == 0 {
 		return "(none)"
@@ -106,8 +64,6 @@ func countriesCell(codes []string) string {
 	return strings.Join(codes, ", ")
 }
 
-// renderTable writes a track-context header then a `FIELD  VALUE` table
-// of the three availability fields.
 func renderTable(w io.Writer, p Payload) error {
 	if _, err := fmt.Fprintf(w, "Track: %s\n", p.Track); err != nil {
 		return err
@@ -126,10 +82,6 @@ func renderTable(w io.Writer, p Payload) error {
 	return tw.Flush()
 }
 
-// renderJSON emits the raw countryavailability.get body verbatim
-// (ADR-0003 pass-through). Raw is always populated on the Run path; an
-// empty Raw would mean we never captured the API body, so we error rather
-// than emit zero bytes.
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) == 0 {
 		return fmt.Errorf("missing raw countryavailability.get payload for --output json")
@@ -138,9 +90,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// renderMarkdown writes a `- **Field**: value` list per docs/DESIGN.md §7
-// (single-record read), preceded by the same track-context line as the
-// table view so a pasted report stands on its own.
 func renderMarkdown(w io.Writer, p Payload) error {
 	_, err := fmt.Fprintf(w,
 		"Track: %s\n\n- **Sync with production**: %t\n- **Rest of world**: %t\n- **Countries**: %s\n",
@@ -148,10 +97,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return err
 }
 
-// Run is the business function the kernel invokes. It validates that
-// --track is present (REQUIRED: no implicit default), resolves the
-// package, builds an authenticated HTTP client, then opens a read-only
-// Edit and reads the track's Country availability.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	track := strings.TrimSpace(in.Track)
 	if track == "" {
@@ -196,9 +141,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewViewCommand returns the read command `tracks availability view`: it
-// reads a track's Country availability. Per ADR-0019 the read carries an
-// explicit verb: the bare `availability` group prints help.
 func NewViewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
@@ -236,11 +178,6 @@ clean pass-through: a single endpoint is read).`,
 	return cmd
 }
 
-// NewCommand returns the cobra group for `tracks availability`: a pure
-// grouping noun (ADR-0019) holding only `view` (the resource is read-only at
-// the Developer API level, so there is no `set`). kernel.GroupRunE makes the
-// bare command print help while a mistyped subcommand fails loudly as CLI
-// misuse (exit 2) rather than silently printing help with exit 0.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "availability",

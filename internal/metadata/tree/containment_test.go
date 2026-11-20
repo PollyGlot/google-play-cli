@@ -10,10 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 )
 
-// The exfiltration the PRD names (#459 story 5), on the TEXT codec: a repo
-// ships a metadata tree where en-US/title.txt is a symlink to a private file.
-// Read would load the secret into the Listing, and `metadata apply` would
-// publish it to a store listing under the operator's own credentials.
 func TestReadRefusesEscapingFieldSymlink(t *testing.T) {
 	secretDir := t.TempDir()
 	secret := filepath.Join(secretDir, "id_rsa")
@@ -31,7 +27,6 @@ func TestReadRefusesEscapingFieldSymlink(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	// Zero reads outside the root: record every path the codec actually opens.
 	var read []string
 	restore := spyReads(t, &read)
 	defer restore()
@@ -55,8 +50,6 @@ func TestReadRefusesEscapingFieldSymlink(t *testing.T) {
 	}
 }
 
-// A symlink that stays INSIDE the tree is legitimate and must keep working:
-// containment is about escape, not about symlinks.
 func TestReadAllowsInternalFieldSymlink(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "pt-BR")
@@ -82,9 +75,6 @@ func TestReadAllowsInternalFieldSymlink(t *testing.T) {
 	}
 }
 
-// Story 7: a checkout reached entirely through a symlink keeps working (on
-// macOS even t.TempDir() is under a symlinked /tmp, so this is the common case
-// in disguise).
 func TestReadFullySymlinkedRootPasses(t *testing.T) {
 	real := t.TempDir()
 	localeDir := filepath.Join(real, "en-US")
@@ -109,8 +99,6 @@ func TestReadFullySymlinkedRootPasses(t *testing.T) {
 	}
 }
 
-// Story 6: on the pull path the locale keys come from the Play API, a string
-// gplay did not author. A traversing one must not write outside the tree.
 func TestWriteRefusesTraversingLocale(t *testing.T) {
 	dir := t.TempDir()
 	victim := filepath.Join(dir, "escaped")
@@ -124,9 +112,6 @@ func TestWriteRefusesTraversingLocale(t *testing.T) {
 	}
 }
 
-// A field file pre-placed as a symlink to a file outside the tree must not be
-// written THROUGH: os.WriteFile follows the link and would overwrite the
-// victim with store text on `metadata pull`.
 func TestWriteRefusesSymlinkedFieldFile(t *testing.T) {
 	victimDir := t.TempDir()
 	victim := filepath.Join(victimDir, "id_rsa")
@@ -179,8 +164,6 @@ func listingWithTitle(t *testing.T, loc, title string) listing.Listing {
 	return l
 }
 
-// spyReads swaps the package's filesystem seams for ones that record every
-// path read, so a test can assert not just "refused" but "never touched".
 func spyReads(t *testing.T, into *[]string) func() {
 	t.Helper()
 	origReadDir, origReadFile := osReadDir, osReadFile

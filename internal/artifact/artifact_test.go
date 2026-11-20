@@ -16,8 +16,6 @@ import (
 func TestInspect_classifiesContainersByStructure(t *testing.T) {
 	dir := t.TempDir()
 
-	// Extensions are deliberately wrong everywhere: the whole point is that
-	// classification reads the container, not the name.
 	aab := artifacttest.AAB(t, dir, "mislabeled.apk", "com.example.app")
 	apk := artifacttest.APK(t, dir, "mislabeled.aab", "com.example.app")
 	obb := artifacttest.Zip(t, dir, "assets.obb", map[string][]byte{"data.bin": []byte("assets")})
@@ -140,11 +138,9 @@ func TestPreflight_emptyExpectationsSkipTheirCheck(t *testing.T) {
 	dir := t.TempDir()
 	apk := artifacttest.APK(t, dir, "app.apk", "com.other.app")
 
-	// No Kind and no Package: the preflight has nothing to refuse on.
 	if _, err := artifact.Preflight(apk, artifact.Expect{}); err != nil {
 		t.Fatalf("Preflight with an empty Expect: %v", err)
 	}
-	// Kind only: a package mismatch is not checked when none is expected.
 	if _, err := artifact.Preflight(apk, artifact.Expect{Kinds: []artifact.Kind{artifact.KindAPK}}); err != nil {
 		t.Fatalf("Preflight with Kind only: %v", err)
 	}
@@ -152,8 +148,6 @@ func TestPreflight_emptyExpectationsSkipTheirCheck(t *testing.T) {
 
 func TestPreflight_unparseableManifestDegradesToContainerCheck(t *testing.T) {
 	dir := t.TempDir()
-	// A well-formed AAB container whose protobuf manifest is garbage: gplay's
-	// parser gap must never become a false refusal.
 	broken := artifacttest.Zip(t, dir, "broken.aab", map[string][]byte{
 		"BundleConfig.pb":                   {},
 		"base/manifest/AndroidManifest.xml": []byte("\xff\xff\xff\xff not protobuf"),
@@ -170,7 +164,6 @@ func TestPreflight_unparseableManifestDegradesToContainerCheck(t *testing.T) {
 		t.Error("Note is empty: a degraded parse must be reportable on stderr")
 	}
 
-	// The container check still bites on the same artifact.
 	if _, err := artifact.Preflight(broken, artifact.Expect{Kinds: []artifact.Kind{artifact.KindAPK}}); err == nil {
 		t.Error("Preflight accepted an AAB where an APK was expected")
 	}
@@ -178,8 +171,6 @@ func TestPreflight_unparseableManifestDegradesToContainerCheck(t *testing.T) {
 
 func TestPreflight_bundleWithoutManifestStillClassifies(t *testing.T) {
 	dir := t.TempDir()
-	// BundleConfig.pb alone is enough to know it is an AAB, but not enough to
-	// read a package name.
 	path := artifacttest.Zip(t, dir, "configonly.aab", map[string][]byte{"BundleConfig.pb": {}})
 	info, err := artifact.Preflight(path, artifact.Expect{Kinds: []artifact.Kind{artifact.KindBundle}, Package: "com.example.app"})
 	if err != nil {
@@ -192,8 +183,6 @@ func TestPreflight_bundleWithoutManifestStillClassifies(t *testing.T) {
 
 func TestInspect_refusesAZipBombManifest(t *testing.T) {
 	dir := t.TempDir()
-	// 32 MiB of zeros compresses to a few kilobytes and is well past the
-	// 4 MiB per-member cap.
 	bomb := make([]byte, 32<<20)
 	path := artifacttest.Zip(t, dir, "bomb.apk", map[string][]byte{"AndroidManifest.xml": bomb})
 
@@ -216,12 +205,6 @@ func TestInspect_refusesAZipBombManifest(t *testing.T) {
 	}
 }
 
-// TestPreflight_overTheMemberCapIsIndeterminateNotUnknown pins the
-// distinction the member cap got wrong: an artifact gplay declined to walk is
-// unclassified, not "neither an AAB nor an APK". An asset-rich AAB genuinely
-// carries more members than the cap, and refusing it would make gplay's own
-// budget the reason a good release fails (ADR-0046: a parser gap never
-// becomes a false refusal).
 func TestPreflight_overTheMemberCapIsIndeterminateNotUnknown(t *testing.T) {
 	dir := t.TempDir()
 	filler := artifacttest.FillerMembers(artifact.MaxZipEntries + 1)
@@ -231,13 +214,9 @@ func TestPreflight_overTheMemberCapIsIndeterminateNotUnknown(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		path string
-		// want is the expectation the surface that uploads this file states.
 		want artifact.Expect
 	}{
-		// `releases upload --format bundle` on an asset-rich AAB.
 		{"bundle expectation", aab, artifact.Expect{Kinds: []artifact.Kind{artifact.KindBundle}, Package: "com.example.app"}},
-		// `releases expansion-files upload` on an over-cap archive: the
-		// unknown expectation must be skipped too, not silently satisfied.
 		{"unknown expectation", apk, artifact.Expect{Kinds: []artifact.Kind{artifact.KindUnknown}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -255,9 +234,6 @@ func TestPreflight_overTheMemberCapIsIndeterminateNotUnknown(t *testing.T) {
 	}
 }
 
-// TestVerify_skipKeepsTheLocalFileCheck asserts --skip-preflight lifts the
-// container check and nothing else: a missing or non-regular path was exit 20
-// on these surfaces before the preflight existed and stays exit 20.
 func TestVerify_skipKeepsTheLocalFileCheck(t *testing.T) {
 	dir := t.TempDir()
 	for _, tc := range []struct {
@@ -279,18 +255,12 @@ func TestVerify_skipKeepsTheLocalFileCheck(t *testing.T) {
 		})
 	}
 
-	// The classification itself is still skipped: a file that is not an
-	// Android package at all uploads as-is.
 	notAnArtifact := artifacttest.WriteFile(t, dir, "notes.aab", []byte("not an artifact at all"))
 	if err := artifact.Verify(io.Discard, notAnArtifact, artifact.Expect{Kinds: []artifact.Kind{artifact.KindBundle}}, artifact.Options{Skip: true}); err != nil {
 		t.Errorf("Verify with Skip refused an unclassifiable file: %v", err)
 	}
 }
 
-// TestInspect_readsAPackageNameOverTheOneByteLengthPrefix covers aapt's
-// two-byte length prefix, the encoding every UTF-8 pool string longer than
-// 127 bytes uses. Package names that long are legal, and the reader's
-// continuation branch had no fixture reaching it.
 func TestInspect_readsAPackageNameOverTheOneByteLengthPrefix(t *testing.T) {
 	long := strings.Repeat("com.example.averylongsegment.", 12) + "app"
 	if len(long) <= 0x7F {
@@ -307,12 +277,6 @@ func TestInspect_readsAPackageNameOverTheOneByteLengthPrefix(t *testing.T) {
 	}
 }
 
-// TestInspect_refusesAStringPoolThatDecodesPastTheManifestCap pins the bound
-// on the decoded side of the manifest. The member cap limits the bytes the
-// manifest occupies, not what its string pool decodes to: pool indices may
-// all alias one long entry, and decoding that entry once per index turns a
-// small manifest into gigabytes. Past the cap the preflight degrades to a
-// Note, as for any other manifest it cannot parse.
 func TestInspect_refusesAStringPoolThatDecodesPastTheManifestCap(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -346,9 +310,6 @@ func TestInspect_refusesAStringPoolThatDecodesPastTheManifestCap(t *testing.T) {
 	}
 }
 
-// TestInspect_readsAPoolWithAliasesUnderTheCap keeps the bound from turning
-// into a false refusal: a pool whose indices alias one entry is still read as
-// long as the total it decodes stays under the cap.
 func TestInspect_readsAPoolWithAliasesUnderTheCap(t *testing.T) {
 	manifest := artifacttest.AliasedPoolManifest("com.example.app", false, 0x7FFF, 100)
 	path := artifacttest.Zip(t, t.TempDir(), "aliased.apk", map[string][]byte{"AndroidManifest.xml": manifest})
@@ -362,9 +323,6 @@ func TestInspect_readsAPoolWithAliasesUnderTheCap(t *testing.T) {
 	}
 }
 
-// TestInspect_boundsTheDecodedBytesAcrossStringPools keeps the bound per
-// document, not per pool: a manifest may carry many pools, each under the
-// cap, that together decode past it.
 func TestInspect_boundsTheDecodedBytesAcrossStringPools(t *testing.T) {
 	manifest := artifacttest.RepeatedPoolManifest("com.example.app", 3, 0x7FFF, 64)
 	path := artifacttest.Zip(t, t.TempDir(), "pools.apk", map[string][]byte{"AndroidManifest.xml": manifest})

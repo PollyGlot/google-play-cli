@@ -10,10 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// TestConfirmMutation_implicitVsExplicit pins the DESIGN §8 invariant: the
-// committed ✓ appears only in implicit mode. In explicit mode the change is
-// staged into a user-owned open Edit (not yet published), so the line must NOT
-// carry ✓ and must point at `gplay edits commit`.
 func TestConfirmMutation_implicitVsExplicit(t *testing.T) {
 	t.Run("implicit prints the committed checkmark", func(t *testing.T) {
 		var stderr bytes.Buffer

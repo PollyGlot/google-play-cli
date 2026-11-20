@@ -6,24 +6,6 @@ import (
 	"fmt"
 )
 
-// This file implements the minimum of aapt2's protobuf XML encoding (the
-// AndroidManifest.xml inside an AAB, `base/manifest/AndroidManifest.xml`)
-// needed to read the declared package name.
-//
-// Only three messages of aapt2's Resources.proto matter, and only by field
-// number, so no generated code and no protobuf runtime is linked in
-// (ADR-0007 keeps the binary a single static build):
-//
-//	XmlNode      { XmlElement element = 1; string text = 2; }
-//	XmlElement   { ... string name = 3; repeated XmlAttribute attribute = 4; }
-//	XmlAttribute { string namespace_uri = 1; string name = 2; string value = 3; }
-//
-// As with the binary-XML reader, the bytes are untrusted: the only invariant
-// is that this never panics, and every failure degrades the caller to a
-// container-only check.
-
-// Protobuf wire types; only the two this reader can encounter on the fields
-// it cares about are named.
 const (
 	wireVarint = 0
 	wire64     = 1
@@ -33,8 +15,6 @@ const (
 
 var errBadWire = errors.New("malformed protobuf")
 
-// parseProtoManifestPackage returns the `package` attribute of the root
-// <manifest> element of an aapt2 protobuf AndroidManifest.xml.
 func parseProtoManifestPackage(b []byte) (string, error) {
 	var element []byte
 	if err := eachField(b, func(num int, wire int, data []byte, _ uint64) error {
@@ -89,7 +69,6 @@ func parseProtoManifestPackage(b []byte) (string, error) {
 		}); err != nil {
 			return "", err
 		}
-		// package carries no namespace, exactly as in the binary-XML form.
 		if ns == "" && attrName == "package" {
 			if value == "" {
 				return "", errors.New("<manifest> package attribute is empty")
@@ -100,10 +79,6 @@ func parseProtoManifestPackage(b []byte) (string, error) {
 	return "", errors.New("<manifest> declares no package attribute")
 }
 
-// eachField walks a protobuf message, calling fn for every top-level field.
-// Length-delimited fields hand fn their payload; varints hand it their
-// value. Nothing recurses: the caller decides what to descend into, so a
-// hostile deeply-nested message cannot blow the stack.
 func eachField(b []byte, fn func(num, wire int, data []byte, v uint64) error) error {
 	for len(b) > 0 {
 		key, n := binary.Uvarint(b)
@@ -150,8 +125,6 @@ func eachField(b []byte, fn func(num, wire int, data []byte, v uint64) error) er
 				return errBadWire
 			}
 			b = b[n:]
-			// The declared length is attacker-controlled: compare in uint64
-			// so a huge value cannot wrap into a valid-looking int.
 			if ln > uint64(len(b)) {
 				return errBadWire
 			}
@@ -161,7 +134,6 @@ func eachField(b []byte, fn func(num, wire int, data []byte, v uint64) error) er
 				return err
 			}
 		default:
-			// Groups (3/4) are deprecated and never appear in aapt2 output.
 			return errBadWire
 		}
 	}

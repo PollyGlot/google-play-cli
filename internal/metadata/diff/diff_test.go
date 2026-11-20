@@ -7,8 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 )
 
-// loc builds a single-locale tree with the given field→value pairs, each
-// marked managed (present). Use it for both the local and online sides.
 func loc(code string, kv map[listing.Field]string) listing.Tree {
 	l := listing.NewListing(code)
 	for f, v := range kv {
@@ -17,8 +15,6 @@ func loc(code string, kv map[listing.Field]string) listing.Tree {
 	return listing.Tree{code: l}
 }
 
-// findChange returns the Change for (locale, field) and whether it exists.
-// field "" matches a locale-level record.
 func findChange(r diff.Result, locale, field string) (diff.Change, bool) {
 	for _, c := range r.Changes {
 		if c.Locale == locale && c.Field == field {
@@ -28,8 +24,6 @@ func findChange(r diff.Result, locale, field string) (diff.Change, bool) {
 	return diff.Change{}, false
 }
 
-// TestCompute_fieldClassification is the exhaustive table over a single
-// field's local×online states, asserting the op and the summary bucket.
 func TestCompute_fieldClassification(t *testing.T) {
 	const code = "en-US"
 	f := listing.Title
@@ -37,11 +31,11 @@ func TestCompute_fieldClassification(t *testing.T) {
 
 	cases := []struct {
 		name        string
-		localSet    bool // is the field managed on disk?
+		localSet    bool
 		localVal    string
-		onlineSet   bool // does the locale exist online with this field non-empty?
+		onlineSet   bool
 		onlineVal   string
-		wantOp      diff.Op // "" => no change record emitted
+		wantOp      diff.Op
 		wantSummary func(diff.Summary) int
 	}{
 		{"create", true, "Hello", false, "", diff.OpCreate, func(s diff.Summary) int { return s.Create }},
@@ -89,17 +83,15 @@ func TestCompute_fieldClassification(t *testing.T) {
 	}
 }
 
-// TestCompute_charCounts asserts the live/local char counters, including the
-// genuine zeros a create (live=0) and a clear (local=0) must carry.
 func TestCompute_charCounts(t *testing.T) {
 	local := loc("fr-FR", map[listing.Field]string{
-		listing.FullDescription:  "abcd", // 4 chars
-		listing.ShortDescription: "",     // clear
+		listing.FullDescription:  "abcd",
+		listing.ShortDescription: "",
 	})
 	online := loc("fr-FR", map[listing.Field]string{
-		listing.FullDescription:  "ab",  // 2 chars online -> update
-		listing.ShortDescription: "xyz", // 3 chars online -> clear
-		listing.Title:            "T",   // online only, unmanaged on disk -> ignored
+		listing.FullDescription:  "ab",
+		listing.ShortDescription: "xyz",
+		listing.Title:            "T",
 	})
 
 	r := diff.Compute("com.x", local, online, false)
@@ -120,16 +112,14 @@ func TestCompute_charCounts(t *testing.T) {
 		t.Errorf("clear chars = live %v local %v, want live 3 local 0", clr.LiveChars, clr.LocalChars)
 	}
 
-	// title is online-only within a locale present on disk -> never emitted.
 	if c, ok := findChange(r, "fr-FR", "title"); ok {
 		t.Errorf("title should be ignored (unmanaged on disk), got %+v", c)
 	}
 }
 
-// TestCompute_createCharCounts pins the create record's live=0 + local=count.
 func TestCompute_createCharCounts(t *testing.T) {
-	local := loc("de-DE", map[listing.Field]string{listing.Title: "Hallo"}) // 5
-	online := listing.Tree{}                                                // no online locale at all
+	local := loc("de-DE", map[listing.Field]string{listing.Title: "Hallo"})
+	online := listing.Tree{}
 
 	r := diff.Compute("com.x", local, online, false)
 	c, ok := findChange(r, "de-DE", "title")
@@ -141,13 +131,10 @@ func TestCompute_createCharCounts(t *testing.T) {
 	}
 }
 
-// TestCompute_untouchedLocale asserts an online-only locale is reported
-// untouchedLocale (additive default) with a reason and no field, and that
-// it never alters HasChanges.
 func TestCompute_untouchedLocale(t *testing.T) {
 	local := loc("en-US", map[listing.Field]string{listing.Title: "Hi", listing.FullDescription: "Long"})
 	online := listing.Tree{
-		"en-US": local["en-US"], // identical -> unchanged
+		"en-US": local["en-US"],
 		"es-ES": mustListing("es-ES", listing.Title, "Hola", listing.FullDescription, "Larga"),
 	}
 
@@ -171,9 +158,6 @@ func TestCompute_untouchedLocale(t *testing.T) {
 	}
 }
 
-// TestCompute_prune asserts that under --prune an online-only locale becomes
-// a delete record counted in Summary.Delete (and HasChanges() true), while
-// without prune the same input yields untouchedLocale.
 func TestCompute_prune(t *testing.T) {
 	local := loc("en-US", map[listing.Field]string{listing.Title: "Hi", listing.FullDescription: "Long"})
 	online := listing.Tree{
@@ -199,17 +183,15 @@ func TestCompute_prune(t *testing.T) {
 	}
 }
 
-// TestCompute_summaryTally runs a mixed tree and asserts every counter and
-// the overall change list at once.
 func TestCompute_summaryTally(t *testing.T) {
 	local := listing.Tree{
 		"en-US": mustListing("en-US",
-			listing.Title, "New Title", // create (online has no title)
-			listing.FullDescription, "Same", // unchanged
-			listing.ShortDescription, ""), // clear (online has short)
+			listing.Title, "New Title",
+			listing.FullDescription, "Same",
+			listing.ShortDescription, ""),
 		"fr-FR": mustListing("fr-FR",
-			listing.Title, "Bonjour", // update
-			listing.FullDescription, "Desc"), // unchanged
+			listing.Title, "Bonjour",
+			listing.FullDescription, "Desc"),
 	}
 	online := listing.Tree{
 		"en-US": mustListing("en-US",
@@ -218,7 +200,7 @@ func TestCompute_summaryTally(t *testing.T) {
 		"fr-FR": mustListing("fr-FR",
 			listing.Title, "Salut",
 			listing.FullDescription, "Desc"),
-		"de-DE": mustListing("de-DE", listing.Title, "Hallo"), // untouchedLocale
+		"de-DE": mustListing("de-DE", listing.Title, "Hallo"),
 	}
 
 	r := diff.Compute("com.x", local, online, false)
@@ -226,14 +208,11 @@ func TestCompute_summaryTally(t *testing.T) {
 	if r.Summary != want {
 		t.Errorf("summary = %+v, want %+v", r.Summary, want)
 	}
-	// Changes list excludes unchanged: create + update + clear + untouched = 4.
 	if len(r.Changes) != 4 {
 		t.Errorf("len(Changes) = %d, want 4 (no unchanged listed): %+v", len(r.Changes), r.Changes)
 	}
 }
 
-// TestCompute_deterministicOrder asserts locales come out lexically and
-// fields in canonical order, so output is stable across runs.
 func TestCompute_deterministicOrder(t *testing.T) {
 	local := listing.Tree{
 		"fr-FR": mustListing("fr-FR", listing.FullDescription, "f", listing.Title, "t"),
@@ -242,8 +221,6 @@ func TestCompute_deterministicOrder(t *testing.T) {
 	online := listing.Tree{}
 
 	r := diff.Compute("com.x", local, online, false)
-	// de-DE before fr-FR; within fr-FR, title (canonical idx 0) before
-	// fullDescription (idx 2).
 	var order []string
 	for _, c := range r.Changes {
 		order = append(order, c.Locale+"/"+c.Field)
@@ -259,7 +236,6 @@ func TestCompute_deterministicOrder(t *testing.T) {
 	}
 }
 
-// mustListing builds a Listing with alternating field,value varargs.
 func mustListing(code string, fv ...any) listing.Listing {
 	l := listing.NewListing(code)
 	for i := 0; i+1 < len(fv); i += 2 {

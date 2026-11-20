@@ -20,8 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// lastCall returns the most recent API call the fake served, or a zero Call
-// when none reached it.
 func lastCall(fake *testkit.Fake) testkit.Call {
 	calls := fake.Calls()
 	if len(calls) == 0 {
@@ -66,8 +64,6 @@ func newRC(t *testing.T, body string) (*kernel.RunContext, *testkit.Fake, *bytes
 
 const twoAppsBody = `{"apps":[{"name":"apps/com.example.a","packageName":"com.example.a","displayName":"Example A"},{"name":"apps/com.example.b","packageName":"com.example.b","displayName":"Example B"}]}`
 
-// TestRun_listsAccessibleApps asserts Run hits the apps:search endpoint
-// with a GET and parses the page into the Payload.
 func TestRun_listsAccessibleApps(t *testing.T) {
 	rc, fake, _ := newRC(t, twoAppsBody)
 	r, err := Run(rc, Input{})
@@ -83,8 +79,6 @@ func TestRun_listsAccessibleApps(t *testing.T) {
 	}
 }
 
-// TestRun_jsonPassthrough asserts the raw body is preserved verbatim for
-// the ADR-0003 --output json pass-through.
 func TestRun_jsonPassthrough(t *testing.T) {
 	rc, _, _ := newRC(t, twoAppsBody)
 	r, err := Run(rc, Input{})
@@ -96,7 +90,6 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	}
 }
 
-// TestRun_paginationParams asserts --page-size/--page-token reach the URL.
 func TestRun_paginationParams(t *testing.T) {
 	rc, fake, _ := newRC(t, `{"apps":[]}`)
 	if _, err := Run(rc, Input{PageSize: 25, PageToken: "tok-1"}); err != nil {
@@ -107,8 +100,6 @@ func TestRun_paginationParams(t *testing.T) {
 	}
 }
 
-// TestRun_nextPageTokenNote asserts a page carrying nextPageToken emits a
-// stderr note telling the operator how to fetch the next page.
 func TestRun_nextPageTokenNote(t *testing.T) {
 	rc, _, stderr := newRC(t, `{"apps":[{"packageName":"com.example.a"}],"nextPageToken":"tok-next"}`)
 	if _, err := Run(rc, Input{}); err != nil {
@@ -119,8 +110,6 @@ func TestRun_nextPageTokenNote(t *testing.T) {
 	}
 }
 
-// TestRun_negativePageSize_usageError asserts a negative --page-size is CLI
-// misuse (exit 2) rejected before any HTTP call.
 func TestRun_negativePageSize_usageError(t *testing.T) {
 	rc, fake, _ := newRC(t, twoAppsBody)
 	_, err := Run(rc, Input{PageSize: -1})

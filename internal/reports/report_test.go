@@ -26,8 +26,6 @@ func TestReport_JSONEnvelope(t *testing.T) {
 	if err := output.WriteJSON(&buf, r); err != nil {
 		t.Fatalf("WriteJSON: %v", err)
 	}
-	// Row keys follow the column order, an absent cell is left out, and the
-	// strings stay verbatim (no HTML escaping).
 	want := `{
   "report": {
     "family": "installs",
@@ -85,11 +83,6 @@ func TestReport_JSONEmptyIsArraysNotNull(t *testing.T) {
 	}
 }
 
-// TestReport_WriteJSONMatchesTheEncoder pins the streamed envelope to the
-// document encoding/json prints when the envelope is built compact and then
-// indented (the way the rows were written before streaming), on the strings
-// the fast path must not write raw (quotes, backslashes, controls, HTML,
-// U+2028, invalid UTF-8, non-ASCII), on an empty row and on an empty table.
 func TestReport_WriteJSONMatchesTheEncoder(t *testing.T) {
 	cols := []Column{{Key: "a", Header: "A <&>"}, {Key: "b", Header: "B"}}
 	for name, tbl := range map[string]Table{
@@ -117,8 +110,6 @@ func TestReport_WriteJSONMatchesTheEncoder(t *testing.T) {
 	}
 }
 
-// referenceJSON builds the envelope with encoding/json alone: compact, rows
-// in column order, then indented by an encoder without HTML escaping.
 func referenceJSON(t *testing.T, r Report) string {
 	t.Helper()
 	str := func(v any) []byte {

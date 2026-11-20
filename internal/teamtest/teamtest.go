@@ -1,9 +1,3 @@
-// Package teamtest is the shared test scaffolding for the `gplay team` command
-// e2e suites: the team-specific responders and RunContext wiring on top of
-// internal/testkit, which owns the transport fake and the service-account
-// fixture.
-//
-// Production code must not import this package.
 package teamtest
 
 import (
@@ -21,31 +15,18 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// DeveloperID is the canonical test developer-account id the suites resolve to.
 const DeveloperID = "4900000000000000000"
 
-// Call records one captured API request (after the /token exchange).
 type Call = testkit.Call
 
-// Responder decides the response for a captured API call. ok=false falls
-// through to the next responder; if none matches the transport serves 200 with
-// an empty body.
 type Responder = testkit.Responder
 
-// RT is the mock transport: a testkit.Fake terminating the OAuth2 token
-// exchange at its exact URL, recording every API call, and serving responses
-// from its responders in order. Calls and Wrote come from the Fake.
 type RT = testkit.Fake
 
-// New builds a mock transport from responders, tried in order per request. An
-// unclaimed call gets 200 with an empty body, which is what the team suites
-// were written against (a bare Fake would fail the round trip instead).
 func New(responders ...Responder) *RT {
 	return testkit.NewFake(append(responders, testkit.Any(200, ""))...)
 }
 
-// UsersList responds to GET .../users with body. Use Pages for multi-page
-// pagination.
 func UsersList(body string) Responder {
 	return func(c Call) (int, string, bool) {
 		if c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/users") {
@@ -55,8 +36,6 @@ func UsersList(body string) Responder {
 	}
 }
 
-// Pages responds to successive GET .../users calls with the bodies in order
-// (for paginated users.list); the final body should carry no nextPageToken.
 func Pages(bodies ...string) Responder {
 	var i int
 	var mu sync.Mutex
@@ -75,8 +54,6 @@ func Pages(bodies ...string) Responder {
 	}
 }
 
-// Fail forces status+body for any call whose method matches and whose path ends
-// with pathSuffix: the error-mapping and write-path responders.
 func Fail(method, pathSuffix string, status int, body string) Responder {
 	return func(c Call) (int, string, bool) {
 		if c.Method == method && strings.HasSuffix(c.Path, pathSuffix) {
@@ -86,10 +63,6 @@ func Fail(method, pathSuffix string, status int, body string) Responder {
 	}
 }
 
-// NewRC builds a RunContext with a resolved Account, the mock transport
-// threaded through ctx (covering both the /token exchange and the API calls),
-// and Resolved.DeveloperID preset to DeveloperID so addressing resolves with no
-// flag. Format is JSON.
 func NewRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))

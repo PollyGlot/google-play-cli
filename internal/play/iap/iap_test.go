@@ -19,8 +19,6 @@ type scripted struct {
 	body   string
 }
 
-// iapFake serves the scripted responses in call order, then 200 {} once they
-// run out.
 func iapFake(responses []scripted) *testkit.Fake {
 	var (
 		mu sync.Mutex
@@ -40,8 +38,6 @@ func iapFake(responses []scripted) *testkit.Fake {
 
 func client(rt http.RoundTripper) *http.Client { return &http.Client{Transport: rt} }
 
-// TestListOneTimeProducts_paginates asserts the v2 list follows nextPageToken
-// and parses productId per item.
 func TestListOneTimeProducts_paginates(t *testing.T) {
 	rt := iapFake([]scripted{
 		{200, `{"oneTimeProducts":[{"productId":"coins100","purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE"}]}],"nextPageToken":"p2"}`},
@@ -62,8 +58,6 @@ func TestListOneTimeProducts_paginates(t *testing.T) {
 	}
 }
 
-// TestListAllOffers_wildcard asserts one -/- walk reads every OTP offer with
-// its full composite identity.
 func TestListAllOffers_wildcard(t *testing.T) {
 	rt := iapFake([]scripted{
 		{200, `{"oneTimeProductOffers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE"}]}`},
@@ -80,8 +74,6 @@ func TestListAllOffers_wildcard(t *testing.T) {
 	}
 }
 
-// TestPatchOneTimeProduct_upsert asserts patch carries allowMissing for a
-// create (no updateMask) and a scoped updateMask for an edit.
 func TestPatchOneTimeProduct_upsert(t *testing.T) {
 	rt := iapFake([]scripted{{200, `{}`}, {200, `{}`}})
 	body := json.RawMessage(`{"productId":"coins100","listings":[]}`)
@@ -106,7 +98,6 @@ func TestPatchOneTimeProduct_upsert(t *testing.T) {
 	}
 }
 
-// TestDeleteOneTimeProduct_addresses asserts the DELETE path.
 func TestDeleteOneTimeProduct_addresses(t *testing.T) {
 	rt := iapFake([]scripted{{204, ``}})
 	if err := iap.DeleteOneTimeProduct(context.Background(), client(rt), "com.example.app", "gems50", ""); err != nil {
@@ -118,8 +109,6 @@ func TestDeleteOneTimeProduct_addresses(t *testing.T) {
 	}
 }
 
-// TestBatchUpdateOffers_groupsPerPurchaseOption asserts the batch update POSTs
-// one request per offer with allowMissing/updateMask per entry.
 func TestBatchUpdateOffers_groupsPerPurchaseOption(t *testing.T) {
 	rt := iapFake([]scripted{{200, `{}`}})
 	err := iap.BatchUpdateOffers(context.Background(), client(rt), "com.example.app", "coins100", "buy", []iap.OfferUpdate{
@@ -140,8 +129,6 @@ func TestBatchUpdateOffers_groupsPerPurchaseOption(t *testing.T) {
 	}
 }
 
-// TestBatchDeleteOffers_postsIdentities asserts the batch delete names each
-// offer's full identity.
 func TestBatchDeleteOffers_postsIdentities(t *testing.T) {
 	rt := iapFake([]scripted{{200, `{}`}})
 	err := iap.BatchDeleteOffers(context.Background(), client(rt), "com.example.app", "coins100", "buy", []string{"promo"}, "")
@@ -159,8 +146,6 @@ func TestBatchDeleteOffers_postsIdentities(t *testing.T) {
 	}
 }
 
-// TestListInAppProducts_legacyTokenPaging asserts the legacy list follows the
-// tokenPagination envelope and keys items by sku.
 func TestListInAppProducts_legacyTokenPaging(t *testing.T) {
 	rt := iapFake([]scripted{
 		{200, `{"inappproduct":[{"sku":"legacy_coins","purchaseType":"managedUser","status":"active"}],"tokenPagination":{"nextPageToken":"t2"}}`},
@@ -181,9 +166,6 @@ func TestListInAppProducts_legacyTokenPaging(t *testing.T) {
 	}
 }
 
-// TestListInAppProducts_migrationRefusal asserts the 403 Google returns once
-// it retired the legacy API for an app wraps ErrLegacyRetired (#741), while an
-// ordinary 403 stays a plain permission failure.
 func TestListInAppProducts_migrationRefusal(t *testing.T) {
 	cases := map[string]struct {
 		body    string

@@ -1,8 +1,3 @@
-// Package mappings_test exercises the play-layer ProGuard/R8 mapping
-// upload against a fake transport. Upload wraps the Android Publisher
-// edits.deobfuscationfiles.upload endpoint: a resumable POST-initiate +
-// chunked PUT of the mapping file into an already-open Edit, keyed by the
-// APK versionCode and the deobfuscation file type (proguard / nativeCode).
 package mappings_test
 
 import (
@@ -22,12 +17,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// resumable speaks the resumable-upload protocol through a
-// testkit.RoundTripFunc (a Fake cannot set the Location and Range headers the
-// protocol needs): POST initiate returns a session URI in Location, then the
-// chunk PUT(s) carry the bytes and return the final resource body.
-// initiateStatus (>= 400) short-circuits at initiate; resumeAfter makes the
-// first N chunk PUTs answer 308 before the final one.
 type resumable struct {
 	initiateStatus int
 	putStatus      int
@@ -42,7 +31,6 @@ type resumable struct {
 	putHits   int
 }
 
-// client returns an http.Client whose every request lands on r.
 func (r *resumable) client() *http.Client {
 	return &http.Client{Transport: testkit.RoundTripFunc(r.serve)}
 }
@@ -84,7 +72,6 @@ func (r *resumable) serve(req *http.Request) (*http.Response, error) {
 	return testkit.Response(status, r.body), nil
 }
 
-// writeMapping creates a non-empty mapping.txt the uploader can stream.
 func writeMapping(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "mapping.txt")
@@ -94,12 +81,6 @@ func writeMapping(t *testing.T) string {
 	return p
 }
 
-// TestUpload_happyPath_hitsDeobfuscationEndpoint_parsesSymbolType asserts
-// Upload initiates the resumable upload against the upload-host
-// deobfuscationFiles path keyed by versionCode + file type, streams the
-// mapping bytes in the chunk PUT as octet-stream, and parses the
-// {"deobfuscationFile":{"symbolType":...}} envelope while handing back the
-// raw body for the ADR-0003 pass-through.
 func TestUpload_happyPath_hitsDeobfuscationEndpoint_parsesSymbolType(t *testing.T) {
 	mapping := writeMapping(t)
 	transport := &resumable{body: `{"deobfuscationFile":{"symbolType":"proguard"}}`}
@@ -134,8 +115,6 @@ func TestUpload_happyPath_hitsDeobfuscationEndpoint_parsesSymbolType(t *testing.
 	}
 }
 
-// TestUpload_resumeAfter308_completes asserts the helper resumes after an
-// intermediate 308 and still parses the final resource body.
 func TestUpload_resumeAfter308_completes(t *testing.T) {
 	mapping := writeMapping(t)
 	transport := &resumable{body: `{"deobfuscationFile":{"symbolType":"proguard"}}`, resumeAfter: 1}
@@ -153,8 +132,6 @@ func TestUpload_resumeAfter308_completes(t *testing.T) {
 	}
 }
 
-// TestUpload_nativeCodeType_inPath asserts the file-type segment is taken
-// verbatim from the Discovery enum (nativeCode), not lowercased/invented.
 func TestUpload_nativeCodeType_inPath(t *testing.T) {
 	mapping := writeMapping(t)
 	transport := &resumable{body: `{"deobfuscationFile":{"symbolType":"nativeCode"}}`}
@@ -168,9 +145,6 @@ func TestUpload_nativeCodeType_inPath(t *testing.T) {
 	}
 }
 
-// TestUpload_missingFile_returnsLocalIOError_exit20 asserts a missing
-// mapping path fails as a client-side validation error (exit 20) before
-// any HTTP: distinct from a transport error (50).
 func TestUpload_missingFile_returnsLocalIOError_exit20(t *testing.T) {
 	transport := &resumable{}
 	hc := transport.client()
@@ -187,8 +161,6 @@ func TestUpload_missingFile_returnsLocalIOError_exit20(t *testing.T) {
 	}
 }
 
-// TestUpload_apiError_surfacesAPIError asserts a non-2xx response is
-// mapped to *api.Error carrying the upstream status code.
 func TestUpload_apiError_surfacesAPIError(t *testing.T) {
 	mapping := writeMapping(t)
 	transport := &resumable{initiateStatus: http.StatusForbidden, body: `{"error":{"code":403,"message":"caller lacks permission"}}`}
@@ -207,11 +179,8 @@ func TestUpload_apiError_surfacesAPIError(t *testing.T) {
 	}
 }
 
-// TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP asserts a
-// non-regular path (a directory) is rejected as a client-side validation
-// error (exit 20) BEFORE any HTTP. Regression for the PR #264 review.
 func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {
-	dir := t.TempDir() // a directory, not a regular file
+	dir := t.TempDir()
 	transport := &resumable{}
 	hc := transport.client()
 

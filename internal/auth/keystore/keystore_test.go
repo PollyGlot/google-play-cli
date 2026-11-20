@@ -53,9 +53,6 @@ func TestFileBackend_save_writesMode0600(t *testing.T) {
 	}
 }
 
-// os.WriteFile and os.MkdirAll apply their mode only when they create the path,
-// so a key file or directory left loose by an older build, a restore or a manual
-// copy kept its mode across every later Save (#795).
 func TestFileBackend_save_tightensExistingLoosePaths(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX file modes do not apply on Windows")
@@ -68,7 +65,6 @@ func TestFileBackend_save_tightensExistingLoosePaths(t *testing.T) {
 	if err := os.WriteFile(file, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Chmod after the fact: the umask may have trimmed the modes asked above.
 	if err := os.Chmod(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -168,11 +164,6 @@ func TestFileBackend_save_createsParentDirIfMissing(t *testing.T) {
 	}
 }
 
-// TestFileBackend_pathLikeName_refusedWithoutTouchingDisk asserts the file
-// backend refuses an Account name that is not one plain path component. The
-// name arrives from --name, --account, GPLAY_ACCOUNT and a repo's
-// config.local.json; joined as-is, `../x` reads, writes or deletes x.json one
-// directory above the keystore (#603).
 func TestFileBackend_pathLikeName_refusedWithoutTouchingDisk(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "accounts")
@@ -193,9 +184,6 @@ func TestFileBackend_pathLikeName_refusedWithoutTouchingDisk(t *testing.T) {
 	} else if errors.Is(err, keystore.ErrNotFound) {
 		t.Error("Load returned ErrNotFound, want a refusal: not-found lets the resolver fall through silently")
 	}
-	// Delete answers "nothing stored here": Save never stores such a name, and
-	// logout sweeps the file backend after the keyring, so a refusal would
-	// fail the logout of a keyring Account whose name has a slash.
 	if err := be.Delete(ctx, name); !errors.Is(err, keystore.ErrNotFound) {
 		t.Errorf("Delete(%q) = %v, want ErrNotFound", name, err)
 	}

@@ -16,8 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestFunnel_prefixes pins the one marker per level, so the prefixes a human
-// or a log grep sees are decided here and nowhere else.
 func TestFunnel_prefixes(t *testing.T) {
 	var buf bytes.Buffer
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{Stderr: &buf}, kernel.Inputs{})
@@ -31,16 +29,12 @@ func TestFunnel_prefixes(t *testing.T) {
 		t.Errorf("stderr =\n%q\nwant\n%q", buf.String(), want)
 	}
 
-	// A RunContext built by hand may carry no Stderr: the funnel is a no-op,
-	// never a panic.
 	bare := &kernel.RunContext{}
 	bare.Notef("x")
 	bare.Logf("x")
 	bare.Failf("x")
 }
 
-// TestLoggerFor_writesToCommandStderr covers the commands that never build a
-// RunContext (`gplay init`, `install-skills`): same prefixes, cobra's writer.
 func TestLoggerFor_writesToCommandStderr(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := &cobra.Command{Use: "x"}
@@ -54,16 +48,6 @@ func TestLoggerFor_writesToCommandStderr(t *testing.T) {
 	}
 }
 
-// TestNoDirectStderrWritesInCommands is the gate behind the funnel: a stderr
-// line written by hand under commands/ is a line a future --quiet cannot
-// reach and a prefix nobody chose (the audit counted four warning spellings
-// before the funnel). It parses every shipped Go file under commands/ and
-// fails on a write whose target is a stderr: `fmt.Fprint*`, `io.WriteString`
-// or a `.Write` on `X.Stderr`, `os.Stderr` or `cmd.ErrOrStderr()`.
-//
-// Handing the writer to a helper is not a write and passes (artifact.Verify
-// takes rc.Stderr; `b.Stderr = cmd.ErrOrStderr()` wires a sub-run's Boot).
-// Test files are skipped: they read stderr back, they do not write it.
 func TestNoDirectStderrWritesInCommands(t *testing.T) {
 	root := filepath.Join("..", "..", "commands")
 	fset := token.NewFileSet()
@@ -101,13 +85,11 @@ func TestNoDirectStderrWritesInCommands(t *testing.T) {
 	}
 }
 
-// stderrWriteTarget returns the stderr expression call writes to, or "".
 func stderrWriteTarget(call *ast.CallExpr) string {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return ""
 	}
-	// w.Write(...) / w.WriteString(...) on a stderr expression.
 	if sel.Sel.Name == "Write" || sel.Sel.Name == "WriteString" {
 		if isStderr(sel.X) {
 			return exprString(sel.X)
@@ -127,8 +109,6 @@ func stderrWriteTarget(call *ast.CallExpr) string {
 	return ""
 }
 
-// isStderr reports whether e is X.Stderr (rc.Stderr, os.Stderr, boot.Stderr)
-// or X.ErrOrStderr().
 func isStderr(e ast.Expr) bool {
 	switch v := e.(type) {
 	case *ast.SelectorExpr:

@@ -5,11 +5,6 @@ import (
 	"testing"
 )
 
-// The DefaultColumns↔registry invariant these list commands used to assert
-// per-command is now structural in output.ColumnSet (a single ordered list
-// cannot drift from itself) and tested once in internal/output. What stays
-// command-specific is the cell formatting below.
-
 func TestFormatFraction_decimalNeverScientific(t *testing.T) {
 	cases := []struct {
 		in   float64

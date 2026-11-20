@@ -12,9 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
-// TestWrites_carryTheLatencyToleranceOnlyWhenSet drives every subscriptions
-// apply write whose method takes latencyTolerance and reads it where
-// Discovery puts it: the query of the patches, the body of the state verbs.
 func TestWrites_carryTheLatencyToleranceOnlyWhenSet(t *testing.T) {
 	ctx, pkg := context.Background(), "com.example.app"
 	writes := []struct {

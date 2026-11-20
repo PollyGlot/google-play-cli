@@ -8,8 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// TestRun_explicitEmptyReleaseNotes_exit20_noHTTP is #786 on promote:
-// `--release-notes ""` is an empty override, not "carry the source notes over".
 func TestRun_explicitEmptyReleaseNotes_exit20_noHTTP(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		rt := newPromoteFake(promoteAPI{})

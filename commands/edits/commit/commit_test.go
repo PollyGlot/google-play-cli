@@ -25,9 +25,6 @@ import (
 
 const pkg = "com.example.app"
 
-// newCommitFake serves the edits.commit POST and an edits.insert POST (served
-// so a regression that opens a replacement Edit is counted, not just
-// refused); commitStatus (0 → 200) forces a non-2xx for the failure test.
 func newCommitFake(commitStatus int) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -43,8 +40,6 @@ func newCommitFake(commitStatus int) *testkit.Fake {
 	})
 }
 
-// countCalls returns the edits.commit and edits.insert calls, and fails the
-// test on any other request (even where Run's error would hide it).
 func countCalls(t *testing.T, f *testkit.Fake) (commits, inserts int) {
 	t.Helper()
 	for _, c := range f.Calls() {
@@ -100,7 +95,6 @@ func TestRun_commitsAndClearsPin(t *testing.T) {
 	if commits != 1 {
 		t.Errorf("commitCalls = %d, want 1", commits)
 	}
-	// Explicit-lifecycle contract: commit must never open a replacement Edit.
 	if inserts != 0 {
 		t.Errorf("commit opened %d Edit(s); want 0 (it commits the pinned Edit)", inserts)
 	}
@@ -138,8 +132,6 @@ func TestRun_commitFails_leavesPinInPlace(t *testing.T) {
 	countCalls(t, fake)
 }
 
-// TestRun_forwardsCommitOptIns: the #598 opt-ins reach edits.commit as
-// Discovery's query parameters, and a successful commit still clears the pin.
 func TestRun_forwardsCommitOptIns(t *testing.T) {
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if strings.HasSuffix(c.Path, ":commit") {
@@ -169,9 +161,6 @@ func TestRun_forwardsCommitOptIns(t *testing.T) {
 	}
 }
 
-// TestRun_unknownOutcome_keepsPinAndIsNotRetryable: a 5xx on the commit may
-// have published, so the pin stays (the Edit may still be open) and the
-// failure is COMMIT_OUTCOME_UNKNOWN rather than a retry-safe 40.
 func TestRun_unknownOutcome_keepsPinAndIsNotRetryable(t *testing.T) {
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		return http.StatusBadGateway, `{"error":{"code":502,"message":"bad gateway"}}`, true

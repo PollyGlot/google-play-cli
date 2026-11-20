@@ -62,7 +62,9 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
   gplay-authored shapes follow the same rule: a diff record's
   `liveChars`/`localChars` are pointers, so a create's `liveChars: 0` and a
   clear's `localChars: 0` are emitted while a locale-level record omits both.
-- **HTML escaping is off on every JSON gplay writes.** Go's encoder rewrites
+- **HTML escaping is off on every JSON a command emits** (the encoder gate
+  covers `commands/` and `cmd/`; the global config, the Project config and
+  the edit pin are written with `json.MarshalIndent` and still escape). Go's encoder rewrites
   `<`, `>` and `&` as `\u003c`, `\u003e` and `\u0026` by default, which only
   helps JSON inlined in an HTML page. Left on, it made passthrough strings
   (review text, listing copy, a raw message re-indented on the way out) differ

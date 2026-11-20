@@ -7,8 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/metadata/locale"
 )
 
-// TestIsKnown_recognizesRealPlayLocales asserts a sample of real Google
-// Play store-listing codes are recognized, exactly as Play spells them.
 func TestIsKnown_recognizesRealPlayLocales(t *testing.T) {
 	for _, code := range []string{
 		"en-US", "en-GB", "fr-FR", "fr-CA", "de-DE",
@@ -22,15 +20,12 @@ func TestIsKnown_recognizesRealPlayLocales(t *testing.T) {
 	}
 }
 
-// TestIsKnown_rejectsTyposAndFabrications asserts the validator's whole
-// reason to exist: an underscore form, a fabricated region, and the empty
-// string are all NOT known.
 func TestIsKnown_rejectsTyposAndFabrications(t *testing.T) {
 	for _, code := range []string{
-		"en_US", // underscore instead of hyphen
-		"pt-XX", // fabricated region
-		"",      // empty
-		"en-us", // wrong case (Play codes are case-sensitive)
+		"en_US",
+		"pt-XX",
+		"",
+		"en-us",
 		"klingon",
 	} {
 		if locale.IsKnown(code) {
@@ -39,9 +34,6 @@ func TestIsKnown_rejectsTyposAndFabrications(t *testing.T) {
 	}
 }
 
-// TestAll_nonEmptyAndNoDuplicates asserts All() returns a non-empty,
-// sorted, duplicate-free list, and that every entry round-trips through
-// IsKnown.
 func TestAll_nonEmptyAndNoDuplicates(t *testing.T) {
 	all := locale.All()
 	if len(all) == 0 {

@@ -8,8 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// TestAdd_Has_findsAddedPackage is the tracer bullet: registry.Add records
-// the package under the named account, registry.Has reads it back.
 func TestAdd_Has_findsAddedPackage(t *testing.T) {
 	accounts := []config.Account{{Name: "playci", Active: true}}
 
@@ -21,10 +19,6 @@ func TestAdd_Has_findsAddedPackage(t *testing.T) {
 	}
 }
 
-// TestAdd_idempotent_doubleAddProducesSingleEntry asserts that adding the
-// same (account, pkg) pair twice does not double the Packages slice. Real
-// users will re-run `gplay apps add` to confirm an existing registration;
-// idempotence keeps that flow safe.
 func TestAdd_idempotent_doubleAddProducesSingleEntry(t *testing.T) {
 	accounts := []config.Account{{Name: "playci", Active: true}}
 
@@ -40,10 +34,6 @@ func TestAdd_idempotent_doubleAddProducesSingleEntry(t *testing.T) {
 	}
 }
 
-// TestAdd_unknownAccount_returnsErrUnknownAccount keeps the registry
-// honest: every entry must be attached to a known Account, so the
-// caller surfaces a typed CLI-misuse exit (2) rather than silently
-// creating a phantom account record.
 func TestAdd_unknownAccount_returnsErrUnknownAccount(t *testing.T) {
 	accounts := []config.Account{{Name: "playci", Active: true}}
 
@@ -56,8 +46,6 @@ func TestAdd_unknownAccount_returnsErrUnknownAccount(t *testing.T) {
 	}
 }
 
-// TestRemove_existingPackage_dropsIt removes one entry and leaves
-// neighbours intact.
 func TestRemove_existingPackage_dropsIt(t *testing.T) {
 	accounts := []config.Account{
 		{Name: "playci", Active: true, Packages: []string{"com.a.one", "com.b.two", "com.c.three"}},
@@ -73,10 +61,6 @@ func TestRemove_existingPackage_dropsIt(t *testing.T) {
 	}
 }
 
-// TestRemove_missingPackage_isNoOp confirms Remove on a package that was
-// never registered is a no-op rather than an error. The intent is "make
-// sure this is not in the registry": calling Remove twice should not
-// fail.
 func TestRemove_missingPackage_isNoOp(t *testing.T) {
 	accounts := []config.Account{
 		{Name: "playci", Active: true, Packages: []string{"com.a.one"}},
@@ -90,9 +74,6 @@ func TestRemove_missingPackage_isNoOp(t *testing.T) {
 	}
 }
 
-// TestList_returnsRegisteredPackages returns the package set under an
-// account. Iteration order matches insertion (the slice order on disk);
-// the registry does not sort.
 func TestList_returnsRegisteredPackages(t *testing.T) {
 	accounts := []config.Account{
 		{Name: "playci", Active: true, Packages: []string{"com.first", "com.second"}},
@@ -106,10 +87,6 @@ func TestList_returnsRegisteredPackages(t *testing.T) {
 	}
 }
 
-// TestList_unknownAccount_returnsNil documents the read-side contract:
-// an unknown account is observable as "no packages" without an error,
-// which lets `gplay apps list --account foo` print an empty result
-// rather than failing.
 func TestList_unknownAccount_returnsNil(t *testing.T) {
 	accounts := []config.Account{{Name: "playci", Active: true, Packages: []string{"com.x"}}}
 	if got := registry.List(accounts, "ghost"); got != nil {
@@ -117,20 +94,13 @@ func TestList_unknownAccount_returnsNil(t *testing.T) {
 	}
 }
 
-// TestRemove_doesNotCorruptCallerListSnapshot asserts the slice-aliasing
-// guard: a caller that holds a slice returned by List MUST NOT see its
-// contents silently rewritten by a subsequent Remove. The pre-fix
-// implementation used `append(pkgs[:j], pkgs[j+1:]...)` which mutates
-// the underlying array; the caller's snapshot saw the second-to-last
-// element duplicated. This test pins the contract that List returns
-// an independent view, and Remove does not stomp on it.
 func TestRemove_doesNotCorruptCallerListSnapshot(t *testing.T) {
 	accounts := []config.Account{
 		{Name: "playci", Active: true, Packages: []string{"com.a.one", "com.b.two", "com.c.three"}},
 	}
 
 	snapshot := registry.List(accounts, "playci")
-	snapshotCopy := append([]string(nil), snapshot...) // expected value snapshot took
+	snapshotCopy := append([]string(nil), snapshot...)
 
 	if err := registry.Remove(&accounts, "playci", "com.b.two"); err != nil {
 		t.Fatalf("Remove: %v", err)
@@ -142,10 +112,6 @@ func TestRemove_doesNotCorruptCallerListSnapshot(t *testing.T) {
 	}
 }
 
-// TestList_returnsIndependentSlice asserts the caller can sort/filter
-// the returned slice without corrupting the registry. Pre-fix List
-// returned the underlying storage; a single sort.Strings would silently
-// destroy insertion order on disk.
 func TestList_returnsIndependentSlice(t *testing.T) {
 	accounts := []config.Account{
 		{Name: "playci", Active: true, Packages: []string{"com.b.two", "com.a.one", "com.c.three"}},

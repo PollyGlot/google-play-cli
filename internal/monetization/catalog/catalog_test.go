@@ -17,8 +17,6 @@ func write(t *testing.T, dir, name, body string) {
 	}
 }
 
-// TestRead_keysByProductID asserts Read returns one entry per *.json file,
-// keyed by the productId that must match the filename.
 func TestRead_keysByProductID(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "premium.json", `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}]}`)
@@ -37,8 +35,6 @@ func TestRead_keysByProductID(t *testing.T) {
 	}
 }
 
-// TestRead_mismatchedProductID_refuses asserts a file whose productId disagrees
-// with its filename is an error, not a silent rename.
 func TestRead_mismatchedProductID_refuses(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "premium.json", `{"productId":"other"}`)
@@ -48,17 +44,12 @@ func TestRead_mismatchedProductID_refuses(t *testing.T) {
 	}
 }
 
-// TestRead_missingDir_refuses asserts a nonexistent directory is an error (the
-// caller decides how to exit).
 func TestRead_missingDir_refuses(t *testing.T) {
 	if _, err := catalog.Read(filepath.Join(t.TempDir(), "nope")); err == nil {
 		t.Fatal("want error for missing dir")
 	}
 }
 
-// TestWrite_replacesSymlinkWithoutFollowing asserts a pre-existing
-// <productId>.json symlink is replaced by a regular file and its target is
-// never written through.
 func TestWrite_replacesSymlinkWithoutFollowing(t *testing.T) {
 	dir := t.TempDir()
 	outside := t.TempDir()
@@ -85,8 +76,6 @@ func TestWrite_replacesSymlinkWithoutFollowing(t *testing.T) {
 	}
 }
 
-// TestRead_emptyStem_refuses asserts a file literally named ".json" (empty
-// product-ID stem) is refused.
 func TestRead_emptyStem_refuses(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, ".json", `{}`)
@@ -95,8 +84,6 @@ func TestRead_emptyStem_refuses(t *testing.T) {
 	}
 }
 
-// TestWrite_refusesUnsafeProductID asserts an API-supplied product ID is never
-// trusted as a path: anything path-like refuses instead of escaping --dir.
 func TestWrite_refusesUnsafeProductID(t *testing.T) {
 	for _, id := range []string{"", ".", "..", "../evil", "a/b", `a\b`} {
 		dir := t.TempDir()
@@ -107,10 +94,6 @@ func TestWrite_refusesUnsafeProductID(t *testing.T) {
 	}
 }
 
-// TestWrite_roundTrip asserts Write lays down one pretty-printed <productId>.json
-// per entry, strips server-side noise (packageName, archived), removes stale
-// .json files, and leaves foreign files alone, so pull then Read is a no-op
-// input to the reconciler.
 func TestWrite_roundTrip(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "stale.json", `{"productId":"stale"}`)
@@ -150,9 +133,6 @@ func TestWrite_roundTrip(t *testing.T) {
 	}
 }
 
-// TestWrite_keepsHTMLCharactersLiteral asserts a pulled file carries <, > and &
-// as the API sent them, in the 2-space layout: the file is what a reviewer
-// diffs, and \u0026 in listing copy is noise pull must not introduce.
 func TestWrite_keepsHTMLCharactersLiteral(t *testing.T) {
 	dir := t.TempDir()
 	raw := json.RawMessage(`{"productId":"premium","listings":[{"title":"Tips & <tricks>"}]}`)
