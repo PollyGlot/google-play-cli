@@ -10,7 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// workflowsDir is the repository's workflow directory, from this package.
 const workflowsDir = "../../.github/workflows"
 
 type workflow struct {
@@ -23,15 +22,8 @@ type job struct {
 	Permissions yaml.Node `yaml:"permissions"`
 }
 
-// levels orders a permission value: a caller grants a scope when its level is
-// at least the one the called job requests.
 var levels = map[string]int{"none": 0, "read": 1, "write": 2}
 
-// TestReusableWorkflowCallersGrantCalleePermissions fails when a job calling a
-// local reusable workflow grants less than one of the called jobs requests.
-// GitHub rejects such a run at startup ("startup_failure"), on every push,
-// before any `if:` is evaluated; actionlint does not see it. It happened twice
-// on the release call: attestations:write, then packages:write (#659, #674).
 func TestReusableWorkflowCallersGrantCalleePermissions(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(workflowsDir, "*.y*ml"))
 	if err != nil || len(files) == 0 {
@@ -64,7 +56,6 @@ func TestReusableWorkflowCallersGrantCalleePermissions(t *testing.T) {
 	}
 }
 
-// TestEffectivePermissions pins the parsing rules the gate relies on.
 func TestEffectivePermissions(t *testing.T) {
 	parse := func(s string) yaml.Node {
 		var n yaml.Node
@@ -92,17 +83,12 @@ func TestEffectivePermissions(t *testing.T) {
 	}
 }
 
-// allScopes is every GITHUB_TOKEN scope, for the read-all/write-all shorthands.
 var allScopes = []string{
 	"actions", "attestations", "checks", "contents", "deployments", "discussions",
 	"id-token", "issues", "models", "packages", "pages", "pull-requests",
 	"repository-projects", "security-events", "statuses",
 }
 
-// effective returns the permission levels a job runs with: its own
-// `permissions:` when set, else the workflow's. Absent both, it returns an
-// empty map; for a caller that under-grants nothing explicit, for a callee
-// that requests nothing explicit.
 func effective(t *testing.T, jobPerms, workflowPerms yaml.Node) map[string]int {
 	t.Helper()
 	n := jobPerms

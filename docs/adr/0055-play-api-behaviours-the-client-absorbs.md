@@ -4,6 +4,8 @@
 
 accepted (2026-11-20)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 The Google APIs gplay speaks (Android Publisher, Play Developer Reporting,
@@ -215,6 +217,15 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 - **`inAppUpdatePriority` 0 is a real priority**, so the field is a pointer:
   absent stays absent (a release without a priority sends the bytes it sent
   before the field existed, #664), and an explicit 0 reaches the wire.
+- **A track release carries no timestamp.** `TrackRelease` has no publish
+  date and no last-updated field (Discovery properties: `countryTargeting`,
+  `inAppUpdatePriority`, `name`, `releaseNotes`, `status`, `userFraction`,
+  `versionCodes`), so a read can prove a production release absent but never
+  stale. The `apps audit` check is named for what the API can prove
+  (`CheckNoProductionRelease`), not "no recent production release".
+- **A rollout fraction renders at four decimal places, trimmed**: that covers
+  Play's rollout granularity and sidesteps the float noise of a naive
+  `f*100` (`0.1*100` is `10.000000000000002`).
 
 ### Play Developer Reporting (vitals)
 

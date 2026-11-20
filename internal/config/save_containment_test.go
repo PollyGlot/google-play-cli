@@ -11,11 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// Global.Save stages through `<path>.tmp` before renaming. That sibling is a
-// name nothing owns: pre-place it as a symlink and a plain WriteFile follows
-// the link, so saving the account registry overwrites the link's target with
-// the operator's own rights. Same shape as the editpin pin file, same guard
-// (PRD #459 / slice #461).
 func TestGlobal_Save_refusesSymlinkedTmpPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -50,9 +45,6 @@ func TestGlobal_Save_refusesSymlinkedTmpPath(t *testing.T) {
 	}
 }
 
-// The guard must not break the normal save, including into a config dir that
-// does not exist yet (lazy creation by `auth login`) and one reached through a
-// symlinked parent (macOS /tmp is itself a symlink).
 func TestGlobal_Save_stillWritesThroughSymlinkedParent(t *testing.T) {
 	real := t.TempDir()
 	link := filepath.Join(t.TempDir(), "cfg-link")
@@ -69,7 +61,6 @@ func TestGlobal_Save_stillWritesThroughSymlinkedParent(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(real, "gplay", "config.json")); err != nil {
 		t.Errorf("the config was not written: %v", err)
 	}
-	// The staging file must not survive a successful save.
 	if _, err := os.Lstat(path + ".tmp"); !os.IsNotExist(err) {
 		t.Errorf("the .tmp staging file was left behind: %v", err)
 	}

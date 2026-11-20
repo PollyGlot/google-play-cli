@@ -1,5 +1,3 @@
-// Package configtest holds test doubles for internal/config. It is imported by
-// tests only, so none of it ships in the gplay binary.
 package configtest
 
 import (
@@ -12,16 +10,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// MemFS must keep up with every operation the real filesystem offers.
 var _ config.FS = (*MemFS)(nil)
 
-// MemFS is an in-memory FS for tests. It implements only the operations
-// gplay actually uses (see internal/config.FS). Directories are tracked
-// implicitly by file paths; explicit MkdirAll is a no-op that succeeds
-// after recording the directory so Stat on a dir-only path still works.
-//
-// MemFS is safe for parallel access from a single test goroutine; it is
-// NOT safe across goroutines without external synchronisation.
 type MemFS struct {
 	mu      sync.Mutex
 	files   map[string]memFile
@@ -36,9 +26,6 @@ type memFile struct {
 	mod  time.Time
 }
 
-// NewMemFS returns an empty in-memory FS with the given Getwd() /
-// UserHomeDir() seeds. Both default to "/" when empty so tests don't
-// have to set them when the cascade doesn't read them.
 func NewMemFS(cwd, home string) *MemFS {
 	if cwd == "" {
 		cwd = "/"
@@ -72,7 +59,6 @@ func (m *MemFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 		perm: perm,
 		mod:  time.Now(),
 	}
-	// Record every parent directory so ReadDir + Stat see them.
 	for d := path.Dir(name); d != "." && d != "/"; d = path.Dir(d) {
 		m.dirs[d] = struct{}{}
 	}
@@ -126,9 +112,6 @@ func (m *MemFS) UserHomeDir() (string, error) {
 	return m.homeDir, nil
 }
 
-// Rename moves a file between two paths in-memory. Mirrors os.Rename's
-// semantics: missing source is ErrNotExist; overwriting an existing
-// destination succeeds silently.
 func (m *MemFS) Rename(oldpath, newpath string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -144,9 +127,6 @@ func (m *MemFS) Rename(oldpath, newpath string) error {
 	return nil
 }
 
-// Remove deletes a file. Missing files surface as fs.ErrNotExist:
-// matches os.Remove so callers using errors.Is(_, fs.ErrNotExist) keep
-// working under MemFS.
 func (m *MemFS) Remove(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

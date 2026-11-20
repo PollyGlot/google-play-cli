@@ -23,7 +23,7 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
 - **`metadata apply --dry-run`** emits a gplay-defined diff schema, not an API body — there is no upstream "diff" endpoint to pass through. Shape: `{"package","changes":[{locale,field,op,…}],"summary":{…}}` (see [ADR-0011](./0011-metadata-apply-sync-model.md)).
 - **`metadata apply`** (the real write) touches N locales, so its result is the per-locale write bodies keyed by locale (`{"<locale>": <body verbatim>, …}`: `edits.listings.patch` for a live locale, `edits.listings.update` for one it creates), not a single pass-through — same reasoning as `apps info`. Each value is the upstream body verbatim, so the three guarantees hold per locale. (`metadata list` stays a plain pass-through of `edits.listings.list`.)
 - **`subscriptions apply`** (with or without `--dry-run`) emits the gplay-defined Reconciliation-plan schema — there is no upstream "diff" endpoint, and an executed plan spans N create/patch/delete calls. Shape: `{"package","dryRun","changes":[{op,productId,fields?}],"summary":{…},"requires"?:[…]}`, flat so a CI gate is one `jq` line (see [ADR-0041](./0041-declarative-monetization-catalog.md)). (`subscriptions pull` stays API-shaped: the merged `ListSubscriptionsResponse` envelope, pages folded, the consumed `nextPageToken` dropped — the `team users list` precedent.)
-- **Errors** are not API pass-through. They use a gplay-defined shape on stderr: `{"error":{"code":"<symbolic>","message":"<human>","details":{...}}}`. Wrapping the API error inside `details` preserves the upstream payload.
+- **Errors** are not API pass-through. The human line goes to stderr; under `--output json` a gplay-defined envelope (`{"error":{"code","exitCode","retryable","message",...}}`) also goes to stdout, carrying the upstream `reasons` verbatim ([ADR-0023](./0023-json-error-envelope.md), [ADR-0044](./0044-structured-diagnostic-codes.md)).
 
 ## Considered Options
 
@@ -50,6 +50,31 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
   gplay-authored shapes follow the same rule: a diff record's
   `liveChars`/`localChars` are pointers, so a create's `liveChars: 0` and a
   clear's `localChars: 0` are emitted while a locale-level record omits both.
+- **HTML escaping is off on every JSON a command emits** (the encoder gate
+  covers `commands/` and `cmd/`; the global config, the Project config and
+  the edit pin are written with `json.MarshalIndent` and still escape). Go's encoder rewrites
+  `<`, `>` and `&` as `\u003c`, `\u003e` and `\u0026` by default, which only
+  helps JSON inlined in an HTML page. Left on, it made passthrough strings
+  (review text, listing copy, a raw message re-indented on the way out) differ
+  byte for byte from what the API returned, and turned `--package <pkg>` in an
+  error envelope into text neither grep nor a human reads.
+- **One encoder writes command JSON**: `output.WriteJSON` (indented, trailing
+  newline) for what reaches stdout, and `output.Marshal` for compact JSON
+  assembled from API bytes before it gets there (a merged page envelope, a
+  composite view, a request body a `--dry-run` previews). `json.Marshal`
+  escapes even inside a `json.RawMessage`, and `WriteJSON` cannot undo an
+  escape already baked into the bytes. A test enforces it: under `commands/`
+  and `cmd/`, any `json.NewEncoder`, `json.Marshal` or `json.MarshalIndent`
+  fails (#588, #622), one rule with no triage; elsewhere, a function that
+  builds an encoder must also turn HTML escaping off, so the escaped form
+  cannot come back through a file gplay writes (the Discovery and Schema index
+  writers).
+- **Passthrough output is asserted byte-equal with the fixture body**, since
+  the API owns that shape. Goldens are for gplay-authored shapes (views,
+  dry-run previews, summaries: the frozen contract of
+  [ADR-0010](./0010-versioning-public-contract-and-ga.md)), and the golden
+  helper also checks that the output is one valid JSON document with no HTML
+  escape, so a golden cannot freeze a broken encoder.
 - **A wire golden recorded before a refactor is a pin.** A test that pins every
   request a package sends, byte for byte, against a golden recorded before the
   move onto the shared executor (#586), is never regenerated to make a wire

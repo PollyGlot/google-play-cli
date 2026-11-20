@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// sampleParams fills every placeholder of tmpl with a distinct value, the way
-// a call site would.
 func sampleParams(tmpl string) map[string]string {
 	out := map[string]string{}
 	for i, p := range placeholder.FindAllString(tmpl, -1) {
@@ -17,10 +15,6 @@ func sampleParams(tmpl string) map[string]string {
 	return out
 }
 
-// TestMatchRequestRoundTripsEveryEntry proves the classifier the transport
-// relies on is exact: for every registered method, a URL built by the
-// resolver (data plane and media endpoint alike, with a query string on top)
-// maps back to that very method, never to a same-verb neighbour.
 func TestMatchRequestRoundTripsEveryEntry(t *testing.T) {
 	for _, e := range entries {
 		m, err := Resolve(e.MethodID)
@@ -56,9 +50,6 @@ func TestMatchRequestRoundTripsEveryEntry(t *testing.T) {
 	}
 }
 
-// TestReplaySafePOSTsAreRegisteredPOSTs keeps the allowlist honest: an entry
-// that is not a registered POST is either dead (the method left the registry)
-// or pointless (a GET is idempotent anyway), and both hide a stale promise.
 func TestReplaySafePOSTsAreRegisteredPOSTs(t *testing.T) {
 	for id := range replaySafePOSTs {
 		m, err := Resolve(id)

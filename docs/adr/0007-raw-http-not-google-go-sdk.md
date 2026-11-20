@@ -31,7 +31,7 @@ This is the inverse of the "use Google's SDK when possible" default, so it deser
 
 Auth is the one place where we **do** lean on Google's libraries: `golang.org/x/oauth2/google` for the service account → JWT → access token exchange. That library is small, focused, and has no equivalent we'd want to hand-roll. The "raw HTTP not SDK" decision is specifically about the API surface (`androidpublisher/v3`), not about every Google-authored Go package.
 
-Update (#646): gplay now imports only `golang.org/x/oauth2/jwt`, building its config from the already-parsed key file. `golang.org/x/oauth2/google` served a single call (`JWTConfigFromJSON`) and linked the GCE metadata client and `log/slog` into the binary for a server a key file never talks to. The JWT itself (claims, `kid`, token URI) is unchanged, pinned by a test in `internal/auth/token`.
+Update (#646): gplay now imports only `golang.org/x/oauth2/jwt`, building its config from the already-parsed key file. `golang.org/x/oauth2/google` served a single call (`JWTConfigFromJSON`) and linked the GCE metadata client and `log/slog` into the binary for a server a key file never talks to. The JWT itself (claims, `kid`, token URI) is unchanged, pinned by a test in `internal/auth/token`. The pinned values were recorded by signing the test key through both `JWTConfigFromJSON` and gplay's own source and comparing the two exchanges (PR #646); with the import gone, that pin is what holds them equal, so a diff against it is a regression, never a value to realign.
 
 ## Considered Options
 

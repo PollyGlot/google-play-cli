@@ -73,6 +73,13 @@ Two facts constrain the answer:
    `kernel.ExperimentalFlag` ([ADR-0042](./0042-one-zero-ga-and-stability-label-mechanism.md)):
    the leaves stay frozen Public, the value set may still grow.
 
+## Implementation notes
+
+- **A direct caller of a command's `Run` validates its policy too.** It
+  bypasses flag parsing, so the helper offers a check for that path: the zero
+  value means `fail`, and a policy the command does not offer is CLI misuse
+  (exit 2), refused before any HTTP.
+
 ## Consequences
 
 - A re-run of an `--if-exists skip` create converges with one extra read and

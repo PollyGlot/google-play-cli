@@ -115,6 +115,40 @@ Two consequences for the code:
   (the app registry) uses the name the resolver settled on
   ([ADR-0020](./0020-resolution-error-surfacing.md)).
 
+## Implementation notes
+
+- **The `$HOME` barrier is the loader's one required input.** An empty home
+  directory would silently disable it, so the loader refuses to run without
+  one; the other inputs degrade safely (no global file reads as an empty
+  global, an empty start directory resolves to the working directory). The
+  barrier test places its repo below `$HOME`, so `$HOME` is a real ancestor and
+  the test cannot pass vacuously.
+- **Any presence of `account` in the committed layer is caught**, `"account":
+  null` included: the field is decoded as a raw JSON value, not a pointer,
+  which would read `null` as absent and let it through.
+- **`config.json` is written world-readable (0644)**: it is committed and
+  shared with teammates. 0600 is reserved for files that hold secrets.
+- **The git-tracked check on `config.local.json` is hardened**, since it runs
+  git inside a directory the repo controls (#791):
+  - it is bounded at 2 seconds, because it runs on every command started in
+    such a repo, and a git stuck on a network filesystem or a lock must cost a
+    short delay, never a hang; it answers "untracked" whenever it cannot tell
+    (no git, no repository, a timeout), since it only warns;
+  - `core.fsmonitor`, the one config key that makes a read-only git command
+    run a program, is forced off; `ls-files` runs no hooks, filters or pager;
+  - the inherited `GIT_DIR` (set for every git hook) and the `-c` injection
+    variables are dropped, by the environment filter of
+    [ADR-0045](./0045-install-skills-pinned-git-install.md);
+  - git runs from the nearest ancestor holding a `.git` entry, not from
+    `.gplay/`: committing `HEAD`, `objects/` and `refs/` under `.gplay/` would
+    make it pass for a bare repository that git's discovery finds first and
+    answers "untracked" for. `.git` is a name git refuses to check out, so no
+    clone can plant one; the entry may be a file (a linked worktree or a
+    submodule), not only a directory;
+  - the `.gplay/` directory is resolved first: git refuses a pathspec that
+    crosses a symlink, so a committed `.gplay -> payload` link would hide the
+    file the index lists as `payload/config.local.json`.
+
 ## Consequences
 
 - Two co-evolving files share the same JSON schema (with optional

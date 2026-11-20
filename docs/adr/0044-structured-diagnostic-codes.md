@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 [ADR-0023](./0023-json-error-envelope.md) gave failures a machine-readable
@@ -65,6 +67,13 @@ one command to ask what the binary can tell them about itself.
 **Boundaries.** Exit-code numbers, human message wording, stderr and the
 `table` / `markdown` paths are all unchanged. The envelope stays on **stdout**
 (ADR-0023's channel decision, unrevisited here) and stays failure-only.
+
+## Implementation notes
+
+- **A Google reason earns its own code only when a consumer would act
+  differently on it.** Otherwise the status bucket is enough, and the raw
+  reason still travels verbatim in `reasons`. The promotion table is small on
+  purpose and matched case-insensitively.
 
 ## Consequences
 

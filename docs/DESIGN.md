@@ -191,7 +191,12 @@ Runs these checks in order, stopping on the first hard failure:
    `client_email`, `private_key`, `token_uri`).
 2. OAuth2 access token can be minted (RSA-signed JWT exchange succeeds).
 3. Token bears the `androidpublisher` scope.
-4. For every package in the local registry (or the one passed via
+4. A token can be minted for the `playdeveloperreporting` scope, the distinct
+   read-only scope `gplay vitals` requests. A valid key can always mint a token
+   for any scope it asks for, so this check proves the credential and gplay's
+   wiring, not access to the Reporting API: a service account without that
+   access still gets a `403` when a `vitals` command calls it.
+5. For every package in the local registry (or the one passed via
    `--package`): call `edits.insert` then `edits.delete` round-trip. Catches the
    common case "SA created but not invited on the app in Play Console".
 
@@ -231,7 +236,9 @@ current user owns it, or when it shares the owner of the working directory
 (a container running as its own uid on a mounted checkout), and when it is
 not writable by every user. Otherwise another user could have planted it, or
 files in it, in a shared directory such as `/tmp`: gplay ignores it and says
-so on stderr.
+so on stderr. Both checks apply on Unix only: Windows ACLs have no single
+owner to compare, and when the owner cannot be read the directory is adopted
+without the permission test either.
 
 ### Field rules
 
@@ -696,7 +703,11 @@ Developer API call* — their JSON is the API's response, unowned by gplay.
 (`team permissions`, `schema`): the shape is gplay's, documented per command,
 and free to evolve (a `schema` is additionally `[experimental]`). Pass-through
 is a promise about *not reshaping the API*, not a promise that every `--output
-json` is an API echo.
+json` is an API echo. The same holds for a report that composes several API
+resources, where no single upstream body exists to mirror: `apps audit`
+renders a gplay-owned document and ships `[experimental]` for that reason. Its
+check IDs (`lingering-drafts`, ...) are frozen from day one all the same, so a
+CI filter written against one keeps working: an ID is retired, never renamed.
 
 ### `--output table`
 
@@ -717,7 +728,11 @@ drop `\n` and `\t` (`output.SanitizeCell`), so a value cannot break the row. The
 around `output.Render`. The sanitization is rune-based: legitimate multi-byte
 content (accents, CJK, emoji) is untouched. **`--output json` is never
 sanitized** — machine consumers get the bytes verbatim (ADR-0003); fidelity
-lives on the JSON path, safety on the human path.
+lives on the JSON path, safety on the human path. A sequence is removed whole,
+up to its terminator, not just its `ESC` byte, which would leave litter such as
+`[31m` in the text. A bare `\r` is dropped like any other control character,
+multi-line text included: it lets a line overwrite the one before it on a
+terminal.
 
 ### Errors (`--output json` error envelope, ADR-0023)
 
@@ -898,13 +913,21 @@ How the bound is wired, since the OAuth2 library fights it in two places:
 - **Without `--retry` or a media exemption, the deadline sits on the
   client**: the OAuth2 client's base is the unwrapped transport, so it
   cannot live there.
+- **A per-request deadline is released when the response body is closed**,
+  not when `RoundTrip` returns, so it covers reading the body as
+  `http.Client.Timeout` does; releasing it earlier would cut the body read
+  short. Under `--retry`, each attempt goes through a throwaway client for the
+  same reason: it gives the attempt its own deadline with that release on
+  close.
 
 ### Opt-in retry (`--retry`)
 
 The global **`--retry N`** flag (default `0` = no retry) layers a transport
 middleware on the authed client that retries the transient classes (transport
 errors, HTTP 5xx, and 429 honoring `Retry-After`, capped at the 30s maximum
-backoff) with exponential backoff plus jitter. Non-transient 4xx (auth,
+backoff, since `--timeout` bounds each attempt and not the wait between them,
+and a server asking for an hour would otherwise park a CI job that long) with
+exponential backoff plus jitter. Non-transient 4xx (auth,
 validation) and `edits.commit` (a duplicate could double-publish) are never
 retried. A write is replayed only when its API method is declared idempotent in
 `internal/apiregistry` (GET, PUT, PATCH, DELETE, plus an allowlist of
@@ -1097,7 +1120,10 @@ finding: every call succeeded, the document on stdout is complete, and the
 non-zero status exists purely so CI can gate on "clean" without parsing JSON. It
 is a distinct code precisely so an automated caller can tell *found drift* (`70`)
 from *could not look* (`10`/`11`/`30`/`40`/`50`); collapsing it into `1` would
-make a healthy audit and a broken one indistinguishable. Build it with
+make a healthy audit and a broken one indistinguishable, and `60` would read
+as a state conflict that blocked the command. The command renders its report
+on stdout before returning the findings error, which carries only the one-line
+summary printed on stderr. Build it with
 `exit.Findingsf(…)`, and never for a call that actually failed: a per-app API
 failure during a sweep is reported inside the document and drives the ordinary
 API code.

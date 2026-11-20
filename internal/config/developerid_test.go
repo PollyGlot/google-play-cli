@@ -8,8 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// TestLoad_activeAccountDeveloperID_isResolved asserts the active Account's
-// developer-id surfaces in Resolved.DeveloperID (ADR-0015 layer 1).
 func TestLoad_activeAccountDeveloperID_isResolved(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeGlobal(t, `{"accounts":[{"name":"ci","active":true,"developerId":"4900000000000000000"}]}`)
@@ -23,8 +21,6 @@ func TestLoad_activeAccountDeveloperID_isResolved(t *testing.T) {
 	}
 }
 
-// TestLoad_projectLocalDeveloperID_overridesActiveAccount asserts the
-// project-local override wins over the active Account (the multi-tenant case).
 func TestLoad_projectLocalDeveloperID_overridesActiveAccount(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeGlobal(t, `{"accounts":[{"name":"agency","active":true,"developerId":"111"}]}`)
@@ -39,9 +35,6 @@ func TestLoad_projectLocalDeveloperID_overridesActiveAccount(t *testing.T) {
 	}
 }
 
-// TestLoad_committedDeveloperID_isRejected asserts a developer-id in the
-// COMMITTED .gplay/config.json is rejected at parse time, like the account
-// field (ADR-0015 §3).
 func TestLoad_committedDeveloperID_isRejected(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeShared(t, `{"package":"com.example.app","developerId":"4900000000000000000"}`)
@@ -55,11 +48,7 @@ func TestLoad_committedDeveloperID_isRejected(t *testing.T) {
 	}
 }
 
-// TestGlobal_developerID_roundTrips asserts a pre-existing global config
-// without a developer-id round-trips unchanged (omitempty) and that one with
-// a developer-id survives a save/load cycle.
 func TestGlobal_developerID_roundTrips(t *testing.T) {
-	// omitempty: no developerId key when unset.
 	g := &config.Global{Accounts: []config.Account{{Name: "a", Active: true}}}
 	f := newLoadFixture(t)
 	if err := g.Save(context.Background(), config.OSFS{}, f.globalPath); err != nil {
@@ -73,7 +62,6 @@ func TestGlobal_developerID_roundTrips(t *testing.T) {
 		t.Errorf("DeveloperID = %q, want empty", loaded.Accounts[0].DeveloperID)
 	}
 
-	// set: survives the round-trip.
 	loaded.Accounts[0].DeveloperID = "999"
 	if err := loaded.Save(context.Background(), config.OSFS{}, f.globalPath); err != nil {
 		t.Fatalf("Save: %v", err)

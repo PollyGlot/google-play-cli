@@ -10,11 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestCheckReportingScope_happyPath_observesReportingScope asserts the new
-// reporting-scope check (#49) mints a token for the playdeveloperreporting
-// scope and confirms the exchange requested it: the read-only vitals service
-// uses a DISTINCT scope, and `auth doctor` now reports whether a token can be
-// minted for it.
 func TestCheckReportingScope_happyPath_observesReportingScope(t *testing.T) {
 	sa := makeSignedSA(t)
 	hc, obs := scopeWired(testkit.NewFake())
@@ -37,13 +32,6 @@ func TestCheckReportingScope_happyPath_observesReportingScope(t *testing.T) {
 	}
 }
 
-// TestScopeChain_reportingNotContaminatedByAndroidPublisher runs the real
-// default ordering (CheckScope for androidpublisher, then CheckReportingScope)
-// through ONE shared ScopeObserver, the way `auth doctor` does. The observer
-// only records the most recent token exchange, so this pins the invariant the
-// reporting check's honesty depends on: its own exchange must overwrite the
-// observer before the read-back, so the prior androidpublisher exchange does not
-// make the reporting check pass on a stale scope (a false least-privilege OK).
 func TestScopeChain_reportingNotContaminatedByAndroidPublisher(t *testing.T) {
 	sa := makeSignedSA(t)
 	hc, obs := scopeWired(testkit.NewFake())
@@ -58,7 +46,6 @@ func TestScopeChain_reportingNotContaminatedByAndroidPublisher(t *testing.T) {
 			t.Errorf("check[%d] failed: %+v", i, r)
 		}
 	}
-	// After the chain the observer reflects the LAST (reporting) exchange.
 	found := false
 	for _, s := range obs.Scopes() {
 		if s == token.ReportingScope {
@@ -70,8 +57,6 @@ func TestScopeChain_reportingNotContaminatedByAndroidPublisher(t *testing.T) {
 	}
 }
 
-// TestCheckReportingScope_nilObserver_reportsWiringBug mirrors CheckScope: a
-// missing observer is a gplay wiring bug, not a credential problem.
 func TestCheckReportingScope_nilObserver_reportsWiringBug(t *testing.T) {
 	sa := makeSignedSA(t)
 	results := doctor.Run(context.Background(), sa, &http.Client{Transport: testkit.NewFake()}, doctor.CheckReportingScope(nil))
@@ -80,9 +65,6 @@ func TestCheckReportingScope_nilObserver_reportsWiringBug(t *testing.T) {
 	}
 }
 
-// TestDefaultChecks_includesReportingScope asserts the reporting-scope check is
-// part of the default `auth doctor` chain, after the androidpublisher scope
-// check.
 func TestDefaultChecks_includesReportingScope(t *testing.T) {
 	checks := doctor.DefaultChecks(nil)
 	if len(checks) != 4 {

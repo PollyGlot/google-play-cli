@@ -4,6 +4,8 @@
 
 Accepted.
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 `docs/DESIGN.md` §7 and `CLAUDE.md` both promise three things that the
@@ -58,9 +60,13 @@ where the auto-detect is wrong.
 
 ### TTY detection
 
-`golang.org/x/term.IsTerminal(int(fd))` against the underlying
-`*os.File`. The check is wired through a package-level function variable
-so tests can force TTY or non-TTY without spawning a pty.
+`golang.org/x/term.IsTerminal(int(fd))` against the writer's file
+descriptor. The writer is asserted to have an `Fd()` method, not to be an
+`*os.File`: `main` wraps stdout in a byte counter (#593), and that wrapper
+keeps `Fd()`, so commands do not suddenly see a pipe and switch their
+default format to JSON. A writer without a descriptor is not a TTY. The check
+is wired through a package-level function variable so tests can force TTY or
+non-TTY without spawning a pty.
 
 `NO_COLOR` is **not** consulted here — that knob is colour-only, lives
 in DESIGN.md §8, and is enforced when colour is added (a separate
@@ -107,6 +113,15 @@ in this slice. They emit free-form human text on stderr-style success
 messages; there is no structured payload worth formatting three ways.
 This is recorded explicitly in DESIGN.md §7 so future commands without
 structured output do not get forced into the dispatcher.
+
+## Implementation notes
+
+- **Human views are sanitised line by line** as they are written (DESIGN §7,
+  control-sequence sanitization). Holding back the unfinished line keeps an
+  escape sequence or a multi-byte rune split across two writes (`tabwriter`,
+  `bufio`) whole for the filter, while a view of several hundred MiB (a
+  markdown report) never sits in memory at once. No sequence survives a line
+  break: its ESC is a control rune, dropped on the line that holds it.
 
 ## Consequences
 

@@ -4,6 +4,8 @@
 
 accepted (2026-11-20)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 Every upstream failure reaches the user as an exit code and, under
@@ -27,6 +29,12 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   app that requires an AAB), a client-side problem, not the generic 30. Auth
   (403), conflict (409), 5xx and transport failures still win over this hint:
   a 403 on an upload is an auth problem.
+- **An operator hint never moves an exit code.** The wrappers that attach
+  the canonical hints to a 403 or 404 on the package axis carry no exit code
+  of their own; the wrapped `*api.Error` stays authoritative through the
+  `exit.Coder` chain. Command groups keep only their domain wording (a review
+  id, an order, a track) and fall back to the shared hints for the generic
+  package cases.
 - **`editAlreadyExists` keeps the status's code.** On a 400 it exits 30, with
   the conflict hint; Google has shipped the same reason on a 429, which keeps
   its 60 (retry with backoff) rather than being downgraded
@@ -36,7 +44,20 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   an input error the API was never asked about. `rollout`, `halt`, `resume` and
   `complete` on a track with no matching release stay exit 30.
 
+### From exit code to diagnostic code
+
+- **The 400 and 404 refinements apply only on exit 30.** The artifact uploads
+  remap those statuses to exit 20 (a malformed artifact); there
+  `VALIDATION_FAILED` is the truthful code, and `NOT_FOUND` or
+  `INVALID_ARGUMENT` would mislead.
+
 ### Failures without a status
+
+- **A credential refusal is recognised by its RFC 6749 error code, not its
+  status.** Google answers a deleted or disabled key, a bad JWT signature or a
+  skewed clock with HTTP 400 `invalid_grant`, not 401, so the status alone
+  misses the most common refusal. The error code is read from the body
+  ([ADR-0062](./0062-credential-exposure.md), the token exchange).
 
 - **A cause that carries its own exit code wins over the network bucket.**
   When the token exchange is refused, `oauth2.Transport` fails the request
@@ -55,6 +76,12 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   products, subscriptions, Cloud Storage, the app store uploads) leave the
   status unset, so the same failure exits 50. Moving a module from one to the
   other changes a public exit code; #844 tracks settling on one rule.
+- **`auth doctor` watches the transport itself** to tell "never answered"
+  from a key that could not be used. The jwt flow flattens the transport error
+  with `%v` before returning it, so the error chain alone cannot draw that
+  line. `RoundTrip` returns once the headers are in, so the body read is
+  watched too: a read that dies after a 200 (a timeout, a reset) is the same
+  "never answered".
 - **A local file that is not a regular file is exit 20** (`LocalIOError`),
   never a transport 50 ([ADR-0056](./0056-media-upload-protocol.md)).
 
@@ -76,6 +103,34 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   calls never sent, plus whether the failing call may have been applied all
   the same. The error wraps the failing call's, so the exit code and the
   envelope stay the API's.
+### Which requests `--retry` may send twice
+
+DESIGN §8 sets what `--retry` retries; these are the rules for deciding that
+a replay is safe.
+
+- **Idempotency is a per-method fact declared in `internal/apiregistry`**,
+  next to the verb and URL it derives from, not guessed from the path. A
+  newly registered POST is non-idempotent until someone argues otherwise in a
+  reviewed diff.
+- **The verb sets the default.** GET, HEAD, PUT and DELETE are idempotent by
+  HTTP semantics, and Google's PATCH (an update of the fields its mask names,
+  `allowMissing` included) converges to the same state when sent twice. POST
+  is not, and a verb gplay does not send is treated as not idempotent rather
+  than guessed.
+- **An allowlist of POSTs a replay cannot hurt** overrides the default, each
+  entry justified: an entry is a promise that `--retry` may send the call
+  twice. Read-shaped POSTs (a query riding a body, such as the vitals
+  queries) qualify, and so does `edits.insert`: an Edit changes nothing until
+  committed, so a duplicate opened by a replay is never used and expires.
+  Leaving it out would make every Edit-scoped command lose `--retry` on its
+  first call.
+- **A refused token exchange is never replayed.** `oauth2.Transport` mints
+  the token inside `RoundTrip`, so a revoked key surfaces as a transport
+  error; replaying it re-sends a dead credential N times before failing the
+  same way.
+- **Backoff keeps a growing floor.** The delay is drawn from `[d/2, d]`
+  rather than `[0, d]`, so successive waits still increase while the jitter
+  breaks up synchronised retries.
 - **A replayed request re-reads its body.** `net/http` derives `GetBody` and
   `ContentLength` only for in-memory readers, so a streamed body sets both
   itself: a replay reopens the source, and an upload is not sent chunked.

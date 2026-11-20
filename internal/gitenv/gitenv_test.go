@@ -17,11 +17,9 @@ func TestSafe_dropsRedirectionAndGplayVariables(t *testing.T) {
 		"GIT_CONFIG_COUNT=1",
 		"GIT_CONFIG_KEY_0=core.hooksPath",
 		"GIT_CONFIG_VALUE_0=/tmp/hooks",
-		// gplay's own variables: inline key JSON, Account names, Developer IDs.
 		`GPLAY_SERVICE_ACCOUNT={"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----"}`,
 		"GPLAY_ACCOUNT=prod",
 		"GPLAY_DEVELOPER_ID=1234567890",
-		// Kept: this is how a locked-down network reaches the remote at all.
 		"GIT_SSL_CAINFO=/etc/ssl/corp.pem",
 		"HTTPS_PROXY=http://proxy.test:3128",
 		"HOME=/home/u",

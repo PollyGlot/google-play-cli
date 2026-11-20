@@ -4,6 +4,8 @@
 
 accepted (2026-11-20)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 Every file gplay sends to Play rides Google's upload sub-host, in one of two
@@ -79,6 +81,17 @@ The rules both paths follow lived in code comments; the comment purge (the
   the file no longer has the bytes the chunk promises, and sending the
   zero-filled rest of the buffer would corrupt the artifact server-side. It
   is a client-side error (exit 20).
+
+### Resumable: the upload URL
+
+- **The Schema index stores one upload path per method**, Discovery's
+  simple-protocol `mediaUpload` path. The resumable path is the same one under
+  a `/resumable` prefix and gplay appends `uploadType=resumable` itself, so
+  storing both would keep two values that must agree.
+- **The upload path is stored verbatim, not derived from the method path.**
+  It has a different prefix (`upload/androidpublisher/v3/...`), not a suffix
+  of the method path, so `releases upload`, the mapping upload and the image
+  uploads all read it from the index.
 
 ### Simple media: the request
 

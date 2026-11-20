@@ -1,8 +1,3 @@
-// Package apiregistry_test, resolver half: it proves the verb and URL the
-// resolver hands a call site are Google's own, by confronting every registered
-// method with the `flatPath` of the committed Discovery snapshots (the raw
-// artefact, NOT the derived index the resolver reads: deriving both sides from
-// the same file would prove nothing). Everything here is offline.
 package apiregistry_test
 
 import (
@@ -15,14 +10,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
 )
 
-// snapshotMethod is the slice of a Discovery method the resolver's contract
-// depends on: the verb, the absolute path template, and the media-upload path.
 type snapshotMethod struct {
 	verb, flatPath, rootURL, uploadPath string
 }
 
-// snapshotMethods walks every committed Discovery snapshot and returns its
-// methods keyed by native id.
 func snapshotMethods(t *testing.T) map[string]snapshotMethod {
 	t.Helper()
 	files, err := filepath.Glob(filepath.Join(repoDocs, "discovery", "*.json"))
@@ -47,9 +38,6 @@ func snapshotMethods(t *testing.T) map[string]snapshotMethod {
 	return out
 }
 
-// collectMethods recurses through Discovery's resource tree. It is written
-// against json.RawMessage rather than a typed mirror so this test stays
-// independent of internal/schemaindex's own parsing.
 func collectMethods(t *testing.T, rootURL string, resources map[string]json.RawMessage, out map[string]snapshotMethod) {
 	t.Helper()
 	for _, raw := range resources {
@@ -82,11 +70,6 @@ func collectMethods(t *testing.T, rootURL string, resources map[string]json.RawM
 	}
 }
 
-// TestResolveMatchesDiscoveryFlatPath is the resolver's anchor: for EVERY
-// registered method, the resolved verb and URL template must equal rootUrl +
-// flatPath as Google publishes it, and the upload template must equal rootUrl +
-// the media path. A drift here means a migrated call site would hit a different
-// endpoint than before.
 func TestResolveMatchesDiscoveryFlatPath(t *testing.T) {
 	snap := snapshotMethods(t)
 	for _, e := range apiregistry.Entries() {
@@ -116,11 +99,9 @@ func TestResolveMatchesDiscoveryFlatPath(t *testing.T) {
 	}
 }
 
-// TestResolveRejectsUnknownID guards the membership check both ways: a
-// well-formed but unregistered id, and a nonsense one.
 func TestResolveRejectsUnknownID(t *testing.T) {
 	for _, id := range []string{
-		"androidpublisher.monetization.subscriptions.get", // real method, deliberately not called by gplay (redundant, ADR-0047)
+		"androidpublisher.monetization.subscriptions.get",
 		"not.a.method",
 		"",
 	} {
@@ -130,9 +111,6 @@ func TestResolveRejectsUnknownID(t *testing.T) {
 	}
 }
 
-// TestURLFillsAndEscapes checks the two behaviours a migrated call site relies
-// on: placeholders filled in order, and values path-escaped so a hostile
-// package name cannot forge a path segment.
 func TestURLFillsAndEscapes(t *testing.T) {
 	m, err := apiregistry.Resolve("androidpublisher.edits.countryavailability.get")
 	if err != nil {
@@ -148,9 +126,6 @@ func TestURLFillsAndEscapes(t *testing.T) {
 	}
 }
 
-// TestURLRejectsMissingParam is the error case the migration depends on: a
-// forgotten or empty parameter must fail loudly, naming the parameter, instead
-// of producing a URL with a hole in it.
 func TestURLRejectsMissingParam(t *testing.T) {
 	m, err := apiregistry.Resolve("androidpublisher.edits.countryavailability.get")
 	if err != nil {
@@ -175,8 +150,6 @@ func TestURLRejectsMissingParam(t *testing.T) {
 	}
 }
 
-// TestUploadURL covers the media endpoint: present on an upload method (a
-// distinct /upload path, not a suffix), absent and refused elsewhere.
 func TestUploadURL(t *testing.T) {
 	m, err := apiregistry.Resolve("androidpublisher.edits.bundles.upload")
 	if err != nil {
@@ -200,11 +173,6 @@ func TestUploadURL(t *testing.T) {
 	}
 }
 
-// TestResolveCoversEveryService keeps the multi-service reconstruction honest:
-// the base path differs per document (androidpublisher/v3/ vs
-// games/v1configuration/ vs v1beta1/), so one registered method per service is
-// resolved and its URL checked against the constant the hand-rolled call sites
-// use today.
 func TestResolveCoversEveryService(t *testing.T) {
 	cases := map[string]string{
 		"androidpublisher.edits.tracks.list":                "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/",
