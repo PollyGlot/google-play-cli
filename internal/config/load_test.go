@@ -13,19 +13,15 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// loadFixture is a `t.TempDir`-rooted scratch space for cascading-loader
-// tests. It builds the three on-disk layers as the loader would see them
-// in a real repo: global ($XDG/gplay/config.json), project-shared
-// (.gplay/config.json), project-local (.gplay/config.local.json).
 type loadFixture struct {
-	root       string // tempdir root
-	homeDir    string // simulated $HOME (walk-up barrier)
-	xdgDir     string // simulated $XDG_CONFIG_HOME/gplay
+	root       string
+	homeDir    string
+	xdgDir     string
 	globalPath string
-	repoRoot   string // simulated repo root containing .gplay/
-	cwd        string // simulated cwd (a sub-sub-dir of repoRoot)
-	sharedPath string // <repoRoot>/.gplay/config.json
-	localPath  string // <repoRoot>/.gplay/config.local.json
+	repoRoot   string
+	cwd        string
+	sharedPath string
+	localPath  string
 }
 
 func newLoadFixture(t *testing.T) *loadFixture {
@@ -33,9 +29,6 @@ func newLoadFixture(t *testing.T) *loadFixture {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
 	xdg := filepath.Join(home, ".config", "gplay")
-	// repo sits BELOW home so $HOME is genuinely an ancestor: the
-	// barrier check has to be ineffective only when the file is found
-	// below $HOME, never at/above.
 	repo := filepath.Join(home, "work", "myrepo")
 	cwd := filepath.Join(repo, "src", "feature")
 	if err := os.MkdirAll(xdg, 0o755); err != nil {
@@ -160,7 +153,6 @@ func TestLoad_projectShared_accountField_isRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("Load: expected rejection of account field in project-shared config")
 	}
-	// The error must point at the offending file (per PRD).
 	if !strings.Contains(err.Error(), f.sharedPath) {
 		t.Errorf("error %q must mention %q", err.Error(), f.sharedPath)
 	}
@@ -169,8 +161,6 @@ func TestLoad_projectShared_accountField_isRejected(t *testing.T) {
 	}
 }
 
-// `"account": null` is still presence of the forbidden field: must be
-// rejected the same as a non-null value.
 func TestLoad_projectShared_accountFieldExplicitlyNull_isRejected(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeShared(t, `{"package":"com.example.app","account":null}`)
@@ -199,8 +189,6 @@ func TestLoad_projectLocal_accountField_isAccepted(t *testing.T) {
 
 func TestLoad_projectShared_atHomeDir_isIgnored(t *testing.T) {
 	f := newLoadFixture(t)
-	// Place a .gplay/config.json directly in $HOME: must NOT be picked
-	// up via walk-up, even though it sits between cwd and the root.
 	if err := os.MkdirAll(filepath.Join(f.homeDir, ".gplay"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -252,8 +240,6 @@ func TestLoad_paths_arePopulatedWhenFilesExist(t *testing.T) {
 	}
 }
 
-// Sanity: the loader must not error on a nonexistent global path: the
-// global is created lazily by `auth login`.
 func TestLoad_missingGlobal_isOK(t *testing.T) {
 	f := newLoadFixture(t)
 	if _, err := os.Stat(f.globalPath); !errors.Is(err, os.ErrNotExist) {
@@ -264,11 +250,6 @@ func TestLoad_missingGlobal_isOK(t *testing.T) {
 	}
 }
 
-// TestLoad_projectLocal_pathLikeAccount_refused asserts a repo's
-// config.local.json cannot name an Account that is a path: the name is joined
-// into the file keystore's path, so `../x` would load a credential from outside
-// the accounts directory (#603). The refusal is a usage error (exit 2) naming
-// the file to fix, raised before any command runs.
 func TestLoad_projectLocal_pathLikeAccount_refused(t *testing.T) {
 	for _, name := range []string{"../client-b", "a/b", "..", "/etc/x"} {
 		t.Run(name, func(t *testing.T) {
@@ -290,8 +271,6 @@ func TestLoad_projectLocal_pathLikeAccount_refused(t *testing.T) {
 	}
 }
 
-// TestLoad_projectLocal_plainAccountWithDots_accepted guards the other side:
-// a name carrying dots or dashes but no separator is an ordinary Account name.
 func TestLoad_projectLocal_plainAccountWithDots_accepted(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeLocal(t, `{"account":"client-b.prod"}`)

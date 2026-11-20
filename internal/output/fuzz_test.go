@@ -6,11 +6,6 @@ import (
 	"unicode"
 )
 
-// FuzzSanitizeCell holds the render-boundary contract for untrusted API text in
-// table and markdown cells: no control rune survives (so no ANSI sequence, OSC
-// hyperlink or cursor move reaches the terminal, and no TAB or newline breaks a
-// column), and sanitising is idempotent, so a cell rendered twice reads the
-// same. Stripping one sequence must not splice its neighbours into a new one.
 func FuzzSanitizeCell(f *testing.F) {
 	for _, seed := range []string{
 		"",

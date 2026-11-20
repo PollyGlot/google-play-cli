@@ -1,7 +1,3 @@
-// Package orchestrator_test exercises the upload orchestration end-to-end
-// through a RoundTripper-mocked Google Play Developer API. Each test
-// drives one behavior: the tracer bullet here is the canonical
-// four-call sequence on a non-production track.
 package orchestrator_test
 
 import (
@@ -20,29 +16,16 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// handler answers one endpoint of a fake in place of its happy-path default:
-// the status (0 → 200) and body for the recorded call.
 type handler func(c testkit.Call) (int, string)
 
-// playAPI configures the androidpublisher endpoints involved in an upload:
-// edits.insert, edits.details.get, bundles.upload, tracks.update,
-// edits.commit, and the cleanup edits.delete. Each endpoint has a default
-// happy-path response; tests override any specific handler to inject a
-// failure or to fail on a call that must not happen.
 type playAPI struct {
 	editID             string
 	versionCode        int
-	defaultLanguage    string // returned by the default details handler
+	defaultLanguage    string
 	trackUpdateRawResp string
-	// versionCodes, when set, answers the successive bundle uploads with
-	// these codes in order (a multi-artifact release, #666); empty answers
-	// every upload with versionCode.
-	versionCodes []int
-	// hostedVersionCode answers edits.apks.addexternallyhosted (#546).
-	hostedVersionCode int
+	versionCodes       []int
+	hostedVersionCode  int
 
-	// Optional handler overrides. nil → use the default happy-path
-	// response for that endpoint.
 	insertHandler  handler
 	detailsHandler handler
 	bundleHandler  handler
@@ -52,9 +35,6 @@ type playAPI struct {
 	deleteHandler  handler
 }
 
-// newPlay returns the Fake that records every call for assertions and the
-// transport to inject. The wrapper only adds the session URI (Location) to a
-// successful resumable initiate, which a responder cannot express.
 func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 	override := func(h handler, c testkit.Call) (int, string, bool) {
 		status, body := h(c)
@@ -96,28 +76,18 @@ func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 			}
 			return http.StatusNoContent, "", true
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/apks/externallyHosted"):
-			// A plain JSON POST: the resource is echoed back with the
-			// versionCode Google settled on.
 			return http.StatusOK, fmt.Sprintf(`{"externallyHostedApk":{"packageName":"com.example.app","versionCode":%d}}`, a.hostedVersionCode), true
 		case c.Method == http.MethodPost && strings.Contains(c.Path, "/bundles"):
 			if a.bundleHandler != nil {
 				return override(a.bundleHandler, c)
 			}
-			// Resumable initiate: the wrapper hands back a session URI (the
-			// same /bundles path, with an upload_id query) in Location. The
-			// helper then PUTs the artifact chunk(s) there. A fake AAB is a
-			// few bytes, so it is a single chunk; the PUT below returns the
-			// versionCode body.
 			return http.StatusOK, "", true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/bundles"):
-			// Resumable chunk PUT (the final chunk carries the resource body).
 			return http.StatusOK, fmt.Sprintf(`{"versionCode":%d,"sha1":"abc","sha256":"def"}`, nextCode()), true
 		case c.Method == http.MethodPost && strings.Contains(c.Path, "/deobfuscationFiles/"):
 			if a.deobfHandler != nil {
 				return override(a.deobfHandler, c)
 			}
-			// Resumable initiate: session URI in Location. The mapping bytes
-			// travel on the PUT chunk below.
 			return http.StatusOK, "", true
 		case c.Method == http.MethodPut && strings.Contains(c.Path, "/deobfuscationFiles/"):
 			return http.StatusOK, `{"deobfuscationFile":{"symbolType":"proguard"}}`, true
@@ -137,7 +107,6 @@ func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 		}
 		return 0, "", false
 	}, "Location", func(c testkit.Call, status int) string {
-		// Resumable initiate: the session URI goes in Location.
 		if status == http.StatusOK && c.Method == http.MethodPost &&
 			(strings.Contains(c.Path, "/bundles") || strings.Contains(c.Path, "/deobfuscationFiles/")) {
 			return "https://" + c.Host + c.Path + "?upload_id=session-" + a.editID
@@ -147,7 +116,6 @@ func newPlay(a playAPI) (*testkit.Fake, http.RoundTripper) {
 	return f, f
 }
 
-// apiCalls lists the recorded calls as "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -156,12 +124,8 @@ func apiCalls(f *testkit.Fake) []string {
 	return out
 }
 
-// touched reports whether anything reached the transport, token exchange
-// included.
 func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
-// lastBody returns the body of the last recorded call with method whose path
-// contains fragment, nil when there is none.
 func lastBody(f *testkit.Fake, method, fragment string) []byte {
 	var body []byte
 	for _, c := range f.Calls() {
@@ -172,17 +136,12 @@ func lastBody(f *testkit.Fake, method, fragment string) []byte {
 	return body
 }
 
-// trackUpdateReq returns the body of the last tracks.update PUT.
 func trackUpdateReq(f *testkit.Fake) []byte { return lastBody(f, http.MethodPut, "/tracks/") }
 
-// deobfReqBody returns the body of the last deobfuscation-file chunk PUT.
 func deobfReqBody(f *testkit.Fake) []byte {
 	return lastBody(f, http.MethodPut, "/deobfuscationFiles/")
 }
 
-// writeFakeAAB creates a non-empty file in t.TempDir() with a .aab
-// extension. The fake transport does not validate the bytes: it just
-// needs os.Open to succeed.
 func writeFakeAAB(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "app.aab")
@@ -192,11 +151,6 @@ func writeFakeAAB(t *testing.T) string {
 	return p
 }
 
-// TestUpload_internalTrack_happyPath_setsCompletedRelease is the tracer
-// bullet for orchestrator.Upload: a complete vertical slice through the
-// upload flow on a non-production track. Asserts the canonical four-call
-// sequence (edits.insert → bundles.upload → tracks.update → edits.commit)
-// and that the track update carries status=completed and no userFraction.
 func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -218,9 +172,6 @@ func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 		t.Fatal("result is nil")
 	}
 
-	// Canonical call sequence. bundles.upload is now a resumable upload:
-	// a POST initiate followed by a PUT of the (single) chunk to the session
-	// URI (same /bundles path), then tracks.update and the commit.
 	wantPaths := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
@@ -238,7 +189,6 @@ func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 		}
 	}
 
-	// Track update payload carries status=completed, no userFraction.
 	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"status":"completed"`) {
 		t.Errorf("tracks.update body = %s, want status=completed", body)
@@ -247,7 +197,6 @@ func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 		t.Errorf("tracks.update body = %s, want no userFraction on a completed release", body)
 	}
 
-	// Result carries versionCode echoed by bundles.upload.
 	if result.VersionCode != 142 {
 		t.Errorf("VersionCode = %d, want 142", result.VersionCode)
 	}
@@ -259,9 +208,6 @@ func TestUpload_internalTrack_happyPath_setsCompletedRelease(t *testing.T) {
 	}
 }
 
-// TestUpload_productionTrack_safeDefault_sendsDraftStatus asserts the
-// ADR-0002 safe-default rule: target production with Status=Unspecified
-// produces a draft release (no userFraction field).
 func TestUpload_productionTrack_safeDefault_sendsDraftStatus(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -275,7 +221,6 @@ func TestUpload_productionTrack_safeDefault_sendsDraftStatus(t *testing.T) {
 		Package:   "com.example.app",
 		Track:     "production",
 		Artifacts: []orchestrator.Artifact{{Path: aab}},
-		// Status: StatusUnspecified (default zero value) → safe-default applies.
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -285,7 +230,6 @@ func TestUpload_productionTrack_safeDefault_sendsDraftStatus(t *testing.T) {
 	if !strings.Contains(body, `"status":"draft"`) {
 		t.Errorf("production safe-default: body = %s, want status=draft", body)
 	}
-	// userFraction must be omitted for a draft release (omitempty drops zero).
 	if strings.Contains(body, `"userFraction"`) {
 		t.Errorf("production safe-default: body = %s, want userFraction omitted for draft", body)
 	}
@@ -297,9 +241,6 @@ func TestUpload_productionTrack_safeDefault_sendsDraftStatus(t *testing.T) {
 	}
 }
 
-// TestUpload_productionTrack_explicitCompleted_sendsCompletedFull asserts
-// that --complete on production (State=Completed) overrides the
-// safe-default and ships completed, with no fraction.
 func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -314,7 +255,7 @@ func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.
 		Track:     "production",
 		Artifacts: []orchestrator.Artifact{{Path: aab}},
 		State:     orchestrator.Completed(),
-		Confirm:   true, // production publish gate (see confirmRequired)
+		Confirm:   true,
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -331,9 +272,6 @@ func TestUpload_productionTrack_explicitCompleted_sendsCompletedFull(t *testing.
 	}
 }
 
-// TestUpload_productionTrack_explicitStaged_sendsInProgressWithFraction
-// asserts that --staged 0.05 (Status=InProgress + UserFraction=0.05) on
-// production ships inProgress at 5%.
 func TestUpload_productionTrack_explicitStaged_sendsInProgressWithFraction(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -348,7 +286,7 @@ func TestUpload_productionTrack_explicitStaged_sendsInProgressWithFraction(t *te
 		Track:     "production",
 		Artifacts: []orchestrator.Artifact{{Path: aab}},
 		State:     staged(t, 0.05),
-		Confirm:   true, // production publish gate (see confirmRequired)
+		Confirm:   true,
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -365,11 +303,6 @@ func TestUpload_productionTrack_explicitStaged_sendsInProgressWithFraction(t *te
 	}
 }
 
-// TestUpload_bundleUploadFail_triggersEditDelete asserts the auto-discard
-// safety net: when bundles.upload fails mid-Edit (e.g. malformed AAB),
-// the orchestrator MUST call edits.delete to clean up the orphan Edit
-// before propagating the error. A leaked Edit blocks the user's next
-// publish for up to 24h, so this is a load-bearing behavior.
 func TestUpload_bundleUploadFail_triggersEditDelete(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -401,11 +334,6 @@ func TestUpload_bundleUploadFail_triggersEditDelete(t *testing.T) {
 	}
 }
 
-// TestUpload_bundleUploadFail_keepOnFailure_doesNotDelete asserts the
-// --keep-edit-on-failure opt-out: when KeepEditOnFailure=true, a mid-Edit
-// failure must NOT trigger edits.delete, and the returned error must
-// carry the open Edit ID (wrapped in *edits.DanglingEditError) so the
-// operator can `gplay edits discard` it manually.
 func TestUpload_bundleUploadFail_keepOnFailure_doesNotDelete(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -436,7 +364,6 @@ func TestUpload_bundleUploadFail_keepOnFailure_doesNotDelete(t *testing.T) {
 		}
 	}
 
-	// The error must carry the open Edit ID so the operator can recover.
 	var dangling *edits.DanglingEditError
 	if !errors.As(err, &dangling) {
 		t.Fatalf("err = %v (%T), want *edits.DanglingEditError carrying the Edit ID", err, err)
@@ -446,10 +373,6 @@ func TestUpload_bundleUploadFail_keepOnFailure_doesNotDelete(t *testing.T) {
 	}
 }
 
-// TestUpload_commitFail_triggersEditDelete asserts the auto-discard
-// safety net extends to commit failures too: a 5xx on edits.commit
-// (after a successful AAB upload + tracks.update) must call
-// edits.delete to clean up the orphan Edit.
 func TestUpload_commitFail_triggersEditDelete(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -482,9 +405,6 @@ func TestUpload_commitFail_triggersEditDelete(t *testing.T) {
 	}
 }
 
-// TestUpload_commitFail_keepOnFailure_carriesEditID asserts the same
-// DanglingEditError wrapping happens on a commit failure when
-// KeepEditOnFailure is set.
 func TestUpload_commitFail_keepOnFailure_carriesEditID(t *testing.T) {
 	aab := writeFakeAAB(t)
 	_, transport := newPlay(playAPI{
@@ -518,10 +438,6 @@ func TestUpload_commitFail_keepOnFailure_carriesEditID(t *testing.T) {
 	}
 }
 
-// TestUpload_insertEdit_403_returnsExit11Error asserts that a 403 from
-// edits.insert (SA not invited on the app) surfaces as an error
-// carrying ExitCode()=11: the canonical authorization-failure code
-// per docs/DESIGN.md §9.
 func TestUpload_insertEdit_403_returnsExit11Error(t *testing.T) {
 	aab := writeFakeAAB(t)
 	_, transport := newPlay(playAPI{
@@ -548,9 +464,6 @@ func TestUpload_insertEdit_403_returnsExit11Error(t *testing.T) {
 	}
 }
 
-// TestUpload_insertEdit_409_returnsExit60Error asserts that a 409 from
-// edits.insert (a stale Edit is still open on the package) surfaces as
-// an error carrying ExitCode()=60: the state-conflict code.
 func TestUpload_insertEdit_409_returnsExit60Error(t *testing.T) {
 	aab := writeFakeAAB(t)
 	_, transport := newPlay(playAPI{
@@ -577,11 +490,6 @@ func TestUpload_insertEdit_409_returnsExit60Error(t *testing.T) {
 	}
 }
 
-// TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet asserts
-// the optimization from finding #8: when --release-notes-dir contains
-// only explicit per-locale .txt files (no default.txt fallback), the
-// orchestrator skips the edits.details.get round-trip: DefaultLanguage
-// is not needed by notes.Load in that case.
 func TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet(t *testing.T) {
 	aab := writeFakeAAB(t)
 	notesDir := t.TempDir()
@@ -612,7 +520,6 @@ func TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet(t *testing.T
 		t.Fatalf("Upload: %v", err)
 	}
 
-	// tracks.update body still carries both locales.
 	body := string(trackUpdateReq(rt))
 	for _, want := range []string{
 		`"language":"en-US"`,
@@ -633,10 +540,6 @@ func TestUpload_withReleaseNotesDir_explicitLocales_skipsDetailsGet(t *testing.T
 	}
 }
 
-// TestUpload_withReleaseNotesDir_defaultTxt_fetchesDetailsGet asserts
-// the inverse: when the directory contains default.txt, the
-// orchestrator DOES fetch DefaultLanguage so notes.Load can assign the
-// fallback to the right locale.
 func TestUpload_withReleaseNotesDir_defaultTxt_fetchesDetailsGet(t *testing.T) {
 	aab := writeFakeAAB(t)
 	notesDir := t.TempDir()
@@ -679,16 +582,11 @@ func TestUpload_withReleaseNotesDir_defaultTxt_fetchesDetailsGet(t *testing.T) {
 	}
 }
 
-// TestUpload_productionComplete_withoutConfirm_returnsExit3 asserts the
-// --confirm guardrail: a production publish that would reach real
-// users (Completed) without Confirm=true must refuse before any HTTP.
 func TestUpload_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
 		editID:      "should-not-open",
 		versionCode: 0,
-		// Any HTTP call here would fail the test: a refused confirm
-		// must short-circuit before insert.
 		insertHandler: func(c testkit.Call) (int, string) {
 			t.Errorf("insert was called despite missing --confirm: %s", c.Path)
 			return 500, ""
@@ -718,9 +616,6 @@ func TestUpload_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 	}
 }
 
-// TestUpload_productionDraft_withoutConfirm_works asserts that the
-// --confirm guard does NOT block production draft uploads (the safe
-// path that does not affect real users).
 func TestUpload_productionDraft_withoutConfirm_works(t *testing.T) {
 	aab := writeFakeAAB(t)
 	_, transport := newPlay(playAPI{
@@ -734,7 +629,6 @@ func TestUpload_productionDraft_withoutConfirm_works(t *testing.T) {
 		Package:   "com.example.app",
 		Track:     "production",
 		Artifacts: []orchestrator.Artifact{{Path: aab}},
-		// Status unspecified → safe-default = draft on production
 	})
 	if err != nil {
 		t.Fatalf("Upload(production safe-default): %v", err)
@@ -744,9 +638,6 @@ func TestUpload_productionDraft_withoutConfirm_works(t *testing.T) {
 	}
 }
 
-// TestUpload_dryRun_makesNoHTTPCalls asserts that --dry-run completes
-// successfully and emits no HTTP calls. The returned Result describes
-// the planned payload.
 func TestUpload_dryRun_makesNoHTTPCalls(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -778,9 +669,6 @@ func TestUpload_dryRun_makesNoHTTPCalls(t *testing.T) {
 	}
 }
 
-// TestUpload_dryRun_productionSafeDefault asserts that dry-run also
-// applies the ADR-0002 safe-default: production with no status flag
-// previews as draft.
 func TestUpload_dryRun_productionSafeDefault(t *testing.T) {
 	aab := writeFakeAAB(t)
 	_, transport := newPlay(playAPI{})
@@ -800,9 +688,6 @@ func TestUpload_dryRun_productionSafeDefault(t *testing.T) {
 	}
 }
 
-// writeFakeMapping creates a non-empty mapping.txt in t.TempDir(). The
-// mock RoundTripper does not validate the bytes: bundles/mappings just
-// need os.Open to succeed.
 func writeFakeMapping(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "mapping.txt")
@@ -812,10 +697,6 @@ func writeFakeMapping(t *testing.T) string {
 	return p
 }
 
-// TestUpload_withMapping_uploadsMappingInSameEdit asserts that supplying
-// a MappingPath uploads the ProGuard mapping inside the SAME edit, keyed
-// by the versionCode bundles.upload returned, between the bundle upload
-// and the track update: one edit, one commit (#250).
 func TestUpload_withMapping_uploadsMappingInSameEdit(t *testing.T) {
 	aab := writeFakeAAB(t)
 	mapping := writeFakeMapping(t)
@@ -862,13 +743,9 @@ func TestUpload_withMapping_uploadsMappingInSameEdit(t *testing.T) {
 	}
 }
 
-// TestUpload_dryRun_withMapping_validatesMappingFile asserts a dry-run
-// with --mapping validates the mapping is readable (exit 20 when absent)
-// and performs no HTTP when present.
 func TestUpload_dryRun_withMapping_validatesMappingFile(t *testing.T) {
 	aab := writeFakeAAB(t)
 
-	// Missing mapping → dry-run validation failure (exit 20), no HTTP.
 	rt, transport := newPlay(playAPI{})
 	hc := &http.Client{Transport: transport}
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{
@@ -888,7 +765,6 @@ func TestUpload_dryRun_withMapping_validatesMappingFile(t *testing.T) {
 		t.Errorf("dry-run hit the network: %v", apiCalls(rt))
 	}
 
-	// Present mapping → dry-run succeeds with no HTTP.
 	mapping := writeFakeMapping(t)
 	rt2, transport2 := newPlay(playAPI{})
 	hc2 := &http.Client{Transport: transport2}
@@ -906,8 +782,6 @@ func TestUpload_dryRun_withMapping_validatesMappingFile(t *testing.T) {
 	}
 }
 
-// exitCode extracts a gplay exit code from err via the Coder contract,
-// defaulting to 1 when none is present.
 func exitCode(err error) int {
 	var c interface{ ExitCode() int }
 	if errors.As(err, &c) {
@@ -916,9 +790,6 @@ func exitCode(err error) int {
 	return 1
 }
 
-// TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP asserts that a
-// dry-run `releases upload --mapping <dir>` rejects a non-regular mapping
-// path as exit 20: parity with the live path (PR #264 review).
 func TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP(t *testing.T) {
 	aab := writeFakeAAB(t)
 	dir := t.TempDir()
@@ -942,14 +813,8 @@ func TestUpload_dryRun_mappingIsDirectory_exit20_noHTTP(t *testing.T) {
 	}
 }
 
-// TestUpload_dryRun_aabIsDirectory_exit20_noHTTP asserts that a dry-run
-// `releases upload` rejects a non-regular AAB path (a directory) as exit
-// 20: parity with the live path (bundles.Upload), which cannot stream a
-// directory. os.Stat succeeds on a directory, so without a regular-file
-// guard dry-run would green-light what the live upload rejects as a
-// transport error (exit 50).
 func TestUpload_dryRun_aabIsDirectory_exit20_noHTTP(t *testing.T) {
-	dir := t.TempDir() // a directory, not a regular file
+	dir := t.TempDir()
 	rt, transport := newPlay(playAPI{})
 	hc := &http.Client{Transport: transport}
 	_, err := orchestrator.Upload(context.Background(), hc, orchestrator.Opts{

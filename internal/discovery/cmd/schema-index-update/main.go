@@ -1,17 +1,3 @@
-// Command schema-index-update derives the embedded Schema index
-// (internal/schemaindex/schema_index.json) from the committed Discovery
-// snapshots under docs/discovery/ (issue #200). It is OFFLINE: it makes no
-// network call;
-// `make discovery-update` is the separate, networked step that refreshes the
-// snapshot this reads.
-//
-// It is a thin wrapper over the importable internal/schemaindex package: the
-// same Derive/Render logic the offline integrity test re-runs, so a
-// re-derivation is byte-equal to the committed index. Invoke via
-// `make schema-index-update`.
-//
-// This command is NOT part of the shipped gplay binary; it is maintenance
-// tooling run by a human on demand.
 package main
 
 import (
@@ -35,10 +21,6 @@ func main() {
 	}
 }
 
-// run derives the embedded index from EVERY committed Discovery snapshot
-// declared in discovery.Services (androidpublisher v3 + playdeveloperreporting
-// v1beta1, #49). The index is keyed by native method id, whose leading segment
-// is the service discriminator, so the services merge with no collision.
 func run(snapDir, out string) error {
 	var snapshots [][]byte
 	for _, svc := range discovery.Services {

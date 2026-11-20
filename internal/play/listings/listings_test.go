@@ -1,8 +1,3 @@
-// Package listings_test exercises the play-layer Listing operations
-// against a fake transport. List/Get are the reads behind `gplay metadata
-// list / pull`; Patch/Update/Delete are the per-locale writes behind
-// `gplay metadata apply`. Each runs inside an already-open Edit, so the tests
-// drive the bare operation, not the Edit lifecycle.
 package listings_test
 
 import (
@@ -17,13 +12,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// fakeWith answers every request with status and body.
 func fakeWith(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// onlyCall returns the single request the Fake served, failing the test on
-// any other count.
 func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := f.Calls()
@@ -33,10 +25,6 @@ func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	return calls[0]
 }
 
-// TestList_parsesEveryLocale_andReturnsRawBody asserts List GETs
-// edits.listings.list, parses the {"listings":[...]} envelope into a
-// Listing slice (one per locale), and hands back the raw body verbatim for
-// the JSON pass-through.
 func TestList_parsesEveryLocale_andReturnsRawBody(t *testing.T) {
 	raw := `{"listings":[` +
 		`{"language":"en-US","title":"My App","shortDescription":"short","fullDescription":"long desc","video":""},` +
@@ -69,9 +57,6 @@ func TestList_parsesEveryLocale_andReturnsRawBody(t *testing.T) {
 	}
 }
 
-// TestGet_parsesListing_andPathCarriesLanguage asserts Get GETs
-// edits.listings.get on a single locale (the language is the last path
-// segment) and parses the Listing.
 func TestGet_parsesListing_andPathCarriesLanguage(t *testing.T) {
 	raw := `{"language":"en-US","title":"My App","shortDescription":"short","fullDescription":"long desc","video":""}`
 	transport := fakeWith(200, raw)
@@ -95,9 +80,6 @@ func TestGet_parsesListing_andPathCarriesLanguage(t *testing.T) {
 	}
 }
 
-// TestPatch_sendsBodyVerbatim_andReturnsRaw asserts Patch PATCHes
-// edits.listings.patch on the locale, transmits the caller-built body
-// verbatim, and returns the raw response body (the patched Listing).
 func TestPatch_sendsBodyVerbatim_andReturnsRaw(t *testing.T) {
 	reqBody := `{"language":"en-US","title":"New Title","fullDescription":"new full"}`
 	respBody := `{"language":"en-US","title":"New Title","shortDescription":"","fullDescription":"new full","video":""}`
@@ -122,10 +104,6 @@ func TestPatch_sendsBodyVerbatim_andReturnsRaw(t *testing.T) {
 	}
 }
 
-// TestUpdate_sendsPUT_withFullBody_andReturnsRaw asserts Update PUTs
-// edits.listings.update on the locale path (the only Listings call that can
-// create a language absent online, #561), transmits the complete
-// caller-built body verbatim, and returns the raw response body.
 func TestUpdate_sendsPUT_withFullBody_andReturnsRaw(t *testing.T) {
 	reqBody := `{"fullDescription":"Lange Beschreibung","language":"de-DE","shortDescription":"Kurz","title":"Meine App"}`
 	respBody := `{"language":"de-DE","title":"Meine App","shortDescription":"Kurz","fullDescription":"Lange Beschreibung","video":""}`
@@ -150,9 +128,6 @@ func TestUpdate_sendsPUT_withFullBody_andReturnsRaw(t *testing.T) {
 	}
 }
 
-// TestUpdate_apiError_carriesUpdateOperation asserts a failed PUT surfaces
-// as an *api.Error named listings.update (not listings.patch), so the error
-// envelope names the call that actually ran.
 func TestUpdate_apiError_carriesUpdateOperation(t *testing.T) {
 	transport := fakeWith(404, `{"error":{"code":404,"message":"Listing for language 'xx-XX' not found."}}`)
 	hc := &http.Client{Transport: transport}
@@ -167,8 +142,6 @@ func TestUpdate_apiError_carriesUpdateOperation(t *testing.T) {
 	}
 }
 
-// TestDelete_issuesDelete_onLocalePath asserts Delete DELETEs
-// edits.listings.delete on the locale path (drops the whole Listing).
 func TestDelete_issuesDelete_onLocalePath(t *testing.T) {
 	transport := fakeWith(204, ``)
 	hc := &http.Client{Transport: transport}
@@ -184,9 +157,6 @@ func TestDelete_issuesDelete_onLocalePath(t *testing.T) {
 	}
 }
 
-// TestList_apiError_isWrappedWithStatus asserts a non-2xx listings.list
-// response surfaces as an *api.Error carrying the HTTP status so the gplay
-// exit-code taxonomy maps it (403 -> 11, 404 -> 30, ...).
 func TestList_apiError_isWrappedWithStatus(t *testing.T) {
 	transport := fakeWith(403, `{"error":{"code":403,"message":"The caller does not have permission"}}`)
 	hc := &http.Client{Transport: transport}
@@ -204,8 +174,6 @@ func TestList_apiError_isWrappedWithStatus(t *testing.T) {
 	}
 }
 
-// TestGet_notFound_isWrappedWithStatus asserts a 404 on listings.get (no
-// Listing for the locale) surfaces as an *api.Error carrying 404.
 func TestGet_notFound_isWrappedWithStatus(t *testing.T) {
 	transport := fakeWith(404, `{"error":{"code":404,"message":"Listing not found"}}`)
 	hc := &http.Client{Transport: transport}

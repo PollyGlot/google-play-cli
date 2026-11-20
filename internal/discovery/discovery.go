@@ -1,11 +1,3 @@
-// Package discovery fetches, normalizes, and derives an offline snapshot of a
-// Google API Discovery document (see issue #52).
-//
-// Nothing in this package is imported by cmd/gplay: it is build-and-maintenance
-// tooling, never compiled into the shipped binary (ADR-0007 spirit). The
-// fetch/normalize/derive logic lives here (importable) so the offline
-// integrity test can re-derive committed artifacts without a network call; the
-// `discovery-update` command is a thin main wrapper over these functions.
 package discovery
 
 import (
@@ -19,27 +11,12 @@ import (
 	"strings"
 )
 
-// Service identifies one Discovery document to snapshot. The tooling is
-// multi-doc by design: Services declares the list, and adding a service later
-// (e.g. playdeveloperreporting for #49) is a one-line append.
 type Service struct {
-	Name    string // canonical service name, e.g. "androidpublisher"
-	Host    string // API host, e.g. "androidpublisher.googleapis.com"
-	Version string // API version, e.g. "v3"
+	Name    string
+	Host    string
+	Version string
 }
 
-// Services is the declared snapshot set. androidpublisher v3 is the primary
-// publishing surface; playdeveloperreporting v1beta1 is the read-only
-// post-launch quality service (crashes/ANR vitals, #49): a distinct host and
-// OAuth scope, snapshotted the same way. gamesConfiguration v1configuration
-// (Play Games Services Publishing, #241) and playcustomapp v1 (managed Google
-// Play private apps, #242) are further Play admin APIs (ADR-0026), each its own
-// host: declared here so agents can query their shapes offline before the
-// commands ship. gamesManagement v1management (Play Games Services Management,
-// #692) is the exception: gplay never wraps it, because its methods only accept
-// a user-delegated OAuth token and gplay authenticates with service accounts
-// alone (ADR-0049). It is snapshotted anyway so docs/COVERAGE.md shows its
-// methods as excluded rather than missing, and the Discovery watch sees it.
 var Services = []Service{
 	{Name: "androidpublisher", Host: "androidpublisher.googleapis.com", Version: "v3"},
 	{Name: "playdeveloperreporting", Host: "playdeveloperreporting.googleapis.com", Version: "v1beta1"},
@@ -48,19 +25,14 @@ var Services = []Service{
 	{Name: "gamesManagement", Host: "gamesmanagement.googleapis.com", Version: "v1management"},
 }
 
-// SnapshotFilename is the per-service snapshot file name, e.g.
-// "androidpublisher_v3.json".
 func (s Service) SnapshotFilename() string {
 	return fmt.Sprintf("%s_%s.json", s.Name, s.Version)
 }
 
-// DiscoveryURL is the Google Discovery REST endpoint for the service.
 func (s Service) DiscoveryURL() string {
 	return fmt.Sprintf("https://%s/$discovery/rest?version=%s", s.Host, s.Version)
 }
 
-// Fetch GETs the raw Discovery document for s. The returned bytes are the
-// upstream body verbatim: call Normalize before persisting.
 func Fetch(ctx context.Context, c *http.Client, s Service) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.DiscoveryURL(), nil)
 	if err != nil {
@@ -81,17 +53,6 @@ func Fetch(ctx context.Context, c *http.Client, s Service) ([]byte, error) {
 	return body, nil
 }
 
-// Normalize produces the deterministic, reviewable snapshot form of a raw
-// Discovery document:
-//
-//   - object keys are sorted (encoding/json marshals map keys in sorted order),
-//     so each regen yields a minimal git diff;
-//   - the transport-level top-level "etag" is dropped (noise);
-//   - numbers are preserved verbatim (json.Number), so no float reformatting;
-//   - HTML escaping is disabled, keeping descriptions readable.
-//
-// Normalize is idempotent: Normalize(Normalize(x)) == Normalize(x), which is
-// exactly what the offline integrity gate asserts against the committed file.
 func Normalize(raw []byte) ([]byte, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
@@ -99,7 +60,7 @@ func Normalize(raw []byte) ([]byte, error) {
 	if err := dec.Decode(&doc); err != nil {
 		return nil, fmt.Errorf("decode discovery doc: %w", err)
 	}
-	delete(doc, "etag") // transport-level, not part of the API schema
+	delete(doc, "etag")
 
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -111,21 +72,17 @@ func Normalize(raw []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// method mirrors the fields of a Discovery method we project into paths.txt.
 type method struct {
 	ID         string `json:"id"`
 	HTTPMethod string `json:"httpMethod"`
 	Path       string `json:"path"`
 }
 
-// resource mirrors the recursive Discovery resource tree.
 type resource struct {
 	Methods   map[string]method   `json:"methods"`
 	Resources map[string]resource `json:"resources"`
 }
 
-// methodLines returns one "id\thttpMethod\tpath" line per method in a single
-// normalized snapshot, sorted by id.
 func methodLines(normalized []byte) ([]string, error) {
 	var doc struct {
 		Resources map[string]resource `json:"resources"`
@@ -148,11 +105,6 @@ func methodLines(normalized []byte) ([]string, error) {
 	return lines, nil
 }
 
-// RenderPaths derives the existence-check index (paths.txt) from one or more
-// normalized snapshots. Method ids carry their service prefix, so aggregating
-// across services and sorting globally stays unambiguous. The output ends with
-// a trailing newline. Both the regen tool and the integrity test call this, so
-// a re-derivation is byte-equal to the committed file.
 func RenderPaths(normalizedSnapshots [][]byte) ([]byte, error) {
 	var all []string
 	for _, snap := range normalizedSnapshots {

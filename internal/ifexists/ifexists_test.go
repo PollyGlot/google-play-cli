@@ -12,8 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// parse registers --if-exists on a throwaway command with the given allowed
-// set and parses args, the way cobra does for a real leaf.
 func parse(t *testing.T, allowed []ifexists.Policy, args ...string) (ifexists.Policy, *cobra.Command, error) {
 	t.Helper()
 	var p ifexists.Policy
@@ -52,9 +50,6 @@ func TestRegister_parsesAllowedValue(t *testing.T) {
 	}
 }
 
-// A value outside the command's allowed set fails at parse time, which the
-// root's FlagErrorFunc turns into exit 2 before auth or any HTTP. update is a
-// known policy, but not one a skip|fail command offers.
 func TestRegister_rejectsValueOutsideAllowedSet(t *testing.T) {
 	for _, v := range []string{"update", "bogus", "SKIP"} {
 		_, _, err := parse(t, skipFail, "--if-exists", v)
@@ -74,9 +69,6 @@ func TestRegister_updateAllowedWhereOffered(t *testing.T) {
 	}
 }
 
-// The flag type names the command's own allowed set, so help renders
-// `--if-exists skip|fail` on one command and skip|update|fail on another, and
-// the help text only describes the policies the command offers.
 func TestRegister_typeAndUsageFollowAllowedSet(t *testing.T) {
 	_, cmd, _ := parse(t, skipFail)
 	f := cmd.Flags().Lookup(ifexists.Name)
@@ -91,7 +83,6 @@ func TestRegister_typeAndUsageFollowAllowedSet(t *testing.T) {
 	}
 }
 
-// The flag is the experimental part of an otherwise frozen leaf.
 func TestRegister_flagIsExperimental(t *testing.T) {
 	_, cmd, _ := parse(t, skipFail)
 	if !kernel.IsExperimentalFlag(cmd, cmd.Flags().Lookup(ifexists.Name)) {
@@ -99,8 +90,6 @@ func TestRegister_flagIsExperimental(t *testing.T) {
 	}
 }
 
-// Check guards a direct caller (Run invoked without cobra): the zero value is
-// fail, and a policy outside the allowed set is CLI misuse (exit 2).
 func TestCheck(t *testing.T) {
 	for _, tc := range []struct {
 		in   ifexists.Policy

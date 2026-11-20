@@ -29,8 +29,6 @@ const (
 	unregisteredHost = "https://api.test/applications/com.example.app/edits/e1/tracks/production"
 )
 
-// sendRecovering sends one request through rt and returns the panic it
-// raised, "" when the round trip completed.
 func sendRecovering(t *testing.T, rt http.RoundTripper, method, url, contentType, body string) (panicked string) {
 	t.Helper()
 	defer func() {
@@ -53,7 +51,7 @@ func sendRecovering(t *testing.T, rt http.RoundTripper, method, url, contentType
 func TestFake_refusesBodiesPlayRefuses(t *testing.T) {
 	for _, tc := range []struct {
 		name, method, url, body string
-		broken                  string // the rule key the Fake must name, "" for a body Play accepts
+		broken                  string
 	}{
 		{"completed with a fraction (#731)", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"completed","userFraction":1}]}`, "TrackRelease.userFraction"},
 		{"draft with a fraction", http.MethodPut, tracksUpdateURL, `{"releases":[{"status":"draft","userFraction":0.5}]}`, "TrackRelease.userFraction"},
@@ -154,13 +152,10 @@ func TestFake_refusesBodiesPlayRefuses(t *testing.T) {
 	}
 }
 
-// batch is a `{"requests":[...]}` body holding n copies of entry.
 func batch(n int, entry string) string {
 	return `{"requests":[` + strings.TrimSuffix(strings.Repeat(entry+",", n), ",") + `]}`
 }
 
-// The failure a test author reads names the request, where the property sits
-// in the body, the sentence Google wrote and the way out for a deliberate 400.
 func TestFake_refusalMessage(t *testing.T) {
 	got := sendRecovering(t, testkit.NewFake(testkit.Any(http.StatusOK, `{}`)), http.MethodPut, tracksUpdateURL, "application/json",
 		`{"releases":[{"status":"inProgress","userFraction":0.1},{"status":"completed","userFraction":1}]}`)
@@ -219,8 +214,6 @@ func TestFake_AllowInvalid_refusesAnUnknownRule(t *testing.T) {
 	testkit.NewFake().AllowInvalid("TrackRelease.fraction")
 }
 
-// recordingTB stands in for the test a Wire fails, so the failure itself can
-// be asserted.
 type recordingTB struct {
 	testing.TB
 	mu   sync.Mutex

@@ -1,6 +1,3 @@
-// Package bundles_test exercises the play-layer AAB upload against a fake
-// transport. Upload wraps the Android Publisher edits.bundles.upload
-// endpoint: a simple-media POST of the bundle into an already-open Edit.
 package bundles_test
 
 import (
@@ -14,13 +11,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP asserts a
-// non-regular path (a directory) is rejected as a client-side validation
-// error (exit 20) BEFORE any HTTP: os.Open+Stat both succeed on a
-// directory, so without an explicit regular-file guard it would only fail
-// later as a transport error (exit 50). Mirrors the mappings.Upload guard.
 func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {
-	dir := t.TempDir() // a directory, not a regular file
+	dir := t.TempDir()
 	fake := testkit.NewFake(testkit.Any(200, ``))
 	hc := &http.Client{Transport: fake}
 

@@ -71,9 +71,10 @@ trivially fixable one.
 
 ## Implementation notes
 
-- **`requires` is always an array, never `null`.** Every gplay-authored array
-  field (the dry-run `requires` included) is normalised to `[]` before it is
-  encoded, so a consumer iterates it without a guard.
+- **`requires` is always an array, never `null`, in a dry-run preview.** The
+  preview's gplay-authored array fields are normalised to `[]` before they
+  are encoded, so a consumer iterates them without a guard. The error
+  envelope differs: its `requires` and `reasons` are omitted when empty.
 - **The Routine tier reaches beyond `team`.** `apps details set` takes no
   `--confirm`, for the reason `testers set` takes none: contact details are
   low-stakes and reversible. It checks no email, URL or phone shape offline

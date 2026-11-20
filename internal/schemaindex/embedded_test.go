@@ -6,12 +6,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// TestEmbeddedCarriesBothServices asserts the embedded, multi-service index
-// loaded via Embedded() carries methods from BOTH snapshotted services:
-// androidpublisher (the publishing surface) and playdeveloperreporting (the
-// read-only vitals service, #49). This is the single accessor every in-binary
-// consumer (commands/schema, vitals validation) reads, so it must span every
-// declared service, not just the primary one.
 func TestEmbeddedCarriesBothServices(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {
@@ -27,10 +21,6 @@ func TestEmbeddedCarriesBothServices(t *testing.T) {
 	}
 }
 
-// TestRenderAllMergesServices asserts RenderAll merges several normalized
-// snapshots into one index whose Methods span every input, keyed by their
-// service-prefixed RPC id (no collision). It is the deterministic generator the
-// offline integrity gate re-runs, so a re-render is byte-identical.
 func TestRenderAllMergesServices(t *testing.T) {
 	a := []byte(`{"name":"svca","version":"v1","revision":"1","resources":{"r":{"methods":{"get":{"id":"svca.r.get","httpMethod":"GET","flatPath":"v1/a"}}}},"schemas":{"A":{"properties":{"x":{"type":"string"}}}}}`)
 	b := []byte(`{"name":"svcb","version":"v2","revision":"2","resources":{"r":{"methods":{"list":{"id":"svcb.r.list","httpMethod":"GET","flatPath":"v2/b"}}}},"schemas":{"B":{"properties":{"y":{"type":"string"}}}}}`)
@@ -56,7 +46,6 @@ func TestRenderAllMergesServices(t *testing.T) {
 		t.Error("merged index missing schema B")
 	}
 
-	// Determinism: a second render of the same inputs is byte-equal.
 	out2, err := schemaindex.RenderAll([][]byte{a, b})
 	if err != nil {
 		t.Fatalf("RenderAll (2nd): %v", err)

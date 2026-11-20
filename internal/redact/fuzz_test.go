@@ -5,18 +5,6 @@ import (
 	"testing"
 )
 
-// FuzzRedactString holds the three properties the stderr filter and the
-// stdout error envelope rely on, whatever text surrounds a secret:
-//
-//   - String is idempotent: masking masked text changes nothing, so the kernel
-//     and main can both wrap stderr (and a message can be masked twice on its
-//     way out) without mangling it ("password=[REDACTED]]" was the old bug).
-//   - A PEM private-key body never survives, wherever it is spliced in.
-//   - An Authorization bearer token never survives either.
-//
-// The fuzzer drives the text on both sides of the secret, which is where a
-// regexp boundary (a glued prefix, an unbalanced quote, a stray escape) can
-// let part of it through. Seeded from the shapes the table tests cover.
 func FuzzRedactString(f *testing.F) {
 	for _, seed := range [][2]string{
 		{"", ""},
@@ -36,7 +24,6 @@ func FuzzRedactString(f *testing.F) {
 		f.Add(seed[0], seed[1])
 	}
 
-	// Synthetic, and unmistakable if it leaks: neither is a real credential.
 	const pemBody = "MIIEvQIBADANBgkqhkiG9w0BFUZZPEMBODY"
 	const pem = "-----BEGIN PRIVATE KEY-----\n" + pemBody + "\n-----END PRIVATE KEY-----"
 	const bearer = "FuzzBearerCanary0123456789abcdef"

@@ -11,10 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestAddExternallyHosted_postsResourceVerbatim_returnsVersionCode asserts the
-// wire contract of edits.apks.addexternallyhosted: a JSON POST on the Edit's
-// /apks/externallyHosted path whose envelope carries the caller's resource
-// byte for byte, and the versionCode read back from Google's answer.
 func TestAddExternallyHosted_postsResourceVerbatim_returnsVersionCode(t *testing.T) {
 	f := testkit.NewFake(testkit.Any(http.StatusOK, `{"externallyHostedApk":{"packageName":"com.example.app","versionCode":310}}`))
 	apk := json.RawMessage(`{"packageName":"com.example.app","externallyHostedUrl":"https://cdn.example.com/app.apk","versionCode":310}`)
@@ -48,9 +44,6 @@ func TestAddExternallyHosted_postsResourceVerbatim_returnsVersionCode(t *testing
 	}
 }
 
-// TestAddExternallyHosted_refusalPassesThrough asserts Google's refusal (the
-// method is Managed Play only) surfaces as the API error with its own exit
-// code, never a client-side guess.
 func TestAddExternallyHosted_refusalPassesThrough(t *testing.T) {
 	f := testkit.NewFake(testkit.Any(http.StatusForbidden, `{"error":{"code":403,"message":"externally hosted APKs are restricted","status":"PERMISSION_DENIED"}}`))
 

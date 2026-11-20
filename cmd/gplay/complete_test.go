@@ -16,11 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestCompletion_afterASingleValueFlag drives the shell's `__complete` request
-// through the real tree. cobra parses the flags of a completion request twice,
-// so the repeated-flag guard (PRD #446) saw `--package` set twice and turned
-// every completion that follows a single-value flag into an error. The
-// release filter options must come back as suggestions (#348).
 func TestCompletion_afterASingleValueFlag(t *testing.T) {
 	t.Setenv(resolver.EnvAccount, "")
 	t.Setenv(resolver.EnvServiceAccount, string(testkit.ServiceAccountJSON(t)))

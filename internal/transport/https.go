@@ -5,10 +5,6 @@ import (
 	"net/http"
 )
 
-// HTTPSOnly returns a RoundTripper that refuses every request whose URL is not
-// https before it reaches inner (http.DefaultTransport when nil). A client
-// re-enters its Transport on each redirect hop, so the refusal covers a
-// redirect to another scheme as well as the first URL.
 func HTTPSOnly(inner http.RoundTripper) http.RoundTripper {
 	if inner == nil {
 		inner = http.DefaultTransport
@@ -28,8 +24,6 @@ func (t httpsOnly) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.inner.RoundTrip(req)
 }
 
-// InsecureURLError is HTTPSOnly refusing a request. It exits 1, not the
-// network's retry-safe 50: the same URL would be refused again.
 type InsecureURLError struct{ URL string }
 
 func (e *InsecureURLError) Error() string {

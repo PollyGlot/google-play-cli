@@ -8,10 +8,6 @@ import (
 	"testing"
 )
 
-// monorepo builds the layout the hatch exists for: a tree whose `en-US`
-// directory is a symlink at a shared asset directory living outside it. It
-// returns the containment root, the escaping path inside the tree, and the
-// real file it resolves to.
 func monorepo(t *testing.T) (root, escaping, real string) {
 	t.Helper()
 	shared := t.TempDir()
@@ -26,7 +22,6 @@ func monorepo(t *testing.T) (root, escaping, real string) {
 	return mustRoot(t, dir), filepath.Join(dir, "en-US", "title.txt"), real
 }
 
-// captureNotes points the NOTE stream at a buffer for the duration of the test.
 func captureNotes(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
@@ -35,9 +30,6 @@ func captureNotes(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// Case 1: closed by default. An untouched environment keeps the refusal the
-// hardening introduced, so the hatch costs nothing to anyone who has not asked
-// for it.
 func TestContainUserPathRefusesEscapeByDefault(t *testing.T) {
 	root, escaping, _ := monorepo(t)
 	notes := captureNotes(t)
@@ -52,9 +44,6 @@ func TestContainUserPathRefusesEscapeByDefault(t *testing.T) {
 	}
 }
 
-// Case 4: the refusal names the hatch. A monorepo operator whose working
-// layout just broke has to be able to read what to do out of the message, not
-// only what went wrong.
 func TestContainUserPathRefusalNamesTheHatch(t *testing.T) {
 	root, escaping, _ := monorepo(t)
 
@@ -71,8 +60,6 @@ func TestContainUserPathRefusalNamesTheHatch(t *testing.T) {
 	}
 }
 
-// Case 2: under the opt-in the pre-hardening behaviour comes back, and stderr
-// says out loud that a path left the tree.
 func TestContainUserPathFollowsEscapeUnderTheHatch(t *testing.T) {
 	root, escaping, real := monorepo(t)
 	notes := captureNotes(t)
@@ -82,8 +69,6 @@ func TestContainUserPathFollowsEscapeUnderTheHatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the hatch did not lift the refusal: %v", err)
 	}
-	// The NAMED path comes back, not the resolved one: the caller opens what it
-	// asked for, exactly as inside the tree.
 	if got != escaping {
 		t.Errorf("ContainUserPath = %q, want the named path %q", got, escaping)
 	}
@@ -97,8 +82,6 @@ func TestContainUserPathFollowsEscapeUnderTheHatch(t *testing.T) {
 		}
 	}
 
-	// One symlinked directory is contained once per file underneath it: the
-	// same path must not print the same fact twice.
 	before := notes.Len()
 	if _, err := ContainUserPath(root, escaping); err != nil {
 		t.Fatal(err)
@@ -108,8 +91,6 @@ func TestContainUserPathFollowsEscapeUnderTheHatch(t *testing.T) {
 	}
 }
 
-// The hatch changes nothing for a path that never leaves the tree: no refusal,
-// and no NOTE either (a NOTE means "this one actually went outside").
 func TestContainUserPathStaysSilentInsideTheRoot(t *testing.T) {
 	dir := t.TempDir()
 	root := mustRoot(t, dir)
@@ -124,9 +105,6 @@ func TestContainUserPathStaysSilentInsideTheRoot(t *testing.T) {
 	}
 }
 
-// Case 3, the line that keeps the hatch from reopening the vector: a path
-// built from API data goes through Contain, which the environment cannot
-// relax. A hostile locale is refused whether or not the operator opted in.
 func TestContainIgnoresTheHatchForAPIDerivedPaths(t *testing.T) {
 	root, escaping, _ := monorepo(t)
 	notes := captureNotes(t)
@@ -137,8 +115,6 @@ func TestContainIgnoresTheHatchForAPIDerivedPaths(t *testing.T) {
 		t.Fatal("Contain followed an escaping symlink because the hatch was set")
 	}
 	assertUsage(t, err)
-	// And it says why the hatch did not apply, so an operator who set it does
-	// not conclude the variable is broken.
 	if !strings.Contains(err.Error(), EnvAllowExternalSymlinks) {
 		t.Errorf("the refusal does not explain that the hatch does not cover it: %v", err)
 	}
@@ -147,8 +123,6 @@ func TestContainIgnoresTheHatchForAPIDerivedPaths(t *testing.T) {
 	}
 }
 
-// With the hatch unset, Contain's message must NOT advertise it: nothing the
-// operator can set would make this path pass.
 func TestContainDoesNotAdvertiseTheHatch(t *testing.T) {
 	root, escaping, _ := monorepo(t)
 
@@ -161,9 +135,6 @@ func TestContainDoesNotAdvertiseTheHatch(t *testing.T) {
 	}
 }
 
-// The hatch follows a link OUT of the tree; it does not let a path climb above
-// the root. Keeping the two apart is what stops "monorepo layouts work again"
-// from becoming "containment is off".
 func TestContainUserPathStillRefusesTraversalUnderTheHatch(t *testing.T) {
 	dir := t.TempDir()
 	root := mustRoot(t, dir)
@@ -184,8 +155,6 @@ func TestContainUserPathStillRefusesTraversalUnderTheHatch(t *testing.T) {
 	}
 }
 
-// Falsy and unrecognised values leave containment closed: only the truthy
-// spellings GPLAY_READONLY already uses count as an opt-in.
 func TestContainUserPathHatchValues(t *testing.T) {
 	open := []string{"1", "true", "TRUE", "yes", "on", " on "}
 	closed := []string{"", "0", "false", "no", "off", "maybe"}
@@ -208,9 +177,6 @@ func TestContainUserPathHatchValues(t *testing.T) {
 	}
 }
 
-// A checkout reached through a symlink (macOS /var -> /private/var, a linked
-// worktree) must not be mistaken for an escape by the hatch's own bookkeeping:
-// a path under it is contained, and a ".." above it is still refused.
 func TestContainUserPathUnderASymlinkedRoot(t *testing.T) {
 	real := t.TempDir()
 	if err := os.WriteFile(filepath.Join(real, "default.txt"), []byte("notes"), 0o644); err != nil {

@@ -15,9 +15,6 @@ func apiErr(status int) error {
 	return fmt.Errorf("open edit: %w", &api.Error{Operation: "edits.insert", Package: "com.x", StatusCode: status, Message: "boom"})
 }
 
-// TestForPackage asserts the classifier maps 404/403 to the canonical hints,
-// keeps the *api.Error reachable (so the exit code is unchanged), and passes
-// every other failure through untouched.
 func TestForPackage(t *testing.T) {
 	t.Run("404", func(t *testing.T) {
 		err := apihint.ForPackage("com.x", apiErr(404))

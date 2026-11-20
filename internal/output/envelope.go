@@ -8,83 +8,23 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
-// ErrorEnvelope is the machine-readable failure payload gplay writes to stdout
-// when a command fails under `--output json`. Under any human format (table /
-// markdown) stdout stays empty on failure and the error goes to stderr only;
-// the envelope exists so an AI agent or CI harness can branch on failure modes
-// without scraping human-oriented stderr text. Its shape is part of the
-// public contract (ADR-0010); see ADR-0023 and ADR-0044.
-//
-// All the data it carries already exists internally: the diagnostic code and
-// its retryable bit (exit.Classify), the semantic exit code, the failing API
-// operation and its target, the upstream API reasons[], the missing safety
-// flag.
 type ErrorEnvelope struct {
 	Error ErrorDetail `json:"error"`
 }
 
-// ErrorDetail is the body of an ErrorEnvelope.
-//
-//   - Code is the stable SCREAMING_SNAKE diagnostic code (ADR-0044), the field
-//     an agent branches on: it discriminates failures that share an exit code
-//     (EDIT_ALREADY_EXISTS vs STATE_CONFLICT, both exit 60). Always present on
-//     a failure; the vocabulary is append-only and introspectable via
-//     `gplay help exit-codes` / `gplay schema --codes`.
-//   - ExitCode mirrors the process exit code (the semantic taxonomy of
-//     docs/DESIGN.md §9), so a consumer reading stdout sees the same code the
-//     shell sees.
-//   - Retryable reports whether replaying the same command unchanged can
-//     plausibly succeed, so retry logic needs no per-cause table. Always
-//     emitted, including when false: a missing field and "not retryable" must
-//     not look alike.
-//   - Operation names the API call that failed (e.g. "edits.commit").
-//     Omitted on a local failure, which is itself the signal that no call was
-//     made.
-//   - Resource names what the failed call addressed, on any axis: {kind, id}
-//     with kind one of package, app, developerAccount, gamesApplication,
-//     achievement, leaderboard, bucket (api.ResourceKind, append-only).
-//     Omitted when no target is known (a local failure, an account-wide
-//     search).
-//   - Package is the Android package the call targeted, present only when
-//     resource.kind is "package" (same value as resource.id). Before 2.0.0 it
-//     also carried developer account, games application and bucket ids; it no
-//     longer does (#599, ADR-0048).
-//   - Message is the human-readable error string (the same text stderr shows).
-//   - Reasons carries the upstream Google API error.errors[].reason values
-//     (e.g. "editAlreadyExists", "rateLimitExceeded") when an API envelope was
-//     parsed: the discriminating signal behind a shared HTTP status, surfaced
-//     verbatim so a consumer can branch on a reason gplay has not promoted to
-//     a code. Omitted when absent.
-//   - Requires names the missing safety-acknowledgment flag on an exit-3
-//     refusal (--confirm / --grant-admin). A safety refusal carries exactly one
-//     flag today, emitted as a single-element list to match the list shape of
-//     the ADR-0017 dry-run `requires` preview (carried to failure time so
-//     exit-3 recovery stays deterministic). Omitted when the failure is not a
-//     safety refusal.
-//   - Replacement names what replaced the verb or flag the user called when the
-//     usage error is a call to removed surface (ADR-0051). Omitted on every
-//     other failure, including an unknown verb or flag gplay never shipped.
 type ErrorDetail struct {
-	Code      string    `json:"code"`
-	ExitCode  int       `json:"exitCode"`
-	Retryable bool      `json:"retryable"`
-	Operation string    `json:"operation,omitempty"`
-	Resource  *Resource `json:"resource,omitempty"`
-	Package   string    `json:"package,omitempty"`
-	Message   string    `json:"message"`
-	Reasons   []string  `json:"reasons,omitempty"`
-	Requires  []string  `json:"requires,omitempty"`
-	// Replacement is a pointer so an unmatched failure omits the key rather
-	// than emitting an empty object.
+	Code        string       `json:"code"`
+	ExitCode    int          `json:"exitCode"`
+	Retryable   bool         `json:"retryable"`
+	Operation   string       `json:"operation,omitempty"`
+	Resource    *Resource    `json:"resource,omitempty"`
+	Package     string       `json:"package,omitempty"`
+	Message     string       `json:"message"`
+	Reasons     []string     `json:"reasons,omitempty"`
+	Requires    []string     `json:"requires,omitempty"`
 	Replacement *Replacement `json:"replacement,omitempty"`
 }
 
-// Replacement is the envelope's `replacement` object (ADR-0051): kind is
-// "command" or "flag"; removed and use are full command paths starting with
-// "gplay" for a command, flag names on the same command for a flag; removedIn
-// is the gplay version; note, omitted when empty, says what a pure rename
-// would not. A command's use carries the arguments the removed verb held, so
-// substituting removed by use in a command line keeps them.
 type Replacement struct {
 	Kind      string `json:"kind"`
 	Removed   string `json:"removed"`
@@ -93,26 +33,11 @@ type Replacement struct {
 	Note      string `json:"note,omitempty"`
 }
 
-// Resource is the envelope's `resource` object: the addressing axis of the
-// failed call and the identifier on it. A pointer in ErrorDetail so a failure
-// with no target omits the key rather than emitting an empty object.
 type Resource struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
 }
 
-// WriteErrorEnvelope serializes err as a single ErrorEnvelope to w using the
-// gplay-wide JSON shape (2-space indent, trailing newline). Every classified
-// field comes from exit.Classify, the single classifier, so this function holds
-// no failure taxonomy of its own; only requires[] and replacement are read here,
-// because they are recovery hints (the flag to add, the verb or flag to use
-// instead) rather than a diagnosis. Callers gate this on the
-// resolved Format being FormatJSON; it does not check the format itself.
-//
-// Message and Operation are masked with redact.String: they are gplay-authored
-// text that lands on stdout, outside the stderr filter (PRD #459), and a
-// wrapped error can quote a credential (#583). Reasons stay verbatim: they are
-// API passthrough (ADR-0003), and the API never returns gplay's credentials.
 func WriteErrorEnvelope(w io.Writer, err error) error {
 	diag := exit.Classify(err)
 	d := ErrorDetail{

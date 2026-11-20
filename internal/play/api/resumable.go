@@ -14,42 +14,16 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// ResumableChunkSize is the fixed size of each PUT in the resumable-upload
-// protocol: 8 MiB, a whole multiple of the protocol's 256 KiB granularity
-// requirement (Google rejects intermediate chunks that are not). It is
-// deliberately not configurable (PRD #355): resumable is unconditional, with
-// no size threshold and no flag.
 const ResumableChunkSize = 8 * 1024 * 1024
 
-// maxResumeStalls bounds how many consecutive transient failures the helper
-// tolerates WITHOUT the server's committed offset advancing. The retry
-// transport is disabled for these requests (WithoutRetry), so this counter is
-// what stops an unbounded loop against a server that keeps 5xx-ing or dropping
-// the connection while never accepting more bytes. A single failure that is
-// followed by progress resets the counter, so a genuine resume is unaffected.
 const maxResumeStalls = 8
 
-// Resume pacing and the chunk stall bound. They are variables only so the
-// package's tests can shrink them; production never reassigns them.
 var (
-	// resumeChunkTimeout bounds one chunk PUT, response included. A connection
-	// that stops moving bytes without a reset never errors on its own, so
-	// without it the resume logic never triggered. It is deliberately
-	// generous: 8 MiB in 5 minutes is a floor of about 28 KB/s, so a slow but
-	// progressing link is never cut, while a dead one turns into a probe and a
-	// resume on the same order as a TCP keepalive would.
 	resumeChunkTimeout = 5 * time.Minute
-	// resumeBackoff and resumeSleep pace the attempts that follow a failure on
-	// the --retry curve, so a 10-second network blip no longer burns the whole
-	// stall budget in milliseconds.
-	resumeBackoff = transport.Backoff
-	resumeSleep   = transport.Sleep
+	resumeBackoff      = transport.Backoff
+	resumeSleep        = transport.Sleep
 )
 
-// LocalIOError is returned when the upload source cannot be read locally
-// (a mid-upload ReadAt failure on the artifact). It is distinct from *Error so
-// exit.For maps it to client-side validation (exit 20 per docs/DESIGN.md §9)
-// rather than a transport failure (exit 50): the bytes never left the machine.
 type LocalIOError struct {
 	Op    string
 	Cause error
@@ -61,39 +35,8 @@ func (e *LocalIOError) Error() string {
 
 func (e *LocalIOError) Unwrap() error { return e.Cause }
 
-// ExitCode satisfies gplay's Coder contract: a local read failure is a
-// client-side problem, not an upstream one.
 func (e *LocalIOError) ExitCode() int { return 20 }
 
-// ResumableUpload performs a Google resumable media upload and returns the
-// final 2xx response body verbatim (for ADR-0003 JSON pass-through) plus its
-// status code.
-//
-// The protocol has three moves:
-//
-//  1. Initiate: POST initiateURL (which the caller builds with
-//     uploadType=resumable) carrying X-Upload-Content-Type / -Length and an
-//     empty body. The server answers 200/201 with a session URI in Location.
-//  2. Upload: PUT the content to the session URI in fixed ResumableChunkSize
-//     chunks, each with a Content-Range: bytes {start}-{end}/{total} header.
-//     An intermediate chunk is acknowledged with 308 (Resume Incomplete) whose
-//     Range header names the last stored byte; the final chunk returns 2xx
-//     with the resource body.
-//  3. Resume: on a transient PUT failure (transport error or 5xx) the helper
-//     PUTs Content-Range: bytes *\/{total} with an empty body to ask the server
-//     which byte it last committed (another 308 + Range), then continues from
-//     that offset. No bytes are ever re-sent past the acknowledged offset.
-//     Each attempt that follows a failure first waits on the --retry backoff
-//     curve, and a chunk that stops moving for resumeChunkTimeout counts as a
-//     transport failure, so a stalled connection resumes instead of hanging.
-//     A probe that finds the upload complete (the final chunk landed, its
-//     response was lost) returns that resource without a further PUT.
-//
-// r must provide random access to exactly size bytes. Chunk PUTs and the
-// resume probe run under transport.WithoutRetry so the shared --retry
-// middleware never double-sends them; the helper owns recovery. Upstream
-// failures map to *Error (the DESIGN §9 exit taxonomy); a local read failure
-// on r maps to *LocalIOError (exit 20).
 func ResumableUpload(
 	ctx context.Context,
 	hc *http.Client,
@@ -104,17 +47,6 @@ func ResumableUpload(
 	return ResumableUploadWithInitiateBody(ctx, hc, op, PackageResource(pkg), initiateURL, contentType, r, size, nil, "")
 }
 
-// ResumableUploadWithInitiateBody is ResumableUpload with a non-empty initiate
-// request body: the case where the resumable session is opened by POSTing
-// resource metadata (e.g. playcustomapp.customApps.create sends the CustomApp
-// title/languageCode as JSON in the initiate, then streams the artifact in the
-// chunk PUTs). initiateBody is the raw bytes of that body and
-// initiateContentType its Content-Type (e.g. "application/json; charset=UTF-8");
-// a nil initiateBody reproduces the empty-body initiate ResumableUpload uses.
-// The media content type (contentType) still travels in X-Upload-Content-Type,
-// distinct from the initiate body's own type. target is what the upload
-// addresses, so a failure names it on its own axis: a custom app is created
-// under a developer account, not a package (#599).
 func ResumableUploadWithInitiateBody(
 	ctx context.Context,
 	hc *http.Client,
@@ -129,42 +61,28 @@ func ResumableUploadWithInitiateBody(
 		return nil, 0, err
 	}
 
-	// noRetryCtx excludes every chunk PUT / resume probe from the retry
-	// middleware: this helper is the retry mechanism for the transfer.
 	noRetryCtx := transport.WithoutRetry(ctx)
 
 	offset := int64(0)
 	stalls := 0
-	// backOff waits before an attempt that follows a failure, on the --retry
-	// curve restarted whenever the server's offset advances (it follows
-	// stalls). It returns false once ctx is done: an interrupted upload stops
-	// at once instead of spinning through its remaining resume attempts.
 	backOff := func() bool { return resumeSleep(ctx, resumeBackoff(stalls)) }
 	for {
-		// A zero-length artifact still needs one PUT to finalize the session;
-		// beyond that, offset == size means the server already has everything.
 		resp, release, putErr := resumablePutChunk(noRetryCtx, hc, sessionURI, contentType, r, offset, size, op)
 
-		// stalled is the failure to report if the resume budget runs out on
-		// this outcome; every case that reaches the probe below sets it.
 		var stalled *Error
 		switch {
 		case putErr != nil:
 			release()
-			// A local read failure is terminal (exit 20): no point resuming.
 			var localErr *LocalIOError
 			if errors.As(putErr, &localErr) {
 				return nil, 0, putErr
 			}
-			// A canceled ctx is not a network blip: every probe would fail the
-			// same way until the stall budget ran out.
 			if ctx.Err() != nil {
 				return nil, 0, putErr
 			}
 			stalled = &Error{Operation: op, Resource: target, Message: "resumable upload stalled: server accepted no further bytes after " + strconv.Itoa(maxResumeStalls) + " resume attempts", Cause: putErr}
 
 		case resp.StatusCode == 308:
-			// Resume Incomplete: advance to the server's acknowledged offset.
 			newOffset := committedOffset(resp, offset)
 			drain(resp)
 			release()
@@ -185,34 +103,28 @@ func ResumableUploadWithInitiateBody(
 			continue
 
 		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			// Final chunk accepted: the body is the resource (pass-through).
 			out, rerr := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead))
 			drain(resp)
 			release()
 			if rerr == nil {
 				return out, resp.StatusCode, nil
 			}
-			// The upload landed but its answer was cut mid-body: the probe
-			// below returns the resource without re-sending a byte.
 			stalled = &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "read response body: " + rerr.Error(), Cause: &bodyReadError{err: rerr}}
 			if ctx.Err() != nil {
 				return nil, 0, stalled
 			}
 
 		case resp.StatusCode >= 500:
-			// Transient upstream error mid-upload: probe + resume.
 			drain(resp)
 			release()
 			stalled = &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "resumable upload stalled: upstream 5xx and no progress after " + strconv.Itoa(maxResumeStalls) + " resume attempts"}
 
 		default:
-			// Terminal 4xx (bad artifact, auth, conflict, gone): surface it.
 			err := errorFromResponse(resp, op, target)
 			release()
 			return nil, 0, err
 		}
 
-		// Recovery: wait, then ask the server which byte it last committed.
 		if !backOff() {
 			return nil, 0, &Error{Operation: op, Resource: target, Message: ctx.Err().Error(), Cause: ctx.Err()}
 		}
@@ -221,16 +133,12 @@ func ResumableUploadWithInitiateBody(
 			if !probeErrIsTransient(perr) || ctx.Err() != nil {
 				return nil, 0, perr
 			}
-			// The probe itself failed transiently; count it against the same
-			// stall bound and try again from the last known offset.
 			if stalls++; stalls >= maxResumeStalls {
 				return nil, 0, perr
 			}
 			continue
 		}
 		if done {
-			// The server already holds every byte: typically a final chunk
-			// that landed while its response was lost. Nothing is re-sent.
 			return doneBody, doneStatus, nil
 		}
 		if verr := validOffset(newOffset, size, op, target); verr != nil {
@@ -247,8 +155,6 @@ func ResumableUploadWithInitiateBody(
 	}
 }
 
-// resumableInitiate does the POST that opens a resumable session and returns
-// the session URI (the Location header value).
 func resumableInitiate(ctx context.Context, hc *http.Client, op string, target Resource, initiateURL, contentType string, size int64, initiateBody []byte, initiateContentType string) (string, error) {
 	var reqBody io.Reader = http.NoBody
 	if initiateBody != nil {
@@ -260,8 +166,6 @@ func resumableInitiate(ctx context.Context, hc *http.Client, op string, target R
 	}
 	req.ContentLength = int64(len(initiateBody))
 	if initiateBody != nil && initiateContentType != "" {
-		// The initiate body carries resource metadata; its Content-Type is
-		// distinct from the media's X-Upload-Content-Type below.
 		req.Header.Set("Content-Type", initiateContentType)
 	}
 	req.Header.Set("X-Upload-Content-Type", contentType)
@@ -281,13 +185,6 @@ func resumableInitiate(ctx context.Context, hc *http.Client, op string, target R
 	return uri, nil
 }
 
-// resumablePutChunk sends the [offset, min(offset+chunk, size)) slice of r to
-// the session URI. It returns the raw response for the caller to classify. A
-// read failure on r yields a *LocalIOError.
-//
-// The PUT runs under resumeChunkTimeout, which also bounds reading the
-// response, so the caller must call release (always non-nil) once it is done
-// with resp, and not before.
 func resumablePutChunk(ctx context.Context, hc *http.Client, sessionURI, contentType string, r io.ReaderAt, offset, size int64, op string) (resp *http.Response, release context.CancelFunc, err error) {
 	ctx, release = context.WithTimeout(ctx, resumeChunkTimeout)
 	resp, err = putChunk(ctx, hc, sessionURI, contentType, r, offset, size, op)
@@ -302,9 +199,6 @@ func putChunk(ctx context.Context, hc *http.Client, sessionURI, contentType stri
 	chunkLen := end - offset
 	buf := make([]byte, chunkLen)
 	if chunkLen > 0 {
-		// A short read (even a clean io.EOF) means the artifact no longer
-		// has the bytes this chunk promises; uploading the zero-filled tail
-		// of buf would corrupt the artifact server-side.
 		n, rerr := r.ReadAt(buf, offset)
 		if n != len(buf) {
 			if rerr == nil {
@@ -320,7 +214,6 @@ func putChunk(ctx context.Context, hc *http.Client, sessionURI, contentType stri
 	}
 	req.ContentLength = chunkLen
 	req.Header.Set("Content-Type", contentType)
-	// Content-Range for a zero-length upload uses the bytes *\/0 form.
 	if size == 0 {
 		req.Header.Set("Content-Range", "bytes */0")
 	} else {
@@ -333,10 +226,6 @@ func putChunk(ctx context.Context, hc *http.Client, sessionURI, contentType stri
 	return resp, nil
 }
 
-// resumableProbe asks the server for the number of bytes it has committed by
-// PUTting an empty body with Content-Range: bytes *\/{size}. It returns the new
-// offset, or done=true (with the resource body + status) if the server reports
-// the upload already complete (a 2xx to the probe).
 func resumableProbe(ctx context.Context, hc *http.Client, sessionURI string, size int64, op string, target Resource) (offset int64, done bool, body []byte, status int, err error) {
 	req, rerr := http.NewRequestWithContext(ctx, http.MethodPut, sessionURI, http.NoBody)
 	if rerr != nil {
@@ -362,13 +251,9 @@ func resumableProbe(ctx context.Context, hc *http.Client, sessionURI string, siz
 	}
 }
 
-// committedOffset reads a resumable 308 Range header ("bytes=0-{last}") and
-// returns the next byte to send (last+1). A missing/garbled header means the
-// server has stored nothing new, so fallback is returned unchanged.
 func committedOffset(resp *http.Response, fallback int64) int64 {
 	rng := resp.Header.Get("Range")
 	if rng == "" {
-		// No Range on a 308 means zero bytes committed so far.
 		return 0
 	}
 	i := strings.LastIndex(rng, "-")
@@ -382,10 +267,6 @@ func committedOffset(resp *http.Response, fallback int64) int64 {
 	return last + 1
 }
 
-// validOffset rejects a server-acknowledged offset outside [0, size]: the
-// Range header is external data, and trusting a value past the artifact's end
-// would compute a negative chunk length downstream. Out of range is a protocol
-// error, not something to resume from.
 func validOffset(offset, size int64, op string, target Resource) *Error {
 	if offset < 0 || offset > size {
 		return &Error{Operation: op, Resource: target, Message: fmt.Sprintf("resumable upload: server acknowledged offset %d outside artifact size %d", offset, size)}
@@ -393,16 +274,11 @@ func validOffset(offset, size int64, op string, target Resource) *Error {
 	return nil
 }
 
-// probeErrIsTransient reports whether a resumableProbe failure is worth
-// retrying under the stall bound: a transport error (no status) or an upstream
-// 5xx. Terminal 4xx responses stay immediate.
 func probeErrIsTransient(err error) bool {
 	var apiErr *Error
 	return errors.As(err, &apiErr) && (apiErr.StatusCode == 0 || apiErr.StatusCode >= 500)
 }
 
-// errorFromResponse builds an *Error from a non-success response, parsing the
-// Google error envelope for the message and reasons.
 func errorFromResponse(resp *http.Response, op string, target Resource) *Error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAPIErrorBodyRead))
 	drain(resp)
@@ -416,7 +292,6 @@ func errorFromResponse(resp *http.Response, op string, target Resource) *Error {
 	}
 }
 
-// drain reads and closes resp.Body so the underlying connection can be reused.
 func drain(resp *http.Response) {
 	if resp == nil || resp.Body == nil {
 		return

@@ -13,8 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// writeAABNamed writes a fake artifact under name, so the artifacts of one
-// call never share a path.
 func writeAABNamed(t *testing.T, name string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), name)
@@ -24,8 +22,6 @@ func writeAABNamed(t *testing.T, name string) string {
 	return p
 }
 
-// releaseCodes decodes the versionCodes of the single release in the last
-// tracks.update body.
 func releaseCodes(t *testing.T, f *testkit.Fake) []string {
 	t.Helper()
 	var track struct {
@@ -39,10 +35,6 @@ func releaseCodes(t *testing.T, f *testkit.Fake) []string {
 	return track.Releases[0].VersionCodes
 }
 
-// TestUpload_multiArtifact_resultCarriesEveryCode asserts the orchestrator's
-// N-in, N-out contract (#666): every uploaded code in argument order, the
-// retained ones echoed, the headline versionCode the highest, and the wire
-// release listing uploaded then retained codes.
 func TestUpload_multiArtifact_resultCarriesEveryCode(t *testing.T) {
 	rt, transport := newPlay(playAPI{editID: "edit-n", versionCodes: []int{143, 142}})
 
@@ -69,10 +61,6 @@ func TestUpload_multiArtifact_resultCarriesEveryCode(t *testing.T) {
 	}
 }
 
-// TestUpload_multiArtifact_explicitEdit_uploadsAllCommitsNothing asserts a
-// multi-artifact upload into an explicit Edit (`gplay edits begin`) uploads
-// every artifact and updates the track in the pinned Edit, and never commits
-// it: committing stays the user's call.
 func TestUpload_multiArtifact_explicitEdit_uploadsAllCommitsNothing(t *testing.T) {
 	rt, transport := newPlay(playAPI{
 		versionCodes: []int{7, 8},
@@ -108,9 +96,6 @@ func TestUpload_multiArtifact_explicitEdit_uploadsAllCommitsNothing(t *testing.T
 	}
 }
 
-// TestUpload_mappingWithSeveralArtifacts_exit2_noHTTP asserts the
-// orchestrator refuses a mapping it cannot key to one versionCode, before
-// any request, for callers other than the CLI.
 func TestUpload_mappingWithSeveralArtifacts_exit2_noHTTP(t *testing.T) {
 	rt, transport := newPlay(playAPI{})
 
@@ -128,8 +113,6 @@ func TestUpload_mappingWithSeveralArtifacts_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestUpload_noArtifact_exit2_noHTTP asserts an empty artifact list is an
-// invalid Opts, never an Edit opened for nothing.
 func TestUpload_noArtifact_exit2_noHTTP(t *testing.T) {
 	rt, transport := newPlay(playAPI{})
 

@@ -22,8 +22,6 @@ func writeOBB(t *testing.T) string {
 	return p
 }
 
-// onlyCall returns the single request the Fake served, failing the test on
-// any other count.
 func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := f.Calls()
@@ -33,11 +31,6 @@ func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	return calls[0]
 }
 
-// resumable speaks the resumable-upload protocol through a
-// testkit.RoundTripFunc (a Fake cannot set the Location header the protocol
-// needs): the POST initiate answers with a session URI in Location, then the
-// chunk PUT carries the bytes and returns the final resource body. It records
-// the initiate URL, the X-Upload-Content-Type, and the method sequence.
 type resumable struct {
 	body string
 
@@ -46,7 +39,6 @@ type resumable struct {
 	initCType string
 }
 
-// client returns an http.Client whose every request lands on r.
 func (r *resumable) client() *http.Client {
 	return &http.Client{Transport: testkit.RoundTripFunc(r.serve)}
 }
@@ -66,9 +58,6 @@ func (r *resumable) serve(req *http.Request) (*http.Response, error) {
 	return testkit.Response(200, r.body), nil
 }
 
-// TestUpload_resumableShape asserts the resumable initiate targets the
-// expansionFiles endpoint with uploadType=resumable, the media type travels
-// in X-Upload-Content-Type, and the response body passes through verbatim.
 func TestUpload_resumableShape(t *testing.T) {
 	rt := &resumable{body: `{"expansionFile":{"fileSize":"123"}}`}
 	raw, err := expansionfiles.Upload(context.Background(), rt.client(), "com.example.app", "edit1", 142, expansionfiles.TypeMain, writeOBB(t))
@@ -91,7 +80,6 @@ func TestUpload_resumableShape(t *testing.T) {
 	}
 }
 
-// TestUpload_directory_exit20 asserts a non-regular path is exit 20, no network.
 func TestUpload_directory_exit20(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(200, `{}`))
 	hc := &http.Client{Transport: fake}
@@ -105,7 +93,6 @@ func TestUpload_directory_exit20(t *testing.T) {
 	}
 }
 
-// TestUpdate_putsReferencesVersion asserts the PUT body carries referencesVersion.
 func TestUpdate_putsReferencesVersion(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(200, `{"referencesVersion":140}`))
 	hc := &http.Client{Transport: fake}
@@ -124,7 +111,6 @@ func TestUpdate_putsReferencesVersion(t *testing.T) {
 	}
 }
 
-// TestGet_parsesFileSizeXorReferences asserts the parsed view.
 func TestGet_parsesFileSizeXorReferences(t *testing.T) {
 	hc := &http.Client{Transport: testkit.NewFake(testkit.Any(200, `{"fileSize":"99999"}`))}
 	ef, _, err := expansionfiles.Get(context.Background(), hc, "com.example.app", "edit1", 142, expansionfiles.TypeMain)

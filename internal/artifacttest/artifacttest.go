@@ -1,10 +1,3 @@
-// Package artifacttest builds the tiny fixture artifacts the preflight
-// suites need: real zip containers carrying real (if minimal) Android
-// manifests, in the two encodings gplay parses. Building them in-test is
-// what keeps the suites offline and the repo free of multi-megabyte binary
-// fixtures, and it doubles as an executable spec of the two formats.
-//
-// Production code must not import this package.
 package artifacttest
 
 import (
@@ -18,16 +11,11 @@ import (
 	"testing"
 )
 
-// Zip writes a zip archive with the given members and returns its path.
 func Zip(t *testing.T, dir, name string, members map[string][]byte) string {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for n, b := range members {
-		// Empty members (FillerMembers, marker files) are stored: a Deflate
-		// writer per member made the 65k-member cap fixtures the slowest tests
-		// in the suite. Members with content stay deflated so the
-		// decompression limits are still exercised.
 		hdr := &zip.FileHeader{Name: n, Method: zip.Deflate}
 		if len(b) == 0 {
 			hdr.Method = zip.Store
@@ -46,7 +34,6 @@ func Zip(t *testing.T, dir, name string, members map[string][]byte) string {
 	return WriteFile(t, dir, name, buf.Bytes())
 }
 
-// WriteFile writes raw bytes to dir/name and returns the path.
 func WriteFile(t *testing.T, dir, name string, b []byte) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -56,9 +43,6 @@ func WriteFile(t *testing.T, dir, name string, b []byte) string {
 	return path
 }
 
-// AAB writes a minimal Android App Bundle declaring pkg: a zip with
-// BundleConfig.pb and a protobuf manifest under the base module, the two
-// members gplay's classifier keys on.
 func AAB(t *testing.T, dir, name, pkg string) string {
 	t.Helper()
 	return Zip(t, dir, name, map[string][]byte{
@@ -68,8 +52,6 @@ func AAB(t *testing.T, dir, name, pkg string) string {
 	})
 }
 
-// APK writes a minimal APK declaring pkg: a zip with a binary-XML
-// AndroidManifest.xml at its root.
 func APK(t *testing.T, dir, name, pkg string) string {
 	t.Helper()
 	return Zip(t, dir, name, map[string][]byte{
@@ -78,10 +60,6 @@ func APK(t *testing.T, dir, name, pkg string) string {
 	})
 }
 
-// FillerMembers returns n empty, uniquely named zip members. Fixtures use it
-// to build a container past gplay's preflight member cap: an asset-rich
-// bundle genuinely reaches that scale, so what happens above the cap is a
-// behaviour real users see, not a hypothetical.
 func FillerMembers(n int) map[string][]byte {
 	m := make(map[string][]byte, n)
 	for i := range n {
@@ -90,8 +68,6 @@ func FillerMembers(n int) map[string][]byte {
 	return m
 }
 
-// AABWith / APKWith build the same containers as AAB / APK with extra members
-// merged in (the caller's members lose to the format markers on a clash).
 func AABWith(t *testing.T, dir, name, pkg string, extra map[string][]byte) string {
 	t.Helper()
 	return Zip(t, dir, name, merge(extra, map[string][]byte{
@@ -118,21 +94,18 @@ func merge(base, over map[string][]byte) map[string][]byte {
 	return out
 }
 
-// ProtoManifest encodes the aapt2 protobuf XmlNode an AAB carries:
-// <manifest package="pkg"/>, with only the fields gplay reads.
 func ProtoManifest(pkg string) []byte {
 	attr := concat(
-		field(2, []byte("package")), // XmlAttribute.name
-		field(3, []byte(pkg)),       // XmlAttribute.value
+		field(2, []byte("package")),
+		field(3, []byte(pkg)),
 	)
 	element := concat(
-		field(3, []byte("manifest")), // XmlElement.name
-		field(4, attr),               // XmlElement.attribute
+		field(3, []byte("manifest")),
+		field(4, attr),
 	)
-	return field(1, element) // XmlNode.element
+	return field(1, element)
 }
 
-// field encodes one length-delimited protobuf field.
 func field(num int, payload []byte) []byte {
 	var out []byte
 	out = binary.AppendUvarint(out, uint64(num)<<3|2)
@@ -148,7 +121,6 @@ func concat(parts ...[]byte) []byte {
 	return out
 }
 
-// Android binary-XML constants, mirrored from the reader under test.
 const (
 	xmlChunkType        = 0x0003
 	stringPoolChunkType = 0x0001
@@ -158,27 +130,15 @@ const (
 	resTypeString       = 0x03
 )
 
-// BinaryXMLManifest encodes the compiled AndroidManifest.xml an APK carries:
-// a string pool plus a single <manifest package="pkg"> start element. utf16
-// selects the older UTF-16 string-pool encoding (both are valid and both
-// appear in the wild depending on the aapt generation).
 func BinaryXMLManifest(pkg string, utf16Pool bool) []byte {
 	return binaryXMLDocument(stringPool([]string{"manifest", "package", pkg}, utf16Pool, 0))
 }
 
-// AliasedPoolManifest is BinaryXMLManifest whose string pool also holds one
-// filler string of fillerLen characters, followed by aliases more pool indices
-// that all point at that same filler entry. aapt never emits it; it is the
-// shape of a crafted manifest whose pool decodes far more than its own size.
 func AliasedPoolManifest(pkg string, utf16Pool bool, fillerLen, aliases int) []byte {
 	filler := strings.Repeat("x", fillerLen)
 	return binaryXMLDocument(stringPool([]string{"manifest", "package", pkg, filler}, utf16Pool, aliases))
 }
 
-// RepeatedPoolManifest is BinaryXMLManifest preceded by pools more string
-// pools, each one filler string of fillerLen characters aliased aliases times.
-// A reader keeps only the last pool, so each earlier one is decoded and
-// dropped.
 func RepeatedPoolManifest(pkg string, pools, fillerLen, aliases int) []byte {
 	filler := stringPool([]string{strings.Repeat("x", fillerLen)}, false, aliases)
 	chunks := make([][]byte, 0, pools+1)
@@ -188,8 +148,14 @@ func RepeatedPoolManifest(pkg string, pools, fillerLen, aliases int) []byte {
 	return binaryXMLDocument(append(chunks, stringPool([]string{"manifest", "package", pkg}, false, 0))...)
 }
 
+const (
+	poolManifest = 0
+	poolPackage  = 1
+	poolPkg      = 2
+)
+
 func binaryXMLDocument(pools ...[]byte) []byte {
-	elem := startElement(0 /*manifest*/, 1 /*package*/, 2 /*pkg*/)
+	elem := startElement(poolManifest, poolPackage, poolPkg)
 
 	var body bytes.Buffer
 	for _, p := range pools {
@@ -205,36 +171,32 @@ func binaryXMLDocument(pools ...[]byte) []byte {
 	return out.Bytes()
 }
 
-// startElement encodes a RES_XML_START_ELEMENT with exactly one attribute.
 func startElement(nameIdx, attrNameIdx, attrValueIdx uint32) []byte {
 	var out bytes.Buffer
 	const size = 16 + 20 + 20
 	writeU16(&out, startElemChunkType)
-	writeU16(&out, 16) // headerSize: ResXMLTree_node
+	writeU16(&out, 16)
 	writeU32(&out, size)
-	writeU32(&out, 1)       // lineNumber
-	writeU32(&out, noEntry) // comment
-	writeU32(&out, noEntry) // ns
+	writeU32(&out, 1)
+	writeU32(&out, noEntry)
+	writeU32(&out, noEntry)
 	writeU32(&out, nameIdx)
-	writeU16(&out, 20) // attributeStart, relative to attrExt
-	writeU16(&out, 20) // attributeSize
-	writeU16(&out, 1)  // attributeCount
-	writeU16(&out, 0)  // idIndex
-	writeU16(&out, 0)  // classIndex
-	writeU16(&out, 0)  // styleIndex
-	// The attribute itself.
-	writeU32(&out, noEntry) // ns: package has none
+	writeU16(&out, 20)
+	writeU16(&out, 20)
+	writeU16(&out, 1)
+	writeU16(&out, 0)
+	writeU16(&out, 0)
+	writeU16(&out, 0)
+	writeU32(&out, noEntry)
 	writeU32(&out, attrNameIdx)
-	writeU32(&out, attrValueIdx) // rawValue
-	writeU16(&out, 8)            // Res_value.size
-	out.WriteByte(0)             // res0
+	writeU32(&out, attrValueIdx)
+	writeU16(&out, 8)
+	out.WriteByte(0)
 	out.WriteByte(resTypeString)
-	writeU32(&out, attrValueIdx) // Res_value.data
+	writeU32(&out, attrValueIdx)
 	return out.Bytes()
 }
 
-// stringPool encodes a RES_STRING_POOL chunk holding strs, plus aliases extra
-// indices pointing at the last string's entry.
 func stringPool(strs []string, utf16Pool bool, aliases int) []byte {
 	var (
 		data    bytes.Buffer
@@ -248,11 +210,11 @@ func stringPool(strs []string, utf16Pool bool, aliases int) []byte {
 			for _, u := range units {
 				writeU16(&data, u)
 			}
-			writeU16(&data, 0) // NUL terminator
+			writeU16(&data, 0)
 			continue
 		}
-		writeLen8(&data, len([]rune(s))) // character count
-		writeLen8(&data, len(s))         // byte count
+		writeLen8(&data, len([]rune(s)))
+		writeLen8(&data, len(s))
 		data.WriteString(s)
 		data.WriteByte(0)
 	}
@@ -271,14 +233,14 @@ func stringPool(strs []string, utf16Pool bool, aliases int) []byte {
 	writeU16(&out, headerSize)
 	writeU32(&out, uint32(stringsStart+data.Len()))
 	writeU32(&out, uint32(len(offsets)))
-	writeU32(&out, 0) // styleCount
+	writeU32(&out, 0)
 	if utf16Pool {
 		writeU32(&out, 0)
 	} else {
 		writeU32(&out, utf8PoolFlag)
 	}
 	writeU32(&out, uint32(stringsStart))
-	writeU32(&out, 0) // stylesStart
+	writeU32(&out, 0)
 	for _, o := range offsets {
 		writeU32(&out, o)
 	}
@@ -286,11 +248,6 @@ func stringPool(strs []string, utf16Pool bool, aliases int) []byte {
 	return out.Bytes()
 }
 
-// writeLen8 writes aapt's length prefix for a UTF-8 pool entry: one byte up
-// to 127, otherwise two with the high bit of the first set. A package name
-// over 127 bytes is legal (Android caps the label at 255) and it is the only
-// thing that exercises the reader's continuation branch, so the fixtures have
-// to encode it the way aapt does rather than truncating to one byte.
 func writeLen8(b *bytes.Buffer, n int) {
 	if n > 0x7F {
 		b.WriteByte(byte(0x80 | n>>8))
@@ -298,7 +255,6 @@ func writeLen8(b *bytes.Buffer, n int) {
 	b.WriteByte(byte(n))
 }
 
-// utf16Units returns the UTF-16 code units of s (BMP-only in these fixtures).
 func utf16Units(s string) []uint16 {
 	var units []uint16
 	for _, r := range s {

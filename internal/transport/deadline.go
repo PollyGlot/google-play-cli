@@ -9,22 +9,6 @@ import (
 	"time"
 )
 
-// WithControlPlaneDeadline bounds every request inner carries by timeout,
-// except a media transfer (IsMediaTransfer): a media upload passes through
-// untouched, and a media download (alt=media) is bounded by timeout of
-// inactivity instead of total duration (see idleRoundTrip).
-//
-// It exists for the upload commands: they drive one authenticated client
-// through both the small Edit calls (edits.insert, tracks.update,
-// edits.commit) and the multi-hundred-MB artifact transfer. A client-wide
-// Timeout would either kill the transfer or leave the Edit calls unbounded, so
-// a half-open connection during edits.commit hung the job until the runner
-// killed it (docs/DESIGN.md §8). Deciding per request keeps the 60s promise for
-// the control plane without touching the transfer.
-//
-// The deadline lives on the request context and is released only when the
-// response body is closed, so it also covers reading the body, like
-// http.Client.Timeout does.
 func WithControlPlaneDeadline(inner http.RoundTripper, timeout time.Duration) http.RoundTripper {
 	if inner == nil {
 		inner = http.DefaultTransport
@@ -57,9 +41,6 @@ func (d *deadlineTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	return resp, nil
 }
 
-// cancelOnClose releases the per-request deadline once the caller is done with
-// the body, not when RoundTrip returns: canceling earlier would cut the body
-// read short.
 type cancelOnClose struct {
 	io.ReadCloser
 	cancel context.CancelFunc
@@ -71,9 +52,6 @@ func (c *cancelOnClose) Close() error {
 	return err
 }
 
-// IdleTimeoutError is the failure of a media download that received no byte
-// for Idle: the headers did not arrive, or the body stopped moving. It wraps
-// context.DeadlineExceeded, so it reads as the timeout it is.
 type IdleTimeoutError struct{ Idle time.Duration }
 
 func (e *IdleTimeoutError) Error() string {
@@ -82,11 +60,6 @@ func (e *IdleTimeoutError) Error() string {
 
 func (e *IdleTimeoutError) Unwrap() error { return context.DeadlineExceeded }
 
-// idleRoundTrip bounds a media download by inactivity, not by total duration:
-// a large report export on a slow link outlasts any fixed total, while a
-// connection that delivers nothing for d.timeout is as dead as a hung control
-// plane call. The clock starts with the request (waiting for the headers counts
-// as inactivity) and restarts on every body read that returns bytes.
 func (d *deadlineTransport) idleRoundTrip(req *http.Request) (*http.Response, error) {
 	ctx, cancel := context.WithCancelCause(req.Context())
 	stalled := &IdleTimeoutError{Idle: d.timeout}
@@ -104,9 +77,6 @@ func (d *deadlineTransport) idleRoundTrip(req *http.Request) (*http.Response, er
 	return resp, nil
 }
 
-// idleBody re-arms the download's inactivity clock on every read that moves
-// bytes, and reports a read the clock cut short as the IdleTimeoutError rather
-// than whatever the inner transport makes of the cancellation.
 type idleBody struct {
 	io.ReadCloser
 	ctx     context.Context
@@ -133,19 +103,10 @@ func (b *idleBody) Close() error {
 	return err
 }
 
-// isMediaDownload reports whether req asks for the media bytes themselves
-// (alt=media): the half of IsMediaTransfer that idleRoundTrip bounds.
 func isMediaDownload(req *http.Request) bool {
 	return req.URL != nil && req.URL.Query().Get("alt") == "media"
 }
 
-// IsMediaTransfer reports whether req moves media bytes: an upload that carries
-// a body to a media endpoint (the Discovery `/upload/...` paths every upload
-// URL is built from), or a download asking for the media itself (alt=media).
-//
-// A body-less request to an upload path stays control plane on purpose: the
-// resumable protocol's initiate POST and its offset probe are small calls, and
-// a hung one must fail fast rather than wait for the runner kill.
 func IsMediaTransfer(req *http.Request) bool {
 	if req.URL == nil {
 		return false

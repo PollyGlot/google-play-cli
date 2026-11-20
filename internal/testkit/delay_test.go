@@ -9,8 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// Delayed must count overlap, not calls: three requests held open together
-// peak at 3, and the fake still sees every one of them.
 func TestDelayed_recordsPeakInFlight(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(200, `{}`))
 	d := testkit.NewDelayed(fake, func(*http.Request) time.Duration { return 30 * time.Millisecond })

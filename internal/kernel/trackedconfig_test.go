@@ -13,9 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// cwdFS is the real filesystem seen from a chosen working directory and home,
-// so the config walk-up starts inside a throwaway repository without the test
-// changing the process's cwd.
 type cwdFS struct {
 	config.OSFS
 	cwd, home string
@@ -24,8 +21,6 @@ type cwdFS struct {
 func (f cwdFS) Getwd() (string, error)       { return f.cwd, nil }
 func (f cwdFS) UserHomeDir() (string, error) { return f.home, nil }
 
-// repoWithLocalConfig builds a git repository holding .gplay/config.local.json
-// and returns its root. track decides whether the file is added to the index.
 func repoWithLocalConfig(t *testing.T, track bool) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -36,7 +31,6 @@ func repoWithLocalConfig(t *testing.T, track bool) string {
 		t.Helper()
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = repo
-		// Drop inherited GIT_* so a run from a git hook still targets repo.
 		for _, kv := range os.Environ() {
 			if !strings.HasPrefix(kv, "GIT_") {
 				cmd.Env = append(cmd.Env, kv)
@@ -74,10 +68,6 @@ func runInRepo(t *testing.T, repo string) string {
 	return stderr.String()
 }
 
-// TestRun_trackedLocalConfig_warnsOnStderr asserts a committed
-// .gplay/config.local.json draws one warning naming the file and the fix: it
-// selects the Account every clone runs with, and only a .gitignore kept it
-// out of the repository (#603).
 func TestRun_trackedLocalConfig_warnsOnStderr(t *testing.T) {
 	repo := repoWithLocalConfig(t, true)
 	got := runInRepo(t, repo)

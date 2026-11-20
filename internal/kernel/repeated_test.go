@@ -12,12 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// flagZoo builds a two-level tree carrying one flag per pflag value KIND gplay
-// can plausibly register, each declared twice: once with the type's zero default
-// and once with a real default. The zero-default half is the interesting one:
-// pflag hides a zero default and prints a real one, and that decision is made by
-// a type switch over pflag's own concrete value types, which is exactly what a
-// wrapper hides.
 func flagZoo() *cobra.Command {
 	root := &cobra.Command{Use: "root", Short: "root"}
 	pf := root.PersistentFlags()
@@ -42,7 +36,6 @@ func flagZoo() *cobra.Command {
 	return root
 }
 
-// helpOf renders a command's own --help the way a user sees it.
 func helpOf(t *testing.T, cmd *cobra.Command) string {
 	t.Helper()
 	var out bytes.Buffer
@@ -54,17 +47,6 @@ func helpOf(t *testing.T, cmd *cobra.Command) string {
 	return out.String()
 }
 
-// TestRejectRepeatedFlags_leavesHelpByteIdentical is the regression guard for
-// the wrapper's one visible side effect. pflag decides whether to append
-// ` (default X)` from a type switch over its OWN concrete value types, so any
-// wrapper falls through to a generic branch that does not know "0s" is a zero
-// duration: wrapping the tree started advertising `--timeout ... (default 0s)`
-// on all 149 help screens, contradicting the flag's own usage text and leaking
-// into the generated website reference (built from --help).
-//
-// The assertion is byte equality against the SAME tree unwrapped, at both
-// levels (the root's persistent flags and a leaf's local ones), so it covers
-// every flag kind in flagZoo rather than the one that happened to regress.
 func TestRejectRepeatedFlags_leavesHelpByteIdentical(t *testing.T) {
 	for _, path := range []string{"", "child"} {
 		name := "root"
@@ -94,10 +76,6 @@ func TestRejectRepeatedFlags_leavesHelpByteIdentical(t *testing.T) {
 	}
 }
 
-// TestRejectRepeatedFlags_stillRejectsAfterHelp pins the other half of the
-// help hook: taking the wrappers off to RENDER must put them back, so a caller
-// that prints help and keeps going (a library, a test) still gets the
-// repeated-flag rejection afterwards.
 func TestRejectRepeatedFlags_stillRejectsAfterHelp(t *testing.T) {
 	root := kernel.RejectRepeatedFlags(flagZoo())
 	_ = helpOf(t, root)
@@ -110,13 +88,6 @@ func TestRejectRepeatedFlags_stillRejectsAfterHelp(t *testing.T) {
 	}
 }
 
-// TestRejectRepeatedFlags_mapFlagsStayRepeatable is the latent half of the
-// exemption. pflag publishes an interface for its slice values (SliceValue) and
-// none for its map values, so a structural check that only asks for SliceValue
-// would wrap `--label k=v` and reject the second pair as misuse, even though a
-// map flag is repeatable BY DESIGN (one occurrence per entry). No gplay command
-// registers one yet: this test is the guard that the first one will not have to
-// discover the hole.
 func TestRejectRepeatedFlags_mapFlagsStayRepeatable(t *testing.T) {
 	root := kernel.RejectRepeatedFlags(flagZoo())
 	child, _, err := root.Find([]string{"child"})

@@ -10,13 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestCommitFlags_onEveryEditCommittingLeaf pins where the #598 opt-ins live:
-// on `edits commit` and on every write command that commits its own implicit
-// Edit. A leaf missing them would silently cancel a pending review with no way
-// to opt out. The reverse guard catches the next Edit-committing command: every
-// leaf with --keep-edit-on-failure commits an Edit, so it must be listed here.
-//
-// Paths are split args so the verb gate (#168) stays green on this file.
 func TestCommitFlags_onEveryEditCommittingLeaf(t *testing.T) {
 	committing := [][]string{
 		{"edits", "commit"},
@@ -51,8 +44,6 @@ func TestCommitFlags_onEveryEditCommittingLeaf(t *testing.T) {
 				t.Errorf("%q lacks --%s", cmd.CommandPath(), name)
 				continue
 			}
-			// Frozen like their leaves (they mirror Google's parameters 1:1),
-			// so no [experimental] label may creep back into the help.
 			if strings.Contains(f.Usage, "[experimental]") {
 				t.Errorf("%q --%s usage %q carries an [experimental] label; these flags are frozen", cmd.CommandPath(), name, f.Usage)
 			}

@@ -1,17 +1,3 @@
-// Package iap calls the one-time-product surfaces of the Android Publisher
-// API: the IAP branch of the Monetization catalog (PRD #51, ADR-0041 §8):
-// the v2 model `monetization.onetimeproducts` (nested purchaseOptions →
-// offers) for all reads AND writes, plus a read-only walk of the legacy
-// `inappproducts` so unmigrated products are never invisible (`pull` unions
-// the two; legacy is never written in place). Edit-free, package axis. Raw
-// HTTP (ADR-0007), never the google-go-sdk.
-//
-// The v2 write model has no create: onetimeproducts.patch carries
-// allowMissing, so the upsert IS the create. Offer writes ride the per-
-// purchase-option batch endpoints (no single create/patch exists). Lifecycle
-// states (slice #541) never ride a patch (the field is output-only): purchase
-// options move through their per-product batch verb (their only state write
-// path), offers through the unary :activate / :deactivate / :cancel verbs.
 package iap
 
 import (
@@ -30,7 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
-// op* tag *api.Error with the REST reference method id.
 const (
 	opList              = "monetization.onetimeproducts.list"
 	opPatch             = "monetization.onetimeproducts.patch"
@@ -45,14 +30,6 @@ const (
 	opLegacyList        = "inappproducts.list"
 )
 
-// m* are the registry entries this package calls. Resolving them at init turns
-// an unregistered or vanished method into a startup panic CI catches (the
-// registry tests resolve every entry), never a runtime surprise for a user;
-// verb and URL template then come from the Discovery snapshot instead of
-// literals maintained here (#513). Case in point: the snapshot paths the v2
-// patch under lowercase `onetimeproducts` while the reads use
-// `oneTimeProducts`, and taking both from the snapshot is what keeps that
-// asymmetry right.
 var (
 	mList              = apiregistry.MustResolve("androidpublisher.monetization.onetimeproducts.list")
 	mPatch             = apiregistry.MustResolve("androidpublisher.monetization.onetimeproducts.patch")
@@ -67,13 +44,6 @@ var (
 	mLegacyList        = apiregistry.MustResolve("androidpublisher.inappproducts.list")
 )
 
-// The State* values are the OneTimeProductOffer.state enum; purchase options
-// share DRAFT, ACTIVE and INACTIVE. ACTIVE, INACTIVE and CANCELLED are the
-// lifecycle targets a catalog file may declare (each maps to one unary verb in
-// SetOfferState); no verb reaches DRAFT, the state of a resource that has
-// never been activated. Play alone sets StateInactivePublished, on purchase
-// options it migrated automatically: off sale, but still exposed through the
-// Play Billing Library.
 const (
 	StateDraft             = "DRAFT"
 	StateActive            = "ACTIVE"
@@ -82,20 +52,13 @@ const (
 	StateInactivePublished = "INACTIVE_PUBLISHED"
 )
 
-// listPageSize is the page size of the v2 product list and offers walk. It
-// is sized against api.MaxAPISuccessBodyRead: Play pretty-prints, and a
-// product with a buy and a rent option priced in every region weighs about
-// 90 KB, so 100 of them came to 9 MB, past the 4 MiB cap; 20 stay near 1.8 MB
-// (bodycap_test.go, #790).
 const listPageSize = 20
 
-// Item is one live v2 one-time product: parsed ID + verbatim resource.
 type Item struct {
 	ProductID string
 	Raw       json.RawMessage
 }
 
-// OfferItem is one live v2 offer: full composite identity + verbatim resource.
 type OfferItem struct {
 	ProductID        string
 	PurchaseOptionID string
@@ -103,16 +66,11 @@ type OfferItem struct {
 	Raw              json.RawMessage
 }
 
-// LegacyItem is one live legacy in-app product: its SKU + verbatim resource
-// (recognizable by its `sku` field: the v2 resource carries `productId`).
 type LegacyItem struct {
 	SKU string
 	Raw json.RawMessage
 }
 
-// ListOneTimeProducts reads the complete live v2 catalog, following
-// nextPageToken to completion (no silent truncation: a missing page would
-// read as deletes in a Reconciliation plan).
 func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 	items, _, err := api.Paginate(api.Pager{Op: opList, Target: pkg, What: "onetimeproducts.list"},
 		func(token string, _ int) ([]Item, string, error) {
@@ -145,8 +103,6 @@ func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]It
 	return items, err
 }
 
-// pageQuery is the query of one v2 list page: the fixed page size, plus the
-// continuation token past the first page.
 func pageQuery(token string) url.Values {
 	q := url.Values{}
 	q.Set("pageSize", strconv.Itoa(listPageSize))
@@ -156,14 +112,9 @@ func pageQuery(token string) url.Values {
 	return q
 }
 
-// ListAllOffers reads every v2 offer of the app in one wildcard walk
-// (productId='-', purchaseOptionId='-'), following nextPageToken to
-// completion.
 func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferItem, error) {
 	items, _, err := api.Paginate(api.Pager{Op: opOffersList, Target: pkg, What: "offers.list"},
 		func(token string, _ int) ([]OfferItem, string, error) {
-			// The wildcard walk rides the same template as a scoped list: `-`
-			// is a legal path segment, so escaping leaves it untouched.
 			var pg struct {
 				OneTimeProductOffers []json.RawMessage `json:"oneTimeProductOffers"`
 				NextPageToken        string            `json:"nextPageToken"`
@@ -195,11 +146,6 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 	return items, err
 }
 
-// PatchOneTimeProduct upserts (allowMissing=true, the v2 create: the API has
-// no insert) or edits (updateMask scoped to the changed managed fields) one
-// product from the catalog-file resource, sent verbatim. The Discovery
-// snapshot paths this method under lowercase `onetimeproducts/`, unlike the
-// reads: followed verbatim.
 func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, allowMissing bool, body json.RawMessage, lt latency.Tolerance) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("regionsVersion.version", regionsVersion)
@@ -218,8 +164,6 @@ func PatchOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID, r
 	})
 }
 
-// DeleteOneTimeProduct deletes one v2 product. Reaching here means the plan
-// carried a delete and the operator passed --confirm (ADR-0041 §3).
 func DeleteOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID string, lt latency.Tolerance) error {
 	q := url.Values{}
 	lt.SetQuery(q)
@@ -231,30 +175,17 @@ func DeleteOneTimeProduct(ctx context.Context, hc *http.Client, pkg, productID s
 	return err
 }
 
-// OfferUpdate is one entry of a BatchUpdateOffers call: the offer resource
-// verbatim, upserted when AllowMissing (the offer create: no single insert
-// exists) or masked to the changed fields.
 type OfferUpdate struct {
 	Offer        json.RawMessage
 	AllowMissing bool
 	UpdateMask   []string
 }
 
-// maxBatchRequests is the request count each one-time-product batch body
-// takes: Discovery documents its `requests` list "of up to 100 elements".
 const maxBatchRequests = 100
 
-// BatchError reports a batch write gplay split into calls of at most
-// maxBatchRequests that failed part-way. Applied names the items of the calls
-// Play accepted, Failed those of the failing call, NotSent those of the calls
-// never sent. OutcomeUnknown says whether the failing call may have been
-// applied all the same (a 5xx, a transport failure once the request left, a
-// 2xx whose body broke): only a 4xx or a request that never left proves it
-// was not. It wraps the failing call's error, so the exit code and the
-// envelope stay the API's.
 type BatchError struct {
-	Op             string // REST method id
-	Target         string // productId, or productId/purchaseOptionId
+	Op             string
+	Target         string
 	Applied        []string
 	Failed         []string
 	NotSent        []string
@@ -281,10 +212,6 @@ func (e *BatchError) Error() string {
 
 func (e *BatchError) Unwrap() error { return e.Cause }
 
-// refused reports whether a failed batch call provably wrote nothing: Play
-// answered 4xx (429 included: refused before the write path), or the request
-// never left the machine (api.NeverSent, the line edits.commit draws for
-// COMMIT_OUTCOME_UNKNOWN). Anything else may have landed.
 func refused(err error) bool {
 	var apiErr *api.Error
 	if !errors.As(err, &apiErr) {
@@ -296,10 +223,6 @@ func refused(err error) bool {
 	return apiErr.StatusCode >= 400 && apiErr.StatusCode < 500
 }
 
-// sendInBatches sends ids in order, at most maxBatchRequests per call:
-// send(lo, hi) writes ids[lo:hi]. A batch that fits one call fails with the
-// call's own error; a split one fails with a *BatchError naming what Play
-// already applied.
 func sendInBatches(op, target string, ids []string, send func(lo, hi int) error) error {
 	for lo := 0; lo < len(ids); lo += maxBatchRequests {
 		hi := min(lo+maxBatchRequests, len(ids))
@@ -313,9 +236,6 @@ func sendInBatches(op, target string, ids []string, send func(lo, hi int) error)
 	return nil
 }
 
-// BatchUpdateOffers creates/edits the given offers of one purchase option
-// through offers:batchUpdate, the only write path the API exposes for offers,
-// in calls of at most maxBatchRequests.
 func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, updates []OfferUpdate, regionsVersion string, lt latency.Tolerance) error {
 	type updateReq struct {
 		OneTimeProductOffer json.RawMessage   `json:"oneTimeProductOffer"`
@@ -335,7 +255,7 @@ func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 		var offer struct {
 			OfferID string `json:"offerId"`
 		}
-		_ = json.Unmarshal(upd.Offer, &offer) // names the offer in a BatchError only
+		_ = json.Unmarshal(upd.Offer, &offer)
 		ids = append(ids, offer.OfferID)
 	}
 	return sendInBatches(opOffersBatchUpdate, productID+"/"+purchaseOptionID, ids, func(lo, hi int) error {
@@ -350,9 +270,6 @@ func BatchUpdateOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 	})
 }
 
-// BatchDeleteOffers deletes the given offers of one purchase option through
-// offers:batchDelete, naming each offer's full identity, in calls of at most
-// maxBatchRequests.
 func BatchDeleteOffers(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID string, offerIDs []string, lt latency.Tolerance) error {
 	type deleteReq struct {
 		PackageName      string            `json:"packageName"`
@@ -377,21 +294,11 @@ func BatchDeleteOffers(ctx context.Context, hc *http.Client, pkg, productID, pur
 	})
 }
 
-// PurchaseOptionStateUpdate is one entry of a BatchUpdatePurchaseOptionStates
-// call: the purchase option to move, and the direction (activate or
-// deactivate: the two verbs that sub-resource exposes).
 type PurchaseOptionStateUpdate struct {
 	PurchaseOptionID string
 	Activate         bool
 }
 
-// BatchUpdatePurchaseOptionStates moves the given purchase options of one
-// product through purchaseOptions:batchUpdateStates, in calls of at most
-// maxBatchRequests: the only state write path the API exposes for purchase
-// options (no unary verb exists, unlike offers). The body is the oneof shape
-// of UpdatePurchaseOptionStateRequest: one of activatePurchaseOptionRequest /
-// deactivatePurchaseOptionRequest per entry, each echoing the identity the
-// schema requires.
 func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, productID string, updates []PurchaseOptionStateUpdate, lt latency.Tolerance) error {
 	type optionReq struct {
 		PackageName      string            `json:"packageName"`
@@ -426,14 +333,6 @@ func BatchUpdatePurchaseOptionStates(ctx context.Context, hc *http.Client, pkg, 
 	})
 }
 
-// SetOfferState moves one offer to the declared target through its unary
-// verb: ACTIVE → :activate, INACTIVE → :deactivate (discounted offers),
-// CANCELLED → :cancel (pre-orders; irreversible, so the command gates it
-// behind --confirm before reaching here). Any other target is a programming
-// error surfaced as an *api.Error rather than a silent no-op. The custom verb
-// is part of the snapshot's flatPath, so it rides the template. The request
-// message echoes the identity the schema declares (the subscription siblings
-// accept an empty body, the one-time ones list the fields: sent to be safe).
 func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchaseOptionID, offerID, target string, lt latency.Tolerance) (json.RawMessage, error) {
 	var (
 		m  apiregistry.Method
@@ -461,18 +360,10 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchas
 	})
 }
 
-// ErrLegacyRetired reports that Google refuses the legacy inappproducts API
-// for this app and points to the v2 model instead (#741). The refusal is a
-// 403 that carries no discriminating reason, only its message, so the message
-// is the signal.
 var ErrLegacyRetired = errors.New("legacy inappproducts API retired by Google for this app")
 
 const legacyRetiredMessage = "migrate to the new publishing api"
 
-// ListInAppProducts reads the complete legacy inappproducts catalog, following
-// the legacy tokenPagination envelope to completion. Read-only: gplay never
-// writes the legacy surface in place (ADR-0041 §8). When Google refuses the
-// legacy API for the app, the error wraps ErrLegacyRetired.
 func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]LegacyItem, error) {
 	items, err := listInAppProducts(ctx, hc, pkg)
 	var apiErr *api.Error

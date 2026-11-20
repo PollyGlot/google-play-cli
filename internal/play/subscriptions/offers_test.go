@@ -12,8 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
-// TestListAllOffers_wildcardPaginated asserts one wildcard walk (-/-) reads
-// every offer of the app, following nextPageToken, parsing the composite key.
 func TestListAllOffers_wildcardPaginated(t *testing.T) {
 	rt := subsFake([]scripted{
 		{200, `{"subscriptionOffers":[{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE"}],"nextPageToken":"p2"}`},
@@ -38,8 +36,6 @@ func TestListAllOffers_wildcardPaginated(t *testing.T) {
 	}
 }
 
-// TestListAllOffers_missingIdentity_refuses asserts an offer without its full
-// composite identity is rejected at the API boundary.
 func TestListAllOffers_missingIdentity_refuses(t *testing.T) {
 	rt := subsFake([]scripted{
 		{200, `{"subscriptionOffers":[{"productId":"premium","offerId":"intro"}]}`},
@@ -50,8 +46,6 @@ func TestListAllOffers_missingIdentity_refuses(t *testing.T) {
 	}
 }
 
-// TestCreateOffer_postsWithIDs asserts CreateOffer addresses the base plan and
-// carries offerId + regionsVersion.version as query params.
 func TestCreateOffer_postsWithIDs(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{"offerId":"intro"}`}})
 	body := json.RawMessage(`{"offerId":"intro","phases":[{"duration":"P1W"}]}`)
@@ -71,8 +65,6 @@ func TestCreateOffer_postsWithIDs(t *testing.T) {
 	}
 }
 
-// TestPatchOffer_scopedMask asserts PatchOffer addresses the offer with a
-// caller-scoped updateMask.
 func TestPatchOffer_scopedMask(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{}`}})
 	_, err := subscriptions.PatchOffer(context.Background(), client(rt), "com.example.app", "premium", "monthly", "intro", "2022/02", []string{"phases", "regionalConfigs"}, json.RawMessage(`{}`), "")
@@ -88,7 +80,6 @@ func TestPatchOffer_scopedMask(t *testing.T) {
 	}
 }
 
-// TestDeleteOffer_addressesOffer asserts the DELETE path.
 func TestDeleteOffer_addressesOffer(t *testing.T) {
 	rt := subsFake([]scripted{{204, ``}})
 	if err := subscriptions.DeleteOffer(context.Background(), client(rt), "com.example.app", "premium", "monthly", "old"); err != nil {
@@ -100,8 +91,6 @@ func TestDeleteOffer_addressesOffer(t *testing.T) {
 	}
 }
 
-// TestDeleteBasePlan_addressesBasePlan asserts DeleteBasePlan issues a DELETE
-// on the base plan URL (no custom verb, no body).
 func TestDeleteBasePlan_addressesBasePlan(t *testing.T) {
 	rt := subsFake([]scripted{{204, ``}})
 	if err := subscriptions.DeleteBasePlan(context.Background(), client(rt), "com.example.app", "premium", "trial"); err != nil {
@@ -113,10 +102,6 @@ func TestDeleteBasePlan_addressesBasePlan(t *testing.T) {
 	}
 }
 
-// TestDeleteBasePlan_publishedPlan_surfacesAPIError asserts the server-side
-// refusal of a non-draft plan comes back as an *api.Error tagged with the
-// method id and status, the input the apply hint and the diagnostic code
-// classifier (ADR-0044) build on.
 func TestDeleteBasePlan_publishedPlan_surfacesAPIError(t *testing.T) {
 	rt := subsFake([]scripted{{400, `{"error":{"code":400,"message":"Base plan is not in draft state","errors":[{"reason":"badRequest"}]}}`}})
 	err := subscriptions.DeleteBasePlan(context.Background(), client(rt), "com.example.app", "premium", "monthly")
@@ -132,9 +117,6 @@ func TestDeleteBasePlan_publishedPlan_surfacesAPIError(t *testing.T) {
 	}
 }
 
-// TestMigrateBasePlanPrices_postsRequest asserts the migration POSTs the
-// :migratePrices custom verb with the full request body (path identity echoed,
-// as the schema requires) and returns the response verbatim.
 func TestMigrateBasePlanPrices_postsRequest(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{}`}})
 	req := subscriptions.MigrateBasePlanPricesRequest{
@@ -162,8 +144,6 @@ func TestMigrateBasePlanPrices_postsRequest(t *testing.T) {
 	}
 }
 
-// TestSetStates_hitCustomVerbs asserts the state ops POST the :activate /
-// :deactivate custom verbs with an empty JSON body (identity rides the path).
 func TestSetStates_hitCustomVerbs(t *testing.T) {
 	rt := subsFake([]scripted{{200, `{}`}, {200, `{}`}, {200, `{}`}, {200, `{}`}})
 	ctx := context.Background()

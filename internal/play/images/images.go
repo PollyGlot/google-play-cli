@@ -1,18 +1,3 @@
-// Package images reads and writes the per-locale Store images of a Google
-// Play app within an open Edit (edits.images). It is the image sibling of
-// internal/play/listings: every function runs inside an Edit the caller has
-// already opened (edits.WithEdit / edits.WithReadOnlyEdit) and none opens or
-// commits an Edit of its own.
-//
-// The four verbs map 1:1 onto the API and back the metadata images commands:
-//
-//   - List   (per (locale, imageType) slot)  → images list / pull / apply diff
-//   - Upload (one image into a slot)          → images apply (additive)
-//   - Delete (one image by server id)         → images apply --prune
-//   - DeleteAll (every image in a slot)       → images apply (gallery reorder)
-//
-// gplay speaks edits.images over raw HTTP (ADR-0007), through the api
-// executor every other internal/play/* module sends with.
 package images
 
 import (
@@ -33,11 +18,6 @@ const (
 	opImagesDeleteAll = "images.deleteall"
 )
 
-// Registry entries this package calls. Resolving them at init makes an
-// unregistered or vanished method a startup panic caught by CI rather than a
-// runtime surprise; verb and URL then come from the Discovery snapshot instead
-// of literals kept here (#513). list and deleteall share one template (the
-// slot itself); delete adds {imageId}; upload lives on the /upload host.
 var (
 	methodList      = apiregistry.MustResolve("androidpublisher.edits.images.list")
 	methodUpload    = apiregistry.MustResolve("androidpublisher.edits.images.upload")
@@ -45,24 +25,13 @@ var (
 	methodDeleteAll = apiregistry.MustResolve("androidpublisher.edits.images.deleteall")
 )
 
-// Type is one of the eight AppImageType values edits.images exposes. The
-// string value IS the API path segment (and the on-disk slot name). There is
-// no Chromebook type: androidpublisher v3's AppImageType enum does not
-// expose it (PRD #112 "Hors scope"), so it is deliberately not addressable.
-// Nor is promoGraphic: Google dropped it from the enum, and Play answers a
-// request on that slot with a 400, so it is a Retired slot (see Retired).
-// internal/enumanchor pins this set to the bundled Discovery
-// snapshot, so the next enum change fails CI instead of every user's run.
 type Type string
 
 const (
-	// Singular slots hold at most one image.
 	Icon           Type = "icon"
 	FeatureGraphic Type = "featureGraphic"
 	TvBanner       Type = "tvBanner"
 
-	// Gallery slots hold an ordered sequence (Play caps each at 8). Display
-	// order is upload order: the API carries no position field (ADR-0013).
 	PhoneScreenshots     Type = "phoneScreenshots"
 	SevenInchScreenshots Type = "sevenInchScreenshots"
 	TenInchScreenshots   Type = "tenInchScreenshots"
@@ -70,30 +39,18 @@ const (
 	WearScreenshots      Type = "wearScreenshots"
 )
 
-// AIGeneratedState is the developer's attestation an upload may carry about
-// the image (#784). Discovery marks it optional; the zero value sends
-// nothing.
 type AIGeneratedState string
 
-// The attestations, pinned to Discovery by internal/enumanchor.
 const (
 	NotAIGenerated AIGeneratedState = "aiGeneratedStateNotAiGenerated"
 	AIGenerated    AIGeneratedState = "aiGeneratedStateAiGeneratedDeveloperAttested"
 )
 
-// Spec is the static metadata of one image Type: its singular/gallery nature.
-// A singular slot holds ≤1 image; a gallery is an ordered set of ≤8: the
-// distinction that decides whether `pull` writes `<type>.<ext>` or a
-// `<type>/N.<ext>` directory, and whether `apply` reconciles a value or an
-// ordered sequence.
 type Spec struct {
 	Type    Type
 	Gallery bool
 }
 
-// specs is the canonical, ordered type table: the three singular slots first,
-// then the five galleries. This order is the display order used by
-// `images list` and `images pull`.
 var specs = []Spec{
 	{Type: Icon, Gallery: false},
 	{Type: FeatureGraphic, Gallery: false},
@@ -105,7 +62,6 @@ var specs = []Spec{
 	{Type: WearScreenshots, Gallery: true},
 }
 
-// Types returns the eight image Types in canonical display order.
 func Types() []Type {
 	out := make([]Type, len(specs))
 	for i, s := range specs {
@@ -114,7 +70,6 @@ func Types() []Type {
 	return out
 }
 
-// SpecOf returns the Spec for t and whether t is one of the eight known types.
 func SpecOf(t Type) (Spec, bool) {
 	for _, s := range specs {
 		if s.Type == t {
@@ -124,17 +79,11 @@ func SpecOf(t Type) (Spec, bool) {
 	return Spec{}, false
 }
 
-// Gallery reports whether t is a gallery slot (ordered, ≤8 images). An
-// unknown type reports false.
 func (t Type) Gallery() bool {
 	s, ok := SpecOf(t)
 	return ok && s.Gallery
 }
 
-// ParseType maps a user-supplied --type value to a known Type. The second
-// return is false for anything outside the eight (e.g. "chromebookScreenshots"
-// or the Retired "promoGraphic"), so the caller can refuse a typo rather than
-// build an invalid API path.
 func ParseType(s string) (Type, bool) {
 	for _, sp := range specs {
 		if string(sp.Type) == s {
@@ -144,13 +93,8 @@ func ParseType(s string) (Type, bool) {
 	return "", false
 }
 
-// retired lists the slot names that were once AppImageType values and are no
-// longer: Play refuses them, so gplay never sends them, but a tree authored for
-// an older tool (a fastlane supply `images/promoGraphic.png`) can still carry
-// one. Callers use Retired to say so instead of dropping the file silently.
 var retired = []string{"promoGraphic"}
 
-// Retired reports whether s names a slot Google removed from AppImageType.
 func Retired(s string) bool {
 	for _, r := range retired {
 		if r == s {
@@ -160,8 +104,6 @@ func Retired(s string) bool {
 	return false
 }
 
-// Names returns the eight Type values as a comma-separated list, in canonical
-// order, for the usage errors and help text that enumerate them.
 func Names() string {
 	var b strings.Builder
 	for i, s := range specs {
@@ -173,11 +115,6 @@ func Names() string {
 	return b.String()
 }
 
-// Image is the API-shaped edits.images resource: one per stored image. The
-// json tags mirror the Google Play Developer API verbatim per ADR-0003 (JSON
-// output is API pass-through). sha256 is the content hash gplay reconciles by
-// (ADR-0013); id is the server-assigned handle Delete targets; url is where
-// pull downloads the bytes from (images.list returns no original filename).
 type Image struct {
 	ID     string `json:"id"`
 	URL    string `json:"url"`
@@ -185,8 +122,6 @@ type Image struct {
 	Sha256 string `json:"sha256"`
 }
 
-// slotParams is the path-parameter set every edits.images method shares: the
-// slot is (package, edit, locale, image type). Delete adds imageId on top.
 func slotParams(pkg, editID, language string, imageType Type) map[string]string {
 	return map[string]string{
 		"packageName": pkg,
@@ -196,11 +131,6 @@ func slotParams(pkg, editID, language string, imageType Type) map[string]string 
 	}
 }
 
-// List fetches one slot's images at edits.images.list (GET on the slot URL).
-// The API envelope is {"images":[ {...}, ... ]}; List parses `.images` into an
-// Image slice in display (list) order and returns the raw body verbatim for
-// the --output json pass-through (ADR-0003). An absent slot returns an empty
-// slice, no error (missing == empty, ADR-0013).
 func List(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type) ([]Image, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodList, Op: opImagesList, Target: pkg,
@@ -218,13 +148,6 @@ func List(ctx context.Context, hc *http.Client, pkg, editID, language string, im
 	return parsed.Images, raw, nil
 }
 
-// Upload sends one image's bytes into a slot at edits.images.upload, using the
-// simple-media protocol (the upload sub-host, uploadType=media) with the media
-// type sniffed from the bytes. It returns the Image Google created: crucially
-// its sha256, which `apply` compares against the local file's hash.
-// images.upload APPENDS to a gallery (there is no position parameter);
-// ordering is the caller's job (upload in name order after a DeleteAll:
-// ADR-0013).
 func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, data []byte, ai AIGeneratedState) (*Image, error) {
 	var q url.Values
 	if ai != "" {
@@ -232,17 +155,10 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 	}
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodUpload, Op: opImagesUpload, Target: pkg,
-		Params: slotParams(pkg, editID, language, imageType),
-		Query:  q,
-		Media:  true,
-		Body:   data,
-		// The endpoint declares `image/*` and rejects application/octet-stream
-		// with a 400 (#560), so the type is sniffed from the leading bytes, as
-		// appstore.UploadImage does. A type other than png/jpeg is sent as
-		// sniffed, not refused here: the default apply path already decodes
-		// every file as png/jpeg upstream (imagevalidate), and --skip-preflight
-		// hands the verdict to Play, whose 400 then names the type actually
-		// sent (ADR-0013 §4).
+		Params:      slotParams(pkg, editID, language, imageType),
+		Query:       q,
+		Media:       true,
+		Body:        data,
 		ContentType: http.DetectContentType(data),
 	})
 	if err != nil {
@@ -257,9 +173,6 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 	return &parsed.Image, nil
 }
 
-// Delete removes a single image from a slot at edits.images.delete (DELETE on
-// the slot URL + "/{imageId}"). Used by `apply --prune` to drop a live image
-// whose content is in no local file. A 2xx/204 with no body is expected.
 func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type, imageID string) error {
 	params := slotParams(pkg, editID, language, imageType)
 	params["imageId"] = imageID
@@ -267,11 +180,6 @@ func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string, 
 	return err
 }
 
-// DeleteAll removes every image in a slot at edits.images.deleteall (DELETE on
-// the slot URL, no image id). It is the only way to reorder a gallery:
-// `apply` does DeleteAll + re-upload in name order (ADR-0013), and the
-// destructive primitive behind a full-slot clear. The {"deleted":[...]} body
-// is not parsed; a non-2xx surfaces as an *api.Error.
 func DeleteAll(ctx context.Context, hc *http.Client, pkg, editID, language string, imageType Type) error {
 	_, err := api.Do(ctx, hc, api.Call{
 		Method: methodDeleteAll, Op: opImagesDeleteAll, Target: pkg,
@@ -280,8 +188,6 @@ func DeleteAll(ctx context.Context, hc *http.Client, pkg, editID, language strin
 	return err
 }
 
-// decode unmarshals a 2xx body into out. A body that does not decode keeps
-// the 200 status tag it always had, so its exit code (30) is unchanged.
 func decode(op, pkg string, raw json.RawMessage, out any) error {
 	if err := json.Unmarshal(raw, out); err != nil {
 		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
@@ -289,21 +195,11 @@ func decode(op, pkg string, raw json.RawMessage, out any) error {
 	return nil
 }
 
-// OriginalURL returns the url pull should download an Image's bytes from.
-// edits.images.list hands back a googleusercontent url with no size option,
-// and that host then serves a thumbnail scaled to 512px on its long edge, not
-// the uploaded file. The "=s0" option asks for the original size, whose bytes
-// hash to the Image's sha256, so a pulled tree reconciles with live (ADR-0013).
-// An option suffix already on the url ("=w512-h512") is replaced, not stacked.
-// A url on any other host is returned unchanged: the option is that host's
-// grammar only.
 func OriginalURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Opaque != "" || !strings.HasSuffix(u.Hostname(), ".googleusercontent.com") {
 		return raw
 	}
-	// Splice the raw string rather than re-serialise u, so every byte the API
-	// sent outside the size option survives as sent.
 	end := len(raw)
 	if q := strings.IndexAny(raw, "?#"); q >= 0 {
 		end = q
@@ -311,7 +207,7 @@ func OriginalURL(raw string) string {
 	base, tail := raw[:end], raw[end:]
 	seg := strings.LastIndex(base, "/")
 	if seg < len(u.Scheme)+3+len(u.Host) || seg == len(base)-1 {
-		return raw // no image id in the path to size
+		return raw
 	}
 	if eq := strings.IndexByte(base[seg:], '='); eq >= 0 {
 		base = base[:seg+eq]

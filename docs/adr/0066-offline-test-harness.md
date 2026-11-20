@@ -41,6 +41,12 @@ concerns.
   `Refusals`, for tests that run whole commands and report the rule per case:
   a command that sends from a goroutine would otherwise take the test binary
   down.
+- **The Fake's exchange golden renders every call in a stable text form**
+  (`Exchange`, `Exchanges`, `Sequence`): method, full URL as sent (escaping
+  included), every header sorted, the declared `ContentLength`, whether the
+  retry transport could re-send the body, and the body. Two request builders
+  that render the same text put the same bytes on the network. The pin rule
+  for such a golden is in [ADR-0003](./0003-json-passthrough.md).
 
 ### The wire recorder (`testkit.Wire`)
 
@@ -52,18 +58,15 @@ concerns.
 - **Its client dials a local TLS server whatever the URL's host**, so the
   registry's real https URLs are exercised unchanged.
 - **The server moves `Transfer-Encoding` out of the header map**, so the
-  recorder puts it back: the transcript shows how the body was framed.
+  recorder puts it back: the transcript shows how the body was framed. Its
+  transcript holds the request line, the sorted headers and the body; it does
+  not say whether the body is replayable, which only the Fake's exchange
+  golden records.
 - **It reuses the test server's own client**, whose `Close` also drops the
   idle connections; `internal/testkit` is a regular package, not a `_test`
   file, so it cannot lean on test-only helpers to build one.
 - **A body that breaks a constraint fails the test** and receives the 400
   Play would answer.
-- **A wire golden renders every call in a stable text form**: method, full
-  URL as sent (escaping included), every header sorted, the declared
-  `ContentLength`, whether the retry transport could re-send the body, and the
-  body. Two request builders that render the same text put the same bytes on
-  the network. The pin rule for such a golden is in
-  [ADR-0003](./0003-json-passthrough.md).
 
 ### The request-constraint table
 
@@ -73,6 +76,10 @@ concerns.
   quotes the Discovery sentence it encodes; an anchor test fails when Google
   rewords it, so a snapshot refresh forces a review of the check. Both the
   Fake and the Wire apply it, so a test that pins a body Play refuses fails.
+  A request is matched to its method on the escaped URL path, so a
+  parameter whose value holds a slash (a review id, an `applications/<pkg>`
+  name) stays one segment; matching on the decoded path would silently skip
+  the check for such a request.
 - **An inventory keeps the table complete.** A wording matcher finds every
   Discovery description that states a rule on a request property; each match
   is either in the table or listed in the inventory with the reason it is
@@ -186,7 +193,8 @@ concerns.
   commands without executing them, so they touch neither credentials nor the
   network.
 - **A credential value is never echoed** by any command: the test looks for a
-  PEM marker, a canary, or any 16-byte window of the raw value, the only check
+  PEM marker, a canary, or any 16-byte block of the raw value (blocks aligned on 16 bytes, so a leak of
+  31 bytes or more is always caught), the only check
   that catches a base64 blob no redaction pattern matches
   ([ADR-0062](./0062-credential-exposure.md)).
 

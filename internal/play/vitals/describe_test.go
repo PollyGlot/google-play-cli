@@ -22,10 +22,6 @@ const crashrateDescriptor = `{
   ]}
 }`
 
-// TestDescribe_getsDescriptorAndParsesFreshness pins the `.get` call shape: a
-// GET (no body) on the metric set resource itself (no `:query` suffix), and a
-// freshness projection that keeps the API's period order, renders DAILY
-// date-only and HOURLY with the hour, and carries the timezone id (#545).
 func TestDescribe_getsDescriptorAndParsesFreshness(t *testing.T) {
 	var gotURL, gotMethod string
 	var gotBody []byte
@@ -57,7 +53,6 @@ func TestDescribe_getsDescriptorAndParsesFreshness(t *testing.T) {
 	if len(gotBody) != 0 {
 		t.Errorf("GET carried a body: %s", gotBody)
 	}
-	// Verbatim pass-through: the descriptor name survives untouched.
 	if !strings.Contains(string(raw), `"apps/com.example.app/crashRateMetricSet"`) {
 		t.Errorf("raw body altered: %s", raw)
 	}
@@ -89,10 +84,6 @@ func TestDescribe_nonOKIsAPIError(t *testing.T) {
 	}
 }
 
-// TestGetMethodIDs_anchoredToSnapshot extends the registry integrity gate to
-// the `.get` side: every declared set (and the errors.counts set reached from
-// `vitals errors counts`) must have its descriptor method in the embedded
-// index, as a GET on the bare resource. Ten methods in all (#545).
 func TestGetMethodIDs_anchoredToSnapshot(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {
