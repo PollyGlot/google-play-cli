@@ -1324,7 +1324,8 @@ low-stakes and reversible, unlike a production rollout.
 upload/promote to a closed track that **does not exist yet** fails at the
 API; gplay attaches a hint pointing at `gplay tracks create <name>` (same
 pattern as the other track-not-found hints). The hint attaches to the
-`tracks.update` 404 only: on the same flow a package miss at `edits.insert`
+404 of the track call only (`tracks.update`, and the `tracks.get` that
+`releases promote` reads `--to` with): on the same flow a package miss at `edits.insert`
 and a malformed bundle at `bundles.upload` also answer 404, and telling either
 to create a track would mislead. gplay **never auto-creates** a
 track as a side effect of an upload — a typo'd `--track` must fail, not

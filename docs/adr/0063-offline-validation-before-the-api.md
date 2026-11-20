@@ -61,7 +61,9 @@ there: Listing limits and locales in
 
 ### `--dry-run`
 
-- **A `--dry-run` resolves neither the Account nor the explicit-Edit pin.**
+- **An offline `--dry-run` resolves neither the Account nor the explicit-Edit
+  pin.** (The online previews of `metadata apply` and `images apply` read the
+  API, ADR-0011, and load the credential.)
   Nothing reaches the network and the dry-run path never reuses a pinned Edit,
   so a missing Account or a corrupt pin must not fail a preview; both are
   resolved on the live path only (`releases upload`, `promote`, `rollout`,
