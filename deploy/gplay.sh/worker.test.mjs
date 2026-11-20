@@ -1,14 +1,3 @@
-// Routing tests for worker.js, driven through its real `fetch` entry point
-// with a fake static-asset binding (env.ASSETS) and a stubbed global fetch for
-// the /install upstream: no network, no wrangler, no Cloudflare runtime. The
-// tag resolution of /install (#601) has its own suite, install.test.mjs.
-//
-//   node --test deploy/gplay.sh/worker.test.mjs
-//
-// Going through the default export rather than exporting internals keeps the
-// deployed module's shape untouched and tests what a request actually gets,
-// security headers included.
-
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
@@ -18,8 +7,6 @@ const RELEASES_API = 'https://api.github.com/repos/PollyGlot/google-play-cli/rel
 const TAGGED_INSTALL_URL =
   'https://raw.githubusercontent.com/PollyGlot/google-play-cli/v9.9.9/install.sh';
 
-// Upstream stub for /install: the releases API names v9.9.9, the tagged
-// install.sh answers with a script. Anything else is a test bug.
 function installUpstream() {
   return mock.method(globalThis, 'fetch', async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
@@ -45,8 +32,6 @@ const SECURITY_HEADERS = [
   'cross-origin-opener-policy',
 ];
 
-// A static-asset binding serving a fixed map of path -> response init.
-// Records every request so tests can assert which twins were looked up.
 function fakeAssets(files) {
   const requests = [];
   return {
@@ -111,7 +96,6 @@ describe('hostname canonicalisation', () => {
     ['https://docs.gplay.sh/quickstart', 'https://gplay.sh/docs/quickstart'],
     ['https://docs.gplay.sh/docs', 'https://gplay.sh/docs'],
     ['https://docs.gplay.sh/docs/guides/ci-cd/', 'https://gplay.sh/docs/guides/ci-cd/'],
-    // A lookalike is not the canonical /docs prefix and must still get it.
     ['https://docs.gplay.sh/docs2', 'https://gplay.sh/docs/docs2'],
     ['https://docs.gplay.sh/docsy/page', 'https://gplay.sh/docs/docsy/page'],
     ['https://docs.gplay.sh/reference?x=1#top', 'https://gplay.sh/docs/reference?x=1#top'],
@@ -189,7 +173,7 @@ describe('Markdown negotiation', () => {
     'text/markdown',
     'text/x-markdown',
     'TEXT/MARKDOWN',
-    'text/html, text/markdown', // tie: Markdown wins
+    'text/html, text/markdown',
     'text/html;q=0.5, text/markdown',
     'text/markdown;q=0.8, text/html;q=0.8',
     'text/markdown; charset=utf-8; q=0.9, text/html;q=0.1',
@@ -231,7 +215,7 @@ describe('Markdown negotiation', () => {
     assert.equal(res.headers.get('cache-control'), 'public, max-age=300');
     assert.match(res.headers.get('link'), /rel="service-doc"/);
     assert.match(res.headers.get('link'), /rel="describedby"/);
-    assert.equal(res.headers.get('etag'), '"md"'); // asset validators survive
+    assert.equal(res.headers.get('etag'), '"md"');
     assertHardened(res);
   });
 
@@ -303,13 +287,12 @@ describe('Markdown negotiation', () => {
     });
     assert.equal(res.status, 304);
     assert.equal(res.body, null);
-    // A 304 echoes the original representation, so content-type is not rewritten.
     assert.equal(res.headers.get('content-type'), 'application/octet-stream');
     assert.equal(res.headers.get('vary'), 'Accept');
     const forwarded = env.ASSETS.requests[0].headers;
     assert.equal(forwarded.get('if-none-match'), '"md"');
     assert.equal(forwarded.get('if-modified-since'), 'Wed, 01 Jan 2026 00:00:00 GMT');
-    assert.equal(forwarded.get('accept'), null); // only the validators are forwarded
+    assert.equal(forwarded.get('accept'), null);
   });
 });
 
@@ -387,7 +370,6 @@ describe('failure isolation', () => {
     assert.equal(res.status, 200);
     assert.equal(await res.text(), 'fallback');
     assertHardened(res);
-    // The fallback skips decoration: it is plain asset serving.
     assert.equal(res.headers.get('link'), null);
   });
 });

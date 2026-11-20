@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# Guard for the one code change the Discovery triage routine may push on the
-# rolling refresh branch: new runtime exclusions for purchase-token methods in
-# internal/apiregistry/exclusions.go (docs/agents/discovery-triage.md, step 5a).
-# discovery-verdict.yml runs it after the blast-radius guard, from main.
-#
-# Usage: discovery-exclusions-guard.sh <pr> <head-sha>
-#
-# Passes when the PR leaves exclusions.go alone. Otherwise every change to it
-# must be an added entry (no removed or edited line), each added MethodID must
-# be an androidpublisher.purchases.* method whose path at <head-sha> contains
-# /tokens/{token}, a sibling of the same resource must already be excluded on
-# main, and each added Reason must start with "runtime:".
-# GH_TOKEN must be in the environment; the working tree must be main.
 set -euo pipefail
 
 usage='usage: discovery-exclusions-guard.sh <pr> <head-sha>'
@@ -32,7 +19,6 @@ assert_head
 patch=$(gh pr diff "$PR" --color never)
 assert_head
 
-# Only the content lines of exclusions.go's own section of the patch.
 body=$(printf '%s\n' "$patch" | awk -v f="$FILE" '
   /^diff --git / { on = ($0 == "diff --git a/" f " b/" f); next }
   on && /^(\+\+\+|---) / { next }
@@ -75,7 +61,6 @@ while IFS= read -r line; do
   fail "unexpected line in $FILE: $content"
 done <<< "$body"
 
-# Each added entry needs its own runtime reason, not a MethodID alone.
 [ "$ids" -eq "$reasons" ] || fail "$ids added MethodID line(s) but $reasons runtime Reason line(s) in $FILE."
 
 echo "exclusions.go: only purchase-token runtime exclusions added."

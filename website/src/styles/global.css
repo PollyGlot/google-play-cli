@@ -1,6 +1,3 @@
-/* Tailwind 4 + Starlight, per the official @astrojs/starlight-tailwind setup.
-   Preflight is deliberately not imported: Starlight owns base styles for the
-   docs, and the landing page styles itself with utilities. */
 @layer base, starlight, theme, components, utilities;
 
 @import '@astrojs/starlight-tailwind';
@@ -8,16 +5,11 @@
 @import 'tailwindcss/utilities.css' layer(utilities);
 
 @theme {
-  /* gplay iridescent accents (docs/marketing visual system) */
   --color-iris-blue: #82afff;
   --color-iris-cyan: #96e1f0;
   --color-iris-pink: #ff6ec3;
 }
 
-/* Brand greens and ink alias the primitives in theme.css (one value each), and
-   the semantic theme tokens (ADR-0035) resolve per data-theme there too.
-   `inline` makes the utilities reference var(--…) directly so they re-resolve
-   when the theme attribute flips. Drives the landing's light/dark palette. */
 @theme inline {
   --color-brand: var(--gplay-neon);
   --color-brand-dim: var(--gplay-neon-dim);

@@ -1,39 +1,10 @@
-// Cloudflare Worker for gplay.sh: serves the gplay website and the install
-// script from one deployable.
-//
-//   GET /install (or /install.sh)  -> install.sh as of the latest release tag,
-//                                      as text/plain (the `curl … | sh` entry
-//                                      point)
-//   docs.gplay.sh/<path>           -> 301 to https://gplay.sh/docs/<path>
-//   www.gplay.sh/<path>            -> 301 to https://gplay.sh/<path>
-//   everything else                -> the static Astro site (env.ASSETS)
-//
-// The install script comes from the latest release tag, never from `main`
-// (ADR-0009 amendment, issue #601): a commit on `main`, bot-merged ones
-// included, must not reach every `curl … | sh` within minutes. An installer
-// change now ships through the same reviewed release path as the binary it
-// downloads. The website is built into website/dist and uploaded as Worker
-// static assets on each deploy. `run_worker_first` is set so this handler runs
-// ahead of asset serving, which is what lets it intercept the docs/www
-// hostnames and the /install path. See
-// docs/adr/0009-install-distribution-vanity-domain.md and
-// docs/adr/0025-website-served-from-install-worker.md.
-
 const REPO = "PollyGlot/google-play-cli";
 const REPO_URL = `https://github.com/${REPO}`;
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
-// The release page answers with a redirect to /releases/tag/<tag> and is not
-// subject to the REST API's unauthenticated rate limit, which Worker egress IPs
-// share with every other tenant. It asks the same question a second way; it is
-// not a fallback to a moving branch.
 const LATEST_RELEASE_PAGE = `${REPO_URL}/releases/latest`;
 const USER_AGENT = "gplay-site-worker";
-// The tag is spliced into a URL, so only a release-please shaped tag passes.
 const TAG_PATTERN = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 const CACHE_SECONDS = 300;
-// A new release reaches /install within CACHE_SECONDS. Errors are never
-// cached: a rate-limited lookup is retried on the next request instead of
-// pinning a failure at the edge for five minutes.
 const EDGE_CACHE = {
   cacheEverything: true,
   cacheTtlByStatus: { "200-399": CACHE_SECONDS, "400-599": 0 },
@@ -47,36 +18,21 @@ const APEX = "gplay.sh";
 const DOCS_HOST = "docs.gplay.sh";
 const WWW_HOST = "www.gplay.sh";
 
-// Agent-discovery Link header (RFC 8288), set on every HTML document. Points
-// agents at the human/API docs (service-doc), the LLM-oriented site dump
-// (describedby → llms.txt), and the Agent Skills Discovery index. Root-relative
-// targets resolve against the request URL. The skills relation is an extension
-// relation type (a URI, per RFC 8288 §2.1.2) since no IANA-registered relation
-// covers it.
 const LINK_HEADER = [
   '</docs/>; rel="service-doc"; type="text/html"',
   '</llms.txt>; rel="describedby"; type="text/plain"',
   '</.well-known/agent-skills/index.json>; rel="https://schemas.agentskills.io/discovery"; type="application/json"',
 ].join(", ");
 
-// Applied to every response (static assets, /install, redirects). The
-// Content-Security-Policy is not set here: each built page carries its own
-// hash-based policy as a <meta> (website/scripts/csp.mjs), because only the
-// build knows the hashes of the inline scripts Astro and Starlight emit. A
-// meta cannot express frame-ancestors, so x-frame-options below keeps that job.
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "strict-origin-when-cross-origin",
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
   "strict-transport-security": "max-age=31536000; includeSubDomains",
-  // Severs window.opener between gplay.sh and any cross-origin page it opens
-  // or is opened by. The site has no cross-origin popups to keep talking to.
   "cross-origin-opener-policy": "same-origin",
 };
 
-// Responses from env.ASSETS.fetch and Response.redirect have immutable
-// headers, so re-wrap into a fresh Response before setting anything.
 function withSecurityHeaders(response) {
   const hardened = new Response(response.body, response);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
@@ -91,8 +47,6 @@ export default {
     try {
       response = await handle(request, env);
     } catch {
-      // If the routing logic above ever throws, degrade to plain asset
-      // serving rather than a Cloudflare 1101 error page for the whole site.
       response = await env.ASSETS.fetch(request);
     }
     return withSecurityHeaders(response);
@@ -103,24 +57,17 @@ async function handle(request, env) {
   const url = new URL(request.url);
   const { hostname, pathname } = url;
 
-  // Canonicalise hostnames onto the apex. docs.gplay.sh is a memorable entry
-  // point — not a second site — so it lands on the canonical docs; www is
-  // folded into the apex. One set of URLs to index, no duplicate content.
   if (hostname === DOCS_HOST || hostname === WWW_HOST) {
     const target = new URL(url);
     target.hostname = APEX;
     if (hostname === DOCS_HOST) {
       const rest = pathname === "/" ? "" : pathname;
-      // Only an exact /docs or a /docs/… path is already canonical, so
-      // lookalikes like /docs2 still get the /docs prefix.
       const isCanonicalDocsPath = rest === "/docs" || rest.startsWith("/docs/");
       target.pathname = isCanonicalDocsPath ? rest : `/docs${rest}`;
     }
     return Response.redirect(target.toString(), 301);
   }
 
-  // The install endpoint is dynamic (install.sh at the latest release tag);
-  // everything else is served from the static-asset bundle below.
   if (pathname === "/install" || pathname === "/install.sh") {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("method not allowed\n", {
@@ -132,11 +79,6 @@ async function handle(request, env) {
       });
     }
 
-    // Structured install-attribution log. Workers Logs indexes object fields,
-    // so the Observability query builder can group hits by user agent (curl vs
-    // CI vs browser) and by network owner (e.g. GitHub-hosted runners show up
-    // under Microsoft/Azure). Deliberately no IP: AS org + country is enough
-    // to attribute traffic without storing anything personal.
     console.log({
       event: "install_hit",
       method: request.method,
@@ -149,8 +91,6 @@ async function handle(request, env) {
 
     const resolved = await resolveLatestTag();
     if (!resolved.tag) {
-      // Fail closed: without a release tag there is nothing reviewed to serve,
-      // and `main` is exactly what this endpoint no longer trusts.
       console.warn({ event: "install_unresolved", errors: resolved.errors });
       return new Response(
         "could not resolve the latest gplay release; refusing to serve an unreleased installer.\n" +
@@ -192,29 +132,18 @@ async function handle(request, env) {
       headers: {
         "content-type": "text/plain; charset=utf-8",
         "cache-control": `public, max-age=${CACHE_SECONDS}`,
-        // The release the script came from, readable with `curl -sI`.
         "x-gplay-installer-ref": resolved.tag,
       },
     });
   }
 
-  // Markdown for Agents: when a GET prefers text/markdown, hand back the page's
-  // Markdown rather than its HTML. Docs pages have a built `.md` twin (see
-  // website/src/pages/[...slug].md.ts); the landing page's Markdown view is the
-  // generated llms.txt. Anything without a Markdown twin falls through to HTML.
   if (request.method === "GET" && acceptsMarkdownFirst(request.headers.get("accept"))) {
     const markdown = await serveMarkdown(request, url, env);
     if (markdown) return markdown;
   }
 
-  // Static site (landing + docs). The assets binding handles HTML routing,
-  // trailing slashes, and the 404 page (see wrangler.toml [assets]).
   const response = await env.ASSETS.fetch(request);
 
-  // Astro's /_astro/* assets are content-hashed: a changed file gets a new
-  // URL, so the old one can be cached forever. Without this override the
-  // asset binding's default (`max-age=0, must-revalidate`) forces a
-  // revalidation round-trip — and a Worker invocation — per asset per view.
   if (pathname.startsWith("/_astro/") && response.ok) {
     const immutable = new Response(response.body, response);
     immutable.headers.set("cache-control", "public, max-age=31536000, immutable");
@@ -224,17 +153,12 @@ async function handle(request, env) {
   return decorateDocument(response);
 }
 
-// Resolve the latest published release tag: the REST API first, then the
-// release page's redirect. Never throws, so the outer handler's asset fallback
-// cannot turn a lookup error into a 404 page. Returns { tag, source, errors },
-// tag null when both lookups fail, so the caller can fail closed.
 async function resolveLatestTag() {
   const errors = [];
   try {
     const res = await fetch(LATEST_RELEASE_API, {
       headers: {
         accept: "application/vnd.github+json",
-        // The GitHub API rejects requests without a User-Agent.
         "user-agent": USER_AGENT,
       },
       cf: EDGE_CACHE,
@@ -267,9 +191,6 @@ async function resolveLatestTag() {
   return { tag: null, source: null, errors };
 }
 
-// True when the client lists text/markdown (or text/x-markdown) and ranks it at
-// least as high as text/html. Browsers never send text/markdown, so HTML
-// rendering for humans is unaffected; only agents that ask for it opt in.
 function acceptsMarkdownFirst(accept) {
   if (!accept) return false;
   let markdownQ = -1;
@@ -291,18 +212,13 @@ function acceptsMarkdownFirst(accept) {
   return markdownQ > 0 && markdownQ >= htmlQ;
 }
 
-// Resolve the Markdown twin of a request path from the static-asset bundle.
 function markdownCandidates(pathname) {
   if (pathname === "/" || pathname === "/index.html") return ["/llms.txt"];
   const trimmed = pathname.replace(/\.html$/, "").replace(/\/$/, "");
-  // The .md endpoint emits at the entry id: leaf pages as `<path>.md`, index
-  // pages as `<path>/index.md` — try both so /docs/ resolves too.
   return [`${trimmed}.md`, `${trimmed}/index.md`];
 }
 
 async function serveMarkdown(request, url, env) {
-  // Forward conditional headers so the asset layer can answer 304 Not Modified
-  // on the Markdown twin and revalidation actually works end to end.
   const conditional = new Headers();
   for (const h of ["if-none-match", "if-modified-since"]) {
     const value = request.headers.get(h);
@@ -316,12 +232,8 @@ async function serveMarkdown(request, url, env) {
     const asset = await env.ASSETS.fetch(
       new Request(assetUrl, { method: "GET", headers: conditional }),
     );
-    if (asset.status !== 200 && asset.status !== 304) continue; // try next / fall through
+    if (asset.status !== 200 && asset.status !== 304) continue;
 
-    // Clone the asset response so its cache validators (ETag/Last-Modified)
-    // survive, then override only the headers that make this a negotiated
-    // Markdown reply. A 304 carries no body and keeps the asset's content-type
-    // untouched (it must echo the original representation's validators).
     const out = new Response(asset.status === 304 ? null : asset.body, asset);
     if (asset.status === 200) {
       out.headers.set("content-type", "text/markdown; charset=utf-8");
@@ -336,9 +248,6 @@ async function serveMarkdown(request, url, env) {
   return null;
 }
 
-// Tag HTML documents with the agent-discovery Link header and `Vary: Accept`
-// (the latter so caches keep the Markdown and HTML representations distinct).
-// Non-document assets (CSS, JS, images) are left untouched.
 function decorateDocument(response) {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/html")) return response;

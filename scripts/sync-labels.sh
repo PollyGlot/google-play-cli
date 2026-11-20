@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-# Sync GitHub issue/PR labels to the canonical set for google-play-cli.
-# Idempotent: existing labels are updated (--force), missing ones are created.
-# Labels that exist on GitHub but not here are left alone; --check lists them.
-#
-# Usage:
-#   scripts/sync-labels.sh                  # sync PollyGlot/google-play-cli
-#   scripts/sync-labels.sh other/repo       # override repo
-#   scripts/sync-labels.sh --check [repo]   # read-only: report drift, exit 1 if any
-#
-# The list below was regenerated from `gh label list` (2026-09, #603). A label
-# created by hand on GitHub belongs here in the same change, or the next
-# --check reports it.
-#
-# Requires the `gh` CLI authenticated with `repo` scope (read-only for --check).
 
 set -euo pipefail
 
@@ -28,21 +14,17 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 1
 fi
 
-# Format: "name|color (no #)|description"
 LABELS=(
-  # Category: what kind of issue it is (one per issue).
   "bug|d73a4a|Something isn't working as documented"
   "enhancement|a2eeef|New feature, flag, or behavior change"
   "documentation|0075ca|Docs, README, CONTRIBUTING, ADRs"
   "question|d876e3|Usage question, filed through the question issue form"
 
-  # Issue type: planning taxonomy (docs/agents/triage-labels.md).
   "type:prd|0e8a16|Product requirements document: area-level spec, split into type:slice issues"
   "type:slice|1d76db|Tracer-bullet slice of a PRD: vertical end-to-end implementation"
   "type:arch|5319e7|Isolated refactor or architecture decision"
   "type:parking|cccccc|Idea tracked for visibility, deferred out of scope"
 
-  # Area: one per command group or cross-cutting surface.
   "area:auth|1d76db|Authentication, service account, OAuth2"
   "area:apps|0e8a16|apps list / info / registry"
   "area:releases|5319e7|Release uploads, promote, rollout"
@@ -64,12 +46,10 @@ LABELS=(
   "area:appstore|0e8a16|App store hosted apps (alternative distribution / DMA): appstoreappsreview"
   "area:reports|5319e7|Bulk reports: monthly statistics and financial exports from the Reporting bucket (GCS)"
 
-  # Priority
   "priority:high|b60205|Drop everything"
   "priority:medium|d93f0b|Next release window"
   "priority:low|fef2c0|Eventually"
 
-  # Triage state and community. Every issue form applies `needs-triage`.
   "needs-triage|ededed|Newly filed, awaiting label review"
   "needs-info|e4ad17|Author follow-up needed before triage can complete"
   "needs-decision|d93f0b|Needs a product, contract or design decision before code"
@@ -77,20 +57,14 @@ LABELS=(
   "good first issue|7057ff|Approachable for first-time contributors"
   "help wanted|008672|Open for contribution"
 
-  # Resolution
   "wontfix|ffffff|Decision: out of scope"
   "duplicate|cccccc|Closed in favor of another issue/PR"
 
-  # Discovery bot: machine-readable state of the rolling refresh PR.
-  # discovery:schema/surface are set by .github/workflows/discovery-watch.yml;
-  # verdict-merge / needs-decision are set by the triage routine (#506) and read
-  # back by CI to decide whether to merge or to page the maintainer.
   "discovery:schema|a371f7|Discovery refresh: schema details changed, no method surface change"
   "discovery:surface|a371f7|Discovery refresh: methods added or removed (ADR-0026 grilling)"
   "discovery:verdict-merge|0e8a16|Discovery triage cleared the refresh PR for merge"
   "discovery:needs-decision|b60205|Discovery triage needs a product decision from the maintainer"
 
-  # Audit 2026-09: finding category of each audit issue.
   "audit:architecture|5319e7|Audit 2026-09 finding category: architecture"
   "audit:api|0e8a16|Audit 2026-09 finding category: api"
   "audit:performance|fbca04|Audit 2026-09 finding category: performance"
@@ -101,8 +75,6 @@ LABELS=(
   "audit:tooling|d4c5f9|Audit 2026-09 finding category: tooling"
   "audit:security|b60205|Audit 2026-09 finding category: security"
 
-  # Lifecycle and release automation. release-please sets the autorelease
-  # labels on its release PR; they are listed so --check stays quiet on them.
   "breaking-change|b60205|Backwards-incompatible behavior change"
   "dependencies|0366d6|Updates to Go modules or GitHub Actions"
   "affects:storedeck|8250df|Changes the gplay contract storedeck consumes: mirrored to storedeck on release"
@@ -111,7 +83,6 @@ LABELS=(
 )
 
 if [[ "$CHECK" == 1 ]]; then
-  # comm needs both sides sorted under the same collation; LC_ALL=C pins it.
   script_names="$(printf '%s\n' "${LABELS[@]}" | cut -d'|' -f1 | LC_ALL=C sort)"
   live_names="$(gh label list --repo "$REPO" --limit 500 --json name --jq '.[].name' | LC_ALL=C sort)"
   only_live="$(LC_ALL=C comm -13 <(printf '%s\n' "$script_names") <(printf '%s\n' "$live_names"))"
@@ -120,7 +91,6 @@ if [[ "$CHECK" == 1 ]]; then
     echo "Labels on $REPO match this script."
     exit 0
   fi
-  # Line by line: label names carry spaces ("good first issue").
   while IFS= read -r name; do
     if [[ -n "$name" ]]; then echo "  on GitHub, not in this script: $name"; fi
   done <<< "$only_live"

@@ -4,6 +4,8 @@
 
 accepted, amends [ADR-0010](./0010-versioning-public-contract-and-ga.md); decisions 1 and 2 superseded by the amendment below (2026-09-26)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 The 2026-09 audit ([PRD #573](https://github.com/PollyGlot/google-play-cli/issues/573),
@@ -74,3 +76,22 @@ What holds now:
    without deprecation aliases and cite this ADR, and 2.0.0 ships with its
    1.x to 2.0 migration guide. The 2.0.0 announcement summarises everything
    shipped since 1.6.1.
+
+## Implementation notes
+
+The migration guide of decision 4 is checked by
+`website/scripts/migration-diff.mjs`.
+
+- **The diff is a set difference over `cmd/gplay/testdata/surface.golden`, not
+  a text diff.** Each golden line describes itself, so a line only in the base
+  is a removal (or the old side of a modification) and a line only in the
+  working tree is an addition.
+- **The default base is `v1.6.2`**, the first release that carries the golden.
+  The `v1.6.1` surface, regenerated with the same generator, is
+  byte-identical, so the diff also covers upgrades from `v1.6.1`.
+- **A removed leaf or flag counts as covered only when a table row of the guide
+  names it whole**, beside one of its candidate replacements: `--to` must not
+  match `--token`, and a command path must not match inside a longer one.
+- **The check is not part of `npm run check`.** CI checks out a shallow clone
+  without tags, so the base release is missing there; it runs locally after
+  `git fetch --tags`.

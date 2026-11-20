@@ -1,24 +1,4 @@
 #!/usr/bin/env bash
-# Blast-radius guard for the rolling Discovery refresh PR, shared by the two
-# places allowed to merge it without a human: the revision-only auto-merge in
-# discovery-watch.yml, and the verdict-merge in discovery-verdict.yml. Both
-# re-derive the blast radius from the PR's own file list rather than trusting
-# whatever produced the label, because the two are computed at different times
-# against a force-pushed branch.
-#
-# Usage: discovery-blast-radius.sh <pr> <head-sha> [extra-allowed-regex]
-#
-# <head-sha> is the commit the caller is about to merge (it passes the same sha
-# to `gh pr merge --match-head-commit`). `gh pr diff` can only read the live
-# head, so the guard reads the head before and after the diff and refuses when
-# either differs from <head-sha>: the file list it approves is then the file
-# list of that exact commit, and the merge refuses any other.
-#
-# The baseline allow-list is the generated files only: the snapshot directory
-# and the schema index derived from it. A caller that legitimately expects one
-# more file passes it as an extra alternative (the triage routine commits
-# docs/COVERAGE.md on the branch, see docs/agents/discovery-triage.md step 5).
-# GH_TOKEN must be in the environment.
 set -euo pipefail
 
 usage='usage: discovery-blast-radius.sh <pr> <head-sha> [extra-allowed-regex]'
@@ -41,22 +21,9 @@ assert_head() {
 }
 
 assert_head
-# Captured on its own line, not piped into grep: a failed `gh pr diff` must fail
-# the guard, never read as an empty (hence clean) file list.
 patch=$(gh pr diff "$PR" --color never)
 assert_head
 
-# Not `gh pr diff --name-only`: it prints only the new name of a renamed or
-# copied file, so moving any file into docs/discovery/ read as a snapshot
-# change. Both names come from git's extended headers instead. Content lines
-# always start with a space, + or -, so these patterns only match headers.
-#   - `rename|copy from|to <path>` carries each name whole.
-#   - Otherwise the header is `diff --git a/<p> b/<p>` with one name twice,
-#     which splits unambiguously by length even when <p> contains " b/".
-#   - Any other header (a quoted path, say) is printed raw: it matches no
-#     allowed prefix, so the guard fails closed. A rename header stays pending
-#     until both its `from` and its `to` line are seen, so a patch cut between
-#     them fails closed too.
 files=$(printf '%s\n' "$patch" | awk '
   function flush() { if (pending != "") print pending; pending = ""; from = to = 0 }
   /^diff --git / {

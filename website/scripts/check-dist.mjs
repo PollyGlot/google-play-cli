@@ -1,22 +1,4 @@
 #!/usr/bin/env node
-// Checks the built site (dist/) for the defects a build alone lets through:
-//
-//   1. Internal links: every root-absolute, relative, or same-origin href/src
-//      on every HTML page must resolve to a built file, and a #fragment must
-//      name an id on the target page. The Worker serves dist/ with
-//      html_handling "auto-trailing-slash", so /a, /a/ and /a.html all count.
-//      External links are not fetched: the check stays offline.
-//   2. Repo links: a github.com/PollyGlot/google-play-cli/{edit,blob,tree}/main
-//      link must point at a tracked path. Starlight's "Edit page" link on a
-//      page generated into a gitignored directory 404s on GitHub; this is
-//      what catches it.
-//   3. Flag dashes: no page may show a flag whose `--` became an en or em dash
-//      (smart punctuation turning `--track` into a dash glyph plus "track"
-//      corrupts every copy-pasted command). astro.config.mjs turns smartypants off; this
-//      proves it stayed off.
-//
-// Usage: node scripts/check-dist.mjs [dist-dir]   (after `npm run build`)
-// Honours SITE_URL and SITE_BASE like astro.config.mjs. Exits 1 on any finding.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -29,9 +11,6 @@ const DIST = resolve(process.argv[2] ?? join(__dirname, '../dist'));
 const SITE = new URL(process.env.SITE_URL ?? 'https://gplay.sh');
 const BASE = (process.env.SITE_BASE ?? '/').replace(/\/$/, '');
 const REPO_LINK = /^https:\/\/github\.com\/PollyGlot\/google-play-cli\/(edit|blob|tree)\/main\/([^?#]*)/;
-// An en or em dash (U+2013, U+2014) glued to a flag-like word at a word start.
-// A prose range such as 1 to 2 written with an en dash has a character before
-// the dash and never matches.
 const MANGLED_FLAG = /(^|[\s(>`"'[])([\u2013\u2014][a-z][a-z0-9]*(?:-[a-z0-9]+)*)/gm;
 
 if (!existsSync(DIST)) {
@@ -61,7 +40,6 @@ const decode = (s) =>
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>');
 
-// URL path (as the Worker sees it) of a built HTML file.
 function pageUrl(file) {
   const rel = relative(DIST, file).split(sep).join('/');
   if (rel === 'index.html') return `${BASE}/`;
@@ -69,7 +47,6 @@ function pageUrl(file) {
   return `${BASE}/${rel}`;
 }
 
-// The built file a URL path is served from, or null.
 function resolvePath(pathname) {
   if (BASE && pathname !== BASE && !pathname.startsWith(`${BASE}/`)) return null;
   let p;
@@ -80,7 +57,6 @@ function resolvePath(pathname) {
   }
   const local = join(DIST, ...p.split('/'));
   if (!local.startsWith(DIST)) return null;
-  // auto-trailing-slash redirects between /a/ and /a whichever file exists.
   const bare = local.replace(/[\\/]+$/, '');
   const candidates = [local, join(bare, 'index.html'), `${bare}.html`];
   return candidates.find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
@@ -139,7 +115,7 @@ for (const file of htmlFiles) {
       broken.push({ page, href: raw });
       continue;
     }
-    if (target.origin !== SITE.origin) continue; // external (or mailto:, data:, ...)
+    if (target.origin !== SITE.origin) continue;
     checked += 1;
     const resolved = resolvePath(target.pathname);
     if (!resolved) {
@@ -152,7 +128,6 @@ for (const file of htmlFiles) {
     } catch {
       fragment = target.hash.slice(1);
     }
-    // Starlight's "#_top" skip link targets the document itself.
     if (fragment && fragment !== '_top' && resolved.endsWith('.html')) {
       if (!idsOf(resolved).has(fragment)) broken.push({ page, href: raw });
     }

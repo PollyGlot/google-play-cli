@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# Offline test harness for contract-gate.sh: feeds it synthetic golden diffs
-# through GOLDEN_DIFF (no git, no network) and asserts which PRs it lets
-# through. Runs in the Contract workflow before the real check.
-#
-# Usage: bash scripts/contract-gate-test.sh
 set -euo pipefail
 
 gate="$(cd "$(dirname "$0")" && pwd)/contract-gate.sh"
@@ -13,7 +8,6 @@ trap 'rm -rf "$work"' EXIT
 fail=0
 pass_count=0
 
-# expect <pass|fail> <label> <diff> <title> <body>
 expect() {
 	local want=$1 label=$2 got
 	if GOLDEN_DIFF=$3 PR_TITLE=$4 PR_BODY=$5 bash "$gate" >/dev/null 2>&1; then got=pass; else got=fail; fi
@@ -33,8 +27,6 @@ experimental_flag="$hunk_header"$'\n+experimental flag "games achievements list"
 
 expect pass "empty diff" "" "feat: x" ""
 expect pass "experimental-only change" "$experimental_flag" "feat(games): add --foo" ""
-# Additions are compatible (ADR-0010 promises not to break, not to add nothing):
-# a plain feat, no major bump.
 expect pass "new flag on a frozen leaf, plain title" "$frozen_flag" "feat(releases): add --foo" "Adds a flag."
 expect fail "changed default on a frozen leaf" "$frozen_default" "fix(releases): default to internal" ""
 expect fail "removed exit code" "$frozen_exit" "fix: drop exit 4" ""
@@ -45,7 +37,6 @@ expect fail "bang outside the type position" "$frozen_default" "feat(releases): 
 expect fail "ADR reference in the title only" "$frozen_default" "feat(releases): default to internal (ADR-0048)" ""
 expect fail "breaking marker on a second title line" "$frozen_default" $'feat(releases): default to internal\nfeat!: x' ""
 
-# The title is data, never code: a hostile title must neither run nor pass.
 marker="$work/pwned"
 expect fail "hostile title" "$frozen_default" "\$(touch $marker)\`touch $marker\`" ""
 if [ -e "$marker" ]; then

@@ -1,37 +1,4 @@
 {
   "exclude": [],
-  "files": {
-    ".github/scripts/dependabot-merge.sh": 28,
-    ".github/scripts/discovery-blast-radius.sh": 33,
-    ".github/scripts/discovery-exclusions-guard.sh": 15,
-    ".github/scripts/fire-t3-task.sh": 17,
-    ".github/scripts/release-contributors.sh": 28,
-    "deploy/gplay.sh/install.test.mjs": 8,
-    "deploy/gplay.sh/worker.js": 91,
-    "deploy/gplay.sh/worker.test.mjs": 20,
-    "install.sh": 30,
-    "scripts/contract-gate-test.sh": 9,
-    "scripts/contract-gate.sh": 30,
-    "scripts/dash-gate.sh": 13,
-    "scripts/install-hooks.sh": 13,
-    "scripts/install-test.sh": 18,
-    "scripts/merge-pr.sh": 39,
-    "scripts/repin-skills.sh": 12,
-    "scripts/required-files.sh": 7,
-    "scripts/stats.sh": 20,
-    "scripts/sync-labels.sh": 30,
-    "scripts/verb-gate.sh": 48,
-    "website/astro.config.mjs": 27,
-    "website/scripts/check-dist.mjs": 26,
-    "website/scripts/csp.mjs": 34,
-    "website/scripts/gen-agent-skills.mjs": 22,
-    "website/scripts/gen-reference.mjs": 31,
-    "website/scripts/migration-diff.mjs": 31,
-    "website/scripts/rehype-base-links.mjs": 7,
-    "website/src/pages/[...slug].md.ts": 9,
-    "website/src/pages/robots.txt.ts": 6,
-    "website/src/styles/global.css": 8,
-    "website/src/styles/theme.css": 77,
-    "website/src/theme-color.mjs": 5
-  }
+  "files": {}
 }

@@ -1,25 +1,4 @@
 #!/usr/bin/env node
-// Lists what the command surface lost between a release and the working tree,
-// and checks that a migration guide names each loss next to its replacement.
-//
-// Source of truth is cmd/gplay/testdata/surface.golden, the generated snapshot
-// of every leaf, flag and exit code (make contract-update). Its lines are
-// self-describing, so the diff is a set difference, not a text diff: a line
-// only in the base is a removal (or the old side of a modification), a line
-// only in the working tree is an addition.
-//
-// The default base is v1.6.2, the first release that carries the golden
-// (#609). The v1.6.1 surface, regenerated with the #609 generator, is
-// byte-identical to it, so the diff also covers upgrades from v1.6.1.
-//
-// Usage (from website/, needs the release tags: `git fetch --tags`):
-//   node scripts/migration-diff.mjs                 print the report
-//   node scripts/migration-diff.mjs --check [page]  fail unless every removed
-//       leaf and flag appears in a table row of the guide (default: the 2.0
-//       guide) together with one of its candidate replacements
-//   --base <ref>  compare against another release tag
-//
-// Not part of `npm run check`: CI checks out a shallow clone without tags.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -57,8 +36,6 @@ try {
 }
 const headText = readFileSync(join(REPO_ROOT, GOLDEN), 'utf8');
 
-// One golden line: `<stability> exit <code> ...`, `<stability> global --x ...`,
-// `<stability> leaf "<path>" use=...`, `<stability> flag "<path>" --x ...`.
 function parse(text) {
   const out = [];
   for (const raw of text.split('\n')) {
@@ -87,9 +64,6 @@ const key = (r) => `${r.kind} ${r.leaf} ${r.name}`;
 const afterKeys = new Set(after.map(key));
 const afterLeaves = new Set(after.filter((r) => r.kind === 'leaf').map((r) => r.leaf));
 
-// The added leaves sharing the longest leading path with a removed one: a
-// retired `games achievements` verb gets the new `games achievements` leaves,
-// not the leaderboard ones.
 function closestLeaves(leaf) {
   const words = leaf.split(' ');
   const shared = (other) => {
@@ -103,8 +77,6 @@ function closestLeaves(leaf) {
   return best === 0 ? [] : pool.filter((p) => shared(p) === best);
 }
 
-// Classify each removed line, with the names that may replace it: the flags
-// added on the same leaf, or the leaves added in the same top-level group.
 const findings = [];
 for (const r of removed) {
   const modified = afterKeys.has(key(r));
@@ -116,7 +88,6 @@ for (const r of removed) {
     const candidates = modified ? [r.leaf] : closestLeaves(r.leaf);
     findings.push({ r, what: modified ? 'modified leaf' : 'removed leaf', candidates });
   } else if (!afterLeaves.has(r.leaf)) {
-    // The flag left with its leaf: the leaf's own entry covers it.
     findings.push({ r, what: 'gone with its leaf', candidates: [] });
   } else {
     const candidates = modified
@@ -126,8 +97,6 @@ for (const r of removed) {
   }
 }
 
-// A name matches as a whole token: `--to` must not match `--token`, and
-// `vitals anr` must not match inside a longer path.
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const token = (s) => new RegExp(`(^|[^A-Za-z0-9-])${escape(s)}($|[^A-Za-z0-9-])`);
 

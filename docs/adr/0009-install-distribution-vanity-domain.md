@@ -14,6 +14,8 @@ which puts the website on this same Worker (see the update note below).
 Worker now serves `install.sh` from the latest release tag (see the amendment at
 the end).
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 **Update — [ADR-0025](./0025-website-served-from-install-worker.md):** the
 `gplay.sh` domain is now registered and on Cloudflare, and the full website
 (issue #86, listed as out of scope below) is served from **this same Worker**
@@ -21,8 +23,10 @@ via static assets. The deploy automation described under "When and how the
 Worker is deployed" was consolidated into `deploy-site.yml` accordingly. The
 repository root `README.md`, `.goreleaser.yaml`, and `install.sh` header now
 point at `https://gplay.sh/install` (flipped once the domain went live — issue
-#85). The Worker still proxies `install.sh` from the raw GitHub URL on `main`,
-which also stays a working fallback.
+#85). The Worker proxies `install.sh` from the raw GitHub URL at the latest
+release tag (see the 2026-09-26 amendment); that raw URL at a tag stays a
+working fallback. *(Corrected 2026-11-20: this note said `main`, which the
+amendment had already reversed.)*
 
 ## Why
 
@@ -184,3 +188,48 @@ change and a release before the Worker can switch, and a raw file at the tag is
 already immutable enough for this threat model. Restricting the Discovery
 auto-merge to its declared paths was also weighed and dropped as the primary
 fix: it narrows one writer, not the class of problem.
+
+## Implementation notes
+
+### Tag resolution in the Worker
+
+- **Only a release-please shaped tag is accepted** (`vX.Y.Z`, with an optional
+  prerelease suffix). The tag is spliced into the raw URL the Worker fetches,
+  so anything else returned by either lookup is treated as a failed lookup.
+- **The lookup never throws.** The Worker's top-level handler degrades to
+  plain asset serving when routing throws (ADR-0069), which would turn a
+  lookup error into a 404 page. The resolver returns a null tag with the
+  errors it met instead, and the `/install` route answers the fail-closed
+  `503` itself.
+
+### Checksum verification in `install.sh`
+
+- **Verification is fail-closed.** A missing `checksums.txt`, a
+  `checksums.txt` without exactly one entry for the archive, a missing digest
+  tool, or a mismatch all abort the install. A "warn and continue" on a
+  missing checksum would let anyone who can influence the download path
+  withhold it and get a silent unverified install (downgrade by omission).
+  `GPLAY_INSTALL_NO_VERIFY=1` is the single, greppable bypass, for trusted
+  mirrors and air-gapped installs.
+- **The archive name is matched as an exact field, never as a regex over the
+  line.** The name contains dots, so a loose pattern would let a hostile
+  `checksums.txt` satisfy the lookup with an entry for another artifact.
+  GoReleaser writes `<sha256>  <name>`, and a leading `*` on the name marks
+  binary mode, so both spellings match.
+
+### Install telemetry
+
+- **Each `/install` hit is logged as one structured object** (`install_hit`:
+  method, path, user agent, referer, country, AS organisation). Workers Logs
+  indexes object fields, so hits group by client (curl, CI, browser) and by
+  network owner (GitHub-hosted runners show under their cloud provider).
+- **No IP is logged.** AS organisation and country attribute the traffic
+  without storing anything personal.
+- **Release download counts measure installs, not script fetches.**
+  `install.sh`, the Homebrew cask and a manual download all pull the same
+  release archive, so `scripts/stats.sh` reads the per-asset
+  `download_count` of the GitHub Releases API as the sum of all three. Script
+  fetches from `gplay.sh/install` are only in the Worker logs. GitHub does not
+  de-duplicate bots or mirrors: a release whose every platform archive shows
+  the same nonzero count is flagged as a likely crawler and left out of the
+  human estimate.

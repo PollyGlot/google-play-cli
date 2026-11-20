@@ -1,27 +1,4 @@
 #!/usr/bin/env bash
-# Land the routine Dependabot PRs without a human, one step per run.
-#
-# Called by .github/workflows/dependabot-merge.yml on a schedule. Each run:
-#   1. squash-merges at most one eligible PR whose head contains main and whose
-#      required checks are green, through scripts/merge-pr.sh (same gates as a
-#      maintainer merge);
-#   2. brings every other eligible PR that is behind main up to date, so its CI
-#      runs now and the next run can merge it.
-# One merge per run because a merge puts every other PR behind main again, and
-# merge-pr.sh refuses a behind head.
-#
-# Eligible means opened by Dependabot, not a draft, and every version move it
-# announces keeps its major. Below 1.0 a minor may break too, but golang.org/x/*
-# and most actions here live at 0.x and every such bump has been merged as is:
-# CI is the gate for those. A major bump, a PR announcing no version, or a red
-# check stays open for the maintainer, and the job summary says which and why.
-#
-# Usage:
-#   dependabot-merge.sh                 # act
-#   dependabot-merge.sh --dry-run       # report decisions, change nothing
-#   dependabot-merge.sh --dry-run <pr>  # report the eligibility of one PR
-# GH_TOKEN must be a token whose pushes trigger CI (the gplay App token in the
-# workflow): an update made with GITHUB_TOKEN would start no check run.
 set -euo pipefail
 
 dry_run=false
@@ -38,10 +15,6 @@ summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 
 say() { echo "- $*" | tee -a "$summary" >/dev/null; echo "$*" >&2; }
 
-# Prints "ok" or the reason the PR is not eligible. Dependabot announces each
-# move on a line of its own: "Bumps [x](...) from A to B." for a single update,
-# "Updates `x` from A to B" per package of a group. Release notes quoted below
-# them also say "from ... to ...", hence the anchoring on the line start.
 eligibility() {
   local body moves move_re
   # shellcheck disable=SC2016 # the backticks are literal Markdown, not a substitution
@@ -96,7 +69,6 @@ done
 for entry in "${eligible[@]}"; do
   read -r pr state <<<"$entry"
   [ "$pr" != "$merged" ] || continue
-  # After a merge every remaining PR is behind, whatever state was read before.
   if [ "$state" = BEHIND ] || [ -n "$merged" ]; then
     if [ "$dry_run" = true ]; then
       say "#$pr would be brought up to date with main."
