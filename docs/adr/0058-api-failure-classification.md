@@ -75,6 +75,20 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   "never answered".
 - **A local file that is not a regular file is exit 20** (`LocalIOError`),
   never a transport 50 ([ADR-0056](./0056-media-upload-protocol.md)).
+- **A Store image file that cannot be read after the scan is a `--dir`
+  failure, exit 20.** `metadata images apply` lists the tree, then reads each
+  image just before it needs it (DESIGN §4), so a file removed or made
+  unreadable in between fails as it did when the whole tree was loaded
+  upfront, not as an API error.
+- **An image host's error is its status alone.** The `googleusercontent` host
+  `metadata images pull` downloads from does not answer with Google's error
+  envelope, so the message is built from the status. A 2xx that never
+  arrived whole (cut mid-body, or past the image cap of
+  [ADR-0057](./0057-bounded-responses-and-pagination.md)) is not the host's
+  answer and carries no status: exit 50.
+- **A downloaded image whose sha256 is not the stored one is exit 1.** Neither
+  the network nor the API failed, and a retry would fetch the same bytes, so
+  neither the retry-safe 50 nor an API code fits.
 
 ### Could the write have landed?
 

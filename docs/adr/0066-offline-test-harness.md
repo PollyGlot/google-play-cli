@@ -41,6 +41,10 @@ concerns.
   `Refusals`, for tests that run whole commands and report the rule per case:
   a command that sends from a goroutine would otherwise take the test binary
   down.
+- **A test that asserts on the token exchange serves it itself.** The Fake
+  terminates the exchange without recording it, so a test that checks the
+  scope claim the exchange carries (a `vitals` command minting the reporting
+  scope) answers the token hop in its own transport.
 
 ### The wire recorder (`testkit.Wire`)
 
@@ -121,6 +125,11 @@ concerns.
   fixture needs exact dimensions and a real format, not real pixels; a
   full-size RGBA screenshot per call made the image suites some of the
   slowest under `-race`.
+- **A golden over Discovery-derived output runs on a fixture index.** The
+  `schema` view goldens use a three-method slice of the Schema index, so they
+  pin the view's shape, not the embedded Discovery surface (frozen by its own
+  snapshot), and a snapshot refresh does not churn them. The fixture
+  descriptions carry `<`, `>` and `&` because Google's verbatim text does.
 - **Artifact fixtures are built in-test** by `internal/artifacttest`
   ([ADR-0046](./0046-artifact-preflight-hand-rolled-manifest-readers.md)).
 - **`-update` exists only in test binaries that import `testkit`.** It

@@ -74,6 +74,10 @@ one command to ask what the binary can tell them about itself.
   differently on it.** Otherwise the status bucket is enough, and the raw
   reason still travels verbatim in `reasons`. The promotion table is small on
   purpose and matched case-insensitively.
+- **`schema --codes --output json` is an object holding a named list**, not a
+  bare array, so a later addition (a contract version, a deprecation marker)
+  is an added key rather than a breaking reshape. A golden freezes the whole
+  catalog, so adding, renaming or reclassifying a code shows up as a diff.
 
 ## Consequences
 

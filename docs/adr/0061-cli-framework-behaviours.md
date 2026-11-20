@@ -126,6 +126,16 @@ either is the moment to re-read it.
   `string` in any case: the flag-type registry test in `cmd/gplay` feeds every
   `string` flag an arbitrary sample value, which a closed set rightly refuses.
 
+### Shell completion
+
+- **cobra's completion protocol owns stdout.** A completion that calls the
+  API (the `--version-code` suggestions of the `vitals` leaves, read from
+  `apps.fetchReleaseFilterOptions`) is best effort by contract: the user
+  pressed TAB, not asked for a network call. Any failure (no package, no
+  credential, an API refusal, a malformed answer, the timeout) yields no
+  suggestion and never an error directive, and the run's stdout and stderr
+  are discarded so nothing reaches the terminal. The bound is in DESIGN §8.
+
 ### Tests
 
 - **`Command.Find` returns no error on an unknown word.** It stops at the

@@ -57,6 +57,27 @@ there: Listing limits and locales in
   resolved on the live path only (`releases upload`, `promote`, `rollout`,
   `releases mappings upload`). An unreadable pin is therefore refused by the live run
   (DESIGN §4), not by its rehearsal.
+- **An `appstore` upload's `--dry-run` answers before the file exists.** The
+  rehearsal resolves the target (the store package and the hosted app) and
+  returns before opening the file, so a CI job planning the upload of an
+  APK, an image or a policy document its build step has not produced yet
+  still gets an answer. The artifact preflight therefore runs on the live
+  path only ([ADR-0046](./0046-artifact-preflight-hand-rolled-manifest-readers.md)).
+  `releases upload --dry-run`, by contrast, reads and preflights its
+  artifacts.
+
+### App store time ranges
+
+- **A timestamp flag is validated offline and sent as typed.** `--since` and
+  `--until` must parse as RFC 3339 (the `google-datetime` format the API's
+  range parameters take), or the command exits 2 naming the flag and a valid
+  example. The parsed instant serves the range check only; the trimmed
+  original string is what travels, so the caller's offset reaches Google
+  verbatim.
+- **An empty range is refused.** The API documents the start as inclusive
+  and the end as exclusive ([ADR-0055](./0055-play-api-behaviours-the-client-absorbs.md)),
+  so an `--until` at or before `--since` can only return nothing and is
+  usage (exit 2).
 
 ### Input size caps
 

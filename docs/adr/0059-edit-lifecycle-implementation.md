@@ -100,7 +100,10 @@ them here.
   write, so a skip never claims a change was staged.
 - **A `--dry-run` never reads the pin**: the dry-run path never reuses a
   pinned Edit, so a corrupt pin must not fail a preview
-  ([ADR-0063](./0063-offline-validation-before-the-api.md)).
+  ([ADR-0063](./0063-offline-validation-before-the-api.md)). The online
+  dry-runs of `metadata apply` and `metadata images apply` read the live
+  Store front through a read-only Edit of their own, never the pinned one;
+  only their real apply joins the pin.
 - **An unusable pin is an error, never "no pin".** A missing file means
   implicit mode; a present file that is not JSON or has no `editId` must
   surface, because falling back to a fresh Edit would open a second,
@@ -135,6 +138,10 @@ DESIGN §4 sets the user contract of the four-wide read fan-out
 - **A call touches only the state of its own index**, or guards shared state
   itself; results land in slot `i`, which is what keeps the output in input
   order. The type system cannot check this, so a caller must.
+- **Uneven work fans out in waves, not one task per unit.** `metadata images
+  pull` lists every slot in one fan-out, then downloads every image of every
+  slot in a second: a gallery of eight screenshots beside empty slots would
+  otherwise hold one worker while the others idle.
 
 ## Consequences
 

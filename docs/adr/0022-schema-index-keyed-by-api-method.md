@@ -4,7 +4,7 @@
 
 accepted
 
-amended (2026-11-20): implementation decisions moved from code comments
+amended (2026-11-20): implementation decisions moved from code comments; the command axis, deferred below, has since shipped as the `--command` lens (see the amendment at the end)
 
 ## Context
 
@@ -96,3 +96,29 @@ Rationale:
   the identity.
 - **gplay command.** Rejected as the *primary* key for the derivability and
   scope reasons above; preserved as a backlog cross-link layer.
+
+## Amendment: the `--command` lens
+
+The cross-link layer the Consequences anticipate exists: `gplay schema
+--command "<command>"` lists the methods a gplay command calls and renders
+each one as a method-id query would. The index key does not change; the lens
+sits on top of it, as foreseen.
+
+- **The lens inverts the API registry, read-only.** Every request a shipped
+  command sends resolves through `internal/apiregistry`, whose entries name
+  the commands calling each method
+  ([ADR-0065](./0065-api-registry-and-discovery-snapshot.md)). The Discovery
+  snapshot cannot say which methods a command calls; the registry can, and
+  it stays the only command-to-method mapping, so the lens cannot drift from
+  what the binary actually calls. No second table is kept.
+- **The Edit lifecycle calls are left out on purpose.** The registry
+  attributes `edits.insert`, `edits.commit` and `edits.delete` to the `edits`
+  commands only. Every Edit-scoped command shares them, and which ones run
+  depends on the Edit mode (implicit or explicit) and on whether the command
+  mutates, so listing them on each command would be wrong half the time. A
+  note on stderr says so when they apply.
+- **Finding nothing is not a failure.** A query that matches nothing, and a
+  `--command` whose command calls no API method (an offline command such as
+  `auth list`, or `schema` itself), print a note on stderr and exit 0 with an
+  empty result: a script asking "what is there?" gets an answer, not an
+  error.

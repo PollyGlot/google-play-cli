@@ -4,7 +4,7 @@
 
 accepted
 
-amended (2026-11-20): implementation decisions moved from code comments
+amended (2026-11-20): implementation decisions moved from code comments; the range flags are named as shipped (`--since`/`--until`)
 
 ## Context and decision
 
@@ -68,7 +68,9 @@ The decisions:
   this command's upstream is a CSV file, not a JSON response.
 
 - **Month addressing: `--month YYYY-MM`, defaulting to the latest available
-  month.** Range aggregation (`--from`/`--to`) is a follow-up slice, not v1.
+  month.** Range aggregation was a follow-up slice, not v1; it shipped as
+  `--since YYYY-MM --until YYYY-MM` (not the `--from`/`--to` first named
+  here), mutually exclusive with `--month`.
 
 - **Reviews only.** The same bucket serves stats/vitals/sales exports; those
   stay out of scope (vitals has a real API — [ADR-0027](0027-vitals-second-service-scope-readonly.md);
@@ -99,3 +101,14 @@ The decisions:
   its earlier snapshot. A row with no link cannot be identified across files
   and is kept as is. The result is sorted by submit time, stably, so rows with
   equal submit times keep their first-seen order.
+- **A range is a best-effort sweep over what Play published.** A month that
+  answers 404 is skipped with a stderr `WARN`, not a demand that every month
+  exist; any other failure (a 403) is fatal. A range in which no month
+  yielded a report (typically a wrong `--package` or `--bucket`) is the same
+  "no reports" condition the single-month and default paths raise, exit 30,
+  never a silent empty success.
+- **The merge runs only when more than one report was read.** Monthly files
+  repeat a review across the month boundary, hence the cross-file merge
+  above. A lone report (one month, `--since X --until X`, or a range where
+  only one month existed) is one coherent file, left verbatim like `--month`,
+  so the two spellings of "one month" agree.
