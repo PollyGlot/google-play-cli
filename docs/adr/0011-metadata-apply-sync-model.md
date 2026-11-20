@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments; corrected the delete endpoint name (decision 1)
+
 ## Context
 
 `gplay metadata` owns one axis of an app's Google Play presence: the
@@ -40,7 +42,8 @@ back on**. That difference drives the safety model below.
 1. **Additive by default; `--prune` to delete.** `apply` upserts only
    the locales/fields present on disk. A locale live on Play but absent
    locally is left untouched and reported, never deleted by omission.
-   Deletion (`edits.listings.deletegroup`) requires explicit `--prune`
+   Deletion (`edits.listings.delete`, which drops one locale's whole
+   Listing; there is no `deletegroup` endpoint) requires explicit `--prune`
    (+ `--confirm`), and `--prune` refuses to remove the app's
    `defaultLanguage` Listing (the API requires it to exist).
 

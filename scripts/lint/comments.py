@@ -40,7 +40,7 @@ GENERATED_HEAD = re.compile(
 DIRECTIVE_WORDS = (
     r"ignore(_for_file)?:", r"dart format", r"(es|ox)lint-", r"biome-ignore", r"prettier-ignore",
     r"@ts-(ignore|expect-error|nocheck|check)\b", r"@vitest-", r"<reference", r"@jsx", r"@refresh",
-    r"@effect-diagnostics", r"go:\w", r"\+build", r"nolint", r"noqa", r"type:\s*ignore", r"pyright:",
+    r"@effect-diagnostics", r"go:\w", r"\+build", r"nolint", r"#nosec\b", r"noqa", r"type:\s*ignore", r"pyright:",
     r"mypy:", r"fmt:\s*(on|off|skip)", r"ruff:", r"pylint:", r"shellcheck\s", r".*-\*-.*-\*-",
     r"swiftlint:", r"swift-format", r"coverage:", r"pragma:", r"(istanbul|c8|v8) ignore", r"migrate:(up|down)", r"\+goose",
     r"plpgsql_check", r"webpackChunkName", r"syntax=", r">\s*statement-breakpoint",

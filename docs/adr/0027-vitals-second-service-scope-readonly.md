@@ -1,7 +1,7 @@
 # ADR-0027 — Vitals: a second Google service, a second OAuth scope, read-only
 
 Date: 2026-06-15
-Status: accepted
+Status: accepted; amended (2026-11-20): implementation decisions moved from code comments
 
 ## Context
 
@@ -73,3 +73,37 @@ wrong or omitted:
 - Side finding: the Reporting API's `apps.search` enumerates apps accessible to
   the service account — a lighter path to real app discovery than Cloud Resource
   Manager (tracked in `docs/BACKLOG.md`), to evaluate once vitals lands.
+
+## Implementation notes
+
+### The metric catalog is read from Discovery prose
+
+Discovery carries the vitals catalog in prose, not in enums: the supported
+metrics and dimensions of a metric set are bullet lists in the description of
+its `:query` request's `metrics` and `dimensions` properties. gplay parses
+that prose from the embedded Schema index, so validation is offline and no
+list is kept by hand.
+
+- **Only a bullet's leading backticked token is an entry.** A name mentioned
+  inside a description ("rolling average of `crashRate`") is not mistaken
+  for a catalog entry.
+- **Aggregation periods vary per set** (the memory sets are `DAILY` only
+  where `crashrate` also takes `HOURLY`), so they are read from the
+  "Supported aggregation periods" prose of the request's `timelineSpec`,
+  where Google writes them bare, in SCREAMING_SNAKE_CASE, not backticked. The
+  `TimelineSpec.aggregationPeriod` enum is the fallback when that prose is
+  missing. An unsupported `--period` is refused offline instead of by a
+  server 400 (#440).
+- **User cohorts are the shared `userCohort` enum filtered by each set's
+  prose**: `crashrate` lists `OS_PUBLIC`, `APP_TESTERS` and `OS_BETA`, while
+  `slowstartrate` says "The only supported value is `OS_PUBLIC`".
+- **A cohort's prose can replace the set's dimension catalog** ("Only the
+  following dimensions are supported:", `OS_BETA` today, which adds
+  `osBuild`); otherwise the set's own dimensions apply.
+
+### Error counts
+
+- **`errors.counts` is a queryable metric set kept out of the metric-set
+  registry.** It takes the same query and validation machinery as the rate
+  sets, but it is surfaced as `vitals errors counts`, under the `errors`
+  resource group, not through `vitals query`.

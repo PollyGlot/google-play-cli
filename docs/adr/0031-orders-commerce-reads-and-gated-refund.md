@@ -1,8 +1,10 @@
-# Orders surface: admin commerce reads + gated refund; voided-purchases deferred
+# Orders surface: admin commerce reads + gated refund; voided purchases as a reconciliation read
 
 ## Status
 
 accepted
+
+amended (2026-11-20): implementation decisions moved from code comments; decision 5 corrected: voided purchases shipped as `orders voided list` (#667)
 
 ## Context
 
@@ -44,7 +46,9 @@ verification.
 
 2. **Reads — `orders view <orderId> [<orderId>...]`.** One variadic read verb:
    a single ID calls `orders.get`; two to 1000 IDs call `orders.batchget` (the
-   `orderIds` query, 1–1000 cap; over 1000 is exit `2`). `--output json` mirrors
+   `orderIds` query, 1–1000 cap; over 1000 is exit `2`). The batch is all or
+   nothing on Play's side: the IDs must be distinct, and one unknown ID, or
+   one from another package, fails the whole request. `--output json` mirrors
    `Order` (single) / `BatchGetOrdersResponse` (batch) verbatim. Required Play
    permission: `CAN_VIEW_FINANCIAL_DATA`.
 
@@ -71,13 +75,15 @@ verification.
    canonical commerce example of the boundary, written into `CONTEXT.md` (term
    **Order**).
 
-5. **`purchases.voidedpurchases.list` is in scope but deferred.** It is
-   admin-leaning (a polled anti-fraud feed, no device token), so ADR-0026 keeps
-   it in scope — but it is a **reconciliation** use case distinct from order
-   lookup, and folding it into #245 would dilute the money-write grilling and
-   pull in a `purchases.*` surface ahead of a real need. Recorded in
-   `docs/BACKLOG.md` for a future commerce PRD adjacent to subscriptions/IAP
-   (#51), **not** part of #245.
+5. **`purchases.voidedpurchases.list` is a separate reconciliation read.**
+   It is admin-leaning (a polled anti-fraud feed, no device token), so
+   ADR-0026 keeps it in scope, but it is a **reconciliation** use case distinct
+   from order lookup, so it stayed out of #245. *Corrected 2026-11-20:* it
+   shipped later as `gplay orders voided list` (#346, #667): an Edit-free,
+   package-axis, auto-paginated read requiring `CAN_VIEW_FINANCIAL_DATA` like
+   the other order reads. Its API constraints (the 30-day lookback, what
+   `startTime` filters on) are in
+   [ADR-0055](./0055-play-api-behaviours-the-client-absorbs.md).
 
 6. **Ships `[experimental]` first** ([ADR-0010](./0010-versioning-public-contract-and-ga.md));
    companion skill updated ([ADR-0021](./0021-companion-skills-repo.md)).
@@ -110,8 +116,8 @@ verification.
 - `CONTEXT.md` gains the term **Order** and the canonical admin/runtime commerce
   boundary example; the avoid-list separates Order from *purchase token* and
   *voided purchase*.
-- `docs/BACKLOG.md` records `voidedpurchases.list` as in-scope-but-deferred (no
-  longer "à trancher au grilling de #245").
+- `voidedpurchases.list` was first recorded as in-scope-but-deferred, then
+  shipped as `orders voided list` (#667).
 - Decomposed into three slices:
   [#282](https://github.com/PollyGlot/google-play-cli/issues/282) (`orders view`,
   single — walking skeleton),

@@ -1,5 +1,11 @@
 # APK upload rides `releases upload` — extension auto-detect, `edits.apks` write-only (`edits.apks.upload`)
 
+## Status
+
+accepted
+
+amended (2026-11-20): implementation decisions moved from code comments; corrected the upload protocol (now resumable) and the two exclusions below, which later shipped
+
 Grilled from PRD [#118](https://github.com/PollyGlot/google-play-cli/issues/118)
 under [ADR-0026](0026-maximal-admin-api-coverage.md) (maximal admin-API
 coverage). `edits.apks.upload` is the legacy sibling of `edits.bundles.upload`:
@@ -32,10 +38,10 @@ The decisions:
   is keyed on `apkVersionCode` regardless of whether that versionCode came from
   an APK or an AAB — same wire path, no flag changes.
 
-- **Client: a dedicated `apks` package mirroring `bundles`.** Same simple-media
-  upload protocol (upload sub-host, `uploadType=media`,
-  `application/octet-stream`), same explicit `ContentLength` (proxies +
-  retryability), same exit-code nuance: a 400/404 on `apks.upload` maps to
+- **Client: a dedicated `apks` package mirroring `bundles`.** Same upload
+  protocol: simple media when this was decided, resumable since PRD #355
+  ([ADR-0056](./0056-media-upload-protocol.md)), with
+  `application/octet-stream`; same exit-code nuance: a 400/404 on `apks.upload` maps to
   client-side validation (exit 20), mirroring the `bundles.upload` operation
   hint in the API error mapper. One package per resource is the repo's layout;
   generalizing `bundles` into a two-endpoint package would couple two resources
@@ -48,6 +54,10 @@ The decisions:
     until a concrete need appears.
   - `edits.apks.addexternallyhosted` — registers an APK hosted **outside** Play,
     restricted to EMM/managed-Play distribution. Niche-within-niche; excluded.
+  - *Corrected 2026-11-20:* both later shipped. `edits.apks.list` and
+    `edits.bundles.list` back `releases artifacts list` (#543), and
+    `edits.apks.addexternallyhosted` backs `releases upload
+    --externally-hosted` (#546).
 
 Consequences: `releases upload` documentation must stop implying AAB-only and
 explain the legacy-APK caveat (new apps cannot use it — the API rejects APK

@@ -1,5 +1,11 @@
 # `--output json` is a pass-through of the Google Play Developer API response
 
+## Status
+
+accepted; amended (2026-11-20): implementation decisions moved from code comments
+
+## Decision
+
 For every command that wraps a Google Play Developer API call, `--output json` returns the API response **verbatim**, without renaming, flattening, or reshaping fields. The envelope key therefore varies per command (`{"reviews":[...]}`, `{"tracks":[...]}`, `{"bundles":[...]}`, etc.) because that is how Google's API natively shapes its responses.
 
 Three reasons:
@@ -23,3 +29,25 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
 
 - **Normalize to a gplay-specific shape** (e.g. `{"data":[...],"pageInfo":{...}}` envelope, snake_case fields, etc.) — rejected. We would own a schema we have no reason to invent, and every Google API evolution would require a gplay change.
 - **Filter "noise" fields like `kind` and `etag`** — rejected for v1. The filter list becomes its own maintenance burden, and these fields are cheap to ignore client-side with `jq`.
+
+## Implementation notes
+
+- **Typed structs serve the human views only**, and stay as narrow as those
+  views. The complete resource reaches the caller through the verbatim body,
+  so a typed struct never grows to be exhaustive.
+- **An auto-paginated read keeps every item verbatim** (a raw message per
+  item) and rebuilds the envelope from them (`{"reviews":[...]}`,
+  `{"voidedPurchases":[...]}`). Per-page `nextPageToken`, `pageInfo` and
+  `tokenPagination` are walk state, not data, and are dropped. Client-side
+  filters (`--stars`) and `--limit` select items without re-encoding them.
+- **64-bit integers stay strings.** Google encodes `int64` and `uint64` as JSON
+  strings (proto3 JSON: `scoreMin`, a Cloud Storage object `size`, a Money
+  `units`), so gplay types them as strings and round-trips them verbatim;
+  an integer type would break decoding.
+- **A field whose zero is meaningful is a pointer.** `omitempty` drops a zero
+  `int` but keeps a non-nil pointer to 0, so an explicit `--point-value 0` or
+  `--steps-to-unlock 0` reaches the wire while an unset field stays absent.
+- **A wire golden recorded before a refactor is a pin.** A test that pins every
+  request a package sends, byte for byte, against a golden recorded before the
+  move onto the shared executor (#586), is never regenerated to make a wire
+  change pass: a diff there is the regression the golden exists to catch.

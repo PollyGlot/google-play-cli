@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 The `appstore` namespace (PRD [#377](https://github.com/PollyGlot/google-play-cli/issues/377),
@@ -87,3 +89,19 @@ The same criterion resolved the other two gate questions in this batch:
   externally visible but *reversible*: the opposite call puts it back. The
   criterion requires a write to be both irreversible and externally visible;
   irreversibility is the property this one lacks.
+
+## Implementation notes
+
+- **The submission body is the operator's JSON, forwarded verbatim** except
+  `packageName`, which is overwritten with the resolved target so it always
+  wins. Decoding it into gplay's request struct and re-encoding it would drop
+  anything the struct does not model, a field Google added last week or a
+  misspelt key, and a submission cannot be recalled. Sent as written, a
+  misspelling comes back as Google's rejection, never as a submission quietly
+  missing half its content. The struct stays the documented shape, used to
+  summarise the body.
+- **Policy declaration responses stay raw JSON.** `PolicyResponse` is a
+  seven-way oneof (boolean, document, group, keyed group, multiple choice,
+  single choice, string) and Google adds question types over time. Modelling
+  it would freeze today's snapshot into the CLI and force a release each time
+  the questionnaire grows a variant.

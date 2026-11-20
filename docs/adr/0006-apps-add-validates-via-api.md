@@ -4,6 +4,8 @@
 
 Accepted.
 
+amended (2026-11-20): implementation decisions moved from code comments; corrected where the text had drifted from the code (the probe no longer goes through `WithReadOnlyEdit`; `gplay edits discard` now exists).
+
 ## Context
 
 `gplay apps add <package>` is the first registry-mutating command in
@@ -35,16 +37,20 @@ implications for a one-shot probe.
 
 ## Decision
 
-`gplay apps add` validates access via API by default. The probe is the
-existing read-only Edit lifecycle (`WithReadOnlyEdit` in
-`internal/play/edits`), wrapped behind a thin `edits.Validate(ctx, hc,
-pkg)` entrypoint. An explicit `--no-verify` flag skips the round-trip
+`gplay apps add` validates access via API by default. The probe is
+`edits.Validate(ctx, hc, pkg)` in `internal/play/edits`: one
+`edits.insert` and one `edits.delete`, called directly rather than through
+`WithReadOnlyEdit`. `WithReadOnlyEdit` swallows a failed discard so a read
+always returns its result; the probe must do the opposite and report it,
+because answering "valid" while leaking an Edit that locks the package for
+up to 24 hours corrupts the very state the probe checks. A failed discard
+therefore surfaces as a dangling-Edit error carrying the open Edit ID. An explicit `--no-verify` flag skips the round-trip
 for the rare cases where it's wrong — offline or preparatory
 registration when the credential is known to lack reachability today
 but will gain it later.
 
 Persistence is gated on validation success: a failed probe propagates
-verbatim from `WithReadOnlyEdit`, the global config is never written,
+verbatim from `edits.Validate`, the global config is never written,
 the registry stays consistent with what the credential can actually
 touch.
 
@@ -58,16 +64,20 @@ distinguish:
 | SA not invited on the app | 403 | 11 | `api.StatusToExitCode` (existing) |
 | Package does not exist | 404 | 30 | `api.StatusToExitCode` (existing) |
 | Edit already open on the package | 400 + `editAlreadyExists` reason | 30 | `edits.EditConflictError` (new) |
+| Same reason on a rate-limited answer | 429 + `editAlreadyExists` reason | 60 | `edits.EditConflictError`, status kept |
 
 The first two reuse the existing `*api.Error.ExitCode()` table without
 modification. The third case is new and carries a *distinct* exit 30
 message (not the generic "HTTP 400") with a recovery hint pointing the
 operator at the only two paths that work today: wait ~24h for the open
 Edit to auto-expire, or release it manually via the Google Play
-Console. A `gplay edits discard --package <pkg>` subcommand is planned
-per DESIGN.md §4 but not yet wired; the message intentionally does not
-reference it so users following the hint are not dead-ended at "unknown
-command". Exit 30 (API 4xx, recoverable) rather than 60 (state conflict,
+Console. `gplay edits discard --package <pkg>` exists now, but the message
+still does not name it: the conflicting Edit may have been opened by
+another client, or by a `gplay edits begin` whose pin lives in another
+repository, and `edits discard` reaches neither. The error takes its exit
+code from the wrapped status, so a 429 carrying the same reason (Google has
+shipped it on rate-limited answers) keeps the 60 of a rate limit instead of
+being downgraded to 30. Exit 30 (API 4xx, recoverable) rather than 60 (state conflict,
 often non-recoverable) signals that a clear remediation path exists; 60
 would imply "give up and call support".
 
@@ -116,7 +126,8 @@ identity unit" rule from ADR-0001.
 
 - `gplay apps add` makes exactly one HTTP round trip per invocation in
   the default mode: one `edits.insert` followed by one `edits.delete`
-  (the delete is a defer'd cleanup in `WithReadOnlyEdit`). The
+  (the delete runs on its own bounded context, so a cancelled command
+  still releases the Edit). The
   oauth2 `/token` exchange is shared with any later command in the
   same process and is not counted against the per-day publish quota.
 - `--no-verify` exists, is documented, and is the supported way out of

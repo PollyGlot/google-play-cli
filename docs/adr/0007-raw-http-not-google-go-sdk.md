@@ -1,5 +1,11 @@
 # Speak the Google Play Developer API over raw HTTP, not via the official Go SDK
 
+## Status
+
+accepted; amended (2026-11-20): implementation decisions moved from code comments
+
+## Decision
+
 gplay calls the Google Play Developer API directly over HTTP from `internal/play/api/` rather than depending on `google.golang.org/api/androidpublisher/v3` (the official auto-generated Go client).
 
 This is the inverse of the "use Google's SDK when possible" default, so it deserves an explicit record.
@@ -36,3 +42,33 @@ Update (#646): gplay now imports only `golang.org/x/oauth2/jwt`, building its co
 ## How this shows up to users
 
 It does not. End users (CI engineers, devs invoking `gplay` from a script, AI agents) never see `internal/play/api/`. This is an internal architecture decision. It supports the user-facing pillars in [POSITIONING.md](../marketing/POSITIONING.md) — particularly the "one small binary" and "JSON pass-through" claims — but it is not itself a feature to market.
+
+## Implementation notes
+
+- **One executor.** Every `internal/play/*` module sends through
+  `api.Do` (or `api.DoJSON`): a module declares its methods once from the
+  registry and describes each call with an `api.Call` (path params, query,
+  body, target). The verb and URL come from the Discovery-derived registry,
+  never from a literal ([#513](https://github.com/PollyGlot/google-play-cli/issues/513)).
+  The executor turns a non-2xx into an `*api.Error` carrying the status, the
+  message and Google's `errors[].reason` values, and enforces the body cap
+  ([ADR-0057](./0057-bounded-responses-and-pagination.md)).
+- **The executor does not decide whether a request may be replayed.** That is
+  the method's `Idempotent` bit in the registry, read by the `--retry`
+  transport from the request itself, so a module gets replay right by
+  construction (DESIGN §8, Opt-in retry).
+- **A body of bytes is sent as is.** `[]byte` and `json.RawMessage` are never
+  re-encoded, so a catalog file reaches the API byte for byte
+  ([ADR-0041](./0041-declarative-monetization-catalog.md)); any other value is
+  JSON-encoded; a stream is reopened on each attempt.
+- **A call states what it addresses**: the package, or a typed resource on
+  another axis, so the error envelope never labels a developer account or a
+  bucket as a package ([ADR-0023](./0023-json-error-envelope.md)).
+- **An absolute URL is requested only when an API response handed it back**
+  (the Store image `url` of `images.list`, say). Such a call bypasses the
+  registry template, so it must name its operation itself; a URL built by
+  hand is forbidden (the archgate test).
+- **Two siblings cover what `Do` refuses**: `api.Download` streams a media
+  payload with no cap, and `api.Paginate` walks a continuation token
+  (ADR-0057). Resumable uploads go through `api.ResumableUpload`
+  ([ADR-0056](./0056-media-upload-protocol.md)).
