@@ -73,6 +73,10 @@ concerns.
   quotes the Discovery sentence it encodes; an anchor test fails when Google
   rewords it, so a snapshot refresh forces a review of the check. Both the
   Fake and the Wire apply it, so a test that pins a body Play refuses fails.
+  A request is matched to its method on the escaped URL path, so a
+  parameter whose value holds a slash (a review id, an `applications/<pkg>`
+  name) stays one segment; matching on the decoded path would silently skip
+  the check for such a request.
 - **An inventory keeps the table complete.** A wording matcher finds every
   Discovery description that states a rule on a request property; each match
   is either in the table or listed in the inventory with the reason it is

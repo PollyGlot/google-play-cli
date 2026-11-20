@@ -20,19 +20,17 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestAliasResolution_bothScopes checks the alias↔enum contract in both
-// scopes: account appends _GLOBAL, app strips it (ADR-0016 §1).
 func TestAliasResolution_bothScopes(t *testing.T) {
 	for _, tc := range []struct {
 		alias       string
 		wantAccount string
-		wantApp     string // "" => account-only, no app enum
+		wantApp     string
 	}{
 		{"view-app-info", "CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL", "CAN_VIEW_NON_FINANCIAL_DATA"},
 		{"reply-reviews", "CAN_REPLY_TO_REVIEWS_GLOBAL", "CAN_REPLY_TO_REVIEWS"},
 		{"release-production", "CAN_MANAGE_PUBLIC_APKS_GLOBAL", "CAN_MANAGE_PUBLIC_APKS"},
 		{"manage-permissions", "CAN_MANAGE_PERMISSIONS_GLOBAL", "CAN_MANAGE_PERMISSIONS"},
-		{"edit-games", "CAN_EDIT_GAMES_GLOBAL", ""}, // account-only
+		{"edit-games", "CAN_EDIT_GAMES_GLOBAL", ""},
 	} {
 		t.Run(tc.alias, func(t *testing.T) {
 			acc, _, err := vocab.ResolvePermissions(vocab.Account, []string{tc.alias})
@@ -45,7 +43,6 @@ func TestAliasResolution_bothScopes(t *testing.T) {
 
 			app, _, err := vocab.ResolvePermissions(vocab.App, []string{tc.alias})
 			if tc.wantApp == "" {
-				// Account-only alias under app scope is a usage error (exit 2).
 				if got := exitCodeOf(t, err); got != 2 {
 					t.Errorf("app resolve of account-only alias: exit = %d, want 2", got)
 				}
@@ -61,8 +58,6 @@ func TestAliasResolution_bothScopes(t *testing.T) {
 	}
 }
 
-// TestRawEnumPassthrough_verbatim asserts an unknown-to-gplay CAN_* enum is
-// accepted verbatim (the escape hatch) and NOT scope-adjusted.
 func TestRawEnumPassthrough_verbatim(t *testing.T) {
 	raw := "CAN_DO_SOMETHING_BRAND_NEW_GLOBAL"
 	got, warns, err := vocab.ResolvePermissions(vocab.App, []string{raw})
@@ -77,8 +72,6 @@ func TestRawEnumPassthrough_verbatim(t *testing.T) {
 	}
 }
 
-// TestUnspecifiedSentinel_rejected asserts a *_UNSPECIFIED sentinel is refused
-// with exit 2 in both scopes.
 func TestUnspecifiedSentinel_rejected(t *testing.T) {
 	for _, tok := range []string{"DEVELOPER_LEVEL_PERMISSION_UNSPECIFIED", "APP_LEVEL_PERMISSION_UNSPECIFIED"} {
 		_, _, err := vocab.ResolvePermissions(vocab.Account, []string{tok})
@@ -88,8 +81,6 @@ func TestUnspecifiedSentinel_rejected(t *testing.T) {
 	}
 }
 
-// TestDeprecated_acceptedWithWarning asserts the two deprecated values pass
-// through (gplay never gates) but emit a steering warning to the modern enum.
 func TestDeprecated_acceptedWithWarning(t *testing.T) {
 	for _, tc := range []struct{ tok, modern string }{
 		{"CAN_SEE_ALL_APPS", "CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL"},
@@ -108,11 +99,6 @@ func TestDeprecated_acceptedWithWarning(t *testing.T) {
 	}
 }
 
-// TestRetiredAlias_warnsWithoutSuccessor covers #559: manage-managed-play is
-// Public contract, so it still resolves, but Google retired its enum with no
-// replacement. Both entry points must warn (the alias branch returns before
-// the raw-enum check, which is how the alias used to resolve silently), and
-// neither warning may name a successor that does not exist.
 func TestRetiredAlias_warnsWithoutSuccessor(t *testing.T) {
 	const enum = "CAN_CHANGE_MANAGED_PLAY_SETTING_GLOBAL"
 	for _, tok := range []string{"manage-managed-play", enum} {
@@ -140,8 +126,6 @@ func TestRetiredAlias_warnsWithoutSuccessor(t *testing.T) {
 	}
 }
 
-// TestAliasDeprecated_onlyManagedPlay pins which aliases carry the deprecated
-// marking, and asserts a live alias resolves without a warning.
 func TestAliasDeprecated_onlyManagedPlay(t *testing.T) {
 	var marked []string
 	for _, a := range vocab.Aliases() {
@@ -161,8 +145,6 @@ func TestAliasDeprecated_onlyManagedPlay(t *testing.T) {
 	}
 }
 
-// TestUnknownAlias_exit2_pointsAtPermissions asserts a typo'd alias is a usage
-// error whose message points at `gplay team permissions`.
 func TestUnknownAlias_exit2_pointsAtPermissions(t *testing.T) {
 	_, _, err := vocab.ResolvePermissions(vocab.Account, []string{"reply-to-everything"})
 	if got := exitCodeOf(t, err); got != 2 {
@@ -173,8 +155,6 @@ func TestUnknownAlias_exit2_pointsAtPermissions(t *testing.T) {
 	}
 }
 
-// TestResolvePermissions_dedupPreservesOrder asserts duplicates collapse while
-// the first-seen order is preserved.
 func TestResolvePermissions_dedupPreservesOrder(t *testing.T) {
 	got, _, err := vocab.ResolvePermissions(vocab.App, []string{"reply-reviews", "view-app-info", "reply-reviews"})
 	if err != nil {
@@ -186,12 +166,10 @@ func TestResolvePermissions_dedupPreservesOrder(t *testing.T) {
 	}
 }
 
-// TestBundleExpansion asserts the frozen bundles expand over the read base and
-// that admin is exactly the all-permissions enum.
 func TestBundleExpansion(t *testing.T) {
 	for _, tc := range []struct {
 		role string
-		want []string // account-scope enums
+		want []string
 	}{
 		{"viewer", []string{"CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL", "CAN_VIEW_APP_QUALITY_GLOBAL"}},
 		{"reviewer", []string{"CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL", "CAN_VIEW_APP_QUALITY_GLOBAL", "CAN_REPLY_TO_REVIEWS_GLOBAL"}},
@@ -209,7 +187,6 @@ func TestBundleExpansion(t *testing.T) {
 	}
 }
 
-// TestRole_appScope asserts a bundle resolves to bare app enums under app scope.
 func TestRole_appScope(t *testing.T) {
 	got, err := vocab.ResolveRole(vocab.App, "release-manager")
 	if err != nil {
@@ -221,8 +198,6 @@ func TestRole_appScope(t *testing.T) {
 	}
 }
 
-// TestUnknownRole_exit2 asserts an unknown --role is a usage error listing the
-// valid roles.
 func TestUnknownRole_exit2(t *testing.T) {
 	_, err := vocab.ResolveRole(vocab.Account, "superuser")
 	if got := exitCodeOf(t, err); got != 2 {
@@ -235,8 +210,6 @@ func TestUnknownRole_exit2(t *testing.T) {
 	}
 }
 
-// TestBundles_excludeMoneyAndAccountOnly asserts no bundle silently confers a
-// money or account-only capability (ADR-0016 §4).
 func TestBundles_excludeMoneyAndAccountOnly(t *testing.T) {
 	forbidden := map[string]bool{
 		"view-financial": true, "manage-orders": true,
@@ -253,8 +226,6 @@ func TestBundles_excludeMoneyAndAccountOnly(t *testing.T) {
 	}
 }
 
-// TestAdminDetection covers the --grant-admin trigger across every way admin
-// can be expressed: the alias, the role, and a raw enum in either scope.
 func TestAdminDetection(t *testing.T) {
 	mustResolve := func(scope vocab.Scope, toks ...string) []string {
 		t.Helper()
@@ -294,9 +265,6 @@ func TestAdminDetection(t *testing.T) {
 	}
 }
 
-// TestRegistryCounts pins the alias registry against the ADR-0016 counts: 19
-// curated aliases (the non-deprecated grantable permissions), 6 of them
-// account-only, and 13 valid under app scope.
 func TestRegistryCounts(t *testing.T) {
 	all := vocab.Aliases()
 	if len(all) != 19 {
@@ -319,8 +287,6 @@ func TestRegistryCounts(t *testing.T) {
 	}
 }
 
-// TestParseScope covers the --scope flag mapping including the default and the
-// usage error.
 func TestParseScope(t *testing.T) {
 	for _, tc := range []struct {
 		in   string
@@ -341,8 +307,6 @@ func TestParseScope(t *testing.T) {
 	}
 }
 
-// TestBundlesContaining asserts the including-bundles projection is correct and
-// in bundle display order.
 func TestBundlesContaining(t *testing.T) {
 	got := vocab.BundlesContaining("view-app-info")
 	want := []string{"viewer", "reviewer", "tester-manager", "release-manager"}

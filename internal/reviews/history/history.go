@@ -1,15 +1,3 @@
-// Package history parses the monthly reviews CSV report Google deposits in the
-// developer's reporting bucket: the full-history channel behind `gplay reviews
-// history` beyond reviews.list's 7-day window (#94 / ADR-0037). Two facts drive
-// the code: the file is UTF-16 (Google documents the BigQuery import as "convert
-// from UTF-16 to UTF-8"), so a transcoding step is mandatory; and the schema is
-// a stable, documented 16-column header, so parsing is header-driven (column
-// order is read from the header row, never assumed).
-//
-// gplay hand-rolls the UTF-16 decode rather than adding golang.org/x/text: the
-// reports are UTF-16LE with a BOM and the decode is a dozen lines, so a
-// dependency would not earn its place (ADR-0007's spirit: no library gplay can
-// do without).
 package history
 
 import (
@@ -25,12 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/reports"
 )
 
-// Row is one parsed review from the CSV report, modeling the 16 documented
-// columns. JSON tags are stable lowerCamel names derived from the headers: the
-// `--output json` shape (ADR-0037's documented deviation from the ADR-0003
-// pass-through: the upstream is a CSV file, not a JSON response). Every field is
-// a string: the report leaves most columns optional and gplay does not reshape
-// the reviewer's data, it transcodes and surfaces it verbatim.
 type Row struct {
 	PackageName                      string `json:"packageName"`
 	AppVersionCode                   string `json:"appVersionCode"`
@@ -50,10 +32,6 @@ type Row struct {
 	ReviewLink                       string `json:"reviewLink"`
 }
 
-// header maps a documented CSV header label to the Row field it fills. Parsing
-// is header-driven: a report that reorders, adds, or omits columns is still read
-// correctly, and an unrecognized header is simply ignored rather than throwing
-// the row alignment off.
 var header = map[string]func(*Row, string){
 	"Package Name":                          func(r *Row, v string) { r.PackageName = v },
 	"App Version Code":                      func(r *Row, v string) { r.AppVersionCode = v },
@@ -73,18 +51,15 @@ var header = map[string]func(*Row, string){
 	"Review Link":                           func(r *Row, v string) { r.ReviewLink = v },
 }
 
-// Parse transcodes the UTF-16 report bytes to UTF-8 and decodes the CSV into
-// Rows, driven by the header line. An empty report (header only, or no bytes)
-// yields zero rows and no error: a month with no reviews is not a failure.
 func Parse(raw []byte) ([]Row, error) {
 	text := decodeUTF16(raw)
-	text = strings.TrimPrefix(text, "\uFEFF") // a leftover BOM rune can survive a decode
+	text = strings.TrimPrefix(text, "\uFEFF")
 	if strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
 
 	rd := csv.NewReader(strings.NewReader(text))
-	rd.FieldsPerRecord = -1 // tolerate ragged trailing-empty columns
+	rd.FieldsPerRecord = -1
 	records, err := rd.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("parse reviews CSV: %w", err)
@@ -93,10 +68,9 @@ func Parse(raw []byte) ([]Row, error) {
 		return nil, nil
 	}
 
-	// Build the column index from the header row: position → setter.
 	setters := make([]func(*Row, string), len(records[0]))
 	for i, h := range records[0] {
-		setters[i] = header[strings.TrimSpace(h)] // nil for unknown columns
+		setters[i] = header[strings.TrimSpace(h)]
 	}
 
 	rows := make([]Row, 0, len(records)-1)
@@ -112,10 +86,6 @@ func Parse(raw []byte) ([]Row, error) {
 	return rows, nil
 }
 
-// decodeUTF16 transcodes UTF-16 bytes to a UTF-8 string. It honors a leading
-// BOM (LE 0xFF 0xFE / BE 0xFE 0xFF) and defaults to little-endian when none is
-// present: the encoding Google's reports use. A trailing odd byte (malformed
-// tail) is dropped rather than corrupting the whole decode.
 func decodeUTF16(b []byte) string {
 	order := binary.ByteOrder(binary.LittleEndian)
 	switch {
@@ -131,28 +101,18 @@ func decodeUTF16(b []byte) string {
 	return string(utf16.Decode(u16))
 }
 
-// monthRE matches a monthly reviews object name and captures its YYYYMM. The
-// package name is embedded literally, so the caller anchors it per package.
 func monthRE(pkg string) *regexp.Regexp {
 	return regexp.MustCompile(`(?:^|/)reviews_` + regexp.QuoteMeta(pkg) + `_(\d{6})\.csv$`)
 }
 
-// ObjectName is the report key for pkg in the given YYYYMM month, under the
-// bucket's "reviews/" prefix.
 func ObjectName(pkg, yyyymm string) string {
 	return ReviewsPrefix(pkg) + yyyymm + ".csv"
 }
 
-// ReviewsPrefix is the object-name prefix under which a package's monthly
-// review reports live: the argument to a bucket listing when discovering the
-// latest month.
 func ReviewsPrefix(pkg string) string {
 	return "reviews/reviews_" + pkg + "_"
 }
 
-// LatestMonth returns the newest YYYYMM present among names (typically a bucket
-// listing) for pkg, or "" when none match. YYYYMM sorts lexicographically the
-// same as chronologically, so a string max is the latest month.
 func LatestMonth(pkg string, names []string) string {
 	re := monthRE(pkg)
 	var months []string
@@ -168,33 +128,17 @@ func LatestMonth(pkg string, names []string) string {
 	return months[len(months)-1]
 }
 
-// NormalizeMonth converts a --month YYYY-MM value to the YYYYMM the object name
-// uses, rejecting a malformed value or an out-of-range month. The month
-// helpers are shared with the bulk reports (ADR-0050) and live in
-// internal/reports.
 func NormalizeMonth(month string) (string, error) { return reports.NormalizeMonth(month) }
 
-// MonthRange returns every YYYYMM from `from` to `to` inclusive (both given in
-// the --since/--until YYYY-MM shape): see reports.MonthRange.
 func MonthRange(from, to string) ([]string, error) { return reports.MonthRange(from, to) }
 
-// Merge coalesces rows gathered across several monthly reports into one result
-// set. Rows sharing a ReviewLink (the review's stable identity) collapse to the
-// single occurrence with the greatest Review Last Update Millis, so a review
-// re-exported (edited) in a later month wins over its earlier snapshot. Rows with
-// no ReviewLink cannot be identified across files, so each is kept verbatim. The
-// result is sorted chronologically by review submit time; the sort is stable, so
-// rows with equal submit millis keep their first-seen order.
 func Merge(rows []Row) []Row {
-	// Decorate each row with its parsed submit millis once, so the sort below
-	// compares precomputed int64s instead of re-parsing the same strings on
-	// every comparison (O(n) parses, not O(n log n)).
 	type keyed struct {
 		row    Row
 		submit int64
 	}
 	out := make([]keyed, 0, len(rows))
-	pos := make(map[string]int, len(rows)) // ReviewLink -> index in out
+	pos := make(map[string]int, len(rows))
 	for _, r := range rows {
 		k := keyed{row: r, submit: millis(r.ReviewSubmitMillisSinceEpoch)}
 		if r.ReviewLink == "" {
@@ -218,8 +162,6 @@ func Merge(rows []Row) []Row {
 	return merged
 }
 
-// millis parses an epoch-millis column to int64; a blank or malformed value
-// sorts as 0 (the report leaves the millis columns optional).
 func millis(s string) int64 {
 	n, _ := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 	return n

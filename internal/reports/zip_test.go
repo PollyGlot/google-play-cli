@@ -9,17 +9,12 @@ import (
 	"testing"
 )
 
-// member is one entry of an in-memory test archive. declared, when non-zero,
-// overrides the uncompressed size the central directory claims, so a test can
-// build an archive that lies about its size.
 type member struct {
 	name     string
 	body     string
 	declared uint64
 }
 
-// buildZip writes the members as deflated entries. A lying declared size is
-// written raw (zip.Writer would otherwise record the true size).
 func buildZip(t *testing.T, members ...member) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -54,8 +49,6 @@ func buildZip(t *testing.T, members ...member) []byte {
 	return buf.Bytes()
 }
 
-// boundError asserts err is the named-bound refusal, exit 20, and that its
-// message carries every fragment.
 func boundError(t *testing.T, err error, fragments ...string) {
 	t.Helper()
 	var be *RefusedError
@@ -72,7 +65,6 @@ func boundError(t *testing.T, err error, fragments ...string) {
 	}
 }
 
-// The bounds are ADR-0050's numbers, stated here independently of the code.
 func TestBounds_matchADR0050(t *testing.T) {
 	if MaxZipObjectBytes != 128<<20 || MaxZipMembers != 16 || MaxReportBytes != 512<<20 || MaxReportCells != 24<<20 {
 		t.Fatalf("bounds = %d B object, %d members, %d B decoded, %d cells; ADR-0050 says 128 MiB, 16, 512 MiB, 24 Mi cells",
@@ -135,8 +127,6 @@ func TestReader_notAZip(t *testing.T) {
 }
 
 func TestReader_zipDeclaredSizeOverTheRealBudget(t *testing.T) {
-	// The real byte budget, met by a header claiming one byte more: refused
-	// on the declaration, before a byte is inflated.
 	_, err := readZipExport(t, NewReader(""), buildZip(t, member{name: "a.csv", body: "a\n1\n", declared: MaxReportBytes + 1}))
 	boundError(t, err, "a.csv", "declares 536870913", "536870912-byte budget")
 }

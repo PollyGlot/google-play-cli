@@ -28,7 +28,6 @@ func TestCatalogue_financeFamilies(t *testing.T) {
 		if f.MaxObjectBytes != MaxZipObjectBytes {
 			t.Errorf("%s read cap = %d, want the ZIP object cap", tc.name, f.MaxObjectBytes)
 		}
-		// Account-wide: --package never narrows the listing.
 		if f.ListPrefix("com.example.app") != tc.prefix {
 			t.Errorf("%s ListPrefix = %q", tc.name, f.ListPrefix("com.example.app"))
 		}
@@ -62,8 +61,6 @@ func TestObjects_financeNames(t *testing.T) {
 }
 
 func TestObjects_accountWideIgnoresThePackageFilter(t *testing.T) {
-	// An account-wide export holds every app's rows: a --package asks for a
-	// row filter, so the export itself must survive the listing.
 	objs, _ := Sales.Objects(listing("sales/salesreport_202609.zip"), "com.example.app")
 	if len(objs) != 1 {
 		t.Fatalf("objects = %+v, want the account-wide export kept", objs)

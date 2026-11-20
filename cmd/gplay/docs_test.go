@@ -14,29 +14,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// This file keeps the hand-written docs honest about three facts the binary
-// already knows: the exit-code taxonomy, the diagnostic-code vocabulary and
-// which commands are [experimental]. Each lives in a marked block inside an
-// otherwise hand-written page, rendered here from the same source the binary
-// prints (internal/exit, kernel.IsExperimental over the real tree). The site
-// once claimed its exit-code table "can never drift" while it lacked exit 70,
-// and README listed an experimental set five namespaces short (#594).
-//
-// A block is delimited by two HTML comments, invisible on GitHub and on the
-// site:
-//
-//	<!-- BEGIN GENERATED <name> (make docs-update) -->
-//	...
-//	<!-- END GENERATED <name> -->
-//
-// Whatever precedes "<!--" on the BEGIN line (a blockquote's "> ") is repeated
-// on every generated line, so a block can sit inside a callout.
-
-// updateDocs rewrites the generated blocks instead of comparing them.
 var updateDocs = flag.Bool("update-docs", false, "rewrite the generated blocks of README.md and the website pages (make docs-update)")
 
-// generatedDoc is one generated block: the file it lives in (relative to this
-// package, where go test runs), its name in the markers, and its renderer.
 type generatedDoc struct {
 	path   string
 	block  string
@@ -50,9 +29,6 @@ var generatedDocs = []generatedDoc{
 	{"../../website/src/content/docs/docs/concepts/exit-codes.md", "diagnostic-codes", func(*cobra.Command) string { return renderDiagnosticTable() }},
 }
 
-// TestGeneratedDocs_areFresh fails when a generated block no longer matches the
-// binary: a changed exit code, a new diagnostic code or a command gaining or
-// losing [experimental] must ship with its docs in the same PR.
 func TestGeneratedDocs_areFresh(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 	for _, d := range generatedDocs {
@@ -79,8 +55,6 @@ func TestGeneratedDocs_areFresh(t *testing.T) {
 	}
 }
 
-// replaceBlock swaps the body between the markers of block for body, prefixing
-// each line with the BEGIN line's own prefix.
 func replaceBlock(doc, block, body string) (string, error) {
 	begin := "<!-- BEGIN GENERATED " + block + " (make docs-update) -->"
 	end := "<!-- END GENERATED " + block + " -->"
@@ -90,7 +64,7 @@ func replaceBlock(doc, block, body string) (string, error) {
 	}
 	lineStart := strings.LastIndex(doc[:b], "\n") + 1
 	prefix := doc[lineStart:b]
-	bodyStart := b + len(begin) + 1 // past the marker's newline
+	bodyStart := b + len(begin) + 1
 	e := strings.Index(doc[b:], end)
 	if e < 0 {
 		return "", fmt.Errorf("missing marker %q after %q", end, begin)
@@ -103,9 +77,6 @@ func replaceBlock(doc, block, body string) (string, error) {
 	return doc[:bodyStart] + out.String() + doc[endLineStart:], nil
 }
 
-// experimentalRoots returns the topmost [experimental] command of every
-// experimental leaf, sorted by path: `appstore` rather than its 9 leaves, but
-// `apps audit` alone when the rest of `apps` is frozen.
 func experimentalRoots(root *cobra.Command) []*cobra.Command {
 	seen := map[*cobra.Command]bool{}
 	var roots []*cobra.Command
@@ -126,8 +97,6 @@ func experimentalRoots(root *cobra.Command) []*cobra.Command {
 	return roots
 }
 
-// frozenTopLevel returns every top-level command that still has a frozen leaf,
-// so the "everything else" sentence is derived too instead of hand-kept.
 func frozenTopLevel(root *cobra.Command) []string {
 	seen := map[string]bool{}
 	var names []string
@@ -153,7 +122,6 @@ func codeList(names []string) string {
 	return strings.Join(quoted, ", ")
 }
 
-// renderExperimentalInline is README's compact form: two wrapped sentences.
 func renderExperimentalInline(root *cobra.Command) string {
 	var names []string
 	for _, c := range experimentalRoots(root) {
@@ -164,8 +132,6 @@ func renderExperimentalInline(root *cobra.Command) string {
 	return wrap(text, 78)
 }
 
-// renderExperimentalList is the stability page's form: one bullet per
-// experimental root with its Short, then the frozen remainder.
 func renderExperimentalList(root *cobra.Command) string {
 	var b strings.Builder
 	for _, c := range experimentalRoots(root) {
@@ -177,7 +143,6 @@ func renderExperimentalList(root *cobra.Command) string {
 	return b.String()
 }
 
-// renderExitCodeTable renders exit.Catalog, the table `gplay exit-codes` prints.
 func renderExitCodeTable() string {
 	var b strings.Builder
 	b.WriteString("| Code | Meaning | Retry-safe? |\n| --- | --- | --- |\n")
@@ -187,8 +152,6 @@ func renderExitCodeTable() string {
 	return b.String()
 }
 
-// renderDiagnosticTable renders exit.CodeCatalog, the vocabulary of the JSON
-// error envelope's `code` field (`gplay schema --codes`).
 func renderDiagnosticTable() string {
 	var b strings.Builder
 	b.WriteString("| Code | Exit | Retryable | Meaning |\n| --- | --- | --- | --- |\n")
@@ -198,8 +161,6 @@ func renderDiagnosticTable() string {
 	return b.String()
 }
 
-// verdict capitalises a retry verdict and bolds a plain "yes": the rows a
-// retry loop acts on should stand out when scanning the column.
 func verdict(s string) string {
 	if s == "yes" {
 		return "**Yes**"
@@ -210,15 +171,11 @@ func verdict(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-// mdCell makes catalog prose safe inside a Markdown table cell.
 func mdCell(s string) string {
 	s = strings.ReplaceAll(s, "|", `\|`)
 	return strings.ReplaceAll(s, "<", "&lt;")
 }
 
-// wrap hard-wraps prose at width, matching the hand-wrapped Markdown around
-// the block so a diff of the file stays line-oriented. A code span is never
-// split: "`releases sharing`," wraps as one word.
 func wrap(text string, width int) string {
 	var words []string
 	for _, f := range strings.Fields(text) {

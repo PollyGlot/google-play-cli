@@ -11,15 +11,8 @@ import (
 	"testing"
 )
 
-// update is registered on every test binary that imports testkit, so
-// `go test ./some/pkg -update` rewrites that package's golden files. Run it on
-// the packages you mean to refresh: `go test ./... -update` fails in packages
-// that do not import testkit, because they do not know the flag.
 var update = flag.Bool("update", false, "rewrite testdata golden files instead of comparing against them")
 
-// Golden compares got with the file testdata/<name> of the calling package.
-// With -update it writes got there instead (creating testdata/ as needed), so
-// an intended output change is one command plus a reviewable diff.
 func Golden(t testing.TB, name string, got []byte) {
 	t.Helper()
 	path := filepath.Join("testdata", filepath.FromSlash(name))
@@ -41,8 +34,6 @@ func Golden(t testing.TB, name string, got []byte) {
 	}
 }
 
-// firstDiff locates the first differing line, which is what a reader needs to
-// start from; the full diff is one -update and `git diff` away.
 func firstDiff(want, got []byte) string {
 	wl := strings.Split(string(want), "\n")
 	gl := strings.Split(string(got), "\n")

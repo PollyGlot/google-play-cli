@@ -593,6 +593,8 @@ reports the error the serial walk would have hit first.
   price of that leniency: a reply that opens with a quote and never closes it
   swallows the rest of the stream into one record. A malformed line (not two
   fields, an empty id or reply) is reported on its own and the batch goes on.
+  Surrounding whitespace is trimmed from the review id, since the API answers
+  a padded id with a 404.
 - Long-history retrieval (CSV reports in the GCS bucket) ships as `reviews
   history --month` (ADR-0037).
 - The other monthly exports of the same bucket (installs, then ratings,

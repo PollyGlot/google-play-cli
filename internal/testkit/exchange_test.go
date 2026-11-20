@@ -17,8 +17,6 @@ type coded struct{ code int }
 func (c coded) Error() string { return "refused" }
 func (c coded) ExitCode() int { return c.code }
 
-// Exchange must tell apart every property of a request that reaches the network
-// or decides a replay: escaping, headers, declared length, a re-openable body.
 func TestExchange_rendersWhatReachesTheNetwork(t *testing.T) {
 	send := func(hc *http.Client) (any, error) {
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://api.test/a%2Fb?x=1", bytes.NewReader([]byte(`{"k":1}`)))

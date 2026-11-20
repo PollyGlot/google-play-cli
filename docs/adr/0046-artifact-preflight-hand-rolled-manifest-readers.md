@@ -125,6 +125,9 @@ restoration.
 
 ### Reading the formats
 
+- **The AAB markers are checked before the APK ones.** An AAB has no root
+  `AndroidManifest.xml`, so the two cannot both match; the AAB pair is the
+  more specific test.
 - **A duplicated member name resolves to its first occurrence**, the
   classic spoofing defence.
 - **Both string-pool encodings are read**: aapt2 writes modified UTF-8,
@@ -134,7 +137,8 @@ restoration.
 - **The aapt2 protobuf manifest is read by field number** from three
   messages of `Resources.proto`: `XmlNode` (`element` = 1), `XmlElement`
   (`name` = 3, `attribute` = 4) and `XmlAttribute` (`namespace_uri` = 1,
-  `name` = 2, `value` = 3).
+  `name` = 2, `value` = 3). The deprecated group wire types (3 and 4) never
+  appear in aapt2 output and are refused.
 - **A partial answer is still an answer.** A truncated binary-XML tail is
   clamped to the bytes present, since `<manifest>` sits near the front; a bad
   string offset costs that one string, not the pool, since only `manifest` and

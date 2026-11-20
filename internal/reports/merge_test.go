@@ -2,10 +2,6 @@ package reports
 
 import "testing"
 
-// TestMerge_unionOfColumnsFirstSeen covers a range read across a Google column
-// change: the result carries the union of the columns in first-seen order, and
-// a month that predates a column leaves that cell absent rather than shifting
-// the row.
 func TestMerge_unionOfColumnsFirstSeen(t *testing.T) {
 	aug, err := Decode([]byte("Date,Country,Daily Device Installs\n2026-08-31,FR,4\n"))
 	if err != nil {

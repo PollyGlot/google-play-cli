@@ -13,23 +13,18 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// route is one Discovery method that takes a request body: the URL it answers
-// on and the schema its body follows.
 type route struct {
 	id      string
 	verb    string
-	pattern *regexp.Regexp // host and path; a placeholder matches one segment
-	literal int            // literal characters of the template: the most specific match wins, so `{productId}` does not take `{productId}:archive`
+	pattern *regexp.Regexp
+	literal int
 	schema  string
 }
 
-// checker holds what checking a body needs, derived once from the embedded
-// Schema index: Google's own description of every request, never a second
-// hand-kept table.
 type checker struct {
 	routes   []route
 	schemas  map[string]schemaindex.Schema
-	bySchema map[string][]string // schema name -> rule keys
+	bySchema map[string][]string
 }
 
 var bodyChecker = sync.OnceValue(func() *checker {
@@ -57,13 +52,10 @@ var bodyChecker = sync.OnceValue(func() *checker {
 			c.routes = append(c.routes, newRoute(id, m.HTTPMethod, root+m.UploadPath, m.Request))
 		}
 	}
-	// Sorted so a tie between equally specific templates resolves the same
-	// way on every run.
 	sort.Slice(c.routes, func(i, j int) bool { return c.routes[i].id < c.routes[j].id })
 	return c
 })
 
-// placeholder matches a `{name}` path parameter of a Discovery flatPath.
 var placeholder = regexp.MustCompile(`\{[^}]+\}`)
 
 func newRoute(id, verb, tmpl, schema string) route {
@@ -81,23 +73,17 @@ func newRoute(id, verb, tmpl, schema string) route {
 	return route{id: id, verb: verb, pattern: regexp.MustCompile(re.String()), literal: literal, schema: schema}
 }
 
-// violation is one rule a request body breaks.
 type violation struct {
-	key string // Schema.property
-	at  string // JSON path of the object holding the property, "" for the root
+	key string
+	at  string
 	why string
 }
 
-// check matches c to the Discovery method it calls and walks its JSON body
-// against the rules. A request no method takes a body on, or whose body is
-// not a JSON object (media bytes), has nothing to check.
 func (k *checker) check(c Call) (string, []violation) {
 	trimmed := bytes.TrimSpace(c.Body)
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return "", nil
 	}
-	// The escaped path keeps a parameter one segment even when its value holds
-	// a slash (a review ID, an `applications/<pkg>` name).
 	u, err := url.Parse(c.URL)
 	if err != nil {
 		return "", nil
@@ -156,8 +142,6 @@ func (k *checker) walk(schema string, v any, at string, out *[]violation) {
 	}
 }
 
-// refusal checks c and describes the rules its body breaks, those in allowed
-// excepted, for a test failure; "" when it breaks none.
 func refusal(c Call, allowed map[string]bool) string {
 	id, vs := bodyChecker().check(c)
 	var (
@@ -185,8 +169,6 @@ func refusal(c Call, allowed map[string]bool) string {
 		id, c.Method, c.URL, b.String(), c.Body, first)
 }
 
-// allowList validates the rule keys a test exempts: a typo would otherwise
-// exempt nothing and the test would fail for a reason it claims to handle.
 func allowList(set map[string]bool, keys []string) {
 	if len(keys) == 0 {
 		panic("testkit: AllowInvalid needs the rule keys it exempts")
