@@ -4,6 +4,8 @@
 
 accepted (supersedes the installer mechanism of [ADR-0028](0028-install-skills-command.md) §2, §3 and §4; ADR-0028's command shape, category and discoverability decisions stand); amended by [ADR-0053](./0053-skills-pin-rides-the-next-release.md) (the repin is a `chore` that rides the next release; `npx skills add` is the current channel)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 [ADR-0028](0028-install-skills-command.md) shipped `gplay install-skills` as a
@@ -54,6 +56,15 @@ install-skills` invoked from a hook, an alias or a wrapper would hit it. Those
 variables are stripped from git's environment, along with the environment's
 config-injection channel (`GIT_CONFIG_COUNT` and its numbered key/value pairs,
 `GIT_CONFIG_PARAMETERS`), which is `-c` by another name.
+
+Every `GPLAY_` variable is stripped from a git child's environment too (#795).
+They carry gplay's credentials (`GPLAY_SERVICE_ACCOUNT` may hold the inline
+key, `GPLAY_ACCOUNT` and `GPLAY_DEVELOPER_ID` name what it unlocks), and git
+reads none of them, so git, its credential helpers and its hooks get no copy.
+The whole prefix goes, not a list, so a credential variable added later is
+covered without anyone remembering this rule. The same environment filter
+serves every git call gplay makes, including the `git ls-files` check on
+`.gplay/config.local.json` ([ADR-0004](./0004-cascading-config.md)).
 
 "No script is executed" also has to survive *configuration*, not just the pack:
 `core.hooksPath` and `init.templateDir` make git run code during `init` and

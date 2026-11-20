@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 `gplay team` (PRD #147) is gplay's first surface with frequent, *varied*
@@ -66,6 +68,12 @@ trivially fixable one.
 
 6. **No interactive prompts; `CI=true` never auto-confirms** any gate
    (ADR-0002/0014 inheritance). Every gate is a flag.
+
+## Implementation notes
+
+- **`requires` is always an array, never `null`.** Every gplay-authored array
+  field (the dry-run `requires` included) is normalised to `[]` before it is
+  encoded, so a consumer iterates it without a guard.
 
 ## Considered options
 

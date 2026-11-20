@@ -17,6 +17,12 @@ attaches artifacts without touching that body. Ordering is guaranteed by the
 `needs:` dependency in `.github/workflows/release-please.yml`, which calls
 `release.yml` as a reusable workflow once a release is cut.
 
+## Status
+
+accepted
+
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Why
 
 1. **Separation of concerns, not redundancy.** release-please answers "what's
@@ -118,3 +124,13 @@ a version. End users see signed checksums and an SBOM attached to each release,
 and a `CHANGELOG.md` that reads cleanly because it is generated from
 Conventional Commit subjects — which is why [CONTRIBUTING.md](../../CONTRIBUTING.md)
 asks for them.
+
+## Implementation notes
+
+- **A job that calls a local reusable workflow grants at least what the
+  called jobs request.** GitHub rejects an under-granting call at startup
+  (`startup_failure`), on every push and before any `if:` is evaluated, and
+  actionlint does not see it. It broke the release call twice
+  (`attestations: write`, then `packages: write`, #659, #674), so a test in
+  `internal/workflowgate` compares the caller's grant with every called job's
+  request.

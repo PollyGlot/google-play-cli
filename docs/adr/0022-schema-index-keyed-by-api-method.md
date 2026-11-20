@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 `gplay schema` (the `[experimental]` introspection command) exposes an
@@ -47,6 +49,32 @@ Rationale:
   need is already served by `gplay tracks set --help` + the companion skills;
   `gplay schema` fills the orthogonal gap — the underlying **API** shape that
   `--help` never shows.
+
+## Implementation notes
+
+- **The index has two sections.** Methods are keyed by method id; schemas are
+  a dictionary keyed by type name. A method points at its request and
+  response schema by name and a nested property points by `$ref` name into the
+  same dictionary, so the dictionary is the depth mechanism: no duplication,
+  no arbitrary truncation.
+- **The index package is compiled into the binary and imports only the
+  standard library** (no `net/http`, no Google SDK). Embedding inert reference
+  data does not contradict [ADR-0007](./0007-raw-http-not-google-go-sdk.md);
+  the Discovery fetching and normalising tooling is never compiled in.
+- **Every committed snapshot feeds one index.** The leading segment of a
+  method id discriminates the service, so the services merge with no
+  collision.
+- **A method's path is base-relative, and the base is recorded per service.**
+  Google prepends a constant prefix to every `flatPath`
+  (`androidpublisher/v3/`); stripping it gives the fragment users know from
+  the API reference. The prefix is not uniform across Google's documents
+  (`gamesConfiguration` uses `games/v1configuration/`, `playdeveloperreporting`
+  uses `v1beta1/`), so it is stripped only when every method of a document
+  carries it, lest the path mean two things in one document, and the prefix
+  actually stripped is stored with the service's root URL. Root URL, base path
+  and method path rebuild the absolute URL template byte for byte, which is
+  what `apiregistry.Resolve` hands to call sites
+  ([ADR-0065](./0065-api-registry-and-discovery-snapshot.md)).
 
 ## Consequences
 

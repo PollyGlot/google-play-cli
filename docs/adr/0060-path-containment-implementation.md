@@ -4,6 +4,8 @@
 
 accepted (2026-11-20)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 DESIGN §8 "Path containment" sets the user contract: every path built from a
@@ -21,6 +23,10 @@ gathers them here.
 
 - **The root is resolved once per walk**, and every derived path is checked
   against it, rather than each path resolving its own idea of the root.
+  Resolving it per file would cost a syscall per file and, worse, let the root
+  itself be swapped mid-walk. The one-shot operations on `.gplay/` (a single
+  pin read, write or removal) resolve it per call, since there is no walk to
+  protect.
 - **The root is resolved after the directory listing.** A missing directory
   then reports the familiar not-found error, not a containment failure.
 - **The write side creates the root first.** `pull` writes into a tree that
@@ -28,6 +34,60 @@ gathers them here.
 - **An empty tree writes nothing and creates nothing.** `pull` on an app with
   no listings or no images returns before establishing the root, so it leaves
   no empty directory behind.
+
+### The check
+
+- **Both sides are resolved through `EvalSymlinks`**, then the resolved
+  candidate must be at or under the resolved root. "Under" is decided with
+  `filepath.Rel`, not a string prefix, so `/repo/.gplay-evil` is not taken
+  for a child of `/repo/.gplay`.
+- **A path that does not exist yet is checked through its nearest existing
+  ancestor**, which is resolved, with the missing components re-appended
+  lexically. That is sound because a component that does not exist cannot be
+  a symlink: an escape has to come from an ancestor that does exist.
+- **The caller gets back the path it named**, not the resolved one: the name
+  has just been proved to land inside the root, and returning the resolved
+  form would silently rewrite the file names in the caller's own error
+  messages.
+- **An escape is a usage error (exit 2) naming the path**: a bad input, not a
+  transient failure, so a retry is pointless and the message must say which
+  path to fix.
+- **The strict check names the escape hatch only to say it does not apply.**
+  An operator who set `GPLAY_ALLOW_EXTERNAL_SYMLINKS` and is still refused
+  would otherwise conclude it is broken; the truth is that the path was built
+  from API data, which the hatch never covers.
+- **Under the hatch, a symlink below the root is told apart from a `..`
+  above it** by asking whether some ancestor of the path, as spelled, resolves
+  to the root. Ancestors are compared in resolved form, not as strings, so the
+  test holds when the root itself is reached through a link (macOS
+  `/var -> /private/var`). The walk costs one `EvalSymlinks` per level, which
+  is acceptable because it only runs on the escape path, under an opt-in.
+- **The `NOTE:` stream is a package-level sink**, set once by `cmd/gplay` to
+  the redacting stderr, rather than a parameter: the codecs that use the
+  relaxable check take a directory and nothing else, and threading a writer
+  through all of them for a condition that is off by default would cost every
+  signature.
+
+### Names that become paths
+
+- **A name joined into a path is one plain path component.** A package name
+  (`.gplay/edit-<pkg>.json`) and an Account name (`<keystore>/<name>.json`)
+  arrive from flags, environment variables and repo files, and nothing
+  upstream forbids a separator or a `..`. Android package names are
+  filesystem-safe when well formed; that is an assumption about the input,
+  not a guarantee, so the component check runs before any I/O.
+- **Once the component check passes, a lexical join is safe** even where the
+  directory does not exist yet (a first `edits begin` creating `.gplay/`):
+  with no separator in the name there is no traversal to perform.
+- **The unchecked join is for messages only.** The pin path rendered in an
+  error is the plain join; every path used for I/O goes through the checked
+  helper.
+- **A refused Account name deletes as not found.** Save never stores such a
+  name, so there is nothing under it, and a caller that sweeps every store
+  (`auth logout` deletes from the keyring and then the file backend) must be
+  able to finish for a keyring-held Account whose name has a slash. The OS
+  keyring keys items by name without touching the filesystem, so it keeps
+  accepting any name.
 
 ### Reading
 
@@ -49,8 +109,27 @@ gathers them here.
 
 - **A leaf is checked, not only its directory.** `os.WriteFile` follows a
   symlinked leaf, so a `title.txt` or `icon.png` pre-placed as a link would
-  have its target overwritten by `pull`. The write helper checks the file
-  path itself before writing.
+  have its target overwritten by `pull`. The write helper refuses to write
+  through any symlinked leaf: a link out of the root is already an escape,
+  and a link back inside the root would still write a file the caller did not
+  name.
+- **A staging file is contained like its target.** The global config and the
+  Edit pin are written to `<path>.tmp` and renamed over the target, so a crash,
+  a kill or a full disk leaves the old file or the new one, never a truncated
+  file that breaks every later command (a corrupt pin is refused by every
+  command, `edits begin` included). `<path>.tmp` is a name nothing owns, and
+  the `edit-*.json` rule `gplay init` gitignores does not cover it, so a repo
+  can commit it as a symlink: the staging path goes through the write check
+  too, against the same resolved root as the target. The leaf check is the
+  one that catches a staging link aimed back inside `.gplay/` (at
+  `config.json`, say). A failed save removes its staging file.
+- **`gplay init` checks both files before writing either.** `.gplay/config.json`
+  and `.gplay/.gitignore` sit in a directory a cloned repo controls, so either
+  can arrive as a committed symlink (#791); checking both first means a
+  refusal leaves nothing half initialised. A symlinked `.gplay/` pointing out
+  of the repo is caught the same way.
+- **A root that will not resolve on a write means the in-memory filesystem**
+  used by tests: there is nothing on disk to contain against.
 - **An image is written to a temporary sibling, then renamed over the
   target**, so a copy that fails partway leaves the previous image whole. The
   temporary name ends in neither `.png` nor `.jpg`, so neither Read nor the

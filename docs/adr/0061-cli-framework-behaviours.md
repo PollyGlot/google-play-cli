@@ -4,6 +4,8 @@
 
 accepted (2026-11-20)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 gplay's command tree is built on cobra and its flag parser pflag. Several of
@@ -103,6 +105,19 @@ either is the moment to re-read it.
   the raw argv ([ADR-0051](./0051-removed-surface-names-its-replacement.md)).
 - **The argv reader imitates pflag's positional rules**: every token after
   `--` is positional, and so is a bare `-` (stdin, by convention).
+
+### Flag values gplay validates itself
+
+- **A value validated after pflag must raise exit 2 itself.** `--output` is a
+  plain string flag whose value is checked downstream, not in `pflag.Set`, so
+  the root's flag-error hook never sees a bad value: the format dispatcher
+  returns an explicit `exit.UsageError`, one error for the unknown-format and
+  missing-renderer paths alike, the same exit-2 path `--columns` uses for an
+  unknown column.
+- **A flag with a closed value set names it as its pflag type**, so `--help`
+  renders `--if-exists skip|fail` rather than `string`. It must not report
+  `string` in any case: the flag-type registry test in `cmd/gplay` feeds every
+  `string` flag an arbitrary sample value, which a closed set rightly refuses.
 
 ### Tests
 

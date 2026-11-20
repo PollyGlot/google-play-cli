@@ -4,6 +4,8 @@
 
 accepted (2026-11-20)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 gplay reads every response into memory before passing it through
@@ -47,6 +49,12 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
 
 ### Auto-paginated walks
 
+- **Whether a method is paginated is read from its response schema**: a
+  `nextPageToken` (every current surface) or `tokenPagination` (the legacy
+  in-app products list). A `pageToken` query parameter would miss the vitals
+  `*.query` methods, which take their token in the POST body. The fact is
+  declared per method in the registry
+  ([ADR-0065](./0065-api-registry-and-discovery-snapshot.md)).
 - **A walk follows the continuation token to the end** (`api.Paginate`), or to
   an explicit `--limit`, which it reports as truncation.
 - **The Reporting API needs it most**: its default pages are small (10

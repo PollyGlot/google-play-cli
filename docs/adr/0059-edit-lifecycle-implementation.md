@@ -4,6 +4,8 @@
 
 accepted (2026-11-20)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 DESIGN §4 sets the user-facing Edit lifecycle: implicit Edits discarded on
@@ -76,6 +78,40 @@ them here.
 - **`gplay edits discard` clears the pin whatever the DELETE answers.** An Edit
   that already expired or vanished server-side is the state the operator asked
   for.
+- **An unusable pin is an error, never "no pin".** A missing file means
+  implicit mode; a present file that is not JSON or has no `editId` must
+  surface, because falling back to a fresh Edit would open a second,
+  conflicting one while the real one stays open.
+- **A pin naming another package is corruption**, the trace of a copied or
+  renamed file: it is refused before the Edit is reused against the wrong
+  package. A pin with no `package` field is tolerated (an older or minimal
+  pin); the file name is the authority.
+- **Only the content makes a pin corrupt.** A read that fails (permissions)
+  or a path containment refuses is a different error, so `edits discard`
+  removes a file only after reading it and finding it unusable.
+- **A pin is written atomically** (a staging file renamed over it,
+  [ADR-0060](./0060-path-containment-implementation.md)). A truncated pin
+  would be refused by every write command and by `edits begin`, which reads
+  the pin before it could overwrite it, so a crash mid-write would wedge the
+  package until a manual `discard`.
+
+### Concurrent reads
+
+DESIGN §4 sets the user contract of the four-wide read fan-out
+(`internal/fanout`); these are the rules behind it.
+
+- **The error returned is deterministic**: the failure with the lowest index,
+  the one the serial loop would have returned. Indices start in order and a
+  started call always runs to completion, so every index below the first
+  failure in time has finished when the fan-out returns. After a failure no
+  new index starts; at most three calls already in flight finish.
+- **A panic in a call is re-raised on the caller's goroutine** once every
+  worker has stopped, so a deferred cleanup up the stack (the discard of a
+  read-only Edit) still runs instead of the process dying on a worker
+  goroutine with the Edit left open for 24 hours.
+- **A call touches only the state of its own index**, or guards shared state
+  itself; results land in slot `i`, which is what keeps the output in input
+  order. The type system cannot check this, so a caller must.
 
 ## Consequences
 
