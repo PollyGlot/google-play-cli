@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 Two pieces of gplay's public surface had grown up separately:
@@ -73,6 +75,8 @@ also covers the static-assets upload, and DNS stays out of CI permanently.
   mean separating landing and docs into two builds and rewriting every internal
   `/docs/...` link — real ongoing maintenance for a cosmetic URL gain. Deferred;
   the redirect is forward-compatible with doing it later.
+  Folding `docs.` and `www.` onto the apex with a permanent redirect also
+  leaves search engines one set of URLs to index, with no duplicate content.
 
 ## Considered and rejected
 

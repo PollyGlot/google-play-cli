@@ -125,3 +125,20 @@ the README hardcodes a version").
   orchestrator's result keeps such fields out of its own JSON encoding; each
   command chooses what enters its Public output, so a field added for a table
   view never leaks into a frozen JSON shape by accident.
+- **A PR that takes something out of the frozen surface must say so.**
+  `scripts/contract-gate.sh` diffs `cmd/gplay/testdata/surface.golden`, whose
+  lines each start with their stability. A removed `frozen` line breaks the
+  Public contract: a renamed or dropped flag, a changed default or type (a
+  modification is a removal plus an addition), a removed leaf, an exit code.
+  Such a PR carries a breaking marker in its title (`feat!:`,
+  `fix(scope)!:`, which release-please reads as a major bump) or names the
+  ADR that decides the change (`ADR-NNNN` in its body).
+- **A pure addition to the frozen surface passes.** A new flag, a new frozen
+  leaf or a graduation from experimental adds only `+frozen` lines. This ADR
+  promises not to break anything, not to add nothing, and a `feat!` there
+  would bump the major for nothing. The gate lists the additions as a notice
+  so the reviewer still sees what joins the frozen surface. Experimental lines
+  never trip it.
+- **The PR title and body reach the gate through the environment**, never
+  interpolated into a workflow `run:` block: they are attacker-controlled
+  text, and the gate only ever matches them with `grep`.

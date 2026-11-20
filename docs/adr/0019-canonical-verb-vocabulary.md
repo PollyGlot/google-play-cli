@@ -137,7 +137,22 @@ resource — no nesting); all reference/diagnostic commands.
 - **`scripts/verb-gate.sh` fails any tracked file that spells a pre-rename
   name**, outside the historical records it excludes (`docs/adr/`, the
   changelog, migration guides, the removed-surface table and its test of
-  [ADR-0051](./0051-removed-surface-names-its-replacement.md)).
+  [ADR-0051](./0051-removed-surface-names-its-replacement.md)). It also holds
+  the 2.0.0 renames of [ADR-0048](./0048-v2-release-train.md). The flag
+  renames whose old names are ordinary words (`--version` on vitals,
+  `--region`, `--kind`) are not grepped; the surface golden and the leaf
+  contract test hold them.
+- **A pattern matches the command form and the hyphenated adjective form**
+  ("apps info", "apps-info envelope"): explicit non-word boundaries and a
+  separator of spaces or hyphens, so neither spelling slips through. Only
+  POSIX character classes, so GNU and BSD `grep` agree.
+- **For the two group renames only the `gplay `-prefixed form is checked.** A
+  `gplay <group>` example must carry a verb, while prose may still name the
+  bare group noun ("the `apps details` group").
+- **Migration guides live under a `migration/` directory**, the path the gate
+  exempts, because naming the retired spelling next to its replacement is
+  their job. The website sidebar therefore lists them by hand rather than
+  autogenerating them with the other guides.
 - **A test that must name an old or multi-token command path passes it as
   separate path elements**, joined at run time (a subtest name, a map key),
   never as one contiguous phrase in source, so the gate stays green on test

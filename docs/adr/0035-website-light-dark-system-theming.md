@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 The gplay website ([`website/`](../../website/), Astro + Starlight, served from
@@ -209,3 +211,34 @@ sidebar depth), around 200 per docs page. So `style-src` keeps
 because script injection is what a CSP exists to stop. Pagefind's WebAssembly
 needs `'wasm-unsafe-eval'`, and the Cloudflare Web Analytics origins stay
 allowed.
+
+## Implementation notes
+
+### Tokens and palette
+
+- **The semantic tokens reach Tailwind through `@theme inline`**, so each
+  utility references the `var(--…)` itself rather than a value resolved once,
+  and re-resolves when the `data-theme` attribute flips.
+- **The theme-color pair must equal `--gplay-ink` and `--light-surface`.**
+  CSS cannot import `website/src/theme-color.mjs`, so the two colours are
+  declared twice and kept equal by hand.
+- **`--light-fg-subtle` (zinc-500, 4.83:1) sits on `--light-surface` only.**
+  It clears AA on white, and only there; the footer is its one use.
+- **Each option of the landing's theme control is at least 32px square**,
+  above the 24px WCAG 2.5.8 asks, without enlarging the header.
+
+### Content-Security-Policy
+
+- **Only executable script types are hashed.** A JSON-LD block is data that
+  CSP does not govern, so hashing it would only lengthen the policy.
+- **`img-src` allows `data:`** for the SVG data URIs in Starlight's and
+  Pagefind's CSS.
+- **The meta goes at the top of `<head>`, right after `<meta charset>`.** A
+  meta policy only governs what the parser meets after it, so it must precede
+  the first-paint theme scripts. The charset must stay within the first 1024
+  bytes, since the Worker serves `text/html` without a charset parameter, and
+  the policy is about 1 KB with its hashes.
+- **The CSP integration is registered last** in the Astro config, so it hashes
+  pages every other integration has finished.
+- **A meta policy cannot express `frame-ancestors` or reporting**, so the
+  Worker's `x-frame-options: DENY` keeps covering framing (ADR-0069).
